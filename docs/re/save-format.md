@@ -143,6 +143,16 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Build | B1 |
 | Evidence | as above. |
 
+## The continue point and the seed's start
+
+| Field | |
+|---|---|
+| Value | Positions are counted in 16-pixel tiles over the whole map, with each map cell 14 tiles wide and 20 tall: tile column = x × 14 + pixel x / 16, tile row = y × 20 + pixel y / 16, where (x, y) is the cell and the pixel position is the save point's within its room. **Continue point:** the 16-bit values at `0x935C` (row) and `0x935E` (column) are the save point the save continues from. Saving in the save room at (23, 22) stored 449 / 333; teleporting back to the start and saving there stored the start's 329 / 191 again. **The seed's start:** the randomizer section opens, at `0x12B24`, with three 16-bit values: an index into the game's list of start candidates minus 1, then the start's column and row (slot 28: 6, 191, 329 for cell (13, 16); slot 29: 4, 148, 869 for (10, 43); the owner's slot 2: 8, 202, 27). They stay the same however far the game goes. A fresh save also reveals only the start cell on the map grid (value `0x22`, a save room). **The candidates:** at seed generation (RVA `0xF2F30`) the start comes from a list the game builds at run time (`0x14B910`): every map cell whose room type is 2 or `0x1C` and that holds no object `0x16`, up to 64, counted at `+0xEAF7CC` with the cells at `+0xEB2070`; the save point's pixel position comes from a per-cell object table at `+0x361C20` (154 bytes per cell). How the generator picks among them is not traced. Not yet shown: that writing these fields into a fresh save makes the game start at another save room. |
+| Status | measured (the continue point over four saves; the header against two fresh seeds; the tile formula from the generator, checked on three rooms); assumed (that room types 2 and `0x1C` are save rooms); not tried (a patched start) |
+| Method | byte comparison of the fresh slot 28 and 29 saves (25 bytes differ in the first block) and of later saves; disassembly of RVAs `0xF2F30` (writes the header) and `0x14B910` (builds the list) |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-212018/` (fresh slots 28 and 29), `lab/work/slot28-after-grants.sav`, `lab/work/slot28-after-boss.sav`, `lab/backups/20261021-091726/Save Game 27.sav`, `lab/backups/20261021-101657/Save Game 2.sav`, 2026-10-21. |
+
 ## Counters
 
 | Field | |
