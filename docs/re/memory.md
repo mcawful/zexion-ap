@@ -34,12 +34,12 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/mem/p2-record.log`; saves `lab/work/slot28-all-scrap.sav` (as loaded), `lab/backups/20261020-215709/` (after two pickups), `lab/backups/20261020-213055/` and `lab/backups/20261020-213828/`, 2026-10-20. |
 
-## Which location was collected: not found
+## Which location was collected: known in the save, not yet in live memory
 
 | Field | |
 |---|---|
-| Value | No byte found so far records that one particular location was collected. The randomizer section of the save did not change after pickups, and nothing in the 46 bytes above is set by both pickups apart from exploration and counters. Candidates to test next: per-room object state around file `0x80xx` (values there differ between saves with different pickups, but exploration changes them too). An earlier candidate, `Zexion.exe+0x3D0168`, turned out to be the counter above. |
-| Status | assumed (open question) |
-| Method | as above |
+| Value | In the save, the map grid at file `0x877F` (54 × 54, row-major) holds `0x1B` at a location's cell once it is collected (`save-format.md`, "The map grid marks collected locations"). The live copy of that grid has not been located in memory yet. Searching memory for a distinctive run of the grid while playing should find it, since save data has the same layout in memory (above). `Zexion.exe+0x3D0168` is only a pickup counter. |
+| Status | measured (in the save); not yet located (in memory) |
+| Method | fork test, see `save-format.md` |
 | Build | B1 |
-| Evidence | as above, 2026-10-20. |
+| Evidence | 2026-10-20. |
