@@ -18,7 +18,7 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. |
+| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. This repo calls the first number x and the second y, but the game's own display appears to use the other order: the cell this repo calls (23, 22) showed in game as x 22, y 23 (2026-10-21), and in this repo's naming a cell is 14 tiles wide and 20 tall, which swapped is a 320 × 224-pixel screen. Only the names are in question; every index and formula here uses one convention throughout. |
 | Status | measured |
 | Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85) |
 | Build | B1 |
