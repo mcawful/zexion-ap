@@ -13,8 +13,10 @@ inventory go back to the last save when the player dies or reloads, so the diffe
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
-A weapon and its upgrade are one progressive item: the game turns a second copy of the weapon
-into the upgrade (docs/re/randocells.md), so the two bytes are counted together.
+A weapon and its upgrade are one progressive item, counted as one for each byte that is set.
+The generator counts a second copy of a weapon as its upgrade (docs/re/randocells.md); that a
+pickup in play does the same is assumed. If it does not, the weapon byte reads 2 and the
+upgrade is still owed, so the client gives it.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -37,6 +39,10 @@ ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_PACK = 0, 1, 2, 36,
 # Items whose byte cannot be written: Zexion (the goal) and the Energy Shield, whose byte is
 # not understood (docs/re/save-format.md).
 NOT_GRANTABLE = {31, 50}
+# Filler the game does not keep in its own byte: a collected Scrap Energy or Area Map left its
+# byte at 0 in the owner's randomizer save while Scrap Metal's count rose (docs/re/save-format.md,
+# "Inventory"). Scrap Chunk (48) is assumed to behave the same. Never given, never reported.
+FILLER_WITHOUT_BYTE = {47, 48, 49}
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
@@ -66,8 +72,12 @@ def owned(inventory: bytes) -> Counter[int]:
     """What the inventory holds, progressive weapons under the weapon."""
     have: Counter[int] = Counter()
     for item in range(min(len(inventory), ITEMS)):
-        if inventory[item]:
-            have[UPGRADE_OF.get(item, item)] += inventory[item]
+        if not inventory[item]:
+            continue
+        if item in PROGRESSIVE or item in UPGRADE_OF:
+            have[UPGRADE_OF.get(item, item)] += 1
+        else:
+            have[item] += inventory[item]
     return have
 
 
@@ -84,7 +94,7 @@ def grants(inventory: bytes, target: Counter[int]) -> Grants:
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
         missing = want - have[item]
-        if missing <= 0:
+        if missing <= 0 or item in FILLER_WITHOUT_BYTE:
             continue
         if item in NOT_GRANTABLE:
             stuck[item] = missing

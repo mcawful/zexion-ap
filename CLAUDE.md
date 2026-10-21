@@ -69,9 +69,13 @@ a client whose game it does not know):
 .venv/Scripts/python client/zexion_client.py --nogui archipelago://NAME@localhost:38281
 ```
 
-Its `/prepare SLOT` replaces a save slot (after a verified backup, only while Zexion is
-closed); on the real save folder, ask before each one, as for `save_lab.py install`. With
-`ZEXION_SAVE_DIR` pointing at a copy it touches nothing real.
+Once connected, its `/prepare SLOT` writes the seed into a slot holding a new randomizer game
+of the seed's mode, saved at once (a slot that already holds the seed is left alone). It
+replaces the slot file after a verified backup, which goes to `zexion_backups/` in
+Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
+save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.
+With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real. `ZEXION_AP_DIR` points the
+client at another Archipelago folder than `.ap/Archipelago`.
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or

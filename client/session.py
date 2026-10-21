@@ -15,6 +15,9 @@ Safety, in order:
   play (``game.IN_PLAY``), as compare-and-set writes, and only to make up a difference
   (client/reconcile.py), so a grant undone by a death or reload is made again and none is
   made twice.
+- A grant waits for two polls in a row to owe exactly the same, so a pickup the game is half
+  way through recording (the map cell set, the inventory byte not yet) is never taken for an
+  item owed.
 """
 
 from __future__ import annotations
@@ -72,6 +75,7 @@ class Session:
         self.plan = plan
         self.cells = [tuple(c) for c in cells]
         self._said: set[str] = set()
+        self._due: dict[int, int] | None = None  # what the previous poll found owed
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
@@ -80,6 +84,8 @@ class Session:
 
     def step(self, g: game.Game, received: list[int], gap: float = SETTLE_SECONDS) -> Step:
         snap = read_settled(g, gap)
+        if snap is None or snap.state != game.IN_PLAY:
+            self._due = None
         if snap is None or snap.state == game.NO_SAVE:
             return Step()
         try:
@@ -88,6 +94,7 @@ class Session:
             seed = None
         if seed is None or list(seed.locations) != self.cells:
             self.say_once("no seed", "The loaded save is not a randomizer save of this seed.")
+            self._due = None
             return Step()
         if not save_patch.section_matches(snap.blob, self.plan):
             self.say_once(
@@ -95,6 +102,7 @@ class Session:
                 "The loaded save holds a different seed: nothing is sent or given. "
                 "Load the slot you prepared for this one.",
             )
+            self._due = None
             return Step()
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
@@ -119,6 +127,9 @@ class Session:
                 f"stuck {item} {missing}",
                 f"Item {item} is owed {missing} more time(s) but cannot be given by the client.",
             )
+        due, self._due = self._due, result.inventory
+        if result.inventory != due:
+            return {}  # owed for the first time: wait for the next poll to agree
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():

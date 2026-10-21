@@ -144,3 +144,8 @@ def test_plan_from_slot_data() -> None:
     assert p.second_start == (3, 151, 464)
     assert p.options == {42: 2}
     assert sp.plan_from_slot_data({**slot, "second_start": None}).second_start is None
+
+
+def test_starting_bombs_are_refused() -> None:
+    with pytest.raises(sp.PatchError, match=r"\[2, 37\]"):
+        sp.patch(bytes(fresh()), plan(start_items={2: 1, 37: 1}))

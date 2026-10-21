@@ -145,8 +145,9 @@ async def game_loop(ctx: ZexionContext) -> None:
                 logger.error(f"Cannot use this Zexion: {exc}")
                 await asyncio.sleep(10)
                 continue
+        current = ctx.session
         try:
-            step = await asyncio.to_thread(ctx.session.step, ctx.game_conn, ctx.received_codes())
+            step = await asyncio.to_thread(current.step, ctx.game_conn, ctx.received_codes())
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
             ctx.game_conn = None
@@ -155,8 +156,8 @@ async def game_loop(ctx: ZexionContext) -> None:
             logger.error(f"Reading Zexion failed: {exc}")
             await asyncio.sleep(2)
             continue
-        if not step.seed_matches:
-            continue
+        if not step.seed_matches or ctx.session is not current:
+            continue  # nothing to send, or the connection changed while the game was read
         locations = {LOCATION_ID_BASE + i for i in step.checked & ctx.kept}
         new = locations - ctx.locations_checked
         if new:

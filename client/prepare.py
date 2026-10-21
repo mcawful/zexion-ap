@@ -96,8 +96,13 @@ def prepare(
     if target.read_bytes() != original:
         raise PrepareError(f"{target.name} changed while it was being prepared; nothing written")
     tmp = target.with_name(target.name + TMP_SUFFIX)
-    tmp.write_bytes(patched)
-    os.replace(tmp, target)
+    try:
+        tmp.write_bytes(patched)
+        if game_running():  # started since the first check
+            raise PrepareError("Zexion was started; close it and run /prepare again")
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
     if target.read_bytes() != patched:
         raise PrepareError(f"{target.name} does not read back as written; restore it from {backup}")
     return Prepared(slot, backup, True)

@@ -5,7 +5,9 @@ module checks that save and rewrites it to hold the seed: the item at each locat
 room (and the second teleport target in OHKO), the continue point, the revealed map cell (if the
 game revealed one), and the starting items with their current energy and missiles. Everything
 else stays as the game wrote it. Offsets and their evidence are in docs/re/save-format.md; the
-patched-start fields were each tried in game ("The continue point and the seed's start").
+item table, the start (record, continue point and revealed cell, changed together) and the
+second teleport target were each loaded in game; the starting items and current energy and
+missiles written this way have not been.
 
 Pure functions over bytes: the client reads and writes the file (after a backup), and the
 tests run here without the game.
@@ -38,6 +40,8 @@ SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
 WRITABLE_ITEMS = range(0, 50)  # item 50's byte is not understood (client/game.py)
 ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
+# Where the save keeps current bombs is not known, so a seed cannot start with bombs.
+BOMB_ITEMS = (2, 37)  # Mega Bomb, Bomb Pack
 
 
 class PatchError(ValueError):
@@ -102,9 +106,10 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
     check_mode(save, plan)
     if len(plan.location_items) != LOCATIONS:
         raise PatchError(f"the seed lists {len(plan.location_items)} locations, not {LOCATIONS}")
-    bad = [i for i in plan.start_items if i not in WRITABLE_ITEMS]
+    bad = [i for i, n in plan.start_items.items() if n and i not in WRITABLE_ITEMS]
+    bad += [i for i in BOMB_ITEMS if plan.start_items.get(i)]
     if bad:
-        raise PatchError(f"starting items {bad} cannot be written")
+        raise PatchError(f"starting items {sorted(bad)} cannot be written")
     out = bytearray(save)
     out[ITEM_TABLE : ITEM_TABLE + LOCATIONS] = bytes(plan.location_items)
     struct.pack_into("<3H", out, START_RECORD, *plan.start)
