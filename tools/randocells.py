@@ -305,10 +305,11 @@ def satisfied(
 
 
 def reachable_cells(
-    grid, have: Counter, settings: Settings, start: tuple[int, int]
+    grid, have: Counter, settings: Settings, start: tuple[int, int] | list[tuple[int, int]]
 ) -> set[tuple[int, int]]:
-    """Flood fill from ``start``, repeated until stable (codes 64-67 look at reached cells)."""
-    seen: set[tuple[int, int]] = {start}
+    """Flood fill from ``start`` (one cell, or a list of them), repeated until stable (codes
+    64-67 look at reached cells)."""
+    seen: set[tuple[int, int]] = set(start) if isinstance(start, list) else {start}
     while True:
         before = len(seen)
         todo = list(seen)
@@ -412,6 +413,20 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
     return (column // 14, row // 20)
 
 
+SECOND_START = 0x12EE0  # the second teleport target, in the start record's form
+DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
+OPTIONS_IN_SAVE = 0x1308F
+
+
+def starts_from_save(data: bytes) -> list[tuple[int, int]]:
+    """The seed's start, plus its second teleport target when Double Teleport is on."""
+    out = [start_from_save(data)]
+    if data[OPTIONS_IN_SAVE + DOUBLE_TELEPORT]:
+        _, column, row = struct.unpack_from("<3H", data, SECOND_START)
+        out.append((column // 14, row // 20))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -436,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.start:
         start = tuple(int(v) for v in args.start.split(","))
     elif args.fresh and start_from_save(data):
-        start = start_from_save(data)
+        start = starts_from_save(data)
     else:
         print("give --start X,Y, or --fresh with a save made at the start of the seed")
         return 1
