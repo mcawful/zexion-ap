@@ -1,7 +1,7 @@
 """Look at, and carefully change, the running game's memory. See /find-address.
 
     memscan.py find HEX [--max N]            where a byte string occurs in writable memory
-    memscan.py snap NAME                     snapshot writable memory into lab/mem/NAME/
+    memscan.py snap NAME [--module-only]     snapshot writable memory into lab/mem/NAME/
     memscan.py cmp A B [--from X --to Y] [--max N]   bytes that changed between two snapshots
     memscan.py read ADDR LEN                 hex dump of live memory
     memscan.py write ADDR HEX --yes          write live memory, then read it back
@@ -108,6 +108,8 @@ def cmd_snap(args: argparse.Namespace) -> int:
     index, offset = [], 0
     with (dest / "memory.bin").open("wb") as f:
         for base, size, kind in regions(pm):
+            if args.module_only and not (mod_base <= base < mod_base + mod_size):
+                continue
             data = read_region(pm, base, size)
             if data is None:
                 continue
@@ -190,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("snap")
     p.add_argument("name")
     p.add_argument("--note", default="")
+    p.add_argument("--module-only", action="store_true", help="only Zexion.exe's own data")
     p.set_defaults(func=cmd_snap)
     p = sub.add_parser("cmp")
     p.add_argument("a")

@@ -14,12 +14,32 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | 2026-10-20, slot 30 loaded. Saves compared from `lab/backups/20261020-213828/` and `lab/backups/20261020-213055/`. None of the copies changed over a 3-second window, with the game possibly paused. |
 
-## Pickup flag: candidate only
+## A pickup counter updates the instant an item is collected
 
 | Field | |
 |---|---|
-| Value | Across one pickup (slot 30, first reachable item, Scrap), comparing two snapshots taken while standing still with one taken after the pickup, about 5,300 bytes in the module changed that had been stable. Pausing right after the pickup opened a menu, so many are UI. In the near-copies of the save block, only one byte moved: `Zexion.exe+0x3D0168`, 0 → 1. Its neighborhood reads as a record of 32-bit fields (`83 31 00 00`, `01`, `03`, `07`, then `01` at `+0x10`), not a per-location flag array, and the matching save-file offset (`0x9DD`, if that copy were aligned like a save block) is 0 in every save, including ones made after this pickup. So it may be transient pickup state (the "item acquired" popup, say), not the collected flag. `+0x3CF78D` is therefore not shown to be laid out like a save block: a mostly-zero block matches another on most bytes by chance. |
-| Status | assumed (candidate only) |
-| Method | `tools/memscan.py snap` before, before again, and after the pickup; module bytes compared by address |
+| Value | `Zexion.exe+0x3D0168` counts pickups in the current session: it went 0 → 1 at the first pickup in slot 30 and 1 → 2 at the second, at the moment of collection (within 0.1 s, the sampling interval), with no pause or save involved. Its neighbors read as a record of 32-bit fields. Whether it is the `ITEMS: x/150` counter, and whether it is loaded from the save, is not known. It says *that* something was collected, not *which* location. |
+| Status | measured |
+| Method | `tools/memscan.py snap --module-only` twice while standing still, then a 10 Hz recorder over the module logging bytes that had been stable; the first pickup by snapshots, the second by the recorder |
 | Build | B1 |
-| Evidence | Snapshots `lab/mem/s30-before`, `s30-before2`, `s30-after`, 2026-10-20. |
+| Evidence | Snapshots `lab/mem/s30-*` (first pickup) and `lab/mem/p2-before*`, log `lab/mem/p2-record.log` (second pickup at about 9.1 s), 2026-10-20. |
+
+## Saving copies the live state into the slot array
+
+| Field | |
+|---|---|
+| Value | When the game saved slot 30, its block in the slot array (`+0x33CAE8`) changed in 46 bytes at once, about 12 s after the pickup, and the slot 30 file changed at the same time. Read as file offsets, those 46 bytes are map exploration (`0x80xx`, `0x8Cxx`), flags near the start (`0x0004` to `0x0006`, `0x001C`, `0x00E3`, `0x43C7`, `0x4589`) that the earlier slot 28 and slot 30 saves also set, and values around `0x9321` to `0x935F` that behave like counters and stats. `0x9321` was 2 after two Scrap pickups, 3 after the first test's pickups, and 0 after slot 28's one normal-item pickup; it may count Scrap or filler pickups. Where the live state itself sits in memory was not found; matching the array's changes against earlier ones gave several equally likely positions. |
+| Status | measured (array updated on save, the 46 offsets); assumed (what each offset means) |
+| Method | the 10 Hz recorder above; byte comparison of slot 30 saves |
+| Build | B1 |
+| Evidence | `lab/mem/p2-record.log`; saves `lab/work/slot28-all-scrap.sav` (as loaded), `lab/backups/20261020-215709/` (after two pickups), `lab/backups/20261020-213055/` and `lab/backups/20261020-213828/`, 2026-10-20. |
+
+## Which location was collected: not found
+
+| Field | |
+|---|---|
+| Value | No byte found so far records that one particular location was collected. The randomizer section of the save did not change after pickups, and nothing in the 46 bytes above is set by both pickups apart from exploration and counters. Candidates to test next: per-room object state around file `0x80xx` (values there differ between saves with different pickups, but exploration changes them too). An earlier candidate, `Zexion.exe+0x3D0168`, turned out to be the counter above. |
+| Status | assumed (open question) |
+| Method | as above |
+| Build | B1 |
+| Evidence | as above, 2026-10-20. |
