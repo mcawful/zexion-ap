@@ -1,0 +1,38 @@
+# Local environments
+.venv/
+.ap/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Save backups, working copies, memory snapshots (see /save-lab)
+lab/
+# Notes that must not be public (for example the draft to the developer)
+private/
+
+# Never commit anything that came from the game or a real install. This repo is public.
+*.sav
+*.vdf
+*.acf
+*.exe
+*.dll
+*.dmp
+*.bin
+*.nsf
+*.wav
+*.ogg
+Preferences*
+GameUnlocks*
+RandoCells
+MapData
+AreaEvents
+Objects
+
+# Claude Code per-machine settings
+.claude/settings.local.json
+
+# Build output
+*.apworld
+dist/
+build/

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(.venv/Scripts/python -m pytest *)",
+      "Bash(.venv/Scripts/ruff check *)",
+      "Bash(.venv/Scripts/ruff format --check *)",
+      "Bash(.venv/Scripts/python tools/build_id.py *)",
+      "Bash(.venv/Scripts/python tools/save_lab.py slots *)",
+      "Bash(.venv/Scripts/python tools/save_lab.py diff *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)",
+      "PowerShell(git branch *)"
+    ],
+    "deny": [
+      "Edit(//**/Gallant Leaf/Zexion/**)",
+      "Write(//**/Gallant Leaf/Zexion/**)",
+      "Edit(//**/steamapps/common/Zexion/**)",
+      "Write(//**/steamapps/common/Zexion/**)",
+      "Edit(//**/userdata/*/3392510/**)",
+      "Write(//**/userdata/*/3392510/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_protected.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/ruff_on_edit.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

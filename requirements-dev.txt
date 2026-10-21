@@ -1,0 +1,6 @@
+# Development and reverse-engineering tools. Archipelago's own requirements are installed
+# separately by tools/ap_checkout.py from the pinned checkout.
+ruff==0.17.1
+pytest==9.1.1
+capstone==5.0.9
+pymem==1.14.0; sys_platform == "win32"

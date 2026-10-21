@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: ruff and pytest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      # Python 3.13: Archipelago 0.6.8 refuses 3.14. The venv is activated for later steps.
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Install
+        run: uv pip install -r requirements-dev.txt
+      - name: ruff format
+        run: ruff format --check .
+      - name: ruff check
+        run: ruff check .
+      - name: pytest
+        run: python -m pytest
