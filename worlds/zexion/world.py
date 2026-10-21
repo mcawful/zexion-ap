@@ -180,7 +180,10 @@ class ZexionWorld(World):
         codes = list(self.mode["pool"])
         # A location left out takes a filler item out of the pool with it.
         for _ in range(len(data.LOCATIONS) - len(self.kept_locations)):
-            codes.remove(next(c for c in FILLER_ORDER if c in codes))
+            filler = next((c for c in FILLER_ORDER if c in codes), None)
+            if filler is None:
+                raise OptionError(f"Zexion: {self.mode_name}'s pool has too little filler")
+            codes.remove(filler)
         pool = [self.create_item(NAMES[code]) for code in codes]
         self.multiworld.itempool += pool
 

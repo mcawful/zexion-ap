@@ -38,8 +38,9 @@ def _make_start_room() -> type[Choice]:
     attrs["__module__"] = __name__  # so the class pickles: it is found as options.StartRoom
     attrs["__qualname__"] = "StartRoom"
     attrs["__doc__"] = (
-        "The save room the game starts in, by its map cell as the game displays it. Only "
-        "rooms from which the mode's starting items reach a few locations are offered; for a "
+        "The save room the game starts in, by its map cell as the game displays it. Easy and "
+        "Standard accept only rooms from which their starting items reach a few locations; "
+        "OHKO accepts any, and picks a second teleport target that makes up the rest. For a "
         "room the chosen mode does not accept, one it accepts is picked at random instead. "
         "'automatic' takes map 13,16 when the mode accepts it, otherwise the mode's first "
         "room; 'random' picks any of the listed rooms."
