@@ -37,6 +37,11 @@ With the game running and the user at the controls:
 to `lab/mem/`, `cmp A B [--from X --to Y]` lists bytes that changed between two snapshots,
 `read` dumps live memory, and `write ADDR HEX --yes` writes it and reads it back. Ask before
 every `write`. It only touches the game process, never the install or save folder.
+For a value that is a state rather than a quantity (in play, paused, dead), take two
+`snap --module-only` snapshots in each state and run `classify play=A,B pause=C,D ...`: it keeps
+bytes that hold steady within each state and tell the target state from the others, and
+`--out NAME` saves them. `record NAME --candidates NAME` then logs every change of those bytes,
+timestamped, while the user goes through short-lived states such as a load or a death.
 For an inventory byte, `tools/grant.py set ITEM VALUE --expect N --yes` is safer: it locates
 the inventory by pattern, refuses if the byte is not as expected, and logs to `lab/grants.jsonl`.
 
