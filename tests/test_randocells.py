@@ -65,11 +65,10 @@ def test_lists_and_passages_parse() -> None:
         ([(54, 1), (55, 1)], {24: 1, 22: 1}, False),  # 55: without the Gravity Harness
         ([(50, 1)], {26: 1}, True),  # Hyper Jump stands in for jump upgrades
         ([(19, 4), (16, 1)], {16: 1}, False),  # tier 4 is required, whatever else holds
-        ([(64, 1)], {}, True),  # codes 64-69 come from the callback (here: always)
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
-    assert rc.satisfied(entries, Counter(have), lambda c: True) is expected
+    assert rc.satisfied(entries, Counter(have)) is expected
 
 
 def test_sweep_collects_in_order_of_access() -> None:
@@ -84,7 +83,7 @@ def test_sweep_collects_in_order_of_access() -> None:
     grid = rc.parse(bytes(data))
     locations = [(26, 25), (27, 25)]
     items = [16, 46]
-    got = rc.sweep(grid, locations, items, lambda c: False, (25, 25))
+    got = rc.sweep(grid, locations, items, (25, 25))
     assert got == {0, 1}
 
 
@@ -95,7 +94,7 @@ def test_item_requirements_gate_collection() -> None:
     data[rec(26, 25) + rc.ITEM_LIST] = 24
     data[rec(26, 25) + rc.ITEM_TIERS] = 1
     grid = rc.parse(bytes(data))
-    assert rc.sweep(grid, [(26, 25)], [46], lambda c: False, (25, 25)) == set()
+    assert rc.sweep(grid, [(26, 25)], [46], (25, 25)) == set()
 
 
 def test_weapon_pairs_are_progressive() -> None:
@@ -106,3 +105,50 @@ def test_weapon_pairs_are_progressive() -> None:
     assert have == Counter({3: 1, 9: 1})
     rc.collect(have, 24)
     assert have[24] == 1
+
+
+HERE = rc.Where(10, 10, {(10, 10)})
+
+
+def test_neighbor_codes_look_at_reached_cells() -> None:
+    west = rc.Where(10, 10, {(10, 10), (9, 10)})
+    assert rc.satisfied([(64, 1)], Counter(), where=west) is True  # west reached
+    assert rc.satisfied([(64, 1)], Counter(), where=HERE) is False
+    # Decided first and outright: an item that would pass does not help.
+    assert rc.satisfied([(16, 1), (64, 1)], Counter({16: 1}), where=HERE) is False
+    # Off the map edge the code does not apply, and the rest of the list decides.
+    edge = rc.Where(0, 10, {(0, 10)})
+    assert rc.satisfied([(16, 1), (64, 1)], Counter({16: 1}), where=edge) is True
+
+
+def test_code_68_follows_the_options() -> None:
+    on = rc.Settings(options=bytes(30) + b"\x01" + bytes(33))
+    assert rc.satisfied([(68, 30)], Counter(), on, HERE) is True
+    # An option that is off does not decide; the other entries do.
+    assert rc.satisfied([(68, 30), (16, 1)], Counter({16: 1}), rc.Settings(), HERE) is True
+    assert rc.satisfied([(68, 30)], Counter(), rc.Settings(), HERE) is False
+
+
+@pytest.mark.parametrize(
+    ("mode", "tier", "energy", "total", "expected"),
+    [
+        (0, 11, 0, 20, True),  # modes 0 and 3: always passes
+        (2, 11, 10, 20, True),  # tier 11: energy above 9
+        (2, 11, 9, 20, False),
+        (2, 14, 25, 20, False),  # tier 14 in mode 2: above 29
+        (1, 14, 25, 20, True),  # ...in mode 1: above 19
+        (2, 11, 5, 10, True),  # a smaller pool scales energy up (5 x 20 / 10 = 10)
+        (2, 11, 15, 40, True),  # a larger pool does not scale it down here
+    ],
+)
+def test_code_69_checks_energy(mode, tier, energy, total, expected) -> None:
+    settings = rc.Settings(energy_total=total, mode69=mode)
+    have = Counter({0: energy})
+    assert rc.satisfied([(69, tier)], have, settings, HERE) is expected
+
+
+def test_combat_tier_scales_energy_to_the_pool() -> None:
+    have = [0] * 64
+    have[0], have[3], have[13] = 12, 1, 1  # 12 Energy, Machine Gun, Power Cartridge
+    assert rc.combat_tier(have, rc.Settings(energy_total=20)) == 3  # 12 > 10
+    assert rc.combat_tier(have, rc.Settings(energy_total=40)) == 1  # 12 x 20 / 40 = 6

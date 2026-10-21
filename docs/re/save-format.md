@@ -67,7 +67,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | Slot 2's extra 2,314 bytes are appended at `0x12812`, after both blocks, which sit at the same offsets as in slot 1. The appended part starts with its own `E8 03`, then:<br>• `0x12814`: 154 little-endian u16 pairs, all distinct, sorted by the second value then the first, both in 0 to 53; then 4 zero bytes.<br>• `0x12A80`: 154 bytes, each 0 to 50; then 2 zero bytes.<br>• `0x12B1C`: 8 bytes, `da 76 2e 8f ab 2b 1d e3`.<br>• `0x12B24` onward: more u16 data, not yet examined, up to `0x130F8`, then zeros to the end.<br>Assumed meanings: the pairs are the (x, y) map cells of item locations, the bytes are the item placed at each (IDs 0 to 50 from `ItemNames.txt`; the most common are 0, 1, 2, 36 and 46), and the 8 bytes are the seed. None of these meanings has been tested. |
+| Value | Slot 2's extra 2,314 bytes are appended at `0x12812`, after both blocks, which sit at the same offsets as in slot 1. The appended part starts with its own `E8 03`, then:<br>• `0x12814`: 154 little-endian u16 pairs, all distinct, sorted by the second value then the first, both in 0 to 53; then 4 zero bytes.<br>• `0x12A80`: 154 bytes, each 0 to 50; then 2 zero bytes.<br>• `0x12B1C`: 8 bytes, `da 76 2e 8f ab 2b 1d e3`.<br>• `0x12B24` onward: more data, including the seed's randomizer settings (below), up to `0x130F8`, then zeros to the end.<br>Assumed meanings: the pairs are the (x, y) map cells of item locations, the bytes are the item placed at each (IDs 0 to 50 from `ItemNames.txt`; the most common are 0, 1, 2, 36 and 46), and the 8 bytes are the seed. None of these meanings has been tested. |
 | Status | measured (layout, counts, value ranges); assumed (meanings) |
 | Method | file inspection and a parsing script over the backup copy of slot 2 |
 | Build | B1 installed; slot 2 written 2026-06-13 by an older build |
@@ -182,3 +182,13 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Method | disassembly of RVA `0x16DB41`; save comparison; live grants (`memory.md`) |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |
+
+## The randomizer section holds the seed's settings
+
+| Field | |
+|---|---|
+| Value | The game copies the 2,312 bytes from `0x12814` (the location list onward) to RVA `0xCDD6D0` when the save loads, and keeps a copy per slot at RVA `0x347830 + (slot − 1) × 0x908`. Settings the logic reads, by file offset: starting amount and amount in the pool, as 16-bit pairs, for Energy (`0x12ED4`), missiles counting each Missile Box as 10 (`0x12ED8`) and Mega Bombs (`0x12EDC`); two 27-byte starting-item option arrays (`0x12E9D`, `0x12EB8`), one byte per upgrade in the order listed at RVA `0x20DA68`; one byte per option from `0x1308F` (option *t* at `0x1308F + t`, the options code 68 reads); and code 69's two mode bits at `0x130BA` and `0x130B9`. Seen: slots 2 and 28 hold Energy 5 + 35, missiles 3 + 199, bombs 0 + 18; slot 29 holds 3 + 17, 3 + 122, 0 + 12, which matches a preset built into the game; all three have options 10, 11, 20, 28, 29, 38 and 43 on, code 68's options (30, 31, 32, 37) off, and mode bits (1, 0). The pool amounts match each seed's item table (slot 28: 35 Energy Tanks; 29 Missile Containers and 17 Missile Boxes = 199; 18 Mega Bombs). |
+| Status | measured (layout from the code; values in three saves) |
+| Method | disassembly of RVAs `0x9C630` (the copy), `0xE5450` and `0xE70A0` (starting counts), `0x90260` (presets); reading backup copies of the saves |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-224429/Save Game 2.sav`, `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, 2026-10-20. |
