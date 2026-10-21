@@ -290,7 +290,9 @@ class Game:
 
         Refuses (``GameError``) if the byte does not hold ``expected`` just before the write,
         so a grant cannot overwrite a change the game made since the caller looked. The
-        caller decides when writing is safe; see the module docstring.
+        caller decides when writing is safe; see the module docstring. For Energy Tanks,
+        Missile Containers and Mega Bombs the byte alone does not change the energy, missile
+        or bomb numbers the game uses (docs/re/memory.md, "Granting each kind of item").
         """
         if item not in WRITABLE_ITEMS:
             raise ValueError(f"item {item} is not an item this module writes")
