@@ -38,8 +38,8 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | An entry below 50 is an item ID (`ItemNames.txt`); 50 to 69 is a special condition, drawn with its own icon (sprite table at RVA `0x20C820`), whose meaning is not known. The tier/count byte: `1` white, `2` yellow, `3` red, `4` blue (colors used by the game's built-in editor), `11` to `40` white with the number (value − 10), `41` to `90` yellow with the number (value − 40). Reading: white entries each suffice alone; yellow entries form one group that is needed together (tier 2 almost always appears two or more times in a list); counts are "at least N of that item" (Missile Container `43` = 3 containers). Tiers 3 and 4 are treated as standalone alternatives; 3 may mean a harder trick. |
-| Status | measured (the editor's encoding: item vs special, colors, the numbers it draws); assumed (the AND/OR reading and tiers 3 and 4) |
+| Value | An entry below 50 is an item ID (`ItemNames.txt`); 50 to 69 is a special condition, drawn with its own icon (sprite table at RVA `0x20C820`), whose meaning is not known. The tier/count byte: `1` white, `2` yellow, `3` red, `4` blue (colors used by the game's built-in editor), `11` to `40` white with the number (value − 10), `41` to `90` yellow with the number (value − 40). Reading: white entries each suffice alone; yellow entries form one group that is needed together (tier 2 almost always appears two or more times in a list); counts are "at least N of that item" (Missile Container `43` = 3 containers). Tier 3 turned out to exclude an item from the check (see the evaluator below); tier 4 is unknown. |
+| Status | measured (the editor's encoding: item vs special, colors, the numbers it draws); assumed (the AND/OR reading; tier 4) |
 | Method | disassembly of the editor's drawing function (RVA `0x3CB3D`); counting tier patterns in multi-entry lists |
 | Build | B1 |
 | Evidence | `lab/data/gen.asm` (local), 2026-10-20. |
@@ -54,12 +54,32 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/backups/20261020-224429/Save Game 2.sav`, `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, 2026-10-20. |
 
+## The generator's reachability check
+
+| Field | |
+|---|---|
+| Value | Function at RVA `0xE5240` is the seed generator's flood fill: recursive over the 54 × 54 grid from a cell, marking visited cells in a byte grid at RVA `0xEB21C0` (1 = reached, 2 = item collectible) and a step number per cell in a 16-bit grid at RVA `0xEB0900`. For each direction it calls the requirement evaluator at RVA `0xE3C80` with the passage byte, the list and its tier bytes: passage `+0x41` with list `+0x10`/`+0x30` leads to x − 1, `+0x42`/`+0x18` to x + 1, `+0x43`/`+0x00` to y − 1, `+0x40`/`+0x08` to y + 1, which confirms the direction names above from the code. A cell with a location (a table at RVA `0x361C4A`, 154 bytes per cell, `0xFF` when none) is marked collectible when the evaluator passes `+0x44` with list `+0x45`/`+0x4D`. It addresses everything as image base + offset, which is why a search for instruction-relative references missed it. |
+| Status | measured |
+| Method | disassembly, found by scanning every function for the record arithmetic (multiplication by `0x55` and `0x9A`) |
+| Build | B1 |
+| Evidence | `lab/data/e5240.asm` (local), 2026-10-20. |
+
+## The evaluator works on a table of 64 counts
+
+| Field | |
+|---|---|
+| Value | The evaluator (RVA `0xE3C80`) copies a global table of 64 16-bit counts (RVA `0xEB0870`, one per code 0 to 63) into a local array, then, for each list entry below 64: tier 3 sets that code's count to 0 (an item excluded from the check, not a harder alternative); tier 2 and tiers 41+ build the group needed together; a Missile Box (36) or Bomb Box (37) in the group adds 10 per box to the group's count; codes 26 and 55 get extra handling. The generator fills the table as items are collected (function at RVA `0xE5680`): each item's definition record (100 bytes, in a table behind the pointer at RVA `0xCDD068`) can redirect the count, field `+0x54` to another code once the item is already owned and field `+0x56` to another code set to 1. Codes 50 to 63 are presumably counts reached through these redirects; not yet read. |
+| Status | measured (the evaluator's handling of tiers 2, 3 and boxes, the table, the redirect fields); assumed (how codes 50 to 63 get their counts) |
+| Method | disassembly of RVAs `0xE3C80` and `0xE5680` |
+| Build | B1 |
+| Evidence | `lab/data/e3c80.asm`, `lab/data/all.asm` (local), 2026-10-20. |
+
 ## Not yet found
 
-- The meaning of special conditions 50 to 69. The randomizer's generator, which must define
-  them, does not reference the array directly (only the loader and the built-in editor's
-  functions do: RVAs `0x1B5410`, `0x3CB3D`, `0x1A9DD0`, `0x1AC8E0`, `0x26BD4`). Next: an
-  x64dbg hardware read breakpoint on a cell that uses a special condition while the game
-  generates a seed, to land in the generator.
-- Whether tiers 3 and 4 are alternatives or a second group, and whether the logic depends
-  on a difficulty option.
+- The meaning of special conditions 50 to 69: read the live item definition table (pointer at
+  RVA `0xCDD068`) for redirects to codes 50 to 63, and read how the evaluator treats codes
+  64 to 69 (it skips them in its first pass). An x64dbg read breakpoint during generation
+  was tried and the game crashed with the debugger attached.
+- Tier 4, the rest of the evaluator (how standalone entries and counts are tested), and
+  whether the logic depends on a difficulty option. `tools/randocells.py` still treats tier
+  3 as an alternative; the evaluator shows it excludes an item instead.
