@@ -153,12 +153,22 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Build | B1 |
 | Evidence | `lab/backups/20261020-212018/Save Game 28.sav` (table), pickup 2026-10-20 22:3x. |
 
-## Owned items: one byte per item ID at 0x0111
+## An item-ID-indexed byte array at 0x0111 (not the inventory)
 
 | Field | |
 |---|---|
-| Value | File `0x0111 + id` (first block) is nonzero when the item is owned. Slot 28's fresh randomizer save owns items 7, 15, 16 and 22 (Arc Plasma, Tunneler, Slide Mod, Jump Booster), presumably the seed's starting items; after the Gravity Harness pickup, entry 24 is 1 too. A save far into the normal game (slot 1) owns many items, and entry 37 (Bomb Box) is 4, so some entries are counts. |
-| Status | measured (layout, entry 24); assumed (starting items, counts) |
-| Method | byte comparison of slot 28 before and after the Gravity Harness pickup; reading the same range in slots 1 and 2 |
+| Value | File `0x0111 + id` (first block): slot 28's fresh randomizer save has entries 7, 15, 16 and 22 set (Arc Plasma, Tunneler, Slide Mod, Jump Booster, presumably the seed's starting items). In the control run, entry 24 was set after the Gravity Harness pickup; in a later run of the same pickup and a save at the same save point, it was **not**, though the item was collected. So this array is not what records ownership; what sets it is not known. Slot 1 (far into the normal game) has many entries set, and entry 37 is 4. |
+| Status | measured (layout, the two runs); meaning unknown |
+| Method | byte comparison of slot 28 saves |
 | Build | B1 |
-| Evidence | `lab/backups/20261020-212018/` and `lab/backups/20261020-213828/` (slot 28), `lab/backups/20261020-221347/` (slots 1 and 2), 2026-10-20. |
+| Evidence | `lab/backups/20261020-212018/`, `20261020-213828/` (control), `20261020-223111/` and `20261020-224429/` (second run), 2026-10-20. |
+
+## Major items are a list in pickup order at 0x9333
+
+| Field | |
+|---|---|
+| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; your slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; your slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. This region (`0x9300` to `0x935F`) is a straight copy of live memory at `Zexion.exe+0x3D014D` (see `memory.md`). Whether the game grants abilities from this list is not yet tested. |
+| Status | measured (layout, the code for one item); assumed (that this list is the inventory) |
+| Method | comparing `0x9300` to `0x935F` across six saves, and against the live recording of the Gravity Harness pickup |
+| Build | B1 |
+| Evidence | Saves in `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/`, `20261020-221347/`; `lab/mem/p3-record.log`, 2026-10-20. |

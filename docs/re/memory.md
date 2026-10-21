@@ -63,3 +63,13 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Method | `memscan.py snap` (full) five times; candidate filter and stride search by address; a batch write of zeros with read-back |
 | Build | B1 |
 | Evidence | 2026-10-20. Snapshots `lab/mem/f-*` deleted after the crash made their addresses meaningless. |
+
+## The pickup record holds the major-item list
+
+| Field | |
+|---|---|
+| Value | File offsets `0x9300` to `0x935F` are copied from live memory at `Zexion.exe+0x3D014D` (live = file + `0x3C6E4D`). At the Gravity Harness pickup, live `+0x3D0180` (file `0x9333`, the first list entry) went 0 → `0xC7` and `+0x3D019A` (file `0x934D`, the list length) went 0 → 1, in the same 0.1 s as the pickup counter at `+0x3D0168` (file `0x931B`). A hardware write breakpoint on slot 28's array entry at file `0x0129` in the slot array never fired during a save, because that byte isn't what records the item (`save-format.md`). |
+| Status | measured |
+| Method | 10 Hz module recorder; x64dbg hardware write breakpoint at `Zexion.exe+0x32A3FF` during a save; save comparison |
+| Build | B1 |
+| Evidence | `lab/mem/p3-record.log`; saves `lab/backups/20261020-223111/` and `20261020-224429/`, 2026-10-20. |
