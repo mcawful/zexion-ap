@@ -21,7 +21,9 @@ into regions and rules with worlds/zexion/logic.py.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import struct
 import sys
 from collections import Counter
 from pathlib import Path
@@ -93,9 +95,24 @@ def location_ok(grid, cell, have, settings, reached: set) -> bool:
     )
 
 
+PICKUP_COUNTER = 0x935A  # 16-bit; 0 before the first pickup (docs/re/save-format.md)
+
+
+def check_fresh(data: bytes, name: str) -> None:
+    """Refuse a save that is not right at the start of its seed: its inventory would be taken
+    for the starting inventory."""
+    if len(data) <= rc.SAVE_ITEMS:
+        raise SystemExit(f"{name} is not a randomizer save")
+    if rc.start_from_save(data) is None:
+        raise SystemExit(f"{name} has more than one room revealed: not a fresh save")
+    if struct.unpack_from("<H", data, PICKUP_COUNTER)[0] != 0:
+        raise SystemExit(f"{name} has picked something up: not a fresh save")
+
+
 def build(cells_path: Path, save_path: Path, starts_path: Path) -> dict:
     grid = rc.parse(cells_path.read_bytes())
     data = save_path.read_bytes()
+    check_fresh(data, save_path.name)
     locations, pool = rc.seed_from_save(data)
     start_inv = rc.inventory_from_save(data)
     settings = rc.settings_from_save(data)
@@ -240,11 +257,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save", type=Path, default=DEFAULT_SAVE)
     parser.add_argument("--starts", type=Path)
     args = parser.parse_args(argv)
-    data_dir = max((ROOT / "lab" / "data").glob("*/RandoCells"), key=lambda p: p.stat().st_mtime)
-    cells_path = args.cells or data_dir
+    cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
     d = build(cells_path, args.save, starts_path)
-    source = f"RandoCells of build {cells_path.parent.name}, a fresh default-preset save"
+    digest = hashlib.sha256(args.save.read_bytes()).hexdigest()[:12]
+    source = (
+        f"RandoCells of build {cells_path.parent.name}; fresh save {args.save.name} "
+        f"(SHA-256 {digest})"
+    )
     out = assert_writable(OUT)
     out.write_text(render(d, source), encoding="utf-8", newline="\n")
     n_ways = sum(len(w) for w in d["entrances"].values())

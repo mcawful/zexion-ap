@@ -30,6 +30,7 @@ other way round.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import struct
 import sys
 from collections import Counter
@@ -38,10 +39,45 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "worlds" / "zexion"))
 
-import logic  # noqa: E402  (worlds/zexion/logic.py: the rules, shared with the APWorld)
-from logic import DEFAULT_SETTINGS, FIRST_SPECIAL, H, Settings, W, combat_tier, derive  # noqa: E402, F401
+
+def _load_logic():
+    """worlds/zexion/logic.py, the rules shared with the APWorld, loaded by path so the world's
+    other modules (data, test, ...) do not land on sys.path as top-level names."""
+    spec = importlib.util.spec_from_file_location(
+        "zexion_logic", ROOT / "worlds" / "zexion" / "logic.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["zexion_logic"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+logic = _load_logic()
+DEFAULT_SETTINGS = logic.DEFAULT_SETTINGS
+FIRST_SPECIAL = logic.FIRST_SPECIAL
+H, W = logic.H, logic.W
+Settings = logic.Settings
+combat_tier = logic.combat_tier
+derive = logic.derive
+
+
+def find_randocells(explicit: Path | None = None) -> Path:
+    """The RandoCells copy to use: ``explicit``, or the only build in lab/data/.
+
+    With several builds there, the choice is refused rather than guessed: file times are the
+    game's own (``game_data.py`` keeps them), so they cannot tell builds apart.
+    """
+    if explicit is not None:
+        return explicit
+    found = sorted((ROOT / "lab" / "data").glob("*/RandoCells"))
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise SystemExit("no lab/data/*/RandoCells; run tools/game_data.py RandoCells first")
+    listed = ", ".join(p.parent.name for p in found)
+    raise SystemExit(f"several builds in lab/data ({listed}); choose one with --cells")
+
 
 RECORD = 85
 LIST_OFFSET = {"N": 0x00, "S": 0x08, "W": 0x10, "E": 0x18}
@@ -242,7 +278,9 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("save", type=Path, help="a randomizer .sav (use a copy in lab/)")
-    parser.add_argument("--cells", type=Path, help="RandoCells copy (default: newest in lab/data/)")
+    parser.add_argument(
+        "--cells", type=Path, help="RandoCells copy (default: the only build in lab/data/)"
+    )
     parser.add_argument("--start", help="X,Y of the start cell (default: from a --fresh save)")
     parser.add_argument(
         "--fresh",
@@ -250,9 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         help="the save was made at the start of the seed: use its inventory and start cell",
     )
     args = parser.parse_args(argv)
-    cells_path = args.cells or max(
-        Path("lab/data").glob("*/RandoCells"), key=lambda p: p.stat().st_mtime
-    )
+    cells_path = find_randocells(args.cells)
     grid = parse(cells_path.read_bytes())
     data = args.save.read_bytes()
     locations, items = seed_from_save(data)
