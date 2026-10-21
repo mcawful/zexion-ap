@@ -22,7 +22,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Status | measured |
 | Method | `tools/memscan.py snap --module-only` twice while standing still, then a 10 Hz recorder over the module logging bytes that had been stable; the first pickup by snapshots, the second by the recorder |
 | Build | B1 |
-| Evidence | Snapshots `lab/mem/s30-*` (first pickup) and `lab/mem/p2-before*`, log `lab/mem/p2-record.log` (second pickup at about 9.1 s), 2026-10-20. |
+| Evidence | Snapshots `lab/mem/s30-*` (first pickup; deleted after analysis, 1.1 GB) and `lab/mem/p2-before*`, log `lab/mem/p2-record.log` (second pickup at about 9.1 s), 2026-10-20. |
 
 ## Saving copies the live state into the slot array
 
