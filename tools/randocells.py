@@ -71,7 +71,7 @@ class Settings:
     """The seed's randomizer settings that the logic reads."""
 
     energy_total: int = 20  # starting Energy + Energy in the pool
-    mode69: int = 0  # 0 or 3: code 69 always passes; 1 or 2: it checks energy
+    mode69: int = 0  # the menu's Safety; 0 or 3: code 69 always passes; 1 or 2: checks energy
     options: bytes = field(default=bytes(64))
 
     @classmethod
