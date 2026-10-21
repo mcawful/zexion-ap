@@ -1,0 +1,56 @@
+# Locations and what reaching them takes
+
+The APWorld's locations and rules are not written by hand: `tools/gen_world_data.py` generates
+`worlds/zexion/data.py` from the game's `RandoCells` file, and `worlds/zexion/logic.py` checks
+the requirement lists the way the game does. This page records how that data is derived and
+what backs it. The format of `RandoCells` and the meaning of every code are in
+[`randocells.md`](randocells.md); the save fields in [`save-format.md`](save-format.md).
+
+## The 154 locations are the game's own list
+
+| Field | |
+|---|---|
+| Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell in the order the game displays coordinates ("Map *y*,*x*" for this repo's cell (*x*, *y*); `randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
+| Status | measured (the list and its order); measured once (the display order) |
+| Method | `tools/gen_world_data.py` reading the location list of a fresh default-preset save and each cell's record |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
+
+## Regions are cells joined by open passages
+
+| Field | |
+|---|---|
+| Value | Cells reached from a start with every item are grouped into regions: the strongly connected components of the passages that are always open (passage byte 0). Each conditional passage (byte 1) between two regions becomes an entrance whose rule is the requirement list of the cell it leaves from, checked with that cell as "where" (codes 64 to 69). A rule with codes 64 to 67 depends on whether a neighboring cell is reached; the world checks that with `can_reach_region` on the neighbor's region and registers it as an indirect condition. Where an always-open passage joins two regions, conditional passages between the same two are dropped. With the default preset this gives 446 regions and 1,081 region links (1,106 ways through). |
+| Status | measured (the counts, for build B1's `RandoCells`) |
+| Method | `tools/gen_world_data.py` |
+| Build | B1 |
+| Evidence | Generator output, 2026-10-21. |
+
+## The translation matches the game's logic on every start
+
+| Field | |
+|---|---|
+| Value | For each of the 9 valid start rooms, Archipelago generated a single-player game, and its placement, replayed through `tools/randocells.py`'s flood fill from that start with the starting inventory (the game's own algorithm, which uses no regions), reached all 154 locations and all four keys. So every placement the world accepts is completable under the game's rules. The opposite direction (that the world rejects no placement the game would accept) is not checked. Archipelago's general world tests and the world's own tests pass, and a nine-player game with one player per start room generated in about 4 s. |
+| Status | measured (9 placements, one per start, seeds 100 to 108) |
+| Method | `Generate.py --spoiler 1`, the spoiler's placement parsed and passed to `randocells.sweep`; `AP_TEST_WORLDS=zexion pytest worlds/zexion test/general` in the pinned checkout |
+| Build | B1 |
+| Evidence | 2026-10-21. Outputs in the session scratchpad (not kept). |
+
+## Which start rooms the world offers
+
+| Field | |
+|---|---|
+| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only the default preset's starting inventory (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. |
+| Status | measured (by the flood fill); assumed (that 3 locations is enough for Archipelago's fill: it was in every generation tried) |
+| Method | `tools/gen_world_data.py` |
+| Build | B1 |
+| Evidence | Generator output, 2026-10-21. |
+
+## Not yet decided
+
+- **The goal.** The world's goal is a placeholder, holding all four keys, which gate nothing in
+  `RandoCells`. It changes once the endings are researched.
+- **Settings.** The world uses the default preset's settings (energy total 40, code-69 mode 2,
+  its option flags) and item pool; other presets are not offered yet.
+- **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's
+  count is not modeled.

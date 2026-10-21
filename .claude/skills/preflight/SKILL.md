@@ -33,10 +33,10 @@ Only once `worlds/zexion/` exists. Until then, say they were not run because the
 2. From `.ap/Archipelago`:
 
    ```sh
-   ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
+   AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
    ```
 
-   `test/general` generates seeds for every world, ours included: fill, accessibility,
+   `AP_TEST_WORLDS=zexion` limits `test/general` to this world; it generates seeds: fill, accessibility,
    item and location name groups, and that the world loads at all. AP prints a `_speedups not
    available` warning on this machine; it is harmless.
 
