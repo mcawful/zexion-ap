@@ -396,14 +396,20 @@ def inventory_from_save(data: bytes) -> Counter:
     )
 
 
-def start_from_save(data: bytes) -> tuple[int, int] | None:
-    """The start cell of a save made at the start of a seed: its only revealed map cell.
+START_HEADER = 0x12B24  # candidate index - 1, tile column, tile row (16-bit each)
 
-    A new randomizer game begins in a save room, chosen per seed.
+
+def start_from_save(data: bytes) -> tuple[int, int] | None:
+    """The seed's start cell, from the start record at the head of the randomizer section.
+
+    The record gives the save point's position in tiles; a map cell is 14 tiles along x and
+    20 along y (docs/re/save-format.md, "The continue point and the seed's start"). None when
+    the save has no randomizer section.
     """
-    grid = data[MAP_GRID : MAP_GRID + W * H]
-    cells = [(k % W, k // W) for k, v in enumerate(grid) if v]
-    return cells[0] if len(cells) == 1 else None
+    if len(data) < START_HEADER + 6:
+        return None
+    _, column, row = struct.unpack_from("<3H", data, START_HEADER)
+    return (column // 14, row // 20)
 
 
 def main(argv: list[str] | None = None) -> int:
