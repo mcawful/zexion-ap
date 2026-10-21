@@ -6,9 +6,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from BaseClasses import Item, ItemClassification, Region
+from Options import OptionError
 from worlds.AutoWorld import World
 
-from . import data, rules, web_world
+from . import data, logic, rules, web_world
 from .items import (
     FILLER_NAME,
     GAME,
@@ -20,9 +21,10 @@ from .items import (
     item_name_to_id,
 )
 from .locations import ZexionLocation, location_name, location_name_to_id
-from .options import ZexionOptions
+from .options import AUTOMATIC, MODE_NAMES, START_CELLS, ZexionOptions
 
 GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
+AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 
 
 class ZexionWorld(World):
@@ -40,9 +42,28 @@ class ZexionWorld(World):
 
     created_regions: set[int]
     start: dict
+    mode_name: str
+    mode: dict
+    settings: logic.Settings
 
     def generate_early(self) -> None:
-        self.start = data.STARTS[self.options.start_room.value]
+        self.mode_name = MODE_NAMES[self.options.mode.value]
+        self.mode = data.MODES[self.mode_name]
+        self.settings = logic.Settings(
+            self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
+        )
+        starts = {tuple(s["cell"]): s for s in self.mode["starts"]}
+        choice = self.options.start_room.value
+        if choice == AUTOMATIC:
+            cell = AUTOMATIC_START if AUTOMATIC_START in starts else next(iter(starts))
+        else:
+            cell = START_CELLS[choice]
+        if cell not in starts:
+            raise OptionError(
+                f"Zexion: start room map {cell[0]},{cell[1]} is not offered in {self.mode_name} "
+                f"mode; it offers {', '.join(f'map {x},{y}' for x, y in starts)}"
+            )
+        self.start = starts[cell]
 
     def create_item(self, name: str) -> Item:
         return ZexionItem(name, classification(code_of[name]), item_name_to_id[name], self.player)
@@ -96,10 +117,10 @@ class ZexionWorld(World):
         core.locations.append(goal)
 
     def create_items(self) -> None:
-        for code, count in data.START_INVENTORY.items():
+        for code, count in self.mode["start_inventory"].items():
             for _ in range(count):
                 self.multiworld.push_precollected(self.create_item(NAMES[code]))
-        pool = [self.create_item(NAMES[code]) for code in data.POOL]
+        pool = [self.create_item(NAMES[code]) for code in self.mode["pool"]]
         self.multiworld.itempool += pool
 
     def set_rules(self) -> None:
@@ -110,10 +131,11 @@ class ZexionWorld(World):
 
     def fill_slot_data(self) -> Mapping[str, Any]:
         return {
+            "mode": self.mode_name,
             "start_index": self.start["index"],
             "start_cell": list(self.start["cell"]),
             "start_column": self.start["column"],
             "start_row": self.start["row"],
-            "start_inventory": {str(k): v for k, v in data.START_INVENTORY.items()},
+            "start_inventory": {str(k): v for k, v in self.mode["start_inventory"].items()},
             "locations": [list(c) for c in data.LOCATIONS],
         }

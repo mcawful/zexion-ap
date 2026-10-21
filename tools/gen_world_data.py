@@ -1,22 +1,24 @@
 """Generate worlds/zexion/data.py, the APWorld's map and rules, from the game's own files.
 
-    gen_world_data.py [--cells FILE] [--save FILE] [--starts FILE]
+    gen_world_data.py [--cells FILE] [--starts FILE] [--mode NAME=SAVE ...]
 
 Reads (all copies in lab/, never the game folder):
 
 - RandoCells (``game_data.py RandoCells`` copies it to lab/data/<build>/);
-- a randomizer save made right at the start of a Standard-mode seed (the game's default), for
-  the location list,
-  the item pool, the starting inventory and the settings (lab/backups/.../Save Game 28.sav);
+- for each mode, a randomizer save made right at the start of a seed in that mode, for its
+  item pool, starting inventory and settings (by default Easy: slot 28's and Standard:
+  slot 29's fresh saves, docs/re/randocells.md, "The randomizer's modes"); the location list
+  is the same in every seed;
 - the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md).
 
 Cells joined by always-open passages are merged into one region (strongly connected
 components of the open passages); each conditional passage between two regions becomes an
-entrance carrying the requirement list of the cell it leaves from. Only cells reachable with
-every item from some valid start are kept. A start is valid when, with every item, all 154
-locations are reachable from it, and with only the starting inventory at least
-``MIN_SPHERE_ZERO`` are. The output is a Python module of plain data; worlds/zexion turns it
-into regions and rules with worlds/zexion/logic.py.
+entrance carrying the requirement list of the cell it leaves from. The map is shared by all
+modes; a mode's settings only change how the rules evaluate. Only cells reachable with every
+item from some mode's valid start are kept. A start is valid for a mode when, with every item
+of that mode, all 154 locations are reachable from it, and with only that mode's starting
+inventory at least ``MIN_SPHERE_ZERO`` are. The output is a Python module of plain data;
+worlds/zexion turns it into regions and rules with worlds/zexion/logic.py.
 """
 
 from __future__ import annotations
@@ -35,9 +37,9 @@ from protected import assert_writable
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "worlds" / "zexion" / "data.py"
 MIN_SPHERE_ZERO = 3
-# Slot 29, made in Standard mode with the default settings (docs/re/randocells.md, "The
-# randomizer menu's settings").
-DEFAULT_SAVE = ROOT / "lab" / "backups" / "20261020-212018" / "Save Game 29.sav"
+BACKUP = ROOT / "lab" / "backups" / "20261020-212018"
+# Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes").
+DEFAULT_MODES = {"easy": BACKUP / "Save Game 28.sav", "standard": BACKUP / "Save Game 29.sav"}
 
 
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
@@ -107,22 +109,18 @@ def check_fresh(data: bytes, name: str) -> None:
     if len(data) <= rc.SAVE_ITEMS:
         raise SystemExit(f"{name} is not a randomizer save")
     if rc.start_from_save(data) is None:
-        raise SystemExit(f"{name} has more than one room revealed: not a fresh save")
+        raise SystemExit(f"{name} has no start record")
+    revealed = sum(1 for v in data[rc.MAP_GRID : rc.MAP_GRID + rc.W * rc.H] if v)
+    if revealed > 1:
+        raise SystemExit(f"{name} has {revealed} rooms revealed: not a fresh save")
     if struct.unpack_from("<H", data, PICKUP_COUNTER)[0] != 0:
         raise SystemExit(f"{name} has picked something up: not a fresh save")
 
 
-def build(cells_path: Path, save_path: Path, starts_path: Path) -> dict:
-    grid = rc.parse(cells_path.read_bytes())
-    data = save_path.read_bytes()
-    check_fresh(data, save_path.name)
-    locations, pool = rc.seed_from_save(data)
-    start_inv = rc.inventory_from_save(data)
-    settings = rc.settings_from_save(data)
+def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list[dict]:
+    """The candidates valid for one mode, each with the cells every item reaches from it."""
     full = full_inventory(start_inv, pool)
-    candidates = json.loads(starts_path.read_text(encoding="utf-8"))
-
-    starts, union = [], set()
+    starts = []
     for cand in candidates:
         start = tuple(cand["cell"])
         reach_all = rc.reachable_cells(grid, full, settings, start)
@@ -137,13 +135,39 @@ def build(cells_path: Path, save_path: Path, starts_path: Path) -> dict:
         )
         valid = every and sphere0 >= MIN_SPHERE_ZERO
         print(
-            f"start {cand['index']:2d} {start}: all items reach "
+            f"{name}: start {cand['index']:2d} {start}: all items reach "
             f"{'all' if every else 'NOT all'} locations; sphere 0 has {sphere0}"
             f"{'' if valid else '  -> left out'}"
         )
         if valid:
             starts.append({**cand, "sphere0": sphere0, "cells": reach_all})
-            union |= reach_all
+    return starts
+
+
+def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> dict:
+    grid = rc.parse(cells_path.read_bytes())
+    candidates = json.loads(starts_path.read_text(encoding="utf-8"))
+    modes, locations, union = {}, None, set()
+    for name, save_path in mode_saves.items():
+        data = save_path.read_bytes()
+        check_fresh(data, save_path.name)
+        mode_locations, pool = rc.seed_from_save(data)
+        if locations is None:
+            locations = mode_locations
+        elif mode_locations != locations:
+            raise SystemExit(f"{save_path.name}: its location list differs from the others")
+        start_inv = rc.inventory_from_save(data)
+        settings = rc.settings_from_save(data)
+        starts = mode_starts(grid, locations, pool, start_inv, settings, candidates, name)
+        for st in starts:
+            union |= st["cells"]
+        modes[name] = {
+            "settings": settings,
+            "pool": pool,
+            "start_inventory": dict(sorted(start_inv.items())),
+            "starts": starts,
+            "source": save_path,
+        }
 
     comp = components(union, grid)
     regions = sorted(set(comp.values()))
@@ -176,31 +200,28 @@ def build(cells_path: Path, save_path: Path, starts_path: Path) -> dict:
         if grid[y][x].item_gated:
             location_rules[i] = tuple(grid[y][x].item_needs)
 
+    for mode in modes.values():
+        mode["starts"] = [
+            {
+                "index": st["index"],
+                "cell": tuple(st["cell"]),
+                "column": st["column"],
+                "row": st["row"],
+                "sphere0": st["sphere0"],
+                "regions": sorted({comp[c] for c in st["cells"]}),
+            }
+            for st in mode["starts"]
+        ]
     return {
-        "settings": settings,
         "locations": locations,
-        "pool": pool,
-        "start_inventory": dict(sorted(start_inv.items())),
+        "modes": modes,
         "region_cells": region_cells,
         "entrances": entrances,
         "location_rules": location_rules,
-        "starts": [
-            {
-                "index": s["index"],
-                "cell": tuple(s["cell"]),
-                "column": s["column"],
-                "row": s["row"],
-                "sphere0": s["sphere0"],
-                "regions": sorted({comp[c] for c in s["cells"]}),
-            }
-            for s in starts
-        ],
-        "comp": comp,
     }
 
 
 def render(d: dict, source: str) -> str:
-    s = d["settings"]
     out = [
         '"""The APWorld\'s map and rules. Generated by tools/gen_world_data.py; do not edit.',
         "",
@@ -209,21 +230,30 @@ def render(d: dict, source: str) -> str:
         "",
         "# fmt: off",
         "# ruff: noqa: E501",
-        f"ENERGY_TOTAL = {s.energy_total}",
-        f"MODE69 = {s.mode69}",
-        f"OPTIONS = bytes.fromhex({s.options.hex()!r})",
-        "",
         "# The game's 154 locations, in the order of its location list: cell (x, y).",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
-        "# The preset's item pool (item IDs), one per location.",
-        f"POOL = {list(d['pool'])!r}",
-        "",
-        f"START_INVENTORY = {d['start_inventory']!r}",
-        "",
-        "# Region index -> its cells.",
-        "REGION_CELLS = {",
+        "# Per mode: the seed's settings, its item pool (item IDs, one per location), its starting",
+        "# inventory, and its valid start rooms (the game's candidate index, the cell, the save",
+        "# point's column and row in tiles, how many locations the starting inventory reaches, and",
+        "# the regions every item reaches from there).",
+        "MODES = {",
     ]
+    for name, m in d["modes"].items():
+        s = m["settings"]
+        out += [
+            f"    {name!r}: {{",
+            f"        'energy_total': {s.energy_total},",
+            f"        'mode69': {s.mode69},",
+            f"        'options': bytes.fromhex({s.options.hex()!r}),",
+            f"        'pool': {list(m['pool'])!r},",
+            f"        'start_inventory': {m['start_inventory']!r},",
+            "        'starts': [",
+        ]
+        for st in m["starts"]:
+            out.append(f"            {st!r},")
+        out += ["        ],", "    },"]
+    out += ["}", "", "# Region index -> its cells.", "REGION_CELLS = {"]
     for r, cells in d["region_cells"].items():
         out.append(f"    {r}: {cells!r},")
     out += [
@@ -241,15 +271,15 @@ def render(d: dict, source: str) -> str:
         "# Location index -> the requirements for collecting its item, where it has any.",
         f"LOCATION_RULES = {d['location_rules']!r}",
         "",
-        "# Valid start rooms: the game's candidate index, the cell, the save point's column and",
-        "# row in tiles, how many locations the starting inventory reaches, and the regions every",
-        "# item reaches from there.",
-        "STARTS = [",
     ]
-    for s in d["starts"]:
-        out.append(f"    {s!r},")
-    out += ["]", ""]
     return "\n".join(out)
+
+
+def parse_mode(text: str) -> tuple[str, Path]:
+    name, sep, path = text.partition("=")
+    if not sep or not name or not path:
+        raise argparse.ArgumentTypeError(f"expected NAME=SAVE, got {text!r}")
+    return name, Path(path)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -257,24 +287,25 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--cells", type=Path)
-    parser.add_argument("--save", type=Path, default=DEFAULT_SAVE)
     parser.add_argument("--starts", type=Path)
+    parser.add_argument("--mode", type=parse_mode, action="append", help="NAME=SAVE")
     args = parser.parse_args(argv)
+    mode_saves = dict(args.mode) if args.mode else dict(DEFAULT_MODES)
     cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
-    d = build(cells_path, args.save, starts_path)
-    digest = hashlib.sha256(args.save.read_bytes()).hexdigest()[:12]
-    source = (
-        f"RandoCells of build {cells_path.parent.name}; fresh save {args.save.name} "
-        f"(SHA-256 {digest})"
+    d = build(cells_path, mode_saves, starts_path)
+    saves = ", ".join(
+        f"{name}: {path.name} (SHA-256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]})"
+        for name, path in mode_saves.items()
     )
+    source = f"RandoCells of build {cells_path.parent.name}; fresh saves {saves}"
     out = assert_writable(OUT)
     out.write_text(render(d, source), encoding="utf-8", newline="\n")
     n_ways = sum(len(w) for w in d["entrances"].values())
+    per_mode = ", ".join(f"{n}: {len(m['starts'])} starts" for n, m in d["modes"].items())
     print(
         f"{len(d['region_cells'])} regions, {len(d['entrances'])} region links "
-        f"({n_ways} ways), {len(d['location_rules'])} gated locations, "
-        f"{len(d['starts'])} valid starts -> {out}"
+        f"({n_ways} ways), {len(d['location_rules'])} gated locations; {per_mode} -> {out}"
     )
     return 0
 

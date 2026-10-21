@@ -40,7 +40,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out with the other mode's starting inventory seen in slot 28 (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore). |
+| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out for Easy mode, with slot 28's starting inventory and settings (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore; energy total 40). The world offers each mode the rooms valid for it. For each mode and each of its rooms, an Archipelago placement replayed through `randocells.sweep` reached 154/154 (18 games, seeds 300 to 308, 2026-10-21). |
 | Status | measured (by the flood fill); assumed (that 3 locations is enough for Archipelago's fill: it was in every generation tried) |
 | Method | `tools/gen_world_data.py` |
 | Build | B1 |
@@ -71,17 +71,17 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 - **Items lost on death.** A grant the game has not saved is gone after a death
   (`memory.md`, "Granting each kind of item, and what keeps it"). The world treats every item
   as permanent once received, so the client must give items again after a reload.
-- **The starting inventory and settings.** The world's logic assumes Standard mode's
-  starting inventory and settings (`worlds/zexion/data.py`, `START_INVENTORY`, `ENERGY_TOTAL`,
-  `MODE69`, `OPTIONS`). The save the client prepares must hold exactly those, or sphere 0 is
-  wrong.
+- **The starting inventory and settings.** The world's logic assumes the chosen mode's
+  starting inventory and settings (`worlds/zexion/data.py`, `MODES`, sent as `mode` in the slot
+  data). The save the client prepares must hold exactly those, or sphere 0 is wrong.
 
 ## Not yet decided
 
-- **Settings.** The world uses Standard mode with the game's default settings, as in slot 29's
-  fresh save (energy total 20, code-69 mode 2, its option flags, its item pool, and the Force
-  Blaster that "Random Gun" gave that seed as the starting gun). Other modes and settings are
-  not offered yet; which byte holds which setting is not mapped (`randocells.md`, "The
-  randomizer menu's settings").
+- **Modes and settings.** The world offers Easy and Standard, each as one fresh save of that
+  mode had it: its settings, its item pool and its starting items (in Standard, the Force
+  Blaster that "Random Gun" gave that seed). OHKO is not offered: its seeds start from two
+  rooms (Double Teleport) and leave some locations unreachable (`randocells.md`, "The
+  randomizer's modes"), which the world does not model yet. The individual settings
+  (`randocells.md`, "Where each setting is stored") are not separate options yet.
 - **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's
   count is not modeled.

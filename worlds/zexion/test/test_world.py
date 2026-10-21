@@ -1,6 +1,12 @@
+import types
+import unittest
+
+from Options import OptionError
+
 from .. import data, rules
 from ..locations import location_name
-from ..world import GOAL_CELL
+from ..options import START_CELLS
+from ..world import GOAL_CELL, ZexionWorld
 from .bases import ZexionTestBase
 
 
@@ -35,11 +41,44 @@ class TestDefaultStart(ZexionTestBase):
         self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
 
 
+class TestStandardIsTheDefault(ZexionTestBase):
+    def test_mode_and_items_are_standards(self) -> None:
+        self.assertEqual(self.world.mode_name, "standard")
+        self.assertEqual(self.world.settings.energy_total, 20)
+        self.assertEqual(self.count("Energy Tank"), 3)  # the starting inventory
+        self.assertEqual(self.world.fill_slot_data()["mode"], "standard")
+
+
+class TestEasy(ZexionTestBase):
+    options = {"mode": "easy"}
+
+    def test_easy_has_its_own_pool_items_and_settings(self) -> None:
+        self.assertEqual(self.world.settings.energy_total, 40)
+        self.assertEqual(self.count("Energy Tank"), 5)
+        pool = [i.name for i in self.multiworld.itempool if i.player == self.player]
+        self.assertEqual(pool.count("Energy Tank"), 35)
+
+
 class TestOtherStart(ZexionTestBase):
-    options = {"start_room": len(data.STARTS) - 1}
+    options = {"start_room": START_CELLS.index(tuple(data.MODES["standard"]["starts"][-1]["cell"]))}
 
     def test_start_follows_the_option(self) -> None:
-        self.assertEqual(self.world.start, data.STARTS[-1])
+        self.assertEqual(self.world.start, data.MODES["standard"]["starts"][-1])
+
+
+class TestStartRoomNotOffered(unittest.TestCase):
+    def test_a_room_the_mode_does_not_offer_is_an_error(self) -> None:
+        world = ZexionWorld.__new__(ZexionWorld)
+        world.options = types.SimpleNamespace(
+            mode=types.SimpleNamespace(value=1), start_room=types.SimpleNamespace(value=0)
+        )
+        saved = data.MODES["standard"]["starts"]
+        data.MODES["standard"]["starts"] = [s for s in saved if tuple(s["cell"]) != START_CELLS[0]]
+        try:
+            with self.assertRaises(OptionError):
+                world.generate_early()
+        finally:
+            data.MODES["standard"]["starts"] = saved
 
 
 class TestNames(ZexionTestBase):

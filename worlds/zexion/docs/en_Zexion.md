@@ -12,10 +12,15 @@ Grabbing Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys. 
 moment the game's own "Abridged Finale" setting counts as victory; the escape, the final battle
 and the ending after it are not needed.
 
+## Which modes are there?
+
+The Mode option takes the game's own Easy or Standard mode, with that mode's item pool,
+starting items and settings. OHKO is not offered yet.
+
 ## Where does the game start?
 
 In one of the game's own start rooms, chosen with the Start Room option. Only rooms from which
-the starting items reach a few locations are offered.
+the mode's starting items reach a few locations are offered.
 
 ## What does another world's item look like in Zexion?
 

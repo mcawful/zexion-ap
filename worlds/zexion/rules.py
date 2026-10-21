@@ -13,7 +13,6 @@ from .items import NAMES, PROGRESSIVE
 if TYPE_CHECKING:
     from .world import ZexionWorld
 
-SETTINGS = logic.Settings(data.ENERGY_TOTAL, data.MODE69, data.OPTIONS)
 _CODE_OF = {name: code for code, name in NAMES.items()}
 
 
@@ -55,13 +54,14 @@ def requirement(
     """A rule for one requirement list; ``cell`` is where it is checked (codes 64-69)."""
     player = world.player
     created = world.created_regions
+    settings = world.settings
 
     def rule(state: CollectionState) -> bool:
         def reached(other: tuple[int, int]) -> bool:
             region = cells.get(other)
             return region in created and state.can_reach_region(region_name(region), player)
 
-        return logic.satisfied(entries, inventory(state, player), SETTINGS, cell, reached)
+        return logic.satisfied(entries, inventory(state, player), settings, cell, reached)
 
     return rule
 
