@@ -8,14 +8,19 @@ Source: RandoCells of build 6d8a94bd4d64; fresh saves easy: Save Game 28.sav (SH
 # The game's 154 locations, in the order of its location list: cell (x, y).
 LOCATIONS = [(8, 1), (13, 1), (37, 2), (38, 2), (47, 2), (21, 3), (23, 5), (39, 5), (53, 5), (8, 6), (9, 6), (14, 6), (14, 9), (21, 9), (45, 9), (49, 9), (14, 10), (39, 10), (45, 12), (53, 12), (18, 13), (22, 13), (29, 14), (23, 15), (25, 15), (29, 16), (41, 16), (46, 16), (23, 17), (26, 18), (32, 18), (41, 18), (11, 19), (0, 20), (16, 20), (45, 20), (10, 21), (41, 21), (1, 22), (7, 22), (9, 22), (13, 22), (26, 22), (14, 23), (21, 23), (10, 24), (19, 24), (24, 24), (29, 24), (10, 25), (11, 25), (19, 25), (25, 25), (44, 25), (47, 25), (26, 26), (38, 26), (46, 26), (48, 26), (0, 27), (18, 27), (24, 27), (9, 28), (14, 28), (1, 29), (9, 29), (15, 29), (30, 29), (48, 29), (18, 30), (45, 30), (14, 32), (23, 32), (28, 32), (33, 32), (40, 32), (12, 33), (44, 33), (15, 34), (21, 34), (27, 34), (51, 34), (22, 35), (28, 35), (16, 36), (18, 36), (25, 36), (30, 36), (37, 36), (44, 36), (45, 36), (21, 37), (28, 37), (4, 38), (11, 38), (16, 38), (23, 38), (16, 39), (53, 39), (17, 40), (24, 40), (28, 40), (2, 41), (7, 41), (8, 41), (10, 41), (12, 41), (17, 41), (24, 41), (25, 41), (45, 41), (46, 41), (2, 42), (2, 43), (12, 43), (14, 43), (17, 43), (20, 43), (22, 43), (23, 43), (17, 44), (24, 44), (27, 44), (42, 44), (51, 44), (26, 45), (46, 45), (13, 46), (31, 46), (34, 47), (44, 47), (50, 47), (11, 48), (14, 48), (15, 49), (32, 49), (30, 50), (10, 51), (11, 51), (12, 51), (21, 51), (37, 51), (47, 51), (10, 52), (11, 52), (13, 52), (24, 52), (38, 52), (44, 52), (53, 52), (19, 53), (20, 53), (29, 53), (50, 53)]
 
-# Per mode: whether it has a second teleport target, the seed's settings, its item pool
-# (item IDs, one per location), its starting inventory, and its start rooms (the game's
-# candidate index, the cell, the save point's column and row in tiles, and the regions
-# every item reaches from there). A mode without a second target lists only valid rooms,
-# with how many locations the starting inventory reaches; a mode with one lists every
-# candidate, with the locations every item and the starting items reach from it alone.
+# Per mode: the starting and pool Energy, missiles and bombs as the save holds them
+# (docs/re/save-format.md), the settings the client checks in the save, whether it has
+# a second teleport target, the seed's settings (as the logic reads them),
+# its item pool (item IDs, one per location), its starting inventory, and its start
+# rooms (the game's candidate index, the cell, the save point's column and row in tiles,
+# and the regions every item reaches from there). A mode without a second target lists
+# only valid rooms, with how many locations the starting inventory reaches; a mode with
+# one lists every candidate, with the locations every item and the starting items reach
+# from it alone.
 MODES = {
     'easy': {
+        'amounts': (5, 35, 3, 199, 0, 18),
+        'checked_options': {30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 0, 43: 1, 72: 0, 73: 1},
         'double_teleport': False,
         'energy_total': 40,
         'mode69': 2,
@@ -35,6 +40,8 @@ MODES = {
         ],
     },
     'standard': {
+        'amounts': (3, 17, 3, 122, 0, 12),
+        'checked_options': {30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 0, 43: 1, 72: 0, 73: 1},
         'double_teleport': False,
         'energy_total': 20,
         'mode69': 2,
@@ -54,6 +61,8 @@ MODES = {
         ],
     },
     'ohko': {
+        'amounts': (0, 0, 3, 152, 0, 12),
+        'checked_options': {30: 0, 31: 0, 32: 0, 33: 1, 37: 0, 42: 0, 43: 0, 72: 1, 73: 0},
         'double_teleport': True,
         'energy_total': 0,
         'mode69': 0,

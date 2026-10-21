@@ -104,6 +104,11 @@ def location_ok(grid, cell, have, settings, reached: set) -> bool:
     )
 
 
+AMOUNTS = 0x12ED4  # six 16-bit amounts (docs/re/save-format.md)
+# The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
+# Double Teleport, Safety (code 69's mode) and Gates. The client refuses a save whose
+# settings differ from the mode's here.
+CHECKED_OPTIONS = (30, 31, 32, 33, 37, 42, 43, 72, 73)
 PICKUP_COUNTER = 0x935A  # 16-bit; 0 before the first pickup (docs/re/save-format.md)
 
 
@@ -199,6 +204,8 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> d
         for st in starts:
             union |= st["cells"]
         modes[name] = {
+            "amounts": struct.unpack_from("<6h", data, AMOUNTS),
+            "checked_options": {t: data[rc.OPTIONS_IN_SAVE + t] for t in CHECKED_OPTIONS},
             "double_teleport": double,
             "settings": settings,
             "pool": pool,
@@ -271,18 +278,23 @@ def render(d: dict, source: str) -> str:
         "# The game's 154 locations, in the order of its location list: cell (x, y).",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
-        "# Per mode: whether it has a second teleport target, the seed's settings, its item pool",
-        "# (item IDs, one per location), its starting inventory, and its start rooms (the game's",
-        "# candidate index, the cell, the save point's column and row in tiles, and the regions",
-        "# every item reaches from there). A mode without a second target lists only valid rooms,",
-        "# with how many locations the starting inventory reaches; a mode with one lists every",
-        "# candidate, with the locations every item and the starting items reach from it alone.",
+        "# Per mode: the starting and pool Energy, missiles and bombs as the save holds them",
+        "# (docs/re/save-format.md), the settings the client checks in the save, whether it has",
+        "# a second teleport target, the seed's settings (as the logic reads them),",
+        "# its item pool (item IDs, one per location), its starting inventory, and its start",
+        "# rooms (the game's candidate index, the cell, the save point's column and row in tiles,",
+        "# and the regions every item reaches from there). A mode without a second target lists",
+        "# only valid rooms, with how many locations the starting inventory reaches; a mode with",
+        "# one lists every candidate, with the locations every item and the starting items reach",
+        "# from it alone.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
         s = m["settings"]
         out += [
             f"    {name!r}: {{",
+            f"        'amounts': {m['amounts']!r},",
+            f"        'checked_options': {m['checked_options']!r},",
             f"        'double_teleport': {m['double_teleport']},",
             f"        'energy_total': {s.energy_total},",
             f"        'mode69': {s.mode69},",

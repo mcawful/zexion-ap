@@ -86,6 +86,18 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   data). The save the client prepares must hold exactly those, or sphere 0 is wrong; in OHKO
   also the second teleport target (`second_start`), and Scrap at every location the world left
   out (those not in `kept_locations`).
+- **What the slot data gives the client for that.** `location_items`: for each of the 154
+  locations, the game's item ID to place there: this world's own item (a progressive weapon as
+  the weapon, which the game turns into the upgrade on a second copy, `randocells.md`), or
+  Scrap Metal (46) where another world's item is or the location was left out. `start_items`:
+  inventory bytes for everything the player starts with, the mode's items and any
+  `start_inventory` (a second copy of a progressive weapon as its upgrade). `amounts` and
+  `options`: the mode's six Energy, missile and bomb amounts and the settings the logic depends
+  on (code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43, Gates 72 and 73),
+  as the mode's fresh save holds them, for the client to compare with the player's new game.
+  The Energy Shield is kept in this world (`local_items`), because the client does not write
+  its byte, whose meaning is not settled (`save-format.md`, "Inventory: one byte per item ID at
+  0x92F3"); the game hands it out itself.
 
 ## Not yet decided
 

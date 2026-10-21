@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Mapping
 from typing import Any, TextIO
 
@@ -16,6 +17,7 @@ from .items import (
     GAME,
     KEYS,
     NAMES,
+    PROGRESSIVE,
     ZexionItem,
     classification,
     code_of,
@@ -29,6 +31,11 @@ AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 MIN_SPHERE_ZERO = 3  # as tools/gen_world_data.py requires of a single start
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (46, 47, 48, 49)
+# What the game holds at a location whose item is not this world's to hand out natively.
+PLACEHOLDER = 46  # Scrap Metal
+# Items the client cannot write into the game (client/reconcile.py): placed only in this
+# world, where the game hands them out itself.
+LOCAL_ONLY = ("Energy Shield",)
 
 
 class ZexionWorld(World):
@@ -76,6 +83,7 @@ class ZexionWorld(World):
             )
             cell = replacement
         self.start = starts[cell]
+        self.options.local_items.value |= set(LOCAL_ONLY)
         self.second = None
         self.kept_locations = set(range(len(data.LOCATIONS)))
         if self.mode["double_teleport"]:
@@ -213,6 +221,39 @@ class ZexionWorld(World):
             else {k: self.second[k] for k in ("index", "column", "row")}
             | {"cell": list(self.second["cell"])},
             "kept_locations": sorted(self.kept_locations),
-            "start_inventory": {str(k): v for k, v in self.mode["start_inventory"].items()},
             "locations": [list(c) for c in data.LOCATIONS],
+            "location_items": self.location_items(),
+            "start_items": {str(k): v for k, v in sorted(self.start_items().items())},
+            "amounts": list(self.mode["amounts"]),
+            "options": {str(t): v for t, v in self.mode["checked_options"].items()},
         }
+
+    def location_items(self) -> list[int]:
+        """The item code the game should hold at each of its locations: this world's own items
+        as the game's item IDs (a progressive weapon as the weapon; the game makes a second
+        copy the upgrade), and PLACEHOLDER where another world's item is or the location was
+        left out."""
+        out = []
+        for i in range(len(data.LOCATIONS)):
+            item = self.get_location(location_name(i)).item if i in self.kept_locations else None
+            own = item is not None and item.player == self.player and item.code is not None
+            out.append(code_of[item.name] if own else PLACEHOLDER)
+        return out
+
+    def start_items(self) -> dict[int, int]:
+        """Inventory bytes for everything this player starts with: the mode's starting items
+        and any start_inventory, a progressive weapon's second copy as its upgrade."""
+        counts = Counter(
+            code_of[item.name]
+            for item in self.multiworld.precollected_items[self.player]
+            if item.code is not None
+        )
+        out: dict[int, int] = {}
+        for code, n in counts.items():
+            if code in PROGRESSIVE:
+                out[code] = 1
+                if n > 1:
+                    out[PROGRESSIVE[code]] = 1
+            else:
+                out[code] = n
+        return out

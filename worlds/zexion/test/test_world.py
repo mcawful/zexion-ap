@@ -2,12 +2,15 @@ import random
 import types
 import unittest
 
+from BaseClasses import Item, ItemClassification
+from Fill import distribute_items_restrictive
 from Options import OptionError
 
 from .. import data, rules
+from ..items import code_of
 from ..locations import location_name
 from ..options import START_CELLS
-from ..world import GOAL_CELL, ZexionWorld
+from ..world import GOAL_CELL, PLACEHOLDER, ZexionWorld
 from .bases import ZexionTestBase
 
 
@@ -71,7 +74,9 @@ class TestStartRoomNotOffered(unittest.TestCase):
     def world(self, start_room: int) -> ZexionWorld:
         world = ZexionWorld.__new__(ZexionWorld)
         world.options = types.SimpleNamespace(
-            mode=types.SimpleNamespace(value=1), start_room=types.SimpleNamespace(value=start_room)
+            mode=types.SimpleNamespace(value=1),
+            start_room=types.SimpleNamespace(value=start_room),
+            local_items=types.SimpleNamespace(value=set()),
         )
         world.random = random.Random(1)
         world.player = 1
@@ -129,3 +134,51 @@ class TestOHKO(ZexionTestBase):
         self.assertEqual(slot["mode"], "ohko")
         self.assertEqual(slot["second_start"]["cell"], list(self.world.second["cell"]))
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
+
+
+class TestSlotDataForTheClient(ZexionTestBase):
+    """What client/save_patch.py writes into the save comes from here."""
+
+    def test_location_items_are_this_worlds_items_as_game_ids(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(len(items), len(data.LOCATIONS))
+        for i, code in enumerate(items):
+            placed = self.multiworld.get_location(location_name(i), self.player).item
+            self.assertEqual(code, code_of[placed.name])
+
+    def test_another_worlds_item_is_the_placeholder(self) -> None:
+        location = self.multiworld.get_location(location_name(0), self.player)
+        location.item = Item("Something", ItemClassification.progression, 1, self.player + 1)
+        self.assertEqual(self.world.fill_slot_data()["location_items"][0], PLACEHOLDER)
+
+    def test_start_items_amounts_and_options_are_the_modes(self) -> None:
+        slot = self.world.fill_slot_data()
+        start = {int(k): v for k, v in slot["start_items"].items()}
+        self.assertEqual(start, data.MODES["standard"]["start_inventory"])
+        self.assertEqual(slot["amounts"], [3, 17, 3, 122, 0, 12])
+        options = {int(t): v for t, v in slot["options"].items()}
+        self.assertEqual(options, data.MODES["standard"]["checked_options"])
+        self.assertIn(72, options)  # Gates
+
+    def test_the_energy_shield_stays_in_this_world(self) -> None:
+        self.assertIn("Energy Shield", self.world.options.local_items.value)
+
+
+class TestStartInventoryInSlotData(ZexionTestBase):
+    def test_a_second_progressive_copy_is_the_upgrade(self) -> None:
+        # As AP's Main does for start_inventory, which the test base does not run.
+        for name in ("Progressive Snake", "Progressive Snake", "Missile Box"):
+            self.multiworld.push_precollected(self.world.create_item(name))
+        start = {int(k): v for k, v in self.world.fill_slot_data()["start_items"].items()}
+        self.assertEqual((start.get(5), start.get(15), start.get(36)), (1, 1, 1))
+
+
+class TestOHKOSlotData(ZexionTestBase):
+    options = {"mode": "ohko"}
+
+    def test_left_out_locations_hold_the_placeholder(self) -> None:
+        items = self.world.fill_slot_data()["location_items"]
+        left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
+        self.assertTrue(left_out)
+        self.assertEqual({items[i] for i in left_out}, {PLACEHOLDER})
