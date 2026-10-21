@@ -58,7 +58,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Field | |
 |---|---|
 | Value | A 75,794-byte save is `E8 03` followed by two 37,896-byte blocks: `0x0002` to `0x9409` and `0x940A` to `0x12811`. In slots 1 and 2 the same structures appear in both blocks, `0x9408` bytes apart (FF runs at `0x7BBA` and `0x10FC2`, the 14-byte records at `0x9388` and `0x12790`). In the unused-slot template the second block is all zeros. Why there are two copies (a backup, or two states) is not known. |
-| Status | measured (layout); assumed nothing about purpose |
+| Status | measured (layout); purpose unknown |
 | Method | file inspection of backup copies: positions of FF runs of 16+ bytes and of the bytes `30 00 02 00`, in slots 1, 2 and 3 |
 | Build | B1 installed; files written by older builds |
 | Evidence | Script over `lab/backups/20261020-211239/`, 2026-10-20. |
