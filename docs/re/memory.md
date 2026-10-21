@@ -34,12 +34,12 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/mem/p2-record.log`; saves `lab/work/slot28-all-scrap.sav` (as loaded), `lab/backups/20261020-215709/` (after two pickups), `lab/backups/20261020-213055/` and `lab/backups/20261020-213828/`, 2026-10-20. |
 
-## Which location was collected: known in the save, not yet in live memory
+## The live map grid flips at the moment of pickup
 
 | Field | |
 |---|---|
-| Value | In the save, the map grid at file `0x877F` (54 × 54, row-major) holds `0x1B` at a location's cell once it is collected (`save-format.md`, "The map grid marks collected locations"). The live copy of that grid has not been located in memory yet. Searching memory for a distinctive run of the grid while playing should find it, since save data has the same layout in memory (above). `Zexion.exe+0x3D0168` is only a pickup counter. |
-| Status | measured (in the save); not yet located (in memory) |
-| Method | fork test, see `save-format.md` |
+| Value | The live map grid (54 × 54, row-major, same values as the save's grid at file `0x877F`) is at `Zexion.exe+0x3E469D`. With slot 27 loaded it matched that save's grid in all 2,916 cells and showed location #52's cell (25, 25) as `0x19`. At the pickup, that cell became `0x1B` in the same 50 ms sample as the pickup counter at `+0x3D0168` went 0 → 1, and no other cell changed. So a client can detect a collected location by polling this grid at the location cells from the randomizer list. The memory around the grid is not a copy of the rest of the save block (31,215 of 37,896 bytes equal, mostly zeros; the file-`0x4589` flag reads 0 there after the pickup), so the live inventory and flag array are elsewhere. |
+| Status | measured (one location, one pickup) |
+| Method | search of writable memory for each explored row of slot 27's saved grid, outside the slot array, voting on a grid start; then a 20 Hz watcher on the cell and the counter during the pickup |
 | Build | B1 |
-| Evidence | 2026-10-20. |
+| Evidence | Slot 27 loaded from `lab/backups/20261020-221347/`; pickup at 12.45 s into the watcher, 2026-10-20. |
