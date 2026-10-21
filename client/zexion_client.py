@@ -172,6 +172,7 @@ async def game_loop(ctx: ZexionContext) -> None:
 def launch(*args: str) -> None:
     async def main(parsed) -> None:
         ctx = ZexionContext(parsed.connect, parsed.password)
+        ctx.auth = parsed.name
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
         if gui_enabled:
@@ -184,8 +185,13 @@ def launch(*args: str) -> None:
     import colorama
 
     parser = get_base_parser(description="Zexion Archipelago client.")
+    parser.add_argument("--name", default=None, help="Slot name to connect as.")
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     parsed = handle_url_arg(parser.parse_args(args), parser=parser)
+    if parsed.url:
+        # The name goes in the Connect packet; websockets refuses a URL with a name and no
+        # password, so connect to the host and port alone.
+        parsed.connect = f"{parsed.url.hostname}:{parsed.url.port or 38281}"
     Utils.init_logging("ZexionClient", exception_logger="Client")
     colorama.just_fix_windows_console()
     asyncio.run(main(parsed))
