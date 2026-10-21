@@ -36,7 +36,11 @@ live in the path around the change.
    granted exactly once per save, including after the player reloads to before it arrived.
 6. **Lost items.** The index advancing before the write is confirmed; a crash between the two;
    an item arriving while the game is not ready and being dropped instead of queued; a write
-   that a later game save does not persist.
+   that a later game save does not persist. Measured on B1: a grant is lost when the player
+   dies before the game saves, and kept once it saves (`docs/re/memory.md`, "Granting each kind
+   of item"), so delivery must be re-checked after a death, not only counted as done. Counted
+   items (Energy Tanks, Missile Containers, Mega Bombs) need their player-state fields written
+   too; a grant of the byte alone is incomplete.
 7. **False or missing location checks.** Sending a check from a flag that is set for another
    reason (a vanilla pickup in a non-AP save, a flag reused by a cutscene), from a save that is
    not this seed's, or before the flag's meaning is recorded in `docs/re/`. Also checks that are

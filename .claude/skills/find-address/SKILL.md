@@ -37,6 +37,8 @@ With the game running and the user at the controls:
 to `lab/mem/`, `cmp A B [--from X --to Y]` lists bytes that changed between two snapshots,
 `read` dumps live memory, and `write ADDR HEX --yes` writes it and reads it back. Ask before
 every `write`. It only touches the game process, never the install or save folder.
+For an inventory byte, `tools/grant.py set ITEM VALUE --expect N --yes` is safer: it locates
+the inventory by pattern, refuses if the byte is not as expected, and logs to `lab/grants.jsonl`.
 
 A shortcut that worked on B1: the game keeps save data in the same layout as the `.sav` file,
 so searching memory for a distinctive run of save bytes (the seed, the item table) finds it.

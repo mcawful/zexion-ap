@@ -13,8 +13,9 @@ naming the address, because it means something is wrong with what was located.
 Item writes are compare-and-set (``set_item``): the caller says what it expects the byte to
 hold, the module re-reads it just before writing and refuses if it differs, and reads the
 write back (``ReadBackMismatch`` if the game changed it straight away). That cannot see a
-later reload of the inventory (an area load, a death, loading a save): the delivery layer must
-confirm items stuck by other means.
+later reload of the inventory: a grant lasts only once the game has saved it, and a death
+returns to the last save (measured; docs/re/memory.md, "Granting each kind of item"), so the
+delivery layer must confirm items stuck by other means.
 
 Not handled yet: whether the game is in play, loading, paused or dead. A caller must not
 write while it is not in play; there is no check for it here yet.
@@ -307,7 +308,10 @@ class Game:
         self._write("inventory", item, bytes([value]))
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter: locations collected (16-bit)."""
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45.
+
+        Not a per-location signal; the map grid is (docs/re/memory.md).
+        """
         return struct.unpack("<H", self._read("pickup_counter", 0, 2))[0]
 
     def rando_blob(self) -> bytes:

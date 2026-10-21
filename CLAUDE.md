@@ -54,8 +54,11 @@ Reverse-engineering tools. These are the only code allowed to open the game or s
 .venv/Scripts/python tools/grant.py watch               # print inventory changes as they happen
 ```
 
-`grant.py set` changes the running game: ask before each one, and only while the person playing
-is standing still in play. It logs every attempt to `lab/grants.jsonl` before writing.
+`grant.py set` changes the running game: ask before each one, only while the person playing is
+standing still in play, and only in a lab slot (the game saves the grant into the slot). It
+logs every attempt to `lab/grants.jsonl` before writing. It writes the inventory byte only;
+Energy Tanks, Missile Containers and Mega Bombs also need the player-state fields in
+`docs/re/memory.md` ("Granting each kind of item").
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or

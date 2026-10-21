@@ -9,6 +9,14 @@ and spacing do not matter). ``set`` goes through ``client/game.py``: the build m
 every pattern must resolve, the byte must hold ``--expect`` just before the write, and the
 write is read back. Every attempt and its outcome is appended to ``lab/grants.jsonl`` first,
 so a write that leaves no log line was never made. ``watch`` logs what it sees there too.
+Events: ``attempt``, ``written``, ``mismatch`` (written, then changed by the game),
+``unknown``, ``refused``, ``watch``, ``change``, ``watch-ended``. Exit status: 0 done,
+1 refused or failed, 2 written but changed, or state unknown.
+
+``set`` writes the inventory byte only. For Energy Tanks, Missile Containers and Mega Bombs
+that does not change the energy, missile or bomb numbers the game uses (docs/re/memory.md,
+"Granting each kind of item"). A grant becomes part of the slot once the game saves, so use
+it only on a lab slot, never on a real save.
 
 Nothing here knows whether the game is in play (``client/game.py`` has no such signal yet), so
 ``set`` is only for when the person playing has said they are standing still in play, not in

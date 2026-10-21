@@ -137,11 +137,21 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x935A` (16-bit) is the pause screen's `ITEMS` counter, the number of locations collected: 0 with no pickup, 1 after one, 2 after two, 150 in the owner's far-along slot 1 (ITEMS 150/150), and equal to the live counter (`memory.md`). `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
+| Value | `0x935A` (16-bit) is the pause screen's `ITEMS` counter, the number of locations collected except those whose item is 27 to 31 or 38 to 45, which the pickup routine does not count (`memory.md`, "Granting each kind of item, and what keeps it"): 0 with no pickup, 1 after one, 2 after two, 150 in the owner's far-along slot 1 (ITEMS 150/150), and equal to the live counter (`memory.md`). `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
 | Status | measured |
 | Method | fork test and earlier saves |
 | Build | B1 |
 | Evidence | as above. |
+
+## Current energy and missiles
+
+| Field | |
+|---|---|
+| Value | The save keeps current energy as a 16-bit value at `0x9350` and current missiles at `0x9352`; loading a save copies them into the player state (`memory.md`, "Granting each kind of item, and what keeps it"). The maximums are not read from the save: loading recomputes max energy (Energy Tanks × 16), max missiles and max bombs from the inventory counts. Seen: slot 28 before the grant session held 80 and 2; saved after it, with 6 tanks (96/96) and 4 missiles, it held 96 and 4. Where current bombs are saved was not checked. |
+| Status | measured |
+| Method | disassembly of the load routine (RVA `0x9C630`: `0x9DA4D` to `0x9DA68` read file `0x9350` and `0x9352`, `0x9E02C` to `0x9E064` compute the maximums); `save_lab.py diff` |
+| Build | B1 |
+| Evidence | `lab/backups/20261021-091726/Save Game 28.sav` against `lab/work/slot28-after-grants.sav`, 2026-10-21. |
 
 ## The item table is indexed in location-list order
 
