@@ -82,3 +82,13 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Method | parsing script over backup copies |
 | Build | B1; slots 28 and 29 written 2026-10-20 by B1 |
 | Evidence | `lab/backups/20261020-212018/`, 2026-10-20. |
+
+## The game loads and keeps a patched placement table
+
+| Field | |
+|---|---|
+| Value | A copy of slot 28 with all 154 bytes at `0x12A80` set to 46 (Scrap metal), and nothing else changed, loaded without complaint. The first pickup gave Scrap metal. After the game saved over it, the whole appended section (`0x12812` to the end) was byte-for-byte what was installed, so the game neither rejected the change, nor checks a checksum over that section, nor regenerates the table from the seed when it saves. **Not yet shown:** that the pickup came from a location that held something other than Scrap originally (20 of slot 28's 154 entries were already 46). A control run on the unpatched slot 28 is pending. |
+| Status | working in game (patched save loads, is kept on save, first pickup gave Scrap); measured (section unchanged after the game's save) |
+| Method | `save_lab.py patch` and `install` into slot 30; one pickup by the owner; `save_lab.py diff` and a parsing script over the backup taken after the game saved |
+| Build | B1 |
+| Evidence | Spec `lab/work/all-scrap.json`, installed 2026-10-20 21:24 (`lab/installs.log`, sha256 `50cdac33…`); slot 30 after play: `lab/backups/20261020-213055/`. |
