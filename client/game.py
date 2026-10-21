@@ -35,7 +35,7 @@ from __future__ import annotations
 import re
 import struct
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
@@ -55,6 +55,10 @@ ITEM_TABLE_AT = 0x26C  # file 0x12A80 - 0x12814
 # inventory (docs/re/memory.md).
 INVENTORY_IN_PLAYER_STATE = 0x108E
 ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
+# Player-state offsets of the energy, missile and bomb numbers (signed 16-bit), in the order
+# supplies() returns them: energy, max energy, missiles, max missiles, bombs, max bombs.
+SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
+SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
 
 # What state() returns.
@@ -209,6 +213,21 @@ def parse_seed(blob: bytes) -> Seed:
 # --- the running game ---------------------------------------------------------------------
 
 
+def game_running() -> bool:
+    """Whether a Zexion process is running (without attaching to it)."""
+    try:
+        import pymem
+        import pymem.exception
+    except ImportError as exc:  # pragma: no cover - only on machines without pymem
+        raise GameError("pymem is not installed (Windows only)") from exc
+    try:
+        pm = pymem.Pymem(PROCESS)
+    except pymem.exception.ProcessNotFound:
+        return False
+    pm.close_process()
+    return True
+
+
 @dataclass
 class Game:
     """An attached Zexion process with every target located."""
@@ -329,6 +348,28 @@ class Game:
                 f"item {item} holds {current}, not the expected {expected}; not written"
             )
         self._write("inventory", item, bytes([value]))
+
+    def supplies(self) -> tuple[int, ...]:
+        """Energy, max energy, missiles, max missiles, bombs, max bombs, read at once."""
+        start, end = SUPPLY_SPAN
+        span = self._read("inventory", start - INVENTORY_IN_PLAYER_STATE, end - start)
+        return tuple(struct.unpack_from("<h", span, f - start)[0] for f in SUPPLY_FIELDS)
+
+    def set_supplies(self, expected: Sequence[int], new: Sequence[int]) -> None:
+        """Compare-and-set the six numbers ``supplies()`` returns, writing only those that
+        change, each read back. Refuses (``GameError``) if any differs from ``expected`` just
+        before the write, as when the player fired or took damage since the caller looked."""
+        if len(expected) != len(SUPPLY_FIELDS) or len(new) != len(SUPPLY_FIELDS):
+            raise ValueError("supplies are six numbers")
+        if any(not -0x8000 <= v <= 0x7FFF for v in new):
+            raise ValueError(f"supplies {tuple(new)} do not fit 16 bits")
+        current = self.supplies()
+        if current != tuple(expected):
+            raise GameError(f"supplies are {current}, not the expected {tuple(expected)}")
+        for field, old, value in zip(SUPPLY_FIELDS, current, new, strict=True):
+            if value != old:
+                offset = field - INVENTORY_IN_PLAYER_STATE
+                self._write("inventory", offset, struct.pack("<h", value))
 
     def energy(self) -> int:
         """Current energy (signed); -1 from the moment of death until the respawn (measured),
