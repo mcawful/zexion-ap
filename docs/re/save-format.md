@@ -157,7 +157,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | File `0x0111 + id` (first block): slot 28's fresh randomizer save has entries 7, 15, 16 and 22 set (Arc Plasma, Tunneler, Slide Mod, Jump Booster, presumably the seed's starting items). In the control run, entry 24 was set after the Gravity Harness pickup; in a later run of the same pickup and a save at the same save point, it was **not**, though the item was collected. So this array is not what records ownership; what sets it is not known. Slot 1 (far into the normal game) has many entries set, and entry 37 is 4. |
+| Value | File `0x0111 + id` (first block): slot 28's fresh randomizer save has entries 7, 15, 16 and 22 set (Arc Plasma, Tunneler, Slide Mod, Jump Booster), yet that save does not own Slide Mod (it had to be granted, see `memory.md`), so these are not owned items. In the control run, entry 24 was set after the Gravity Harness pickup; in a later run of the same pickup and a save at the same save point, it was **not**, though the item was collected. So this array is not what records ownership; what sets it is not known. Slot 1 (far into the normal game) has many entries set, and entry 37 is 4. |
 | Status | measured (layout, the two runs); meaning unknown |
 | Method | byte comparison of slot 28 saves |
 | Build | B1 |
@@ -177,8 +177,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x9300` to `0x931F` hold one byte per ability, 1 when owned. Flag `0x0B` is the Gravity Harness (item 24) and flag `0x04` the S-Blade (item 17). Slot 28's fresh randomizer save has flags `0x00` and `0x13` (which items is not known; the seed's starting items are 7, 15, 16 and 22, so at most two of them have flags). The Gravity Harness pickup added `0x0B`. The control run, with a second major item (list code `0xE1`), also had `0x04` and `0x17`. Your slot 1 has most flags set. The full flag-to-item mapping is not known. |
-| Status | measured (layout; flags `0x04` and `0x0B`); assumed (the rest) |
+| Value | `0x9300` to `0x931F` hold one byte per ability, 1 when owned. **Flag = item ID − 13**, seen for three items: Slide Mod (16) is `0x03`, S-Blade (17) `0x04`, Gravity Harness (24) `0x0B`. If the rule holds throughout, the 32 flags are items 13 (Power Cartridge) to 44 (Data Disc), and items 0 to 12 (Energy Tank, Missile Container, Mega Bomb, the weapons, Rocket Slide) and 45 to 50 (filler) are stored elsewhere. Slot 28's fresh randomizer save has flags `0x00` and `0x13` (items 13 and 32 by the rule, not checked). The Gravity Harness pickup added `0x0B`. The control run, with a second major item (list code `0xE1`), also had `0x04` and `0x17`. Your slot 1 has most flags set. |
+| Status | measured (layout; the rule for items 16, 17 and 24); assumed (the rule for the rest) |
 | Method | save comparison; live grant of flag `0x04` (`memory.md`) |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |
