@@ -112,3 +112,33 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Method | byte comparison of the two saves after their pickup, against the save before it |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-213828/Save Game 28.sav` against `lab/backups/20261020-213055/Save Game 30.sav` and `lab/backups/20261020-212018/Save Game 28.sav`, 2026-10-20. |
+
+## The map grid marks collected locations
+
+| Field | |
+|---|---|
+| Value | A 54 × 54 grid, one byte per map cell, row-major (`index = y × 54 + x`), at file offset `0x877F` to `0x92E2` in the first block (so `0x9B87` onward in the second). Values seen: `0x00` unexplored, `0x18` (24) explored room, `0x19` (25) a cell with an item not yet collected, `0x1B` (27) a cell whose item was collected, `0x22` (34) a special room (perhaps a save room), and others up to `0x2C` in a full save. The cells marked `0x19`/`0x1B` are cells from the randomizer's location list at `0x12814`, so location *i* (its *i*-th (x, y) pair) is collected when the grid holds `0x1B` at that cell. Location numbers seen: the first pickup from the start is #52 at (25, 25), the second #48 at (29, 24). |
+| Status | measured (two locations, in the save); assumed (that every location behaves the same, and the meanings of the other values) |
+| Method | fork test: the fresh all-Scrap save installed into slots 27 and 30, the same route played in each, the pickup taken only in slot 30; then `save_lab.py diff`. The grid layout was chosen as the one that puts both collected cells on location cells, starts at the end of the template's FF block, and has the width of the location coordinates (0 to 53); under it the explored cells form one connected route and your slot 1 fills the whole grid. |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-221347/` (slots 27 and 30 after the fork run): they differ only at `0x4589`, `0x8CDE` (`0x19` → `0x1B`), the counters `0x9321` and `0x935A`, play time, and the second block. Earlier two-pickup save: `lab/backups/20261020-215709/`. 2026-10-20. |
+
+## A byte array also flags collected locations
+
+| Field | |
+|---|---|
+| Value | Between `0x3000` and `0x7000`, the only bytes set to 1 are `0x4589` after location #52 was collected, and `0x4589` and `0x43C7` after #52 and #48. Neither is set in the fork save without the pickup. How an offset here maps to a location is not known (the two are 450 bytes apart, which no simple grid width explains). The map grid above is the usable source for now. |
+| Status | measured (two locations); mapping unknown |
+| Method | as above |
+| Build | B1 |
+| Evidence | as above. |
+
+## Counters
+
+| Field | |
+|---|---|
+| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: possibly Scrap or filler collected. |
+| Status | assumed (meanings) |
+| Method | fork test and earlier saves |
+| Build | B1 |
+| Evidence | as above. |
