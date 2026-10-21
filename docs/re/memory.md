@@ -68,8 +68,18 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | File offsets `0x9300` to `0x935F` are copied from live memory at `Zexion.exe+0x3D014D` (live = file + `0x3C6E4D`). At the Gravity Harness pickup, live `+0x3D0180` (file `0x9333`, the first list entry) went 0 → `0xC7` and `+0x3D019A` (file `0x934D`, the list length) went 0 → 1, in the same 0.1 s as the pickup counter at `+0x3D0168` (file `0x931B`). A hardware write breakpoint on slot 28's array entry at file `0x0129` in the slot array never fired during a save, because that byte isn't what records the item (`save-format.md`). |
+| Value | The save's major-item list and its length are at a fixed distance from live memory: live = file + `0x3C6E4D`. The fields around them are not (play time, file `0x9356`, is live at `+0x3D0164`), so the save writes this region field by field. At the Gravity Harness pickup, live `+0x3D0180` (file `0x9333`, the first list entry) went 0 → `0xC7` and `+0x3D019A` (file `0x934D`, the list length) went 0 → 1, in the same 0.1 s as the pickup counter at `+0x3D0168` (file `0x931B`). A hardware write breakpoint on slot 28's array entry at file `0x0129` in the slot array never fired during a save, because that byte isn't what records the item (`save-format.md`). Appending a code (`0xC0`) to the live list and raising the length to 2 changed nothing in the inventory, so the list does not grant items. |
 | Status | measured |
 | Method | 10 Hz module recorder; x64dbg hardware write breakpoint at `Zexion.exe+0x32A3FF` during a save; save comparison |
 | Build | B1 |
 | Evidence | `lab/mem/p3-record.log`; saves `lab/backups/20261020-223111/` and `20261020-224429/`, 2026-10-20. |
+
+## Live ability flags: writing one grants the item
+
+| Field | |
+|---|---|
+| Value | The live ability flags (the save's 32 bytes at file `0x9300`) are at `Zexion.exe+0x3ED48B`. With slot 28 loaded and the Gravity Harness owned, they read flags `0x00`, `0x0B` and `0x13`, exactly as saved. Writing 1 to flag `0x04` (`+0x3ED48F`) made the S-Blade appear in the inventory at once, with no pickup, reload or save. The recorder had caught flag `0x0B` (`+0x3ED496`) going 0 → 1 at the Gravity Harness pickup. Whether the granted S-Blade also works in play has not been checked yet. |
+| Status | working in game (the item appears in the inventory); not yet checked (the item works when used) |
+| Method | search of writable memory for the save's 32 flag bytes (two hits: slot 28 in the slot array, and this one); `memscan.py write` of one byte with read-back; the owner compared the inventory against a baseline |
+| Build | B1 |
+| Evidence | 2026-10-20, slot 28 loaded from `lab/backups/20261020-224429/`; write logged by `memscan.py` (`0x7ff717cdd48f: 00 -> 01`). |

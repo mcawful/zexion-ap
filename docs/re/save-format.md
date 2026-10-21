@@ -167,8 +167,18 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; your slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; your slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. This region (`0x9300` to `0x935F`) is a straight copy of live memory at `Zexion.exe+0x3D014D` (see `memory.md`). Whether the game grants abilities from this list is not yet tested. |
-| Status | measured (layout, the code for one item); assumed (that this list is the inventory) |
+| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; your slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; your slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. The list and its length sit at a fixed distance from their live copies (`memory.md`); the other fields around them are saved one by one. Adding a code to the live list grants nothing, so the list is a record of pickups, not the inventory. |
+| Status | measured (layout, the code for one item, and that the list does not grant) |
 | Method | comparing `0x9300` to `0x935F` across six saves, and against the live recording of the Gravity Harness pickup |
 | Build | B1 |
 | Evidence | Saves in `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/`, `20261020-221347/`; `lab/mem/p3-record.log`, 2026-10-20. |
+
+## Ability flags: 32 bytes at 0x9300
+
+| Field | |
+|---|---|
+| Value | `0x9300` to `0x931F` hold one byte per ability, 1 when owned. Flag `0x0B` is the Gravity Harness (item 24) and flag `0x04` the S-Blade (item 17). Slot 28's fresh randomizer save has flags `0x00` and `0x13` (which items is not known; the seed's starting items are 7, 15, 16 and 22, so at most two of them have flags). The Gravity Harness pickup added `0x0B`. The control run, with a second major item (list code `0xE1`), also had `0x04` and `0x17`. Your slot 1 has most flags set. The full flag-to-item mapping is not known. |
+| Status | measured (layout; flags `0x04` and `0x0B`); assumed (the rest) |
+| Method | save comparison; live grant of flag `0x04` (`memory.md`) |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |
