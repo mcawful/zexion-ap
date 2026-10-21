@@ -12,9 +12,9 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 |---|---|
 | Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell as the game displays it, "Map *x*,*y*" (`randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
 | Status | measured (the list and its order; the display order, from one reading checked against the explored map) |
-| Method | `tools/gen_world_data.py` reading the location list of a fresh Standard-mode save and each cell's record |
+| Method | `tools/gen_world_data.py` reading the location list of the fresh Easy and Standard saves (it checks the two are identical) and each cell's record |
 | Build | B1 |
-| Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
+| Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
 
 ## Regions are cells joined by open passages
 

@@ -37,10 +37,10 @@ def _make_start_room() -> type[Choice]:
     attrs["__qualname__"] = "StartRoom"
     attrs["__doc__"] = (
         "The save room the game starts in, by its map cell as the game displays it. Only "
-        "rooms from which the mode's starting items reach a few locations are offered; a room "
-        "the chosen mode does not accept is an error. 'automatic' takes map 13,16 when the "
-        "mode accepts it, otherwise the mode's first room; 'random' picks any of the listed "
-        "rooms."
+        "rooms from which the mode's starting items reach a few locations are offered; for a "
+        "room the chosen mode does not accept, one it accepts is picked at random instead. "
+        "'automatic' takes map 13,16 when the mode accepts it, otherwise the mode's first "
+        "room; 'random' picks any of the listed rooms."
     )
     return type("StartRoom", (Choice,), attrs)
 

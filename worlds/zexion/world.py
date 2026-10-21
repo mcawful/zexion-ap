@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -53,16 +54,22 @@ class ZexionWorld(World):
             self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
         )
         starts = {tuple(s["cell"]): s for s in self.mode["starts"]}
+        if not starts:
+            raise OptionError(f"Zexion: {self.mode_name} mode has no start room to offer")
         choice = self.options.start_room.value
         if choice == AUTOMATIC:
-            cell = AUTOMATIC_START if AUTOMATIC_START in starts else next(iter(starts))
+            cell = AUTOMATIC_START if AUTOMATIC_START in starts else sorted(starts)[0]
         else:
             cell = START_CELLS[choice]
         if cell not in starts:
-            raise OptionError(
-                f"Zexion: start room map {cell[0]},{cell[1]} is not offered in {self.mode_name} "
-                f"mode; it offers {', '.join(f'map {x},{y}' for x, y in starts)}"
+            # A room this mode does not offer, typed or rolled by 'random' over every mode's
+            # rooms (the two cannot be told apart): take one the mode offers instead.
+            replacement = self.random.choice(sorted(starts))
+            logging.warning(
+                f"Zexion ({self.player_name}): start room map {cell[0]},{cell[1]} is not offered "
+                f"in {self.mode_name} mode; using map {replacement[0]},{replacement[1]}"
             )
+            cell = replacement
         self.start = starts[cell]
 
     def create_item(self, name: str) -> Item:

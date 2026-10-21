@@ -1,3 +1,4 @@
+import random
 import types
 import unittest
 
@@ -67,16 +68,33 @@ class TestOtherStart(ZexionTestBase):
 
 
 class TestStartRoomNotOffered(unittest.TestCase):
-    def test_a_room_the_mode_does_not_offer_is_an_error(self) -> None:
+    def world(self, start_room: int) -> ZexionWorld:
         world = ZexionWorld.__new__(ZexionWorld)
         world.options = types.SimpleNamespace(
-            mode=types.SimpleNamespace(value=1), start_room=types.SimpleNamespace(value=0)
+            mode=types.SimpleNamespace(value=1), start_room=types.SimpleNamespace(value=start_room)
         )
+        world.random = random.Random(1)
+        world.player = 1
+        world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
+        return world
+
+    def test_a_room_the_mode_does_not_offer_is_replaced(self) -> None:
         saved = data.MODES["standard"]["starts"]
         data.MODES["standard"]["starts"] = [s for s in saved if tuple(s["cell"]) != START_CELLS[0]]
         try:
-            with self.assertRaises(OptionError):
+            world = self.world(0)
+            with self.assertLogs(level="WARNING"):
                 world.generate_early()
+            self.assertIn(world.start, data.MODES["standard"]["starts"])
+        finally:
+            data.MODES["standard"]["starts"] = saved
+
+    def test_a_mode_without_rooms_is_an_error(self) -> None:
+        saved = data.MODES["standard"]["starts"]
+        data.MODES["standard"]["starts"] = []
+        try:
+            with self.assertRaises(OptionError):
+                self.world(0).generate_early()
         finally:
             data.MODES["standard"]["starts"] = saved
 
