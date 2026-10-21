@@ -18,9 +18,9 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. The game's own coordinate display uses the same order, (x, y): standing next to Zexion in the core, the owner read x 32, y 45, and the save marks cell (32, 45) as explored and (45, 32) as never visited; (32, 45) also holds an object in the map data and (45, 32) none. An earlier reading, the save room at (23, 22) as x 22, y 23, does not fit (cell (22, 23) is empty in the map data) and is taken as misread. |
+| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. The game's own coordinate display uses the same order, (x, y): standing next to Zexion in the core, the owner read x 32, y 45, and the save marks cell (32, 45) as explored and (45, 32) as not explored, in a save whose owner had explored every room (ITEMS 150/150), so (45, 32) is not a room at all; and in the map's per-cell object table (`save-format.md`, "The continue point and the seed's start", read from the `MapData` file) (32, 45) holds an object and (45, 32) none. An earlier reading, the save room at (23, 22) as x 22, y 23, does not fit: cell (22, 23) holds no object, and the save point saved there at tile column 333, row 449 is cell x 23, y 22 by the tile formula in the same entry. It is taken as misread. |
 | Status | measured (the index; the display order, from one reading checked against the save's explored map) |
-| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85); the display order from the owner's reading at the core, checked against the explored map of the save made there |
+| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85); the display order from the owner's reading at the core, checked against the explored map of the save made there and against the object table in `MapData` |
 | Build | B1 |
 | Evidence | `lab/data/logic.asm` (local), 2026-10-20. The display order: `lab/work/slot25-after-ending.sav` (map grid), 2026-10-21. |
 
@@ -94,10 +94,21 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/data/e3c80.asm` (local), 2026-10-20. |
 
+## The randomizer menu's settings
+
+| Field | |
+|---|---|
+| Value | The randomizer's menu offers, on its first screen: a 16-character seed ("The same seed and options will generate the same item placements"); a mode, Easy, Standard, OHKO or Custom; Edit Options; Copy and Paste of "the seed and letters representing the settings"; and Starting Items and Item Pool, each a list of items with Energy, missile and bomb counts. Standard shows starting 3 Energy, 3 missiles, 0 bombs and a pool of 17, 122 and 12, the figures in slot 29's seed (`save-format.md`, "The randomizer section holds the seed's settings"), so slot 29 was made in Standard; slot 28's figures (5 + 35, 3 + 199, 0 + 18) belong to another mode, not identified. Edit Options holds, with the game's own explanations: Obscure Majors, Obscure Minors, Obscure Class (what the map reveals about items); Random Gun ("start the game with a random gun"); Bulk Missiles and Bulk Bombs ("all … in boxes of ten"); Box Compression ("missiles and bombs will be put into boxes more"); Hints (None, Vanilla, Vanilla+, Small, Normal, Large, Full Map, Revealed: what navigation rooms reveal); Gates (Off, Vanilla, Unlocked, Open: whether the hyperspace gates need the four keys, open one by one as they are visited, or are open); Starting Location (Random Start and others); X Crystals and X Blocks ("removes crystal blocks … destroyed by plasma", "cracked blocks … destroyed by missiles"); Abridged Finale ("victory is achieved when you first grab Zexion in the core"); Double Teleport (a second, random teleport target); Secret Shuffle ("allows an item to be placed in the 7th layer"); Guns First ("guns will be found before their upgrade that specifically requires them"); Show Obtainable; Colorizer; Safety (Light, Early, Normal, Off: how far Energy Tanks and equipment are taken into account for tough fights); Start Keys (0 to 4); and No Guarantee ("not every single item is guaranteed to be accessible"). Likely, from the descriptions alone: Safety is code 69's mode, and X Crystals and X Blocks are among the options code 68 reads. |
+| Status | measured (the names, the descriptions and Standard's figures, from the game's own text and menu); assumed (which setting is which byte, including Safety and code 69) |
+| Method | the menu as shown on screen by the owner; `SmallText.txt` and `LargeText.txt` in the game's English translation folder, read-only |
+| Build | B1 |
+| Evidence | Screenshots from the owner, 2026-10-21. |
+
 ## Not yet found
 
-- What options 10 to 44 are called in the game's menu, and what the two code-69 mode bits
-  mean. Their effect on the logic is decoded; their names are not.
+- Which of the menu's settings ("The randomizer menu's settings") is stored in which
+  option byte or mode bit. The settings' effects on the logic are decoded by code; which
+  setting each byte belongs to is not measured.
 - Found but not modeled in `tools/randocells.py`: Missile and Bomb Boxes adding 10 to a group's
   count (see "The evaluator works on a table of 64 counts").
 - An x64dbg read breakpoint during generation was tried and the game crashed with the
