@@ -53,6 +53,16 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Build | B1 installed; files written 2025-12-19 by an older build |
 | Evidence | 2026-10-20. Histogram of slot 3: 72,718 × `00`, 3,058 × `FF`, 8 × `30`, 8 × `02`, one each of `E8` and `03`. |
 
+## Clearing a slot in the game sets two bytes and keeps the rest
+
+| Field | |
+|---|---|
+| Value | When the owner cleared slots 27 to 30 in the game, each file kept its size (78,108 bytes) and its contents, including the randomizer section, except for two bytes: `0x9360` went from 0 to `0xFF`, the value the unused-slot template has there (above), and `0x9402` went from 1 to 0. `0x9402` is 1 in every randomizer save seen and 0 in the template and in the owner's normal-mode slot 1. So the game marks a slot empty with `0x9360 = 0xFF`; whether it reads anything else to decide is not known. `save_lab.py` does not know this marker: it lists a cleared slot as in use (its content is not the template), so its `install` refuses one, which errs on the safe side. In the same rewrite, every slot in use also changed its 16-bit value at `0x9362` (slot 2: `0xFFFF` → 2; slots 27 and 28 rose by 1 and 3; slots 29 and 30 kept theirs); what it holds is not known. Slot 1 did not change. |
+| Status | measured (the bytes that changed; `0x9360` matching the template); assumed (that `0x9360` is what the game reads as empty) |
+| Method | `save_lab.py diff` of each slot against the backup taken before the clear |
+| Build | B1 |
+| Evidence | `lab/backups/20261021-091726/` (before) against copies `lab/work/fresh-slot{2,27,28,29,30}.sav` and `lab/backups/20261021-101657/` (after), 2026-10-21. Slot 28's other differences come from the grant session that day. |
+
 ## A save is a header and two copies of one block
 
 | Field | |
