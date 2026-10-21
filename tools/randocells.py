@@ -1,7 +1,8 @@
 """Parse Zexion's RandoCells file and check which locations a seed can reach.
 
-The format and the rules below are from docs/re/randocells.md; read its statuses before
-relying on them. In short: 54 x 54 cells, row-major (index = y * 54 + x), 85 bytes each:
+The format is from docs/re/randocells.md; read its statuses before relying on them. The rules
+themselves live in worlds/zexion/logic.py, shared with the APWorld. In short: 54 x 54 cells,
+row-major (index = y * 54 + x), 85 bytes each:
 
     +0x00  4 x 8  requirement lists for leaving the cell to the N, S, W, E
     +0x20  4 x 8  the tier/count byte for each list entry
@@ -33,19 +34,21 @@ import struct
 import sys
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "worlds" / "zexion"))
 
-W = H = 54
+import logic  # noqa: E402  (worlds/zexion/logic.py: the rules, shared with the APWorld)
+from logic import DEFAULT_SETTINGS, FIRST_SPECIAL, H, Settings, W, combat_tier, derive  # noqa: E402, F401
+
 RECORD = 85
 LIST_OFFSET = {"N": 0x00, "S": 0x08, "W": 0x10, "E": 0x18}
 PASSAGE_OFFSET = {"S": 0x40, "W": 0x41, "E": 0x42, "N": 0x43}
 STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 ITEM_FLAG, ITEM_LIST, ITEM_TIERS = 0x44, 0x45, 0x4D
 WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
-FIRST_SPECIAL = 50
 
 # Where a randomizer save keeps its seed (docs/re/save-format.md).
 SAVE_CELLS, SAVE_ITEMS, LOCATIONS = 0x12814, 0x12A80, 154
@@ -57,7 +60,7 @@ ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
 OPTIONS_RVA = 0xCDDF4B  # one byte per option, indexed by a code-68 entry's tier byte
 MODE_BITS_RVA = (0xCDDF76, 0xCDDF75)  # code 69's mode = first * 2 + second
 
-Entry = tuple[int, int]  # (code, tier/count byte)
+Entry = logic.Entry
 
 
 @dataclass(frozen=True)
@@ -68,25 +71,15 @@ class Cell:
     item_needs: list[Entry]
 
 
-@dataclass(frozen=True)
-class Settings:
-    """The seed's randomizer settings that the logic reads."""
+def settings_from_save(data: bytes) -> Settings:
+    """The seed's settings, from a randomizer save's appended section."""
 
-    energy_total: int = 20  # starting Energy + Energy in the pool
-    mode69: int = 0  # 0 or 3: code 69 always passes; 1 or 2: it checks energy
-    options: bytes = field(default=bytes(64))
+    def at(rva: int) -> int:
+        return SAVE_CELLS + (rva - RANDO_BLOB_RVA)
 
-    @classmethod
-    def from_save(cls, data: bytes) -> Settings:
-        def at(rva: int) -> int:
-            return SAVE_CELLS + (rva - RANDO_BLOB_RVA)
-
-        start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
-        hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
-        return cls(start + pool, hi * 2 + lo, bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64]))
-
-
-DEFAULT_SETTINGS = Settings()
+    start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
+    hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
+    return Settings(start + pool, hi * 2 + lo, bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64]))
 
 
 @dataclass(frozen=True)
@@ -128,182 +121,18 @@ def parse(data: bytes) -> list[list[Cell]]:
     return grid
 
 
-def _f32(v: float) -> float:
-    return float(np.float32(v))
-
-
-def combat_tier(c: list[int], settings: Settings) -> int:
-    """Code 62, as the game derives it (RVA 0xE3530)."""
-    if c[12] or settings.mode69 == 3:  # Plasma Burst, or both mode bits set
-        return 4
-    energy = c[0] * 2 if c[25] else c[0]  # Magnus Armor doubles Energy
-    total = settings.energy_total
-    if total <= 0:
-        energy = 40
-    elif total != 20:  # energy is judged on a 20-point scale of the seed's total
-        energy = int(_f32(_f32(20.0 / total) * _f32(energy)))
-    missiles = c[36] * 10 + c[1]
-    damage = c[33] + c[13] + c[8]  # Power Chip, Power Cartridge, Power Core
-    gun = bool(c[3] or c[4])  # Machine Gun or Force Blaster
-
-    def armed(missile_floor: int) -> bool:
-        return (gun and damage >= 1) or bool(c[15]) or bool(c[7]) or missiles >= missile_floor
-
-    strong = (gun and damage >= 2) or c[7] or missiles >= 35
-    if energy > 10 and strong and c[24] + c[22] + c[19] >= 2:
-        return 4
-    if missiles >= 25 and c[18]:
-        return 4
-    if energy > 10 and armed(25):
-        return 3
-    if missiles >= 20 and c[18]:
-        return 3
-    if energy >= 8 and armed(25):
-        return 2
-    if missiles >= 15 and c[37] * 10 + c[2] >= 2:
-        return 2
-    if (energy >= 5 and armed(10)) or (energy >= 10 and c[60]) or missiles >= 15:
-        return 1
-    return 0
-
-
-def derive(c: list[int], settings: Settings) -> None:
-    """Fill in codes 50-63 from item counts, in place, as RVA 0xE3530 does."""
-    hyper = bool(c[26]) and not c[63]  # Hyper Jump stands in, unless listed itself
-    gh = c[24]
-    c[54] = int(bool((gh and c[22]) or hyper))
-    if gh:  # Gravity Harness counts as Jump Booster and G-Diffuser
-        c[22] = c[34] = 1
-    wj = c[19]
-    c[50] = int(bool(wj or gh or c[22] or hyper))
-    c[51] = int(bool((wj and (c[34] or gh)) or hyper))
-    c[52] = int(bool((wj and c[22]) or hyper))
-    c[53] = int(bool((wj and (c[34] or gh)) or c[22] or hyper))
-    for base, upgrade in ((5, 15), (6, 10), (7, 12), (3, 9), (4, 14)):
-        if not c[base]:  # a weapon upgrade needs its weapon
-            c[upgrade] = 0
-    if not c[16]:  # S-Blade and Rocket Slide need Slide Mod
-        c[17] = c[11] = 0
-    c[57] = int(bool(c[15] or c[6] or c[17] or c[12]))
-    c[61] = int(bool(c[12] or c[1]))
-    c[60] = int(bool(c[7] or c[6] or c[3] or c[5] or c[4]))
-    c[58] = int(bool(c[12] or c[4] or c[3] or c[5]))
-    c[59] = int(bool(c[3] or c[5] or c[12]))
-    c[62] = combat_tier(c, settings)
-    c[56] = 1
-    if hyper:
-        c[21] = c[22] = c[34] = c[19] = c[24] = 1
-    if c[18] and c[1] < 5:  # X-Missile needs five Missile Containers
-        c[18] = 0
-
-
-def _energy_69(have: Counter, settings: Settings) -> int:
-    """The energy figure code 69 compares (it reads the raw counts, not the derived ones)."""
-    energy = have[0] * 2 if have[25] else have[0]
-    total = settings.energy_total
-    if total <= 0:
-        return 40
-    if total != 20:
-        factor = _f32(20.0 / total)
-        if factor > 1.0:  # code 69 only scales up, unlike code 62
-            energy = int(_f32(_f32(energy) * factor))
-    return energy
-
-
-def _weapons_69(have: Counter) -> bool:
-    """Code 69, tier 16: a weapon good enough (RVA 0xE483E)."""
-    missiles = have[36] * 10 + have[1]
-    if have[5] and (have[15] or have[8] or missiles >= 20):
-        return True
-    if have[3] or have[7]:
-        return True
-    if have[4] and have[33] and have[13]:
-        return True
-    return missiles >= 40
-
-
-def cell_code(
-    code: int, tier: int, have: Counter, c: list[int], settings: Settings, where: Where
-) -> bool | None:
-    """Codes 64-69 (RVA 0xE3C80): True or False decides the whole check; None = not applicable."""
-    if 64 <= code <= 67:
-        index = where.y * W + where.x
-        if code == 64 and where.x > 0:
-            index -= 1  # west
-        elif code == 65 and where.x < W:
-            index += 1  # east (the game steps by index, so x = 53 wraps to the next row)
-        elif code == 66 and where.y > 0:
-            index -= W  # north
-        elif code == 67 and where.y < H - 1:
-            index += W  # south
-        else:
-            return None
-        return (index % W, index // W) in where.reached
-    if code == 68:  # an option, chosen by the tier byte
-        return True if tier > 10 and settings.options[tier] else None
-    if code == 69:
-        if settings.mode69 in (0, 3):
-            return True
-        if tier <= 10:
-            return None
-        energy = _energy_69(have, settings)
-        if tier == 11:
-            return energy > 9
-        if tier == 12:
-            return c[62] >= 1 and energy > 9
-        if tier == 13:
-            return c[62] >= 2 and energy > 9
-        if tier == 14:
-            return energy > (19 if settings.mode69 == 1 else 29)
-        if tier == 15:
-            return c[62] >= 1 and energy > 7
-        if tier == 16:
-            return energy > 4 and _weapons_69(have)
-        return None
-    return None
-
-
 def satisfied(
     entries: Sequence[Entry],
     have: Counter,
     settings: Settings = DEFAULT_SETTINGS,
     where: Where | None = None,
 ) -> bool:
-    """The game's check (RVA 0xE3C80)."""
-    c = [have[i] if i < FIRST_SPECIAL else 0 for i in range(64)]
-    for code, tier in entries:
-        if code < 64 and tier == 3:  # this item does not count here
-            c[code] = 0
-        if code == 55:  # "without the Gravity Harness"
-            c[24] = 0
-        if code == 26:  # Hyper Jump listed: it doesn't stand in for other items
-            c[63] = 1
-    derive(c, settings)
-
-    # First pass, in list order: codes 64-69 decide outright; a missing tier-4 entry fails.
-    for code, tier in entries:
-        if code >= 64:
-            if where is None:
-                raise ValueError("codes 64-69 need to know where the check happens")
-            decided = cell_code(code, tier, have, c, settings, where)
-            if decided is not None:
-                return decided
-        elif tier == 4 and c[code] == 0:
-            return False
-
-    group = []
-    for code, tier in entries:
-        if code >= 64:
-            continue
-        if tier in (1, 4) and c[code] >= 1:
-            return True
-        if 11 <= tier <= 40 and c[code] >= tier - 10:
-            return True
-        if tier == 2:
-            group.append((code, 1))
-        elif tier > 40:
-            group.append((code, tier - 40))
-    return bool(group) and all(c[k] >= n for k, n in group)
+    """The game's check (RVA 0xE3C80); see worlds/zexion/logic.py."""
+    if where is None:
+        return logic.satisfied(entries, have, settings)
+    return logic.satisfied(
+        entries, have, settings, (where.x, where.y), lambda cell: cell in where.reached
+    )
 
 
 def reachable_cells(
@@ -428,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     data = args.save.read_bytes()
     locations, items = seed_from_save(data)
     initial = inventory_from_save(data) if args.fresh else Counter()
-    settings = Settings.from_save(data)
+    settings = settings_from_save(data)
     if args.start:
         start = tuple(int(v) for v in args.start.split(","))
     elif args.fresh and start_from_save(data):
