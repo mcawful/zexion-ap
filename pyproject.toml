@@ -9,12 +9,12 @@ requires-python = ">=3.11,<3.14"
 line-length = 100
 target-version = "py311"
 extend-exclude = [".ap", "lab", "private"]
-src = ["tools", ".claude/hooks"]
+src = ["tools", "client", ".claude/hooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tools", ".claude/hooks"]
+pythonpath = ["tools", "client", ".claude/hooks"]
 addopts = "-q"

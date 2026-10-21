@@ -1,8 +1,9 @@
 # Memory
 
 Where the running game keeps the state the client needs. Addresses are module-relative
-(`Zexion.exe+offset`) and good for build B1 only; they become byte patterns before any client
-code relies on them (see `/find-address`). Format per `docs/re/README.md`.
+(`Zexion.exe+offset`) and good for build B1 only; code finds them by the byte patterns in
+"Byte patterns" below (`client/patterns.py`), never by these numbers. Format per
+`docs/re/README.md`.
 
 ## Save data lives in Zexion.exe's static data
 
@@ -18,7 +19,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | `Zexion.exe+0x3D0168` counts pickups in the current session: it went 0 → 1 at the first pickup in slot 30 and 1 → 2 at the second, at the moment of collection (within 0.1 s, the sampling interval), with no pause or save involved. Its neighbors read as a record of 32-bit fields. It is the pause screen's `ITEMS: x/150` count (it read 1 with one pickup made, and a granted item did not change it); it is restored from the save on load. It says *that* something was collected, not *which* location. |
+| Value | `Zexion.exe+0x3D0168` counts pickups in the current session: it went 0 → 1 at the first pickup in slot 30 and 1 → 2 at the second, at the moment of collection (within 0.1 s, the sampling interval), with no pause or save involved. Its neighbors read as a record of 32-bit fields. It is a 16-bit value (the code reaching it uses word-sized `dec`, `movsx` and `mov`), the pause screen's `ITEMS: x/150` count (it read 1 with one pickup made, and a granted item did not change it). The save keeps it as a 16-bit value at file `0x935A`: live and saved agreed (1) with slot 28 loaded, and the owner's far-along slot 1 holds 150, matching ITEMS 150/150. It says *that* something was collected, not *which* location. |
 | Status | measured |
 | Method | `tools/memscan.py snap --module-only` twice while standing still, then a 10 Hz recorder over the module logging bytes that had been stable; the first pickup by snapshots, the second by the recorder |
 | Build | B1 |
@@ -68,7 +69,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | The save's major-item list and its length are at a fixed distance from live memory: live = file + `0x3C6E4D`. The fields around them are not (play time, file `0x9356`, is live at `+0x3D0164`), so the save writes this region field by field. At the Gravity Harness pickup, live `+0x3D0180` (file `0x9333`, the first list entry) went 0 → `0xC7` and `+0x3D019A` (file `0x934D`, the list length) went 0 → 1, in the same 0.1 s as the pickup counter at `+0x3D0168` (file `0x931B`). A hardware write breakpoint on slot 28's array entry at file `0x0129` in the slot array never fired during a save, because that byte isn't what records the item (`save-format.md`). Appending a code (`0xC0`) to the live list and raising the length to 2 changed nothing in the inventory, so the list does not grant items. |
+| Value | The save's major-item list and its length are at a fixed distance from live memory: live = file + `0x3C6E4D`. The fields around them are not (play time, file `0x9356`, is live at `+0x3D0164`), so the save writes this region field by field. At the Gravity Harness pickup, live `+0x3D0180` (file `0x9333`, the first list entry) went 0 → `0xC7` and `+0x3D019A` (file `0x934D`, the list length) went 0 → 1, in the same 0.1 s as the pickup counter at `+0x3D0168` (saved at file `0x935A`, see the counter's own section). A hardware write breakpoint on slot 28's array entry at file `0x0129` in the slot array never fired during a save, because that byte isn't what records the item (`save-format.md`). Appending a code (`0xC0`) to the live list and raising the length to 2 changed nothing in the inventory, so the list does not grant items. |
 | Status | measured |
 | Method | 10 Hz module recorder; x64dbg hardware write breakpoint at `Zexion.exe+0x32A3FF` during a save; save comparison |
 | Build | B1 |
@@ -93,3 +94,23 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Method | bytes in `lab/mem/p3-record.log` that changed within 0.3 s of the pickup and later returned to their original value |
 | Build | B1 |
 | Evidence | `lab/mem/p3-record.log`, 2026-10-20. |
+
+## The loaded save's randomizer section is at +0xCDD6D0
+
+| Field | |
+|---|---|
+| Value | When a save loads, the game copies its randomizer section, 0x908 (2,312) bytes from file offset `0x12814` (location list, 4 zero bytes, item table at `+0x26C`, settings), to `Zexion.exe+0xCDD6D0`; the generator and the settings code read it there. The per-slot copies are at `+0x347830 + (slot − 1) × 0x908` (slot 30's is the `+0x357E18` mirror above). With slot 28 loaded, all 2,312 bytes at `+0xCDD6D0` equaled `Save Game 28.sav` from `0x12814`. Whether it follows a switch to another save without restarting the game is not yet shown. |
+| Status | measured (the copy and its size from the code; the contents live for one loaded save) |
+| Method | disassembly of RVA `0x9C630` (copy of `0x908` bytes into `0xCDD6D0`); live comparison with `client/game.py` |
+| Build | B1 |
+| Evidence | `lab/data/all.asm` (local); `lab/work/slot28-live-check.sav`, 2026-10-21. |
+
+## Byte patterns
+
+| Field | |
+|---|---|
+| Value | Five targets, each found by two or three patterns from different code; `client/game.py` requires every pattern to match exactly once in `.text` (overlapping matches counted) and all to lead to the same address, or it refuses to run. Only instruction-pointer-relative references are used. Before scanning, it identifies the build from the PE header (TimeDateStamp `0x6A3F82DE`, SizeOfImage `0x1204000` on B1) and refuses builds not listed in `client/patterns.py`, since a patch could keep the code and change what the bytes mean. The randomizer section is validated before use (154 distinct sorted cells on the map, a zero gap, item IDs 0 to 50). On B1: **map_grid** → `+0x3E469D` (from instructions at RVA `0x16E30C`, 33 fixed bytes, and `0x1FD3E7`, 25); **inventory** → `+0x3ED47E` (from `0x1E36A9`, which writes item 2's byte, and `0x1E5BA1`, which reads a pointer field of the player state, plus `0x71E`); **pickup_counter** → `+0x3D0168` (from `0x1216F` and `0x167DB6`); **rando_blob** → `+0xCDD6D0` (from `0xEB6EC` and `0xECABD`, which take its start, and `0xA0ECF`, which reads a settings field `0x6C4` into it, so a layout change inside it makes them disagree); **slot_array** → `+0x230600` (from `0x1741C4` and `0x176140`). The pattern bytes, with wildcards over every relative or image-base address, are in `client/patterns.py`; `tools/make_pattern.py` regenerates candidates for a new build and `tools/check_patterns.py` checks them. |
+| Status | measured (offline against the B1 exe, and live: every pattern matched once in the running game and the values read through them equal the loaded save byte for byte) |
+| Method | `tools/make_pattern.py` on a copy of the exe (references found by disassembling each function from the unwind table; windows grown instruction by instruction until unique, at least 12 fixed bytes); `tools/check_patterns.py lab/data/6d8a94bd4d64/Zexion.exe` |
+| Build | B1 |
+| Evidence | 2026-10-21. `check_patterns.py` printed "matches B1" for all five targets offline; `check_patterns.py --live` with slot 28 loaded resolved the same addresses, and the inventory (51 bytes), map grid (2,916), randomizer section (2,312) and slot 28's block in the slot array (37,896) were identical to `Save Game 28.sav` (copy `lab/work/slot28-live-check.sav`); the pickup counter read 1, as saved at `0x935A`. That live run predates the second and third randomizer-section patterns, the build check and the section validation, which so far are checked offline only. |

@@ -7,7 +7,8 @@ is a native x64 exe on SDL2 and FMOD, with mod folders only for sprites and tran
 ([`docs/re/builds.md`](docs/re/builds.md)), so everything here comes from reverse engineering.
 The rules about evidence below exist because of that.
 
-**Status:** Phase 0, the go/no-go spike. There is no APWorld and no client yet.
+**Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld and no AP client
+yet; `client/` holds the module that finds and accesses game state by byte pattern.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -45,6 +46,9 @@ Reverse-engineering tools. These are the only code allowed to open the game or s
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
+.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for an address
+.venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
+.venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
 ```
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
@@ -56,7 +60,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
 ## Layout
 
 - `worlds/zexion/`: the APWorld. Not created yet.
-- `client/`: the AP client (`CommonClient` + `pymem`). Not created yet.
+- `client/`: will hold the AP client (`CommonClient` + `pymem`). For now: `patterns.py` (byte
+  patterns for each piece of game state) and `game.py` (attach, locate by pattern, read and
+  write with checks).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

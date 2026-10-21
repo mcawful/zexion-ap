@@ -51,6 +51,10 @@ See `docs/re/memory.md`.
 
 ## 4. Turn it into a pattern
 
+`tools/make_pattern.py EXE RVA [--size N]` does the steps below on a copy of the exe and prints
+the best candidates; add the chosen ones to `client/patterns.py` (two per target, from
+different code) and check them with `tools/check_patterns.py EXE` and then `--live`. By hand:
+
 Disassemble the exe file read-only with `capstone` (no debugger needed) and find instructions
 that reference the static address: x64 code uses RIP-relative operands, so look for
 `[rip + disp32]` where `next_instruction + disp32` equals the address.

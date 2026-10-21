@@ -137,8 +137,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. The pause screen's `ITEMS` counter itself is `0x931B` (live `Zexion.exe+0x3D0168`, `memory.md`); how the two relate is not known. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
-| Status | measured (`0x9321`); assumed (`0x935A`) |
+| Value | `0x935A` (16-bit) is the pause screen's `ITEMS` counter, the number of locations collected: 0 with no pickup, 1 after one, 2 after two, 150 in the owner's far-along slot 1 (ITEMS 150/150), and equal to the live counter (`memory.md`). `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
+| Status | measured |
 | Method | fork test and earlier saves |
 | Build | B1 |
 | Evidence | as above. |
