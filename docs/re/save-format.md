@@ -167,11 +167,11 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | The save keeps current energy as a 16-bit value at `0x9350` and current missiles at `0x9352`; loading a save copies them into the player state (`memory.md`, "Granting each kind of item, and what keeps it"). The maximums are not read from the save: loading recomputes max energy (Energy Tanks × 16), max missiles and max bombs from the inventory counts. Seen: slot 28 before the grant session held 80 and 2; saved after it, with 6 tanks (96/96) and 4 missiles, it held 96 and 4. Where current bombs are saved was not checked. |
-| Status | measured |
-| Method | disassembly of the load routine (RVA `0x9C630`: `0x9DA4D` to `0x9DA68` read file `0x9350` and `0x9352`, `0x9E02C` to `0x9E064` compute the maximums); `save_lab.py diff` |
+| Value | The save keeps current energy as a 16-bit value at `0x9350` and current missiles at `0x9352`; loading a save copies them into the player state (`memory.md`, "Granting each kind of item, and what keeps it"). The maximums are not read from the save: loading recomputes max energy (Energy Tanks × 16), max missiles and max bombs from the inventory counts. Seen: slot 28 before the grant session held 80 and 2; saved after it, with 6 tanks (96/96) and 4 missiles, it held 96 and 4. Where current bombs are saved was not checked. **In a fresh save** both are full: current energy is Energy Tanks × 16 and current missiles Missile Containers + 10 × Missile Boxes. Easy holds 80 and 3 (5 tanks, 3 containers), Standard 48 and 3 (3 tanks), OHKO 0 and 3 (no tank); the 16-bit value at `0x9354` is 0 in all three. `client/save_patch.py` writes them by that rule: patching each of the three fresh saves with its own seed, starting items and start left every byte as it was. |
+| Status | measured (the load routine; slot 28 over the grant session; three fresh saves) |
+| Method | disassembly of the load routine (RVA `0x9C630`: `0x9DA4D` to `0x9DA68` read file `0x9350` and `0x9352`, `0x9E02C` to `0x9E064` compute the maximums); `save_lab.py diff`; reading the three fresh saves and patching them unchanged |
 | Build | B1 |
-| Evidence | `lab/backups/20261021-091726/Save Game 28.sav` against `lab/work/slot28-after-grants.sav`, 2026-10-21. |
+| Evidence | `lab/backups/20261021-091726/Save Game 28.sav` against `lab/work/slot28-after-grants.sav`; the fresh `lab/backups/20261020-212018/Save Game 28.sav` (Easy) and `Save Game 29.sav` (Standard) and `lab/work/slot5-ohko-fresh.sav` (OHKO), 2026-10-21. |
 
 ## The item table is indexed in location-list order
 
@@ -207,11 +207,11 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | The player state holds one byte per code, at file `0x92F3 + code` (first block): codes 0 to 49 are item IDs from `ItemNames.txt`, so this is the inventory (the list runs to 50, the Energy Shield; whether item 50 uses the byte the logic treats as code 50 is not known). Energy Tank (0), Missile Container (1), Mega Bomb (2) and the Missile Box (36) are counts; the upgrades are 0 or 1; Scrap metal (46) counts pickups (`0x9321`). Codes 50 to 63 are 0 in every save seen. This replaces an earlier reading of `0x9300` as "ability flags, flag = item ID − 13": `0x9300` is just item 13's byte. Seen: slot 28's fresh seed starts with 5 Energy, 3 Missile Containers, the Machine Gun (3), Power Cartridge (13) and Navcore (32), and the Gravity Harness pickup set item 24; slot 29's fresh seed starts with 3 Energy, 3 Missile Containers and the Force Blaster (4), so the starting weapon varies by seed; slot 1 owns nearly everything. The game fills the logic's count table from these bytes (RVA `0x16DB41` reads the live player state at offset `0x108E + code`). |
+| Value | The player state holds one byte per code, at file `0x92F3 + code` (first block): codes 0 to 49 are item IDs from `ItemNames.txt`, so this is the inventory (the list runs to 50, the Energy Shield; whether item 50 uses the byte the logic treats as code 50 is not known). Energy Tank (0), Missile Container (1), Mega Bomb (2) and the Missile Box (36) are counts; the upgrades are 0 or 1; Scrap metal (46) counts pickups (`0x9321`). Codes 50 to 63 are 0 in every save seen. This replaces an earlier reading of `0x9300` as "ability flags, flag = item ID − 13": `0x9300` is just item 13's byte. Seen: slot 28's fresh seed starts with 5 Energy, 3 Missile Containers, the Machine Gun (3), Power Cartridge (13) and Navcore (32), and the Gravity Harness pickup set item 24; slot 29's fresh seed starts with 3 Energy, 3 Missile Containers and the Force Blaster (4), so the starting weapon varies by seed; slot 1 owns nearly everything. The keys (27 to 30) stay at 1 once used: slot 1's copy in slot 25 held all four before the owner went into the core, after the grab, and after the ending (`memory.md`, "The goal: Zexion's inventory byte at the grab"), so getting through the key gates does not take them away. That is the normal game; whether the randomizer's Gates settings behave the same was not checked. The game fills the logic's count table from these bytes (RVA `0x16DB41` reads the live player state at offset `0x108E + code`). |
 | Status | measured (layout, from the game's code and from saves; item 24's byte seen set by a pickup); working in game (items 16 and 17 granted live through it, see `memory.md`) |
 | Method | disassembly of RVA `0x16DB41`; save comparison; live grants (`memory.md`) |
 | Build | B1 |
-| Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |
+| Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20; the keys: `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav` and `slot25-after-ending.sav`, 2026-10-21. |
 
 ## The randomizer section holds the seed's settings
 

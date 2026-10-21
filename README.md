@@ -5,8 +5,9 @@
 
 **Not usable yet.** The go/no-go phase is done: items can be placed through the save, collected
 locations detected and items granted while playing, and the game's randomizer logic is
-decoded. Building the APWorld and the client has started; neither exists yet. What has been
-learned is recorded, with its evidence, in [`docs/re/`](docs/re/README.md).
+decoded. The client is written and has run against a local Archipelago server, not yet with
+the game; the APWorld is not published yet. What has been learned is recorded, with its
+evidence, in [`docs/re/`](docs/re/README.md).
 
 This is an unofficial fan project, not affiliated with Gallant Leaf. It contains no game files;
 you need your own copy of Zexion.
