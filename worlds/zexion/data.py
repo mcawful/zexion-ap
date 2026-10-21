@@ -468,7 +468,7 @@ REGION_CELLS = {
 }
 
 # (from region, to region) -> ways through: None (always open) or (entries, cell),
-# where cell is set when the entries look at neighboring cells (codes 64-67).
+# where cell is set when the entries hold a code 64-69, which is checked at a cell.
 ENTRANCES = {
     (0, 1): [(((50, 1),), None)],
     (0, 37): [(((50, 1), (55, 1), (21, 1)), None)],

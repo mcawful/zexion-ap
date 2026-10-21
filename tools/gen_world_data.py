@@ -227,7 +227,7 @@ def render(d: dict, source: str) -> str:
         "}",
         "",
         "# (from region, to region) -> ways through: None (always open) or (entries, cell),",
-        "# where cell is set when the entries look at neighboring cells (codes 64-67).",
+        "# where cell is set when the entries hold a code 64-69, which is checked at a cell.",
         "ENTRANCES = {",
     ]
     for key, ways in sorted(d["entrances"].items()):

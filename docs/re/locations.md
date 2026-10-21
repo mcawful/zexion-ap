@@ -46,6 +46,26 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Build | B1 |
 | Evidence | Generator output, 2026-10-21. |
 
+## One-way pockets: what gets a player out is not recorded
+
+| Field | |
+|---|---|
+| Value | Neither the world nor the game's own flood fill checks that a player can get back from where they go. Some passages lead into pockets whose way out needs an item: from the default start (13, 16), the open passage east from (22, 26) into (23, 26) has an empty requirement list on the way back, and the pocket's only other exit, past location "Map 27,24", needs Slide Mod. Collecting that location without Slide Mod would cut the player off from the start's other early locations. With only the starting items, 3 to 204 reachable cells per start are such pockets; with every item, 23 cells still have no way back (for example (21, 8) and (24, 6)). The game's own seeds have the same pockets, which suggests the game provides an escape: the owner has teleported back to the start once ("The continue point and the seed's start" in `save-format.md`), but where that teleport can be used, and whether a death returns the player to a save room outside a pocket, is not recorded. If the teleport works anywhere, the pockets are not soft-locks and the logic needs no change: it adds a way back to a region that is already reachable. If not, they are real soft-locks. |
+| Status | measured (the pockets, from the data); open (the escape) |
+| Method | the `logic-reviewer` subagent's route search over `worlds/zexion/data.py` and the cell-by-cell flood fill |
+| Build | B1 |
+| Evidence | 2026-10-21. |
+
+## What the world needs from the client
+
+- **Items lost on death.** A grant the game has not saved is gone after a death
+  (`memory.md`, "Granting each kind of item, and what keeps it"). The world treats every item
+  as permanent once received, so the client must give items again after a reload.
+- **The starting inventory and settings.** The world's logic assumes the default preset's
+  starting inventory and settings (`worlds/zexion/data.py`, `START_INVENTORY`, `ENERGY_TOTAL`,
+  `MODE69`, `OPTIONS`). The save the client prepares must hold exactly those, or sphere 0 is
+  wrong.
+
 ## Not yet decided
 
 - **The goal.** The world's goal is a placeholder, holding all four keys, which gate nothing in
