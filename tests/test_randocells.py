@@ -152,3 +152,15 @@ def test_combat_tier_scales_energy_to_the_pool() -> None:
     have[0], have[3], have[13] = 12, 1, 1  # 12 Energy, Machine Gun, Power Cartridge
     assert rc.combat_tier(have, rc.Settings(energy_total=20)) == 3  # 12 > 10
     assert rc.combat_tier(have, rc.Settings(energy_total=40)) == 1  # 12 x 20 / 40 = 6
+
+
+def test_starts_come_from_the_start_record_and_the_second_target() -> None:
+    import struct
+
+    save = bytearray(0x13200)
+    struct.pack_into("<3H", save, rc.START_HEADER, 6, 191, 329)  # cell (13, 16)
+    struct.pack_into("<3H", save, rc.SECOND_START, 3, 151, 464)  # cell (10, 23)
+    assert rc.start_from_save(bytes(save)) == (13, 16)
+    assert rc.starts_from_save(bytes(save)) == [(13, 16)]
+    save[rc.OPTIONS_IN_SAVE + rc.DOUBLE_TELEPORT] = 1
+    assert rc.starts_from_save(bytes(save)) == [(13, 16), (10, 23)]

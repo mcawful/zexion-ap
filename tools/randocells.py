@@ -19,7 +19,7 @@ item does not count here; 4 = required; 11-40 = enough alone with (value - 10) o
 to a group's count.
 
     randocells.py SAVE.sav --fresh            a save made at the start of its seed
-    randocells.py SAVE.sav --start X,Y        any randomizer save, from a given cell
+    randocells.py SAVE.sav --start X,Y        any randomizer save, from one given cell
         [--cells FILE]
 
 X, Y are in the order the game displays them (docs/re/randocells.md, "Grid order").
@@ -170,10 +170,11 @@ def satisfied(
 
 
 def reachable_cells(
-    grid, have: Counter, settings: Settings, start: tuple[int, int]
+    grid, have: Counter, settings: Settings, start: tuple[int, int] | list[tuple[int, int]]
 ) -> set[tuple[int, int]]:
-    """Flood fill from ``start``, repeated until stable (codes 64-67 look at reached cells)."""
-    seen: set[tuple[int, int]] = {start}
+    """Flood fill from ``start`` (one cell, or a list of them), repeated until stable (codes
+    64-67 look at reached cells)."""
+    seen: set[tuple[int, int]] = set(start) if isinstance(start, list) else {start}
     while True:
         before = len(seen)
         todo = list(seen)
@@ -221,11 +222,12 @@ def sweep(
     grid,
     locations,
     items,
-    start: tuple[int, int],
+    start: tuple[int, int] | list[tuple[int, int]],
     initial=None,
     settings: Settings = DEFAULT_SETTINGS,
 ) -> set[int]:
-    """Collect everything reachable, repeating until nothing new opens up."""
+    """Collect everything reachable from ``start`` (one cell or a list), repeating until
+    nothing new opens up."""
     have: Counter = Counter(initial or {})
     got: set[int] = set()
     while True:
@@ -261,14 +263,38 @@ def inventory_from_save(data: bytes) -> Counter:
     )
 
 
-def start_from_save(data: bytes) -> tuple[int, int] | None:
-    """The start cell of a save made at the start of a seed: its only revealed map cell.
+START_HEADER = 0x12B24  # candidate index - 1, tile column, tile row (16-bit each)
 
-    A new randomizer game begins in a save room, chosen per seed.
+
+def start_from_save(data: bytes) -> tuple[int, int] | None:
+    """The seed's start cell, from the start record at the head of the randomizer section.
+
+    The record gives the save point's position in tiles; a map cell is 14 tiles along x and
+    20 along y (docs/re/save-format.md, "The continue point and the seed's start"). None when
+    the file is too short to hold the record (a normal-mode save, for instance).
     """
-    grid = data[MAP_GRID : MAP_GRID + W * H]
-    cells = [(k % W, k // W) for k, v in enumerate(grid) if v]
-    return cells[0] if len(cells) == 1 else None
+    if len(data) < START_HEADER + 6:
+        return None
+    _, column, row = struct.unpack_from("<3H", data, START_HEADER)
+    return (column // 14, row // 20)
+
+
+SECOND_START = 0x12EE0  # the second teleport target, in the start record's form
+DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
+OPTIONS_IN_SAVE = 0x1308F
+
+
+def starts_from_save(data: bytes) -> list[tuple[int, int]]:
+    """The seed's start, plus its second teleport target when Double Teleport is on; empty for
+    a file too short to be a randomizer save."""
+    start = start_from_save(data)
+    if start is None or len(data) <= OPTIONS_IN_SAVE + DOUBLE_TELEPORT:
+        return []
+    out = [start]
+    if data[OPTIONS_IN_SAVE + DOUBLE_TELEPORT]:
+        _, column, row = struct.unpack_from("<3H", data, SECOND_START)
+        out.append((column // 14, row // 20))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,7 +309,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fresh",
         action="store_true",
-        help="the save was made at the start of the seed: use its inventory and start cell",
+        help=(
+            "the save was made at the start of the seed: use its inventory, its start record "
+            "and, with Double Teleport, its second teleport target"
+        ),
     )
     args = parser.parse_args(argv)
     cells_path = find_randocells(args.cells)
@@ -294,8 +323,8 @@ def main(argv: list[str] | None = None) -> int:
     settings = settings_from_save(data)
     if args.start:
         start = tuple(int(v) for v in args.start.split(","))
-    elif args.fresh and start_from_save(data):
-        start = start_from_save(data)
+    elif args.fresh and starts_from_save(data):
+        start = starts_from_save(data)
     else:
         print("give --start X,Y, or --fresh with a save made at the start of the seed")
         return 1
