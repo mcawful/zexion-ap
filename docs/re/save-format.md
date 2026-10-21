@@ -87,8 +87,28 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | A copy of slot 28 with all 154 bytes at `0x12A80` set to 46 (Scrap metal), and nothing else changed, loaded without complaint. The first pickup gave Scrap metal. After the game saved over it, the whole appended section (`0x12812` to the end) was byte-for-byte what was installed, so the game neither rejected the change, nor checks a checksum over that section, nor regenerates the table from the seed when it saves. **Not yet shown:** that the pickup came from a location that held something other than Scrap originally (20 of slot 28's 154 entries were already 46). A control run on the unpatched slot 28 is pending. |
-| Status | working in game (patched save loads, is kept on save, first pickup gave Scrap); measured (section unchanged after the game's save) |
-| Method | `save_lab.py patch` and `install` into slot 30; one pickup by the owner; `save_lab.py diff` and a parsing script over the backup taken after the game saved |
+| Value | A copy of slot 28 with all 154 bytes at `0x12A80` set to 46 (Scrap metal), and nothing else changed, loaded without complaint. The first pickup gave Scrap metal. After the game saved over it, the whole appended section (`0x12812` to the end) was byte-for-byte what was installed, so the game neither rejected the change, nor checks a checksum over that section, nor regenerates the table from the seed when it saves. Control: the same first pickup in the unpatched slot 28 gave a normal item, not Scrap. So the game takes each location's item from this table. That the table is indexed in the order of the cell list at `0x12814` is still assumed: only one location has been tried. |
+| Status | working in game (one location: patched item granted, table kept on save, control differs) |
+| Method | `save_lab.py patch` and `install` into slot 30; the same first pickup by the owner in slot 30 (patched) and slot 28 (unpatched); a parsing script over the backups taken after each save |
 | Build | B1 |
-| Evidence | Spec `lab/work/all-scrap.json`, installed 2026-10-20 21:24 (`lab/installs.log`, sha256 `50cdac33…`); slot 30 after play: `lab/backups/20261020-213055/`. |
+| Evidence | 2026-10-20. Spec `lab/work/all-scrap.json`, installed 21:24 (`lab/installs.log`, sha256 `50cdac33…`); slot 30 after play: `lab/backups/20261020-213055/`; slot 28 after the control pickup: `lab/backups/20261020-213828/`. |
+
+## The second block is a copy of the first
+
+| Field | |
+|---|---|
+| Value | In a randomizer save made and saved at once (slot 28 before any pickup), the second block has a single nonzero byte. After the next save it matches the first block in all but 14 of 37,896 bytes. So the second block looks like a copy written on later saves (a backup, perhaps); which one the game reads is not known. |
+| Status | measured |
+| Method | byte comparison of the two blocks in backup copies |
+| Build | B1 |
+| Evidence | Slot 28 in `lab/backups/20261020-212018/` (before) and `lab/backups/20261020-213828/` (after), 2026-10-20. |
+
+## Candidates for "has item" flags
+
+| Field | |
+|---|---|
+| Value | After the same single pickup from the same start, the save that received a normal item (slot 28) and the one that received Scrap (slot 30) differ in the first block at 42 bytes. Most are map exploration and stats (slot 28 explored a little further). Two bytes went 0 → 1 only where the normal item was received: `0x0129` and `0x39A7`. Either may be the flag for owning that item; neither is confirmed, and which item it was is not yet recorded. |
+| Status | assumed (candidates only) |
+| Method | byte comparison of the two saves after their pickup, against the save before it |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-213828/Save Game 28.sav` against `lab/backups/20261020-213055/Save Game 30.sav` and `lab/backups/20261020-212018/Save Game 28.sav`, 2026-10-20. |
