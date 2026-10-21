@@ -184,6 +184,20 @@ def test_a_failed_write_says_its_state_is_unknown() -> None:
         g.set_item(17, 0, 1)
 
 
+def test_a_read_back_that_differs_is_its_own_error() -> None:
+    g = fake_game()
+    write = g.pm.write_bytes
+
+    def game_puts_it_back(address: int, data: bytes, size: int) -> None:
+        write(address, data, size)
+        g.pm.memory[address] = 7
+
+    g.pm.write_bytes = game_puts_it_back
+    with pytest.raises(game.ReadBackMismatch) as info:
+        g.set_item(17, expected=0, value=1)
+    assert info.value.read_back == bytes([7])
+
+
 def test_an_exited_game_is_reported_as_not_running() -> None:
     g = fake_game()
     g.alive = False

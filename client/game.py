@@ -12,8 +12,9 @@ naming the address, because it means something is wrong with what was located.
 
 Item writes are compare-and-set (``set_item``): the caller says what it expects the byte to
 hold, the module re-reads it just before writing and refuses if it differs, and reads the
-write back. That cannot see a later reload of the inventory (an area load, a death, loading
-a save): the delivery layer must confirm items stuck by other means.
+write back (``ReadBackMismatch`` if the game changed it straight away). That cannot see a
+later reload of the inventory (an area load, a death, loading a save): the delivery layer must
+confirm items stuck by other means.
 
 Not handled yet: whether the game is in play, loading, paused or dead. A caller must not
 write while it is not in play; there is no check for it here yet.
@@ -59,6 +60,16 @@ class UnknownBuild(GameError):
 
 class WriteStateUnknown(GameError):
     """A write failed part-way: the byte may or may not have changed. Re-read before acting."""
+
+
+class ReadBackMismatch(GameError):
+    """The write was made, but reading it back gave something else: the game changed it
+    straight after (a reload, a clamp), or the write did not take. ``read_back`` holds what
+    was read."""
+
+    def __init__(self, message: str, read_back: bytes):
+        super().__init__(message)
+        self.read_back = read_back
 
 
 # --- pure helpers (tested without the game) ----------------------------------------------
@@ -254,7 +265,11 @@ class Game:
         except Exception as exc:
             raise WriteStateUnknown(f"write at {address:#x} could not be read back: {exc}") from exc
         if back != data:
-            raise GameError(f"read-back of {target}+{offset:#x} did not match what was written")
+            raise ReadBackMismatch(
+                f"read-back of {target}+{offset:#x} gave {back.hex()}, not the {data.hex()} "
+                "written",
+                back,
+            )
 
     # --- state ------------------------------------------------------------------------
 

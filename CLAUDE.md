@@ -49,7 +49,13 @@ Reverse-engineering tools. These are the only code allowed to open the game or s
 .venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for an address
 .venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
 .venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
+.venv/Scripts/python tools/grant.py show                # the live inventory by name
+.venv/Scripts/python tools/grant.py set ITEM VALUE --expect N --yes   # grant by hand; ask first
+.venv/Scripts/python tools/grant.py watch               # print inventory changes as they happen
 ```
+
+`grant.py set` changes the running game: ask before each one, and only while the person playing
+is standing still in play. It logs every attempt to `lab/grants.jsonl` before writing.
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
