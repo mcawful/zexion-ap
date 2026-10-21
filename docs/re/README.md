@@ -11,8 +11,9 @@ relies on a fact cites the page and heading it comes from.
 - [`memory.md`](memory.md): where the running game keeps its state.
 - [`randocells.md`](randocells.md): the randomizer's logic file.
 
-Planned, and created when their first fact is recorded: `items.md` (item IDs and what they grant), `locations.md` (every location and what reaching it takes; the
-`logic-reviewer` subagent checks the APWorld against it).
+Planned, and created when their first fact is recorded: `items.md` (item IDs and what they
+grant), `locations.md` (every location and what reaching it takes; the `logic-reviewer`
+subagent checks the APWorld against it).
 
 ## How a fact is recorded
 

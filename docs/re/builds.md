@@ -33,5 +33,6 @@ Measured 2026-10-20 with `tools/build_id.py`, on the Steam install that was curr
 
 ## Older builds
 
-Save files on the test machine were written before B1: slots 3 to 30 on 2025-12-19, slots 1 and
-2 on 2026-06-13. Which builds wrote them is not known.
+Before the experiments of 2026-10-20, the test machine's save files were written by older
+builds: slots 3 to 30 on 2025-12-19, slots 1 and 2 on 2026-06-13. Which builds is not known.
+Slots 27 to 30 have since held lab saves written by B1.

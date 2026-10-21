@@ -37,8 +37,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | 75,794 bytes for slot 1 and for every unused slot; 78,108 bytes (2,314 more) for slot 2. That slot 2 is a randomizer save, and that the extra bytes hold its item placement, is an assumption from the owner's account and has not been checked. |
-| Status | measured (sizes); assumed (what slot 2 is) |
+| Value | As of 2026-10-20, before the experiments: 75,794 bytes for slot 1 and for every unused slot; 78,108 bytes (2,314 more) for slot 2. Slot 2 is a randomizer save and the extra bytes hold its seed (see "Randomizer data is appended after the two blocks" and the sections after it). |
+| Status | measured |
 | Method | file inspection |
 | Build | B1 installed; files written by older builds |
 | Evidence | `ls -la` and `save_lab.py slots`, 2026-10-20. |
@@ -47,7 +47,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | Slots 3 to 30, all unused, have identical content (SHA-256 prefix `8c9868d64c45`), which is not all zeros: `E8 03`, zeros to `0x7BAD`, `0xFF` from `0x7BAE` to `0x877E` inclusive (3,025 bytes), zeros, one `0xFF` at `0x9360`, then 8 records of 14 bytes from `0x9364` to `0x93D3`, each `FF FF FF FF 00 00 00 00 30 00 02 00 00 00`, then zeros to the end. What the regions mean is not known. `save_lab.py` treats a slot as empty when its content is the one at least 3 slots share. |
+| Value | Before the experiments of 2026-10-20, slots 3 to 30, all unused, had identical content (SHA-256 prefix `8c9868d64c45`), which is not all zeros: `E8 03`, zeros to `0x7BAD`, `0xFF` from `0x7BAE` to `0x877E` inclusive (3,025 bytes), zeros, one `0xFF` at `0x9360`, then 8 records of 14 bytes from `0x9364` to `0x93D3`, each `FF FF FF FF 00 00 00 00 30 00 02 00 00 00`, then zeros to the end. What the regions mean is not known. `save_lab.py` treats a slot as empty when its content is the one at least 3 slots share. |
 | Status | measured |
 | Method | file inspection: `xxd -a` and a byte-value histogram of slot 3; `save_lab.py slots` for the matching hashes of slots 3 to 30 |
 | Build | B1 installed; files written 2025-12-19 by an older build |
@@ -67,8 +67,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | Slot 2's extra 2,314 bytes are appended at `0x12812`, after both blocks, which sit at the same offsets as in slot 1. The appended part starts with its own `E8 03`, then:<br>• `0x12814`: 154 little-endian u16 pairs, all distinct, sorted by the second value then the first, both in 0 to 53; then 4 zero bytes.<br>• `0x12A80`: 154 bytes, each 0 to 50; then 2 zero bytes.<br>• `0x12B1C`: 8 bytes, `da 76 2e 8f ab 2b 1d e3`.<br>• `0x12B24` onward: more data, including the seed's randomizer settings (below), up to `0x130F8`, then zeros to the end.<br>Assumed meanings: the pairs are the (x, y) map cells of item locations, the bytes are the item placed at each (IDs 0 to 50 from `ItemNames.txt`; the most common are 0, 1, 2, 36 and 46), and the 8 bytes are the seed. None of these meanings has been tested. |
-| Status | measured (layout, counts, value ranges); assumed (meanings) |
+| Value | Slot 2's extra 2,314 bytes are appended at `0x12812`, after both blocks, which sit at the same offsets as in slot 1. The appended part starts with its own `E8 03`, then:<br>• `0x12814`: 154 little-endian u16 pairs, all distinct, sorted by the second value then the first, both in 0 to 53; then 4 zero bytes.<br>• `0x12A80`: 154 bytes, each 0 to 50; then 2 zero bytes.<br>• `0x12B1C`: 8 bytes, `da 76 2e 8f ab 2b 1d e3`.<br>• `0x12B24` onward: more data, including the seed's randomizer settings (below), up to `0x130F8`, then zeros to the end.<br>Meanings, established in later sections: the pairs are the (x, y) cells of the item locations ("The map grid marks collected locations"), and the bytes are the item at each location, in list order ("The item table is indexed in location-list order"); item IDs are those of `ItemNames.txt`, which runs 0 to 50 (50 is the Energy Shield). That the 8 bytes are the seed is still an assumption. |
+| Status | measured (layout, counts, value ranges); working in game (the item table, see below); assumed (that the 8 bytes are the seed) |
 | Method | file inspection and a parsing script over the backup copy of slot 2 |
 | Build | B1 installed; slot 2 written 2026-06-13 by an older build |
 | Evidence | `lab/backups/20261020-211239/Save Game 2.sav`, 2026-10-20. Byte-value counts over the 154 bytes: 35 × 0, 29 × 1, 18 × 2, 17 × 36, 17 × 46, 6 × 49. |
@@ -77,8 +77,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | Across three randomizer saves (slots 2, 28, 29; different seeds, 28 and 29 saved before any pickup):<br>• The 154 u16 pairs at `0x12814` are identical in all three. If they are the location cells, the location list is fixed and only the placement varies.<br>• The 154 bytes at `0x12A80` differ in 136 positions between slots 28 and 29, and their value counts differ too (slot 29 has 62 × 1 against slot 28's 29 × 1). Whether 29 was made with different randomizer options is not recorded.<br>• The 8 bytes at `0x12B1C` differ in every save.<br>• The data after them (`0x12B24` to `0x130F8`) differs too: a short header (`06 00 bf 00 49 01` in 28, `04 00 94 00 65 03` in 29), then what look like records of four u16 values. Not decoded.<br>• Inside the first block, 27 bytes differ between 28 and 29. Eight of them, `0x2A` to `0x31`, hold values 1 to 51 that change with the seed (28: `33 15 28 11 16 01 05 27`). Their meaning is not known.<br>• Re-saving slot 1 while making these changed its timestamp but not its contents. |
-| Status | measured (all comparisons); assumed (that the pairs are location cells) |
+| Value | Across three randomizer saves (slots 2, 28, 29; different seeds, 28 and 29 saved before any pickup):<br>• The 154 u16 pairs at `0x12814` are identical in all three. They are the location cells ("The map grid marks collected locations"), so the location list is fixed and only the placement varies.<br>• The 154 bytes at `0x12A80` differ in 136 positions between slots 28 and 29, and their value counts differ too (slot 29 has 62 × 1 against slot 28's 29 × 1). Slot 29 was made with different options: its settings match a preset built into the game ("The randomizer section holds the seed's settings").<br>• The 8 bytes at `0x12B1C` differ in every save.<br>• The data after them (`0x12B24` to `0x130F8`) differs too: a short header (`06 00 bf 00 49 01` in 28, `04 00 94 00 65 03` in 29), then what look like records of four u16 values. Partly decoded later: it holds the seed's settings ("The randomizer section holds the seed's settings").<br>• Inside the first block, 27 bytes differ between 28 and 29. Eight of them, `0x2A` to `0x31`, hold values 1 to 51 that change with the seed (28: `33 15 28 11 16 01 05 27`). Their meaning is not known.<br>• Re-saving slot 1 while making these changed its timestamp but not its contents. |
+| Status | measured |
 | Method | parsing script over backup copies |
 | Build | B1; slots 28 and 29 written 2026-10-20 by B1 |
 | Evidence | `lab/backups/20261020-212018/`, 2026-10-20. |
@@ -87,7 +87,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | A copy of slot 28 with all 154 bytes at `0x12A80` set to 46 (Scrap metal), and nothing else changed, loaded without complaint. The first pickup gave Scrap metal. After the game saved over it, the whole appended section (`0x12812` to the end) was byte-for-byte what was installed, so the game neither rejected the change, nor checks a checksum over that section, nor regenerates the table from the seed when it saves. Control: the same first pickup in the unpatched slot 28 gave a normal item, not Scrap. So the game takes each location's item from this table. That the table is indexed in the order of the cell list at `0x12814` is still assumed: only one location has been tried. |
+| Value | A copy of slot 28 with all 154 bytes at `0x12A80` set to 46 (Scrap metal), and nothing else changed, loaded without complaint. The first pickup gave Scrap metal. After the game saved over it, the whole appended section (`0x12812` to the end) was byte-for-byte what was installed, so the game neither rejected the change, nor checks a checksum over that section, nor regenerates the table from the seed when it saves. Control: the same first pickup in the unpatched slot 28 gave a normal item, not Scrap. So the game takes each location's item from this table. That the table is indexed in the order of the cell list at `0x12814` was confirmed later ("The item table is indexed in location-list order"). |
 | Status | working in game (one location: patched item granted, table kept on save, control differs) |
 | Method | `save_lab.py patch` and `install` into slot 30; the same first pickup by the owner in slot 30 (patched) and slot 28 (unpatched); a parsing script over the backups taken after each save |
 | Build | B1 |
@@ -119,7 +119,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 |---|---|
 | Value | A 54 × 54 grid, one byte per map cell, row-major (`index = y × 54 + x`), at file offset `0x877F` to `0x92E2` in the first block (so `0x9B87` onward in the second). Values seen: `0x00` unexplored, `0x18` (24) explored room, `0x19` (25) a cell with an item not yet collected, `0x1B` (27) a cell whose item was collected, `0x22` (34) a special room (perhaps a save room), and others up to `0x2C` in a full save. The cells marked `0x19`/`0x1B` are cells from the randomizer's location list at `0x12814`, so location *i* (its *i*-th (x, y) pair) is collected when the grid holds `0x1B` at that cell. Location numbers seen: the first pickup from the start is #52 at (25, 25), the second #48 at (29, 24). |
 | Status | measured (two locations, in the save); assumed (that every location behaves the same, and the meanings of the other values) |
-| Method | fork test: the fresh all-Scrap save installed into slots 27 and 30, the same route played in each, the pickup taken only in slot 30; then `save_lab.py diff`. The grid layout was chosen as the one that puts both collected cells on location cells, starts at the end of the template's FF block, and has the width of the location coordinates (0 to 53); under it the explored cells form one connected route and your slot 1 fills the whole grid. |
+| Method | fork test: the fresh all-Scrap save installed into slots 27 and 30, the same route played in each, the pickup taken only in slot 30; then `save_lab.py diff`. The grid layout was chosen as the one that puts both collected cells on location cells, starts at the end of the template's FF block, and has the width of the location coordinates (0 to 53); under it the explored cells form one connected route and the owner's slot 1 fills the whole grid. |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-221347/` (slots 27 and 30 after the fork run): they differ only at `0x4589`, `0x8CDE` (`0x19` → `0x1B`), the counters `0x9321` and `0x935A`, play time, and the second block. Earlier two-pickup save: `lab/backups/20261020-215709/`. 2026-10-20. |
 
@@ -137,7 +137,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
+| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. The pause screen's `ITEMS` counter itself is `0x931B` (live `Zexion.exe+0x3D0168`, `memory.md`); how the two relate is not known. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
 | Status | measured (`0x9321`); assumed (`0x935A`) |
 | Method | fork test and earlier saves |
 | Build | B1 |
@@ -167,7 +167,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; your slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; your slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. The list and its length sit at a fixed distance from their live copies (`memory.md`); the other fields around them are saved one by one. Adding a code to the live list grants nothing, so the list is a record of pickups, not the inventory. |
+| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; the owner's slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; the owner's slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. The list and its length sit at a fixed distance from their live copies (`memory.md`); the other fields around them are saved one by one. Adding a code to the live list grants nothing, so the list is a record of pickups, not the inventory. |
 | Status | measured (layout, the code for one item, and that the list does not grant) |
 | Method | comparing `0x9300` to `0x935F` across six saves, and against the live recording of the Gravity Harness pickup |
 | Build | B1 |
@@ -177,8 +177,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | The player state holds one byte per code, at file `0x92F3 + code` (first block): codes 0 to 49 are the item IDs from `ItemNames.txt`, so this is the inventory. Energy Tank (0), Missile Container (1), Mega Bomb (2) and the Missile Box (36) are counts; the upgrades are 0 or 1; Scrap metal (46) counts pickups (`0x9321`). Codes 50 to 63 are 0 in every save seen. This replaces an earlier reading of `0x9300` as "ability flags, flag = item ID − 13": `0x9300` is just item 13's byte. Seen: slot 28's fresh seed starts with 5 Energy, 3 Missile Containers, the Machine Gun (3), Power Cartridge (13) and Navcore (32), and the Gravity Harness pickup set item 24; slot 29's fresh seed starts with 3 Energy, 3 Missile Containers and the Force Blaster (4), so the starting weapon varies by seed; slot 1 owns nearly everything. The game fills the logic's count table from these bytes (RVA `0x16DB41` reads the live player state at offset `0x108E + code`). |
-| Status | measured (layout, from the game's code and from saves; items 16, 17 and 24 granted live through it) |
+| Value | The player state holds one byte per code, at file `0x92F3 + code` (first block): codes 0 to 49 are item IDs from `ItemNames.txt`, so this is the inventory (the list runs to 50, the Energy Shield; whether item 50 uses the byte the logic treats as code 50 is not known). Energy Tank (0), Missile Container (1), Mega Bomb (2) and the Missile Box (36) are counts; the upgrades are 0 or 1; Scrap metal (46) counts pickups (`0x9321`). Codes 50 to 63 are 0 in every save seen. This replaces an earlier reading of `0x9300` as "ability flags, flag = item ID − 13": `0x9300` is just item 13's byte. Seen: slot 28's fresh seed starts with 5 Energy, 3 Missile Containers, the Machine Gun (3), Power Cartridge (13) and Navcore (32), and the Gravity Harness pickup set item 24; slot 29's fresh seed starts with 3 Energy, 3 Missile Containers and the Force Blaster (4), so the starting weapon varies by seed; slot 1 owns nearly everything. The game fills the logic's count table from these bytes (RVA `0x16DB41` reads the live player state at offset `0x108E + code`). |
+| Status | measured (layout, from the game's code and from saves; item 24's byte seen set by a pickup); working in game (items 16 and 17 granted live through it, see `memory.md`) |
 | Method | disassembly of RVA `0x16DB41`; save comparison; live grants (`memory.md`) |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |

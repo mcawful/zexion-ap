@@ -8,7 +8,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | The save state is in the module image (writable static data), not the heap, so its offsets from the module base are fixed for a build:<br>• One block per save slot, in an array: slot N's first save block is at `Zexion.exe+0x230600 + (N−1) × 0x9408`. Each matches the first block of `Save Game N.sav` (file offsets `0x0002` to `0x9409`) byte for byte; checked for slots 1, 2, 3, 28, 29 and 30.<br>• The loaded randomizer save's appended section (file `0x12812` onward, without its `E8 03` header) is mirrored from `Zexion.exe+0x357E18` (location cells), with the item table at `+0x358084` and the seed at `+0x358120`.<br>• The seed also appears at `+0x356F10` and `+0xCDD9D8`. Other near-copies of slot 30's block are at `+0xDDAC58` (37,845 of 37,896 bytes equal; file offset `0x129` = 1) and `+0xDED468` (37,881 equal; `0x129` = 0). One of these may be the live play state; not yet shown. |
+| Value | The save state is in the module image (writable static data), not the heap, so its offsets from the module base are fixed for a build:<br>• One block per save slot, in an array: slot N's first save block is at `Zexion.exe+0x230600 + (N−1) × 0x9408`. Each matches the first block of `Save Game N.sav` (file offsets `0x0002` to `0x9409`) byte for byte; checked for slots 1, 2, 3, 28, 29 and 30.<br>• The loaded randomizer save's appended section (file `0x12812` onward, without its `E8 03` header) is mirrored from `Zexion.exe+0x357E18` (location cells), with the item table at `+0x358084` and the seed at `+0x358120`.<br>• The seed also appears at `+0x356F10` and `+0xCDD9D8`. Other near-copies of slot 30's block are at `+0xDDAC58` (37,845 of 37,896 bytes equal; file offset `0x129` = 1) and `+0xDED468` (37,881 equal; `0x129` = 0). Neither is the live play state: the live map and the live inventory were found elsewhere (see "The live map grid flips at the moment of pickup" and "Live inventory: writing an item's byte grants it"). |
 | Status | measured |
 | Method | memory scan with `tools/memscan.py` (search for the seed and the all-Scrap table, then whole-block comparison against backup copies of the saves) |
 | Build | B1 |
@@ -28,7 +28,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | When the game saved slot 30, its block in the slot array (`+0x33CAE8`) changed in 46 bytes at once, about 12 s after the pickup, and the slot 30 file changed at the same time. Read as file offsets, those 46 bytes are map exploration (`0x80xx`, `0x8Cxx`), flags near the start (`0x0004` to `0x0006`, `0x001C`, `0x00E3`, `0x43C7`, `0x4589`) that the earlier slot 28 and slot 30 saves also set, and values around `0x9321` to `0x935F` that behave like counters and stats. `0x9321` was 2 after two Scrap pickups, 3 after the first test's pickups, and 0 after slot 28's one normal-item pickup; it may count Scrap or filler pickups. Where the live state itself sits in memory was not found; matching the array's changes against earlier ones gave several equally likely positions. |
+| Value | When the game saved slot 30, its block in the slot array (`+0x33CAE8`) changed in 46 bytes at once, about 12 s after the pickup, and the slot 30 file changed at the same time. Read as file offsets, those 46 bytes are map exploration (`0x80xx`, `0x8Cxx`), flags near the start (`0x0004` to `0x0006`, `0x001C`, `0x00E3`, `0x43C7`, `0x4589`) that the earlier slot 28 and slot 30 saves also set, and values around `0x9321` to `0x935F` that behave like counters and stats. `0x9321` turned out to be Scrap metal's inventory byte (item 46; `save-format.md`). This comparison could not place the live state (matching the array's changes against earlier ones gave several equally likely positions); the live map and inventory were found later by other means (below). |
 | Status | measured (array updated on save, the 46 offsets); assumed (what each offset means) |
 | Method | the 10 Hz recorder above; byte comparison of slot 30 saves |
 | Build | B1 |
@@ -44,12 +44,12 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | Slot 27 loaded from `lab/backups/20261020-221347/`; pickup at 12.45 s into the watcher, 2026-10-20. |
 
-## The live inventory is not in the module's static data
+## A first inventory search looked for the wrong array (superseded)
 
 | Field | |
 |---|---|
-| Value | While holding the Gravity Harness (slot 28, after its first pickup), no copy of the save's owned-items array including entry 24 exists in writable memory, and neither does a bitfield of the owned IDs or an array of 32-bit values per ID. `Zexion.exe+0x3CF78D` holds the save-block layout with the starting items (7, 15, 16, 22) but not item 24, so it looks like a copy taken at load time. The live inventory is probably in a heap object. At this pickup the map cell went `0x18` → `0x1A` about 0.5 s before the pickup and `0x1A` → `0x1B` at it, together with the pickup counter; a client should treat only `0x1B` as collected. |
-| Status | measured (the searches and the cell sequence); assumed (heap) |
+| Value | Superseded by "Live inventory: writing an item's byte grants it" below: the live inventory is at `Zexion.exe+0x3ED47E + item ID`, in the module's static data. This search, made while holding the Gravity Harness (slot 28, after its first pickup), looked for a copy of the save's `0x0111` array including entry 24, a bitfield of item IDs and an array of 32-bit values per ID, found none, and wrongly concluded the inventory was on the heap; the `0x0111` array is not the inventory (`save-format.md`). Still valid from this run: `Zexion.exe+0x3CF78D` holds a save-block copy without item 24, so it looks like a copy taken at load time; and the map cell went `0x18` → `0x1A` about 0.5 s before the pickup and `0x1A` → `0x1B` at it, together with the pickup counter, so a client should treat only `0x1B` as collected. |
+| Status | superseded (where the inventory is); measured (the load-time copy, the cell sequence) |
 | Method | 10 Hz module recorder during the pickup; `memscan.py find` for the array, bitfield and 32-bit layouts; reading known near-copies of the save block |
 | Build | B1 |
 | Evidence | `lab/mem/p3-before2`, `p3-before3`, `p3-record.log`, 2026-10-20. |
@@ -58,7 +58,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | Five full snapshots of writable memory around the Gravity Harness pickup in slot 28 (two before, three after, standing still) left 5,908 bytes that went 0 → 1 at the pickup and stayed: 3,322 and 2,254 in two large heap regions (graphics- or level-sized), 123 in the module, 209 in small heap regions. None of them sits in an array indexed by item ID with the starting items (7, 15, 16, 22) set at the same stride, and no list of the owned IDs exists in 8-, 16- or 32-bit form. Setting 267 of the small-region and module candidates back to 0 at once crashed the game, so narrowing by zeroing must use small groups, or be replaced by a debugger. Saves were not affected. |
+| Value | Five full snapshots of writable memory around the Gravity Harness pickup in slot 28 (two before, three after, standing still) left 5,908 bytes that went 0 → 1 at the pickup and stayed: 3,322 and 2,254 in two large heap regions (graphics- or level-sized), 123 in the module, 209 in small heap regions. None of them sits in an array laid out like the save's `0x0111` array (entries 7, 15, 16, 22 at one stride), and no list of item IDs exists in 8-, 16- or 32-bit form; but that array is not the inventory, so this was a search for the wrong thing (the inventory was found later, below). Setting 267 of the small-region and module candidates back to 0 at once crashed the game, so narrowing by zeroing must use small groups, or be replaced by a debugger. Saves were not affected. |
 | Status | measured |
 | Method | `memscan.py snap` (full) five times; candidate filter and stride search by address; a batch write of zeros with read-back |
 | Build | B1 |
@@ -88,7 +88,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | At the Gravity Harness pickup, about 650 module bytes changed and later reverted; about 570 of them reverted together 3.2 s after the pickup, the popup's lifetime. They include repeated records holding heap addresses and small increasing IDs, and the item name as UTF-16 text: the popup creates UI objects rather than reading a "show popup" flag. A granted item (ability flag write) shows no popup. Showing one for a granted item would mean calling the game's own pickup or popup routine on the game thread, which needs the routine located (for example with an x64dbg write breakpoint on the pickup counter at `+0x3D0168` during a pickup) and code running inside the game (the proxy-DLL route). Not attempted. |
+| Value | At the Gravity Harness pickup, about 650 module bytes changed and later reverted; about 570 of them reverted together 3.2 s after the pickup, the popup's lifetime. They include repeated records holding heap addresses and small increasing IDs, and the item name as UTF-16 text: the popup creates UI objects rather than reading a "show popup" flag. A granted item (an inventory byte write) shows no popup. Showing one for a granted item would mean calling the game's own pickup or popup routine on the game thread, which needs the routine located (for example with an x64dbg write breakpoint on the pickup counter at `+0x3D0168` during a pickup) and code running inside the game (the proxy-DLL route). Not attempted. |
 | Status | measured (the transient changes and their timing); assumed (that only a code call can reproduce the popup) |
 | Method | bytes in `lab/mem/p3-record.log` that changed within 0.3 s of the pickup and later returned to their original value |
 | Build | B1 |

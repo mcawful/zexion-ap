@@ -29,7 +29,7 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 | Field | |
 |---|---|
 | Value | `+0x00` four lists of 8 one-byte entries, for leaving the cell to the **N, S, W, E** (in that order); `0xFF` ends a list. `+0x20` four parallel lists of tier/count bytes. `+0x40` four passage bytes for the **S, W, E, N** (in that order): `0` open, `1` needs that direction's list, `0xFF` wall. `+0x44` 1 when collecting the cell's item has its own requirements. `+0x45` those requirements (8 entries), `+0x4D` their tier/count bytes. |
-| Status | measured (offsets and sizes, list-to-passage pairing); measured statistically (direction names) |
+| Status | measured (offsets and sizes, list-to-passage pairing); measured (direction names, statistically and then from the generator's code) |
 | Method | disassembly: every function using the array reads the pairs `+0x00/+0x20`, `+0x08/+0x28`, `+0x10/+0x30`, `+0x18/+0x38`, `+0x45/+0x4D`, and bytes `+0x40` to `+0x44`. Every non-empty list sits on a cell whose matching passage byte is 1 (202/202, 195/195, 309/309, 108/108). Direction names: each passage byte's `0xFF` agrees best (82 to 85%) with "no explored room in that direction" on a fully explored map; 61 of the 63 cells with an item-requirement list are location cells. |
 | Build | B1 |
 | Evidence | `lab/data/6d8a94bd4d64/RandoCells`, slot 1 map, location cells from slot 28, 2026-10-20. |
@@ -39,7 +39,7 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 | Field | |
 |---|---|
 | Value | An entry below 50 is an item ID (`ItemNames.txt`); 50 to 63 is derived from the items, and 64 to 69 depends on the cell, the options and energy (both drawn with their own icons, sprite table at RVA `0x20C820`; see the sections on special codes below). The tier/count byte: `1` white, `2` yellow, `3` red, `4` blue (colors used by the game's built-in editor), `11` to `40` white with the number (value − 10), `41` to `90` yellow with the number (value − 40). Reading: white entries each suffice alone; yellow entries form one group that is needed together (tier 2 almost always appears two or more times in a list); counts are "at least N of that item" (Missile Container `43` = 3 containers). From the evaluator (below): tier 3 excludes the item from the check, and tier 4 is a hard requirement (the check fails if it is missing). |
-| Status | measured (the editor's encoding; tiers 3 and 4 from the evaluator); assumed (the reading of tiers 1 and 2 as alone and together, which fits the editor's colors and every list) |
+| Status | measured (the editor's encoding; tiers 3 and 4 from the evaluator); measured (tier 2 as the group needed together, from the evaluator); inferred (tier 1 as enough alone, which fits the editor's colors, every list and the sweeps) |
 | Method | disassembly of the editor's drawing function (RVA `0x3CB3D`); counting tier patterns in multi-entry lists |
 | Build | B1 |
 | Evidence | `lab/data/gen.asm` (local), 2026-10-20. |
@@ -98,6 +98,7 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 - What options 10 to 44 are called in the game's menu, and what the two code-69 mode bits
   mean. Their effect on the logic is decoded; their names are not.
-- Missile and Bomb Boxes adding 10 to a group's count. Not modeled yet.
+- Found but not modeled in `tools/randocells.py`: Missile and Bomb Boxes adding 10 to a group's
+  count (see "The evaluator works on a table of 64 counts").
 - An x64dbg read breakpoint during generation was tried and the game crashed with the
   debugger attached; the code was found statically instead.
