@@ -18,7 +18,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | `Zexion.exe+0x3D0168` counts pickups in the current session: it went 0 → 1 at the first pickup in slot 30 and 1 → 2 at the second, at the moment of collection (within 0.1 s, the sampling interval), with no pause or save involved. Its neighbors read as a record of 32-bit fields. Whether it is the `ITEMS: x/150` counter, and whether it is loaded from the save, is not known. It says *that* something was collected, not *which* location. |
+| Value | `Zexion.exe+0x3D0168` counts pickups in the current session: it went 0 → 1 at the first pickup in slot 30 and 1 → 2 at the second, at the moment of collection (within 0.1 s, the sampling interval), with no pause or save involved. Its neighbors read as a record of 32-bit fields. It is the pause screen's `ITEMS: x/150` count (it read 1 with one pickup made, and a granted item did not change it); it is restored from the save on load. It says *that* something was collected, not *which* location. |
 | Status | measured |
 | Method | `tools/memscan.py snap --module-only` twice while standing still, then a 10 Hz recorder over the module logging bytes that had been stable; the first pickup by snapshots, the second by the recorder |
 | Build | B1 |
@@ -78,7 +78,7 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | The live ability flags (the save's 32 bytes at file `0x9300`) are at `Zexion.exe+0x3ED48B`. With slot 28 loaded and the Gravity Harness owned, they read flags `0x00`, `0x0B` and `0x13`, exactly as saved. Writing 1 to flag `0x04` (`+0x3ED48F`) made the S-Blade appear in the inventory at once, with no pickup, reload or save. The recorder had caught flag `0x0B` (`+0x3ED496`) going 0 → 1 at the Gravity Harness pickup. Whether the granted S-Blade also works in play has not been checked yet. |
+| Value | The live ability flags (the save's 32 bytes at file `0x9300`) are at `Zexion.exe+0x3ED48B`. With slot 28 loaded and the Gravity Harness owned, they read flags `0x00`, `0x0B` and `0x13`, exactly as saved. Writing 1 to flag `0x04` (`+0x3ED48F`) made the S-Blade appear in the inventory at once, with no pickup, reload or save. The recorder had caught flag `0x0B` (`+0x3ED496`) going 0 → 1 at the Gravity Harness pickup. Whether the granted S-Blade also works in play has not been checked yet. The pause screen's item count stayed at 1, matching the pickup counter at `+0x3D0168`: a granted item does not count as a pickup, and the counter is the `ITEMS: x/150` number, so it counts locations collected. |
 | Status | working in game (the item appears in the inventory); not yet checked (the item works when used) |
 | Method | search of writable memory for the save's 32 flag bytes (two hits: slot 28 in the slot array, and this one); `memscan.py write` of one byte with read-back; the owner compared the inventory against a baseline |
 | Build | B1 |
