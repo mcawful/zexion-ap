@@ -11,8 +11,8 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Field | |
 |---|---|
 | Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell as the game displays it, "Map *x*,*y*" (`randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
-| Status | measured (the list, its order and the display order) |
-| Method | `tools/gen_world_data.py` reading the location list of a fresh default-preset save and each cell's record |
+| Status | measured (the list and its order; the display order, from one reading checked against the explored map) |
+| Method | `tools/gen_world_data.py` reading the location list of a fresh Standard-mode save and each cell's record |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
 
@@ -40,7 +40,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only the default preset's starting inventory (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. |
+| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out with the other mode's starting inventory seen in slot 28 (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore). |
 | Status | measured (by the flood fill); assumed (that 3 locations is enough for Archipelago's fill: it was in every generation tried) |
 | Method | `tools/gen_world_data.py` |
 | Build | B1 |
@@ -71,14 +71,17 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 - **Items lost on death.** A grant the game has not saved is gone after a death
   (`memory.md`, "Granting each kind of item, and what keeps it"). The world treats every item
   as permanent once received, so the client must give items again after a reload.
-- **The starting inventory and settings.** The world's logic assumes the default preset's
+- **The starting inventory and settings.** The world's logic assumes Standard mode's
   starting inventory and settings (`worlds/zexion/data.py`, `START_INVENTORY`, `ENERGY_TOTAL`,
   `MODE69`, `OPTIONS`). The save the client prepares must hold exactly those, or sphere 0 is
   wrong.
 
 ## Not yet decided
 
-- **Settings.** The world uses the default preset's settings (energy total 40, code-69 mode 2,
-  its option flags) and item pool; other presets are not offered yet.
+- **Settings.** The world uses Standard mode with the game's default settings, as in slot 29's
+  fresh save (energy total 20, code-69 mode 2, its option flags, its item pool, and the Force
+  Blaster that "Random Gun" gave that seed as the starting gun). Other modes and settings are
+  not offered yet; which byte holds which setting is not mapped (`randocells.md`, "The
+  randomizer menu's settings").
 - **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's
   count is not modeled.

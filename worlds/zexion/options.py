@@ -16,7 +16,7 @@ def _start_option_name(start: dict) -> str:
 
 def _make_start_room() -> type[Choice]:
     attrs = {_start_option_name(s): i for i, s in enumerate(STARTS)}
-    default_cell = (13, 16)  # where the default preset's seeds have started
+    default_cell = (13, 16)  # where one of the owner's seeds started
     default = next((i for i, s in enumerate(STARTS) if tuple(s["cell"]) == default_cell), 0)
     attrs["default"] = default
     attrs["display_name"] = "Start Room"

@@ -5,7 +5,8 @@
 Reads (all copies in lab/, never the game folder):
 
 - RandoCells (``game_data.py RandoCells`` copies it to lab/data/<build>/);
-- a randomizer save made right at the start of a default-preset seed, for the location list,
+- a randomizer save made right at the start of a Standard-mode seed (the game's default), for
+  the location list,
   the item pool, the starting inventory and the settings (lab/backups/.../Save Game 28.sav);
 - the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md).
 
@@ -34,7 +35,9 @@ from protected import assert_writable
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "worlds" / "zexion" / "data.py"
 MIN_SPHERE_ZERO = 3
-DEFAULT_SAVE = ROOT / "lab" / "backups" / "20261020-212018" / "Save Game 28.sav"
+# Slot 29, made in Standard mode with the default settings (docs/re/randocells.md, "The
+# randomizer menu's settings").
+DEFAULT_SAVE = ROOT / "lab" / "backups" / "20261020-212018" / "Save Game 29.sav"
 
 
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
@@ -213,7 +216,7 @@ def render(d: dict, source: str) -> str:
         "# The game's 154 locations, in the order of its location list: cell (x, y).",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
-        "# The default preset's item pool (item IDs), one per location.",
+        "# The preset's item pool (item IDs), one per location.",
         f"POOL = {list(d['pool'])!r}",
         "",
         f"START_INVENTORY = {d['start_inventory']!r}",
