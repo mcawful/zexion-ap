@@ -33,8 +33,14 @@ With the game running and the user at the controls:
 4. When a handful are left, confirm by writing one (only in a lab slot, never while playing a
    real save) and having the user check the effect.
 
-Write a small script in `tools/` for this when there isn't one. It must open the game process,
-not the exe file, for any write; it must never write into the install or save folder.
+`tools/memscan.py` does this: `find HEX` searches writable memory, `snap NAME` saves a snapshot
+to `lab/mem/`, `cmp A B [--from X --to Y]` lists bytes that changed between two snapshots,
+`read` dumps live memory, and `write ADDR HEX --yes` writes it and reads it back. Ask before
+every `write`. It only touches the game process, never the install or save folder.
+
+A shortcut that worked on B1: the game keeps save data in the same layout as the `.sav` file,
+so searching memory for a distinctive run of save bytes (the seed, the item table) finds it.
+See `docs/re/memory.md`.
 
 ## 3. Find a stable route to it
 
