@@ -18,18 +18,18 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. This repo calls the first number x and the second y, but the game's own display appears to use the other order: the cell this repo calls (23, 22) showed in game as x 22, y 23 (2026-10-21), and in this repo's naming a cell is 14 tiles wide and 20 tall, which swapped is a 320 × 224-pixel screen. Only the names are in question; every index and formula here uses one convention throughout. |
-| Status | measured |
-| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85) |
+| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. This repo calls the first number x and the second y, but the game's own display appears to use the other order: the cell this repo calls (23, 22) showed in game as x 22, y 23. If so, the N, S, W, E names below and in `tools/randocells.py` describe this repo's grid drawn with y downward, and the game's compass may be the transpose (this repo's north the game's west). A cell is 14 tiles along this repo's x and 20 along y (`save-format.md`, "The continue point and the seed's start"); swapped, 20 × 14 tiles of 16 pixels is 320 × 224, a plausible screen, but the game's resolution has not been checked. Every index and formula here uses one convention throughout, so only the names are in question. |
+| Status | measured (the index); measured once (the display order: one cell) |
+| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85); the display order from one in-game reading by the owner |
 | Build | B1 |
-| Evidence | `lab/data/logic.asm` (local), 2026-10-20. |
+| Evidence | `lab/data/logic.asm` (local), 2026-10-20. The display order: the owner's reading of their position after loading the patched slot 26 (`save-format.md`, "The continue point and the seed's start"), 2026-10-21. |
 
 ## Record layout
 
 | Field | |
 |---|---|
 | Value | `+0x00` four lists of 8 one-byte entries, for leaving the cell to the **N, S, W, E** (in that order); `0xFF` ends a list. `+0x20` four parallel lists of tier/count bytes. `+0x40` four passage bytes for the **S, W, E, N** (in that order): `0` open, `1` needs that direction's list, `0xFF` wall. `+0x44` 1 when collecting the cell's item has its own requirements. `+0x45` those requirements (8 entries), `+0x4D` their tier/count bytes. |
-| Status | measured (offsets and sizes, list-to-passage pairing); measured (direction names, statistically and then from the generator's code) |
+| Status | measured (offsets and sizes, list-to-passage pairing); measured (which list goes with which index step, statistically and then from the generator's code; whether the names match the game's own compass is open, see "Grid order") |
 | Method | disassembly: every function using the array reads the pairs `+0x00/+0x20`, `+0x08/+0x28`, `+0x10/+0x30`, `+0x18/+0x38`, `+0x45/+0x4D`, and bytes `+0x40` to `+0x44`. Every non-empty list sits on a cell whose matching passage byte is 1 (202/202, 195/195, 309/309, 108/108). Direction names: each passage byte's `0xFF` agrees best (82 to 85%) with "no explored room in that direction" on a fully explored map; 61 of the 63 cells with an item-requirement list are location cells. |
 | Build | B1 |
 | Evidence | `lab/data/6d8a94bd4d64/RandoCells`, slot 1 map, location cells from slot 28, 2026-10-20. |
@@ -48,7 +48,7 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | A new randomizer game starts in a save room chosen per seed (the only revealed map cell in a save made at once: (13, 16) for slot 28, (10, 43) for slot 29), with a starting inventory that also varies (slot 28: 5 Energy, 3 Missile Containers, Machine Gun, Power Cartridge, Navcore; slot 29: 3 Energy, 3 Missile Containers, Force Blaster). From there, with every code computed as the game does and each seed's own settings (`save-format.md`, "The randomizer section holds the seed's settings"), all 154 locations are reachable in both seeds. As a control, the same items shuffled into random locations were fully reachable in 0 of 30 shuffles of slot 28 and 2 of 30 of slot 29 (median 3 and 9 locations), so the logic tells placements apart rather than passing everything. |
+| Value | A new randomizer game starts in a save room chosen per seed, which the save also records, so a patched save can move it (`save-format.md`, "The continue point and the seed's start") (the only revealed map cell in a save made at once: (13, 16) for slot 28, (10, 43) for slot 29), with a starting inventory that also varies (slot 28: 5 Energy, 3 Missile Containers, Machine Gun, Power Cartridge, Navcore; slot 29: 3 Energy, 3 Missile Containers, Force Blaster). From there, with every code computed as the game does and each seed's own settings (`save-format.md`, "The randomizer section holds the seed's settings"), all 154 locations are reachable in both seeds. As a control, the same items shuffled into random locations were fully reachable in 0 of 30 shuffles of slot 28 and 2 of 30 of slot 29 (median 3 and 9 locations), so the logic tells placements apart rather than passing everything. |
 | Status | measured |
 | Method | `tools/randocells.py --fresh` on backup copies of slots 28 and 29 saved right after the seed was made; 30 seeded shuffles of each item table |
 | Build | B1 |
