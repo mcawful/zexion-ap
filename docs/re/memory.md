@@ -53,3 +53,13 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Method | 10 Hz module recorder during the pickup; `memscan.py find` for the array, bitfield and 32-bit layouts; reading known near-copies of the save block |
 | Build | B1 |
 | Evidence | `lab/mem/p3-before2`, `p3-before3`, `p3-record.log`, 2026-10-20. |
+
+## A full-memory diff of one pickup leaves thousands of candidates
+
+| Field | |
+|---|---|
+| Value | Five full snapshots of writable memory around the Gravity Harness pickup in slot 28 (two before, three after, standing still) left 5,908 bytes that went 0 → 1 at the pickup and stayed: 3,322 and 2,254 in two large heap regions (graphics- or level-sized), 123 in the module, 209 in small heap regions. None of them sits in an array indexed by item ID with the starting items (7, 15, 16, 22) set at the same stride, and no list of the owned IDs exists in 8-, 16- or 32-bit form. Setting 267 of the small-region and module candidates back to 0 at once crashed the game, so narrowing by zeroing must use small groups, or be replaced by a debugger. Saves were not affected. |
+| Status | measured |
+| Method | `memscan.py snap` (full) five times; candidate filter and stride search by address; a batch write of zeros with read-back |
+| Build | B1 |
+| Evidence | 2026-10-20. Snapshots `lab/mem/f-*` deleted after the crash made their addresses meaningless. |
