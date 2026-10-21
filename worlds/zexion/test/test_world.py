@@ -103,3 +103,29 @@ class TestNames(ZexionTestBase):
     def test_location_names_use_the_games_coordinate_order(self) -> None:
         x, y = data.LOCATIONS[0]
         self.assertEqual(location_name(0), f"Map {x},{y}")
+
+
+class TestOHKO(ZexionTestBase):
+    options = {"mode": "ohko"}
+
+    def test_ohko_has_two_starts_and_leaves_unreachable_locations_out(self) -> None:
+        self.assertIsNotNone(self.world.second)
+        self.assertNotEqual(self.world.start["cell"], self.world.second["cell"])
+        created = [loc for loc in self.multiworld.get_locations(self.player) if loc.address]
+        self.assertEqual(len(created), len(self.world.kept_locations))
+        self.assertLess(len(created), len(data.LOCATIONS))
+        pool = [i for i in self.multiworld.itempool if i.player == self.player]
+        self.assertEqual(len(pool), len(created))
+        self.assertNotIn("Energy Tank", [i.name for i in pool])
+        self.assertEqual(self.count("Energy Tank"), 0)
+
+    def test_the_two_starts_reach_enough_with_the_starting_items(self) -> None:
+        start, second = self.world.start, self.world.second
+        both = set(start["sphere0_indices"]) | set(second["sphere0_indices"])
+        self.assertGreaterEqual(len(both), 3)
+
+    def test_slot_data_names_the_second_target(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["mode"], "ohko")
+        self.assertEqual(slot["second_start"]["cell"], list(self.world.second["cell"]))
+        self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))

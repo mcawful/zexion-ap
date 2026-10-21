@@ -12,15 +12,17 @@ from .data import MODES
 class Mode(Choice):
     """The randomizer's mode, as in the game's menu: its item pool, starting items and
     settings. Easy starts with 5 Energy Tanks and more of everything; Standard is the game's
-    default. OHKO is not offered yet."""
+    default; OHKO has no Energy Tanks at all and a second teleport target, and some of its
+    locations cannot be reached, so they are left out."""
 
     display_name = "Mode"
     option_easy = 0
     option_standard = 1
+    option_ohko = 2
     default = 1
 
 
-MODE_NAMES = {Mode.option_easy: "easy", Mode.option_standard: "standard"}
+MODE_NAMES = {Mode.option_easy: "easy", Mode.option_standard: "standard", Mode.option_ohko: "ohko"}
 
 # Every start room valid in some mode, in a fixed order; which ones a mode accepts is in
 # data.MODES[mode]["starts"].

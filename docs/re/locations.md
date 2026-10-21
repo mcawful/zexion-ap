@@ -66,6 +66,16 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Build | B1 |
 | Evidence | 2026-10-21. |
 
+## OHKO: two starts, and only the locations they reach
+
+| Field | |
+|---|---|
+| Value | An OHKO seed starts in one room and can teleport to a second (`save-format.md`, "The continue point and the seed's start"), and some of its locations are unreachable (`randocells.md`, "The randomizer's modes"). For OHKO the generator records every one of the 34 candidates with the locations every item reaches from it alone and those its starting items (3 Missile Containers and the Machine Gun) reach: every candidate reaches the same 150 locations with every item, and 0 to 9 with the starting items. The world takes the first room from the Start Room option and picks the second at random among those that, together with the first, let the starting items reach at least 3 locations; both connect to the start of the logic. It creates only the locations every item reaches from one of the two, and removes as many filler items from the pool (Scrap Metal first), as the game fills unreachable locations with Scrap. Combining the two rooms' single-start results is on the safe side: flooding from both at once can only reach more. Twelve OHKO games with random start rooms (seeds 400 to 411), replayed through `randocells.sweep` from both their starts with the left-out locations as Scrap, reached all 150 placed locations and all four keys. |
+| Status | computed with the evaluator (the 150 locations; the 12 replays); the two-start model, as in `randocells.md`, is not backed by an in-game run |
+| Method | `tools/gen_world_data.py` with the fresh OHKO save; `Generate.py --spoiler 1`, the start rooms read from the spoiler header the world writes |
+| Build | B1 |
+| Evidence | `lab/work/slot5-ohko-fresh.sav`; generator output and replays, 2026-10-21. |
+
 ## What the world needs from the client
 
 - **Items lost on death.** A grant the game has not saved is gone after a death
@@ -73,15 +83,15 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   as permanent once received, so the client must give items again after a reload.
 - **The starting inventory and settings.** The world's logic assumes the chosen mode's
   starting inventory and settings (`worlds/zexion/data.py`, `MODES`, sent as `mode` in the slot
-  data). The save the client prepares must hold exactly those, or sphere 0 is wrong.
+  data). The save the client prepares must hold exactly those, or sphere 0 is wrong; in OHKO
+  also the second teleport target (`second_start`), and Scrap at every location the world left
+  out (those not in `kept_locations`).
 
 ## Not yet decided
 
-- **Modes and settings.** The world offers Easy and Standard, each as one fresh save of that
-  mode had it: its settings, its item pool and its starting items (in Standard, the Force
-  Blaster that "Random Gun" gave that seed). OHKO is not offered: its seeds start from two
-  rooms (Double Teleport) and leave some locations unreachable (`randocells.md`, "The
-  randomizer's modes"), which the world does not model yet. The individual settings
-  (`randocells.md`, "Where each setting is stored") are not separate options yet.
+- **Modes and settings.** The world offers Easy, Standard and OHKO, each as one fresh save of
+  that mode had it: its settings, its item pool and its starting items (in Standard, the Force
+  Blaster that "Random Gun" gave that seed). The individual settings (`randocells.md`,
+  "Where each setting is stored") are not separate options yet.
 - **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's
   count is not modeled.

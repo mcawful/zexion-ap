@@ -14,8 +14,10 @@ and the ending after it are not needed.
 
 ## Which modes are there?
 
-The Mode option takes the game's own Easy or Standard mode, with that mode's item pool,
-starting items and settings. OHKO is not offered yet.
+The Mode option takes the game's own Easy, Standard or OHKO mode, with that mode's item pool,
+starting items and settings. OHKO starts with no Energy Tanks and a second teleport target,
+and a few of its locations cannot be reached at all; those are left out. The spoiler log names
+the start room and, in OHKO, the second teleport target.
 
 ## Where does the game start?
 

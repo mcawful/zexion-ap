@@ -39,7 +39,11 @@ OUT = ROOT / "worlds" / "zexion" / "data.py"
 MIN_SPHERE_ZERO = 3
 BACKUP = ROOT / "lab" / "backups" / "20261020-212018"
 # Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes").
-DEFAULT_MODES = {"easy": BACKUP / "Save Game 28.sav", "standard": BACKUP / "Save Game 29.sav"}
+DEFAULT_MODES = {
+    "easy": BACKUP / "Save Game 28.sav",
+    "standard": BACKUP / "Save Game 29.sav",
+    "ohko": ROOT / "lab" / "work" / "slot5-ohko-fresh.sav",
+}
 
 
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
@@ -144,6 +148,37 @@ def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) ->
     return starts
 
 
+def pair_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list[dict]:
+    """For a mode with a second teleport target: every candidate, with the cells and locations
+    every item reaches from it alone, and the locations its starting inventory reaches. The
+    world picks a pair and combines two of these; flooding from both at once can only reach
+    more (codes 64-67 look at reached cells), so the combination is on the safe side."""
+    full = full_inventory(start_inv, pool)
+    out = []
+    for cand in candidates:
+        start = tuple(cand["cell"])
+        reach_all = rc.reachable_cells(grid, full, settings, start)
+        reach_0 = rc.reachable_cells(grid, start_inv, settings, start)
+        every = [
+            i
+            for i, c in enumerate(locations)
+            if c in reach_all and location_ok(grid, c, full, settings, reach_all)
+        ]
+        sphere0 = [
+            i
+            for i, c in enumerate(locations)
+            if c in reach_0 and location_ok(grid, c, start_inv, settings, reach_0)
+        ]
+        out.append(
+            {**cand, "cells": reach_all, "location_indices": every, "sphere0_indices": sphere0}
+        )
+        print(
+            f"{name}: start {cand['index']:2d} {start}: every item reaches {len(every)} "
+            f"locations, the starting items {len(sphere0)}"
+        )
+    return out
+
+
 def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> dict:
     grid = rc.parse(cells_path.read_bytes())
     candidates = json.loads(starts_path.read_text(encoding="utf-8"))
@@ -158,10 +193,13 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> d
             raise SystemExit(f"{save_path.name}: its location list differs from the others")
         start_inv = rc.inventory_from_save(data)
         settings = rc.settings_from_save(data)
-        starts = mode_starts(grid, locations, pool, start_inv, settings, candidates, name)
+        double = bool(data[rc.OPTIONS_IN_SAVE + rc.DOUBLE_TELEPORT])
+        pick = pair_starts if double else mode_starts
+        starts = pick(grid, locations, pool, start_inv, settings, candidates, name)
         for st in starts:
             union |= st["cells"]
         modes[name] = {
+            "double_teleport": double,
             "settings": settings,
             "pool": pool,
             "start_inventory": dict(sorted(start_inv.items())),
@@ -207,8 +245,8 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> d
                 "cell": tuple(st["cell"]),
                 "column": st["column"],
                 "row": st["row"],
-                "sphere0": st["sphere0"],
                 "regions": sorted({comp[c] for c in st["cells"]}),
+                **{k: st[k] for k in ("sphere0", "location_indices", "sphere0_indices") if k in st},
             }
             for st in mode["starts"]
         ]
@@ -233,16 +271,19 @@ def render(d: dict, source: str) -> str:
         "# The game's 154 locations, in the order of its location list: cell (x, y).",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
-        "# Per mode: the seed's settings, its item pool (item IDs, one per location), its starting",
-        "# inventory, and its valid start rooms (the game's candidate index, the cell, the save",
-        "# point's column and row in tiles, how many locations the starting inventory reaches, and",
-        "# the regions every item reaches from there).",
+        "# Per mode: whether it has a second teleport target, the seed's settings, its item pool",
+        "# (item IDs, one per location), its starting inventory, and its start rooms (the game's",
+        "# candidate index, the cell, the save point's column and row in tiles, and the regions",
+        "# every item reaches from there). A mode without a second target lists only valid rooms,",
+        "# with how many locations the starting inventory reaches; a mode with one lists every",
+        "# candidate, with the locations every item and the starting items reach from it alone.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
         s = m["settings"]
         out += [
             f"    {name!r}: {{",
+            f"        'double_teleport': {m['double_teleport']},",
             f"        'energy_total': {s.energy_total},",
             f"        'mode69': {s.mode69},",
             f"        'options': bytes.fromhex({s.options.hex()!r}),",
