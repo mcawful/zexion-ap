@@ -72,3 +72,13 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Method | file inspection and a parsing script over the backup copy of slot 2 |
 | Build | B1 installed; slot 2 written 2026-06-13 by an older build |
 | Evidence | `lab/backups/20261020-211239/Save Game 2.sav`, 2026-10-20. Byte-value counts over the 154 bytes: 35 × 0, 29 × 1, 18 × 2, 17 × 36, 17 × 46, 6 × 49. |
+
+## What changes between randomizer seeds
+
+| Field | |
+|---|---|
+| Value | Across three randomizer saves (slots 2, 28, 29; different seeds, 28 and 29 saved before any pickup):<br>• The 154 u16 pairs at `0x12814` are identical in all three. If they are the location cells, the location list is fixed and only the placement varies.<br>• The 154 bytes at `0x12A80` differ in 136 positions between slots 28 and 29, and their value counts differ too (slot 29 has 62 × 1 against slot 28's 29 × 1). Whether 29 was made with different randomizer options is not recorded.<br>• The 8 bytes at `0x12B1C` differ in every save.<br>• The data after them (`0x12B24` to `0x130F8`) differs too: a short header (`06 00 bf 00 49 01` in 28, `04 00 94 00 65 03` in 29), then what look like records of four u16 values. Not decoded.<br>• Inside the first block, 27 bytes differ between 28 and 29. Eight of them, `0x2A` to `0x31`, hold values 1 to 51 that change with the seed (28: `33 15 28 11 16 01 05 27`). Their meaning is not known.<br>• Re-saving slot 1 while making these changed its timestamp but not its contents. |
+| Status | measured (all comparisons); assumed (that the pairs are location cells) |
+| Method | parsing script over backup copies |
+| Build | B1; slots 28 and 29 written 2026-10-20 by B1 |
+| Evidence | `lab/backups/20261020-212018/`, 2026-10-20. |
