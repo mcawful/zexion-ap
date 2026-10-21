@@ -83,3 +83,13 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Method | search of writable memory for the save's 32 flag bytes (two hits: slot 28 in the slot array, and this one); `memscan.py write` of one byte with read-back; the owner compared the inventory against a baseline |
 | Build | B1 |
 | Evidence | 2026-10-20, slot 28 loaded from `lab/backups/20261020-224429/`; writes logged by `memscan.py` (`0x7ff717cdd48f: 00 -> 01`, then `0x7ff717cdd48e: 00 -> 01`). |
+
+## The pickup popup is transient UI objects, not a flag
+
+| Field | |
+|---|---|
+| Value | At the Gravity Harness pickup, about 650 module bytes changed and later reverted; about 570 of them reverted together 3.2 s after the pickup, the popup's lifetime. They include repeated records holding heap addresses and small increasing IDs, and the item name as UTF-16 text: the popup creates UI objects rather than reading a "show popup" flag. A granted item (ability flag write) shows no popup. Showing one for a granted item would mean calling the game's own pickup or popup routine on the game thread, which needs the routine located (for example with an x64dbg write breakpoint on the pickup counter at `+0x3D0168` during a pickup) and code running inside the game (the proxy-DLL route). Not attempted. |
+| Status | measured (the transient changes and their timing); assumed (that only a code call can reproduce the popup) |
+| Method | bytes in `lab/mem/p3-record.log` that changed within 0.3 s of the pickup and later returned to their original value |
+| Build | B1 |
+| Evidence | `lab/mem/p3-record.log`, 2026-10-20. |
