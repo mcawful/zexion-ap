@@ -21,9 +21,7 @@ to a group's count.
     randocells.py SAVE.sav --start X,Y        any randomizer save, from a given cell
         [--cells FILE]
 
-X, Y and the N/S/W/E names are this repo's grid order, which the game's own coordinate
-display appears to swap (docs/re/randocells.md, "Grid order"): type in-game coordinates the
-other way round.
+X, Y are in the order the game displays them (docs/re/randocells.md, "Grid order").
 """
 
 from __future__ import annotations

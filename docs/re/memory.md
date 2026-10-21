@@ -125,6 +125,16 @@ Where the running game keeps the state the client needs. Addresses are module-re
 | Build | B1 |
 | Evidence | 2026-10-21, slot 28 as backed up that morning, then played forward (the S-Blade boss). Snapshots `lab/mem/st-play-*`, `st-pause-*`, `st-map-*`, `st-burst-001` to `130`; logs `lab/mem/st-rec-leads.log`, `st-rec-confirm.log`; the `Game.state()` run is in `lab/grants.jsonl` (10:42:04 to 10:43:35). The `st-dead-*` snapshots were taken after the death screen had faded and are play. |
 
+## The goal: Zexion's inventory byte at the grab
+
+| Field | |
+|---|---|
+| Value | The game's main ending starts when the player grabs Zexion (item 31) in the core, at map cell (32, 45); the game's own "Abridged Finale" setting declares victory at that moment (its text: victory "when you first grab Zexion in the core"). Getting into the core needs the four keys (the owner's account); `RandoCells` never mentions the keys, and its graph reaches (32, 45) without them. At the grab, item 31's inventory byte (`+0x3ED47E + 31`) went 0 → 1, with no change to the pickup counter (the pickup routine skips items 27 to 31; "Granting each kind of item, and what keeps it"). About 2.8 s later a menu opened ("Skip Escape and Final Battle?"). The byte went back to 0 about 2.5 minutes later, around when the player boarded the ship that starts the ending; the credits and a "Mission Complete" screen followed. The game saved the slot twice in that time, and neither save holds item 31: the saved file afterwards differs from the one before the core only in play time, a few counters and stats. So the only sign of the goal is the live byte going 0 → 1, between the grab and the ship. |
+| Status | measured (the byte, its timing and the saves, one ending, normal-mode save); reported by the owner (the keys gate the core) |
+| Method | `grant.py watch` at 20 Hz on a copy of the owner's finished normal-mode slot 1 installed in slot 25; `save_lab.py diff` of the slot after each save; the ending's text from `LargeText.txt` and `SmallText.txt` in the game folder (read-only) |
+| Build | B1 |
+| Evidence | 2026-10-21. Grab at 12:42:31.084, back to 0 at 12:44:58.721 (`lab/grants.jsonl`); saves `lab/work/slot1-for-core.sav` (before), `slot25-after-zexion.sav`, `slot25-after-ending.sav`; snapshots `lab/mem/core-burst-*`. |
+
 ## Byte patterns
 
 | Field | |
