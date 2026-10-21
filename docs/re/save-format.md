@@ -142,3 +142,23 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Method | fork test and earlier saves |
 | Build | B1 |
 | Evidence | as above. |
+
+## The item table is indexed in location-list order
+
+| Field | |
+|---|---|
+| Value | Item byte *i* at `0x12A80` is the item at location *i* of the list at `0x12814`. In slot 28's original seed, location #52 (25, 25) holds item 24, the only Gravity Harness in its table, and picking up that location gave the Gravity Harness. Item IDs are the numbers in `Files/Translations/English(HD)/ItemNames.txt` (24 = Gravity Harness, 46 = Scrap metal). |
+| Status | working in game (one location) |
+| Method | slot 28 restored to its fresh state, the first pickup taken by the owner, compared with the table |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-212018/Save Game 28.sav` (table), pickup 2026-10-20 22:3x. |
+
+## Owned items: one byte per item ID at 0x0111
+
+| Field | |
+|---|---|
+| Value | File `0x0111 + id` (first block) is nonzero when the item is owned. Slot 28's fresh randomizer save owns items 7, 15, 16 and 22 (Arc Plasma, Tunneler, Slide Mod, Jump Booster), presumably the seed's starting items; after the Gravity Harness pickup, entry 24 is 1 too. A save far into the normal game (slot 1) owns many items, and entry 37 (Bomb Box) is 4, so some entries are counts. |
+| Status | measured (layout, entry 24); assumed (starting items, counts) |
+| Method | byte comparison of slot 28 before and after the Gravity Harness pickup; reading the same range in slots 1 and 2 |
+| Build | B1 |
+| Evidence | `lab/backups/20261020-212018/` and `lab/backups/20261020-213828/` (slot 28), `lab/backups/20261020-221347/` (slots 1 and 2), 2026-10-20. |

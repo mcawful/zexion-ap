@@ -43,3 +43,13 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Method | search of writable memory for each explored row of slot 27's saved grid, outside the slot array, voting on a grid start; then a 20 Hz watcher on the cell and the counter during the pickup |
 | Build | B1 |
 | Evidence | Slot 27 loaded from `lab/backups/20261020-221347/`; pickup at 12.45 s into the watcher, 2026-10-20. |
+
+## The live inventory is not in the module's static data
+
+| Field | |
+|---|---|
+| Value | While holding the Gravity Harness (slot 28, after its first pickup), no copy of the save's owned-items array including entry 24 exists in writable memory, and neither does a bitfield of the owned IDs or an array of 32-bit values per ID. `Zexion.exe+0x3CF78D` holds the save-block layout with the starting items (7, 15, 16, 22) but not item 24, so it looks like a copy taken at load time. The live inventory is probably in a heap object. At this pickup the map cell went `0x18` → `0x1A` about 0.5 s before the pickup and `0x1A` → `0x1B` at it, together with the pickup counter; a client should treat only `0x1B` as collected. |
+| Status | measured (the searches and the cell sequence); assumed (heap) |
+| Method | 10 Hz module recorder during the pickup; `memscan.py find` for the array, bitfield and 32-bit layouts; reading known near-copies of the save block |
+| Build | B1 |
+| Evidence | `lab/mem/p3-before2`, `p3-before3`, `p3-record.log`, 2026-10-20. |
