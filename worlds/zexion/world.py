@@ -22,6 +22,8 @@ from .items import (
 from .locations import ZexionLocation, location_name, location_name_to_id
 from .options import ZexionOptions
 
+GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
+
 
 class ZexionWorld(World):
     """Zexion is a metroidvania by Gallant Leaf with a built-in randomizer. Explore a 54 by 54
@@ -86,10 +88,12 @@ class ZexionWorld(World):
                 location.access_rule = rules.requirement(self, entries, tuple(cell), cells)
             region.locations.append(location)
 
-        # Placeholder goal until the endings are researched: hold all four keys.
-        goal = ZexionLocation(self.player, "Goal", None, menu)
+        # The goal: grab Zexion in the core (docs/re/memory.md, "The goal: Zexion's inventory
+        # byte at the grab"). The four keys open the core; RandoCells does not model them.
+        core = by_index[cells[GOAL_CELL]]
+        goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(Item("Victory", ItemClassification.progression, None, self.player))
-        menu.locations.append(goal)
+        core.locations.append(goal)
 
     def create_items(self) -> None:
         for code, count in data.START_INVENTORY.items():
@@ -99,7 +103,7 @@ class ZexionWorld(World):
         self.multiworld.itempool += pool
 
     def set_rules(self) -> None:
-        self.get_location("Goal").access_rule = lambda state: state.has_all(KEYS, self.player)
+        self.get_location("Zexion").access_rule = lambda state: state.has_all(KEYS, self.player)
         self.multiworld.completion_condition[self.player] = lambda state: state.has(
             "Victory", self.player
         )

@@ -10,8 +10,8 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell in the order the game displays coordinates ("Map *y*,*x*" for this repo's cell (*x*, *y*); `randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
-| Status | measured (the list and its order); measured once (the display order) |
+| Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell as the game displays it, "Map *x*,*y*" (`randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
+| Status | measured (the list, its order and the display order) |
 | Method | `tools/gen_world_data.py` reading the location list of a fresh default-preset save and each cell's record |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
@@ -56,6 +56,16 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Build | B1 |
 | Evidence | 2026-10-21. |
 
+## The goal is the core, behind the four keys
+
+| Field | |
+|---|---|
+| Value | The world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client detects the goal as item 31's byte going 0 → 1. |
+| Status | measured (the cell, the byte); reported by the owner (the keys) |
+| Method | as in `memory.md` |
+| Build | B1 |
+| Evidence | 2026-10-21. |
+
 ## What the world needs from the client
 
 - **Items lost on death.** A grant the game has not saved is gone after a death
@@ -68,8 +78,6 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 ## Not yet decided
 
-- **The goal.** The world's goal is a placeholder, holding all four keys, which gate nothing in
-  `RandoCells`. It changes once the endings are researched.
 - **Settings.** The world uses the default preset's settings (energy total 40, code-69 mode 2,
   its option flags) and item pool; other presets are not offered yet.
 - **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's

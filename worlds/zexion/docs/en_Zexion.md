@@ -8,8 +8,9 @@ in Zexion can belong to other players, and their games can send items to you.
 
 ## What is the goal?
 
-For now, finding the Alpha, Beta, Gamma and Omega Keys. This is a placeholder until the
-game's endings have been worked out.
+Grabbing Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys. This is the
+moment the game's own "Abridged Finale" setting counts as victory; the escape, the final battle
+and the ending after it are not needed.
 
 ## Where does the game start?
 

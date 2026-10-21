@@ -1,5 +1,6 @@
-from .. import data
+from .. import data, rules
 from ..locations import location_name
+from ..world import GOAL_CELL
 from .bases import ZexionTestBase
 
 
@@ -25,9 +26,13 @@ class TestDefaultStart(ZexionTestBase):
 
     def test_goal_needs_all_four_keys(self) -> None:
         self.collect_all_but(["Omega Key", "Victory"])
-        self.assertFalse(self.can_reach_location("Goal"))
+        self.assertFalse(self.can_reach_location("Zexion"))
         self.collect_by_name("Omega Key")
-        self.assertTrue(self.can_reach_location("Goal"))
+        self.assertTrue(self.can_reach_location("Zexion"))
+
+    def test_goal_is_in_the_core(self) -> None:
+        core = self.multiworld.get_location("Zexion", self.player).parent_region
+        self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
 
 
 class TestOtherStart(ZexionTestBase):
@@ -40,4 +45,4 @@ class TestOtherStart(ZexionTestBase):
 class TestNames(ZexionTestBase):
     def test_location_names_use_the_games_coordinate_order(self) -> None:
         x, y = data.LOCATIONS[0]
-        self.assertEqual(location_name(0), f"Map {y},{x}")
+        self.assertEqual(location_name(0), f"Map {x},{y}")

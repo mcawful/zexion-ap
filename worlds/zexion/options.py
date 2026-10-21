@@ -11,7 +11,7 @@ from .data import STARTS
 
 def _start_option_name(start: dict) -> str:
     x, y = start["cell"]
-    return f"option_map_{y}_{x}"  # the game's own coordinate order, as in location names
+    return f"option_map_{x}_{y}"  # the map cell, as the game displays it
 
 
 def _make_start_room() -> type[Choice]:
