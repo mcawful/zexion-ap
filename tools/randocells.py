@@ -18,7 +18,7 @@ item does not count here; 4 = required; 11-40 = enough alone with (value - 10) o
 to a group's count.
 
     randocells.py SAVE.sav --fresh            a save made at the start of its seed
-    randocells.py SAVE.sav --start X,Y        any randomizer save, from a given cell
+    randocells.py SAVE.sav --start X,Y        any randomizer save, from one given cell
         [--cells FILE]
 
 X, Y are in the order the game displays them (docs/re/randocells.md, "Grid order").
@@ -357,11 +357,12 @@ def sweep(
     grid,
     locations,
     items,
-    start: tuple[int, int],
+    start: tuple[int, int] | list[tuple[int, int]],
     initial=None,
     settings: Settings = DEFAULT_SETTINGS,
 ) -> set[int]:
-    """Collect everything reachable, repeating until nothing new opens up."""
+    """Collect everything reachable from ``start`` (one cell or a list), repeating until
+    nothing new opens up."""
     have: Counter = Counter(initial or {})
     got: set[int] = set()
     while True:
@@ -405,7 +406,7 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
 
     The record gives the save point's position in tiles; a map cell is 14 tiles along x and
     20 along y (docs/re/save-format.md, "The continue point and the seed's start"). None when
-    the save has no randomizer section.
+    the file is too short to hold the record (a normal-mode save, for instance).
     """
     if len(data) < START_HEADER + 6:
         return None
@@ -419,8 +420,12 @@ OPTIONS_IN_SAVE = 0x1308F
 
 
 def starts_from_save(data: bytes) -> list[tuple[int, int]]:
-    """The seed's start, plus its second teleport target when Double Teleport is on."""
-    out = [start_from_save(data)]
+    """The seed's start, plus its second teleport target when Double Teleport is on; empty for
+    a file too short to be a randomizer save."""
+    start = start_from_save(data)
+    if start is None or len(data) <= OPTIONS_IN_SAVE + DOUBLE_TELEPORT:
+        return []
+    out = [start]
     if data[OPTIONS_IN_SAVE + DOUBLE_TELEPORT]:
         _, column, row = struct.unpack_from("<3H", data, SECOND_START)
         out.append((column // 14, row // 20))
@@ -437,7 +442,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fresh",
         action="store_true",
-        help="the save was made at the start of the seed: use its inventory and start cell",
+        help=(
+            "the save was made at the start of the seed: use its inventory, its start record "
+            "and, with Double Teleport, its second teleport target"
+        ),
     )
     args = parser.parse_args(argv)
     cells_path = args.cells or max(
@@ -450,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_save(data)
     if args.start:
         start = tuple(int(v) for v in args.start.split(","))
-    elif args.fresh and start_from_save(data):
+    elif args.fresh and starts_from_save(data):
         start = starts_from_save(data)
     else:
         print("give --start X,Y, or --fresh with a save made at the start of the seed")
