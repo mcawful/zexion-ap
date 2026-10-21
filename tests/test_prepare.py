@@ -68,3 +68,14 @@ def test_missing_and_impossible_slots_are_refused(folders) -> None:
         pr.prepare(7, plan(), backups, not_running)
     with pytest.raises(pr.PrepareError, match="1 to 30"):
         pr.prepare(31, plan(), backups, not_running)
+
+
+def test_a_game_started_during_prepare_stops_the_write(folders) -> None:
+    saves, backups = folders
+    original = bytes(fresh())
+    (saves / "Save Game 7.sav").write_bytes(original)
+    answers = iter([False, True])
+    with pytest.raises(pr.PrepareError, match="was started"):
+        pr.prepare(7, plan(), backups, lambda: next(answers))
+    assert (saves / "Save Game 7.sav").read_bytes() == original
+    assert not list(saves.glob("*" + pr.TMP_SUFFIX))

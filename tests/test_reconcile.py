@@ -114,3 +114,15 @@ def test_supplies_unchanged_by_other_items() -> None:
 def test_bomb_packs_count_ten() -> None:
     after = rc.supplies_after(inv(i0=3, i1=3), {37: 1}, BEFORE)
     assert (after.bombs, after.bombs_max) == (10, 10)
+
+
+def test_a_weapon_byte_of_two_still_owes_the_upgrade() -> None:
+    # If a second pickup in play raised the weapon byte instead of setting the upgrade.
+    target = rc.should_own(START, TABLE, {0}, [3])
+    assert rc.grants(inv(i0=3, i1=3, i3=2, i4=1), target).inventory == {9: 1}
+
+
+def test_filler_the_game_keeps_elsewhere_is_never_given() -> None:
+    target = rc.should_own(START, [47, 49, 48, 27], {0, 1, 2}, [47, 49])
+    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    assert g.inventory == {} and g.not_grantable == {}

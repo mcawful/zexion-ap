@@ -10,12 +10,13 @@ Every read and write first checks that the attached process is still running. A 
 ``GameNotRunning`` only when the process has exited; any other failure is a ``GameError``
 naming the address, because it means something is wrong with what was located.
 
-Item writes are compare-and-set (``set_item``): the caller says what it expects the byte to
-hold, the module re-reads it just before writing and refuses if it differs, and reads the
-write back (``ReadBackMismatch`` if the game changed it straight away). That cannot see a
+Item writes are compare-and-set (``set_item``, and ``set_supplies`` for the energy, missile
+and bomb numbers): the caller says what it expects to be there, the module re-reads it just
+before writing and refuses if it differs, and reads the write back (``ReadBackMismatch`` if the
+game changed it straight away). That cannot see a
 later reload of the inventory: a grant lasts only once the game has saved it, and a death
 returns to the last save (measured; docs/re/memory.md, "Granting each kind of item"), so the
-delivery layer must confirm items stuck by other means.
+delivery layer (client/session.py) gives again whatever a reload took away.
 
 ``state()`` says whether the game is in play: a save is loaded, no menu is open, and the
 player is alive (docs/re/memory.md, "Telling play from menus, the title screen and death").
