@@ -81,5 +81,5 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
   64 to 69 (it skips them in its first pass). An x64dbg read breakpoint during generation
   was tried and the game crashed with the debugger attached.
 - Tier 4, the rest of the evaluator (how standalone entries and counts are tested), and
-  whether the logic depends on a difficulty option. `tools/randocells.py` still treats tier
-  3 as an alternative; the evaluator shows it excludes an item instead.
+  whether the logic depends on a difficulty option. `tools/randocells.py` models tier 3 as
+  excluding the item, but not yet the boxes adding 10 to a group's count.

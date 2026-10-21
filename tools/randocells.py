@@ -11,9 +11,11 @@ relying on them. In short: 54 x 54 cells, row-major (index = y * 54 + x), 85 byt
     +0x4D  8      their tier/count bytes
 
 A list entry is an item ID (0-49) or a special condition (50-69, meaning not yet known).
-Tier/count byte: 1 (and 3, 4, assumed) = this entry alone is enough; 2 = part of the AND
-group; 11-40 = alone, needs (value - 10) of the item; 41-90 = in the AND group, needs
-(value - 40) of the item.
+Tier/count byte: 1 (and 4, assumed) = this entry alone is enough; 2 = part of the AND
+group; 3 = this item does not count for this check (the game's evaluator zeroes it);
+11-40 = alone, needs (value - 10) of the item; 41-90 = in the AND group, needs
+(value - 40) of the item. Not modeled yet: Missile and Bomb Boxes adding 10 to a group's
+count, and special conditions (passed in as a callback).
 
     randocells.py SAVE.sav [--cells FILE] [--specials never|always] [--start X,Y]
         how many of the seed's 154 locations are reachable
@@ -86,12 +88,16 @@ def parse(data: bytes) -> list[list[Cell]]:
 def satisfied(entries: Sequence[Entry], have: Counter, special: Callable[[int], bool]) -> bool:
     """Any standalone entry is enough; otherwise every AND-group entry must hold."""
 
+    excluded = {code for code, tier in entries if tier == 3}
+
     def ok(code: int, count: int = 1) -> bool:
+        if code in excluded:
+            return False
         return special(code) if code >= FIRST_SPECIAL else have[code] >= count
 
     group = []
     for code, tier in entries:
-        if tier in (1, 3, 4) and ok(code):
+        if tier in (1, 4) and ok(code):
             return True
         if 11 <= tier <= 40 and ok(code, tier - 10):
             return True

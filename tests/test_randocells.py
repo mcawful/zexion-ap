@@ -56,6 +56,8 @@ def test_lists_and_passages_parse() -> None:
         ([(1, 22)], {1: 11}, False),  # standalone count: 12 needed
         ([(1, 22)], {1: 12}, True),
         ([(55, 1)], {}, True),  # specials resolved by the callback (here: always)
+        ([(57, 1), (17, 3)], {17: 1}, True),  # tier 3 excludes S-Blade; 57 still passes
+        ([(16, 1), (16, 3)], {16: 1}, False),  # an excluded item can't satisfy the check
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
