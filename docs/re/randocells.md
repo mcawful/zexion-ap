@@ -38,21 +38,21 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | An entry below 50 is an item ID (`ItemNames.txt`); 50 to 69 is a special condition, drawn with its own icon (sprite table at RVA `0x20C820`), whose meaning is not known. The tier/count byte: `1` white, `2` yellow, `3` red, `4` blue (colors used by the game's built-in editor), `11` to `40` white with the number (value − 10), `41` to `90` yellow with the number (value − 40). Reading: white entries each suffice alone; yellow entries form one group that is needed together (tier 2 almost always appears two or more times in a list); counts are "at least N of that item" (Missile Container `43` = 3 containers). Tier 3 turned out to exclude an item from the check (see the evaluator below); tier 4 is unknown. |
-| Status | measured (the editor's encoding: item vs special, colors, the numbers it draws); assumed (the AND/OR reading; tier 4) |
+| Value | An entry below 50 is an item ID (`ItemNames.txt`); 50 to 63 is derived from the items, and 64 to 69 depends on the cell or the options (both drawn with their own icons, sprite table at RVA `0x20C820`; see "Special codes" below). The tier/count byte: `1` white, `2` yellow, `3` red, `4` blue (colors used by the game's built-in editor), `11` to `40` white with the number (value − 10), `41` to `90` yellow with the number (value − 40). Reading: white entries each suffice alone; yellow entries form one group that is needed together (tier 2 almost always appears two or more times in a list); counts are "at least N of that item" (Missile Container `43` = 3 containers). From the evaluator (below): tier 3 excludes the item from the check, and tier 4 is a hard requirement (the check fails if it is missing). |
+| Status | measured (the editor's encoding; tiers 3 and 4 from the evaluator); assumed (the reading of tiers 1 and 2 as alone and together, which fits the editor's colors and every list) |
 | Method | disassembly of the editor's drawing function (RVA `0x3CB3D`); counting tier patterns in multi-entry lists |
 | Build | B1 |
 | Evidence | `lab/data/gen.asm` (local), 2026-10-20. |
 
-## A sweep with this reading reaches every location in three real seeds
+## A sweep with the decoded logic reaches every location in two fresh seeds
 
 | Field | |
 |---|---|
-| Value | Starting at cell (25, 25), moving only where the cell being left allows it, and collecting each location's item once reached (and once its own requirements hold), all 154 locations are reachable in each of the three randomizer seeds on hand, when special conditions count as met. With the opposite reading (the cell being entered decides) 3 locations stay out of reach even then, so the cell being left decides. With special conditions never met, only 3 to 8 locations are reachable, so they matter and must be decoded before the logic can be used. |
-| Status | measured (the sweep results); assumed (the start cell, which matches where a new game begins in observation) |
-| Method | `tools/randocells.py` on backup copies of slots 2, 28 and 29 |
+| Value | A new randomizer game starts in a save room chosen per seed (the only revealed map cell in a save made at once: (13, 16) for slot 28, (10, 43) for slot 29), with a starting inventory that also varies (slot 28: 5 Energy, 3 Missile Containers, Machine Gun, Power Cartridge, Navcore; slot 29: 3 Energy, 3 Missile Containers, Force Blaster). From there, moving only where the cell being left allows it, computing codes 50 to 63 as the game does, and collecting each location's item once reached, all 154 locations are reachable in both seeds when codes 64 to 69 count as met; 146 (slot 28) and 12 (slot 29) when they never do. An earlier sweep from a fixed start at (25, 25), with every special code treated as met, also reached 154 in slots 2, 28 and 29, and showed that the cell being left decides (the opposite reading strands 3 locations). |
+| Status | measured (the sweep results, the start cells and inventories in the two saves) |
+| Method | `tools/randocells.py --fresh` on backup copies of slots 28 and 29 saved right after the seed was made |
 | Build | B1 |
-| Evidence | `lab/backups/20261020-224429/Save Game 2.sav`, `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, 2026-10-20. |
+| Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, 2026-10-20. |
 
 ## The generator's reachability check
 
@@ -68,18 +68,29 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 
 | Field | |
 |---|---|
-| Value | The evaluator (RVA `0xE3C80`) copies a global table of 64 16-bit counts (RVA `0xEB0870`, one per code 0 to 63) into a local array, then, for each list entry below 64: tier 3 sets that code's count to 0 (an item excluded from the check, not a harder alternative); tier 2 and tiers 41+ build the group needed together; a Missile Box (36) or Bomb Box (37) in the group adds 10 per box to the group's count; codes 26 and 55 get extra handling. The generator fills the table as items are collected (function at RVA `0xE5680`): each item's definition record (100 bytes, in a table behind the pointer at RVA `0xCDD068`) can redirect the count, field `+0x54` to another code once the item is already owned and field `+0x56` to another code set to 1. Codes 50 to 63 are presumably counts reached through these redirects; not yet read. |
-| Status | measured (the evaluator's handling of tiers 2, 3 and boxes, the table, the redirect fields); assumed (how codes 50 to 63 get their counts) |
+| Value | The evaluator (RVA `0xE3C80`) copies a global table of 64 16-bit counts (RVA `0xEB0870`, one per code 0 to 63) into a local array, then, for each list entry below 64: tier 3 sets that code's count to 0 (an item excluded from the check, not a harder alternative); tier 2 and tiers 41+ build the group needed together; a Missile Box (36) or Bomb Box (37) in the group adds 10 per box to the group's count; codes 26 and 55 get extra handling. The generator fills the table as items are collected (function at RVA `0xE5680`): each item's definition record (100 bytes, in a table behind the pointer at RVA `0xCDD068`) can redirect the count, field `+0x54` to another code once the item is already owned and field `+0x56` to another code set to 1. No item redirects to codes 50 to 63; those are derived inside the evaluator (see "Special codes 50 to 63 are derived from the items"). |
+| Status | measured (the evaluator's handling of tiers 2, 3 and boxes, the table, the redirect fields) |
 | Method | disassembly of RVAs `0xE3C80` and `0xE5680` |
 | Build | B1 |
 | Evidence | `lab/data/e3c80.asm`, `lab/data/all.asm` (local), 2026-10-20. |
 
+## Special codes 50 to 63 are derived from the items
+
+| Field | |
+|---|---|
+| Value | Before checking a list, the evaluator calls RVA `0xE3530` on its 64 counts. First, entries in the list itself adjust them: a tier-3 entry zeroes that item, code 55 zeroes the Gravity Harness ("without the Gravity Harness"), and code 26 (Hyper Jump) in the list sets code 63, which stops Hyper Jump standing in for other items. Then: the Gravity Harness counts as Jump Booster and G-Diffuser too; **50** = Wall Jump Boots, Gravity Harness or Jump Booster; **51** = Wall Jump Boots with G-Diffuser or Gravity Harness; **52** = Wall Jump Boots with Jump Booster; **53** = Wall Jump Boots with G-Diffuser or Gravity Harness, or Jump Booster; **54** = Gravity Harness with Jump Booster (each of 50 to 54 is also met by Hyper Jump unless code 63 is set); a weapon upgrade counts only with its weapon (Pulse Wave with Machine Gun, Pentashot with Force Blaster, Tunneler with Snake, Focal Crystal with Lance, Plasma Burst with Arc Plasma), and S-Blade and Rocket Slide only with Slide Mod; **57** = Tunneler, Lance, S-Blade or Plasma Burst; **58** = Plasma Burst, Force Blaster, Machine Gun or Snake; **59** = Machine Gun, Snake or Plasma Burst; **60** = Arc Plasma, Lance, Machine Gun, Snake or Force Blaster; **61** = Plasma Burst or a Missile Container; **62** = a combat tier from 0 to 4, computed from Energy Tanks (doubled by Magnus Armor), damage upgrades (Power Chip, Power Cartridge, Power Core), missiles (10 per Missile Box), Mega Bombs (10 per Bomb Box), X-Missile and the weapons, with Plasma Burst alone giving 4; **56** is always met. Hyper Jump (unless code 63) then also counts as Marine Jets, Jump Booster, G-Diffuser, Wall Jump Boots and Gravity Harness, and the X-Missile counts only with at least 5 Missile Containers. Item pickups also follow redirects in the item definitions (the `Objects` data from byte 1,028, 100 bytes per item, fields `+0x54` and `+0x56`): a weapon picked up again counts as its upgrade, and an upgrade picked up first counts as its weapon. `tools/randocells.py` implements all of this, with code 62 assuming the default energy setting. |
+| Status | measured (from the disassembly and the live item table); assumed (code 62's energy scaling, which reads two option values) |
+| Method | disassembly of RVAs `0xE3530`, `0xE3C80`, `0xE5680`, `0xE70A0` and `0x16DB41`; the item table read from the running game with `memscan.py` |
+| Build | B1 |
+| Evidence | `lab/data/all.asm`, `lab/data/e3c80.asm` (local), 2026-10-20. |
+
 ## Not yet found
 
-- The meaning of special conditions 50 to 69: read the live item definition table (pointer at
-  RVA `0xCDD068`) for redirects to codes 50 to 63, and read how the evaluator treats codes
-  64 to 69 (it skips them in its first pass). An x64dbg read breakpoint during generation
-  was tried and the game crashed with the debugger attached.
-- Tier 4, the rest of the evaluator (how standalone entries and counts are tested), and
-  whether the logic depends on a difficulty option. `tools/randocells.py` models tier 3 as
-  excluding the item, but not yet the boxes adding 10 to a group's count.
+- Codes 64 to 69, which the evaluator handles one by one: 64 reads a per-cell state grid
+  (RVA `0xEAFD00`), 65 to 67 check the neighboring cell or the map edge, 68 reads an
+  option table (RVA `0xCDDF4B` + tier), and 69 compares energy with thresholds set by its
+  tier byte (11 to 16). `tools/randocells.py` answers them with a callback.
+- Missile and Bomb Boxes adding 10 to a group's count, and whether options (the two values
+  code 62 reads, the option table for 68) change the logic. Not modeled yet.
+- An x64dbg read breakpoint during generation was tried and the game crashed with the
+  debugger attached; the code was found statically instead.

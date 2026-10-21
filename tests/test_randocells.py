@@ -55,9 +55,17 @@ def test_lists_and_passages_parse() -> None:
         ([(20, 2), (1, 43)], {20: 1, 1: 3}, True),
         ([(1, 22)], {1: 11}, False),  # standalone count: 12 needed
         ([(1, 22)], {1: 12}, True),
-        ([(55, 1)], {}, True),  # specials resolved by the callback (here: always)
-        ([(57, 1), (17, 3)], {17: 1}, True),  # tier 3 excludes S-Blade; 57 still passes
-        ([(16, 1), (16, 3)], {16: 1}, False),  # an excluded item can't satisfy the check
+        ([(16, 1), (16, 3)], {16: 1}, False),  # tier 3: the item doesn't count here
+        ([(60, 1)], {3: 1}, True),  # 60: any of five weapons
+        ([(57, 1)], {17: 1}, False),  # 57 via S-Blade needs Slide Mod too
+        ([(57, 1)], {16: 1, 17: 1}, True),
+        ([(57, 1), (17, 3)], {16: 1, 17: 1}, False),  # ...unless S-Blade is excluded
+        ([(54, 1)], {24: 1}, False),  # 54: Gravity Harness with Jump Booster
+        ([(54, 1)], {24: 1, 22: 1}, True),
+        ([(54, 1), (55, 1)], {24: 1, 22: 1}, False),  # 55: without the Gravity Harness
+        ([(50, 1)], {26: 1}, True),  # Hyper Jump stands in for jump upgrades
+        ([(19, 4), (16, 1)], {16: 1}, False),  # tier 4 is required, whatever else holds
+        ([(64, 1)], {}, True),  # codes 64-69 come from the callback (here: always)
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
@@ -76,7 +84,7 @@ def test_sweep_collects_in_order_of_access() -> None:
     grid = rc.parse(bytes(data))
     locations = [(26, 25), (27, 25)]
     items = [16, 46]
-    got = rc.sweep(grid, locations, items, lambda c: False)
+    got = rc.sweep(grid, locations, items, lambda c: False, (25, 25))
     assert got == {0, 1}
 
 
@@ -87,4 +95,14 @@ def test_item_requirements_gate_collection() -> None:
     data[rec(26, 25) + rc.ITEM_LIST] = 24
     data[rec(26, 25) + rc.ITEM_TIERS] = 1
     grid = rc.parse(bytes(data))
-    assert rc.sweep(grid, [(26, 25)], [46], lambda c: False) == set()
+    assert rc.sweep(grid, [(26, 25)], [46], lambda c: False, (25, 25)) == set()
+
+
+def test_weapon_pairs_are_progressive() -> None:
+    have = Counter()
+    rc.collect(have, 9)  # Pulse Wave first: counts as the Machine Gun
+    assert have == Counter({3: 1})
+    rc.collect(have, 3)  # then a Machine Gun: counts as the Pulse Wave
+    assert have == Counter({3: 1, 9: 1})
+    rc.collect(have, 24)
+    assert have[24] == 1

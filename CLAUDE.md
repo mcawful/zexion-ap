@@ -44,7 +44,7 @@ Reverse-engineering tools. These are the only code allowed to open the game or s
 .venv/Scripts/python tools/save_lab.py slots    # see /save-lab for the rest
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
-.venv/Scripts/python tools/randocells.py SAVE   # how many of a seed's locations are reachable
+.venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
 ```
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.

@@ -108,7 +108,7 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Field | |
 |---|---|
 | Value | After the same single pickup from the same start, the save that received a normal item (slot 28) and the one that received Scrap (slot 30) differ in the first block at 42 bytes. Most are map exploration and stats (slot 28 explored a little further). Two bytes went 0 → 1 only where the normal item was received: `0x0129` and `0x39A7`. Either may be the flag for owning that item; neither is confirmed, and which item it was is not yet recorded. |
-| Status | assumed (candidates only) |
+| Status | superseded: the inventory is at `0x92F3 + item ID` (below); `0x0129` belongs to the array at `0x0111`, which is not the inventory |
 | Method | byte comparison of the two saves after their pickup, against the save before it |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-213828/Save Game 28.sav` against `lab/backups/20261020-213055/Save Game 30.sav` and `lab/backups/20261020-212018/Save Game 28.sav`, 2026-10-20. |
@@ -137,8 +137,8 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 
 | Field | |
 |---|---|
-| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: possibly Scrap or filler collected. |
-| Status | assumed (meanings) |
+| Value | `0x935A` went 0 → 1 with one pickup and was 2 after two: likely items collected. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, see "Inventory: one byte per item ID at 0x92F3"). |
+| Status | measured (`0x9321`); assumed (`0x935A`) |
 | Method | fork test and earlier saves |
 | Build | B1 |
 | Evidence | as above. |
@@ -173,12 +173,12 @@ The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except thr
 | Build | B1 |
 | Evidence | Saves in `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/`, `20261020-221347/`; `lab/mem/p3-record.log`, 2026-10-20. |
 
-## Ability flags: 32 bytes at 0x9300
+## Inventory: one byte per item ID at 0x92F3
 
 | Field | |
 |---|---|
-| Value | `0x9300` to `0x931F` hold one byte per ability, 1 when owned. **Flag = item ID − 13**, seen for three items: Slide Mod (16) is `0x03`, S-Blade (17) `0x04`, Gravity Harness (24) `0x0B`. If the rule holds throughout, the 32 flags are items 13 (Power Cartridge) to 44 (Data Disc), and items 0 to 12 (Energy Tank, Missile Container, Mega Bomb, the weapons, Rocket Slide) and 45 to 50 (filler) are stored elsewhere. Slot 28's fresh randomizer save has flags `0x00` and `0x13` (items 13 and 32 by the rule, not checked). The Gravity Harness pickup added `0x0B`. The control run, with a second major item (list code `0xE1`), also had `0x04` and `0x17`. Your slot 1 has most flags set. |
-| Status | measured (layout; the rule for items 16, 17 and 24); assumed (the rule for the rest) |
-| Method | save comparison; live grant of flag `0x04` (`memory.md`) |
+| Value | The player state holds one byte per code, at file `0x92F3 + code` (first block): codes 0 to 49 are the item IDs from `ItemNames.txt`, so this is the inventory. Energy Tank (0), Missile Container (1), Mega Bomb (2) and the Missile Box (36) are counts; the upgrades are 0 or 1; Scrap metal (46) counts pickups (`0x9321`). Codes 50 to 63 are 0 in every save seen. This replaces an earlier reading of `0x9300` as "ability flags, flag = item ID − 13": `0x9300` is just item 13's byte. Seen: slot 28's fresh seed starts with 5 Energy, 3 Missile Containers, the Machine Gun (3), Power Cartridge (13) and Navcore (32), and the Gravity Harness pickup set item 24; slot 29's fresh seed starts with 3 Energy, 3 Missile Containers and the Force Blaster (4), so the starting weapon varies by seed; slot 1 owns nearly everything. The game fills the logic's count table from these bytes (RVA `0x16DB41` reads the live player state at offset `0x108E + code`). |
+| Status | measured (layout, from the game's code and from saves; items 16, 17 and 24 granted live through it) |
+| Method | disassembly of RVA `0x16DB41`; save comparison; live grants (`memory.md`) |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20. |

@@ -74,11 +74,11 @@ code relies on them (see `/find-address`). Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/mem/p3-record.log`; saves `lab/backups/20261020-223111/` and `20261020-224429/`, 2026-10-20. |
 
-## Live ability flags: writing one grants the item
+## Live inventory: writing an item's byte grants it
 
 | Field | |
 |---|---|
-| Value | The live ability flags (the save's 32 bytes at file `0x9300`) are at `Zexion.exe+0x3ED48B`. With slot 28 loaded and the Gravity Harness owned, they read flags `0x00`, `0x0B` and `0x13`, exactly as saved. Writing 1 to flag `0x04` (`+0x3ED48F`) made the S-Blade appear in the inventory at once, with no pickup, reload or save. Writing 1 to flag `0x03` (`+0x3ED48E`), predicted from flag = item ID − 13, made Slide Mod appear, and with it the granted S-Blade worked in play (S-Blade needs Slide Mod). The recorder had caught flag `0x0B` (`+0x3ED496`) going 0 → 1 at the Gravity Harness pickup. The pause screen's item count stayed at 1, matching the pickup counter at `+0x3D0168`: a granted item does not count as a pickup, and the counter is the `ITEMS: x/150` number, so it counts locations collected. |
+| Value | The live inventory (the save's bytes at file `0x92F3 + item ID`) is at `Zexion.exe+0x3ED47E + item ID`, inside the player state that starts at `+0x3EC3F0` (the game reads it at offset `0x108E + code`). With slot 28 loaded it matched the save. Writing 1 to item 17's byte (`+0x3ED48F`) made the S-Blade appear in the inventory at once, with no pickup, reload or save. Writing 1 to item 16's byte (`+0x3ED48E`) made Slide Mod appear, and with it the granted S-Blade worked in play (S-Blade needs Slide Mod). The recorder had caught item 24's byte (`+0x3ED496`) going 0 → 1 at the Gravity Harness pickup. (These writes were first described as "ability flags, flag = item ID − 13", an artifact of reading the array from item 13.) The pause screen's item count stayed at 1, matching the pickup counter at `+0x3D0168`: a granted item does not count as a pickup, and the counter is the `ITEMS: x/150` number, so it counts locations collected. |
 | Status | working in game (S-Blade and Slide Mod granted live; the S-Blade used in play) |
 | Method | search of writable memory for the save's 32 flag bytes (two hits: slot 28 in the slot array, and this one); `memscan.py write` of one byte with read-back; the owner compared the inventory against a baseline |
 | Build | B1 |
