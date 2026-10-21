@@ -55,7 +55,7 @@ Reverse-engineering tools. These are the only code allowed to open the game or s
 ```
 
 `grant.py set` changes the running game: ask before each one, only while the person playing is
-standing still in play, and only in a lab slot (the game saves the grant into the slot). It
+standing still in play (it refuses unless `Game.settled_state()` reads in play), and only in a lab slot (the game saves the grant into the slot). It
 logs every attempt to `lab/grants.jsonl` before writing. It writes the inventory byte only;
 Energy Tanks, Missile Containers and Mega Bombs also need the player-state fields in
 `docs/re/memory.md` ("Granting each kind of item").
@@ -71,7 +71,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - `worlds/zexion/`: the APWorld. Not created yet.
 - `client/`: will hold the AP client (`CommonClient` + `pymem`). For now: `patterns.py` (byte
   patterns for each piece of game state) and `game.py` (attach, locate by pattern, read and
-  write with checks).
+  write with checks, and `state()`: in play, menu, dead or no save loaded).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

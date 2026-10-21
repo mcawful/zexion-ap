@@ -1,8 +1,8 @@
 """Grant items in the running game by hand, and watch the inventory, for live grant tests.
 
-    grant.py show                              the inventory by name, and the pickup counter
+    grant.py show                              the state, the inventory by name, the pickup counter
     grant.py set ITEM VALUE --expect N --yes   set one item's inventory byte (compare-and-set)
-    grant.py watch [--seconds S] [--interval I]   print inventory and counter changes as they come
+    grant.py watch [--seconds S] [--interval I]   print inventory, counter and state changes
 
 ITEM is an item ID (0 to 49) or its name from the game's ``ItemNames.txt`` ("Alpha Key"; case
 and spacing do not matter). ``set`` goes through ``client/game.py``: the build must be known,
@@ -10,17 +10,20 @@ every pattern must resolve, the byte must hold ``--expect`` just before the writ
 write is read back. Every attempt and its outcome is appended to ``lab/grants.jsonl`` first,
 so a write that leaves no log line was never made. ``watch`` logs what it sees there too.
 Events: ``attempt``, ``written``, ``mismatch`` (written, then changed by the game),
-``unknown``, ``refused``, ``watch``, ``change``, ``watch-ended``. Exit status: 0 done,
-1 refused or failed, 2 written but changed, or state unknown.
+``unknown``, ``unconfirmed``, ``refused``, ``watch``, ``change``, ``watch-ended``. Exit
+status: 0 done, 1 refused or failed, 2 written but changed, unconfirmed, or state unknown.
 
 ``set`` writes the inventory byte only. For Energy Tanks, Missile Containers and Mega Bombs
 that does not change the energy, missile or bomb numbers the game uses (docs/re/memory.md,
 "Granting each kind of item"). A grant becomes part of the slot once the game saves, so use
 it only on a lab slot, never on a real save.
 
-Nothing here knows whether the game is in play (``client/game.py`` has no such signal yet), so
-``set`` is only for when the person playing has said they are standing still in play, not in
-a menu, a load or a death. ``--yes`` records that they agreed to the write. The item names are
+``set`` refuses unless ``Game.settled_state()`` reads "in play" (a save loaded, no menu open,
+the player alive, twice a moment apart); the person playing should still be standing still.
+After writing it waits as long again and logs ``unconfirmed`` (exit 2) if the state left
+"in play" or the byte no longer holds the value, which is how a reload undoing the write
+shows up. ``--yes`` records that they
+agreed to the write. The item names are
 read from the game folder, read-only; without it, items are shown by ID.
 """
 
@@ -105,7 +108,7 @@ def log(entry: dict) -> None:
 def cmd_show(args: argparse.Namespace, names: dict[int, str]) -> int:
     g = game.Game.attach()
     inv = g.inventory()
-    print(f"build {g.build.name}; pickup counter {g.pickup_counter()}")
+    print(f"build {g.build.name}; {g.state()}; pickup counter {g.pickup_counter()}")
     for i, v in enumerate(inv):
         if v:
             print(f"  {label(i, names)}: {v}")
@@ -122,7 +125,12 @@ def cmd_set(args: argparse.Namespace, names: dict[int, str]) -> int:
     entry["value"] = args.value
     log({**entry, "event": "attempt"})
     try:
+        state = g.settled_state()
+        if state != game.IN_PLAY:
+            raise game.GameError(f"the game is not in play ({state}); not written")
         g.set_item(item, expected=args.expect, value=args.value)
+        time.sleep(game.SETTLE_SECONDS)
+        after, now = g.state(), g.inventory()[item]
     except game.ReadBackMismatch as exc:
         # Checked before GameError: the write was made, so this is not a refusal.
         log({**entry, "event": "mismatch", "read_back": exc.read_back[0], "error": str(exc)})
@@ -137,6 +145,10 @@ def cmd_set(args: argparse.Namespace, names: dict[int, str]) -> int:
         log({**entry, "event": "refused", "error": str(exc)})
         print(f"REFUSED: {exc}")
         return 1
+    if after != game.IN_PLAY or now != args.value:
+        log({**entry, "event": "unconfirmed", "state_after": after, "now": now})
+        print(f"UNCONFIRMED: written, but then the game was {after} and the byte held {now}")
+        return 2
     try:
         log({**entry, "event": "written"})
     except OSError as exc:
@@ -161,10 +173,12 @@ def cmd_watch(args: argparse.Namespace, names: dict[int, str]) -> int:
     """Print and log every inventory and counter change; a change undone within one interval
     is not seen."""
     g = game.Game.attach()
-    inv, counter = g.inventory(), g.pickup_counter()
+    inv, counter, state = g.inventory(), g.pickup_counter(), g.state()
     owned = {label(i, names): v for i, v in enumerate(inv) if v}
-    print(f"{_stamp()}  watching; counter {counter}; inventory {owned}; Ctrl+C stops")
-    log({"event": "watch", "pid": g.pid, "counter": counter, "inventory": list(inv)})
+    print(f"{_stamp()}  watching; {state}; counter {counter}; inventory {owned}; Ctrl+C stops")
+    log(
+        {"event": "watch", "pid": g.pid, "state": state, "counter": counter, "inventory": list(inv)}
+    )
     deadline = time.monotonic() + args.seconds if args.seconds else None
     # Every way out logs "watch-ended", so a quiet log cannot be read as "nothing changed"
     # for a time nobody was watching.
@@ -172,17 +186,19 @@ def cmd_watch(args: argparse.Namespace, names: dict[int, str]) -> int:
     try:
         while deadline is None or time.monotonic() < deadline:
             time.sleep(args.interval)
-            new_inv, new_counter = g.inventory(), g.pickup_counter()
+            new_inv, new_counter, new_state = g.inventory(), g.pickup_counter(), g.state()
             lines = changes(inv, new_inv, names)
             if new_counter != counter:
                 lines.append(f"pickup counter: {counter} -> {new_counter}")
+            if new_state != state:
+                lines.append(f"state: {state} -> {new_state}")
             for line in lines:
                 print(f"{_stamp()}  {line}")
                 try:
                     log({"event": "change", "pid": g.pid, "change": line})
                 except OSError as exc:
                     print(f"{_stamp()}  (not logged: {exc})")
-            inv, counter = new_inv, new_counter
+            inv, counter, state = new_inv, new_counter, new_state
     except KeyboardInterrupt:
         reason = "stopped"
     except game.GameError as exc:

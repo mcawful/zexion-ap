@@ -28,8 +28,13 @@ live in the path around the change.
 3. **Writes without read-back.** Granting an item by writing memory and assuming it took. The
    client must read the value back and treat a mismatch as not delivered.
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
-   on the title screen, dead, or in a cutscene, if the code does not know the game state. The
-   game may overwrite the write, or save it to the wrong slot.
+   on the title screen, dead, or in a cutscene. Writes must be gated on
+   `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)
+   makes `state()` read in play before the inventory is copied back (`docs/re/memory.md`,
+   "Telling play from menus, the title screen and death"). The write still needs a read-back
+   and a later check that it stuck. Cutscenes and
+   endings are not covered by it yet. The game may overwrite the write, or save it to the
+   wrong slot.
 5. **Double delivery.** Trace the received-items index: where it is stored (in the save, in
    game memory, in a file), when it advances relative to the write, and what happens on a
    reconnect, a client restart, a game restart, and a reload of an older save. An item must be

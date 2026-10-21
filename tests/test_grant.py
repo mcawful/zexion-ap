@@ -36,7 +36,7 @@ def test_changes_lists_each_byte_that_differs() -> None:
 
 class FakeProcess:
     def __init__(self) -> None:
-        self.memory = bytearray(0x100)
+        self.memory = bytearray(0x1000)
         self.writes = 0
         self.fail_write = False
         self.overwrite_with: int | None = None  # the game changes the byte straight after
@@ -60,19 +60,20 @@ class FakeGame(game.Game):
         return self.alive
 
 
+INV = 0x400
+ENERGY = INV - game.INVENTORY_IN_PLAYER_STATE + game.ENERGY_NOW
+RVA = {"inventory": INV, "pickup_counter": 0x980, "save_loaded": 0x900, "menu_state": 0x901}
+
+
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
     monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
-    g = FakeGame(
-        FakeProcess(),
-        0,
-        {"inventory": 0x10, "pickup_counter": 0x80},
-        1,
-        Build("B1", "0" * 64, 0, 0),
-    )
-    g.pm.memory[0x10] = 5  # 5 Energy Tanks
+    g = FakeGame(FakeProcess(), 0, dict(RVA), 1, Build("B1", "0" * 64, 0, 0))
+    g.pm.memory[INV] = 5  # 5 Energy Tanks
+    g.pm.memory[ENERGY : ENERGY + 2] = (80).to_bytes(2, "little")  # alive, a save loaded
     monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: g))
     monkeypatch.setattr(grant, "load_item_names", lambda: dict(NAMES))
+    monkeypatch.setattr(game.time, "sleep", lambda _: None)
     return g, tmp_path / "grants.jsonl"
 
 
@@ -87,7 +88,7 @@ def events(log_path) -> list[str]:
 def test_set_writes_and_logs_the_attempt_first(fake) -> None:
     g, log_path = fake
     assert grant.main(["set", "energy tank", "6", "--expect", "5", "--yes"]) == 0
-    assert g.pm.memory[0x10] == 6
+    assert g.pm.memory[INV] == 6
     assert events(log_path) == ["attempt", "written"]
 
 
@@ -100,7 +101,7 @@ def test_set_refuses_without_yes(fake) -> None:
 def test_set_refuses_when_the_byte_is_not_as_expected(fake) -> None:
     g, log_path = fake
     assert grant.main(["set", "0", "6", "--expect", "4", "--yes"]) == 1
-    assert g.pm.memory[0x10] == 5 and g.pm.writes == 0
+    assert g.pm.memory[INV] == 5 and g.pm.writes == 0
     assert events(log_path) == ["attempt", "refused"]
 
 
@@ -142,7 +143,7 @@ def test_a_failed_write_logs_what_the_byte_holds_afterward(fake) -> None:
 
 def test_watch_prints_and_logs_changes(fake, monkeypatch, capsys) -> None:
     g, log_path = fake
-    ticks = iter([lambda: g.pm.memory.__setitem__(0x10 + 27, 1), None])
+    ticks = iter([lambda: g.pm.memory.__setitem__(INV + 27, 1), None])
 
     def sleep(_):
         step = next(ticks)
@@ -152,7 +153,8 @@ def test_watch_prints_and_logs_changes(fake, monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(grant.time, "sleep", sleep)
     assert grant.main(["watch"]) == 0
-    assert "27 ALPHA KEY: 0 -> 1" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "27 ALPHA KEY: 0 -> 1" in out and "in play" in out
     assert events(log_path) == ["watch", "change", "watch-ended"]
     assert entries(log_path)[0]["inventory"][0] == 5
     assert entries(log_path)[-1]["reason"] == "stopped"
@@ -176,3 +178,74 @@ def test_watch_logs_its_end_when_its_time_is_up(fake, monkeypatch) -> None:
     assert grant.main(["watch", "--seconds", "0.01"]) == 0
     assert events(log_path)[0] == "watch" and events(log_path)[-1] == "watch-ended"
     assert entries(log_path)[-1]["reason"] == "deadline"
+
+
+@pytest.mark.parametrize(
+    ("poke", "state"),
+    [
+        (lambda m: None, game.IN_PLAY),
+        (lambda m: m.__setitem__(0x901, 2), game.MENU),
+        (lambda m: m.__setitem__(slice(ENERGY, ENERGY + 2), bytes([0xFF, 0xFF])), game.DEAD),
+        (lambda m: m.__setitem__(0x900, 0xFF), game.NO_SAVE),
+    ],
+)
+def test_state_reads_save_menu_and_energy(fake, poke, state) -> None:
+    g, _ = fake
+    poke(g.pm.memory)
+    assert g.state() == state
+
+
+def set_energy(memory, value: int) -> None:
+    memory[ENERGY : ENERGY + 2] = value.to_bytes(2, "little", signed=True)
+
+
+@pytest.mark.parametrize(
+    ("poke", "state"),
+    [
+        (lambda m: m.__setitem__(0x901, 3), "menu"),
+        (lambda m: set_energy(m, -1), "dead"),
+        (lambda m: set_energy(m, 0), "dead"),
+        (lambda m: m.__setitem__(0x900, 0xFF), "no save loaded"),
+    ],
+)
+def test_set_refuses_outside_play(fake, poke, state) -> None:
+    g, log_path = fake
+    poke(g.pm.memory)
+    assert grant.main(["set", "0", "6", "--expect", "5", "--yes"]) == 1
+    assert g.pm.writes == 0 and g.pm.memory[INV] == 5
+    assert events(log_path) == ["attempt", "refused"]
+    assert f"not in play ({state})" in entries(log_path)[-1]["error"]
+
+
+def test_set_refuses_while_the_state_is_changing(fake, monkeypatch) -> None:
+    g, log_path = fake
+    # Between the two reads of settled_state(), a menu opens.
+    monkeypatch.setattr(game.time, "sleep", lambda _: g.pm.memory.__setitem__(0x901, 2))
+    assert grant.main(["set", "0", "6", "--expect", "5", "--yes"]) == 1
+    assert g.pm.writes == 0
+    assert "not in play (changing)" in entries(log_path)[-1]["error"]
+
+
+def test_a_reload_undoing_the_write_is_logged_unconfirmed(fake, monkeypatch) -> None:
+    g, log_path = fake
+    sleeps = iter([lambda: None, lambda: g.pm.memory.__setitem__(INV, 5)])
+    monkeypatch.setattr(game.time, "sleep", lambda _: next(sleeps)())
+    assert grant.main(["set", "0", "6", "--expect", "5", "--yes"]) == 2
+    assert g.pm.writes == 1
+    assert events(log_path) == ["attempt", "unconfirmed"]
+    assert entries(log_path)[-1]["now"] == 5
+
+
+def test_watch_reports_state_changes(fake, monkeypatch, capsys) -> None:
+    g, log_path = fake
+    ticks = iter([lambda: g.pm.memory.__setitem__(0x901, 2), None])
+
+    def sleep(_):
+        step = next(ticks)
+        if step is None:
+            raise KeyboardInterrupt
+        step()
+
+    monkeypatch.setattr(grant.time, "sleep", sleep)
+    assert grant.main(["watch"]) == 0
+    assert "state: in play -> menu" in capsys.readouterr().out

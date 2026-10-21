@@ -5,8 +5,8 @@
 
 Offline, each target must resolve (every pattern once, all agreeing). On build B1 it must also
 land on the recorded B1 address; on another build a difference is expected and is reported for
-docs/re/memory.md. Live, it reads (never writes) the pickup counter, the inventory, the map
-and the loaded seed's first location cell.
+docs/re/memory.md. Live, it reads (never writes) the game state, the pickup counter, the inventory,
+the map and the loaded seed's first location cell.
 """
 
 from __future__ import annotations
@@ -68,6 +68,7 @@ def live() -> int:
     inv = g.inventory()
     owned = {i: v for i, v in enumerate(inv) if v}
     grid = g.map_grid()
+    print(f"state: {g.state()}; energy {g.energy()}")
     print(f"pickup counter {g.pickup_counter()}; inventory {owned}")
     print(
         f"map: {sum(1 for v in grid if v)} cells explored, "

@@ -17,14 +17,24 @@ later reload of the inventory: a grant lasts only once the game has saved it, an
 returns to the last save (measured; docs/re/memory.md, "Granting each kind of item"), so the
 delivery layer must confirm items stuck by other means.
 
-Not handled yet: whether the game is in play, loading, paused or dead. A caller must not
-write while it is not in play; there is no check for it here yet.
+``state()`` says whether the game is in play: a save is loaded, no menu is open, and the
+player is alive (docs/re/memory.md, "Telling play from menus, the title screen and death").
+It reads three values one after another, so the state can change between them and right after.
+Worse, loading a save (which is also how the game respawns after a death) sets two of them
+before it copies the inventory back from the save, so one ``state()`` can read IN_PLAY in the
+middle of a load, and a write made then reads back fine and is overwritten a moment later.
+``settled_state()`` reads the state twice, ``SETTLE_SECONDS`` apart, and only agrees on
+IN_PLAY when both do; a caller writes only then, and afterwards waits as long again and checks
+that the state is still IN_PLAY and the byte still holds what it wrote. Even that only says
+the write was not undone at once: the save is the final word. Room transitions and saving kept
+the in-play values in a recording of the bytes; cutscenes and endings are untested.
 """
 
 from __future__ import annotations
 
 import re
 import struct
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -41,6 +51,19 @@ LOCATIONS = 154
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
 RANDO_BLOB_SIZE = 0x908
 ITEM_TABLE_AT = 0x26C  # file 0x12A80 - 0x12814
+# Player state fields, by offset from the player state, which starts 0x108E before the
+# inventory (docs/re/memory.md).
+INVENTORY_IN_PLAYER_STATE = 0x108E
+ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
+NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
+
+# What state() returns.
+NO_SAVE = "no save loaded"
+MENU = "menu"
+DEAD = "dead"
+IN_PLAY = "in play"
+CHANGING = "changing"  # settled_state(): two reads disagreed
+SETTLE_SECONDS = 0.1  # several frames
 
 
 class GameError(RuntimeError):
@@ -306,6 +329,29 @@ class Game:
                 f"item {item} holds {current}, not the expected {expected}; not written"
             )
         self._write("inventory", item, bytes([value]))
+
+    def energy(self) -> int:
+        """Current energy (signed); -1 from the moment of death until the respawn (measured),
+        so 0 or below counts as dead (0 itself is an assumption)."""
+        offset = ENERGY_NOW - INVENTORY_IN_PLAYER_STATE
+        return struct.unpack("<h", self._read("inventory", offset, 2))[0]
+
+    def state(self) -> str:
+        """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in."""
+        if self._read("save_loaded", 0, 1)[0] == NO_SAVE_LOADED:
+            return NO_SAVE
+        if self._read("menu_state", 0, 1)[0] != 0:
+            return MENU
+        if self.energy() <= 0:
+            return DEAD
+        return IN_PLAY
+
+    def settled_state(self, gap: float = SETTLE_SECONDS) -> str:
+        """``state()`` read twice, ``gap`` seconds apart; CHANGING if the two differ."""
+        first = self.state()
+        time.sleep(gap)
+        second = self.state()
+        return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
         """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45.

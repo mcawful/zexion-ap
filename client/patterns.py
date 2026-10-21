@@ -207,6 +207,72 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "menu_state",
+        "nonzero while a menu is open (pause, map, quit or file-select menus); 0 otherwise",
+        0x345F03,
+        (
+            # from the instruction at RVA 0xa905a on B1 (stores 2)
+            Pattern(
+                (
+                    "C6 05 ?? ?? ?? ?? 02 48 8B 07 33 F6 44 8B C6 48 8B 78 10 48 8B 87 E0 01 "
+                    "00 00 48 8B 08 48 8B 91 F0 01 00 00 8B CE 39 8A D8 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x15aab4 on B1 (the only store of 0)
+            Pattern(
+                (
+                    "C6 05 ?? ?? ?? ?? 00 C6 80 20 01 00 00 00 75 ?? E8 ?? ?? ?? ?? 33 C9 FF "
+                    "15 ?? ?? ?? ??"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "save_loaded",
+        "the loaded slot's empty marker (file 0x9360): 0xFF when no save is loaded",
+        0x3D016A,
+        (
+            # from the instruction at RVA 0x1633c6 on B1 (turns the player on or off by it)
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? FF 74 0D 48 8B 40 38 C6 80 20 01 00 00 01 EB 0B 48 8B "
+                    "40 38 C6 80 20 01 00 00 00 48 8B 87 F0 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x9f267 on B1 (the load path sets 0)
+            Pattern(
+                ("C6 05 ?? ?? ?? ?? 00 80 3E 02 75 ?? C6 06 03 48 0F BE 0D ?? ?? ?? ?? 33 DB"),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x94849 on B1 (a return to the title sets 0xFF)
+            Pattern(
+                (
+                    "C6 05 ?? ?? ?? ?? FF 66 89 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 33 C0 48 "
+                    "89 0D ?? ?? ?? ?? 66 89 05 ?? ?? ?? ??"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}
