@@ -22,7 +22,9 @@
 #include <string>
 
 #include "build.h"
+#include "game_calls.h"
 #include "iat.h"
+#include "mailbox.h"
 #include "pipe.h"
 
 #ifdef ZAP_HOOKTEST
@@ -39,7 +41,8 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.1.0";
+constexpr char kVersion[] = "0.2.0";
+constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
 // rax keeps the same function usable for the test target, which returns a value.
@@ -51,9 +54,23 @@ void** g_slot = nullptr;  // set while hooked
 void* g_original = nullptr;
 zap::Trampoline g_trampoline;
 std::atomic<uint64_t> g_frames{0};
+zap::Mailbox g_mailbox;
+zap::Game g_game;               // used on the game's thread only, inside frame()
+std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 
 uintptr_t frame(void* argument) {
     g_frames.fetch_add(1);
+    // The game calls this from its one main thread. Should two threads ever call it at once
+    // (the hook-test target is called from several), only one does the work.
+    if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
+        try {
+            g_mailbox.serve();
+            g_game.pump_popups();
+        } catch (...) {
+            // Nothing may unwind into the game.
+        }
+        g_in_frame_work.clear(std::memory_order_release);
+    }
     return reinterpret_cast<Passthrough>(g_original)(argument);
 }
 
@@ -92,10 +109,40 @@ void wait_until_no_call_inside() {
 
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") {
+        std::string configured;
+        if (g_slot != nullptr) {
+            g_mailbox.call([] { return std::string(g_game.configured() ? "1" : "0"); },
+                           kFrameWaitMs, configured);
+        }
         return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
-               " hooked=" + (g_slot ? "1" : "0");
+               " hooked=" + (g_slot ? "1" : "0") +
+               " configured=" + (configured == "1" ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request.rfind("config", 0) == 0 || request.rfind("apply", 0) == 0) {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (request.rfind("config", 0) == 0) {
+            std::map<std::string, uint64_t> rvas;
+            std::string error = zap::parse_config(request, rvas);
+            if (!error.empty()) return "error " + error;
+            HMODULE exe = GetModuleHandleW(nullptr);
+            if (!g_mailbox.call([&] {
+                    std::string e = g_game.configure(exe, rvas);
+                    return e.empty() ? std::string("ok") : "error " + e;
+                }, kFrameWaitMs, result)) {
+                return "refused no frame";
+            }
+            return result;
+        }
+        zap::Batch batch;
+        std::string error = zap::parse_batch(request, batch);
+        if (!error.empty()) return "error " + error;
+        if (!g_mailbox.call([&] { return g_game.apply(batch); }, kFrameWaitMs, result)) {
+            return "refused no frame";  // withdrawn: it will never be applied
+        }
+        return result;
+    }
     if (request == "unload") {
         if (!unhook()) return "error the frame hook was replaced by something else; not unloading";
         stop = true;
