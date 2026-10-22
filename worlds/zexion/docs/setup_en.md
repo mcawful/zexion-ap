@@ -7,11 +7,30 @@ yet in a full game, so treat any seed as a test.
 
 - Zexion on Steam (Windows), the build the client knows (it refuses others).
 - Archipelago 0.6.8 or newer, with this world installed.
+- The client's in-game helper, `zexion_ap.dll`. The client loads it into Zexion when it
+  attaches; without it, use `/prepare` (below).
 
-## Preparing a save
+## Starting a game
 
-The client writes the seed into a new randomizer game of yours; it never changes a game you
-are playing.
+The client starts the seed as a new game in an empty slot; it never changes a game you are
+playing.
+
+1. Start Zexion and stay at the title screen.
+2. Start the client and connect to the server. Once it attaches to Zexion it says "Ready for a
+   new game".
+3. In Zexion, pick an empty slot. Where the game offers NORMAL and RANDOMIZER, it now offers
+   NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room with its
+   starting items, and the game saves the new game at once.
+
+For an OHKO seed, RANDOMIZER stays: choose RANDOMIZER, then OHKO with no options changed, and
+START GAME. The client writes the seed in as the game starts it.
+
+When the client disconnects, the choice reads RANDOMIZER again.
+
+## Preparing a save instead
+
+Without the helper, or for a seed whose starting items a new game cannot hold (the client
+says so), the client writes the seed into a saved new game:
 
 1. Pause Steam Cloud for Zexion (Steam, Library, Zexion, Properties, General), so the cloud
    keeps a copy of your saves as they were.
@@ -30,4 +49,4 @@ the items other players find for you (only while you are in play, not in menus),
 your goal when you grab Zexion in the core. If you die or reload, items received since your
 last save are given again.
 
-Only play the prepared slot while the client is connected.
+Only play the seed's slot while the client is connected.
