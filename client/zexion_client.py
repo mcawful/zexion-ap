@@ -18,8 +18,9 @@ Once connected:
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
   2026-10-22 with a Standard seed). For a seed whose mode
   the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
-  seed's mode gets the AP seed written in as the game builds it. A seed whose starting items a
-  new game cannot hold falls back to /prepare.
+  seed's mode gets the AP seed written in as the game builds it (run in game for Standard
+  only). One new game per connection: reconnect to start another. A seed whose starting
+  items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example

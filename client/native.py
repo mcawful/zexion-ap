@@ -3,7 +3,8 @@
 The helper runs inside Zexion: it gets a call from the game's main loop, on the game's own
 thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
 call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
-per message: ``hello``, ``ping``, ``config``, ``apply`` and ``unload`` (native/README.md).
+per message: ``hello``, ``ping``, ``config``, ``apply``, ``ap_newgame``, ``disarm``,
+``newgame_status`` and ``unload`` (native/README.md).
 ``attach`` loads the helper if needed and configures it with the addresses the client resolved
 by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
 optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it

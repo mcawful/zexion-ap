@@ -45,7 +45,7 @@ START_WITH_ORDER = (
 )  # fmt: skip
 START_WITH = 0x12E9D  # file offset of the start-with array
 START_KEY_OPTIONS = (34, 35, 36)  # settings bits: keys count = bit0 + 2*bit1 + 4*bit2
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_PACK = 0, 1, 2, 36, 37
+ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 KEYS = (27, 28, 29, 30)
 # The randomizer menu's state: seed text, start-with and pool arrays, amounts, setting t at
 # MENU_SETTINGS + t (docs/re/memory.md, "The game-mode panel").
@@ -72,7 +72,7 @@ def start_with(start_items: dict[int, int]) -> tuple[bytes, dict[int, int]]:
             array[i] = 1
     tanks = items.pop(ENERGY_TANK, 0)
     containers, boxes = items.pop(MISSILE_CONTAINER, 0), items.pop(MISSILE_BOX, 0)
-    bombs, packs = items.pop(MEGA_BOMB, 0), items.pop(BOMB_PACK, 0)
+    bombs, packs = items.pop(MEGA_BOMB, 0), items.pop(BOMB_BOX, 0)
     if containers > 9 or bombs > 9:
         raise NewGameError("more than 9 Missile Containers or Mega Bombs at the start")
     keys = [k for k in KEYS if items.pop(k, 0)]
