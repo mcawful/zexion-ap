@@ -11,7 +11,9 @@ The rules about evidence below exist because of that.
 holds the AP client, which has run a solo seed in the game with a local AP server, and
 the module that finds and accesses game state by byte pattern. `native/` holds an in-game
 helper DLL, which runs in the game and gives received items there with the game's own popup,
-sound and HUD refresh (helper phase 2, live-tested on one seed).
+sound and HUD refresh (helper phase 2, live-tested on one seed), and starts a new game from the
+AP seed: ARCHIPELAGO in place of RANDOMIZER after an empty slot is picked (helper phase 3,
+live-tested on a Standard seed).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -102,7 +104,12 @@ When it attaches to the game, the client also loads the native helper built from
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup. Popups are only for items received after the server's first full list, so a
-reconnect does not replay them.
+reconnect does not replay them. With the helper, the client also arms it with the seed,
+once per connection: for a seed whose slot data carries the menu setup (from the world on
+`apworld`), picking an empty slot then offers ARCHIPELAGO, which starts a new game holding
+the seed with no `/prepare` (run in game for Standard). An OHKO seed keeps RANDOMIZER:
+started in the seed's mode, the helper writes the seed in as the game starts (run in game
+for Standard only).
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
@@ -118,10 +125,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
   player should own minus what the inventory holds), `save_patch.py` and `prepare.py` (writing
   a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
-  menu, dead or no save loaded). `native.py` loads the native helper and talks to it.
+  menu, dead or no save loaded). `native.py` loads the native helper and talks to it;
+  `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`).
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
-  grants between frames, with the game's popup, sound and HUD refresh; working in game.
+  grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
+  a new game from the AP seed (ARCHIPELAGO); both working in game.
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

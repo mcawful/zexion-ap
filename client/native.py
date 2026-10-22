@@ -3,7 +3,8 @@
 The helper runs inside Zexion: it gets a call from the game's main loop, on the game's own
 thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
 call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
-per message: ``hello``, ``ping``, ``config``, ``apply`` and ``unload`` (native/README.md).
+per message: ``hello``, ``ping``, ``config``, ``apply``, ``ap_newgame``, ``disarm``,
+``newgame_status`` and ``unload`` (native/README.md).
 ``attach`` loads the helper if needed and configures it with the addresses the client resolved
 by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
 optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it
@@ -27,7 +28,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.2.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.4.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -44,6 +45,19 @@ CONFIG_KEYS = (
     "energy_hud_fn",
     "weapon_strip_fn",
     "suit_color_fn",
+    "rando_blob",
+    "rando_marker",
+    "transition_fn",
+    "transition_timer",
+    "current_slot",
+    "newgame_fn",
+    "current_menu",
+    "randomizer_menu",
+    "widget_handler_fn",
+    "panel_handler_fn",
+    "rando_menu_fn",
+    "placement_fn",
+    "rando_newgame_fn",
 )
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent

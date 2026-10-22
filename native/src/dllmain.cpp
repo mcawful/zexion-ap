@@ -8,9 +8,10 @@
 // and the trampoline back at SDL, waits until no call is inside the helper, and unloads the
 // DLL, so a rebuilt helper can be loaded without restarting the game.
 //
-// Each frame call counts itself, serves the mailbox (config and apply requests from the pipe
-// thread, mailbox.h) and shows queued popups (helper phase 2, game_calls.h), where none of it
-// can race the game.
+// Each frame call counts itself, serves the mailbox (requests from the pipe thread that touch
+// the game, mailbox.h), watches for a new game to write the AP seed into and offers ARCHIPELAGO
+// on the game-mode panel (helper phase 3), and shows queued popups (helper phase 2,
+// game_calls.h), where none of it can race the game.
 //
 // The target is set at build time: the game's SDL_GL_SwapWindow, behind the build check, in
 // zexion_ap.dll; this test program's own GetTickCount, with no build check, in the
@@ -42,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.2.0";
+constexpr char kVersion[] = "0.4.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -56,8 +57,39 @@ void* g_original = nullptr;
 zap::Trampoline g_trampoline;
 std::atomic<uint64_t> g_frames{0};
 zap::Mailbox g_mailbox;
-zap::Game g_game;               // used on the game's thread only, inside frame()
+zap::Game g_game;  // used on the game's thread only: frame() and archipelago_chosen()
 std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
+// Whether the game's menu holds a pointer to archipelago_chosen, for the pipe thread's unload.
+// The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
+// only tries the lock, so it never waits on the pipe thread, which holds it only briefly.
+std::atomic<bool> g_menu_installed{false};
+SRWLOCK g_menu_lock = SRWLOCK_INIT;
+bool g_unloading = false;  // guarded by g_menu_lock
+std::atomic<int> g_in_callback{0};
+
+// ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
+// the frame call (so outside the trampoline's count). Unload therefore first takes it off the
+// menu on the game's thread, through the mailbox, refuses to unload while it may still be
+// there, and waits for a call still inside it.
+void archipelago_chosen(void*, int) {
+    g_in_callback.fetch_add(1);
+    try {
+        g_game.start_archipelago(&archipelago_chosen);
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_menu_installed.store(g_game.menu_installed());
+    g_in_callback.fetch_sub(1);
+}
+
+// Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
+bool set_unloading(bool unloading) {
+    AcquireSRWLockExclusive(&g_menu_lock);
+    g_unloading = unloading;
+    bool installed = g_menu_installed.load();
+    ReleaseSRWLockExclusive(&g_menu_lock);
+    return installed;
+}
 
 uintptr_t frame(void* argument) {
     g_frames.fetch_add(1);
@@ -66,6 +98,12 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_mailbox.serve();
+            g_game.watch_newgame();
+            if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
+                if (!g_unloading) g_game.watch_menu(&archipelago_chosen);
+                g_menu_installed.store(g_game.menu_installed());
+                ReleaseSRWLockExclusive(&g_menu_lock);
+            }
             g_game.pump_popups();
         } catch (...) {
             // Nothing may unwind into the game.
@@ -120,6 +158,37 @@ std::string handle(const std::string& request, bool& stop) {
                " configured=" + (configured == "1" ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
+        request == "newgame_status") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (request == "disarm") {
+            if (!g_mailbox.call([] { g_game.disarm_newgame(); return std::string("disarmed"); },
+                                kFrameWaitMs, result)) {
+                return "refused no frame";
+            }
+            return result;
+        }
+        if (request == "newgame_status") {
+            if (!g_mailbox.call([] { return g_game.newgame_status(); }, kFrameWaitMs, result)) {
+                return "refused no frame";
+            }
+            return result;
+        }
+        zap::NewGamePlan plan;
+        std::string error = zap::parse_newgame(request, plan);
+        if (!error.empty()) return "error " + error;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    g_game.arm_newgame(std::move(plan));
+                    return std::string("armed");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("config", 0) == 0 || request.rfind("apply", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::string result;
@@ -145,7 +214,27 @@ std::string handle(const std::string& request, bool& stop) {
         return result;
     }
     if (request == "unload") {
-        if (!unhook()) return "error the frame hook was replaced by something else; not unloading";
+        // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
+        set_unloading(true);
+        if (g_slot != nullptr) {
+            std::string ignored;
+            g_mailbox.call(
+                [] {
+                    g_game.disarm_newgame();
+                    g_game.restore_menu(&archipelago_chosen);
+                    g_menu_installed.store(g_game.menu_installed());
+                    return std::string();
+                },
+                kFrameWaitMs, ignored);
+        }
+        if (set_unloading(true)) {
+            set_unloading(false);
+            return "error ARCHIPELAGO is still on the game's menu (no frame came); not unloading";
+        }
+        if (!unhook()) {
+            set_unloading(false);
+            return "error the frame hook was replaced by something else; not unloading";
+        }
         stop = true;
         return "bye";
     }
@@ -161,6 +250,7 @@ DWORD WINAPI helper_thread(void*) {
             if (!unhook()) return 0;
         }
         wait_until_no_call_inside();
+        while (g_in_callback.load() != 0) Sleep(1);
     } catch (...) {
         // An exception must not reach the game: stay loaded, hooked or not, and stop serving.
         return 0;

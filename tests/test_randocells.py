@@ -63,7 +63,7 @@ def test_lists_and_passages_parse() -> None:
         ([(54, 1)], {24: 1}, False),  # 54: Gravity Harness with Jump Booster
         ([(54, 1)], {24: 1, 22: 1}, True),
         ([(54, 1), (55, 1)], {24: 1, 22: 1}, False),  # 55: without the Gravity Harness
-        ([(50, 1)], {26: 1}, True),  # Hyper Jump stands in for jump upgrades
+        ([(50, 1)], {26: 1}, True),  # Zenith Thrusters stands in for jump upgrades
         ([(19, 4), (16, 1)], {16: 1}, False),  # tier 4 is required, whatever else holds
     ],
 )

@@ -660,6 +660,378 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "transition_fn",
+        ("holds the routine the game runs when the transition timer ends (a new game: newgame_fn)"),
+        0xCE0F50,
+        (
+            # from the instruction at RVA 0xf6395 on B1 (START GAME)
+            Pattern(
+                (
+                    "48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 "
+                    "89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 42 C6 04 37 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf5210 on B1 (the play-anyway path)
+            Pattern(
+                (
+                    "48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 "
+                    "89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 C6 04 3B 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf6bea on B1
+            Pattern(
+                (
+                    "48 39 3D ?? ?? ?? ?? 75 05 E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 4C 8D 0D ?? "
+                    "?? ?? ?? 48 8B 08 83 81 30 02 00 00 03"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "transition_timer",
+        "frames left before the game runs transition_fn (32-bit)",
+        0xDF6870,
+        (
+            # from the instruction at RVA 0xf9e50 on B1
+            Pattern(
+                (
+                    "C7 05 ?? ?? ?? ?? 01 00 00 00 66 0F 6E D0 0F 5B D2 F3 0F 11 4C 24 20 E8 ?? "
+                    "?? ?? ?? 8B 8F 30 02 00 00"
+                ),
+                2,
+                "rip",
+                10,
+                0x0,
+            ),
+            # from the instruction at RVA 0x94713 on B1
+            Pattern(
+                (
+                    "C7 05 ?? ?? ?? ?? 01 00 00 00 C6 05 ?? ?? ?? ?? 02 48 C7 05 ?? ?? ?? ?? FF "
+                    "FF FF FF E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 33 D2"
+                ),
+                2,
+                "rip",
+                10,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "current_slot",
+        "the save slot being played or started, 0-based (32-bit)",
+        0xCDD080,
+        (
+            # from the instruction at RVA 0xe2137 on B1 (the file screen)
+            Pattern(
+                (
+                    "8B 0D ?? ?? ?? ?? F7 E9 8B C2 C1 E8 1F 03 D0 8D 04 52 2B C8 B8 80 00 00 00 "
+                    "66 89 86 DA 01 00 00 44 8D 2C 49"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+            # from the instruction at RVA 0x163ec4 on B1
+            Pattern(
+                (
+                    "48 63 05 ?? ?? ?? ?? 48 69 C8 08 94 00 00 66 83 BC 39 00 94 00 00 01 75 4C "
+                    "41 B9 01 00 00 00 66 89 74 24 20"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xa2abe on B1 (the first save of a new game)
+            Pattern(
+                (
+                    "48 63 05 ?? ?? ?? ?? 48 69 D0 08 94 00 00 41 B9 01 00 00 00 41 B8 08 94 00 "
+                    "00 48 03 D6 48 8B CB"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "newgame_fn",
+        ("the new-game routine: builds a new game from the randomizer section and saves it"),
+        0xA0570,
+        (
+            # from the instruction at RVA 0xe3129 on B1 (NORMAL's new game)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? F3 0F 10 0D ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 05 "
+                    "?? ?? ?? ?? BA 25 00 00 00 0F BF 05 ?? ?? ?? ??"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xe2272 on B1 (a normal game, randomizer locked)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 0F BF 05 ?? "
+                    "?? ?? ?? BA 25 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "4C 8B DC 53 55 56 57 48 81 EC 28 02 00 00",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "current_menu",
+        ("holds the most recently opened menu (its panels at [menu]; the file screen's panel 3)"),
+        0xDF82F8,
+        (
+            # from the instruction at RVA 0x124da2 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? BA 05 00 00 00 48 8B 08 48 8B 19 48 8B 83 E0 01 00 00 "
+                    "4C 8B 00 49 8B C8 41 FF 90 C8 02 00 00 48 8B 83 E0 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x142a69 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? BA 05 00 00 00 48 8B 08 48 8B 01 48 8B 88 E0 01 00 00 "
+                    "48 8B 01 48 8B C8 FF 90 C8 02 00 00 0F B6 05 ?? ?? ?? ??"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "randomizer_menu",
+        ("the randomizer menu's state: seed text, item arrays, amounts, settings at fixed offsets"),
+        0xDF7340,
+        (
+            # from the instruction at RVA 0x1478d0 on B1
+            Pattern(
+                (
+                    "48 8D 0D ?? ?? ?? ?? 41 0F 45 D3 0F 44 DF 48 63 C2 44 8D 5A 01 0F BE 8C 08 "
+                    "94 00 00 00 44 8D 04 1B 23 CB F7 D9 66 45 1B C9"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x145361 on B1
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 42 80 7C 00 6C 00 0F 84 ?? ?? ?? ?? 42 80 7C 00 51 00 "
+                    "74 37"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "widget_handler_fn",
+        "the generic menu-widget input handler (calls a widget's callback on select)",
+        0xD0240,
+        (
+            # from the instruction at RVA 0x100ff4 on B1
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 18 00 00 00 48 89 41 18 48 8D 45 67 48 89 "
+                    "44 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 04 00 00 00 4C 89 6C 24 30"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x159151 on B1
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 0D 00 00 00 48 89 41 08 48 8D 45 67 48 89 "
+                    "44 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 02 00 00 00 4C 89 7C 24 30"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B B1 D8 01 00 00 8B FA",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "panel_handler_fn",
+        "the menu-panel handler",
+        0xAE4D0,
+        (
+            # from the instruction at RVA 0x135c0a on B1
+            Pattern(
+                (
+                    "4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 C7 45 67 F4 FF "
+                    "FC FF 48 8D 45 67 C7 45 6B 28 00 0C 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf560c on B1
+            Pattern(
+                (
+                    "4C 8D 05 ?? ?? ?? ?? 33 D2 B9 03 00 00 00 48 8B F0 E8 ?? ?? ?? ?? 48 8B D8 "
+                    "C7 84 24 80 00 00 00 F4 FF FB FF"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                (
+                    "48 89 5C 24 08 57 48 83 EC 40 48 8B 99 D8 01 00 00 48 8B F9 85 D2 0F 85 ?? "
+                    "?? ?? ?? 48 8B 89 F0 01 00 00"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "rando_menu_fn",
+        "the RANDOMIZER choice's callback: opens the randomizer menu",
+        0x14B910,
+        (
+            # from the call at RVA 0x1512aa on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 35 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 06 48 8D 3D ?? ?? "
+                    "?? ?? BA 0F 00 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the game-mode panel's RANDOMIZER block at RVA 0x1801fa on B1
+            Pattern(
+                (
+                    "B8 58 00 00 00 4C 8D 0D ?? ?? ?? ?? 66 89 45 6B 48 8D 0D ?? ?? ?? ?? 48 8D "
+                    "45 67 41 BD 01 00 00 00 48 89 44 24 40 4C 8B C7 44 89 6C 24 38 48 8D 05 ?? "
+                    "?? ?? ?? 4C 89 7C 24 30 BA 0B 00 00 00 4C 89 7C 24 28 48 89 44 24 20 E8 ?? "
+                    "?? ?? ??"
+                ),
+                49,
+                "rip",
+                53,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8B EC",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "placement_fn",
+        "the randomizer's placement: the item table, starting items and amounts",
+        0xF11A0,
+        (
+            # from the call at RVA 0xf62ea on B1 (START GAME)
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 ?? ?? ?? ?? 48 63 05 ?? ?? ?? ?? "
+                    "48 69 F8 08 94 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0xf5059 on B1 (the random-start retry)
+            Pattern(
+                "E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 45 33 C0 0F B6 CB 84 C0 44 0F 45 C1",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "rando_newgame_fn",
+        "queues a randomizer new game in the current slot (the play-anyway path)",
+        0xF5160,
+        (
+            # from the instruction at RVA 0xf56af on B1 (the play-anyway button)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 48 89 6C 24 30 48 89 6C 24 28 48 89 44 24 20 E8 ?? ?? "
+                    "?? ?? 48 8B 8B E0 01 00 00 4C 8D 0D ?? ?? ?? ?? 4C 8B C3 BA 37 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "48 89 5C 24 08 57 48 81 EC C0 00 00 00 48 8B 05 ?? ?? ?? ??",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

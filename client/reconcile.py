@@ -35,7 +35,7 @@ ITEMS = 51  # inventory bytes 0 to 50
 PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_PACK = 0, 1, 2, 36, 37
+ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 # Items whose byte cannot be written: Zexion (the goal) and the Energy Shield, whose byte is
 # not understood (docs/re/save-format.md).
 NOT_GRANTABLE = {31, 50}
@@ -128,14 +128,14 @@ class Supplies:
 def supplies_after(inventory: bytes, new: Mapping[int, int], before: Supplies) -> Supplies:
     """The supplies after the grant, by the pickup routine's rules: max missiles is Missile
     Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
-    likewise from Mega Bombs and Bomb Packs; and if Energy Tanks x 16 is above max energy,
+    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy,
     max and current energy both become it."""
 
     def count(item: int) -> int:
         return new.get(item, inventory[item])
 
     missiles_max = count(MISSILE_CONTAINER) + 10 * count(MISSILE_BOX)
-    bombs_max = count(MEGA_BOMB) + 10 * count(BOMB_PACK)
+    bombs_max = count(MEGA_BOMB) + 10 * count(BOMB_BOX)
     energy, energy_max = before.energy, before.energy_max
     if count(ENERGY_TANK) * 16 > energy_max:
         energy = energy_max = count(ENERGY_TANK) * 16

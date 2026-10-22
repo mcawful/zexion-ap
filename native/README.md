@@ -29,10 +29,17 @@ unloaded again; the owner noticed no stutter or hitch. Before that, in test proc
   hooks, counts calls, and survives 300 loads and unloads in CI (3,000 locally) while two
   threads call the hooked function nonstop.
 
-Phase 2's native tests run against a stand-in game: the test program's own data and functions,
+Helper phase 3, a new game from the AP seed, is **working in game** for a Standard seed
+(build B1, 2026-10-22): from RANDOMIZER with the helper writing the seed in, and from
+ARCHIPELAGO, which also showed again after backing out of two slots and gave way to
+RANDOMIZER when the client disconnected ("New games", below).
+
+The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
-game. `tests/game_tests.cpp` covers the request parsers, configuring, applying and the popup
-queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
+game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
+queue, the new-game watch and a whole ARCHIPELAGO press; `tests/menu_tests.cpp` the
+game-mode panel (`tests/stand_in_menu.h`): relabeling, putting it back, closed menus and
+released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -70,10 +77,18 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
       - `popup ITEM SUFFIX`.
+    - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`, or
+      `refused not configured` or `refused no frame`:
+      - `expect OFFSET HEX`, bytes the randomizer section must hold (the seed's mode);
+      - `write OFFSET HEX`, the AP seed's edits to the section;
+      - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
+    - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
+    - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
-- **Grants, in the frame call.** `config` and `apply` are handed to the game's thread through
-  a one-slot mailbox (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
+- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
+  and `hello`'s `configured` are handed to the game's thread through a one-slot mailbox
+  (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
   1. Refuses unless the game is in play: a save loaded, no menu, energy above 0.
@@ -97,10 +112,37 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
     popup whose item has no record (the records not loaded yet) is dropped.
-- **Unloading.** `unload` points the slot back at SDL, and only if it still holds the
+- **New games (helper phase 3).** While a plan is armed, each frame call:
+  - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
+    timer above one frame, the randomizer marker set). If the section holds the `expect`
+    bytes, it writes the `write` edits once, before the game builds the new game from them;
+    otherwise it writes nothing and drops the plan. This is the path for RANDOMIZER, the mode
+    and START GAME (working in game for a Standard seed, 2026-10-22; Easy and OHKO this way
+    not yet run).
+  - With `menu` lines, offers **ARCHIPELAGO** in place of RANDOMIZER on the game-mode panel
+    the game shows after an empty slot is picked (`src/menu.cpp`). It reads the panel with
+    fault-safe reads and checks every handler, size and pointer on the way before it
+    relabels the choice and points it at the helper's own callback. RANDOMIZER is put back as
+    soon as its menu is not the top one, on `disarm`, and before an unload, but only while
+    that menu is still open: the game frees a closed menu's widgets without clearing them, so
+    the helper then forgets the choice without writing. The callback, called by the game's
+    widget code on its thread, sets the menu's state to the seed's mode, writes the edits (for
+    the AP start), runs the game's placement, checks the `expect` bytes, writes the edits
+    over the placement, puts the player's menu state back, and queues the new game in the
+    chosen slot; the watch above reports it in the next frame. A section of another mode, or a slot the
+    game will not start a game in, drops the plan with nothing queued, and the client arms it
+    again. Working in game for a Standard seed (2026-10-22): ARCHIPELAGO started the AP
+    seed in an empty slot, showed again after backing out of two slots, and RANDOMIZER
+    came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
+
+  The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
+- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
+  RANDOMIZER back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
+  menu`) if no frame came to do it, since the menu would point into the unloaded DLL. Then it
+  points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
-  counted inside, and unloads the DLL. A call can then be in the trampoline (which is never
+  counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
   restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
   unloads itself the same way.
@@ -119,15 +161,17 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
-tests (`parts`, `game`, `unload_under_load` with 300 rounds, and `apply_in_frames`), and runs
+tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, and `menu`,
+the ARCHIPELAGO choice on a stand-in panel), and runs
 `tests/test_native.py` against the build on Windows.
 
 ## Planned
 
 1. **Helper phase 2, left over:** receive a key through the helper at a gate (keys granted by
    byte alone opened one).
-2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
-   START GAME, replacing `/prepare`.
+2. **Helper phase 3, left over:** an Easy seed from ARCHIPELAGO; Easy and OHKO through
+   RANDOMIZER; OHKO (Double Teleport) from ARCHIPELAGO, which needs the start table the
+   randomizer menu builds when it opens.
 3. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work

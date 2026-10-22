@@ -50,11 +50,23 @@ TILES_X, TILES_Y = 14, 20  # tiles per map cell
 WRITABLE_ITEMS = range(0, 50)  # item 50's byte is not understood (client/game.py)
 ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
 # Where the save keeps current bombs is not known, so a seed cannot start with bombs.
-BOMB_ITEMS = (2, 37)  # Mega Bomb, Bomb Pack
+BOMB_ITEMS = (2, 37)  # Mega Bomb, Bomb Box
 
 
 class PatchError(ValueError):
     """The save is not one this seed can be written into."""
+
+
+@dataclass(frozen=True)
+class MenuSetup:
+    """The randomizer menu as the seed's mode, for the helper's ARCHIPELAGO choice
+    (client/newgame.py); from the slot data of a mode with one start."""
+
+    seed_text: str  # 16 characters, 0-9 and A-F
+    start: bytes  # the menu's 27-entry start-with array (0/1)
+    pool: bytes  # its 27-entry pool array (0/1)
+    settings: bytes  # settings 10 to 73
+    second_target: tuple[int, int, int]  # what START GAME writes there in a one-start mode
 
 
 @dataclass(frozen=True)
@@ -67,10 +79,12 @@ class SeedPlan:
     second_start: tuple[int, int, int] | None
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value
+    menu: MenuSetup | None = None
 
 
 def plan_from_slot_data(slot: dict) -> SeedPlan:
     second = slot.get("second_start")
+    menu = slot.get("menu")
     return SeedPlan(
         location_items=tuple(slot["location_items"]),
         start_items={int(k): v for k, v in slot["start_items"].items()},
@@ -78,6 +92,15 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
         second_start=None if second is None else (second["index"], second["column"], second["row"]),
         amounts=tuple(slot["amounts"]),
         options={int(k): v for k, v in slot["options"].items()},
+        menu=None
+        if menu is None
+        else MenuSetup(
+            seed_text=menu["seed_text"],
+            start=bytes(menu["start"]),
+            pool=bytes(menu["pool"]),
+            settings=bytes(menu["settings"]),
+            second_target=tuple(menu["second_target"]),
+        ),
     )
 
 

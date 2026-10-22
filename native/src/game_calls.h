@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "menu.h"
+
 namespace zap {
 
 // The client's names for what it sends (client/patterns.py target names).
@@ -36,6 +38,31 @@ struct Batch {
     bool refresh = false;
     std::vector<Popup> popups;
 };
+
+// Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).
+struct SectionBytes {
+    uint16_t offset;
+    std::vector<uint8_t> bytes;
+};
+
+// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
+// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
+// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
+// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
+// plan.
+struct NewGamePlan {
+    std::vector<SectionBytes> expect;
+    std::vector<SectionBytes> write;
+    std::vector<SectionBytes> menu;
+};
+
+constexpr size_t kSectionSize = 0x908;
+constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
+
+// "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
+// "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
+// digits; every range must lie inside its block.
+std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
@@ -66,6 +93,34 @@ public:
 
     size_t queued_popups() const { return popups_.size(); }
 
+    // Game thread. Arms the AP new game: the next randomizer new game the game is about to
+    // build (its new-game routine queued, the randomizer marker set) gets `plan`, once.
+    void arm_newgame(NewGamePlan plan);
+    void disarm_newgame();
+    // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
+    std::string newgame_status() const;
+
+    // Game thread, every frame: applies an armed plan when a randomizer new game is queued and
+    // its timer has more than one frame left. A section that does not hold the plan's
+    // `expect` bytes (another mode) is left as the game made it, and the plan is dropped.
+    void watch_newgame();
+
+    // Game thread, every frame: while a plan with menu lines is armed, offers ARCHIPELAGO in
+    // place of RANDOMIZER on the game-mode panel, its callback `callback`; otherwise puts
+    // RANDOMIZER back.
+    void watch_menu(WidgetCallback callback);
+    // Game thread: puts RANDOMIZER back now (before an unload).
+    void restore_menu(WidgetCallback callback);
+    bool menu_installed() const { return choice_.installed(); }
+
+    // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
+    // mode, writes the plan (for the AP start), runs the game's placement, checks the section
+    // is the seed's mode, writes the plan over the placement, puts the menu's state back, and
+    // queues the new game in the chosen slot; watch_newgame reports "applied slot N" in the
+    // next frame. A section of another mode, or a slot the game will not start a game in,
+    // drops the plan with "refused ..." and nothing queued.
+    void start_archipelago(WidgetCallback callback);
+
 private:
     bool in_play() const;
     BYTE* player() const;
@@ -91,6 +146,23 @@ private:
     void* suit_color_fn_ = nullptr;
     std::deque<Popup> popups_;
     int frames_since_popup_ = 1 << 20;
+
+    BYTE* rando_blob_ = nullptr;
+    BYTE* rando_marker_ = nullptr;
+    BYTE* transition_fn_ = nullptr;     // holds the routine the game runs when its timer ends
+    BYTE* transition_timer_ = nullptr;  // 32-bit frames left
+    BYTE* current_slot_ = nullptr;      // 32-bit, 0-based
+    void* newgame_fn_ = nullptr;
+    bool newgame_armed_ = false;
+    NewGamePlan newgame_;
+    std::string newgame_status_ = "idle";
+
+    MenuAddresses menu_;
+    ArchipelagoChoice choice_;
+    BYTE* randomizer_menu_ = nullptr;
+    void* placement_fn_ = nullptr;
+    void* rando_newgame_fn_ = nullptr;
+    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 };
 
 }  // namespace zap
