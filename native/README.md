@@ -29,10 +29,17 @@ unloaded again; the owner noticed no stutter or hitch. Before that, in test proc
   hooks, counts calls, and survives 300 loads and unloads in CI (3,000 locally) while two
   threads call the hooked function nonstop.
 
-Phase 2's native tests run against a stand-in game: the test program's own data and functions,
+Helper phase 3, a new game from the AP seed, is **working in game** for a Standard seed
+(build B1, 2026-10-22): from RANDOMIZER with the helper writing the seed in, and from
+ARCHIPELAGO, which also showed again after backing out of two slots and gave way to
+RANDOMIZER when the client disconnected ("New games", below).
+
+The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
-game. `tests/game_tests.cpp` covers the request parsers, configuring, applying and the popup
-queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
+game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
+queue, the new-game watch and a whole ARCHIPELAGO press; `tests/menu_tests.cpp` the
+game-mode panel (`tests/stand_in_menu.h`): relabeling, putting it back, closed menus and
+released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -70,7 +77,8 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
       - `popup ITEM SUFFIX`.
-    - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`:
+    - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`, or
+      `refused not configured` or `refused no frame`:
       - `expect OFFSET HEX`, bytes the randomizer section must hold (the seed's mode);
       - `write OFFSET HEX`, the AP seed's edits to the section;
       - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
@@ -78,8 +86,9 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
-- **Grants, in the frame call.** `config` and `apply` are handed to the game's thread through
-  a one-slot mailbox (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
+- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
+  and `hello`'s `configured` are handed to the game's thread through a one-slot mailbox
+  (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
   1. Refuses unless the game is in play: a save loaded, no menu, energy above 0.
@@ -108,7 +117,8 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     timer above one frame, the randomizer marker set). If the section holds the `expect`
     bytes, it writes the `write` edits once, before the game builds the new game from them;
     otherwise it writes nothing and drops the plan. This is the path for RANDOMIZER, the mode
-    and START GAME (working in game, 2026-10-22).
+    and START GAME (working in game for a Standard seed, 2026-10-22; Easy and OHKO this way
+    not yet run).
   - With `menu` lines, offers **ARCHIPELAGO** in place of RANDOMIZER on the game-mode panel
     the game shows after an empty slot is picked (`src/menu.cpp`). It reads the panel with
     fault-safe reads and checks every handler, size and pointer on the way before it
@@ -159,8 +169,9 @@ the ARCHIPELAGO choice on a stand-in panel), and runs
 
 1. **Helper phase 2, left over:** receive a key through the helper at a gate (keys granted by
    byte alone opened one).
-2. **Helper phase 3, left over:** an Easy seed from ARCHIPELAGO; OHKO (Double Teleport)
-   from ARCHIPELAGO, which needs the start table the randomizer menu builds when it opens.
+2. **Helper phase 3, left over:** an Easy seed from ARCHIPELAGO; Easy and OHKO through
+   RANDOMIZER; OHKO (Double Teleport) from ARCHIPELAGO, which needs the start table the
+   randomizer menu builds when it opens.
 3. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work

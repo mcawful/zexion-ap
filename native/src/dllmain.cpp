@@ -8,8 +8,8 @@
 // and the trampoline back at SDL, waits until no call is inside the helper, and unloads the
 // DLL, so a rebuilt helper can be loaded without restarting the game.
 //
-// Each frame call counts itself, serves the mailbox (config and apply requests from the pipe
-// thread, mailbox.h), watches for a new game to write the AP seed into and offers ARCHIPELAGO
+// Each frame call counts itself, serves the mailbox (requests from the pipe thread that touch
+// the game, mailbox.h), watches for a new game to write the AP seed into and offers ARCHIPELAGO
 // on the game-mode panel (helper phase 3), and shows queued popups (helper phase 2,
 // game_calls.h), where none of it can race the game.
 //

@@ -111,7 +111,7 @@ def test_supplies_unchanged_by_other_items() -> None:
     assert rc.supplies_after(inv(i0=3, i1=3), {17: 1}, BEFORE) == BEFORE
 
 
-def test_bomb_packs_count_ten() -> None:
+def test_bomb_boxes_count_ten() -> None:
     after = rc.supplies_after(inv(i0=3, i1=3), {37: 1}, BEFORE)
     assert (after.bombs, after.bombs_max) == (10, 10)
 
