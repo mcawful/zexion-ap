@@ -3,13 +3,14 @@
 The player starts a new randomizer game in the mode the seed uses and saves at once; this
 module checks that save and rewrites it to hold the seed: the item at each location, the start
 room (and the second teleport target in OHKO), the continue point, the revealed map cell (if the
-game revealed one), and the starting items with their current energy and missiles. Everything
-else stays as the game wrote it. Offsets and their evidence are in docs/re/save-format.md; the
-item table, the start (record, continue point and revealed cell, changed together) and the
-second teleport target were each loaded in game, and a whole Standard save patched by this
-module loaded with its seed, start and starting items (docs/re/memory.md, "The client in a live
-game"). Its current energy and missiles were the fresh save's own values, so writing
-different ones has not been loaded, nor have OHKO and Easy saves patched this way.
+game revealed one), the four keys' map markers, and the starting items with their current
+energy and missiles. Everything else stays as the game wrote it. Offsets and their evidence
+are in docs/re/save-format.md; the item table, the start (record, continue point and revealed
+cell, changed together) and the second teleport target were each loaded in game, and a whole
+Standard save patched by this module loaded with its seed, start and starting items
+(docs/re/memory.md, "The client in a live game"). Its current energy and missiles were the
+fresh save's own values, so writing different ones has not been loaded, nor have OHKO and Easy
+saves patched this way, nor the key markers.
 
 Pure functions over bytes: the client reads and writes the file (after a backup), and the
 tests run here without the game.
@@ -28,6 +29,11 @@ RANDO_MARKER = 0x9402  # 16-bit: 1 in a randomizer save, 0 in a normal one or a 
 # File offsets (docs/re/save-format.md).
 INVENTORY = 0x92F3  # + item ID, items 0-49
 MAP_GRID = 0x877F  # 54 x 54, row-major
+# The four keys' map markers: flags 40 to 47, a (y, x) cell per key (Alpha, Beta, Gamma,
+# Omega), 0xFF for none; the seed's own key cells in a fresh save (docs/re/save-format.md).
+KEY_MARKERS = 0x2A
+KEYS = (27, 28, 29, 30)
+NO_MARKER = 0xFF
 PICKUP_COUNTER = 0x935A  # 16-bit
 ENERGY_NOW = 0x9350  # 16-bit; a fresh save holds Energy Tanks x 16
 MISSILES_NOW = 0x9352  # 16-bit; a fresh save holds containers + 10 x Missile Boxes
@@ -131,6 +137,16 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
         x, y = cell_of(column, row)
         grid[y * MAP_W + x] = SAVE_ROOM
     out[MAP_GRID : MAP_GRID + len(grid)] = grid
+    # The key markers must show where this seed puts the keys, not where the fresh game's own
+    # seed did; a key that is in another world, or owned from the start, has none.
+    cells = [struct.unpack_from("<HH", save, SECTION + 4 * i) for i in range(LOCATIONS)]
+    for k, key in enumerate(KEYS):
+        at = [i for i, item in enumerate(plan.location_items) if item == key]
+        marker = (NO_MARKER, NO_MARKER)
+        if at and not plan.start_items.get(key):
+            x, y = cells[at[0]]
+            marker = (y, x)
+        out[KEY_MARKERS + 2 * k : KEY_MARKERS + 2 * k + 2] = bytes(marker)
     for item in WRITABLE_ITEMS:
         out[INVENTORY + item] = plan.start_items.get(item, 0)
     tanks = plan.start_items.get(ENERGY_TANK, 0)

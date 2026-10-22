@@ -87,8 +87,9 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
   6. Queues the popups.
 
   It leaves out what only a real pickup should do: the map cell, the pickup counter, the
-  major-item list, achievements, switching to a new weapon, and a key's area event (not
-  traced: `docs/re/memory.md`, "Game functions the helper calls").
+  major-item list, achievements, switching to a new weapon, and a key's area event (which only
+  hides the key's map marker; the gates read the key bytes: `docs/re/memory.md`, "Keys, the
+  gates and the key markers").
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
   - The text is the item's icon and name from the game's own item record, then the client's
     suffix (`FROM ALICE`), with any character the game's font does not draw left out.
@@ -123,7 +124,8 @@ tests (`parts`, `game`, `unload_under_load` with 300 rounds, and `apply_in_frame
 
 ## Planned
 
-1. **Helper phase 2, to finish:** whether a received key opens its gate.
+1. **Helper phase 2, to finish:** seeing a gate open for a received key in the game (from the
+   code it should; `docs/re/memory.md`, "Keys, the gates and the key markers").
 2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
    START GAME, replacing `/prepare`.
 3. **Helper phase 4:** icons for other games' items.
