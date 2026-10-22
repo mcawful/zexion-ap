@@ -117,9 +117,9 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     that menu is still open: the game frees a closed menu's widgets without clearing them, so
     the helper then forgets the choice without writing. The callback, called by the game's
     widget code on its thread, sets the menu's state to the seed's mode, writes the edits (for
-    the AP start), runs the game's placement, checks the `expect` bytes, puts the player's
-    menu state back, and queues the new game in the chosen slot; the watch above then writes
-    the edits over the placement in the next frame. A section of another mode, or a slot the
+    the AP start), runs the game's placement, checks the `expect` bytes, writes the edits
+    over the placement, puts the player's menu state back, and queues the new game in the
+    chosen slot; the watch above reports it in the next frame. A section of another mode, or a slot the
     game will not start a game in, drops the plan with nothing queued, and the client arms it
     again. Not yet run in the game.
 

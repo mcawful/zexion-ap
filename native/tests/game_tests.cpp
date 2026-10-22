@@ -316,9 +316,11 @@ void test_archipelago_choice() {
     check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
           "a plan without menu lines offers no ARCHIPELAGO");
 
-    // The seed's mode starts with 3 Energy: the menu line sets it, the placement copies it.
+    // The seed's mode starts with 3 Energy: the menu line sets it, the placement copies it. The
+    // AP seed starts with 5, written over it afterwards.
     const char* request =
-        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0300";
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0300\n"
+        "write 0x6C0 0500";
     zap::NewGamePlan plan;
     check(zap::parse_newgame(request, plan).empty(), "parses menu lines");
     game.arm_newgame(plan);
@@ -327,8 +329,8 @@ void test_archipelago_choice() {
     press();
     check(g_steps == "placement queue ", "the placement, then the new game queued");
     check(g_start_seen == 0x11, "the placement saw the AP seed's start");
-    check(g_section[0x26C] == 0x77 && g_section[0x6C0] == 3,
-          "the placement's section, of the seed's mode");
+    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B && g_section[0x6C0] == 5,
+          "the AP seed is written over the placement before the new game is queued");
     check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
     check(game.newgame_status() == "armed", "the plan waits for the queued new game");
     check(panel.text() == "RANDOMIZER " && panel.callback() == &rando_menu_fn,
@@ -338,8 +340,8 @@ void test_archipelago_choice() {
     game.watch_menu(&chosen);
     check(!game.menu_installed(), "not offered again while the new game is queued");
     game.watch_newgame();
-    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B && g_section[0x312] == 0x22,
-          "the next frame writes the AP seed over the placement");
+    check(g_section[0x26C] == 0x2E && g_section[0x312] == 0x22 && g_section[0x6C0] == 5,
+          "the next frame keeps the AP seed (its starting amounts differ from the mode's)");
     check(game.newgame_status() == "applied slot 3", "reported with the slot");
     std::memset(g_section, 0, 0x300);
     game.watch_newgame();

@@ -399,7 +399,10 @@ void Game::watch_newgame() {
     if (at<void*>(transition_fn_, 0) != newgame_fn_) return;  // no new game queued
     if (at<int32_t>(transition_timer_, 0) <= 1) return;       // too close to being built
     if (at<uint16_t>(rando_marker_, 0) != 1) return;          // a normal new game: not ours
+    // After ARCHIPELAGO (starting_), the section was checked before the plan went in, and the
+    // plan's own writes (the starting amounts) now differ from the mode's.
     for (const SectionBytes& e : newgame_.expect) {
+        if (starting_) break;
         if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
             char where[16];
             std::snprintf(where, sizeof(where), "0x%X", e.offset);
@@ -488,9 +491,12 @@ void Game::start_archipelago(WidgetCallback callback) {
             disarm_newgame();
             return;
         }
-        // The new game in the chosen slot, as the play-anyway path queues it. watch_newgame
-        // then checks the section once more and writes the AP seed over the placement in the
-        // next frame, as for a game started from RANDOMIZER.
+        // The AP seed over the placement now, so the game is the seed's even if the plan is
+        // dropped before the next frame; then the new game in the chosen slot, as the
+        // play-anyway path queues it. watch_newgame reports it in the next frame.
+        for (const SectionBytes& e : newgame_.write) {
+            std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+        }
         reinterpret_cast<void (*)()>(rando_newgame_fn_)();
         if (at<void*>(transition_fn_, 0) != newgame_fn_) {
             newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";

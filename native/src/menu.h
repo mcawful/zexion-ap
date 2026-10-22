@@ -11,7 +11,8 @@
 // glyph pointers at +0x228; a glyph's released flag at +0x1C8, frame count at +0x1BC, frame
 // at +0x1C4, frame table at +0x1A8 and current frame at +0x1B0.
 //
-// Closing a menu frees it with its panels and widgets at once, and nothing in them is cleared
+// Closing a menu releases its widgets, labels and glyphs (their +0x1C8 set to 2, onto the
+// game's dead list) and frees the menu and its panel list, and nothing in them is cleared
 // first, so a widget's old contents prove nothing. The helper writes into the choice only
 // while the menu it was found in is still on the list of open menus and the widget and its
 // glyphs are not released, and otherwise forgets it without writing: the game builds every
