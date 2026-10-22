@@ -78,7 +78,7 @@ def combat_tier(c: list[int], settings: Settings) -> int:
 
 def derive(c: list[int], settings: Settings) -> None:
     """Fill in codes 50-63 from item counts, in place, as RVA 0xE3530 does."""
-    hyper = bool(c[26]) and not c[63]  # Hyper Jump stands in, unless listed itself
+    hyper = bool(c[26]) and not c[63]  # Zenith Thrusters stands in, unless listed itself
     gh = c[24]
     c[54] = int(bool((gh and c[22]) or hyper))
     if gh:  # Gravity Harness counts as Jump Booster and G-Diffuser
@@ -210,7 +210,7 @@ def satisfied(
             c[code] = 0
         if code == 55:  # "without the Gravity Harness"
             c[24] = 0
-        if code == 26:  # Hyper Jump listed: it doesn't stand in for other items
+        if code == 26:  # Zenith Thrusters listed: it doesn't stand in for other items
             c[63] = 1
     derive(c, settings)
 
