@@ -5,9 +5,19 @@ on the game's own thread, between frames. The AP client loads it when it attache
 (`client/native.py`, unless started with `--no-helper`) and sends received items through it;
 `tools/helper.py` loads and unloads it for tests.
 
-**Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is built and
-tested against a stand-in game in test programs (below), **not yet run in the game**. Helper
-phase 1 is **working in game** (build B1, 2026-10-22): loaded
+**Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is **working in
+game** (build B1, 2026-10-22). The AP client loaded it into the running game (slot 7) and
+sent items from a local server:
+- the popup, the item's sound and an immediate HUD update for a Missile Box;
+- the bomb icon for a Mega Bomb;
+- the suit's color for Magnus Armor;
+- three popups in turn for three items at once;
+- after a death, every item given back with no popup repeated (`docs/re/memory.md`, "Game
+  functions the helper calls").
+
+Not run in the game yet: the client falling back to direct writes when the helper fails, and
+a pickup while a batch arrives. Helper phase 1 is also **working in game** (build B1,
+2026-10-22): loaded
 into the running game with slot 7 in play, it reported `build=B1 hooked=1`, counted 166 frame
 calls a second on a 165 Hz monitor, unloaded with the game still in play, loaded again and
 unloaded again; the owner noticed no stutter or hitch. Before that, in test processes:
@@ -113,8 +123,7 @@ tests (`parts`, `game`, `unload_under_load` with 300 rounds, and `apply_in_frame
 
 ## Planned
 
-1. **Helper phase 2, to finish:** a live test in the game, then whether a received key opens
-   its gate.
+1. **Helper phase 2, to finish:** whether a received key opens its gate.
 2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
    START GAME, replacing `/prepare`.
 3. **Helper phase 4:** icons for other games' items.

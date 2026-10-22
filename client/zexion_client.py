@@ -16,7 +16,7 @@ Once connected:
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
-  "MISSILE BOX FROM ALICE") and a HUD refresh; that path has not yet run in the game. Without
+  "MISSILE BOX FROM ALICE") and a HUD refresh; live-tested on 2026-10-22. Without
   the helper, or if it fails, items are written directly, with no popup, and the client tries
   the helper again every 30 seconds.
 
