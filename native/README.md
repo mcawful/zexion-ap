@@ -124,9 +124,11 @@ tests (`parts`, `game`, `unload_under_load` with 300 rounds, and `apply_in_frame
 
 ## Planned
 
-1. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
+1. **Helper phase 2, left over:** receive a key through the helper at a gate (keys granted by
+   byte alone opened one).
+2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
    START GAME, replacing `/prepare`.
-2. **Helper phase 4:** icons for other games' items.
+3. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.

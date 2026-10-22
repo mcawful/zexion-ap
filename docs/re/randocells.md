@@ -129,9 +129,10 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 - Whether the mode itself is stored, how the two item-choice arrays encode Starting Item,
   Random, Random Gun and Excluded, and what settings bytes 74 to 105 hold.
 - Whether the four keys gate the core in a randomizer game with Gates Unlocked (the default).
-  From disassembly they do not: with Unlocked or Open the key check passes without keys, and
-  only Vanilla needs all four (`memory.md`, "Keys, the gates and the key markers"). Not seen in
-  the game yet.
+  From disassembly, the key check at a hyperspace gate passes without keys under Unlocked or
+  Open (Unlocked also needs two gates visited), and only Vanilla needs all four (`memory.md`,
+  "Keys, the gates and the key markers"). Whether those gates are what stands between the
+  player and the core is not traced. Not seen in the game.
 - Found but not modeled in `tools/randocells.py`: Missile and Bomb Boxes adding 10 to a group's
   count (see "The evaluator works on a table of 64 counts").
 - An x64dbg read breakpoint during generation was tried and the game crashed with the
