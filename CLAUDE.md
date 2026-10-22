@@ -7,8 +7,9 @@ is a native x64 exe on SDL2 and FMOD, with mod folders only for sprites and tran
 ([`docs/re/builds.md`](docs/re/builds.md)), so everything here comes from reverse engineering.
 The rules about evidence below exist because of that.
 
-**Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld and no AP client
-yet; `client/` holds the module that finds and accesses game state by byte pattern.
+**Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
+holds the AP client, which has run a solo seed in the game with a local AP server, and
+the module that finds and accesses game state by byte pattern.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -38,7 +39,8 @@ Checks. CI runs these three; `/preflight` runs them too:
 
 AP's world tests join this list when `worlds/zexion/` exists.
 
-Reverse-engineering tools. These are the only code allowed to open the game or save folders:
+Reverse-engineering tools. These and the client are the only code allowed to open the game or
+save folders:
 
 ```sh
 .venv/Scripts/python tools/build_id.py          # which game build is installed (read-only)
@@ -60,6 +62,21 @@ logs every attempt to `lab/grants.jsonl` before writing. It writes the inventory
 Energy Tanks, Missile Containers and Mega Bombs also need the player-state fields in
 `docs/re/memory.md` ("Granting each kind of item").
 
+The client. It needs Archipelago from `.ap/` with the world installed there (AP will not connect
+a client whose game it does not know):
+
+```sh
+.venv/Scripts/python client/zexion_client.py --nogui archipelago://NAME@localhost:38281
+```
+
+Once connected, its `/prepare SLOT` writes the seed into a slot holding a new randomizer game
+of the seed's mode (run in game for Standard only so far), saved at once (a slot that already holds the seed is left alone). It
+replaces the slot file after a verified backup, which goes to `zexion_backups/` in
+Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
+save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.
+With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real. `ZEXION_AP_DIR` points the
+client at another Archipelago folder than `.ap/Archipelago`.
+
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
 `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the last two.
@@ -69,9 +86,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
 ## Layout
 
 - `worlds/zexion/`: the APWorld. Not created yet.
-- `client/`: will hold the AP client (`CommonClient` + `pymem`). For now: `patterns.py` (byte
-  patterns for each piece of game state) and `game.py` (attach, locate by pattern, read and
-  write with checks, and `state()`: in play, menu, dead or no save loaded).
+- `client/`: the AP client. `zexion_client.py` (`CommonClient` wiring and `/prepare`),
+  `session.py` (one poll: checks, the goal, grants), `reconcile.py` (what to give: what the
+  player should own minus what the inventory holds), `save_patch.py` and `prepare.py` (writing
+  a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
+  `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
+  menu, dead or no save loaded).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
@@ -94,7 +114,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes.
   Save experiments go through `tools/save_lab.py`, which works on copies in `lab/`. Its
   `install` fills only an empty slot, and only after a verified backup; its `restore` backs up
-  the present state before putting a backup back. Ask before either one, every time.
+  the present state before putting a backup back. Ask before either one, every time. The
+  client's `/prepare` is the one other writer (see Commands).
 - **Documentation describes the repo as it is.** A change that makes a doc line false fixes it in
   the same change, and new behavior gets described where its subject already lives. Skill and
   agent files count as documentation.

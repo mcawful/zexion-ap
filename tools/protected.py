@@ -8,8 +8,10 @@ Three places are protected:
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share
-this one definition. Only ``save_lab.py install`` and ``save_lab.py restore`` write into the save
-folder, and only after a verified backup.
+this one definition. Of the tools, only ``save_lab.py install`` and ``save_lab.py restore``
+write into the save folder, and only after a verified backup. The one other writer is the
+Archipelago client's ``/prepare`` (``client/prepare.py``), which keeps its own checks (Zexion
+closed, a verified backup, an atomic replace) because the client does not ship this module.
 """
 
 from __future__ import annotations

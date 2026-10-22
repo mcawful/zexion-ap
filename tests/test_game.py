@@ -198,6 +198,49 @@ def test_a_read_back_that_differs_is_its_own_error() -> None:
     assert info.value.read_back == bytes([7])
 
 
+def player_game() -> FakeGame:
+    """A fake with room for the player state, which starts 0x108E before the inventory."""
+    pm = FakeProcess(0x2000)
+    return FakeGame(pm=pm, base=0, rva={"inventory": 0x1100}, pid=1, build=None)
+
+
+def put_supplies(g: FakeGame, values: tuple[int, ...]) -> None:
+    for field, v in zip(game.SUPPLY_FIELDS, values, strict=True):
+        at = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + field
+        g.pm.memory[at : at + 2] = struct.pack("<h", v)
+
+
+def test_supplies_reads_the_six_numbers_in_order() -> None:
+    g = player_game()
+    put_supplies(g, (30, 48, 2, 3, 0, 0))
+    assert g.supplies() == (30, 48, 2, 3, 0, 0)
+
+
+def test_set_supplies_is_compare_and_set_and_writes_only_changes() -> None:
+    g = player_game()
+    put_supplies(g, (30, 48, 2, 3, 0, 0))
+    writes = []
+    write = g.pm.write_bytes
+
+    def counted(address: int, data: bytes, size: int) -> None:
+        writes.append(address)
+        write(address, data, size)
+
+    g.pm.write_bytes = counted
+    g.set_supplies((30, 48, 2, 3, 0, 0), (64, 64, 2, 3, 0, 0))
+    assert g.supplies() == (64, 64, 2, 3, 0, 0)
+    assert len(writes) == 2
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_supplies((30, 48, 2, 3, 0, 0), (80, 80, 2, 3, 0, 0))
+    assert g.supplies() == (64, 64, 2, 3, 0, 0)
+
+
+def test_set_supplies_refuses_values_that_do_not_fit() -> None:
+    g = player_game()
+    with pytest.raises(ValueError, match="16 bits"):
+        g.set_supplies((0,) * 6, (0x8000, 0, 0, 0, 0, 0))
+
+
 def test_an_exited_game_is_reported_as_not_running() -> None:
     g = fake_game()
     g.alive = False
