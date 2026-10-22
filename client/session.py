@@ -28,7 +28,8 @@ bombs and energy as a pickup would, refreshes the HUD, and shows the game's popu
 item received since the last batch (not for those the server already held when the client
 connected: ``mark_announced``). When nothing is owed but max missiles or bombs lag behind the
 counts, it sends a refresh that sets them. A helper that fails is dropped, and grants go back
-to direct writes. This path has been tested against a stand-in game only, not yet in Zexion.
+to direct writes. This path ran in the game on 2026-10-22 (native/README.md); the fallback
+has been tested only here.
 """
 
 from __future__ import annotations
