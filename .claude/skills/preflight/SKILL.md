@@ -14,7 +14,11 @@ and a lint failure often means the tests are importing the same broken code.
 .venv/Scripts/python -m pytest
 ```
 
-`.github/workflows/ci.yml` runs exactly these three, on Windows and Ubuntu.
+`.github/workflows/ci.yml` runs these three on Windows and Ubuntu, plus a Windows `native` job
+(the CMake build of `native/`, its ctest tests, and `tests/test_native.py` against the built DLL)
+that preflight does not run. Locally, `tests/test_native.py` skips its load test unless
+`native/build/Release/zexion_ap.dll` exists; build it as `CLAUDE.md` shows when `native/` or
+`client/native.py` changed.
 
 ## Before you start
 
@@ -55,4 +59,4 @@ If the AP checkout can't be created (no network, say), report the world as untes
 
 Anything in the running game. Passing pre-flight says nothing about whether a save patch, a
 memory pattern, or item delivery works in Zexion. Say so explicitly when a change touches
-`tools/`, `client/`, or any fact in `docs/re/`.
+`tools/`, `client/`, `native/`, or any fact in `docs/re/`.

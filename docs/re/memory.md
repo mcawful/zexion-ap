@@ -145,6 +145,16 @@ Where the running game keeps the state the client needs. Addresses are module-re
 | Build | B1 |
 | Evidence | `lab/ap/live1/watch.log`, the seed and spoiler in `lab/ap/live1/out/`, and AP's client and server logs of 2026-10-21 in `.ap/Archipelago/logs/`; slot 7's backup in `.ap/Archipelago/zexion_backups/20261021-154002/`; the marker runs in the same `watch.log`, 2026-10-22. |
 
+## The per-frame call: the game's SDL_GL_SwapWindow import
+
+| Field | |
+|---|---|
+| Value | `Zexion.exe` imports `SDL_GL_SwapWindow` by name from `SDL2.dll` (import 87 of the 99 it takes from SDL2, with a name table at RVA `0x22ADC0`), so the loader fills one import-table slot, at RVA `0x209628`, with SDL's address. The game calls the function only through that slot: five `call [rip+…]` instructions reach it (RVAs `0x2A67F`, `0x7AC16`, `0x7BA85`, `0x1A9918`, `0x203D95`), and no `jmp [rip+…]` or `mov rax, [rip+…]` reads it (other instruction forms were not scanned). `0x7BA85` is in `0x7BA70`, which the main loop (`0x7C620`) calls each pass. So replacing that one slot redirects every call the game makes to it, which is how the native helper gets a call on the game's thread (`native/README.md`); the helper finds the slot by name from the PE import directory, not by this RVA. **Once per frame, measured live:** with the helper loaded into the game (slot 7 in play, 2026-10-22), the hooked call came 166 times a second, steady over three one-second readings and across an unload and a reload, on the owner's 165 Hz monitor, so one call per displayed frame. That it comes from the game's main thread is inferred: the exe imports no thread-creating function (no `CreateThread`, `_beginthreadex`, `SDL_CreateThread` or `_Thrd_*`), so the game's own code runs on its main thread. |
+| Status | measured (the import and the slot, offline; the five call sites, a scan of `.text`; the rate, live, one machine at 165 Hz); inferred (the main thread, from the imports); working in game (hooking it, 2026-10-22) |
+| Method | parsing the B1 exe's import directory (`dumpbin /imports:SDL2.dll` and a Python reader of the PE headers); a scan of `.text` for `call`/`jmp`/`mov` through RIP-relative operands that reach the slot; disassembly of the main loop (capstone) |
+| Build | B1 |
+| Evidence | `lab/data/6d8a94bd4d64/Zexion.exe` (a copy), 2026-10-22; the live run: `tools/helper.py status` output and `lab/helper.jsonl`, 2026-10-22. |
+
 ## Byte patterns
 
 | Field | |
