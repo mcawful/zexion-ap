@@ -37,6 +37,25 @@ struct Batch {
     std::vector<Popup> popups;
 };
 
+// Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).
+struct SectionBytes {
+    uint16_t offset;
+    std::vector<uint8_t> bytes;
+};
+
+// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
+// then gets `write` (the AP item table, start, starting items).
+struct NewGamePlan {
+    std::vector<SectionBytes> expect;
+    std::vector<SectionBytes> write;
+};
+
+constexpr size_t kSectionSize = 0x908;
+
+// "ap_newgame" followed by lines "expect OFFSET HEX" and "write OFFSET HEX" (OFFSET decimal or
+// 0x hex, HEX an even number of hex digits); every range must lie inside the section.
+std::string parse_newgame(const std::string& request, NewGamePlan& out);
+
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
 
@@ -66,6 +85,18 @@ public:
 
     size_t queued_popups() const { return popups_.size(); }
 
+    // Game thread. Arms the AP new game: the next randomizer new game the game is about to
+    // build (its new-game routine queued, the randomizer marker set) gets `plan`, once.
+    void arm_newgame(NewGamePlan plan);
+    void disarm_newgame();
+    // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
+    std::string newgame_status() const;
+
+    // Game thread, every frame: applies an armed plan when a randomizer new game is queued and
+    // its timer has more than one frame left. A section that does not hold the plan's
+    // `expect` bytes (another mode) is left as the game made it, and the plan is dropped.
+    void watch_newgame();
+
 private:
     bool in_play() const;
     BYTE* player() const;
@@ -91,6 +122,16 @@ private:
     void* suit_color_fn_ = nullptr;
     std::deque<Popup> popups_;
     int frames_since_popup_ = 1 << 20;
+
+    BYTE* rando_blob_ = nullptr;
+    BYTE* rando_marker_ = nullptr;
+    BYTE* transition_fn_ = nullptr;     // holds the routine the game runs when its timer ends
+    BYTE* transition_timer_ = nullptr;  // 32-bit frames left
+    BYTE* current_slot_ = nullptr;      // 32-bit, 0-based
+    void* newgame_fn_ = nullptr;
+    bool newgame_armed_ = false;
+    NewGamePlan newgame_;
+    std::string newgame_status_ = "idle";
 };
 
 }  // namespace zap

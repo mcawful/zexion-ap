@@ -1,6 +1,7 @@
 #include "game_calls.h"
 
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <sstream>
 
@@ -10,6 +11,8 @@ const char* const kConfigKeys[] = {
     "inventory",     "save_loaded",   "menu_state",    "item_records",   "last_message",
     "weapon_strip_gate", "sound_system", "message_fn", "sound_fn",       "hud_number_fn",
     "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn",
+    "rando_blob",    "rando_marker",  "transition_fn", "transition_timer", "current_slot",
+    "newgame_fn",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -75,8 +78,17 @@ const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva) {
     return nullptr;
 }
 
+// The keys that name game functions (in code); every other key names data. transition_fn is
+// data: it holds the address of the routine the game runs next.
 bool is_function(const std::string& key) {
-    return key.size() > 3 && key.compare(key.size() - 3, 3, "_fn") == 0;
+    static const char* const functions[] = {
+        "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
+        "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
+    };
+    for (const char* f : functions) {
+        if (key == f) return true;
+    }
+    return false;
 }
 
 }  // namespace
@@ -139,6 +151,54 @@ std::string parse_batch(const std::string& request, Batch& out) {
     return "";
 }
 
+namespace {
+
+bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
+    if (text.empty() || text.size() % 2 != 0) return false;
+    for (size_t i = 0; i < text.size(); i += 2) {
+        unsigned value = 0;
+        for (size_t j = i; j < i + 2; ++j) {
+            char c = text[j];
+            value <<= 4;
+            if (c >= '0' && c <= '9') {
+                value |= static_cast<unsigned>(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                value |= static_cast<unsigned>(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                value |= static_cast<unsigned>(c - 'A' + 10);
+            } else {
+                return false;
+            }
+        }
+        out.push_back(static_cast<uint8_t>(value));
+    }
+    return true;
+}
+
+}  // namespace
+
+std::string parse_newgame(const std::string& request, NewGamePlan& out) {
+    std::istringstream lines(request);
+    std::string line;
+    if (!std::getline(lines, line) || line != "ap_newgame") return "not an ap_newgame request";
+    while (std::getline(lines, line)) {
+        std::istringstream words(line);
+        std::string op, offset_text, hex;
+        if (!(words >> op)) continue;
+        if (op != "expect" && op != "write") return "unknown line " + line;
+        uint64_t offset = 0;
+        SectionBytes edit;
+        if (!(words >> offset_text >> hex) || !parse_number(offset_text, offset) ||
+            !parse_hex(hex, edit.bytes) || offset + edit.bytes.size() > kSectionSize) {
+            return "bad line " + line;
+        }
+        edit.offset = static_cast<uint16_t>(offset);
+        (op == "expect" ? out.expect : out.write).push_back(std::move(edit));
+    }
+    if (out.write.empty()) return "nothing to write";
+    return "";
+}
+
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas) {
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
         reinterpret_cast<const BYTE*>(image) +
@@ -159,6 +219,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         }
         if (!code && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
             return key + " is in read-only data";
+        }
+        if (key == "rando_blob") {
+            uint64_t end = section->VirtualAddress +
+                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+            if (rva + kSectionSize > end) return key + " leaves no room for the section";
         }
         if (key == "inventory") {
             // The whole player state the helper touches must lie in the same section.
@@ -186,6 +251,12 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     energy_hud_fn_ = found["energy_hud_fn"];
     weapon_strip_fn_ = found["weapon_strip_fn"];
     suit_color_fn_ = found["suit_color_fn"];
+    rando_blob_ = found["rando_blob"];
+    rando_marker_ = found["rando_marker"];
+    transition_fn_ = found["transition_fn"];
+    transition_timer_ = found["transition_timer"];
+    current_slot_ = found["current_slot"];
+    newgame_fn_ = found["newgame_fn"];
     configured_ = true;
     return "";
 }
@@ -288,6 +359,42 @@ void Game::pump_popups() {
     }
     popups_.pop_front();
     frames_since_popup_ = 0;
+}
+
+void Game::arm_newgame(NewGamePlan plan) {
+    newgame_ = std::move(plan);
+    newgame_armed_ = true;
+    newgame_status_ = "armed";
+}
+
+void Game::disarm_newgame() {
+    newgame_armed_ = false;
+    newgame_ = {};
+    if (newgame_status_ == "armed") newgame_status_ = "idle";
+}
+
+std::string Game::newgame_status() const { return newgame_status_; }
+
+void Game::watch_newgame() {
+    if (!configured_ || !newgame_armed_) return;
+    if (at<void*>(transition_fn_, 0) != newgame_fn_) return;  // no new game queued
+    if (at<int32_t>(transition_timer_, 0) <= 1) return;       // too close to being built
+    if (at<uint16_t>(rando_marker_, 0) != 1) return;          // a normal new game: not ours
+    for (const SectionBytes& e : newgame_.expect) {
+        if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
+            char where[16];
+            std::snprintf(where, sizeof(where), "0x%X", e.offset);
+            newgame_status_ = std::string("refused the new game is not the seed's mode (section +") +
+                              where + " differs)";
+            disarm_newgame();
+            return;
+        }
+    }
+    for (const SectionBytes& e : newgame_.write) {
+        std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+    }
+    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
+    disarm_newgame();
 }
 
 }  // namespace zap

@@ -26,6 +26,14 @@ inline LastMessage g_last_message = {nullptr, 0};
 inline BYTE g_message[0x200];
 inline BYTE g_strip_gate = 0;
 inline BYTE g_sound_system[16];
+// The randomizer section, its marker, and the new-game routine the game queues with a timer.
+inline BYTE g_section[0x908 + 16];
+inline uint16_t g_rando_marker = 0;
+inline void* g_transition_fn = nullptr;
+inline int32_t g_transition_timer = 0;
+inline int32_t g_current_slot = 0;
+inline int g_newgames = 0;
+inline void newgame_fn() { ++g_newgames; }
 
 template <typename T>
 T& field(ptrdiff_t offset) {
@@ -103,6 +111,12 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"energy_hud_fn", rva(reinterpret_cast<void*>(&energy_hud_fn))},
         {"weapon_strip_fn", rva(reinterpret_cast<void*>(&weapon_strip_fn))},
         {"suit_color_fn", rva(reinterpret_cast<void*>(&suit_color_fn))},
+        {"rando_blob", rva(g_section)},
+        {"rando_marker", rva(&g_rando_marker)},
+        {"transition_fn", rva(&g_transition_fn)},
+        {"transition_timer", rva(&g_transition_timer)},
+        {"current_slot", rva(&g_current_slot)},
+        {"newgame_fn", rva(reinterpret_cast<void*>(&newgame_fn))},
     };
 }
 

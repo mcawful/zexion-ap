@@ -210,6 +210,78 @@ void test_popups() {
     check(game.queued_popups() == 0, "shown once back in play");
 }
 
+void queue_new_game(uint16_t marker, int32_t timer) {
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
+    g_transition_timer = timer;
+    g_rando_marker = marker;
+    g_current_slot = 6;
+}
+
+void test_newgame_parser() {
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 620 2E2E\nwrite 0x310 010203040506",
+                             plan)
+                  .empty(),
+          "parses a new-game plan");
+    check(plan.expect.size() == 1 && plan.expect[0].offset == 0x6C0 && plan.expect[0].bytes.size() == 2,
+          "expect");
+    check(plan.write.size() == 2 && plan.write[0].offset == 620 && plan.write[1].bytes[5] == 6,
+          "writes, decimal and hex offsets");
+    zap::NewGamePlan bad;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x906 112233", bad).empty(),
+          "a write past the section is refused");
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 123", bad).empty(), "odd hex is refused");
+    check(!zap::parse_newgame("ap_newgame\nexpect 0x10 00", bad).empty(), "nothing to write");
+    check(!zap::parse_newgame("ap_newgame\npoke 0x10 00", bad).empty(), "unknown lines");
+}
+
+void test_newgame_watch() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x6C0] = 3;  // the mode's starting Energy
+    zap::NewGamePlan plan;
+    zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022", plan);
+
+    game.watch_newgame();
+    check(game.newgame_status() == "idle", "nothing armed");
+    game.arm_newgame(plan);
+    check(game.newgame_status() == "armed", "armed");
+    g_transition_fn = nullptr;
+    game.watch_newgame();
+    check(g_section[0x26C] == 0, "no new game queued: nothing written");
+    queue_new_game(0, 40);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0 && game.newgame_status() == "armed",
+          "a normal new game (marker 0) is not ours");
+    queue_new_game(1, 1);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0, "too close to being built: left alone");
+    queue_new_game(1, 39);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B && g_section[0x312] == 0x22,
+          "a randomizer new game gets the plan");
+    check(game.newgame_status() == "applied slot 7", "and reports the slot");
+    std::memset(g_section, 0, 0x300);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0, "applied once only");
+
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x6C0] = 5;  // another mode's starting Energy
+    game.arm_newgame(plan);
+    queue_new_game(1, 39);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0, "another mode: nothing written");
+    check(game.newgame_status().rfind("refused", 0) == 0, "and reported refused");
+    game.watch_newgame();
+    check(game.newgame_status().rfind("refused", 0) == 0, "and the plan is dropped");
+
+    game.arm_newgame(plan);
+    game.disarm_newgame();
+    check(game.newgame_status() == "idle", "disarming");
+}
+
 void test_mailbox() {
     zap::Mailbox box;
     std::string result;
@@ -250,6 +322,8 @@ int main() {
     test_configure();
     test_apply();
     test_popups();
+    test_newgame_parser();
+    test_newgame_watch();
     test_mailbox();
     if (g_failures == 0) std::printf("all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
