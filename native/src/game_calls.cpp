@@ -429,58 +429,77 @@ void Game::restore_menu(WidgetCallback callback) {
     if (configured_) choice_.restore(menu_, callback);
 }
 
+namespace {
+
+// Puts the randomizer menu's state back however start_archipelago leaves.
+class MenuStateGuard {
+public:
+    explicit MenuStateGuard(BYTE* state) : state_(state) {
+        std::memcpy(saved_, state_, kMenuSize);
+    }
+    ~MenuStateGuard() { std::memcpy(state_, saved_, kMenuSize); }
+    MenuStateGuard(const MenuStateGuard&) = delete;
+    MenuStateGuard& operator=(const MenuStateGuard&) = delete;
+
+private:
+    BYTE* state_;
+    BYTE saved_[kMenuSize];
+};
+
+}  // namespace
+
 void Game::start_archipelago(WidgetCallback callback) {
     // The game calls the choice's callback once per press; a press after the plan was dropped,
     // or while a new game is queued, does nothing.
     if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
     if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
     starting_ = true;
-    choice_.restore(menu_, callback);
-    // The menu's state is the player's own (the game keeps it in its preferences): set to the
-    // seed's mode for the placement, then put back.
-    BYTE saved[kMenuSize];
-    std::memcpy(saved, randomizer_menu_, kMenuSize);
-    for (const SectionBytes& e : newgame_.menu) {
-        std::memcpy(randomizer_menu_ + e.offset, e.bytes.data(), e.bytes.size());
-    }
-    // START GAME's first step would pick a start; the placement reads the AP seed's instead,
-    // so the plan goes in first. Then the placement, which builds the rest of the section from
-    // the menu (the location list, the settings, the map tables); START GAME's winnability
-    // check is skipped, since the AP generator made the seed beatable.
-    for (const SectionBytes& e : newgame_.write) {
-        std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
-    }
-    reinterpret_cast<void (*)()>(placement_fn_)();
-    std::string refused;
-    for (const SectionBytes& e : newgame_.expect) {
-        if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
+    try {
+        choice_.restore(menu_, callback);
+        int differs = -1;
+        {
+            // The menu's state is the player's own (the game keeps it in its preferences): set
+            // to the seed's mode for the placement, then put back.
+            MenuStateGuard guard(randomizer_menu_);
+            for (const SectionBytes& e : newgame_.menu) {
+                std::memcpy(randomizer_menu_ + e.offset, e.bytes.data(), e.bytes.size());
+            }
+            // START GAME's first step would pick a start; the placement reads the AP seed's
+            // instead, so the plan goes in first. Then the placement, which builds the rest of
+            // the section from the menu (the location list, the settings, the map tables).
+            // START GAME's winnability check is skipped: the AP generator made the seed
+            // beatable.
+            for (const SectionBytes& e : newgame_.write) {
+                std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+            }
+            reinterpret_cast<void (*)()>(placement_fn_)();
+            for (const SectionBytes& e : newgame_.expect) {
+                if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
+                    differs = e.offset;
+                    break;
+                }
+            }
+        }
+        if (differs >= 0) {
             char where[16];
-            std::snprintf(where, sizeof(where), "0x%X", e.offset);
-            refused = std::string("refused the placement is not the seed's mode (section +") +
-                      where + " differs)";
-            break;
+            std::snprintf(where, sizeof(where), "0x%X", static_cast<unsigned>(differs));
+            newgame_status_ = std::string("refused the placement is not the seed's mode (section +") +
+                              where + " differs)";
+            disarm_newgame();
+            return;
         }
-    }
-    if (refused.empty()) {
-        for (const SectionBytes& e : newgame_.write) {
-            std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+        // The new game in the chosen slot, as the play-anyway path queues it. watch_newgame
+        // then checks the section once more and writes the AP seed over the placement in the
+        // next frame, as for a game started from RANDOMIZER.
+        reinterpret_cast<void (*)()>(rando_newgame_fn_)();
+        if (at<void*>(transition_fn_, 0) != newgame_fn_) {
+            newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
+            disarm_newgame();
         }
-    }
-    std::memcpy(randomizer_menu_, saved, kMenuSize);
-    if (!refused.empty()) {
-        newgame_status_ = refused;
+    } catch (...) {
         disarm_newgame();
-        return;
+        throw;
     }
-    // The new game in the chosen slot, as the play-anyway path queues it.
-    reinterpret_cast<void (*)()>(rando_newgame_fn_)();
-    if (at<void*>(transition_fn_, 0) != newgame_fn_) {
-        newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
-        starting_ = false;
-        return;
-    }
-    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
-    disarm_newgame();
 }
 
 }  // namespace zap

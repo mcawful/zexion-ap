@@ -327,20 +327,25 @@ void test_archipelago_choice() {
     press();
     check(g_steps == "placement queue ", "the placement, then the new game queued");
     check(g_start_seen == 0x11, "the placement saw the AP seed's start");
-    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B,
-          "the AP item table is written over the placement");
-    check(g_section[0x6C0] == 3, "the section is the seed's mode");
+    check(g_section[0x26C] == 0x77 && g_section[0x6C0] == 3,
+          "the placement's section, of the seed's mode");
     check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
-    check(game.newgame_status() == "applied slot 3", "reported with the slot");
+    check(game.newgame_status() == "armed", "the plan waits for the queued new game");
     check(panel.text() == "RANDOMIZER " && panel.callback() == &rando_menu_fn,
           "RANDOMIZER is back");
     chosen(panel.child, 7);
     check(g_steps == "placement queue ", "a second press does nothing");
     game.watch_menu(&chosen);
-    check(!game.menu_installed(), "the plan is used up");
+    check(!game.menu_installed(), "not offered again while the new game is queued");
+    game.watch_newgame();
+    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B && g_section[0x312] == 0x22,
+          "the next frame writes the AP seed over the placement");
+    check(game.newgame_status() == "applied slot 3", "reported with the slot");
     std::memset(g_section, 0, 0x300);
     game.watch_newgame();
     check(g_section[0x26C] == 0, "the queued new game is not written again");
+    game.watch_menu(&chosen);
+    check(!game.menu_installed(), "the plan is used up");
 
     // Another mode: the placement's amounts are not the seed's. Nothing is queued.
     g_steps.clear();
@@ -367,7 +372,13 @@ void test_archipelago_choice() {
     check(game.newgame_status().rfind("refused the game did not queue", 0) == 0,
           "a new game the game would not queue is reported");
     game.watch_menu(&chosen);
-    check(panel.text() == "ARCHIPELAGO", "and ARCHIPELAGO is offered again");
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
+          "and the plan dropped, for the client to arm again");
+    g_slot_taken = false;
+    g_transition_fn = nullptr;
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    check(panel.text() == "ARCHIPELAGO", "armed again, ARCHIPELAGO is back");
     game.disarm_newgame();
     game.watch_menu(&chosen);
     check(!game.menu_installed() && panel.text() == "RANDOMIZER " &&

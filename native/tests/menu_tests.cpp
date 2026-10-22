@@ -56,16 +56,63 @@ void test_restore_when_another_menu_is_up() {
     zap::ArchipelagoChoice choice;
     zap::MenuAddresses a = stand.addresses();
     choice.install(a, &archipelago);
-    check(choice.restore(a, &archipelago), "restore needs no panel up");
-    choice.install(a, &archipelago);
-    BYTE other[8] = {};
-    stand.current = other;  // the file screen, say; the panel still exists
+    BYTE above[0x80] = {};
+    Stand::at<BYTE*>(above, 0x78) = stand.menu;  // a menu opened on top; ours still open below
+    stand.current = above;
     check(!choice.install(a, &archipelago), "nothing to install on another menu");
-    check(!choice.installed() && stand.text() == "RANDOMIZER ",
-          "the hidden panel is put back as soon as it is not up");
+    check(!choice.installed() && stand.text() == "RANDOMIZER " &&
+              stand.callback() == &rando_menu,
+          "the open menu below is put back as soon as it is not the top one");
     stand.current = stand.menu;
     check(choice.install(a, &archipelago) && stand.text() == "ARCHIPELAGO",
-          "relabeled again when it is back up");
+          "relabeled again when it is back on top");
+    stand.current = above;
+    check(choice.restore(a, &archipelago) && stand.text() == "RANDOMIZER ",
+          "restore needs only the menu open, not on top");
+}
+
+void test_a_closed_menu_is_forgotten_unwritten() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    choice.install(a, &archipelago);
+    // The game closed the menu: freed with its widgets, whose contents still look like ours.
+    BYTE file_screen[0x80] = {};
+    stand.current = file_screen;
+    check(!choice.install(a, &archipelago), "nothing to install");
+    check(!choice.installed(), "forgets it");
+    check(stand.text() == "ARCHIPELAGO" && stand.callback() == &archipelago,
+          "writes nothing into the closed menu");
+
+    choice.install(a, &archipelago);  // nothing up: still nothing
+    stand.current = stand.menu;
+    Stand fresh;
+    zap::MenuAddresses b = fresh.addresses();
+    choice.install(b, &archipelago);
+    fresh.current = nullptr;  // no menu at all (in play)
+    check(!choice.restore(b, &archipelago) && fresh.text() == "ARCHIPELAGO",
+          "no menus open: nothing written");
+}
+
+void test_a_released_widget_is_left_alone() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    choice.install(a, &archipelago);
+    Stand::at<int32_t>(stand.child, 0x1C8) = 2;  // released, on the game's dead list
+    check(!choice.restore(a, &archipelago), "a released widget is not written");
+    check(stand.callback() == &archipelago, "left as it was");
+    check(!choice.installed(), "forgotten");
+}
+
+void test_the_callback_goes_back_even_if_the_label_changed() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    choice.install(a, &archipelago);
+    Stand::at<int32_t>(stand.label, 0x1D8) = 10;
+    check(choice.restore(a, &archipelago), "restored");
+    check(stand.callback() == &rando_menu, "the live widget no longer points at the helper");
 }
 
 void test_a_new_panel_replaces_the_old() {
@@ -73,25 +120,13 @@ void test_a_new_panel_replaces_the_old() {
     zap::ArchipelagoChoice choice;
     zap::MenuAddresses a = first.addresses();
     choice.install(a, &archipelago);
-    first.current = second.menu;  // a new game-mode panel is up; the old one still exists
+    Stand::at<BYTE*>(second.menu, 0x78) = first.menu;  // a new menu on top of the old one
+    first.current = second.menu;
     check(choice.install(a, &archipelago), "installs on the new panel");
     check(first.text() == "RANDOMIZER " && second.text() == "ARCHIPELAGO",
           "the old panel is put back, the new one relabeled");
     choice.restore(a, &archipelago);
     check(second.text() == "RANDOMIZER ", "the new panel is put back");
-}
-
-void test_freed_choice_is_forgotten() {
-    Stand stand;
-    zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
-    choice.install(a, &archipelago);
-    // The game freed the widget and reused the memory: it no longer holds the callback.
-    Stand::at<void*>(stand.child, 0x2C0) = nullptr;
-    std::memset(stand.glyphs[0] + 0x1C4, 0x55, 4);
-    check(!choice.restore(a, &archipelago), "writes nothing into reused memory");
-    check(Stand::at<int32_t>(stand.glyphs[0], 0x1C4) == 0x55555555, "left as it was");
-    check(!choice.installed(), "forgets it");
 }
 
 void test_mismatches_leave_the_menu_alone() {
@@ -113,6 +148,8 @@ void test_mismatches_leave_the_menu_alone() {
         {"a glyph that faults",
          [](Stand& s) { s.glyph_list[10] = reinterpret_cast<BYTE*>(24); }},
         {"a font without capitals", [](Stand& s) { Stand::at<int32_t>(s.glyphs[4], 0x1BC) = 64; }},
+        {"a released widget", [](Stand& s) { Stand::at<int32_t>(s.child, 0x1C8) = 2; }},
+        {"a released glyph", [](Stand& s) { Stand::at<int32_t>(s.glyphs[3], 0x1C8) = 2; }},
     };
     for (const Case& c : cases) {
         Stand stand;
@@ -135,7 +172,9 @@ int main() {
     test_install_and_restore();
     test_restore_when_another_menu_is_up();
     test_a_new_panel_replaces_the_old();
-    test_freed_choice_is_forgotten();
+    test_a_closed_menu_is_forgotten_unwritten();
+    test_a_released_widget_is_left_alone();
+    test_the_callback_goes_back_even_if_the_label_changed();
     test_mismatches_leave_the_menu_alone();
     if (g_failures == 0) std::printf("menu tests: all passed\n");
     return g_failures == 0 ? 0 : 1;

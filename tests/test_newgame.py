@@ -134,6 +134,8 @@ def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
         (dict(menu=menu_setup(settings=bytes(63))), "64"),
         (dict(menu=menu_setup(settings=bytes(64))), "setting 42"),
         (dict(menu=menu_setup(), second_start=(3, 151, 464)), "RANDOMIZER"),
+        (dict(menu=menu_setup(second_target=(0, 20))), "three 16-bit"),
+        (dict(menu=menu_setup(second_target=(0, 20, -1))), "three 16-bit"),
     ],
 )
 def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:

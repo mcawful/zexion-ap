@@ -21,7 +21,7 @@ struct ModePanel {
     void* const panel_handler_ptr;
     void* const widget_handler_ptr;
     void* const rando_menu_ptr;
-    BYTE menu[8] = {};
+    BYTE menu[0x80] = {};  // its panel list at +0, the menu below at +0x78
     BYTE* panels[4] = {};
     BYTE panel[0x300] = {};
     BYTE* children[4] = {};

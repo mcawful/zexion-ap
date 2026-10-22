@@ -129,6 +129,9 @@ def menu_lines(plan: sp.SeedPlan) -> list[str]:
             raise NewGameError(f"the menu's setting {t} is not the seed's mode")
     if plan.second_start is not None:
         raise NewGameError("a mode with a second teleport target starts from RANDOMIZER")
+    target = menu.second_target
+    if len(target) != 3 or not all(isinstance(v, int) and 0 <= v <= 0xFFFF for v in target):
+        raise NewGameError(f"the second target {target!r} is not three 16-bit numbers")
     color = COLOR_SETTING - MENU_FIRST_SETTING
     second = struct.pack("<3H", *menu.second_target) + bytes(1)
     return [

@@ -114,9 +114,11 @@ public:
     bool menu_installed() const { return choice_.installed(); }
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
-    // mode, writes the plan, runs the game's placement, checks the section is the seed's mode
-    // and writes the plan again over the placement, puts the menu's state back, and queues the
-    // new game in the chosen slot. Reports "applied slot N" or "refused ...".
+    // mode, writes the plan (for the AP start), runs the game's placement, checks the section
+    // is the seed's mode, puts the menu's state back, and queues the new game in the chosen
+    // slot; watch_newgame then writes the plan over the placement in the next frame and
+    // reports "applied slot N". A section of another mode, or a slot the game will not start
+    // a game in, drops the plan with "refused ..." and nothing queued.
     void start_archipelago(WidgetCallback callback);
 
 private:

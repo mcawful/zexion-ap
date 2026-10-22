@@ -6,8 +6,11 @@ namespace zap {
 
 namespace {
 
+constexpr ptrdiff_t kMenuBelow = 0x78;
+constexpr int kMaxMenus = 64;  // far more than the game ever stacks
 constexpr ptrdiff_t kPanelIndex = 3;
 constexpr ptrdiff_t kPanelChildren = 0x1E0, kPanelCapacity = 0x1E8, kPanelHandler = 0x2F8;
+constexpr ptrdiff_t kReleased = 0x1C8;  // widgets and glyphs: nonzero once released
 constexpr ptrdiff_t kChildLabel = 0x1F0, kChildCallback = 0x2C0, kChildHandler = 0x2C8;
 constexpr ptrdiff_t kLabelCapacity = 0x1D8, kLabelGlyphs = 0x228;
 constexpr ptrdiff_t kGlyphFrameTable = 0x1A8, kGlyphFrame = 0x1B0, kGlyphFrameCount = 0x1BC;
@@ -20,7 +23,35 @@ bool read(const BYTE* base, ptrdiff_t offset, T& out) {
     return base != nullptr && safe_read(base + offset, &out, sizeof(T));
 }
 
-// Reads the glyph pointers of a label, or returns false.
+bool readable(const BYTE* p, size_t size) {
+    const BYTE* end = p + size;
+    while (p < end) {
+        MEMORY_BASIC_INFORMATION info;
+        if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT) {
+            return false;
+        }
+        DWORD protect = info.Protect;
+        if ((protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 ||
+            (protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                        PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
+            return false;
+        }
+        p = static_cast<const BYTE*>(info.BaseAddress) + info.RegionSize;
+    }
+    return true;
+}
+
+int copy_or_fault(const void* from, void* to, size_t size) {
+    __try {
+        std::memcpy(to, from, size);
+        return 1;
+    } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER
+                                                                 : EXCEPTION_CONTINUE_SEARCH) {
+        return 0;
+    }
+}
+
+// Reads the glyph pointers of a live label, or returns false.
 bool glyphs_of(BYTE* child, BYTE* (&glyphs)[kLabelLength]) {
     BYTE* label = nullptr;
     int32_t capacity = 0;
@@ -31,10 +62,10 @@ bool glyphs_of(BYTE* child, BYTE* (&glyphs)[kLabelLength]) {
         return false;
     }
     for (BYTE* g : glyphs) {
-        int32_t count = 0;
+        int32_t released = 1, count = 0;
         BYTE* table = nullptr;
-        if (!read(g, kGlyphFrameCount, count) || !read(g, kGlyphFrameTable, table) || count <= 'Z' ||
-            table == nullptr) {
+        if (!read(g, kReleased, released) || released != 0 || !read(g, kGlyphFrameCount, count) ||
+            !read(g, kGlyphFrameTable, table) || count <= 'Z' || table == nullptr) {
             return false;
         }
     }
@@ -44,67 +75,77 @@ bool glyphs_of(BYTE* child, BYTE* (&glyphs)[kLabelLength]) {
 }  // namespace
 
 bool safe_read(const void* from, void* to, size_t size) {
-    __try {
-        std::memcpy(to, from, size);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
+    // The query keeps the read off guard pages (another thread's stack), which an exception
+    // handler would disarm; the handler covers memory freed in between.
+    return from != nullptr && readable(static_cast<const BYTE*>(from), size) &&
+           copy_or_fault(from, to, size) == 1;
 }
 
-BYTE* ArchipelagoChoice::find_choice(const MenuAddresses& a, void* expected_callback) const {
-    BYTE* menu = nullptr;
+BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* expected_callback) {
     BYTE** panels = nullptr;
     BYTE* panel = nullptr;
     void* handler = nullptr;
     int32_t capacity = 0;
     BYTE** children = nullptr;
     BYTE* child = nullptr;
+    int32_t released = 1;
     void* callback = nullptr;
     void* child_handler = nullptr;
-    if (!read(a.current_menu, 0, menu) || !read(menu, 0, panels) ||
+    if (!read(menu, 0, panels) ||
         !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel) ||
         !read(panel, kPanelHandler, handler) || handler != a.panel_handler ||
         !read(panel, kPanelCapacity, capacity) || capacity != 4 ||
         !read(panel, kPanelChildren, children) ||
-        !read(reinterpret_cast<BYTE*>(children), 8, child) ||
-        !read(child, kChildCallback, callback) || callback != expected_callback ||
-        !read(child, kChildHandler, child_handler) || child_handler != a.widget_handler) {
+        !read(reinterpret_cast<BYTE*>(children), 8, child) || !read(child, kReleased, released) ||
+        released != 0 || !read(child, kChildCallback, callback) ||
+        callback != expected_callback || !read(child, kChildHandler, child_handler) ||
+        child_handler != a.widget_handler) {
         return nullptr;
     }
     return child;
 }
 
+bool ArchipelagoChoice::menu_open(const MenuAddresses& a) const {
+    BYTE* menu = nullptr;
+    if (!read(a.current_menu, 0, menu)) return false;
+    for (int i = 0; i < kMaxMenus && menu != nullptr; ++i) {
+        if (menu == menu_) return true;
+        if (!read(menu, kMenuBelow, menu)) return false;
+    }
+    return false;
+}
+
 bool ArchipelagoChoice::put_back(const MenuAddresses& a, WidgetCallback callback) {
-    void* current = nullptr;
-    void* handler = nullptr;
-    BYTE* glyphs[kLabelLength] = {};
-    // Only a widget that still holds this helper's callback and the widget handler, with the
-    // same label shape: anything else is no longer the choice this relabeled.
-    if (!read(child_, kChildCallback, current) || current != reinterpret_cast<void*>(callback) ||
-        !read(child_, kChildHandler, handler) || handler != a.widget_handler ||
-        !glyphs_of(child_, glyphs)) {
+    // Only into a widget whose menu is still open, still holding this helper's callback.
+    if (!menu_open(a) || choice_in(menu_, a, reinterpret_cast<void*>(callback)) != child_) {
         return false;
     }
-    for (int i = 0; i < kLabelLength; ++i) {
-        *reinterpret_cast<int32_t*>(glyphs[i] + kGlyphFrameIndex) = frames_[i];
-        *reinterpret_cast<BYTE**>(glyphs[i] + kGlyphFrame) = frame_ptrs_[i];
+    BYTE* glyphs[kLabelLength] = {};
+    if (glyphs_of(child_, glyphs)) {
+        for (int i = 0; i < kLabelLength; ++i) {
+            *reinterpret_cast<int32_t*>(glyphs[i] + kGlyphFrameIndex) = frames_[i];
+            *reinterpret_cast<BYTE**>(glyphs[i] + kGlyphFrame) = frame_ptrs_[i];
+        }
     }
+    // The callback goes back even if the label changed shape: the widget is alive and would
+    // otherwise keep pointing into the helper.
     *reinterpret_cast<void**>(child_ + kChildCallback) = a.rando_menu;
     return true;
 }
 
 bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback) {
+    BYTE* top = nullptr;
+    if (!read(a.current_menu, 0, top)) top = nullptr;
     if (child_ != nullptr) {
-        if (find_choice(a, reinterpret_cast<void*>(callback)) == child_) {
-            return false;  // still installed on the panel that is up
+        if (top == menu_ && choice_in(top, a, reinterpret_cast<void*>(callback)) == child_) {
+            return false;  // still installed on the menu that is up
         }
-        // The panel is no longer the one up: put RANDOMIZER back at once, while the widget most
-        // likely still exists, rather than keep a pointer into a menu the game may free.
         put_back(a, callback);
         child_ = nullptr;
+        menu_ = nullptr;
     }
-    BYTE* child = find_choice(a, a.rando_menu);
+    if (top == nullptr) return false;
+    BYTE* child = choice_in(top, a, a.rando_menu);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
     for (int i = 0; i < kLabelLength; ++i) {
@@ -117,6 +158,7 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
             *reinterpret_cast<BYTE**>(g + kGlyphFrameTable) + c * kFrameSize;
     }
     *reinterpret_cast<void**>(child + kChildCallback) = reinterpret_cast<void*>(callback);
+    menu_ = top;
     child_ = child;
     return true;
 }
@@ -125,6 +167,7 @@ bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback)
     if (child_ == nullptr) return false;
     bool put = put_back(a, callback);
     child_ = nullptr;
+    menu_ = nullptr;
     return put;
 }
 
