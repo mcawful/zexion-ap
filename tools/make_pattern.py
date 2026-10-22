@@ -1,18 +1,24 @@
-"""Find byte patterns that locate a data address in Zexion.exe, for use after ASLR and patches.
+"""Find byte patterns that locate a data address or a function in Zexion.exe, for use after ASLR
+and patches.
 
     make_pattern.py EXE RVA [--size N] [--count K] [--max-bytes M]
 
 EXE is a copy of Zexion.exe (``game_data.py --exe`` puts one in lab/data/<build>/). RVA is the
-data address to locate, relative to the image base (``Zexion.exe+0x3E469D`` -> ``0x3E469D``);
-``--size`` widens it to a range (a struct or array), so references to its fields count too.
+data address or function to locate, relative to the image base (``Zexion.exe+0x3E469D`` ->
+``0x3E469D``); ``--size`` widens it to a range (a struct or array), so references to its fields
+count too.
 
-For each instruction that refers to the range, either relative to the instruction pointer or
-as an image-base offset baked into the instruction, it grows a window of whole instructions
+For each instruction that refers to the range, either relative to the instruction pointer
+(a memory operand, or a ``call``/``jmp`` with a 32-bit offset) or as an image-base offset baked
+into the instruction, it grows a window of whole instructions
 from there, wildcards every field that moves when code or data moves (that reference, calls,
 jumps, other instruction-pointer-relative offsets, other image-base offsets), and keeps the
 shortest window that matches exactly once in .text. It prints up to K such patterns, each with
 how to turn a match into the address (docs/re/memory.md and client/patterns.py use the same
-form). The file is only read.
+form). A call site resolves like an instruction-pointer-relative reference (kind "rip": its
+offset field leads to the function). When RVA starts a function, it also prints a pattern
+over the function's first instructions, kind "at" (the match itself is the address). The file
+is only read.
 """
 
 from __future__ import annotations
@@ -76,7 +82,7 @@ class Image:
 class Pattern:
     text: str  # "48 8D 0D ?? ?? ?? ?? ..."
     disp_at: int  # offset in the match of the 32-bit field that leads to the address
-    kind: str  # "rip": address = match + rip_end + disp; "rva": address = base + disp
+    kind: str  # "rip": match + rip_end + disp; "rva": base + disp; "at": the match itself
     rip_end: int  # offset of the end of the referring instruction (kind "rip")
     addend: int  # added to what the field leads to, to reach the wanted address
 
@@ -117,11 +123,23 @@ def _text(raw: bytes, wild: set[int]) -> str:
     return " ".join("??" if i in wild else f"{b:02X}" for i, b in enumerate(raw))
 
 
+def _call_target(ins) -> int | None:
+    """Where a ``call``/``jmp`` with a 32-bit offset goes, or None."""
+    if ins.mnemonic in ("call", "jmp") and ins.imm_size == 4 and ins.imm_offset:
+        return ins.operands[0].imm
+    return None
+
+
 def find_references(img: Image, lo: int, hi: int) -> list[tuple[int, str]]:
     """Addresses of instructions referring into [lo, hi), with the kind of reference."""
     out = []
     for begin, end in img.functions:
         for ins in img.md.disasm(img.code_at(begin, end - begin), begin):
+            call = _call_target(ins)
+            if call is not None:
+                if lo <= call < hi:
+                    out.append((ins.address, "rip"))
+                continue
             if not _has_disp32(ins):
                 continue
             rip = _is_rip(ins)
@@ -153,14 +171,37 @@ def pattern_for(
         if len(raw) - len(wild) < min_fixed:
             continue  # too few fixed bytes to survive a patch, or to mean anything
         if len(_to_regex(raw, wild).findall(img.text_bytes)) == 1:
-            target = first.address + first.size + first.disp if kind == "rip" else first.disp
+            call = _call_target(first)
+            if call is not None:
+                target, field = call, first.imm_offset
+            elif kind == "rip":
+                target, field = first.address + first.size + first.disp, first.disp_offset
+            else:
+                target, field = first.disp, first.disp_offset
             return Pattern(
                 text=_text(raw, wild),
-                disp_at=first.disp_offset,
+                disp_at=field,
                 kind=kind,
                 rip_end=first.size,
                 addend=want - target,
             )
+    return None
+
+
+def start_pattern(img: Image, rva: int, max_bytes: int, min_fixed: int = 12) -> Pattern | None:
+    """The shortest unique window of whole instructions from the start of a function."""
+    raw, wild = b"", set()
+    for ins in img.instructions(rva, 12):
+        start = len(raw)
+        raw += bytes(ins.bytes)
+        wild |= {start + w for w in _wildcards(ins)}
+        if len(raw) > max_bytes:
+            return None
+        if (
+            len(raw) - len(wild) >= min_fixed
+            and len(_to_regex(raw, wild).findall(img.text_bytes)) == 1
+        ):
+            return Pattern(text=_text(raw, wild), disp_at=0, kind="at", rip_end=0, addend=0)
     return None
 
 
@@ -192,6 +233,11 @@ def main(argv: list[str] | None = None) -> int:
             f"ref 0x{ref:X} ({p.kind}, {fixed_bytes(p)} fixed bytes): disp_at={p.disp_at} "
             f"rip_end={p.rip_end} addend={p.addend:#x}\n  {p.text}"
         )
+    if any(begin == args.rva for begin, _ in img.functions):
+        p = start_pattern(img, args.rva, args.max_bytes, args.min_fixed)
+        if p is not None:
+            found.append((args.rva, p))
+            print(f"function start (at, {fixed_bytes(p)} fixed bytes):\n  {p.text}")
     if not found:
         print("no unique pattern found; try --max-bytes, --min-fixed or a wider --size")
         return 1

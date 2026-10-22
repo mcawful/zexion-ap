@@ -20,6 +20,15 @@ Safety, in order:
 - A grant waits for two polls in a row to owe exactly the same, so a pickup the game is half
   way through recording (the map cell set, the inventory byte not yet) is never taken for an
   item owed.
+
+With the native helper attached (``Session.helper``), the grants go to the game as one batch
+the helper applies between frames (client/native.py): it checks again that the game is in
+play and that every byte still holds what this poll read, writes all or none, sets missiles,
+bombs and energy as a pickup would, refreshes the HUD, and shows the game's popup for each
+item received since the last batch (not for those the server already held when the client
+connected: ``mark_announced``). When nothing is owed but max missiles or bombs lag behind the
+counts, it sends a refresh that sets them. A helper that fails is dropped, and grants go back
+to direct writes. This path has been tested against a stand-in game only, not yet in Zexion.
 """
 
 from __future__ import annotations
@@ -29,6 +38,7 @@ import time
 from dataclasses import astuple, dataclass, field
 
 import game
+import native
 import reconcile
 import save_patch
 
@@ -81,13 +91,28 @@ class Session:
         self.cells = [tuple(c) for c in cells]
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
+        self.helper: native.Helper | None = None
+        # How many received items have had their popup. None until the server's first full
+        # list arrives (mark_announced): what came before this connection is not announced.
+        self._announced: int | None = None
+
+    def mark_announced(self, count: int) -> None:
+        """Received items up to ``count`` need no popup (the backlog at connection)."""
+        self._announced = count
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
             self._said.add(key)
             logger.warning(message)
 
-    def step(self, g: game.Game, received: list[int], gap: float = SETTLE_SECONDS) -> Step:
+    def step(
+        self,
+        g: game.Game,
+        received: list[int],
+        gap: float = SETTLE_SECONDS,
+        senders: list[str] | None = None,
+    ) -> Step:
+        """One poll. ``senders`` names who sent each of ``received`` (for popups)."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -113,7 +138,7 @@ class Session:
         collected = reconcile.collected_locations(snap.grid, self.cells)
         step = Step(collected, snap.inventory[GOAL_ITEM] >= 1, {}, True)
         if snap.state == game.IN_PLAY:
-            step.granted = self.give(g, snap, collected, received, gap)
+            step.granted = self.give(g, snap, collected, received, gap, senders)
         return step
 
     def give(
@@ -123,6 +148,7 @@ class Session:
         collected: set[int],
         received: list[int],
         gap: float,
+        senders: list[str] | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         target = reconcile.should_own(plan.start_items, plan.location_items, collected, received)
@@ -135,6 +161,15 @@ class Session:
         due, self._due = self._due, result.inventory
         if result.inventory != due:
             return {}  # owed for the first time: wait for the next poll to agree
+        if self.helper is not None:
+            try:
+                return self.give_through_helper(snap, result.inventory, received, senders)
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
+                self.helper.close()
+                self.helper = None
+        if self._announced is not None:
+            self._announced = len(received)  # direct writes show no popups
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():
@@ -159,3 +194,37 @@ class Session:
             ):
                 logger.info("A load undid a grant; it will be given again.")
         return granted
+
+    def give_through_helper(
+        self,
+        snap: Snapshot,
+        owed: dict[int, int],
+        received: list[int],
+        senders: list[str] | None,
+    ) -> dict[int, int]:
+        popups: list[tuple[int, str]] = []
+        start = self._announced if self._announced is not None else len(received)
+        # A progressive weapon received while its weapon is owned arrives as the upgrade, so
+        # its popup names the upgrade.
+        weapons = {w for w in reconcile.PROGRESSIVE if snap.inventory[w]}
+        for index in range(start, len(received)):
+            item = received[index]
+            if item in reconcile.PROGRESSIVE:
+                if item in weapons:
+                    item = reconcile.PROGRESSIVE[item]
+                weapons.add(received[index])
+            sender = senders[index] if senders and index < len(senders) else ""
+            popups.append((item, f"FROM {sender}" if sender else ""))
+        if not owed and not popups:
+            before = reconcile.Supplies(*snap.supplies)
+            if reconcile.supplies_after(snap.inventory, {}, before) != before:
+                self.helper.apply(native.batch_text([], [], refresh=True))
+            return {}
+        cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
+        reply = self.helper.apply(native.batch_text(cas, popups))
+        if reply != "applied":
+            logger.info(f"Not given this time: {reply}")
+            return {}
+        if self._announced is not None:
+            self._announced = len(received)
+        return dict(owed)

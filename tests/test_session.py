@@ -8,6 +8,7 @@ import pytest
 from test_save_patch import fresh, plan
 
 import game
+import native
 import save_patch as sp
 import session as ss
 
@@ -77,9 +78,11 @@ class FakeGame:
 PLAN = plan()  # starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun
 
 
-def give(session: ss.Session, g: FakeGame, received: list[int]) -> dict[int, int]:
-    session.step(g, received, gap=0)
-    return session.step(g, received, gap=0).granted
+def give(
+    session: ss.Session, g: FakeGame, received: list[int], senders: list[str] | None = None
+) -> dict[int, int]:
+    session.step(g, received, gap=0, senders=senders)
+    return session.step(g, received, gap=0, senders=senders).granted
 
 
 @pytest.fixture
@@ -184,3 +187,105 @@ def test_a_grant_the_game_changed_first_is_left_for_the_next_poll(setup) -> None
 
     g.set_item = game_got_there_first
     assert give(session, g, [17]) == {}
+
+
+# --- through the in-game helper ------------------------------------------------------------
+
+
+class FakeHelper:
+    """Applies a batch to the fake game as the native helper would (or refuses, or fails)."""
+
+    def __init__(self, g: FakeGame, reply: str = "applied"):
+        self.g, self.reply, self.fail, self.closed = g, reply, False, False
+        self.requests: list[str] = []
+
+    def apply(self, text: str) -> str:
+        self.requests.append(text)
+        if self.fail:
+            raise native.HelperError("the pipe closed")
+        if self.reply == "applied":
+            for line in text.splitlines()[1:]:
+                if line.startswith("cas "):
+                    item, expected, value = map(int, line.split()[1:])
+                    assert self.g.inv[item] == expected
+                    self.g.inv[item] = value
+        return self.reply
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def with_helper(setup):
+    session, g = setup
+    helper = FakeHelper(g)
+    session.helper = helper
+    session.mark_announced(0)
+    writes = []
+    real = g.set_item
+    g.set_item = lambda *a: (writes.append(a), real(*a))
+    return session, g, helper, writes
+
+
+def test_grants_go_through_the_helper_in_one_batch(with_helper) -> None:
+    session, g, helper, writes = with_helper
+    assert give(session, g, [17, 22]) == {17: 1, 22: 1}
+    assert helper.requests[-1].splitlines()[:3] == ["apply", "cas 17 0 1", "cas 22 0 1"]
+    assert writes == [], "no direct writes while the helper is attached"
+
+
+def test_a_refused_batch_gives_nothing_and_is_tried_again(with_helper) -> None:
+    session, g, helper, writes = with_helper
+    helper.reply = "refused not in play"
+    assert give(session, g, [17]) == {}
+    assert g.inv[17] == 0 and writes == []
+    helper.reply = "applied"
+    assert session.step(g, [17], gap=0).granted == {17: 1}
+
+
+def test_a_failed_helper_is_dropped_for_direct_writes(with_helper) -> None:
+    session, g, helper, writes = with_helper
+    helper.fail = True
+    assert give(session, g, [17]) == {17: 1}
+    assert writes == [(17, 0, 1)] and session.helper is None and helper.closed
+
+
+def test_popups_announce_each_received_item_once(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    session.mark_announced(1)  # the first item came before this connection
+    give(session, g, [17, 36], senders=["Bob", "Alice"])
+    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
+    assert popups == ["popup 36 FROM Alice"]
+    session.step(g, [17, 36], gap=0, senders=["Bob", "Alice"])
+    assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
+
+
+def test_no_popups_before_the_servers_list_arrives(setup) -> None:
+    session, g = setup
+    helper = FakeHelper(g)
+    session.helper = helper
+    give(session, g, [17], senders=["Alice"])
+    assert "popup" not in helper.requests[-1]
+
+
+def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    # The Machine Gun is a starting item; the Force Blaster is not, until the first arrives.
+    give(session, g, [3, 4, 4], senders=["Alice"] * 3)
+    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
+    assert popups == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+
+
+def test_lagging_supplies_are_refreshed_through_the_helper(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    g.sup[3] = 3  # max missiles below the 3 containers + 10 for the Missile Box
+    session.step(g, [], gap=0)
+    session.step(g, [], gap=0)
+    assert helper.requests and helper.requests[-1] == "apply\nrefresh"
+
+
+def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    session.step(g, [], gap=0)
+    session.step(g, [], gap=0)
+    assert helper.requests == []

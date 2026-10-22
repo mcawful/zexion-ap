@@ -36,7 +36,7 @@ KNOWN_BUILDS = (
 class Pattern:
     text: str  # hex bytes, "??" for wildcards
     disp_at: int  # offset in the match of the 32-bit field leading to the address
-    kind: str  # "rip": match + rip_end + field (the only kind the client accepts)
+    kind: str  # "rip": match + rip_end + field; "at": the match itself (a function start)
     rip_end: int  # offset of the end of the referring instruction
     addend: int  # added to what the field leads to
 
@@ -308,6 +308,354 @@ TARGETS = (
                 10,
                 "rip",
                 14,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "message_fn",
+        ("the game message function: shows a popup (memory.md, Game functions the helper calls)"),
+        0x182670,
+        (
+            # from the call at RVA 0x1f90f on B1 (the pickup popup)
+            Pattern(
+                "E8 ?? ?? ?? ?? 44 38 3D ?? ?? ?? ?? 48 8B D8 66 44 89 BC 24 90 00 00 00",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1fc891 on B1 (another popup)
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 85 C0 74 48 80 3D ?? ?? ?? ?? 00 74 3F 48 8B 0D ?? ?? ?? ??"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "89 54 24 10 48 89 4C 24 08 57 41 56 48 83 EC 48",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "sound_fn",
+        "the game's play-a-sound function",
+        0x75E00,
+        (
+            # from the call at RVA 0x193178 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? F2 0F 10 93 08 02 00 00 48 8D 35 ?? ?? ?? ?? F2 0F 10 83 10 "
+                    "02 00 00 0F 28 CA F2 0F 58 47 18 F2 0F 58 8B 00 02 00 00 66 41 FF C7"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0xb6b25 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 8B 86 E0 01 00 00 48 8B 8B 00 03 00 00 89 83 DC 02 00 00 8B "
+                    "83 E4 02 00 00 89 41 48 80 BF 5E 93 00 00 FF"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "4C 8B DC 55 41 54 41 57 49 8D 6B C1",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "sound_system",
+        "the static sound-system object the sound function takes first",
+        0x22F370,
+        (
+            # from the instruction at RVA 0x1f9cd on B1 (the pickup sound)
+            Pattern(
+                (
+                    "F3 0F 10 44 11 5C 0F B7 54 11 5A 48 8D 0D ?? ?? ?? ?? F3 0F 11 44 24 20 E8 "
+                    "?? ?? ?? ??"
+                ),
+                14,
+                "rip",
+                18,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1cdffc on B1
+            Pattern(
+                (
+                    "48 8D 0D ?? ?? ?? ?? F2 0F 10 97 00 11 00 00 0F 57 C0 66 89 74 24 38 BA 65 "
+                    "00 00 00 66 89 6C 24 30 F3 44 0F 11 7C 24 28 66 0F 5A DB 66 0F 5A D2"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "hud_number_fn",
+        "sets a HUD number object's value (a double in xmm1)",
+        0x1F5B10,
+        (
+            # from the call at RVA 0x9e325 on B1 (the refresh after a save loads)
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 0F BF 87 BE 0C 00 00 48 8D 8F B8 0B 00 00 66 0F 6E C8 F3 0F "
+                    "E6 C9 E8 ?? ?? ?? ?? 48 8B 87 E8 09 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1fdb3 on B1 (the pickup)
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 0F BF 87 BE 0C 00 00 48 8D 8F B8 0B 00 00 66 0F 6E C8 F3 0F "
+                    "E6 C9 E8 ?? ?? ?? ?? 48 8B CF"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "48 89 6C 24 18 57 48 83 EC 60 0F 29 74 24 50",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "hud_layout_fn",
+        "lays out the missile and bomb HUD (icons and digits) from the player state",
+        0x1D5470,
+        (
+            # from the call at RVA 0x9e308 on B1 (the refresh after a save loads)
+            Pattern(
+                "E8 ?? ?? ?? ?? 44 0F BF 87 BC 0C 00 00 48 8D 8F 30 0B 00 00",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1a7404 on B1
+            Pattern(
+                "E8 ?? ?? ?? ?? 45 0F BF 86 BC 0C 00 00 66 41 0F 6E C8",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1d729d on B1 (from the energy HUD)
+            Pattern(
+                "E8 ?? ?? ?? ?? 0F BF 83 EA 0C 00 00 F2 0F 10 83 F0 0C 00 00",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "energy_hud_fn",
+        "redraws the energy-tank HUD from the player state",
+        0x1D70C0,
+        (
+            # from the call at RVA 0x9e2f8 on B1 (the refresh after a save loads)
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 44 0F BF 87 "
+                    "BC 0C 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x2033e on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? F2 0F 10 9F 08 11 00 00 48 8D 0D ?? ?? ?? ?? F2 0F 10 97 00 "
+                    "11 00 00 BA 46 00 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "40 53 56 41 56 48 81 EC 90 00 00 00",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "weapon_strip_fn",
+        "redraws the weapon-switch icon strip while it is on screen",
+        0x1BC7A0,
+        (
+            # from the call at RVA 0x1fdfb on B1 (the pickup)
+            Pattern(
+                "E8 ?? ?? ?? ?? 44 38 BF A7 10 00 00 75 06 41 0F B7 D7",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1c4c73 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 01 2D ?? ?? ?? ?? 0F 88 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? 00 48 "
+                    "BA 00 00 00 00 00 00 28 40"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "48 83 EC 18 45 33 D2 4C 8B C1 44 38 15 ?? ?? ?? ??",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "suit_color_fn",
+        "sets the suit's palette (Magnus Armor's color), through OpenGL",
+        0x1EDC00,
+        (
+            # from the call at RVA 0xb4670 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 49 8B 84 24 F0 01 00 00 48 8B 88 28 02 00 00 48 8B 01 40 38 "
+                    "B8 20 01 00 00 0F 84 ?? ?? ?? ??"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x18a0d8 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? BA FF FF FF FF 0F B6 CB E8 ?? ?? ?? ?? FF C3 83 FB 05 7C DF "
+                    "E8 ?? ?? ?? ?? 48 B8 01 01 01 01 01 01 01 01"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                (
+                    "40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 4C 0F BE 35 ?? ?? ?? ?? "
+                    "48 8D 1D ?? ?? ?? ??"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "item_records",
+        "holds a pointer to the item records (100 bytes each, indexed by item ID)",
+        0xCDD068,
+        (
+            # from the instruction at RVA 0x3dbf8 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 41 0F 28 C7 0F B6 5C 01 08 48 8B 0D ?? ?? ?? ?? 48 83 "
+                    "C1 08 F3 0F 10 5C 24 60"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1f0ab on B1 (the pickup)
+            Pattern(
+                "48 8B 15 ?? ?? ?? ?? BB 08 00 00 00 48 0F BF 86 E8 01 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "last_message",
+        "holds a pointer to the last popup message, with its sequence number at +8",
+        0x3E29F0,
+        (
+            # from the instruction at RVA 0x1826b0 on B1 (the message function)
+            Pattern(
+                "4C 89 15 ?? ?? ?? ?? EB 40 41 C7 80 EC 01 00 00 01 00 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1d9183 on B1
+            Pattern(
+                "4C 8B 05 ?? ?? ?? ?? 4D 85 C0 0F 84 ?? ?? ?? ?? 66 83 F9 02 7F 28",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "weapon_strip_gate",
+        "a byte that is set while the weapon strip may be redrawn",
+        0xCE02BD,
+        (
+            # from the instruction at RVA 0x1fde5 on B1 (the pickup)
+            Pattern(
+                "44 38 3D ?? ?? ?? ?? 74 12 66 44 39 BF 4C 0A 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1d71ca on B1 (the energy HUD)
+            Pattern(
+                "44 38 35 ?? ?? ?? ?? 75 5A 48 8B 83 E8 09 00 00",
+                3,
+                "rip",
+                7,
                 0x0,
             ),
         ),

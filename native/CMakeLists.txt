@@ -13,7 +13,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
-add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp)
+add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
+            src/game_calls.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 
@@ -31,7 +32,16 @@ add_executable(zap_tests tests/tests.cpp)
 target_link_libraries(zap_tests PRIVATE zap_core)
 add_test(NAME parts COMMAND zap_tests)
 
+add_executable(zap_game_tests tests/game_tests.cpp)
+target_link_libraries(zap_game_tests PRIVATE zap_core)
+add_test(NAME game COMMAND zap_game_tests)
+
 add_executable(zap_unload_test tests/unload_test.cpp)
 target_link_libraries(zap_unload_test PRIVATE zap_core)
 add_dependencies(zap_unload_test zexion_ap_hooktest)
 add_test(NAME unload_under_load COMMAND zap_unload_test $<TARGET_FILE:zexion_ap_hooktest> 300)
+
+add_executable(zap_apply_test tests/apply_test.cpp)
+target_link_libraries(zap_apply_test PRIVATE zap_core)
+add_dependencies(zap_apply_test zexion_ap_hooktest)
+add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hooktest>)
