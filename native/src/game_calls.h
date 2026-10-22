@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "menu.h"
+
 namespace zap {
 
 // The client's names for what it sends (client/patterns.py target names).
@@ -44,16 +46,22 @@ struct SectionBytes {
 };
 
 // What an AP new game needs: the section must already hold `expect` (the seed's mode), and
-// then gets `write` (the AP item table, start, starting items).
+// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
+// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
+// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
+// plan.
 struct NewGamePlan {
     std::vector<SectionBytes> expect;
     std::vector<SectionBytes> write;
+    std::vector<SectionBytes> menu;
 };
 
 constexpr size_t kSectionSize = 0x908;
+constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
 
-// "ap_newgame" followed by lines "expect OFFSET HEX" and "write OFFSET HEX" (OFFSET decimal or
-// 0x hex, HEX an even number of hex digits); every range must lie inside the section.
+// "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
+// "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
+// digits; every range must lie inside its block.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
@@ -97,6 +105,20 @@ public:
     // `expect` bytes (another mode) is left as the game made it, and the plan is dropped.
     void watch_newgame();
 
+    // Game thread, every frame: while a plan with menu lines is armed, offers ARCHIPELAGO in
+    // place of RANDOMIZER on the game-mode panel, its callback `callback`; otherwise puts
+    // RANDOMIZER back.
+    void watch_menu(WidgetCallback callback);
+    // Game thread: puts RANDOMIZER back now (before an unload).
+    void restore_menu(WidgetCallback callback);
+    bool menu_installed() const { return choice_.installed(); }
+
+    // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
+    // mode, writes the plan, runs the game's placement, checks the section is the seed's mode
+    // and writes the plan again over the placement, puts the menu's state back, and queues the
+    // new game in the chosen slot. Reports "applied slot N" or "refused ...".
+    void start_archipelago(WidgetCallback callback);
+
 private:
     bool in_play() const;
     BYTE* player() const;
@@ -132,6 +154,13 @@ private:
     bool newgame_armed_ = false;
     NewGamePlan newgame_;
     std::string newgame_status_ = "idle";
+
+    MenuAddresses menu_;
+    ArchipelagoChoice choice_;
+    BYTE* randomizer_menu_ = nullptr;
+    void* placement_fn_ = nullptr;
+    void* rando_newgame_fn_ = nullptr;
+    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 };
 
 }  // namespace zap

@@ -35,6 +35,33 @@ inline int32_t g_current_slot = 0;
 inline int g_newgames = 0;
 inline void newgame_fn() { ++g_newgames; }
 
+// The game-mode panel's surroundings: the most recent menu, the randomizer menu's state, the
+// menu functions, and START GAME's steps, which log their order and queue a new game as the
+// game's do (unless the slot is "taken").
+inline BYTE* g_current_menu = nullptr;
+inline BYTE g_randomizer_menu[0x114];
+inline void widget_handler_fn() {}
+inline void panel_handler_fn() {}
+inline void rando_menu_fn(void*, int) {}
+inline std::string g_steps;
+inline bool g_slot_taken = false;
+// The placement: reads the start, copies the menu's amounts into the section, and writes its
+// own item table for the plan to write over.
+inline uint8_t g_start_seen = 0;
+inline void placement_fn() {
+    g_steps += "placement ";
+    g_start_seen = g_section[0x310];
+    std::memcpy(g_section + 0x6C0, g_randomizer_menu + 0x88, 12);
+    g_section[0x26C] = 0x77;
+}
+inline void rando_newgame_fn() {
+    g_steps += "queue ";
+    if (g_slot_taken) return;
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
+    g_transition_timer = 40;
+    g_rando_marker = 1;
+}
+
 template <typename T>
 T& field(ptrdiff_t offset) {
     return *reinterpret_cast<T*>(g_player + offset);
@@ -117,6 +144,13 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"transition_timer", rva(&g_transition_timer)},
         {"current_slot", rva(&g_current_slot)},
         {"newgame_fn", rva(reinterpret_cast<void*>(&newgame_fn))},
+        {"current_menu", rva(&g_current_menu)},
+        {"randomizer_menu", rva(g_randomizer_menu)},
+        {"widget_handler_fn", rva(reinterpret_cast<void*>(&widget_handler_fn))},
+        {"panel_handler_fn", rva(reinterpret_cast<void*>(&panel_handler_fn))},
+        {"rando_menu_fn", rva(reinterpret_cast<void*>(&rando_menu_fn))},
+        {"placement_fn", rva(reinterpret_cast<void*>(&placement_fn))},
+        {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
     };
 }
 

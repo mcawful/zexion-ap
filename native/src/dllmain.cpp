@@ -9,8 +9,9 @@
 // DLL, so a rebuilt helper can be loaded without restarting the game.
 //
 // Each frame call counts itself, serves the mailbox (config and apply requests from the pipe
-// thread, mailbox.h) and shows queued popups (helper phase 2, game_calls.h), where none of it
-// can race the game.
+// thread, mailbox.h), watches for a new game to write the AP seed into and offers ARCHIPELAGO
+// on the game-mode panel (helper phase 3), and shows queued popups (helper phase 2,
+// game_calls.h), where none of it can race the game.
 //
 // The target is set at build time: the game's SDL_GL_SwapWindow, behind the build check, in
 // zexion_ap.dll; this test program's own GetTickCount, with no build check, in the
@@ -42,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.3.0";
+constexpr char kVersion[] = "0.4.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -56,8 +57,22 @@ void* g_original = nullptr;
 zap::Trampoline g_trampoline;
 std::atomic<uint64_t> g_frames{0};
 zap::Mailbox g_mailbox;
-zap::Game g_game;               // used on the game's thread only, inside frame()
+zap::Game g_game;  // used on the game's thread only: frame() and archipelago_chosen()
 std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
+// Whether the game's menu holds a pointer to archipelago_chosen, for the pipe thread's unload.
+std::atomic<bool> g_menu_installed{false};
+
+// ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
+// the frame call, so unload first takes it off the menu (on the game's thread, through the
+// mailbox) and refuses to unload while it may still be there.
+void archipelago_chosen(void*, int) {
+    try {
+        g_game.start_archipelago(&archipelago_chosen);
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_menu_installed.store(g_game.menu_installed());
+}
 
 uintptr_t frame(void* argument) {
     g_frames.fetch_add(1);
@@ -67,6 +82,8 @@ uintptr_t frame(void* argument) {
         try {
             g_mailbox.serve();
             g_game.watch_newgame();
+            g_game.watch_menu(&archipelago_chosen);
+            g_menu_installed.store(g_game.menu_installed());
             g_game.pump_popups();
         } catch (...) {
             // Nothing may unwind into the game.
@@ -177,6 +194,20 @@ std::string handle(const std::string& request, bool& stop) {
         return result;
     }
     if (request == "unload") {
+        if (g_slot != nullptr) {
+            std::string ignored;
+            g_mailbox.call(
+                [] {
+                    g_game.disarm_newgame();
+                    g_game.restore_menu(&archipelago_chosen);
+                    g_menu_installed.store(g_game.menu_installed());
+                    return std::string();
+                },
+                kFrameWaitMs, ignored);
+        }
+        if (g_menu_installed.load()) {
+            return "error ARCHIPELAGO is still on the game's menu (no frame came); not unloading";
+        }
         if (!unhook()) return "error the frame hook was replaced by something else; not unloading";
         stop = true;
         return "bye";

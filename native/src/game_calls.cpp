@@ -13,6 +13,8 @@ const char* const kConfigKeys[] = {
     "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn",
     "rando_blob",    "rando_marker",  "transition_fn", "transition_timer", "current_slot",
     "newgame_fn",
+    "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
+    "placement_fn",  "rando_newgame_fn",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -84,6 +86,8 @@ bool is_function(const std::string& key) {
     static const char* const functions[] = {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
+        "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
+        "rando_newgame_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -185,15 +189,17 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
         std::istringstream words(line);
         std::string op, offset_text, hex;
         if (!(words >> op)) continue;
-        if (op != "expect" && op != "write") return "unknown line " + line;
+        if (op != "expect" && op != "write" && op != "menu") return "unknown line " + line;
         uint64_t offset = 0;
         SectionBytes edit;
+        size_t room = op == "menu" ? kMenuSize : kSectionSize;
         if (!(words >> offset_text >> hex) || !parse_number(offset_text, offset) ||
-            !parse_hex(hex, edit.bytes) || offset + edit.bytes.size() > kSectionSize) {
+            !parse_hex(hex, edit.bytes) || offset + edit.bytes.size() > room) {
             return "bad line " + line;
         }
         edit.offset = static_cast<uint16_t>(offset);
-        (op == "expect" ? out.expect : out.write).push_back(std::move(edit));
+        (op == "expect" ? out.expect : op == "write" ? out.write : out.menu)
+            .push_back(std::move(edit));
     }
     if (out.write.empty()) return "nothing to write";
     return "";
@@ -224,6 +230,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
             uint64_t end = section->VirtualAddress +
                            (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
             if (rva + kSectionSize > end) return key + " leaves no room for the section";
+        }
+        if (key == "randomizer_menu") {
+            uint64_t end = section->VirtualAddress +
+                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+            if (rva + kMenuSize > end) return key + " leaves no room for the menu's state";
         }
         if (key == "inventory") {
             // The whole player state the helper touches must lie in the same section.
@@ -257,6 +268,13 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     transition_timer_ = found["transition_timer"];
     current_slot_ = found["current_slot"];
     newgame_fn_ = found["newgame_fn"];
+    menu_.current_menu = found["current_menu"];
+    menu_.panel_handler = found["panel_handler_fn"];
+    menu_.widget_handler = found["widget_handler_fn"];
+    menu_.rando_menu = found["rando_menu_fn"];
+    randomizer_menu_ = found["randomizer_menu"];
+    placement_fn_ = found["placement_fn"];
+    rando_newgame_fn_ = found["rando_newgame_fn"];
     configured_ = true;
     return "";
 }
@@ -370,6 +388,7 @@ void Game::arm_newgame(NewGamePlan plan) {
 void Game::disarm_newgame() {
     newgame_armed_ = false;
     newgame_ = {};
+    starting_ = false;
     if (newgame_status_ == "armed") newgame_status_ = "idle";
 }
 
@@ -392,6 +411,73 @@ void Game::watch_newgame() {
     }
     for (const SectionBytes& e : newgame_.write) {
         std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+    }
+    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
+    disarm_newgame();
+}
+
+void Game::watch_menu(WidgetCallback callback) {
+    if (!configured_) return;
+    if (newgame_armed_ && !newgame_.menu.empty() && !starting_) {
+        choice_.install(menu_, callback);
+    } else if (choice_.installed()) {
+        choice_.restore(menu_, callback);
+    }
+}
+
+void Game::restore_menu(WidgetCallback callback) {
+    if (configured_) choice_.restore(menu_, callback);
+}
+
+void Game::start_archipelago(WidgetCallback callback) {
+    // The game calls the choice's callback once per press; a press after the plan was dropped,
+    // or while a new game is queued, does nothing.
+    if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
+    if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
+    starting_ = true;
+    choice_.restore(menu_, callback);
+    // The menu's state is the player's own (the game keeps it in its preferences): set to the
+    // seed's mode for the placement, then put back.
+    BYTE saved[kMenuSize];
+    std::memcpy(saved, randomizer_menu_, kMenuSize);
+    for (const SectionBytes& e : newgame_.menu) {
+        std::memcpy(randomizer_menu_ + e.offset, e.bytes.data(), e.bytes.size());
+    }
+    // START GAME's first step would pick a start; the placement reads the AP seed's instead,
+    // so the plan goes in first. Then the placement, which builds the rest of the section from
+    // the menu (the location list, the settings, the map tables); START GAME's winnability
+    // check is skipped, since the AP generator made the seed beatable.
+    for (const SectionBytes& e : newgame_.write) {
+        std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+    }
+    reinterpret_cast<void (*)()>(placement_fn_)();
+    std::string refused;
+    for (const SectionBytes& e : newgame_.expect) {
+        if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
+            char where[16];
+            std::snprintf(where, sizeof(where), "0x%X", e.offset);
+            refused = std::string("refused the placement is not the seed's mode (section +") +
+                      where + " differs)";
+            break;
+        }
+    }
+    if (refused.empty()) {
+        for (const SectionBytes& e : newgame_.write) {
+            std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+        }
+    }
+    std::memcpy(randomizer_menu_, saved, kMenuSize);
+    if (!refused.empty()) {
+        newgame_status_ = refused;
+        disarm_newgame();
+        return;
+    }
+    // The new game in the chosen slot, as the play-anyway path queues it.
+    reinterpret_cast<void (*)()>(rando_newgame_fn_)();
+    if (at<void*>(transition_fn_, 0) != newgame_fn_) {
+        newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
+        starting_ = false;
+        return;
     }
     newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
     disarm_newgame();

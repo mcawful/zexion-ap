@@ -15,6 +15,7 @@
 #include "game_calls.h"
 #include "mailbox.h"
 #include "stand_in.h"
+#include "stand_in_menu.h"
 
 namespace {
 
@@ -282,6 +283,100 @@ void test_newgame_watch() {
     check(game.newgame_status() == "idle", "disarming");
 }
 
+zap::Game* g_choice_game = nullptr;
+void chosen(void* widget, int event) {
+    (void)widget;
+    (void)event;
+    g_choice_game->start_archipelago(&chosen);
+}
+
+void test_archipelago_choice() {
+    zap::Game game;
+    g_choice_game = &game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    reset_game();
+    std::memset(g_section, 0, sizeof(g_section));
+    std::memset(g_randomizer_menu, 0, sizeof(g_randomizer_menu));
+    g_randomizer_menu[0x88] = 5;  // the player's own menu: Easy's starting Energy
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    g_rando_marker = 0;
+    g_slot_taken = false;
+    g_current_slot = 2;
+    stand_in::ModePanel panel(reinterpret_cast<void*>(&panel_handler_fn),
+                              reinterpret_cast<void*>(&widget_handler_fn),
+                              reinterpret_cast<void*>(&rando_menu_fn));
+    g_current_menu = panel.menu;
+    auto press = [&] { reinterpret_cast<zap::WidgetCallback>(panel.callback())(panel.child, 6); };
+
+    zap::NewGamePlan without_menu;
+    zap::parse_newgame("ap_newgame\nwrite 0x310 110022", without_menu);
+    game.arm_newgame(without_menu);
+    game.watch_menu(&chosen);
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
+          "a plan without menu lines offers no ARCHIPELAGO");
+
+    // The seed's mode starts with 3 Energy: the menu line sets it, the placement copies it.
+    const char* request =
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0300";
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame(request, plan).empty(), "parses menu lines");
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    check(game.menu_installed() && panel.text() == "ARCHIPELAGO", "offers ARCHIPELAGO");
+    press();
+    check(g_steps == "placement queue ", "the placement, then the new game queued");
+    check(g_start_seen == 0x11, "the placement saw the AP seed's start");
+    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B,
+          "the AP item table is written over the placement");
+    check(g_section[0x6C0] == 3, "the section is the seed's mode");
+    check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
+    check(game.newgame_status() == "applied slot 3", "reported with the slot");
+    check(panel.text() == "RANDOMIZER " && panel.callback() == &rando_menu_fn,
+          "RANDOMIZER is back");
+    chosen(panel.child, 7);
+    check(g_steps == "placement queue ", "a second press does nothing");
+    game.watch_menu(&chosen);
+    check(!game.menu_installed(), "the plan is used up");
+    std::memset(g_section, 0, 0x300);
+    game.watch_newgame();
+    check(g_section[0x26C] == 0, "the queued new game is not written again");
+
+    // Another mode: the placement's amounts are not the seed's. Nothing is queued.
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    zap::NewGamePlan other;
+    zap::parse_newgame(
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0500",
+        other);
+    game.arm_newgame(other);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps == "placement ", "another mode: no new game queued");
+    check(game.newgame_status().rfind("refused the placement", 0) == 0, "and reported");
+    check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
+    game.watch_menu(&chosen);
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER ", "and the plan dropped");
+
+    // A slot the game will not start a new game in.
+    g_steps.clear();
+    g_slot_taken = true;
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    press();
+    check(game.newgame_status().rfind("refused the game did not queue", 0) == 0,
+          "a new game the game would not queue is reported");
+    game.watch_menu(&chosen);
+    check(panel.text() == "ARCHIPELAGO", "and ARCHIPELAGO is offered again");
+    game.disarm_newgame();
+    game.watch_menu(&chosen);
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER " &&
+              panel.callback() == &rando_menu_fn,
+          "disarming puts RANDOMIZER back");
+    g_current_menu = nullptr;
+    g_slot_taken = false;
+}
+
 void test_mailbox() {
     zap::Mailbox box;
     std::string result;
@@ -324,6 +419,7 @@ int main() {
     test_popups();
     test_newgame_parser();
     test_newgame_watch();
+    test_archipelago_choice();
     test_mailbox();
     if (g_failures == 0) std::printf("all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
