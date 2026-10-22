@@ -38,7 +38,10 @@ def log(entry: dict) -> None:
 
 
 def frames(helper: native.Helper) -> int:
-    return int(helper.request("ping").split("frames=")[1])
+    reply = helper.request("ping")
+    if not reply.startswith("pong frames=") or not reply[len("pong frames=") :].isdigit():
+        raise native.HelperError(f"unexpected reply to ping: {reply!r}")
+    return int(reply[len("pong frames=") :])
 
 
 def cmd_status(_: argparse.Namespace, g: game.Game) -> int:
@@ -62,7 +65,7 @@ def cmd_load(args: argparse.Namespace, g: game.Game) -> int:
         {"event": "attempt", "action": "load", "pid": g.pid, "build": g.build.name, "dll": str(dll)}
     )
     try:
-        native.load(g.pm.process_handle, dll)
+        native.load(g.pm.process_handle, g.pid, dll)
         with native.Helper(g.pid) as helper:
             hello = helper.request("hello")
     except native.HelperError as exc:
@@ -89,7 +92,12 @@ def cmd_unload(args: argparse.Namespace, g: game.Game) -> int:
         log({"event": "failed", "action": "unload", "pid": g.pid, "error": str(exc)})
         print(f"not unloaded: {exc}")
         return 1
-    gone = native.wait_unloaded(g.pm.process_handle)
+    try:
+        gone = native.wait_unloaded(g.pm.process_handle)
+    except native.GameExited:
+        log({"event": "game-exited", "action": "unload", "pid": g.pid, "reply": reply})
+        print("the game exited during the unload")
+        return 2
     log({"event": "unloaded" if gone else "still-loaded", "pid": g.pid, "reply": reply})
     print("unloaded" if gone else "the helper said bye but is still loaded")
     return 0 if gone else 2
@@ -111,7 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     except game.GameError as exc:
         print(f"{exc}")
         return 1
-    return args.func(args, g)
+    try:
+        return args.func(args, g)
+    except native.HelperError as exc:  # status, or anything the commands did not catch
+        print(f"helper: {exc}")
+        return 1
 
 
 if __name__ == "__main__":

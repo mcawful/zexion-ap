@@ -1,32 +1,58 @@
 # The native helper
 
-`zexion_ap.dll` runs inside Zexion. The AP client (or `tools/helper.py`, for tests) loads it
-into the running game, and it gives the client what can't be done from outside: work on the
-game's own thread, between frames.
+`zexion_ap.dll` runs inside Zexion and gives the client what can't be done from outside: work
+on the game's own thread, between frames. `tools/helper.py` loads it through
+`client/native.py`; the AP client does not use it yet.
 
-**Status:** phase 1, the skeleton. It loads, hooks the frame call, counts frames, answers on
-its pipe and unloads. It has been loaded into a stand-in process (`tests/test_native.py`), not
-yet into the game. It changes nothing in the game's state.
+**Status:** helper phase 1, the skeleton. It has been loaded into test processes only, never
+into the game:
+
+- A stand-in Python process (`tests/test_native.py`): it loads, answers on its pipe and
+  unloads, and hooks nothing there, since that process is no known build.
+- A test build, `zexion_ap_hooktest.dll`, that hooks the loading program's own `GetTickCount`
+  import (`tests/unload_test.cpp`): it hooks, counts calls, and survives 300 loads and unloads
+  in CI (3,000 locally) while two threads call the hooked function nonstop.
+
+Hooking the game's frame call and counting its frames has not run. It changes nothing in the
+game's state.
 
 ## How it works
 
-- **Getting in.** The client loads it with `LoadLibraryW` from a remote thread
-  (`client/native.py`, through pymem). Nothing is written to the game's files.
+- **Getting in.** `client/native.py` loads it with `LoadLibraryW` from a remote thread, with a
+  timeout and under a named mutex, so two loaders can't race. Nothing is written to the
+  game's files.
 - **Which game.** It reads the game's PE header and hooks nothing unless the build is one it
   knows (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`).
-- **The frame call.** The game calls `SDL_GL_SwapWindow` through its import table once per
-  frame (from disassembly; `private/` research, to be measured live). The helper replaces that
-  one import-table slot (`src/iat.cpp`), so its code runs on the game's thread each frame, then
-  calls SDL as before. It hooks only a slot that still points at SDL, and puts it back only if
-  it still points at the helper.
-- **The pipe.** `\\.\pipe\zexion-ap-<pid>`, local only, message mode: one UTF-8 request, one
-  reply. Requests:
-  - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1>`
-  - `ping` → `pong frames=<frames since load>`
-  - `unload` → `bye`, after putting the import slot back; the DLL then waits until no frame is
-    inside the hook and unloads itself, so a rebuilt helper can be loaded without restarting
-    the game.
-  - Anything else → `error unknown request`. Errors always start with `error `.
+- **The frame call.** The game imports `SDL_GL_SwapWindow` by name and calls it only through
+  its import-table slot, from code its main loop runs (measured offline; that this happens
+  once per frame on the game's main thread is assumed: `docs/re/memory.md`, "The per-frame
+  call"). `tools/helper.py status` will measure the rate.
+  - The helper finds that slot by name (`src/iat.cpp`).
+  - It points the slot at a small trampoline: a few bytes of code in memory that is never
+    freed. The trampoline counts the call, runs the helper's frame function, which then calls
+    SDL as before, and uncounts it.
+  - It hooks only a slot that still points at SDL.
+- **The pipe.** `\\.\pipe\zexion-ap-<pid>`, message mode: one UTF-8 request, one reply, one
+  client at a time (a second waits, and `client/native.py` reports the pipe busy).
+  - The helper creates it as the first and only pipe by that name, refusing to start if
+    another process holds it. Only the current user can open it, and only locally.
+  - The client opens it at the identification level only, so the server can't act as the
+    user, and checks that the process serving it is the game.
+  - Requests longer than 64 KB drop the connection.
+  - Requests:
+    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1>`
+    - `ping` → `pong frames=<calls since load>`
+    - `unload` → `bye` (see below).
+    - Anything else → `error unknown request`. Errors always start with `error `.
+- **Unloading.** `unload` points the slot back at SDL, and only if it still holds the
+  trampoline; otherwise it replies `error the frame hook was replaced by something else; not
+  unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
+  counted inside, and unloads the DLL. A call can then be in the trampoline (which is never
+  freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
+  restarting the game. If the pipe cannot be created at all, the helper unhooks and unloads
+  itself the same way.
+- **Errors.** No exception leaves the helper's thread; on one, the helper stays loaded, its
+  hook still working, and stops answering.
 
 ## Building
 
@@ -39,13 +65,15 @@ ctest --test-dir native/build -C Release --output-on-failure
 ```
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
-statically, so it needs nothing the game doesn't already load. CI builds it and runs the native
-tests and the stand-in load test on Windows.
+statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
+tests (`parts`, and `unload_under_load` with 300 rounds), and runs `tests/test_native.py`
+against the build on Windows.
 
 ## Planned
 
-1. **Phase 2:** grants applied in the frame call, and the game's own popup, sound and HUD
-   refresh for received items.
-2. **Phase 3:** a new game from the AP seed, written in after the game's generator runs at
+1. **Helper phase 2:** grants applied in the frame function, and the game's own popup, sound
+   and HUD refresh for received items. The frame function must never wait on anything the pipe
+   thread can hold while that thread waits for a client.
+2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
    START GAME, replacing `/prepare`.
-3. **Phase 4:** icons for other games' items.
+3. **Helper phase 4:** icons for other games' items.

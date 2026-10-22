@@ -9,7 +9,8 @@ The rules about evidence below exist because of that.
 
 **Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
 holds the AP client, which has run a solo seed in the game with a local AP server, and
-the module that finds and accesses game state by byte pattern.
+the module that finds and accesses game state by byte pattern. `native/` holds the skeleton of
+an in-game helper DLL, loaded so far only into test processes, never into the game.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -29,7 +30,7 @@ python -m uv pip install --python .venv -r requirements-dev.txt
 `tools/ap_checkout.py` clones AP, installs its requirements (including each world's) through
 AP's `ModuleUpdate`, and links `worlds/zexion/` into the checkout once that folder exists.
 
-Checks. CI runs these three; `/preflight` runs them too:
+Checks. CI's Python jobs run these three; `/preflight` runs them too:
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -39,8 +40,10 @@ Checks. CI runs these three; `/preflight` runs them too:
 
 AP's world tests join this list when `worlds/zexion/` exists.
 
-The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI builds it and
-runs these on Windows, then `tests/test_native.py` loads it into a stand-in process:
+The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job
+builds it and runs these on Windows (the tests include 300 loads and unloads of a test build
+while the function it hooks is called nonstop), then `tests/test_native.py` loads it into a
+stand-in process; without a build, that test skips:
 
 ```sh
 cmake -S native -B native/build -A x64
@@ -108,8 +111,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
-  hook on the game's thread and a command pipe (`native/README.md`). Phase 1, not yet loaded
-  into the game.
+  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 1, not yet
+  loaded into the game.
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
