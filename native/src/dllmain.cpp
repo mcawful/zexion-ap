@@ -60,7 +60,8 @@ uintptr_t frame(void* argument) {
 void hook() {
     HMODULE exe = GetModuleHandleW(nullptr);
     g_build = zap::identify_build(exe);
-    if (ZAP_CHECK_BUILD && g_build == nullptr) return;
+    // The real helper hooks only a known build; the hook-test build never hooks the game.
+    if (ZAP_CHECK_BUILD ? g_build == nullptr : g_build != nullptr) return;
     HMODULE target_dll = GetModuleHandleW(ZAP_TARGET_DLL_W);
     if (target_dll == nullptr) return;
     void* original = reinterpret_cast<void*>(GetProcAddress(target_dll, ZAP_TARGET_FUNCTION));
@@ -107,8 +108,8 @@ DWORD WINAPI helper_thread(void*) {
     try {
         hook();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle)) {
-            // No pipe (the name was taken, or no descriptor): nothing could ever unload us, so
-            // undo the hook now and leave.
+            // No pipe (the name was taken, no descriptor, or it broke): nothing could ever
+            // unload us, so undo the hook now and leave.
             if (!unhook()) return 0;
         }
         wait_until_no_call_inside();

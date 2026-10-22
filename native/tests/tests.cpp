@@ -36,6 +36,23 @@ DWORD WINAPI counting_tick_count() {
     return 7;
 }
 
+DWORD WINAPI raising_tick_count() {
+    RaiseException(0xE0000001, 0, 0, nullptr);
+    return 0;
+}
+
+// Calls GetTickCount through the import table and reports whether an exception raised behind
+// it was caught here, which needs the unwinder to get through the trampoline.
+bool caught_through_import() {
+    __try {
+        GetTickCount();
+    } __except (GetExceptionCode() == 0xE0000001 ? EXCEPTION_EXECUTE_HANDLER
+                                                 : EXCEPTION_CONTINUE_SEARCH) {
+        return true;
+    }
+    return false;
+}
+
 void* real_tick_count() {
     return reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetTickCount"));
 }
@@ -71,6 +88,16 @@ void test_trampoline() {
     *t.target = real;
     check(GetTickCount() != 7, "a changed target takes effect at once");
     check(zap::swap_slot(slot, t.entry, real), "puts the slot back");
+    DWORD64 image = 0;
+    check(RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(t.entry) + 12, &image, nullptr) !=
+                  nullptr &&
+              image == reinterpret_cast<DWORD64>(t.entry),
+          "the trampoline has unwind information");
+    zap::Trampoline raising;
+    check(zap::make_trampoline(reinterpret_cast<void*>(&raising_tick_count), raising), "builds");
+    check(zap::swap_slot(slot, real, raising.entry), "points the slot at a raising trampoline");
+    check(caught_through_import(), "an exception behind the trampoline reaches the caller");
+    check(zap::swap_slot(slot, raising.entry, real), "puts the slot back again");
     MEMORY_BASIC_INFORMATION info{};
     VirtualQuery(t.entry, &info, sizeof(info));
     check(info.Protect == PAGE_EXECUTE_READ, "the code page is not writable");

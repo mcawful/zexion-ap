@@ -28,7 +28,7 @@ bool read_message(HANDLE pipe, std::string& out) {
 PSECURITY_DESCRIPTOR current_user_only() {
     HANDLE token = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return nullptr;
-    BYTE buffer[256];
+    alignas(TOKEN_USER) BYTE buffer[256];
     DWORD size = 0;
     BOOL ok = GetTokenInformation(token, TokenUser, buffer, sizeof(buffer), &size);
     CloseHandle(token);
@@ -65,11 +65,17 @@ bool serve_pipe(const std::wstring& name, const Handler& handle) {
     if (pipe == INVALID_HANDLE_VALUE) return false;
     bool stop = false;
     while (!stop) {
-        if (!ConnectNamedPipe(pipe, nullptr) && GetLastError() != ERROR_PIPE_CONNECTED) {
-            // A client that came and went before we saw it (ERROR_NO_DATA): reset and wait again.
-            DisconnectNamedPipe(pipe);
-            Sleep(10);
-            continue;
+        if (!ConnectNamedPipe(pipe, nullptr)) {
+            DWORD error = GetLastError();
+            if (error == ERROR_NO_DATA) {
+                // A client that came and went before we saw it: reset and wait again.
+                DisconnectNamedPipe(pipe);
+                continue;
+            }
+            if (error != ERROR_PIPE_CONNECTED) {
+                CloseHandle(pipe);
+                return false;  // the pipe is broken; the helper unhooks and unloads
+            }
         }
         std::string request;
         while (!stop && read_message(pipe, request)) {

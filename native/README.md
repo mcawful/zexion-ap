@@ -10,7 +10,7 @@ into the game:
 - A stand-in Python process (`tests/test_native.py`): it loads, answers on its pipe and
   unloads, and hooks nothing there, since that process is no known build.
 - A test build, `zexion_ap_hooktest.dll`, that hooks the loading program's own `GetTickCount`
-  import (`tests/unload_test.cpp`): it hooks, counts calls, and survives 300 loads and unloads
+  import (`tests/unload_test.cpp`; it refuses to hook anything in a known game build): it hooks, counts calls, and survives 300 loads and unloads
   in CI (3,000 locally) while two threads call the hooked function nonstop.
 
 Hooking the game's frame call and counting its frames has not run. It changes nothing in the
@@ -30,7 +30,9 @@ game's state.
   - The helper finds that slot by name (`src/iat.cpp`).
   - It points the slot at a small trampoline: a few bytes of code in memory that is never
     freed. The trampoline counts the call, runs the helper's frame function, which then calls
-    SDL as before, and uncounts it.
+    SDL as before, and uncounts it. It is registered with unwind information, so an exception
+    or a stack walk passes through it as through any compiled function (a native test raises
+    one behind it and catches it in front).
   - It hooks only a slot that still points at SDL.
 - **The pipe.** `\\.\pipe\zexion-ap-<pid>`, message mode: one UTF-8 request, one reply, one
   client at a time (a second waits, and `client/native.py` reports the pipe busy).
@@ -49,8 +51,8 @@ game's state.
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
   counted inside, and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
-  restarting the game. If the pipe cannot be created at all, the helper unhooks and unloads
-  itself the same way.
+  restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
+  unloads itself the same way.
 - **Errors.** No exception leaves the helper's thread; on one, the helper stays loaded, its
   hook still working, and stops answering.
 

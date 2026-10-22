@@ -92,7 +92,19 @@ def _kernel32():
     return k
 
 
+def _psapi():
+    k = ctypes.WinDLL("psapi", use_last_error=True)
+    h, d = wintypes.HANDLE, wintypes.DWORD
+    k.EnumProcessModulesEx.restype = wintypes.BOOL
+    k.EnumProcessModulesEx.argtypes = [h, ctypes.POINTER(wintypes.HMODULE), d, ctypes.POINTER(d), d]
+    k.GetModuleBaseNameW.restype = d
+    k.GetModuleBaseNameW.argtypes = [h, wintypes.HMODULE, wintypes.LPWSTR, d]
+    return k
+
+
 _K = _kernel32() if sys.platform == "win32" else None
+_PSAPI = _psapi() if sys.platform == "win32" else None
+LIST_MODULES_ALL = 3
 
 
 def _last_error() -> str:
@@ -106,15 +118,35 @@ def alive(process_handle: int) -> bool:
     )
 
 
-def is_loaded(process_handle: int) -> bool:
-    """Whether the helper is in the game's module list. Raises GameExited for a dead game,
-    whose module list reads empty."""
-    import pymem.process
+def module_names(process_handle: int, attempts: int = 5) -> list[str]:
+    """The game's loaded modules, lower-cased. Listing them can fail for a moment while the
+    game loads or unloads one; a listing that keeps failing raises rather than reading as
+    empty, and a dead game raises GameExited."""
+    for _ in range(attempts):
+        if not alive(process_handle):
+            raise GameExited("the game has exited")
+        handles = (wintypes.HMODULE * 1024)()
+        needed = wintypes.DWORD()
+        if _PSAPI.EnumProcessModulesEx(
+            process_handle, handles, ctypes.sizeof(handles), ctypes.byref(needed), LIST_MODULES_ALL
+        ):
+            count = min(needed.value // ctypes.sizeof(wintypes.HMODULE), len(handles))
+            names = []
+            name = ctypes.create_unicode_buffer(260)
+            for module in handles[:count]:
+                if _PSAPI.GetModuleBaseNameW(process_handle, module, name, len(name)):
+                    names.append(name.value.lower())
+            return names
+        time.sleep(0.02)
+    raise HelperError(f"cannot list the game's modules: {_last_error()}")
 
-    found = pymem.process.module_from_name(process_handle, DLL_NAME) is not None
-    if not found and not alive(process_handle):
-        raise GameExited("the game has exited")
-    return found
+
+def is_loaded(process_handle: int) -> bool:
+    """Whether the helper is in the game's module list (GameExited for a dead game)."""
+    return DLL_NAME in module_names(process_handle)
+
+
+LATE_LOAD_SECONDS = 60.0
 
 
 def _load_library(process_handle: int, path: Path, seconds: float) -> None:
@@ -136,8 +168,18 @@ def _load_library(process_handle: int, path: Path, seconds: float) -> None:
             raise HelperError(f"could not start the loading thread: {_last_error()}")
         try:
             if _K.WaitForSingleObject(thread, int(seconds * 1000)) != WAIT_OBJECT_0:
-                free_it = False  # the thread may still read the path
-                raise HelperError(f"loading did not finish within {seconds} s")
+                # The load may still happen. Hold the caller's lock until it has, so nobody
+                # starts a second load meanwhile (that would leave the helper pinned).
+                late = _K.WaitForSingleObject(thread, int(LATE_LOAD_SECONDS * 1000))
+                free_it = late == WAIT_OBJECT_0  # a stuck thread may still read the path
+                raise HelperError(
+                    f"loading did not finish within {seconds} s"
+                    + (
+                        "; it finished later, check `helper.py status`"
+                        if free_it
+                        else "; it is stuck, restart the game before trying again"
+                    )
+                )
         finally:
             _K.CloseHandle(thread)
     finally:
