@@ -52,6 +52,15 @@ class TestStandardIsTheDefault(ZexionTestBase):
         self.assertEqual(self.count("Energy Tank"), 3)  # the starting inventory
         self.assertEqual(self.world.fill_slot_data()["mode"], "standard")
 
+    def test_slot_data_sets_up_the_menu_as_the_mode(self) -> None:
+        menu = self.world.fill_slot_data()["menu"]
+        self.assertEqual(len(menu["seed_text"]), 16)
+        self.assertLessEqual(set(menu["seed_text"]), set("0123456789ABCDEF"))
+        self.assertEqual((len(menu["start"]), len(menu["pool"])), (27, 27))
+        for t, value in self.world.mode["checked_options"].items():
+            self.assertEqual(menu["settings"][t - 10], value, f"setting {t}")
+        self.assertEqual(menu["second_target"], [0, 20, 509])
+
 
 class TestEasy(ZexionTestBase):
     options = {"mode": "easy"}
@@ -133,6 +142,7 @@ class TestOHKO(ZexionTestBase):
         slot = self.world.fill_slot_data()
         self.assertEqual(slot["mode"], "ohko")
         self.assertEqual(slot["second_start"]["cell"], list(self.world.second["cell"]))
+        self.assertIsNone(slot["menu"], "a mode with a second target starts from RANDOMIZER")
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
 
 

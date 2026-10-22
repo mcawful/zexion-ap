@@ -9,7 +9,10 @@ Reads (all copies in lab/, never the game folder):
   item pool, starting inventory and settings (by default Easy: slot 28's and Standard:
   slot 29's fresh saves, docs/re/randocells.md, "The randomizer's modes"); the location list
   is the same in every seed;
-- the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md).
+- the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md);
+- the game's exe (lab/data/<build>/Zexion.exe, ``game_data.py --exe``), for each mode's preset
+  of the randomizer menu (docs/re/memory.md, "The game-mode panel"), which the client's
+  ARCHIPELAGO choice sets up; each preset is checked against the mode's fresh save.
 
 Cells joined by always-open passages are merged into one region (strongly connected
 components of the open passages); each conditional passage between two regions becomes an
@@ -110,6 +113,57 @@ AMOUNTS = 0x12ED4  # six 16-bit amounts (docs/re/save-format.md)
 # settings differ from the mode's here.
 CHECKED_OPTIONS = (30, 31, 32, 33, 37, 42, 43, 72, 73)
 PICKUP_COUNTER = 0x935A  # 16-bit; 0 before the first pickup (docs/re/save-format.md)
+START_WITH, POOL = 0x12E9D, 0x12EB8  # the section's 27-entry arrays (docs/re/save-format.md)
+SECOND_TARGET = 0x12EE0  # candidate index, tile column, tile row
+ARRAY = 27
+# Each mode's menu preset in the exe's .rdata, per build: the start-with array, the pool
+# array, and settings 10 to 73, as the mode buttons (0x1458C0) copy them (docs/re/memory.md,
+# "The game-mode panel"). Checked against the fresh saves below, so a wrong address fails.
+PRESETS = {
+    "6d8a94bd4d64": {
+        "easy": (0x20D3E8, 0x20D1E0, 0x20D190),
+        "standard": (0x20E3D0, 0x20E3B0, 0x20D220),
+        "ohko": (0x20D260, 0x20D200, 0x20D420),
+    },
+}
+GUNS = range(4, 9)  # the random gun and guns first change these and their upgrades'
+GUN_UPGRADES = range(13, 18)
+COLOR = 12  # the player's choice, not the mode's
+
+
+def rdata(exe: bytes, rva: int, size: int) -> bytes:
+    pe = struct.unpack_from("<I", exe, 0x3C)[0]
+    sections = struct.unpack_from("<H", exe, pe + 6)[0]
+    first = pe + 24 + struct.unpack_from("<H", exe, pe + 20)[0]
+    for i in range(sections):
+        size_v, va, size_raw, raw = struct.unpack_from("<IIII", exe, first + 40 * i + 8)
+        if va <= rva and rva + size <= va + max(size_v, size_raw):
+            return exe[raw + rva - va : raw + rva - va + size]
+    raise SystemExit(f"RVA {rva:#x} is in no section of the exe")
+
+
+def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
+    """The mode's menu preset, checked against its fresh save: settings 10 to 73 (but the
+    color) equal, and every array entry outside the guns as the placement resolves it."""
+    if build not in PRESETS or name not in PRESETS[build]:
+        raise SystemExit(f"no menu preset known for {name} on build {build}")
+    start_at, pool_at, settings_at = PRESETS[build][name]
+    start, pool = rdata(exe, start_at, ARRAY), rdata(exe, pool_at, ARRAY)
+    settings = rdata(exe, settings_at, 64)
+    if not set(start) <= {0, 1} or not set(pool) <= {0, 1} or not set(settings) <= {0, 1}:
+        raise SystemExit(f"{name}'s preset at {start_at:#x} is not 0/1 entries")
+    saved = save[rc.OPTIONS_IN_SAVE + 10 : rc.OPTIONS_IN_SAVE + 74]
+    wrong = [t + 10 for t in range(64) if t + 10 != COLOR and settings[t] != saved[t]]
+    if wrong:
+        raise SystemExit(f"{name}'s preset settings {wrong} differ from its fresh save")
+    for i in range(ARRAY):
+        if i in GUNS or i in GUN_UPGRADES:
+            continue
+        got = (save[START_WITH + i], save[POOL + i])
+        want = {(1, 0), (0, 1)} if (start[i], pool[i]) == (1, 1) else {(start[i], pool[i])}
+        if got not in want:
+            raise SystemExit(f"{name}'s preset entry {i} is not its fresh save's {got}")
+    return {"start": list(start), "pool": list(pool), "settings": list(settings)}
 
 
 def check_fresh(data: bytes, name: str) -> None:
@@ -184,8 +238,9 @@ def pair_starts(grid, locations, pool, start_inv, settings, candidates, name) ->
     return out
 
 
-def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> dict:
+def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_path: Path) -> dict:
     grid = rc.parse(cells_path.read_bytes())
+    exe = exe_path.read_bytes()
     candidates = json.loads(starts_path.read_text(encoding="utf-8"))
     modes, locations, union = {}, None, set()
     for name, save_path in mode_saves.items():
@@ -212,6 +267,8 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path) -> d
             "start_inventory": dict(sorted(start_inv.items())),
             "starts": starts,
             "source": save_path,
+            "menu": menu_preset(exe, cells_path.parent.name, name, data),
+            "second_target": None if double else struct.unpack_from("<3H", data, SECOND_TARGET),
         }
 
     comp = components(union, grid)
@@ -286,7 +343,8 @@ def render(d: dict, source: str) -> str:
         "# and the regions every item reaches from there). A mode without a second target lists",
         "# only valid rooms, with how many locations the starting inventory reaches; a mode with",
         "# one lists every candidate, with the locations every item and the starting items reach",
-        "# from it alone.",
+        "# from it alone. Then the mode's randomizer-menu preset (the start-with and pool arrays",
+        "# and settings 10 to 73) and, with one start, the second target the game writes.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
@@ -305,7 +363,12 @@ def render(d: dict, source: str) -> str:
         ]
         for st in m["starts"]:
             out.append(f"            {st!r},")
-        out += ["        ],", "    },"]
+        out += [
+            "        ],",
+            f"        'menu': {m['menu']!r},",
+            f"        'second_target': {m['second_target']!r},",
+            "    },",
+        ]
     out += ["}", "", "# Region index -> its cells.", "REGION_CELLS = {"]
     for r, cells in d["region_cells"].items():
         out.append(f"    {r}: {cells!r},")
@@ -342,16 +405,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cells", type=Path)
     parser.add_argument("--starts", type=Path)
     parser.add_argument("--mode", type=parse_mode, action="append", help="NAME=SAVE")
+    parser.add_argument("--exe", type=Path, help="default: Zexion.exe next to RandoCells")
     args = parser.parse_args(argv)
     mode_saves = dict(args.mode) if args.mode else dict(DEFAULT_MODES)
     cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
-    d = build(cells_path, mode_saves, starts_path)
+    exe_path = args.exe or cells_path.parent / "Zexion.exe"
+    d = build(cells_path, mode_saves, starts_path, exe_path)
     saves = ", ".join(
         f"{name}: {path.name} (SHA-256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]})"
         for name, path in mode_saves.items()
     )
-    source = f"RandoCells of build {cells_path.parent.name}; fresh saves {saves}"
+    source = f"RandoCells and Zexion.exe of build {cells_path.parent.name}; fresh saves {saves}"
     out = assert_writable(OUT)
     out.write_text(render(d, source), encoding="utf-8", newline="\n")
     n_ways = sum(len(w) for w in d["entrances"].values())

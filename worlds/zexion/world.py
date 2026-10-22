@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections import Counter
 from collections.abc import Mapping
@@ -226,6 +227,23 @@ class ZexionWorld(World):
             "start_items": {str(k): v for k, v in sorted(self.start_items().items())},
             "amounts": list(self.mode["amounts"]),
             "options": {str(t): v for t, v in self.mode["checked_options"].items()},
+            "menu": self.menu_setup(),
+        }
+
+    def menu_setup(self) -> dict[str, Any] | None:
+        """The randomizer menu as this seed's mode, for the client's ARCHIPELAGO choice
+        (client/newgame.py): the mode's preset and a seed text of 16 hex digits from this
+        seed and player. None in a mode with a second teleport target, which starts from
+        RANDOMIZER instead."""
+        if self.mode["double_teleport"]:
+            return None
+        name = f"{self.multiworld.seed_name}:{self.player}".encode()
+        return {
+            "seed_text": hashlib.sha256(name).hexdigest()[:16].upper(),
+            "start": list(self.mode["menu"]["start"]),
+            "pool": list(self.mode["menu"]["pool"]),
+            "settings": list(self.mode["menu"]["settings"]),
+            "second_target": list(self.mode["second_target"]),
         }
 
     def location_items(self) -> list[int]:
