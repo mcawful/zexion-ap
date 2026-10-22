@@ -15,6 +15,7 @@ def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
     """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
     settings, one revealed start cell, a nonzero item table and inventory."""
     save = bytearray(sp.SAVE_SIZE)
+    save[sp.RANDO_MARKER] = 1
     struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
     save[sp.OPTIONS + 42] = 2  # Safety Normal
     save[sp.OPTIONS + 72] = 1  # Gates Vanilla
@@ -93,6 +94,7 @@ def test_nothing_outside_the_patched_fields_changes() -> None:
     "spoil, message",
     [
         (lambda s: s.extend(b"\0"), "not a randomizer save"),
+        (lambda s: s.__setitem__(sp.RANDO_MARKER, 0), "marker is not set"),
         (lambda s: struct.pack_into("<H", s, sp.PICKUP_COUNTER, 1), "picked up"),
         (lambda s: s.__setitem__(sp.MAP_GRID + 5, 0x1B), "explored"),
         (lambda s: struct.pack_into("<h", s, sp.AMOUNTS, 5), "seed's mode"),

@@ -273,6 +273,45 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "rando_marker",
+        "the loaded save's randomizer marker (file 0x9402, 16-bit): 1 for a randomizer save, 0 "
+        "for a normal one; the randomizer section is copied in only when it is 1",
+        0x3E2DD8,
+        (
+            # from the instructions at RVA 0x9c91c-0x9c923 on B1 (the load routine reads the
+            # save's 0x9402, block offset 0x9400, and stores it)
+            Pattern(
+                (
+                    "0F B7 83 00 94 00 00 66 89 05 ?? ?? ?? ?? 8B 83 04 94 00 00 89 05 ?? ?? ?? ?? "
+                    "66 89 2D ?? ?? ?? ??"
+                ),
+                10,
+                "rip",
+                14,
+                0x0,
+            ),
+            # from the instruction at RVA 0xa05e1 on B1 (saving copies it into the slot)
+            Pattern(
+                "0F B7 05 ?? ?? ?? ?? 4C 8D 9B B1 7B 00 00 66 89 84 1F 00 94 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instructions at RVA 0xf130e-0xf1315 on B1 (the generator sets it to 1)
+            Pattern(
+                (
+                    "B8 01 00 00 00 33 DB 66 89 05 ?? ?? ?? ?? 0F 11 05 ?? ?? ?? ?? "
+                    "0F 11 0D ?? ?? ?? ??"
+                ),
+                10,
+                "rip",
+                14,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

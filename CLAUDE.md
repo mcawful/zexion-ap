@@ -8,9 +8,9 @@ is a native x64 exe on SDL2 and FMOD, with mod folders only for sprites and tran
 The rules about evidence below exist because of that.
 
 **Status:** Phase 1. Phase 0's go/no-go spike passed. The APWorld is in development on the
-local-only branch `apworld` (below). `client/` holds the AP client, which has run against a
-local AP server but not yet with the game, and the module that finds and accesses game state
-by byte pattern.
+local-only branch `apworld` (below). `client/` holds the AP client, which has run a solo seed
+in the game with a local AP server, and the module that finds and accesses game state by byte
+pattern.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -76,7 +76,7 @@ a client whose game it does not know):
 ```
 
 Once connected, its `/prepare SLOT` writes the seed into a slot holding a new randomizer game
-of the seed's mode, saved at once (a slot that already holds the seed is left alone). It
+of the seed's mode (run in game for Standard only so far), saved at once (a slot that already holds the seed is left alone). It
 replaces the slot file after a verified backup, which goes to `zexion_backups/` in
 Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
 save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.

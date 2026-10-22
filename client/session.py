@@ -9,8 +9,10 @@ Safety, in order:
 - Nothing happens unless two reads of the game, ``SETTLE_SECONDS`` apart, agree on everything
   used (state, map, inventory, supplies, randomizer section). That covers a load in progress
   and the moment a pickup is being recorded.
-- The loaded save must hold this seed (its randomizer section's item table and start, see
-  ``save_patch.section_matches``); otherwise no check is sent and nothing is given.
+- The loaded save must be a randomizer save (its marker reads 1: loading a normal save leaves
+  the previous seed's section in memory) and hold this seed (the section's item table and
+  start, see ``save_patch.section_matches``); otherwise no check is sent and nothing is
+  given.
 - Checks and the goal are read in any state with this seed loaded. Grants are made only in
   play (``game.IN_PLAY``), as compare-and-set writes, and only to make up a difference
   (client/reconcile.py), so a grant undone by a death or reload is made again and none is
@@ -43,13 +45,16 @@ class Snapshot:
     inventory: bytes = b""
     supplies: tuple[int, ...] = ()
     blob: bytes = b""
+    marker: int = 0
 
 
 def read_once(g: game.Game) -> Snapshot:
     state = g.state()
     if state == game.NO_SAVE:
         return Snapshot(state)
-    return Snapshot(state, g.map_grid(), g.inventory(), g.supplies(), g.rando_blob())
+    return Snapshot(
+        state, g.map_grid(), g.inventory(), g.supplies(), g.rando_blob(), g.rando_marker()
+    )
 
 
 def read_settled(g: game.Game, gap: float = SETTLE_SECONDS) -> Snapshot | None:
@@ -89,7 +94,7 @@ class Session:
         if snap is None or snap.state == game.NO_SAVE:
             return Step()
         try:
-            seed = game.parse_seed(snap.blob)
+            seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
         except game.GameError:
             seed = None
         if seed is None or list(seed.locations) != self.cells:
