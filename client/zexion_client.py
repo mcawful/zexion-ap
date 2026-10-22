@@ -13,10 +13,12 @@ Once connected:
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
   Zexion is grabbed in the core.
-- With the helper loaded, the client also arms it with the seed (client/newgame.py): the next
-  randomizer game started in an empty slot, in the seed's mode, gets the AP seed written in as
-  the game builds it, with no /prepare. A seed whose starting items a new game cannot hold
-  falls back to /prepare.
+- With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
+  /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
+  ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed. For a seed whose mode
+  the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
+  seed's mode gets the AP seed written in as the game builds it. A seed whose starting items a
+  new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -31,6 +33,7 @@ the save's item table, and the game hands them out itself.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import sys
 import time
@@ -207,21 +210,37 @@ async def newgame_tick(ctx: ZexionContext) -> None:
     if ctx.plan is None or ctx.newgame_state in ("done", "unavailable"):
         return
     if ctx.newgame_state is None:
+        plan = ctx.plan
         try:
-            text = newgame.plan_text(ctx.plan)
+            text = newgame.plan_text(plan)
         except newgame.NewGameError as exc:
-            ctx.newgame_state = "unavailable"
-            logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
-            return
+            if plan.menu is None:
+                ctx.newgame_state = "unavailable"
+                logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
+                return
+            logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
+            plan = dataclasses.replace(plan, menu=None)
+            try:
+                text = newgame.plan_text(plan)
+            except newgame.NewGameError as again:
+                ctx.newgame_state = "unavailable"
+                logger.info(f"This seed cannot start as a new game ({again}); use /prepare.")
+                return
         reply = await asyncio.to_thread(helper.request, text)
         if reply == "armed":
             ctx.newgame_state = "armed"
             ctx.newgame_polled_at = time.monotonic()
-            logger.info(
-                "Ready for a new game: in an empty slot choose RANDOMIZER, pick this seed's "
-                "mode with no options changed, and START GAME. The AP seed is written in as "
-                "the game starts."
-            )
+            if plan.menu is not None:
+                logger.info(
+                    "Ready for a new game: pick an empty slot and choose ARCHIPELAGO (in "
+                    "place of RANDOMIZER). It starts the AP seed."
+                )
+            else:
+                logger.info(
+                    "Ready for a new game: in an empty slot choose RANDOMIZER, pick this seed's "
+                    "mode with no options changed, and START GAME. The AP seed is written in "
+                    "as the game starts."
+                )
         return
     if time.monotonic() - ctx.newgame_polled_at < NEWGAME_POLL_SECONDS:
         return
@@ -232,7 +251,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         logger.info(f"The new game holds the AP seed ({status}).")
     elif status.startswith("refused"):
         ctx.newgame_state = None  # arm again for the next try
-        logger.warning(f"That new game was left as the game made it: {status[len('refused ') :]}.")
+        logger.warning(f"No new game with the AP seed: {status[len('refused ') :]}.")
     elif status == "idle":
         ctx.newgame_state = None  # the helper lost the plan (reloaded): arm again
 

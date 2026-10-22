@@ -18,6 +18,15 @@ The starting items have to be expressed the way the new-game routine reads them:
 Anything else (filler, other key sets, more than 9 containers or Mega Bombs) cannot be
 expressed: ``NewGameError``, and the player prepares a save with ``/prepare`` instead.
 
+With the slot data's menu setup (a mode with one start), the request also carries ``menu``
+lines: the randomizer menu's state (``+0xDF7340``) as the seed's mode, which the helper's
+ARCHIPELAGO choice sets before it runs the game's placement and puts back afterwards
+(docs/re/memory.md, "The game-mode panel"): the seed text, the two 27-entry arrays, the
+amounts, and settings 10 to 73 except 12 (the player's color choice). The second teleport
+target is then written as START GAME would write it, since the choice skips that step.
+Without it (OHKO's Double Teleport needs the start table the menu builds when it opens), the
+player starts the seed from RANDOMIZER, its mode and START GAME.
+
 Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
 start (``save_patch.SECTION``).
 """
@@ -38,6 +47,11 @@ START_WITH = 0x12E9D  # file offset of the start-with array
 START_KEY_OPTIONS = (34, 35, 36)  # settings bits: keys count = bit0 + 2*bit1 + 4*bit2
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_PACK = 0, 1, 2, 36, 37
 KEYS = (27, 28, 29, 30)
+# The randomizer menu's state: seed text, start-with and pool arrays, amounts, setting t at
+# MENU_SETTINGS + t (docs/re/memory.md, "The game-mode panel").
+MENU_SEED, MENU_START, MENU_POOL, MENU_AMOUNTS, MENU_SETTINGS = 0x0, 0x51, 0x6C, 0x88, 0xCA
+MENU_FIRST_SETTING, COLOR_SETTING = 10, 12
+HEX_DIGITS = frozenset("0123456789ABCDEF")
 
 
 class NewGameError(ValueError):
@@ -93,4 +107,36 @@ def plan_text(plan: sp.SeedPlan) -> str:
         )
     for bit, t in enumerate(START_KEY_OPTIONS):
         lines.append(f"write {section(sp.OPTIONS + t):#x} {(start['keys'] >> bit) & 1:02x}")
+    if plan.menu is not None:
+        lines += menu_lines(plan)
     return "\n".join(lines)
+
+
+def menu_lines(plan: sp.SeedPlan) -> list[str]:
+    """The ARCHIPELAGO choice's lines: the menu's state as the seed's mode, and the second
+    target as START GAME writes it in a mode with one start (with the byte after it, 0)."""
+    menu = plan.menu
+    assert menu is not None
+    if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
+        raise NewGameError(f"the seed text {menu.seed_text!r} is not 16 hex digits")
+    if any(len(a) != len(START_WITH_ORDER) or set(a) - {0, 1} for a in (menu.start, menu.pool)):
+        raise NewGameError("the menu's arrays are not 27 entries of 0 or 1")
+    if len(menu.settings) != 64:
+        raise NewGameError(f"the menu has {len(menu.settings)} settings, expected 64")
+    for t, value in plan.options.items():
+        index = t - MENU_FIRST_SETTING
+        if 0 <= index < len(menu.settings) and menu.settings[index] != value:
+            raise NewGameError(f"the menu's setting {t} is not the seed's mode")
+    if plan.second_start is not None:
+        raise NewGameError("a mode with a second teleport target starts from RANDOMIZER")
+    color = COLOR_SETTING - MENU_FIRST_SETTING
+    second = struct.pack("<3H", *menu.second_target) + bytes(1)
+    return [
+        f"menu {MENU_SEED:#x} {menu.seed_text.encode('ascii').hex()}",
+        f"menu {MENU_START:#x} {menu.start.hex()}",
+        f"menu {MENU_POOL:#x} {menu.pool.hex()}",
+        f"menu {MENU_AMOUNTS:#x} {struct.pack('<6h', *plan.amounts).hex()}",
+        f"menu {MENU_SETTINGS + MENU_FIRST_SETTING:#x} {menu.settings[:color].hex()}",
+        f"menu {MENU_SETTINGS + COLOR_SETTING + 1:#x} {menu.settings[color + 1 :].hex()}",
+        f"write {section(sp.SECOND_START):#x} {second.hex()}",
+    ]
