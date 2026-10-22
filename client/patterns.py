@@ -660,6 +660,152 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "transition_fn",
+        ("holds the routine the game runs when the transition timer ends (a new game: newgame_fn)"),
+        0xCE0F50,
+        (
+            # from the instruction at RVA 0xf6395 on B1 (START GAME)
+            Pattern(
+                (
+                    "48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 "
+                    "89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 42 C6 04 37 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf5210 on B1 (the play-anyway path)
+            Pattern(
+                (
+                    "48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 "
+                    "89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 C6 04 3B 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf6bea on B1
+            Pattern(
+                (
+                    "48 39 3D ?? ?? ?? ?? 75 05 E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 4C 8D 0D ?? "
+                    "?? ?? ?? 48 8B 08 83 81 30 02 00 00 03"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "transition_timer",
+        "frames left before the game runs transition_fn (32-bit)",
+        0xDF6870,
+        (
+            # from the instruction at RVA 0xf9e50 on B1
+            Pattern(
+                (
+                    "C7 05 ?? ?? ?? ?? 01 00 00 00 66 0F 6E D0 0F 5B D2 F3 0F 11 4C 24 20 E8 ?? "
+                    "?? ?? ?? 8B 8F 30 02 00 00"
+                ),
+                2,
+                "rip",
+                10,
+                0x0,
+            ),
+            # from the instruction at RVA 0x94713 on B1
+            Pattern(
+                (
+                    "C7 05 ?? ?? ?? ?? 01 00 00 00 C6 05 ?? ?? ?? ?? 02 48 C7 05 ?? ?? ?? ?? FF "
+                    "FF FF FF E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 33 D2"
+                ),
+                2,
+                "rip",
+                10,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "current_slot",
+        "the save slot being played or started, 0-based (32-bit)",
+        0xCDD080,
+        (
+            # from the instruction at RVA 0xe2137 on B1 (the file screen)
+            Pattern(
+                (
+                    "8B 0D ?? ?? ?? ?? F7 E9 8B C2 C1 E8 1F 03 D0 8D 04 52 2B C8 B8 80 00 00 00 "
+                    "66 89 86 DA 01 00 00 44 8D 2C 49"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+            # from the instruction at RVA 0x163ec4 on B1
+            Pattern(
+                (
+                    "48 63 05 ?? ?? ?? ?? 48 69 C8 08 94 00 00 66 83 BC 39 00 94 00 00 01 75 4C "
+                    "41 B9 01 00 00 00 66 89 74 24 20"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xa2abe on B1 (the first save of a new game)
+            Pattern(
+                (
+                    "48 63 05 ?? ?? ?? ?? 48 69 D0 08 94 00 00 41 B9 01 00 00 00 41 B8 08 94 00 "
+                    "00 48 03 D6 48 8B CB"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "newgame_fn",
+        ("the new-game routine: builds a new game from the randomizer section and saves it"),
+        0xA0570,
+        (
+            # from the instruction at RVA 0xe3129 on B1 (NORMAL's new game)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? F3 0F 10 0D ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 05 "
+                    "?? ?? ?? ?? BA 25 00 00 00 0F BF 05 ?? ?? ?? ??"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xe2272 on B1 (a normal game, randomizer locked)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 0F BF 05 ?? "
+                    "?? ?? ?? BA 25 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "4C 8B DC 53 55 56 57 48 81 EC 28 02 00 00",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

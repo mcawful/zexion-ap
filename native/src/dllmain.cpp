@@ -42,7 +42,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.2.0";
+constexpr char kVersion[] = "0.3.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -66,6 +66,7 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_mailbox.serve();
+            g_game.watch_newgame();
             g_game.pump_popups();
         } catch (...) {
             // Nothing may unwind into the game.
@@ -120,6 +121,37 @@ std::string handle(const std::string& request, bool& stop) {
                " configured=" + (configured == "1" ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
+        request == "newgame_status") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (request == "disarm") {
+            if (!g_mailbox.call([] { g_game.disarm_newgame(); return std::string("disarmed"); },
+                                kFrameWaitMs, result)) {
+                return "refused no frame";
+            }
+            return result;
+        }
+        if (request == "newgame_status") {
+            if (!g_mailbox.call([] { return g_game.newgame_status(); }, kFrameWaitMs, result)) {
+                return "refused no frame";
+            }
+            return result;
+        }
+        zap::NewGamePlan plan;
+        std::string error = zap::parse_newgame(request, plan);
+        if (!error.empty()) return "error " + error;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    g_game.arm_newgame(std::move(plan));
+                    return std::string("armed");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("config", 0) == 0 || request.rfind("apply", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::string result;

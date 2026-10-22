@@ -13,6 +13,10 @@ Once connected:
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
   Zexion is grabbed in the core.
+- With the helper loaded, the client also arms it with the seed (client/newgame.py): the next
+  randomizer game started in an empty slot, in the seed's mode, gets the AP seed written in as
+  the game builds it, with no /prepare. A seed whose starting items a new game cannot hold
+  falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -51,6 +55,7 @@ from NetUtils import ClientStatus  # noqa: E402
 
 import game  # noqa: E402
 import native  # noqa: E402
+import newgame  # noqa: E402
 import prepare  # noqa: E402
 import save_patch  # noqa: E402
 import session  # noqa: E402
@@ -60,6 +65,7 @@ ITEM_ID_BASE = 3392510_000  # worlds/zexion/items.py
 LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
+NEWGAME_POLL_SECONDS = 1.0
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -105,6 +111,11 @@ class ZexionContext(CommonContext):
         self.use_helper = True
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
+        # The AP new game: None (to arm), "armed", "done" or "unavailable"; disarm_pending asks
+        # the game loop, the helper's only user, to disarm it.
+        self.newgame_state: str | None = None
+        self.newgame_polled_at = 0.0
+        self.disarm_pending = False
         self.goal_sent = False
 
     async def server_auth(self, password_requested: bool = False) -> None:
@@ -119,6 +130,7 @@ class ZexionContext(CommonContext):
             self.plan = save_patch.plan_from_slot_data(slot)
             self.session = session.Session(self.plan, slot["locations"])
             self.session.helper = self.helper
+            self.newgame_state = None
             self.kept = set(slot["kept_locations"])
             self.goal_sent = False
             logger.info(
@@ -133,6 +145,9 @@ class ZexionContext(CommonContext):
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         self.plan = None
         self.session = None
+        if self.newgame_state == "armed":
+            self.disarm_pending = True
+        self.newgame_state = None
         await super().disconnect(allow_autoreconnect)
 
     def drop_helper(self) -> None:
@@ -142,6 +157,8 @@ class ZexionContext(CommonContext):
         if self.session is not None:
             self.session.helper = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
+        self.newgame_state = None
+        self.disarm_pending = False
 
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
@@ -178,9 +195,57 @@ async def attach_helper(ctx: ZexionContext) -> None:
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
 
 
+async def newgame_tick(ctx: ZexionContext) -> None:
+    """Arm the helper with the AP seed for the next randomizer new game, and report what
+    became of it. Runs in the game loop, the helper's only user."""
+    helper = ctx.helper
+    if helper is None:
+        return
+    if ctx.disarm_pending:
+        ctx.disarm_pending = False
+        await asyncio.to_thread(helper.request, "disarm")
+    if ctx.plan is None or ctx.newgame_state in ("done", "unavailable"):
+        return
+    if ctx.newgame_state is None:
+        try:
+            text = newgame.plan_text(ctx.plan)
+        except newgame.NewGameError as exc:
+            ctx.newgame_state = "unavailable"
+            logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
+            return
+        reply = await asyncio.to_thread(helper.request, text)
+        if reply == "armed":
+            ctx.newgame_state = "armed"
+            ctx.newgame_polled_at = time.monotonic()
+            logger.info(
+                "Ready for a new game: in an empty slot choose RANDOMIZER, pick this seed's "
+                "mode with no options changed, and START GAME. The AP seed is written in as "
+                "the game starts."
+            )
+        return
+    if time.monotonic() - ctx.newgame_polled_at < NEWGAME_POLL_SECONDS:
+        return
+    ctx.newgame_polled_at = time.monotonic()
+    status = await asyncio.to_thread(helper.request, "newgame_status")
+    if status.startswith("applied"):
+        ctx.newgame_state = "done"
+        logger.info(f"The new game holds the AP seed ({status}).")
+    elif status.startswith("refused"):
+        ctx.newgame_state = None  # arm again for the next try
+        logger.warning(f"That new game was left as the game made it: {status[len('refused ') :]}.")
+    elif status == "idle":
+        ctx.newgame_state = None  # the helper lost the plan (reloaded): arm again
+
+
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
+        if ctx.helper is not None:
+            try:
+                await newgame_tick(ctx)
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+                ctx.drop_helper()
         if ctx.session is None or not ctx.slot:
             continue
         if ctx.game_conn is None:
