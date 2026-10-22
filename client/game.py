@@ -122,10 +122,12 @@ def find_unique(code: bytes, pattern: Pattern) -> int:
 
 def resolve(code: bytes, code_rva: int, pattern: Pattern) -> int:
     """The RVA ``pattern`` leads to, given ``code`` loaded at ``code_rva``."""
+    if pattern.kind == "at":
+        return code_rva + find_unique(code, pattern) + pattern.addend
     if pattern.kind != "rip":
         # An image-base displacement is only an address if a register holds the image base,
         # which a pattern cannot show; such patterns are refused rather than trusted.
-        raise PatternError(f"pattern kind {pattern.kind!r} is not accepted, only 'rip'")
+        raise PatternError(f"pattern kind {pattern.kind!r} is not accepted, only 'rip' or 'at'")
     at = find_unique(code, pattern)
     field = struct.unpack_from("<i", code, at + pattern.disp_at)[0]
     return code_rva + at + pattern.rip_end + field + pattern.addend

@@ -70,11 +70,17 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
     with pytest.raises(native.HelperError, match="already loaded"):
         native.load(handle, process.pid, BUILT)
     with native.Helper(process.pid) as helper:
-        assert helper.request("hello").endswith("build=unknown hooked=0")
+        assert helper.request("hello").endswith("build=unknown hooked=0 configured=0")
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.HelperError, match="unknown request"):
             helper.request("nonsense")
-        assert helper.request("ping") == "pong frames=0"  # an error reply keeps it in step
+        # Hooked to nothing, it has no frames to work in: config and apply are refused.
+        rvas = {key: 0x1000 for key in native.CONFIG_KEYS}
+        with pytest.raises(native.HelperError, match="not hooked"):
+            helper.configure(rvas)
+        with pytest.raises(native.HelperError, match="not hooked"):
+            helper.apply(native.batch_text([(36, 0, 1)], []))
+        assert helper.request("ping") == "pong frames=0"  # error replies keep it in step
 
         def timed_out(data: bytes, seconds: float) -> bytes:
             raise native.HelperError(f"no reply within {seconds} s")

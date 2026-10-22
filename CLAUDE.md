@@ -9,8 +9,9 @@ The rules about evidence below exist because of that.
 
 **Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
 holds the AP client, which has run a solo seed in the game with a local AP server, and
-the module that finds and accesses game state by byte pattern. `native/` holds the skeleton of
-an in-game helper DLL, which loads, hooks the game's frame call and unloads in the game.
+the module that finds and accesses game state by byte pattern. `native/` holds an in-game
+helper DLL, which runs in the game and gives received items there with the game's own popup,
+sound and HUD refresh (helper phase 2, live-tested on one seed).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -41,9 +42,10 @@ Checks. CI's Python jobs run these three; `/preflight` runs them too:
 AP's world tests join this list when `worlds/zexion/` exists.
 
 The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job
-builds it and runs these on Windows (the tests include 300 loads and unloads of a test build
-while the function it hooks is called nonstop), then `tests/test_native.py` loads it into a
-stand-in process; without a build, that test skips:
+builds it and runs these on Windows (the tests include grants applied in the frame calls of a
+stand-in game, and 300 loads and unloads of a test build while the function it hooks is called
+nonstop), then `tests/test_native.py` loads it into a stand-in process; without a build, that
+test skips:
 
 ```sh
 cmake -S native -B native/build -A x64
@@ -60,7 +62,7 @@ save folders:
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
-.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for an address
+.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for data or a function
 .venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
 .venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
 .venv/Scripts/python tools/grant.py show                # the live inventory by name
@@ -95,6 +97,13 @@ save folder, pause Steam Cloud first and ask before each one, as for `save_lab.p
 With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real. `ZEXION_AP_DIR` points the
 client at another Archipelago folder than `.ap/Archipelago`.
 
+When it attaches to the game, the client also loads the native helper built from `native/`
+(`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
+with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
+`--no-helper`, a missing build or a helper that fails means items are written directly, with
+no popup. Popups are only for items received after the server's first full list, so a
+reconnect does not replay them.
+
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
 `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the last two.
@@ -111,8 +120,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
-  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 1: it counts
-  frames and does nothing else yet.
+  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
+  grants between frames, with the game's popup, sound and HUD refresh; working in game.
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
