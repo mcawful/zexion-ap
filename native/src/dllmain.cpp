@@ -8,8 +8,9 @@
 // and the trampoline back at SDL, waits until no call is inside the helper, and unloads the
 // DLL, so a rebuilt helper can be loaded without restarting the game.
 //
-// Helper phase 1 only counts frames. Later phases run queued work in the frame function
-// (grants, the game's popup), where it cannot race the game.
+// Each frame call counts itself, serves the mailbox (config and apply requests from the pipe
+// thread, mailbox.h) and shows queued popups (helper phase 2, game_calls.h), where none of it
+// can race the game.
 //
 // The target is set at build time: the game's SDL_GL_SwapWindow, behind the build check, in
 // zexion_ap.dll; this test program's own GetTickCount, with no build check, in the

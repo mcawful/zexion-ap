@@ -14,9 +14,11 @@ Once connected:
   collected, gives the items other worlds send (client/session.py), and reports the goal when
   Zexion is grabbed in the core.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
-  game, unless started with ``--no-helper`` or the helper is not built. Items then arrive
-  between frames with the game's own popup and sound ("MISSILE BOX FROM ALICE") and a HUD
-  refresh. Without the helper they are written directly, with no popup.
+  game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
+  through it, to arrive between frames with the game's own popup and sound (for example
+  "MISSILE BOX FROM ALICE") and a HUD refresh; that path has not yet run in the game. Without
+  the helper, or if it fails, items are written directly, with no popup, and the client tries
+  the helper again every 30 seconds.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -27,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -56,6 +59,7 @@ GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # worlds/zexion/items.py
 LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 POLL_SECONDS = 0.25
+HELPER_RETRY_SECONDS = 30.0
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -100,6 +104,7 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.use_helper = True
         self.helper: native.Helper | None = None
+        self.helper_retry_at = 0.0
         self.goal_sent = False
 
     async def server_auth(self, password_requested: bool = False) -> None:
@@ -123,19 +128,12 @@ class ZexionContext(CommonContext):
             )
         if cmd == "ReceivedItems" and args.get("index") == 0 and self.session is not None:
             # The server's full list: what it holds was received before this connection.
-            self.session.mark_announced(len(self.items_received))
+            self.session.mark_announced(len(self.received()[0]))
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         self.plan = None
         self.session = None
         await super().disconnect(allow_autoreconnect)
-
-    def senders(self) -> list[str]:
-        """Who sent each received item, by slot name; "" for this slot's own."""
-        return [
-            "" if item.player == self.slot else self.player_names.get(item.player, "")
-            for item in self.items_received
-        ]
 
     def drop_helper(self) -> None:
         if self.helper is not None:
@@ -143,16 +141,22 @@ class ZexionContext(CommonContext):
         self.helper = None
         if self.session is not None:
             self.session.helper = None
+        self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
 
-    def received_codes(self) -> list[int]:
-        codes = []
+    def received(self) -> tuple[list[int], list[str]]:
+        """The Zexion item code of each received item, and who sent it ("" for this slot's
+        own), kept in step: anything that is not a Zexion item is left out of both."""
+        codes, senders = [], []
         for item in self.items_received:
             code = item.item - ITEM_ID_BASE
             if 0 <= code <= 50:
                 codes.append(code)
+                senders.append(
+                    "" if item.player == self.slot else self.player_names.get(item.player, "")
+                )
             else:
                 logger.warning(f"Received item {item.item}, which is not a Zexion item; ignored.")
-        return codes
+        return codes, senders
 
 
 async def attach_helper(ctx: ZexionContext) -> None:
@@ -171,7 +175,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
         return
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
-    logger.info("The in-game helper is running: received items show the game's popup.")
+    logger.info("The in-game helper is running: received items are sent with the game's popup.")
 
 
 async def game_loop(ctx: ZexionContext) -> None:
@@ -192,9 +196,8 @@ async def game_loop(ctx: ZexionContext) -> None:
                 continue
         current = ctx.session
         try:
-            step = await asyncio.to_thread(
-                current.step, ctx.game_conn, ctx.received_codes(), senders=ctx.senders()
-            )
+            codes, senders = ctx.received()
+            step = await asyncio.to_thread(current.step, ctx.game_conn, codes, senders=senders)
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
             ctx.game_conn = None
@@ -204,6 +207,11 @@ async def game_loop(ctx: ZexionContext) -> None:
             logger.error(f"Reading Zexion failed: {exc}")
             await asyncio.sleep(2)
             continue
+        if ctx.helper is not None and current.helper is None:
+            ctx.drop_helper()  # the session gave up on it; try again later
+        elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
+            ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
+            await attach_helper(ctx)
         if not step.seed_matches or ctx.session is not current:
             continue  # nothing to send, or the connection changed while the game was read
         locations = {LOCATION_ID_BASE + i for i in step.checked & ctx.kept}

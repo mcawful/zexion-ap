@@ -25,8 +25,10 @@ With the native helper attached (``Session.helper``), the grants go to the game 
 the helper applies between frames (client/native.py): it checks again that the game is in
 play and that every byte still holds what this poll read, writes all or none, sets missiles,
 bombs and energy as a pickup would, refreshes the HUD, and shows the game's popup for each
-item received since the last batch. A helper that fails is dropped, and grants go back to
-direct writes.
+item received since the last batch (not for those the server already held when the client
+connected: ``mark_announced``). When nothing is owed but max missiles or bombs lag behind the
+counts, it sends a refresh that sets them. A helper that fails is dropped, and grants go back
+to direct writes. This path has been tested against a stand-in game only, not yet in Zexion.
 """
 
 from __future__ import annotations
@@ -214,6 +216,9 @@ class Session:
             sender = senders[index] if senders and index < len(senders) else ""
             popups.append((item, f"FROM {sender}" if sender else ""))
         if not owed and not popups:
+            before = reconcile.Supplies(*snap.supplies)
+            if reconcile.supplies_after(snap.inventory, {}, before) != before:
+                self.helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
         reply = self.helper.apply(native.batch_text(cas, popups))

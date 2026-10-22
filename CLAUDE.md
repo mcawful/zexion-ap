@@ -97,6 +97,13 @@ save folder, pause Steam Cloud first and ask before each one, as for `save_lab.p
 With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real. `ZEXION_AP_DIR` points the
 client at another Archipelago folder than `.ap/Archipelago`.
 
+When it attaches to the game, the client also loads the native helper built from `native/`
+(`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
+with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
+`--no-helper`, a missing build or a helper that fails means items are written directly, with
+no popup. Popups are only for items received after the server's first full list, so a
+reconnect does not replay them.
+
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
 `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the last two.

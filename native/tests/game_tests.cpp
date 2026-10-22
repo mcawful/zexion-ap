@@ -62,6 +62,25 @@ void test_parsers() {
     check(longer.popups[0].suffix.size() == 40, "the suffix is capped");
 }
 
+// The RVA of the start of the section holding `p` in this program.
+uint64_t section_start_of(const void* p) {
+    auto* base = reinterpret_cast<const BYTE*>(GetModuleHandleW(nullptr));
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
+        base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    auto* section = IMAGE_FIRST_SECTION(nt);
+    uint64_t target = rva(p);
+    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+        uint64_t size = (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+        if (target >= section->VirtualAddress && target < section->VirtualAddress + size) {
+            return section->VirtualAddress;
+        }
+    }
+    return 0;
+}
+
+extern const BYTE kReadOnly;
+const BYTE kReadOnly = 1;  // in read-only data
+
 void test_configure() {
     zap::Game game;
     HMODULE self = GetModuleHandleW(nullptr);
@@ -81,6 +100,13 @@ void test_configure() {
     swapped["menu_state"] = 0x7FFFFFFF;
     check(game.configure(self, swapped).find("outside") != std::string::npos,
           "an address outside the image is refused");
+    swapped = config;
+    swapped["menu_state"] = rva(&kReadOnly);
+    check(game.configure(self, swapped).find("read-only") != std::string::npos,
+          "data must be writable");
+    swapped = config;
+    swapped["inventory"] = section_start_of(g_player) + 0x10;  // no player state fits before it
+    check(!game.configure(self, swapped).empty(), "the player state must fit in its section");
     check(!game.configured(), "a refused configuration leaves it unconfigured");
     check(game.configure(self, config).empty() && game.configured(), "configures");
 }
@@ -136,7 +162,12 @@ void test_apply() {
     reset_game();
     check(apply(game, "apply\nrefresh") == "applied" && g_hud_numbers == 2,
           "refresh alone refreshes the HUD");
-    check(g_inventory[1] == 3 && field<int16_t>(0xCC0) == 3, "and writes nothing");
+    check(g_inventory[1] == 3 && field<int16_t>(0xCC0) == 3, "and writes no item");
+    reset_game();
+    g_inventory[36] = 1;  // a Missile Box the game has not counted into max missiles yet
+    apply(game, "apply\nrefresh");
+    check(field<int16_t>(0xCC0) == 13 && field<int16_t>(0xCBC) == 12,
+          "refresh brings max and current missiles in line with the counts");
 }
 
 void test_popups() {

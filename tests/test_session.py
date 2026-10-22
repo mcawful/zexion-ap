@@ -274,3 +274,18 @@ def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> 
     give(session, g, [3, 4, 4], senders=["Alice"] * 3)
     popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
     assert popups == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+
+
+def test_lagging_supplies_are_refreshed_through_the_helper(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    g.sup[3] = 3  # max missiles below the 3 containers + 10 for the Missile Box
+    session.step(g, [], gap=0)
+    session.step(g, [], gap=0)
+    assert helper.requests and helper.requests[-1] == "apply\nrefresh"
+
+
+def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    session.step(g, [], gap=0)
+    session.step(g, [], gap=0)
+    assert helper.requests == []

@@ -24,6 +24,7 @@ constexpr ptrdiff_t kHudMissiles = 0xB30, kHudBombs = 0xBB8;
 constexpr ptrdiff_t kWeaponStripTimer = 0xA4C;
 constexpr ptrdiff_t kSuitBits = 0x10D8;
 constexpr ptrdiff_t kX = 0x1100, kY = 0x1108;
+constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
@@ -156,6 +157,18 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         if (code != is_function(key)) {
             return key + (code ? " is in code, not data" : " is not in code");
         }
+        if (!code && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
+            return key + " is in read-only data";
+        }
+        if (key == "inventory") {
+            // The whole player state the helper touches must lie in the same section.
+            uint64_t end = section->VirtualAddress +
+                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+            if (rva < section->VirtualAddress + static_cast<uint64_t>(kInventoryInPlayer) ||
+                rva - kInventoryInPlayer + kPlayerStateSize > end) {
+                return key + " leaves no room for the player state";
+            }
+        }
         found[key] = reinterpret_cast<BYTE*>(image) + rva;
     }
     base_ = reinterpret_cast<BYTE*>(image);
@@ -214,7 +227,7 @@ std::string Game::apply(const Batch& batch) {
     const bool had_armor = inv[kMagnusArmor] != 0;
     for (const Cas& c : batch.cas) inv[c.item] = c.value;
     BYTE* p = player();
-    if (!batch.cas.empty()) {
+    if (!batch.cas.empty() || batch.refresh) {
         // As the pickup routine does (docs/re/memory.md, "Granting each kind of item").
         auto missiles = static_cast<int16_t>(inv[kMissileContainer] + 10 * inv[kMissileBox]);
         if (missiles != at<int16_t>(p, kMissilesMax)) {

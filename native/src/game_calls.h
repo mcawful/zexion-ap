@@ -48,13 +48,15 @@ std::string parse_batch(const std::string& request, Batch& out);
 class Game {
 public:
     // Checks every key is present and lies inside `image` (functions in executable code, data
-    // outside it), then keeps the addresses. Game thread. Returns "" or an error.
+    // in writable data, with room for the whole player state around the inventory), then keeps
+    // the addresses. Game thread. Returns "" or an error.
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas);
     bool configured() const { return configured_; }
 
     // Game thread. In play (a save loaded, no menu, energy above 0) or refused; then every
-    // compare-and-set or none; then missiles, bombs and energy as the pickup routine sets them,
-    // the HUD refresh, Magnus Armor's suit color if it was just gained, and the popups queued.
+    // compare-and-set or none; then (after writes, or for "refresh") missiles, bombs and energy
+    // as the pickup routine sets them from the counts, and the HUD refresh; Magnus Armor's suit
+    // color if it was just gained; and the popups queued.
     // Returns "applied", "refused ..." or "error ...".
     std::string apply(const Batch& batch);
 

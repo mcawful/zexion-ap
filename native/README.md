@@ -84,6 +84,8 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     suffix (`FROM ALICE`), with any character the game's font does not draw left out.
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
+  - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
+    popup whose item has no record (the records not loaded yet) is dropped.
 - **Unloading.** `unload` points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
@@ -106,8 +108,8 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
-tests (`parts`, and `unload_under_load` with 300 rounds), and runs `tests/test_native.py`
-against the build on Windows.
+tests (`parts`, `game`, `unload_under_load` with 300 rounds, and `apply_in_frames`), and runs
+`tests/test_native.py` against the build on Windows.
 
 ## Planned
 
