@@ -13,6 +13,10 @@ Once connected:
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
   Zexion is grabbed in the core.
+- When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
+  game, unless started with ``--no-helper`` or the helper is not built. Items then arrive
+  between frames with the game's own popup and sound ("MISSILE BOX FROM ALICE") and a HUD
+  refresh. Without the helper they are written directly, with no popup.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -43,6 +47,7 @@ from CommonClient import (  # noqa: E402
 from NetUtils import ClientStatus  # noqa: E402
 
 import game  # noqa: E402
+import native  # noqa: E402
 import prepare  # noqa: E402
 import save_patch  # noqa: E402
 import session  # noqa: E402
@@ -93,6 +98,8 @@ class ZexionContext(CommonContext):
         self.session: session.Session | None = None
         self.kept: set[int] = set()
         self.game_conn: game.Game | None = None
+        self.use_helper = True
+        self.helper: native.Helper | None = None
         self.goal_sent = False
 
     async def server_auth(self, password_requested: bool = False) -> None:
@@ -106,6 +113,7 @@ class ZexionContext(CommonContext):
             slot = args["slot_data"]
             self.plan = save_patch.plan_from_slot_data(slot)
             self.session = session.Session(self.plan, slot["locations"])
+            self.session.helper = self.helper
             self.kept = set(slot["kept_locations"])
             self.goal_sent = False
             logger.info(
@@ -113,11 +121,28 @@ class ZexionContext(CommonContext):
                 "yet: make a new randomizer game in that mode, save, close Zexion, and run "
                 "/prepare SLOT."
             )
+        if cmd == "ReceivedItems" and args.get("index") == 0 and self.session is not None:
+            # The server's full list: what it holds was received before this connection.
+            self.session.mark_announced(len(self.items_received))
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         self.plan = None
         self.session = None
         await super().disconnect(allow_autoreconnect)
+
+    def senders(self) -> list[str]:
+        """Who sent each received item, by slot name; "" for this slot's own."""
+        return [
+            "" if item.player == self.slot else self.player_names.get(item.player, "")
+            for item in self.items_received
+        ]
+
+    def drop_helper(self) -> None:
+        if self.helper is not None:
+            self.helper.close()
+        self.helper = None
+        if self.session is not None:
+            self.session.helper = None
 
     def received_codes(self) -> list[int]:
         codes = []
@@ -130,6 +155,25 @@ class ZexionContext(CommonContext):
         return codes
 
 
+async def attach_helper(ctx: ZexionContext) -> None:
+    """Load and configure the native helper in the attached game, or carry on without it."""
+    if not ctx.use_helper:
+        return
+    dll = native.default_dll()
+    if not dll.is_file():
+        logger.info(f"No native helper at {dll}: items will arrive with no popup.")
+        return
+    try:
+        ctx.helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll)
+    except native.HelperError as exc:
+        logger.warning(f"The in-game helper could not be used ({exc}); items arrive with no popup.")
+        ctx.drop_helper()
+        return
+    if ctx.session is not None:
+        ctx.session.helper = ctx.helper
+    logger.info("The in-game helper is running: received items show the game's popup.")
+
+
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
@@ -139,6 +183,7 @@ async def game_loop(ctx: ZexionContext) -> None:
             try:
                 ctx.game_conn = await asyncio.to_thread(game.Game.attach)
                 logger.info("Attached to Zexion.")
+                await attach_helper(ctx)
             except game.GameNotRunning:
                 continue
             except game.GameError as exc:
@@ -147,10 +192,13 @@ async def game_loop(ctx: ZexionContext) -> None:
                 continue
         current = ctx.session
         try:
-            step = await asyncio.to_thread(current.step, ctx.game_conn, ctx.received_codes())
+            step = await asyncio.to_thread(
+                current.step, ctx.game_conn, ctx.received_codes(), senders=ctx.senders()
+            )
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
             ctx.game_conn = None
+            ctx.drop_helper()
             continue
         except game.GameError as exc:
             logger.error(f"Reading Zexion failed: {exc}")
@@ -174,6 +222,7 @@ def launch(*args: str) -> None:
     async def main(parsed) -> None:
         ctx = ZexionContext(parsed.connect, parsed.password)
         ctx.auth = parsed.name
+        ctx.use_helper = not parsed.no_helper
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
         if gui_enabled:
@@ -187,6 +236,11 @@ def launch(*args: str) -> None:
 
     parser = get_base_parser(description="Zexion Archipelago client.")
     parser.add_argument("--name", default=None, help="Slot name to connect as.")
+    parser.add_argument(
+        "--no-helper",
+        action="store_true",
+        help="Do not load the native helper into the game: items arrive with no popup.",
+    )
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     parsed = handle_url_arg(parser.parse_args(args), parser=parser)
     if parsed.url:

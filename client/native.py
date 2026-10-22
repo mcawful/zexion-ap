@@ -3,8 +3,11 @@
 The helper runs inside Zexion: it gets a call from the game's main loop, on the game's own
 thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
 call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
-per message. Helper phase 1 understands ``hello``, ``ping`` and ``unload``; see
-native/README.md. tools/helper.py uses this module; the AP client does not yet.
+per message: ``hello``, ``ping``, ``config``, ``apply`` and ``unload`` (native/README.md).
+``attach`` loads the helper if needed and configures it with the addresses the client resolved
+by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
+optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it
+is attached; tools/helper.py loads and unloads it for tests.
 
 Loading: a remote thread runs ``LoadLibraryW`` on the helper's path, with a timeout, under a
 named mutex so two loaders cannot race. Talking: the client opens the pipe at the
@@ -24,6 +27,25 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
+VERSION = "0.2.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+# The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
+CONFIG_KEYS = (
+    "inventory",
+    "save_loaded",
+    "menu_state",
+    "item_records",
+    "last_message",
+    "weapon_strip_gate",
+    "sound_system",
+    "message_fn",
+    "sound_fn",
+    "hud_number_fn",
+    "hud_layout_fn",
+    "energy_hud_fn",
+    "weapon_strip_fn",
+    "suit_color_fn",
+)
+APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
@@ -35,6 +57,28 @@ class HelperError(RuntimeError):
 
 class GameExited(HelperError):
     """The game is no longer running."""
+
+
+def config_text(rvas: dict[str, int]) -> str:
+    missing = [k for k in CONFIG_KEYS if k not in rvas]
+    if missing:
+        raise HelperError(f"addresses not resolved: {', '.join(missing)}")
+    return "config " + " ".join(f"{k}={rvas[k]:#x}" for k in CONFIG_KEYS)
+
+
+def batch_text(
+    cas: list[tuple[int, int, int]], popups: list[tuple[int, str]], refresh: bool = False
+) -> str:
+    """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
+    (item, suffix) popups shown one at a time, each with its item's icon, name and sound."""
+    lines = ["apply"]
+    lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
+    if refresh:
+        lines.append("refresh")
+    for item, suffix in popups:
+        clean = " ".join(suffix.split())  # one line, single spaces
+        lines.append(f"popup {item} {clean}".rstrip())
+    return "\n".join(lines)
 
 
 def default_dll() -> Path:
@@ -295,6 +339,26 @@ class Helper:
             if ctypes.get_last_error() != ERROR_MORE_DATA:
                 raise HelperError(f"the helper's pipe closed: {_last_error()}")
 
+    def hello(self) -> dict[str, str]:
+        """The helper's hello as fields: version, build, hooked, configured."""
+        words = self.request("hello").split()
+        if len(words) < 2 or words[0] != "zexion-ap":
+            raise HelperError(f"unexpected hello: {' '.join(words)!r}")
+        fields = dict(w.split("=", 1) for w in words[2:] if "=" in w)
+        return {"version": words[1], **fields}
+
+    def configure(self, rvas: dict[str, int]) -> None:
+        reply = self.request(config_text(rvas), APPLY_SECONDS)
+        if reply != "ok":
+            raise HelperError(f"configuring failed: {reply}")
+
+    def apply(self, text: str) -> str:
+        """ "applied", or "refused <why>" (nothing was written); HelperError otherwise."""
+        reply = self.request(text, APPLY_SECONDS)
+        if reply != "applied" and not reply.startswith("refused "):
+            raise HelperError(f"unexpected reply to apply: {reply!r}")
+        return reply
+
     def close(self) -> None:
         if self._handle is not None:
             _K.CloseHandle(self._handle)
@@ -305,3 +369,26 @@ class Helper:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+
+def attach(g, dll: Path) -> Helper:
+    """The helper in game ``g``, loaded if it is not, and configured. ``g`` is an attached
+    ``game.Game``. A helper of another version is unloaded and the built one loaded instead."""
+    handle = g.pm.process_handle
+    if is_loaded(handle):
+        with Helper(g.pid) as old:
+            stale = old.hello()["version"] != VERSION
+            if stale and (old.request("unload") != "bye" or not wait_unloaded(handle)):
+                raise HelperError("could not replace a helper of another version")
+    if not is_loaded(handle):
+        load(handle, g.pid, dll)
+    helper = Helper(g.pid)
+    try:
+        hello = helper.hello()
+        if hello.get("hooked") != "1":
+            raise HelperError(f"the helper did not hook the game: {hello}")
+        helper.configure(dict(g.rva))
+    except BaseException:
+        helper.close()
+        raise
+    return helper
