@@ -70,7 +70,7 @@ a client whose game it does not know):
 ```
 
 Once connected, its `/prepare SLOT` writes the seed into a slot holding a new randomizer game
-of the seed's mode, saved at once (a slot that already holds the seed is left alone). It
+of the seed's mode (run in game for Standard only so far), saved at once (a slot that already holds the seed is left alone). It
 replaces the slot file after a verified backup, which goes to `zexion_backups/` in
 Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
 save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.

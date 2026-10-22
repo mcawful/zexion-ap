@@ -15,7 +15,7 @@ An inventory above what the player should own is left alone.
 
 A weapon and its upgrade are one progressive item, counted as one for each byte that is set.
 The game turns a second copy of a weapon into its upgrade, in the generator and in play
-(docs/re/randocells.md; seen for the Machine Gun). Should another weapon not, its byte would
+(docs/re/randocells.md; seen for the Machine Gun only). Should another weapon not, its byte would
 read 2 and the upgrade would still be owed, so the client would give it.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.

@@ -8,7 +8,8 @@ else stays as the game wrote it. Offsets and their evidence are in docs/re/save-
 item table, the start (record, continue point and revealed cell, changed together) and the
 second teleport target were each loaded in game, and a whole Standard save patched by this
 module loaded with its seed, start and starting items (docs/re/memory.md, "The client in a live
-game"; OHKO and Easy saves patched this way have not been loaded).
+game"). Its current energy and missiles were the fresh save's own values, so writing
+different ones has not been loaded, nor have OHKO and Easy saves patched this way.
 
 Pure functions over bytes: the client reads and writes the file (after a backup), and the
 tests run here without the game.
@@ -22,6 +23,7 @@ from dataclasses import dataclass
 LOCATIONS = 154
 MAP_W = 54
 SAVE_SIZE = 78108  # a randomizer save
+RANDO_MARKER = 0x9402  # 16-bit: 1 in a randomizer save, 0 in a normal one or a cleared slot
 
 # File offsets (docs/re/save-format.md).
 INVENTORY = 0x92F3  # + item ID, items 0-49
@@ -81,6 +83,9 @@ def check_fresh(save: bytes) -> None:
     """A randomizer save made at the start of its seed, nothing picked up yet."""
     if len(save) != SAVE_SIZE:
         raise PatchError(f"not a randomizer save ({len(save)} bytes, expected {SAVE_SIZE})")
+    if struct.unpack_from("<H", save, RANDO_MARKER)[0] != 1:
+        # A cleared randomizer slot keeps its size; the game would not load a seed from it.
+        raise PatchError("not a randomizer save (its randomizer marker is not set)")
     if struct.unpack_from("<H", save, PICKUP_COUNTER)[0] != 0:
         raise PatchError("something has been picked up in this save: start a new game")
     revealed = sum(1 for v in save[MAP_GRID : MAP_GRID + MAP_W * MAP_W] if v)

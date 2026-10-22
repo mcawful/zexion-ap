@@ -279,12 +279,16 @@ TARGETS = (
         "for a normal one; the randomizer section is copied in only when it is 1",
         0x3E2DD8,
         (
-            # from the instruction at RVA 0x9c923 on B1 (the load routine stores it)
+            # from the instructions at RVA 0x9c91c-0x9c923 on B1 (the load routine reads the
+            # save's 0x9402, block offset 0x9400, and stores it)
             Pattern(
-                "66 89 05 ?? ?? ?? ?? 8B 83 04 94 00 00 89 05 ?? ?? ?? ?? 66 89 2D ?? ?? ?? ??",
-                3,
+                (
+                    "0F B7 83 00 94 00 00 66 89 05 ?? ?? ?? ?? 8B 83 04 94 00 00 89 05 ?? ?? ?? ?? "
+                    "66 89 2D ?? ?? ?? ??"
+                ),
+                10,
                 "rip",
-                7,
+                14,
                 0x0,
             ),
             # from the instruction at RVA 0xa05e1 on B1 (saving copies it into the slot)
@@ -295,15 +299,15 @@ TARGETS = (
                 7,
                 0x0,
             ),
-            # from the instruction at RVA 0xf26df on B1 (a new randomizer game sets it)
+            # from the instructions at RVA 0xf130e-0xf1315 on B1 (the generator sets it to 1)
             Pattern(
                 (
-                    "66 89 05 ?? ?? ?? ?? E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B 05 ?? ?? ?? ?? "
-                    "33 D2 0F 1F 80 00 00 00 00"
+                    "B8 01 00 00 00 33 DB 66 89 05 ?? ?? ?? ?? 0F 11 05 ?? ?? ?? ?? "
+                    "0F 11 0D ?? ?? ?? ??"
                 ),
-                3,
+                10,
                 "rip",
-                7,
+                14,
                 0x0,
             ),
         ),
