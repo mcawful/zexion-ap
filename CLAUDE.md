@@ -60,7 +60,7 @@ save folders:
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
-.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for an address
+.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for data or a function
 .venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
 .venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
 .venv/Scripts/python tools/grant.py show                # the live inventory by name

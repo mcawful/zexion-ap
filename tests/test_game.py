@@ -35,6 +35,12 @@ def test_negative_displacement_and_addend() -> None:
     assert game.resolve(code_with(lea(-0x20)), 0x100, p) == 0x100 + 0x40 + 7 - 0x20 - 2
 
 
+def test_at_patterns_resolve_to_the_match_itself() -> None:
+    p = Pattern("55 48 89 E5 48 83 EC 20 89 7D FC 8B 45 FC", 0, "at", 0, addend=0)
+    code = code_with(bytes.fromhex(p.text.replace(" ", "")))
+    assert game.resolve(code, 0x3000, p) == 0x3000 + 0x40
+
+
 def test_image_base_patterns_are_refused() -> None:
     p = Pattern("43 C6 84 11 ?? ?? ?? ?? 00 C3", 4, "rva", 9, 0)
     code = code_with(b"\x43\xc6\x84\x11" + struct.pack("<i", 0x3E469D) + b"\x00\xc3")
@@ -256,11 +262,13 @@ def test_shipped_patterns_are_well_formed(target: Target) -> None:
     assert len(target.patterns) >= 2, "each target needs a second pattern to cross-check"
     if target.name == "rando_blob":  # fields deep inside it must be cross-checked by its start
         assert any(p.addend == 0 for p in target.patterns)
+    assert any(p.kind == "rip" for p in target.patterns), "a start pattern alone is not enough"
     for p in target.patterns:
         toks = p.text.split()
         assert all(t == "??" or len(t) == 2 for t in toks)
-        assert toks[p.disp_at : p.disp_at + 4] == ["??"] * 4, "the address field must be wild"
         assert sum(t != "??" for t in toks) >= 12, "too few fixed bytes to trust"
-        assert p.kind == "rip"
-        assert p.disp_at + 4 <= p.rip_end <= len(toks)
+        assert p.kind in ("rip", "at")
+        if p.kind == "rip":
+            assert toks[p.disp_at : p.disp_at + 4] == ["??"] * 4, "the address field must be wild"
+            assert p.disp_at + 4 <= p.rip_end <= len(toks)
         game.compile_pattern(p.text)
