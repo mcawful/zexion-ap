@@ -33,6 +33,7 @@ class FakeGame:
         self.blob = blob_for(p)
         self.flicker = False
         self.reads = 0
+        self.marker = 1
 
     def state(self) -> str:
         self.reads += 1
@@ -51,6 +52,9 @@ class FakeGame:
 
     def rando_blob(self) -> bytes:
         return self.blob
+
+    def rando_marker(self) -> int:
+        return self.marker
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -150,6 +154,16 @@ def test_another_seed_gets_nothing(setup) -> None:
     session, g = setup
     g.blob = blob_for(plan(start=(6, 1, 1)))
     g.collect(5)
+    assert session.step(g, [17], gap=0) == ss.Step()
+    assert g.inv[17] == 0
+
+
+def test_a_normal_save_loaded_after_this_seed_gets_nothing(setup) -> None:
+    # The game keeps the last randomizer section in memory when a normal save loads.
+    session, g = setup
+    g.marker = 0
+    g.collect(5)
+    assert session.step(g, [17], gap=0) == ss.Step()
     assert session.step(g, [17], gap=0) == ss.Step()
     assert g.inv[17] == 0
 

@@ -6,8 +6,9 @@ room (and the second teleport target in OHKO), the continue point, the revealed 
 game revealed one), and the starting items with their current energy and missiles. Everything
 else stays as the game wrote it. Offsets and their evidence are in docs/re/save-format.md; the
 item table, the start (record, continue point and revealed cell, changed together) and the
-second teleport target were each loaded in game; the starting items and current energy and
-missiles written this way have not been.
+second teleport target were each loaded in game, and a whole Standard save patched by this
+module loaded with its seed, start and starting items (docs/re/memory.md, "The client in a live
+game"; OHKO and Easy saves patched this way have not been loaded).
 
 Pure functions over bytes: the client reads and writes the file (after a backup), and the
 tests run here without the game.

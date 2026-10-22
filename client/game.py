@@ -402,6 +402,12 @@ class Game:
         """
         return struct.unpack("<H", self._read("pickup_counter", 0, 2))[0]
 
+    def rando_marker(self) -> int:
+        """1 when the loaded save is a randomizer save, 0 for a normal one. Loading a normal
+        save leaves the previous randomizer section in memory (measured), so ``rando_blob()``
+        means something only while this reads 1."""
+        return struct.unpack("<H", self._read("rando_marker", 0, 2))[0]
+
     def rando_blob(self) -> bytes:
         """The loaded save's randomizer section, as from file offset 0x12814."""
         return self._read("rando_blob", 0, RANDO_BLOB_SIZE)

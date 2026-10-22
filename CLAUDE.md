@@ -8,7 +8,7 @@ is a native x64 exe on SDL2 and FMOD, with mod folders only for sprites and tran
 The rules about evidence below exist because of that.
 
 **Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
-holds the AP client, which has run against a local AP server but not yet with the game, and
+holds the AP client, which has run a solo seed in the game with a local AP server, and
 the module that finds and accesses game state by byte pattern.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 

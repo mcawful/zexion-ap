@@ -14,9 +14,9 @@ right: an item the save lost is given again, and one the game handed out is neve
 An inventory above what the player should own is left alone.
 
 A weapon and its upgrade are one progressive item, counted as one for each byte that is set.
-The generator counts a second copy of a weapon as its upgrade (docs/re/randocells.md); that a
-pickup in play does the same is assumed. If it does not, the weapon byte reads 2 and the
-upgrade is still owed, so the client gives it.
+The game turns a second copy of a weapon into its upgrade, in the generator and in play
+(docs/re/randocells.md; seen for the Machine Gun). Should another weapon not, its byte would
+read 2 and the upgrade would still be owed, so the client would give it.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
