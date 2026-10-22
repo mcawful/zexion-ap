@@ -113,19 +113,24 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     the game shows after an empty slot is picked (`src/menu.cpp`). It reads the panel with
     fault-safe reads and checks every handler, size and pointer on the way before it
     relabels the choice and points it at the helper's own callback. RANDOMIZER is put back as
-    soon as the panel is not the one up, on `disarm`, and before an unload. The callback,
-    called by the game's widget code on its thread, sets the menu's state to the seed's mode,
-    writes the edits, runs the game's placement, checks the `expect` bytes (refusing, with
-    nothing queued, if they differ), writes the edits again, puts the player's menu state
-    back, and queues the new game in the chosen slot. Not yet run in the game.
+    soon as its menu is not the top one, on `disarm`, and before an unload, but only while
+    that menu is still open: the game frees a closed menu's widgets without clearing them, so
+    the helper then forgets the choice without writing. The callback, called by the game's
+    widget code on its thread, sets the menu's state to the seed's mode, writes the edits (for
+    the AP start), runs the game's placement, checks the `expect` bytes, puts the player's
+    menu state back, and queues the new game in the chosen slot; the watch above then writes
+    the edits over the placement in the next frame. A section of another mode, or a slot the
+    game will not start a game in, drops the plan with nothing queued, and the client arms it
+    again. Not yet run in the game.
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
-- **Unloading.** `unload` first puts RANDOMIZER back in a frame call, and refuses (`error
-  ARCHIPELAGO is still on the game's menu`) if no frame came to do it, since the menu would
-  point into the unloaded DLL. Then it points the slot back at SDL, and only if it still holds the
+- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
+  RANDOMIZER back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
+  menu`) if no frame came to do it, since the menu would point into the unloaded DLL. Then it
+  points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
-  counted inside, and unloads the DLL. A call can then be in the trampoline (which is never
+  counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
   restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
   unloads itself the same way.
