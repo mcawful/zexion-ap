@@ -7,19 +7,12 @@ is a native x64 exe on SDL2 and FMOD, with mod folders only for sprites and tran
 ([`docs/re/builds.md`](docs/re/builds.md)), so everything here comes from reverse engineering.
 The rules about evidence below exist because of that.
 
-<<<<<<< HEAD
 **Status:** Phase 1. Phase 0's go/no-go spike passed. The APWorld is in development on the
 local-only branch `apworld` (below). `client/` holds the AP client, which has run a solo seed
 in the game with a local AP server, and the module that finds and accesses game state by byte
-pattern. `native/` holds the skeleton of an in-game helper DLL, which loads, hooks the game's
-frame call and unloads in the game.
-=======
-**Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
-holds the AP client, which has run a solo seed in the game with a local AP server, and
-the module that finds and accesses game state by byte pattern. `native/` holds an in-game
-helper DLL, which loads, hooks the game's frame call and unloads in the game; its grants with
-the game's popup (helper phase 2) are tested only against a stand-in so far.
->>>>>>> helper-phase2
+pattern. `native/` holds an in-game helper DLL, which loads, hooks the game's frame call and
+unloads in the game; its grants with the game's popup (helper phase 2) are tested only against
+a stand-in so far.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -74,12 +67,8 @@ save folders:
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
-<<<<<<< HEAD
 .venv/Scripts/python tools/gen_world_data.py           # regenerate worlds/zexion/data.py
-.venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for an address
-=======
 .venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for data or a function
->>>>>>> helper-phase2
 .venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
 .venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
 .venv/Scripts/python tools/grant.py show                # the live inventory by name
