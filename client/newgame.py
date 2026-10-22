@@ -12,7 +12,7 @@ The starting items have to be expressed the way the new-game routine reads them:
 - Energy Tanks as the starting Energy amount;
 - missiles as one amount, Missile Containers + 10 x Missile Boxes, which the game splits back
   into boxes (tens) and containers, so at most 9 containers;
-- Mega Bombs and Bomb Packs likewise;
+- Mega Bombs and Bomb Boxes likewise;
 - keys as a count, the first N keys from the Alpha Key on.
 
 Anything else (filler, other key sets, more than 9 containers or Mega Bombs) cannot be

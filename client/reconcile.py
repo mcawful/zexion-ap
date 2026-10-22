@@ -128,7 +128,7 @@ class Supplies:
 def supplies_after(inventory: bytes, new: Mapping[int, int], before: Supplies) -> Supplies:
     """The supplies after the grant, by the pickup routine's rules: max missiles is Missile
     Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
-    likewise from Mega Bombs and Bomb Packs; and if Energy Tanks x 16 is above max energy,
+    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy,
     max and current energy both become it."""
 
     def count(item: int) -> int:
