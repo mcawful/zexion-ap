@@ -39,16 +39,20 @@ inline void newgame_fn() { ++g_newgames; }
 // menu functions, and START GAME's steps, which log their order and queue a new game as the
 // game's do (unless the slot is "taken").
 inline BYTE* g_current_menu = nullptr;
-inline BYTE g_randomizer_menu[0x140];
+inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
 inline void panel_handler_fn() {}
 inline void rando_menu_fn(void*, int) {}
 inline std::string g_steps;
 inline bool g_slot_taken = false;
-inline void start_choice_fn() { g_steps += "start "; }
+// The placement: reads the start, copies the menu's amounts into the section, and writes its
+// own item table for the plan to write over.
+inline uint8_t g_start_seen = 0;
 inline void placement_fn() {
     g_steps += "placement ";
-    g_section[0x310] = 0x77;  // the game's own start, for the plan to write over
+    g_start_seen = g_section[0x310];
+    std::memcpy(g_section + 0x6C0, g_randomizer_menu + 0x88, 12);
+    g_section[0x26C] = 0x77;
 }
 inline void rando_newgame_fn() {
     g_steps += "queue ";
@@ -145,7 +149,6 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"widget_handler_fn", rva(reinterpret_cast<void*>(&widget_handler_fn))},
         {"panel_handler_fn", rva(reinterpret_cast<void*>(&panel_handler_fn))},
         {"rando_menu_fn", rva(reinterpret_cast<void*>(&rando_menu_fn))},
-        {"start_choice_fn", rva(reinterpret_cast<void*>(&start_choice_fn))},
         {"placement_fn", rva(reinterpret_cast<void*>(&placement_fn))},
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
     };

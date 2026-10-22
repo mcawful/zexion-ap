@@ -14,7 +14,7 @@ const char* const kConfigKeys[] = {
     "rando_blob",    "rando_marker",  "transition_fn", "transition_timer", "current_slot",
     "newgame_fn",
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
-    "start_choice_fn", "placement_fn", "rando_newgame_fn",
+    "placement_fn",  "rando_newgame_fn",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -86,8 +86,8 @@ bool is_function(const std::string& key) {
     static const char* const functions[] = {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
-        "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "start_choice_fn",
-        "placement_fn", "rando_newgame_fn",
+        "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
+        "rando_newgame_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -273,7 +273,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     menu_.widget_handler = found["widget_handler_fn"];
     menu_.rando_menu = found["rando_menu_fn"];
     randomizer_menu_ = found["randomizer_menu"];
-    start_choice_fn_ = found["start_choice_fn"];
     placement_fn_ = found["placement_fn"];
     rando_newgame_fn_ = found["rando_newgame_fn"];
     configured_ = true;
@@ -431,25 +430,57 @@ void Game::restore_menu(WidgetCallback callback) {
 }
 
 void Game::start_archipelago(WidgetCallback callback) {
-    // The game calls the choice's callback once per press; a second press while the new game
-    // is queued, or a press after the plan was dropped, does nothing.
+    // The game calls the choice's callback once per press; a press after the plan was dropped,
+    // or while a new game is queued, does nothing.
     if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
     if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
     starting_ = true;
+    choice_.restore(menu_, callback);
+    // The menu's state is the player's own (the game keeps it in its preferences): set to the
+    // seed's mode for the placement, then put back.
+    BYTE saved[kMenuSize];
+    std::memcpy(saved, randomizer_menu_, kMenuSize);
     for (const SectionBytes& e : newgame_.menu) {
         std::memcpy(randomizer_menu_ + e.offset, e.bytes.data(), e.bytes.size());
     }
-    // START GAME's own steps, without its winnability check (the AP generator made the seed
-    // beatable): the start and settings, the placement, then the new game queued in the
-    // chosen slot. watch_newgame writes the AP seed over the placement before it is built.
-    reinterpret_cast<void (*)()>(start_choice_fn_)();
+    // START GAME's first step would pick a start; the placement reads the AP seed's instead,
+    // so the plan goes in first. Then the placement, which builds the rest of the section from
+    // the menu (the location list, the settings, the map tables); START GAME's winnability
+    // check is skipped, since the AP generator made the seed beatable.
+    for (const SectionBytes& e : newgame_.write) {
+        std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+    }
     reinterpret_cast<void (*)()>(placement_fn_)();
+    std::string refused;
+    for (const SectionBytes& e : newgame_.expect) {
+        if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
+            char where[16];
+            std::snprintf(where, sizeof(where), "0x%X", e.offset);
+            refused = std::string("refused the placement is not the seed's mode (section +") +
+                      where + " differs)";
+            break;
+        }
+    }
+    if (refused.empty()) {
+        for (const SectionBytes& e : newgame_.write) {
+            std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
+        }
+    }
+    std::memcpy(randomizer_menu_, saved, kMenuSize);
+    if (!refused.empty()) {
+        newgame_status_ = refused;
+        disarm_newgame();
+        return;
+    }
+    // The new game in the chosen slot, as the play-anyway path queues it.
     reinterpret_cast<void (*)()>(rando_newgame_fn_)();
-    choice_.restore(menu_, callback);
     if (at<void*>(transition_fn_, 0) != newgame_fn_) {
         newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
         starting_ = false;
+        return;
     }
+    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
+    disarm_newgame();
 }
 
 }  // namespace zap

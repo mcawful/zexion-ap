@@ -981,32 +981,6 @@ TARGETS = (
         ),
     ),
     Target(
-        "start_choice_fn",
-        "START GAME's first step: copies the settings and picks the start",
-        0xF2F30,
-        (
-            # from the call at RVA 0xf62e5 on B1 (START GAME)
-            Pattern(
-                (
-                    "E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 ?? ?? ?? ?? 48 63 "
-                    "05 ?? ?? ?? ?? 48 69 F8 08 94 00 00"
-                ),
-                1,
-                "rip",
-                5,
-                0x0,
-            ),
-            # from the function's start on B1
-            Pattern(
-                "48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 D8 FE FF FF",
-                0,
-                "at",
-                0,
-                0x0,
-            ),
-        ),
-    ),
-    Target(
         "placement_fn",
         "the randomizer's placement: the item table, starting items and amounts",
         0xF11A0,

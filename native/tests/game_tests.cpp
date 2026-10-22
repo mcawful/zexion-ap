@@ -297,10 +297,12 @@ void test_archipelago_choice() {
     reset_game();
     std::memset(g_section, 0, sizeof(g_section));
     std::memset(g_randomizer_menu, 0, sizeof(g_randomizer_menu));
+    g_randomizer_menu[0x88] = 5;  // the player's own menu: Easy's starting Energy
     g_steps.clear();
     g_transition_fn = nullptr;
     g_rando_marker = 0;
     g_slot_taken = false;
+    g_current_slot = 2;
     stand_in::ModePanel panel(reinterpret_cast<void*>(&panel_handler_fn),
                               reinterpret_cast<void*>(&widget_handler_fn),
                               reinterpret_cast<void*>(&rando_menu_fn));
@@ -314,30 +316,50 @@ void test_archipelago_choice() {
     check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
           "a plan without menu lines offers no ARCHIPELAGO");
 
+    // The seed's mode starts with 3 Energy: the menu line sets it, the placement copies it.
+    const char* request =
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0300";
     zap::NewGamePlan plan;
-    check(zap::parse_newgame("ap_newgame\nexpect 0x10 00\nwrite 0x310 110022\nmenu 0xCA 02",
-                             plan)
-              .empty(),
-          "parses menu lines");
+    check(zap::parse_newgame(request, plan).empty(), "parses menu lines");
     game.arm_newgame(plan);
     game.watch_menu(&chosen);
     check(game.menu_installed() && panel.text() == "ARCHIPELAGO", "offers ARCHIPELAGO");
     press();
-    check(g_randomizer_menu[0xCA] == 2, "the menu's state is set to the seed's mode");
-    check(g_steps == "start placement queue ", "START GAME's steps, in order");
+    check(g_steps == "placement queue ", "the placement, then the new game queued");
+    check(g_start_seen == 0x11, "the placement saw the AP seed's start");
+    check(g_section[0x26C] == 0x2E && g_section[0x26D] == 0x1B,
+          "the AP item table is written over the placement");
+    check(g_section[0x6C0] == 3, "the section is the seed's mode");
+    check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
+    check(game.newgame_status() == "applied slot 3", "reported with the slot");
     check(panel.text() == "RANDOMIZER " && panel.callback() == &rando_menu_fn,
-          "RANDOMIZER is back once the new game is queued");
+          "RANDOMIZER is back");
     chosen(panel.child, 7);
-    check(g_steps == "start placement queue ", "a second press does nothing");
+    check(g_steps == "placement queue ", "a second press does nothing");
     game.watch_menu(&chosen);
-    check(!game.menu_installed(), "not offered again while the new game is queued");
+    check(!game.menu_installed(), "the plan is used up");
+    std::memset(g_section, 0, 0x300);
     game.watch_newgame();
-    check(g_section[0x310] == 0x11 && g_section[0x312] == 0x22,
-          "the AP seed is written over the placement");
-    check(game.newgame_status().rfind("applied", 0) == 0, "and reported");
+    check(g_section[0x26C] == 0, "the queued new game is not written again");
 
+    // Another mode: the placement's amounts are not the seed's. Nothing is queued.
     g_steps.clear();
     g_transition_fn = nullptr;
+    zap::NewGamePlan other;
+    zap::parse_newgame(
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0500",
+        other);
+    game.arm_newgame(other);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps == "placement ", "another mode: no new game queued");
+    check(game.newgame_status().rfind("refused the placement", 0) == 0, "and reported");
+    check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
+    game.watch_menu(&chosen);
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER ", "and the plan dropped");
+
+    // A slot the game will not start a new game in.
+    g_steps.clear();
     g_slot_taken = true;
     game.arm_newgame(plan);
     game.watch_menu(&chosen);

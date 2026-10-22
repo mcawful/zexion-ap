@@ -55,7 +55,6 @@ CONFIG_KEYS = (
     "widget_handler_fn",
     "panel_handler_fn",
     "rando_menu_fn",
-    "start_choice_fn",
     "placement_fn",
     "rando_newgame_fn",
 )

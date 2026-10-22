@@ -57,7 +57,7 @@ struct NewGamePlan {
 };
 
 constexpr size_t kSectionSize = 0x908;
-constexpr size_t kMenuSize = 0x140;  // the randomizer menu's state, through its settings
+constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
 
 // "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
 // "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
@@ -114,8 +114,9 @@ public:
     bool menu_installed() const { return choice_.installed(); }
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
-    // mode, runs START GAME's steps without the winnability check, and queues the new game,
-    // which watch_newgame then writes the AP seed into.
+    // mode, writes the plan, runs the game's placement, checks the section is the seed's mode
+    // and writes the plan again over the placement, puts the menu's state back, and queues the
+    // new game in the chosen slot. Reports "applied slot N" or "refused ...".
     void start_archipelago(WidgetCallback callback);
 
 private:
@@ -157,7 +158,6 @@ private:
     MenuAddresses menu_;
     ArchipelagoChoice choice_;
     BYTE* randomizer_menu_ = nullptr;
-    void* start_choice_fn_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;
     bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
