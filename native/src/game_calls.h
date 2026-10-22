@@ -115,10 +115,10 @@ public:
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
     // mode, writes the plan (for the AP start), runs the game's placement, checks the section
-    // is the seed's mode, puts the menu's state back, and queues the new game in the chosen
-    // slot; watch_newgame then writes the plan over the placement in the next frame and
-    // reports "applied slot N". A section of another mode, or a slot the game will not start
-    // a game in, drops the plan with "refused ..." and nothing queued.
+    // is the seed's mode, writes the plan over the placement, puts the menu's state back, and
+    // queues the new game in the chosen slot; watch_newgame reports "applied slot N" in the
+    // next frame. A section of another mode, or a slot the game will not start a game in,
+    // drops the plan with "refused ..." and nothing queued.
     void start_archipelago(WidgetCallback callback);
 
 private:
