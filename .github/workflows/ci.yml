@@ -31,3 +31,24 @@ jobs:
         run: ruff check .
       - name: pytest
         run: python -m pytest
+
+  native:
+    name: native helper (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cmake -S native -B native/build -A x64
+          cmake --build native/build --config Release
+      - name: Native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      # The helper loaded into a stand-in process: tests/test_native.py skips this without a build.
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Install
+        run: uv pip install -r requirements-dev.txt
+      - name: Load test
+        run: python -m pytest tests/test_native.py -v

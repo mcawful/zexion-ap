@@ -9,7 +9,8 @@ The rules about evidence below exist because of that.
 
 **Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
 holds the AP client, which has run a solo seed in the game with a local AP server, and
-the module that finds and accesses game state by byte pattern.
+the module that finds and accesses game state by byte pattern. `native/` holds the skeleton of
+an in-game helper DLL, which loads, hooks the game's frame call and unloads in the game.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -29,7 +30,7 @@ python -m uv pip install --python .venv -r requirements-dev.txt
 `tools/ap_checkout.py` clones AP, installs its requirements (including each world's) through
 AP's `ModuleUpdate`, and links `worlds/zexion/` into the checkout once that folder exists.
 
-Checks. CI runs these three; `/preflight` runs them too:
+Checks. CI's Python jobs run these three; `/preflight` runs them too:
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -38,6 +39,17 @@ Checks. CI runs these three; `/preflight` runs them too:
 ```
 
 AP's world tests join this list when `worlds/zexion/` exists.
+
+The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job
+builds it and runs these on Windows (the tests include 300 loads and unloads of a test build
+while the function it hooks is called nonstop), then `tests/test_native.py` loads it into a
+stand-in process; without a build, that test skips:
+
+```sh
+cmake -S native -B native/build -A x64
+cmake --build native/build --config Release
+ctest --test-dir native/build -C Release --output-on-failure
+```
 
 Reverse-engineering tools. These and the client are the only code allowed to open the game or
 save folders:
@@ -54,6 +66,9 @@ save folders:
 .venv/Scripts/python tools/grant.py show                # the live inventory by name
 .venv/Scripts/python tools/grant.py set ITEM VALUE --expect N --yes   # grant by hand; ask first
 .venv/Scripts/python tools/grant.py watch               # print inventory changes as they happen
+.venv/Scripts/python tools/helper.py status            # is the native helper loaded; its frame rate
+.venv/Scripts/python tools/helper.py load --yes        # load it into the running game; ask first
+.venv/Scripts/python tools/helper.py unload --yes      # unhook and unload it; ask first
 ```
 
 `grant.py set` changes the running game: ask before each one, only while the person playing is
@@ -61,6 +76,9 @@ standing still in play (it refuses unless `Game.settled_state()` reads in play),
 logs every attempt to `lab/grants.jsonl` before writing. It writes the inventory byte only;
 Energy Tanks, Missile Containers and Mega Bombs also need the player-state fields in
 `docs/re/memory.md` ("Granting each kind of item").
+
+`helper.py load` and `unload` change the running game too: ask before each one. They log to
+`lab/helper.jsonl`, and `load` refuses a build `client/game.py` does not know.
 
 The client. It needs Archipelago from `.ap/` with the world installed there (AP will not connect
 a client whose game it does not know):
@@ -91,7 +109,10 @@ Nothing in `tests/` needs the game, and CI never runs it.
   player should own minus what the inventory holds), `save_patch.py` and `prepare.py` (writing
   a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
-  menu, dead or no save loaded).
+  menu, dead or no save loaded). `native.py` loads the native helper and talks to it.
+- `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
+  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 1: it counts
+  frames and does nothing else yet.
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
@@ -154,5 +175,5 @@ Committed under `.claude/`, so they apply to anyone working here:
   evidence.
 - `docs-reviewer` subagent: documentation the change made wrong, or behavior nothing describes.
 - `logic-reviewer` subagent: APWorld rules not backed by `docs/re/locations.md`, and soft-locks.
-- `re-auditor` subagent: client and tool diffs with hard-coded addresses, unchecked reads, or
-  ways to double-deliver or lose an item.
+- `re-auditor` subagent: client, tool and native-helper diffs with hard-coded addresses,
+  unchecked reads, unsafe hooks, or ways to double-deliver or lose an item.
