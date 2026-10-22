@@ -4,17 +4,19 @@
 on the game's own thread, between frames. `tools/helper.py` loads it through
 `client/native.py`; the AP client does not use it yet.
 
-**Status:** helper phase 1, the skeleton. It has been loaded into test processes only, never
-into the game:
+**Status:** helper phase 1, the skeleton. **Working in game** (build B1, 2026-10-22): loaded
+into the running game with slot 7 in play, it reported `build=B1 hooked=1`, counted 166 frame
+calls a second on a 165 Hz monitor, unloaded with the game still in play, loaded again and
+unloaded again; the owner noticed no stutter or hitch. Before that, in test processes:
 
 - A stand-in Python process (`tests/test_native.py`): it loads, answers on its pipe and
   unloads, and hooks nothing there, since that process is no known build.
 - A test build, `zexion_ap_hooktest.dll`, that hooks the loading program's own `GetTickCount`
-  import (`tests/unload_test.cpp`; it refuses to hook anything in a known game build): it hooks, counts calls, and survives 300 loads and unloads
-  in CI (3,000 locally) while two threads call the hooked function nonstop.
+  import (`tests/unload_test.cpp`; it refuses to hook anything in a known game build): it
+  hooks, counts calls, and survives 300 loads and unloads in CI (3,000 locally) while two
+  threads call the hooked function nonstop.
 
-Hooking the game's frame call and counting its frames has not run. It changes nothing in the
-game's state.
+It changes nothing in the game's state yet: it only counts frames.
 
 ## How it works
 
@@ -24,9 +26,9 @@ game's state.
 - **Which game.** It reads the game's PE header and hooks nothing unless the build is one it
   knows (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`).
 - **The frame call.** The game imports `SDL_GL_SwapWindow` by name and calls it only through
-  its import-table slot, from code its main loop runs (measured offline; that this happens
-  once per frame on the game's main thread is assumed: `docs/re/memory.md`, "The per-frame
-  call"). `tools/helper.py status` will measure the rate.
+  its import-table slot, from code its main loop runs, once per frame (166 calls a second on
+  a 165 Hz monitor), on the game's main thread (inferred: the game starts no threads of its
+  own); `docs/re/memory.md`, "The per-frame call".
   - The helper finds that slot by name (`src/iat.cpp`).
   - It points the slot at a small trampoline: a few bytes of code in memory that is never
     freed. The trampoline counts the call, runs the helper's frame function, which then calls

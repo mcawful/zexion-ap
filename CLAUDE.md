@@ -10,7 +10,7 @@ The rules about evidence below exist because of that.
 **Status:** Phase 1. Phase 0's go/no-go spike passed. There is no APWorld yet. `client/`
 holds the AP client, which has run a solo seed in the game with a local AP server, and
 the module that finds and accesses game state by byte pattern. `native/` holds the skeleton of
-an in-game helper DLL, loaded so far only into test processes, never into the game.
+an in-game helper DLL, which loads, hooks the game's frame call and unloads in the game.
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -111,8 +111,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
-  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 1, not yet
-  loaded into the game.
+  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 1: it counts
+  frames and does nothing else yet.
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
