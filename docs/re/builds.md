@@ -18,6 +18,7 @@ Measured 2026-10-20 with `tools/build_id.py`, on the Steam install that was curr
   - `Files/MapData`: `79a0510f4dbbee0f` (4,590,805 bytes)
   - `Files/Objects`: `72ea406ad4ff9b37` (6,128 bytes)
   - `Files/AreaEvents`: `bb8946fd16dd10ad` (152,802 bytes)
+  - `Files/Enemies`: `8e41d2ef5665ceae` (2,686,584 bytes; added to `tools/build_id.py` on 2026-10-22, read from the same install)
   - `Files/Flags`: `e9882b596fc69a59` (8 bytes)
   - `Files/Text`: `3bf8cd5e07ede18f` (114,050 bytes)
 

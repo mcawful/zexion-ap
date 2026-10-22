@@ -148,6 +148,30 @@ def test_plan_from_slot_data() -> None:
     assert sp.plan_from_slot_data({**slot, "second_start": None}).second_start is None
 
 
+def test_key_markers_follow_the_seed() -> None:
+    save = fresh()
+    cells = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]
+    for i, (x, y) in enumerate(cells):
+        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    save[sp.KEY_MARKERS : sp.KEY_MARKERS + 8] = bytes([1, 2, 3, 4, 5, 6, 7, 8])  # the old seed's
+    items = [46] * sp.LOCATIONS
+    items[60] = 27  # Alpha here, Beta in another world, Gamma here, Omega owned from the start
+    items[100] = 29
+    items[120] = 30
+    out = sp.patch(bytes(save), plan(location_items=tuple(items), start_items={30: 1}))
+    alpha, gamma = cells[60], cells[100]
+    assert list(out[sp.KEY_MARKERS : sp.KEY_MARKERS + 8]) == [
+        alpha[1],
+        alpha[0],
+        0xFF,
+        0xFF,
+        gamma[1],
+        gamma[0],
+        0xFF,
+        0xFF,
+    ]
+
+
 def test_starting_bombs_are_refused() -> None:
     with pytest.raises(sp.PatchError, match=r"\[2, 37\]"):
         sp.patch(bytes(fresh()), plan(start_items={2: 1, 37: 1}))
