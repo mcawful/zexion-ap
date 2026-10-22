@@ -121,7 +121,9 @@ queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host
     over the placement, puts the player's menu state back, and queues the new game in the
     chosen slot; the watch above reports it in the next frame. A section of another mode, or a slot the
     game will not start a game in, drops the plan with nothing queued, and the client arms it
-    again. Not yet run in the game.
+    again. Working in game for a Standard seed (2026-10-22): ARCHIPELAGO started the AP
+    seed in an empty slot, showed again after backing out of two slots, and RANDOMIZER
+    came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
@@ -157,8 +159,8 @@ the ARCHIPELAGO choice on a stand-in panel), and runs
 
 1. **Helper phase 2, left over:** receive a key through the helper at a gate (keys granted by
    byte alone opened one).
-2. **Helper phase 3, left over:** run ARCHIPELAGO in the game; OHKO (Double Teleport) from
-   ARCHIPELAGO, which needs the start table the randomizer menu builds when it opens.
+2. **Helper phase 3, left over:** an Easy seed from ARCHIPELAGO; OHKO (Double Teleport)
+   from ARCHIPELAGO, which needs the start table the randomizer menu builds when it opens.
 3. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work

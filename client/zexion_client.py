@@ -15,7 +15,8 @@ Once connected:
   Zexion is grabbed in the core.
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
-  ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed. For a seed whose mode
+  ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
+  2026-10-22 with a Standard seed). For a seed whose mode
   the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
   seed's mode gets the AP seed written in as the game builds it. A seed whose starting items a
   new game cannot hold falls back to /prepare.
