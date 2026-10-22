@@ -1,10 +1,13 @@
 # The native helper
 
 `zexion_ap.dll` runs inside Zexion and gives the client what can't be done from outside: work
-on the game's own thread, between frames. `tools/helper.py` loads it through
-`client/native.py`; the AP client does not use it yet.
+on the game's own thread, between frames. The AP client loads it when it attaches to the game
+(`client/native.py`, unless started with `--no-helper`) and sends received items through it;
+`tools/helper.py` loads and unloads it for tests.
 
-**Status:** helper phase 1, the skeleton. **Working in game** (build B1, 2026-10-22): loaded
+**Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is built and
+tested against a stand-in game in test programs (below), **not yet run in the game**. Helper
+phase 1 is **working in game** (build B1, 2026-10-22): loaded
 into the running game with slot 7 in play, it reported `build=B1 hooked=1`, counted 166 frame
 calls a second on a 165 Hz monitor, unloaded with the game still in play, loaded again and
 unloaded again; the owner noticed no stutter or hitch. Before that, in test processes:
@@ -16,7 +19,10 @@ unloaded again; the owner noticed no stutter or hitch. Before that, in test proc
   hooks, counts calls, and survives 300 loads and unloads in CI (3,000 locally) while two
   threads call the hooked function nonstop.
 
-It changes nothing in the game's state yet: it only counts frames.
+Phase 2's native tests run against a stand-in game: the test program's own data and functions,
+laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
+game. `tests/game_tests.cpp` covers the request parsers, configuring, applying and the popup
+queue; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -44,10 +50,40 @@ It changes nothing in the game's state yet: it only counts frames.
     user, and checks that the process serving it is the game.
   - Requests longer than 64 KB drop the connection.
   - Requests:
-    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1>`
+    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1>`
     - `ping` → `pong frames=<calls since load>`
+    - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
+      (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
+      inside the game's image, functions in its code and data outside it, or the whole
+      configuration is refused.
+    - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
+      - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
+      - `refresh`;
+      - `popup ITEM SUFFIX`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
+- **Grants, in the frame call.** `config` and `apply` are handed to the game's thread through
+  a one-slot mailbox (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
+  within a second (the game paused in the background, say), it is withdrawn, the reply is
+  `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
+  1. Refuses unless the game is in play: a save loaded, no menu, energy above 0.
+  2. Checks every `cas`, and writes all of them or, if any byte differs, none.
+  3. Sets max and current missiles and bombs from the counts, and on a new Energy Tank sets max
+     and current energy, as the pickup routine does.
+  4. Refreshes the HUD the way the game does after loading a save. This updates the missile
+     number, shows the Mega Bomb icon and redraws the energy tanks, and redraws the weapon
+     strip only while it shows.
+  5. Sets the suit's color if Magnus Armor was just gained.
+  6. Queues the popups.
+
+  It leaves out what only a real pickup should do: the map cell, the pickup counter, the
+  major-item list, achievements, switching to a new weapon, and a key's area event (not
+  traced: `docs/re/memory.md`, "Game functions the helper calls").
+- **Popups.** One at a time, in a frame call, once the game's last popup has ended:
+  - The text is the item's icon and name from the game's own item record, then the client's
+    suffix (`FROM ALICE`), with any character the game's font does not draw left out.
+  - Each popup plays the item's own pickup sound at the player.
+  - A popup the game cannot take yet (all four message slots busy) stays queued.
 - **Unloading.** `unload` points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
@@ -75,9 +111,11 @@ against the build on Windows.
 
 ## Planned
 
-1. **Helper phase 2:** grants applied in the frame function, and the game's own popup, sound
-   and HUD refresh for received items. The frame function must never wait on anything the pipe
-   thread can hold while that thread waits for a client.
+1. **Helper phase 2, to finish:** a live test in the game, then whether a received key opens
+   its gate.
 2. **Helper phase 3:** a new game from the AP seed, written in after the game's generator runs at
    START GAME, replacing `/prepare`.
 3. **Helper phase 4:** icons for other games' items.
+
+The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
+with one atomic exchange, and only one thread at a time does the work.
