@@ -18,7 +18,7 @@ constexpr ptrdiff_t kRow = 0x3AC, kColumn = 0x3AD;
 constexpr ptrdiff_t kFrameSize = 0x38;          // one entry of a sprite set's frame list
 constexpr ptrdiff_t kItemTemplate = 34 * 8;     // the item sprites' template: definition 34
 constexpr int kStandInPalette = 8;              // Scrap Energy's and Scrap Chunk's
-constexpr int kPalettes = 64;                   // records use 0 to 59
+constexpr int kPalettes = 65;  // the table's filled entries in a live B1 game, 0 to 64
 // Item records: the in-world frame, ticks per frame, frame count, palette.
 constexpr ptrdiff_t kRecordSize = 100, kRecFrame = 0x02, kRecTicks = 0x04, kRecFrames = 0x06;
 constexpr ptrdiff_t kRecPalette = 0x09;
@@ -52,17 +52,17 @@ bool ItemLooks::dressed() const {
 
 void ItemLooks::undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette) {
     Dressed& d = dressed_[slot];
-    // Only the spawn this helper dressed, still a stand-in, still with the base it was given.
-    if (field<int32_t>(object, kSpawn) == d.spawn && d.spawn != 0 &&
-        (field<int16_t>(object, kRecord) == kStandInItem ||
-         field<int16_t>(object, kRecord) == kStandInProgression) &&
-        field<BYTE*>(object, kFrameBase) == d.base && base != nullptr &&
-        standin_palette != nullptr) {
-        std::memcpy(object + kFrameBase, &base, sizeof(base));
-        std::memcpy(object + kPalettePtr, &standin_palette, sizeof(standin_palette));
-        int16_t number = kStandInPalette;
-        std::memcpy(object + kPaletteNumber, &number, sizeof(number));
+    if (d.spawn == 0) return;
+    BYTE* now_base = field<BYTE*>(object, kFrameBase);
+    if (field<int32_t>(object, kSpawn) != d.spawn || (now_base != d.base && now_base != base)) {
+        d = {};  // another spawn, or a base not ours: nothing of ours to put back
+        return;
     }
+    if (base == nullptr || standin_palette == nullptr) return;  // kept: unload waits
+    std::memcpy(object + kFrameBase, &base, sizeof(base));
+    std::memcpy(object + kPalettePtr, &standin_palette, sizeof(standin_palette));
+    int16_t number = kStandInPalette;
+    std::memcpy(object + kPaletteNumber, &number, sizeof(number));
     d = {};
 }
 
@@ -80,18 +80,30 @@ void ItemLooks::apply(const Places& at) {
         !safe_read(at.frame_clock, &clock, sizeof(clock)) || clock < 0) {
         return;
     }
-    std::vector<BYTE> pool(kSlotSize * kSlots);
-    if (!safe_read(at.pool, pool.data(), pool.size())) return;
+    if (items_.empty() && !dressed()) return;  // nothing to show, nothing to put back
+    pool_.resize(kSlotSize * kSlots);
+    if (!safe_read(at.pool, pool_.data(), pool_.size())) return;
+    // The stand-ins' records as they are now: an object is dressed only while its record shows
+    // the one logo frame the shift is worked out from (restyled by apitem.h), so the game's
+    // frame plus the shift always stays in the frame list.
+    auto restyled = [&](int record) {
+        BYTE r[kRecordSize];
+        return safe_read(records + record * kRecordSize, r, sizeof(r)) &&
+               field<int16_t>(r, kRecFrame) == logo_frame(record) &&
+               field<int16_t>(r, kRecFrames) == 1;
+    };
+    bool ours[2] = {restyled(kStandInItem), restyled(kStandInProgression)};
     for (int slot = 0; slot < kSlots; ++slot) {
-        const BYTE* seen = pool.data() + slot * kSlotSize;
+        const BYTE* seen = pool_.data() + slot * kSlotSize;
         BYTE* object = at.pool + slot * kSlotSize;
         Dressed& d = dressed_[slot];
         int32_t spawn = field<int32_t>(seen, kSpawn);
         int16_t record = field<int16_t>(seen, kRecord);
         bool stand_in = record == kStandInItem || record == kStandInProgression;
-        if (spawn == 0 || !stand_in || (d.spawn != 0 && d.spawn != spawn)) {
-            d = {};  // gone, or another object now: nothing of ours to put back
-            if (spawn == 0 || !stand_in) continue;
+        if (d.spawn != 0 && d.spawn != spawn) d = {};  // another object now: none of ours
+        if (spawn == 0 || !stand_in || !ours[record == kStandInProgression ? 1 : 0]) {
+            undress(object, slot, base, standin_palette);  // put back while still ours
+            continue;
         }
         uint8_t row = seen[kRow], column = seen[kColumn];
         auto it = row < 54 && column < 54 ? items_.find(row * 54 + column) : items_.end();
@@ -102,8 +114,10 @@ void ItemLooks::apply(const Places& at) {
         // An object this helper has not dressed must still have the template's base and the
         // stand-ins' palette; one it dressed, the base it was given.
         BYTE* now_base = field<BYTE*>(seen, kFrameBase);
+        // Not dressed: it must hold the template's base and the stand-ins' palette. Dressed (this
+        // spawn): the base it was given, or the template's if the game set it back.
         if (d.spawn == 0 ? (now_base != base || field<BYTE*>(seen, kPalettePtr) != standin_palette)
-                         : now_base != d.base) {
+                         : (now_base != d.base && now_base != base)) {
             continue;
         }
         BYTE record_bytes[kRecordSize];

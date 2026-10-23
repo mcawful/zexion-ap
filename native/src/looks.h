@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <map>
+#include <vector>
 
 namespace zap {
 
@@ -45,10 +46,13 @@ private:
         int32_t spawn = 0;  // the object's +0x1D8 when dressed; 0 for none
         BYTE* base = nullptr;  // the frame-list base it was given
     };
+    // Puts the object back if it is still the spawn this helper dressed with the base it gave
+    // it; forgets it only if put back, or if it is no longer that spawn.
     void undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};
+    std::vector<BYTE> pool_;  // this frame's copy of the pool
 };
 
 }  // namespace zap
