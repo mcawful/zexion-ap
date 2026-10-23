@@ -60,6 +60,7 @@ class ApItems {
 public:
     // Game thread. The labels by map cell (index y * 54 + x), already filtered to the font.
     void set_labels(std::map<int, std::string> labels);
+    const std::map<int, std::string>& labels() const { return labels_; }
     bool active() const { return !labels_.empty(); }
 
     // Game thread, every frame while active: restyles the record if it reads as the game's own

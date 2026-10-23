@@ -642,6 +642,42 @@ void test_pickup_popup_width() {
     set_code_byte(0xBA);
 }
 
+void test_zexion_item_labels() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    std::map<int, zap::Label> labels;
+    // "@36" (the Missile Box) for ZEXION2 at (5, 2); "@47" (Scrap Energy) at (6, 2).
+    check(zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                            "label 6 2 4034370a464f52205a4558494f4e32\n"
+                            "label 7 2 4033370a464f52205a4558494f4e32",
+                            labels)
+              .empty(),
+          "item labels parse");
+    check(labels[2 * 54 + 5].item == 36 && labels[2 * 54 + 5].who == "FOR ZEXION2",
+          "the item and whom it is for");
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    std::string name(reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A));
+    check(name == "\xC5MISSILE BOX" "FOR ZEXION2",
+          "named from the item's record: its icon and the game's name, then whom it is for");
+    check(popup_width_in_code() == 12, "the box as wide as the item's line");
+    field<uint8_t>(0x107B) = 6;
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == "\xEE" "SCRAP ENERGY FOR ZEXION2",
+          "a stand-in item of theirs takes the stand-in's own name and the logo glyph");
+    field<uint8_t>(0x107B) = 7;  // item 37, whose record holds no name here
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == " \xEE" "AP ITEM" "  FOR ZEXION2", "a record with no name: AP ITEM");
+    game.restore_ap_items();
+}
+
 void test_popup_text_breaks_before_the_sender() {
     int width = 0;
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
@@ -667,6 +703,7 @@ int main() {
     test_popups();
     test_popup_text_breaks_before_the_sender();
     test_pickup_popup_width();
+    test_zexion_item_labels();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();

@@ -84,7 +84,16 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out);
 struct Label {
     std::string name;
     int width = 0;
+    // For another Zexion player's item: the item's record, whose icon and name the first line
+    // is made of once the records are loaded (until then the name says AP ITEM), and the
+    // second line.
+    int item = -1;
+    std::string who;
 };
+
+// A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in
+// the longer, which is the width.
+Label layout_label(const std::string& first, const std::string& who);
 
 // Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
 std::vector<std::string> wrap_words(const std::string& text, size_t width);
@@ -241,6 +250,8 @@ private:
     BYTE* popup_width_code_ = nullptr;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
+    std::map<int, Label> item_labels_;  // labels still to be made from an item's record
+    void resolve_item_labels();
     void set_popup_width(int width);
     GlFunctions gl_;
     int skip_frames_ = 0;  // frames until the next escape-skip check

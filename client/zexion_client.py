@@ -28,9 +28,9 @@ Once connected:
   stand-ins ("stand_in": 47, and "stand_in_progression": 48 for progression items), the
   client also asks the server what each location holding one holds and sends the helper a
   label per map cell (client/aplabels.py): the item shows an Archipelago logo (with its up
-  arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" over "FOR
-  ALICE" (working in the game, 2026-10-23, then with the item's own name). A refusal (no
-  frame yet) is retried; on disconnect the labels are taken back.
+  arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" (another
+  Zexion player's item: its own icon and name) over "FOR ALICE" (working in the game,
+  2026-10-23). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -288,9 +288,14 @@ async def labels_tick(ctx: ZexionContext) -> None:
         return  # the server has not answered yet
     labels = {}
     for i, info in zip(ctx.foreign, infos, strict=True):
-        progression = bool(info.flags & ItemClassification.progression)
         player = ctx.player_names.get(info.player, "")
-        labels[tuple(ctx.session.cells[i])] = aplabels.label(progression, player)
+        slot = ctx.slot_info.get(info.player)
+        code = info.item - ITEM_ID_BASE
+        if slot is not None and slot.game == GAME and 0 <= code <= 50:
+            text = aplabels.zexion_label(code, player)  # another Zexion player's own item
+        else:
+            text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
+        labels[tuple(ctx.session.cells[i])] = text
     connection = ctx.connection
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
     if connection != ctx.connection or helper is not ctx.helper:

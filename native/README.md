@@ -88,7 +88,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
         with Double Teleport.
     - `ap_labels` and then lines `label X Y HEX` → `labeled N`, or `refused not configured`
       or `refused no frame`: names for other players' items, by map cell (below); HEX is the
-      item and whom it is for, joined by a newline.
+      item and whom it is for, joined by a newline, or `@N` and whom it is for, for another
+      Zexion player's item N, which the helper names from that item's record (its icon and
+      the game's name) once the records are loaded.
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).

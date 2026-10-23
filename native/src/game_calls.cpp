@@ -666,6 +666,19 @@ void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
 }
 
+Label layout_label(const std::string& first, const std::string& who) {
+    std::vector<std::string> shown{first};
+    if (!who.empty()) shown.push_back(who);
+    size_t widest = 0;
+    for (const std::string& part : shown) widest = (std::max)(widest, part.size());
+    Label label;
+    label.width = (std::min)(static_cast<int>(widest), kPopupPerLine);
+    label.name = center_lines(shown, label.width);
+    if (label.name.size() > kItemNameMax) label.name.resize(kItemNameMax);
+    while (!label.name.empty() && label.name.back() == ' ') label.name.pop_back();
+    return label;
+}
+
 std::string parse_labels(const std::string& request, std::map<int, Label>& out) {
     std::istringstream lines(request);
     std::string line;
@@ -681,9 +694,22 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             return "bad line " + line;
         }
         // Up to two lines (the item, then whom it is for), each kept to the font's characters
-        // and to its line: the first after the logo glyph.
+        // and to its line: the first after the logo glyph. A first line "@N" names item N of
+        // another Zexion player, made from its record later (Game::set_labels).
         std::vector<std::string> parts{std::string()};
-        for (uint8_t c : raw) {
+        int item = -1;
+        size_t at = 0;
+        if (!raw.empty() && raw[0] == '@') {
+            int n = 0;
+            size_t i = 1;
+            while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
+            if (i > 1 && n < 51 && (i == raw.size() || raw[i] == '\n')) {
+                item = n;
+                at = i;
+            }
+        }
+        for (size_t k = at; k < raw.size(); ++k) {
+            uint8_t c = raw[k];
             if (c == '\n') {
                 if (parts.size() == 2) break;
                 parts.emplace_back();
@@ -697,22 +723,25 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
                 part += static_cast<char>(c);
             }
         }
-        std::vector<std::string> shown;
-        for (size_t i = 0; i < parts.size(); ++i) {
-            size_t width = static_cast<size_t>(kPopupPerLine) - (i == 0 ? 1 : 0);
-            std::vector<std::string> wrapped = wrap_words(parts[i], width);
-            std::string text = wrapped.empty() ? std::string() : wrapped.front();
-            if (i == 0 && text.empty()) text = kApItemName;
-            if (i == 0) text.insert(text.begin(), static_cast<char>(kApItemGlyph));
-            if (!text.empty()) shown.push_back(text);
+        std::string first, who;
+        {
+            std::vector<std::string> wrapped =
+                wrap_words(parts[0], static_cast<size_t>(kPopupPerLine) - 1);
+            first = wrapped.empty() ? std::string(kApItemName) : wrapped.front();
+            first.insert(first.begin(), static_cast<char>(kApItemGlyph));
         }
-        size_t widest = 0;
-        for (const std::string& part : shown) widest = (std::max)(widest, part.size());
-        int width = static_cast<int>(widest);
-        std::string name = center_lines(shown, width);
-        if (name.size() > kItemNameMax) name.resize(kItemNameMax);
-        while (!name.empty() && name.back() == ' ') name.pop_back();
-        out[static_cast<int>(y * 54 + x)] = {name, width};
+        if (parts.size() > 1) {
+            std::vector<std::string> wrapped =
+                wrap_words(parts[1], static_cast<size_t>(kPopupPerLine));
+            if (!wrapped.empty()) who = wrapped.front();
+        }
+        Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
+                                                   kApItemName
+                                             : first,
+                                   who);
+        label.item = item;
+        label.who = who;
+        out[static_cast<int>(y * 54 + x)] = label;
     }
     return "";
 }
@@ -724,9 +753,44 @@ void Game::set_labels(std::map<int, Label> labels) {
     }
     std::map<int, std::string> names;
     label_widths_.clear();
+    item_labels_.clear();
     for (auto& [cell, label] : labels) {
         label_widths_[cell] = label.width;
+        if (label.item >= 0) item_labels_[cell] = label;
         names[cell] = std::move(label.name);
+    }
+    ap_items_.set_labels(std::move(names));
+    resolve_item_labels();
+}
+
+void Game::resolve_item_labels() {
+    // Another Zexion player's item: its own icon and the game's name for it, from the item's
+    // record, once the records are loaded.
+    if (item_labels_.empty() || !configured_) return;
+    BYTE* records = nullptr;
+    if (!safe_read(item_records_, &records, sizeof(records)) || records == nullptr) return;
+    std::map<int, std::string> names = ap_items_.labels();
+    for (auto it = item_labels_.begin(); it != item_labels_.end();) {
+        const Label& pending = it->second;
+        BYTE record[kRecordSize];
+        if (!safe_read(records + pending.item * kRecordSize, record, sizeof(record))) return;
+        std::string name;
+        if (pending.item == kStandInItem || pending.item == kStandInProgression) {
+            // The stand-ins' records are restyled: their own names, as the game loads them.
+            name = pending.item == kStandInItem ? "SCRAP ENERGY" : "SCRAP CHUNK";
+            record[kRecordIcon] = 0;
+        } else {
+            for (size_t i = 0; i < kNameMax && record[kRecordName + i] != 0; ++i) {
+                name += static_cast<char>(record[kRecordName + i]);
+            }
+        }
+        if (name.size() > static_cast<size_t>(kPopupPerLine) - 1) name.resize(kPopupPerLine - 1);
+        if (name.empty()) name = kApItemName;  // a record with no name
+        uint8_t icon = record[kRecordIcon] != 0 ? record[kRecordIcon] : kApItemGlyph;
+        Label done = layout_label(std::string(1, static_cast<char>(icon)) + name, pending.who);
+        names[it->first] = done.name;
+        label_widths_[it->first] = done.width;
+        it = item_labels_.erase(it);
     }
     ap_items_.set_labels(std::move(names));
 }
@@ -762,6 +826,7 @@ void Game::set_popup_width(int width) {
 
 void Game::watch_ap_items() {
     if (!configured_ || !ap_items_.active()) return;
+    resolve_item_labels();
     // The player's map cell, as the player update keeps it: the row then the column, the
     // grid's index row * 54 + column (docs/re/memory.md, "Other players' items").
     uint8_t row = at<uint8_t>(player(), kPlayerCellRow);
@@ -782,6 +847,7 @@ void Game::restore_ap_items() {
     ap_items_.restore(item_records_, sprite_texture_, gl_);
     set_popup_width(kGamePopupWidth);
     label_widths_.clear();
+    item_labels_.clear();
 }
 
 }  // namespace zap
