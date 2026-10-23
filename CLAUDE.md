@@ -110,9 +110,10 @@ first), and the client loads it again within 30 seconds. Popups are only for ite
 after the server's first full list, so a reconnect does not replay them. With the helper, the client also arms it with the seed,
 once per connection: for a seed whose slot data carries the menu setup (from the world on
 `apworld`), picking an empty slot then offers ARCHIPELAGO, which starts a new game holding
-the seed with no `/prepare` (run in game for Standard and Easy). An OHKO seed keeps
-RANDOMIZER: started in the seed's mode, the helper writes the seed in as the game starts
-(run in game for all three modes; `--keep-randomizer` takes this path for any seed).
+the seed with no `/prepare` (run in game for Standard and Easy; for OHKO the helper also
+fills in the menu's start table, not yet run). With `--keep-randomizer`, RANDOMIZER stays:
+started in the seed's mode, the helper writes the seed in as the game starts (run in game
+for all three modes).
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
