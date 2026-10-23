@@ -74,6 +74,7 @@ import game  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
 import prepare  # noqa: E402
+import reconcile  # noqa: E402
 import save_patch  # noqa: E402
 import session  # noqa: E402
 
@@ -84,7 +85,8 @@ POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
-LABELS_RETRY_SECONDS = 5.0  # after the helper refused the labels (no frame came yet)
+LABELS_RETRY_SECONDS = 5.0
+SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -148,6 +150,11 @@ class ZexionContext(CommonContext):
         # Asks the game loop to take the labels back from the helper (after a disconnect), so
         # Scrap Energy is itself again in whatever game is played next.
         self.labels_clear_pending = False
+        # Received Energy Shields spawned so far, kept in the server's data storage under this
+        # key (per team and slot), so a restart or a shield received offline is not lost.
+        self.shield_key: str | None = None
+        self.shield_retry_at = 0.0
+        self.shield_said = ""
         # Counts connections and disconnects: a helper reply from an older one is dropped.
         self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
@@ -179,6 +186,8 @@ class ZexionContext(CommonContext):
             self.choice_refused = False
             self.kept = set(slot["kept_locations"])
             self.connection += 1
+            self.shield_key = f"zexion_shields_{self.team}_{self.slot}"
+            self.set_notify(self.shield_key)
             # Only a world that says it gives other players' items the stand-in has them.
             self.foreign = aplabels.foreign_locations(
                 slot["location_items"], self.kept, aplabels.stand_ins(slot)
@@ -206,6 +215,7 @@ class ZexionContext(CommonContext):
         self.plan = None
         self.session = None
         self.connection += 1
+        self.shield_key = None
         self.foreign = []
         if self.helper is not None:
             self.labels_clear_pending = True
@@ -310,6 +320,45 @@ async def labels_tick(ctx: ZexionContext) -> None:
     else:
         logger.warning(f"The helper did not take the item labels: {reply}")
         ctx.labels_sent = True  # do not ask again until the helper is loaded again
+
+
+async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
+    """Spawn received Energy Shields not spawned yet, one at a time, through the helper, and
+    count each in the server's data storage (an Energy Shield's effect is its pickup's spawn,
+    not a byte: docs/re/memory.md, "Received Energy Shields")."""
+    helper, key = ctx.helper, ctx.shield_key
+    if helper is None or key is None or key not in ctx.stored_data:
+        return  # no helper, or the count not read from the server yet
+    if time.monotonic() < ctx.shield_retry_at:
+        return
+    spawned = ctx.stored_data.get(key) or 0
+    if reconcile.shields_owed(received, spawned) <= 0:
+        return
+    connection = ctx.connection
+    reply = await asyncio.to_thread(helper.request, "shield")
+    if connection != ctx.connection or helper is not ctx.helper:
+        return
+    if reply == "spawned":
+        ctx.stored_data[key] = spawned + 1
+        await ctx.send_msgs(
+            [
+                {
+                    "cmd": "Set",
+                    "key": key,
+                    "default": 0,
+                    "want_reply": True,
+                    "operations": [{"operation": "add", "value": 1}],
+                }
+            ]
+        )
+        logger.info("A received Energy Shield was spawned.")
+        ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
+        ctx.shield_said = ""
+    else:
+        if reply != ctx.shield_said and reply != "refused not settled":
+            logger.info(f"A received Energy Shield is waiting: {reply}")
+        ctx.shield_said = reply
+        ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
 
 
 async def skip_tick(ctx: ZexionContext) -> None:
@@ -448,6 +497,12 @@ async def game_loop(ctx: ZexionContext) -> None:
             await attach_helper(ctx)
         if not step.seed_matches or ctx.session is not current:
             continue  # nothing to send, or the connection changed while the game was read
+        if ctx.helper is not None:
+            try:
+                await shields_tick(ctx, codes)
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+                ctx.drop_helper()
         locations = {LOCATION_ID_BASE + i for i in step.checked & ctx.kept}
         new = locations - ctx.locations_checked
         if new:

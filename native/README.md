@@ -123,12 +123,14 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     `center_lines` in `src/game_calls.cpp`), and the line width passed is the longest line's,
     which is how wide the game draws the box.
   - Each popup plays the item's own pickup sound at the player.
-  - A received Energy Shield also runs its pickup's area event, as the pickup does, from the
-    player's cell, so the shield appears (`run_item_event`; checked against B1 first; not yet
-    run in the game: `docs/re/memory.md`, "Received Energy Shields").
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
     popup whose item has no record (the records not loaded yet) is dropped.
+- **Received Energy Shields.** `shield` → `spawned` or `refused <why>`: runs the Energy
+  Shield's pickup event the way its pickup does, from the player's cell, once the player has
+  been in play in one cell for a second (`spawn_shield`; checked against B1 first). The client
+  asks for one per received shield not yet spawned, counted in the server's data storage. Not
+  yet run in the game (`docs/re/memory.md`, "Received Energy Shields").
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`

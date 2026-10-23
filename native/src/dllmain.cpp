@@ -99,6 +99,7 @@ uintptr_t frame(void* argument) {
     // (the hook-test target is called from several), only one does the work.
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
+            g_game.note_play(GetTickCount64());
             g_mailbox.serve();
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
@@ -175,6 +176,15 @@ std::string handle(const std::string& request, bool& stop) {
                " skip=" + (skip ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request == "shield") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (!g_mailbox.call([] { return g_game.spawn_shield(GetTickCount64()); }, kFrameWaitMs,
+                            result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("ap_labels", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::map<int, zap::Label> labels;

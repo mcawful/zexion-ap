@@ -63,6 +63,7 @@ constexpr ptrdiff_t kRecordEvent = 0x40;
 constexpr ptrdiff_t kEventRecordSize = 0x28;
 constexpr uint8_t kSpawnEventType = 11;
 constexpr int16_t kShieldObject = 2018;
+constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before a shield
 
 template <typename T>
 T& at(BYTE* p, ptrdiff_t offset) {
@@ -483,56 +484,78 @@ void Game::pump_popups() {
             sound_system_, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, kRecordVolume), -1.0f, 0, 8);
     }
-    if (popup.item == kEnergyShield) run_item_event(popup.item);
     popups_.pop_front();
     frames_since_popup_ = 0;
 }
 
-bool Game::run_item_event(uint8_t item) {
-    // A received item whose pickup does more than its inventory byte: the Energy Shield's runs
-    // area event 3553, type 11, which spawns object 2018, the shield (docs/re/memory.md,
-    // "Received Energy Shields"). The helper runs that event as the pickup does (0x1FE85):
-    // the handler for its type, from the table the game fills, with the cell and the record;
-    // the cell is the player's. Every part is checked against B1 first.
+void Game::note_play(uint64_t now_ms) {
+    // How long the player has been in play in one cell: a spawned shield waits for that, not
+    // for a load, a respawn or a room change still settling.
+    if (!configured_ || !in_play()) {
+        play_since_ms_ = 0;
+        return;
+    }
+    BYTE* p = player();
+    int cell = at<uint8_t>(p, kPlayerCellRow) * 256 + at<uint8_t>(p, kPlayerCellColumn);
+    if (play_since_ms_ == 0 || cell != play_cell_) {
+        play_cell_ = cell;
+        play_since_ms_ = now_ms;
+    }
+}
+
+std::string Game::spawn_shield(uint64_t now_ms) {
+    if (!configured_) return "refused not configured";
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
+        return "refused not settled";
+    }
+    std::string why = run_item_event(kEnergyShield);
+    return why.empty() ? "spawned" : "refused " + why;
+}
+
+std::string Game::run_item_event(uint8_t item) {
+    // A received Energy Shield's effect is its pickup's area event, 3553, type 11, which
+    // spawns object 2018, the shield (docs/re/memory.md, "Received Energy Shields"). The
+    // helper runs that event as the pickup does (0x1FE85): the handler for its type, from the
+    // table the game fills, with a cell and the record; the cell is the player's. Every part
+    // is checked against B1 first.
     BYTE* rec = record(item);
-    if (rec == nullptr) return false;
+    if (rec == nullptr) return "no item record";
     int16_t event = at<int16_t>(rec, kRecordEvent);
     BYTE* table = nullptr;
     int16_t events = 0;
     if (event < 0 || !safe_read(event_table_, &table, sizeof(table)) || table == nullptr ||
         !safe_read(event_count_, &events, sizeof(events)) || event >= events) {
-        return false;
+        return "no event";
     }
     BYTE* ev = table + static_cast<ptrdiff_t>(event) * kEventRecordSize;
     BYTE copy[kEventRecordSize];
-    if (!safe_read(ev, copy, sizeof(copy))) return false;
+    if (!safe_read(ev, copy, sizeof(copy))) return "no event";
     int16_t subtype, object, self;
     std::memcpy(&subtype, copy + 2, 2);
     std::memcpy(&object, copy + 4, 2);
     std::memcpy(&self, copy + 0x24, 2);
     if (copy[0] != kSpawnEventType || copy[1] != 0 || subtype != 1 || object != kShieldObject ||
         self != event) {
-        return false;
+        return "event not as traced";
     }
     void* handler = nullptr;
     if (!safe_read(event_handlers_ + kSpawnEventType * sizeof(void*), &handler, sizeof(handler)) ||
         handler == nullptr) {
-        return false;
+        return "no handler";
     }
     // The handler must be code in the game's own image.
     auto address = reinterpret_cast<uintptr_t>(handler);
     auto image = reinterpret_cast<uintptr_t>(base_);
-    if (address <= image) return false;
     const IMAGE_SECTION_HEADER* section =
-        section_of(reinterpret_cast<HMODULE>(base_), address - image);
+        address > image ? section_of(reinterpret_cast<HMODULE>(base_), address - image) : nullptr;
     if (section == nullptr || (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
-        return false;
+        return "handler not in the game's code";
     }
     BYTE* p = player();
-    auto row = static_cast<char>(at<uint8_t>(p, kPlayerCellRow));
-    auto column = static_cast<char>(at<uint8_t>(p, kPlayerCellColumn));
-    reinterpret_cast<EventFn>(handler)(row, column, ev);
-    return true;
+    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
+    if (row >= 54 || column >= 54) return "off the map";  // the raw cell can be -1
+    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
+    return "";
 }
 
 void Game::arm_newgame(NewGamePlan plan) {
