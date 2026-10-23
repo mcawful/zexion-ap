@@ -16,6 +16,7 @@ const char* const kConfigKeys[] = {
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
+    "popup_width_code",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -89,7 +90,7 @@ bool is_function(const std::string& key) {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
         "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
-        "rando_newgame_fn",
+        "rando_newgame_fn", "popup_width_code",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -307,6 +308,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     start_cells_ = found["start_cells"];
     start_flags_ = found["start_flags"];
     sprite_texture_ = found["sprite_texture"];
+    popup_width_code_ = found["popup_width_code"];
     gl_ = load_gl();
     configured_ = true;
     return "";
@@ -426,14 +428,20 @@ std::string center_lines(const std::vector<std::string>& lines, int per_line) {
     return text;
 }
 
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line) {
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
+                       int* width) {
     std::vector<std::string> lines{head};
     if (per_line > 0) {
         for (std::string& line : wrap_words(suffix, static_cast<size_t>(per_line))) {
             lines.push_back(std::move(line));
         }
     }
-    return center_lines(lines, per_line);
+    size_t widest = 0;
+    for (const std::string& line : lines) widest = (std::max)(widest, line.size());
+    int w = (std::min)(static_cast<int>(widest), per_line);
+    if (w <= 0) w = per_line;
+    if (width != nullptr) *width = w;
+    return center_lines(lines, w);
 }
 
 void Game::pump_popups() {
@@ -450,9 +458,10 @@ void Game::pump_popups() {
     if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
     const char* name = reinterpret_cast<const char*>(rec + kRecordName);
     head.append(name, strnlen(name, kNameMax));
-    std::string text = popup_text(head, popup.suffix, kPopupPerLine);
+    int per_line = kPopupPerLine;
+    std::string text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
-        text.c_str(), kPopupPerLine, kPopupX, kPopupY, 0, 0, kPopupFrames);
+        text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
     BYTE* p = player();
     auto sound = at<int16_t>(rec, kRecordSound);
@@ -657,7 +666,7 @@ void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
 }
 
-std::string parse_labels(const std::string& request, std::map<int, std::string>& out) {
+std::string parse_labels(const std::string& request, std::map<int, Label>& out) {
     std::istringstream lines(request);
     std::string line;
     if (!std::getline(lines, line) || line != "ap_labels") return "not an ap_labels request";
@@ -697,20 +706,51 @@ std::string parse_labels(const std::string& request, std::map<int, std::string>&
             if (i == 0) text.insert(text.begin(), static_cast<char>(kApItemGlyph));
             if (!text.empty()) shown.push_back(text);
         }
-        std::string name = center_lines(shown, kPopupPerLine);
+        size_t widest = 0;
+        for (const std::string& part : shown) widest = (std::max)(widest, part.size());
+        int width = static_cast<int>(widest);
+        std::string name = center_lines(shown, width);
         if (name.size() > kItemNameMax) name.resize(kItemNameMax);
         while (!name.empty() && name.back() == ' ') name.pop_back();
-        out[static_cast<int>(y * 54 + x)] = name;
+        out[static_cast<int>(y * 54 + x)] = {name, width};
     }
     return "";
 }
 
-void Game::set_labels(std::map<int, std::string> labels) {
+void Game::set_labels(std::map<int, Label> labels) {
     if (labels.empty()) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;
     }
-    ap_items_.set_labels(std::move(labels));
+    std::map<int, std::string> names;
+    label_widths_.clear();
+    for (auto& [cell, label] : labels) {
+        label_widths_[cell] = label.width;
+        names[cell] = std::move(label.name);
+    }
+    ap_items_.set_labels(std::move(names));
+}
+
+void Game::set_popup_width(int width) {
+    if (width == popup_width_ || popup_width_code_ == nullptr) return;
+    if (width < 1 || width > kGamePopupWidth) width = kGamePopupWidth;
+    // `mov edx, imm32`: B1's instruction, holding what this helper last wrote (24 at first);
+    // anything else is not the code traced, and is left alone.
+    BYTE now[5] = {};
+    if (!safe_read(popup_width_code_, now, sizeof(now)) || now[0] != 0xBA) return;
+    int32_t imm = 0;
+    std::memcpy(&imm, now + 1, sizeof(imm));
+    if (imm != popup_width_) return;
+    DWORD old = 0;
+    if (!VirtualProtect(popup_width_code_ + 1, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &old)) {
+        return;
+    }
+    int32_t value = width;
+    std::memcpy(popup_width_code_ + 1, &value, sizeof(value));
+    DWORD unused = 0;
+    VirtualProtect(popup_width_code_ + 1, sizeof(int32_t), old, &unused);
+    FlushInstructionCache(GetCurrentProcess(), popup_width_code_, sizeof(now));
+    popup_width_ = width;
 }
 
 void Game::watch_ap_items() {
@@ -722,10 +762,19 @@ void Game::watch_ap_items() {
     int cell = row < 54 && column < 54 ? row * 54 + column : -1;
     ap_items_.watch(item_records_, cell);
     ap_items_.paint(sprite_texture_, gl_, GetTickCount64());
+    // The pickup popup as wide as this cell's label, if the stand-ins are ours; the game's 24
+    // elsewhere. Called from the frame call, on the game's thread, so the game is not running
+    // the instruction while it changes.
+    auto it = label_widths_.find(cell);
+    set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
+                                                                      : kGamePopupWidth);
 }
 
 void Game::restore_ap_items() {
-    if (configured_) ap_items_.restore(item_records_, sprite_texture_, gl_);
+    if (!configured_) return;
+    ap_items_.restore(item_records_, sprite_texture_, gl_);
+    set_popup_width(kGamePopupWidth);
+    label_widths_.clear();
 }
 
 }  // namespace zap

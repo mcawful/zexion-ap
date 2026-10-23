@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.7.0";
+constexpr char kVersion[] = "0.8.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -174,7 +174,7 @@ std::string handle(const std::string& request, bool& stop) {
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request.rfind("ap_labels", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::map<int, std::string> labels;
+        std::map<int, zap::Label> labels;
         std::string error = zap::parse_labels(request, labels);
         if (!error.empty()) return "error " + error;
         std::string result;

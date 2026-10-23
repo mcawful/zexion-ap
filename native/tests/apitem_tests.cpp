@@ -333,23 +333,23 @@ void test_painting() {
 }
 
 void test_label_parser() {
-    std::map<int, std::string> out;
+    std::map<int, zap::Label> out;
     check(zap::parse_labels("ap_labels\nlabel 5 2 4d617374657220537764", out).empty(), "parses");
-    check(out.size() == 1 && out[2 * 54 + 5] == "\xEE" "MASTER SWD",
+    check(out.size() == 1 && out[2 * 54 + 5].name == "\xEE" "MASTER SWD" &&
+              out[2 * 54 + 5].width == 11,
           "upper-cased, by cell, after the glyph; one line as it is");
     out.clear();
-    zap::parse_labels("ap_labels\nlabel 5 2 " + std::string("4d617020576964746826") + "0a" +
+    zap::parse_labels("ap_labels\nlabel 5 2 " + std::string("4d61702057696474682626") + "0a" +
                           "466f722046696e646572",
                       out);
-    check(out[2 * 54 + 5] ==
-              std::string(6, ' ') + "\xEE" "MAP WIDTH&" + std::string(7 + 7, ' ') + "FOR FINDER",
-          "two lines, each centered");
+    check(out[2 * 54 + 5].name == "\xEE" "MAP WIDTH&&" " FOR FINDER" && out[2 * 54 + 5].width == 12,
+          "two lines, the shorter centered in the longer, whose width is the popup's");
     out.clear();
     zap::parse_labels("ap_labels\nlabel 1 1 c3a97e", out);
-    check(out[55] == "\xEE" "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
+    check(out[55].name == "\xEE" "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
     zap::parse_labels("ap_labels\nlabel 2 1 41004221", out);
-    check(out[56] == "\xEE" "AB!", "a NUL byte is dropped, not kept");
-    std::map<int, std::string> bad;
+    check(out[56].name == "\xEE" "AB!", "a NUL byte is dropped, not kept");
+    std::map<int, zap::Label> bad;
     check(!zap::parse_labels("ap_labels\nlabel 54 0 41", bad).empty(), "a cell off the map");
     check(!zap::parse_labels("ap_labels\nlabel 1 1 4", bad).empty(), "odd hex");
     check(!zap::parse_labels("ap_labels\nname 1 1 41", bad).empty(), "unknown lines");

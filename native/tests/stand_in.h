@@ -17,6 +17,10 @@ inline BYTE* const g_inventory = g_player + 0x108E;
 inline BYTE g_save_loaded = 0;
 inline BYTE g_menu = 0;
 inline BYTE g_records[51 * 100];
+// The pickup popup's `mov edx, 24`, in a section of its own that executes, as in the game's code.
+#pragma section(".zapcode", read, execute)
+__declspec(allocate(".zapcode")) inline unsigned char g_popup_width_code[16] = {0xBA, 0x18, 0, 0,
+                                                                              0,    0xC3};
 inline BYTE* g_records_ptr = g_records;
 struct LastMessage {
     BYTE* last;
@@ -197,6 +201,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},
         {"sprite_texture", rva(&g_sprite_holder)},
+        {"popup_width_code", rva(g_popup_width_code)},
     };
 }
 

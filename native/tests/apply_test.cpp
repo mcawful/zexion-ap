@@ -73,8 +73,7 @@ int wmain(int argc, wchar_t** argv) {
           "the batch landed in the stand-in game");
     for (int i = 0; i < 200 && stand_in::g_messages == 0; ++i) Sleep(5);
     check(stand_in::g_messages == 1 &&
-              stand_in::g_text ==
-                  std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(13, ' ') + "FROM ALICE",
+              stand_in::g_text == "\xC5MISSILE BOX FROM ALICE" && stand_in::g_message_args[0] == 12,
           "the popup was shown from a frame call, the sender on its own line", stand_in::g_text);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
