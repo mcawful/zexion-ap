@@ -135,6 +135,17 @@ void test_release_keeps_the_label_and_returns_the_callback() {
     check(closed.callback() == &archipelago, "left as it was");
 }
 
+void test_a_label_left_as_archipelago_is_not_taken_for_the_original() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    choice.install(a, &archipelago);
+    choice.release(a, &archipelago);  // the menu outlived the new game, against expectation
+    check(choice.install(a, &archipelago), "offered again on the same panel");
+    check(choice.restore(a, &archipelago) && stand.text() == "RANDOMIZER ",
+          "putting it back writes RANDOMIZER, not the ARCHIPELAGO it found");
+}
+
 void test_a_new_panel_replaces_the_old() {
     Stand first, second;
     zap::ArchipelagoChoice choice;
@@ -192,6 +203,7 @@ int main() {
     test_install_and_restore();
     test_restore_when_another_menu_is_up();
     test_release_keeps_the_label_and_returns_the_callback();
+    test_a_label_left_as_archipelago_is_not_taken_for_the_original();
     test_a_new_panel_replaces_the_old();
     test_a_closed_menu_is_forgotten_unwritten();
     test_a_released_widget_is_left_alone();
