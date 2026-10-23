@@ -66,7 +66,8 @@ public:
     // Game thread, every frame while active (from the swap hook, the game's GL context
     // current): paints the logo into the sprite texture now and then, and whenever the
     // texture changes. `texture_holder` holds the pointer to the sprite data.
-    void paint(BYTE* texture_holder, const GlFunctions& gl);
+    // `now_ms` is a millisecond clock (GetTickCount64): the progression arrow's color follows it.
+    void paint(BYTE* texture_holder, const GlFunctions& gl, uint64_t now_ms);
 
     // Game thread: the record back to the game's own values (also one an earlier helper left
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
@@ -80,13 +81,15 @@ private:
     unsigned texture_of(BYTE* texture_holder) const;
     // Paints (or clears) the logo, the first time for a texture only after reading it back:
     // the two places blank (or already the logo) and known art where the PNG has it.
-    bool upload(unsigned texture, const GlFunctions& gl, bool clear);
+    // `arrow_only`: just the progression logo's frame, for the arrow's next color.
+    bool upload(unsigned texture, const GlFunctions& gl, bool clear, bool arrow_only);
 
     std::map<int, std::string> labels_;
     BYTE* records_[kStandInCount] = {};
     unsigned painted_ = 0;
     unsigned verified_ = 0;  // the texture read back and found as expected
     int frames_to_paint_ = 0;
+    int arrow_phase_ = 0;
 };
 
 }  // namespace zap

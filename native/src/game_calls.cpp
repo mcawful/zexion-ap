@@ -651,7 +651,7 @@ void Game::watch_ap_items() {
     uint8_t column = at<uint8_t>(player(), kPlayerCellColumn);
     int cell = row < 54 && column < 54 ? row * 54 + column : -1;
     ap_items_.watch(item_records_, cell);
-    ap_items_.paint(sprite_texture_, gl_);
+    ap_items_.paint(sprite_texture_, gl_, GetTickCount64());
 }
 
 void Game::restore_ap_items() {

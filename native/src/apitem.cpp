@@ -31,6 +31,10 @@ constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
 constexpr int kGlyphX = (kLogoGlyph % 16) * 8, kGlyphY = 976 + (kLogoGlyph / 16) * 8;
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
 constexpr int kRepaintFrames = 300;
+// The progression arrow flashes: the helper repaints it in one color, then the other.
+constexpr uint64_t kFlashMs = 300;
+constexpr int8_t kArrow = 19;  // in a logo: the arrow, in the color of the moment
+constexpr int8_t kArrowColors[2] = {9, 6};  // palette 8's yellow and white
 
 // GL enums (GL 1.1, and the buffer bindings from 2.1).
 constexpr unsigned kTexture2D = 0x0DE1, kTextureBinding2D = 0x8069;
@@ -64,8 +68,9 @@ constexpr int8_t kLogo[16][16] = {
     {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, -1, -1, -1, -1, -1},
 };
 // The same with Archipelago's up arrow for a progression item, as in its own icons (Factorio's
-// ap.png in Archipelago), over the lower right in entry 15, one of the entries palette 8 cycles
-// (Scrap Energy's glow), so the arrow flashes with it.
+// ap.png in Archipelago), over the lower right; kArrow marks the arrow, which flashes.
+// (Palette entries 13 to 15 show different colors at different times, but did not change
+// while watched, so the helper flashes the arrow itself.)
 constexpr int8_t kLogoArrow[16][16] = {
     {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
     {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
@@ -76,13 +81,13 @@ constexpr int8_t kLogoArrow[16][16] = {
     { 9,  9, -1, -1, -1,  9,  0, -1, -1,  0,  1, -1, -1, -1, -1,  1},
     {-1,  0,  2,  2,  0,  0, -1, -1, -1, -1,  0,  5,  5,  5,  0, -1},
     { 0,  2,  2,  2,  2,  2, -1, -1, -1, -1,  5,  0,  0,  0,  5,  0},
-    { 2,  2,  2,  2,  2,  2, -1,  0,  0, -1,  0,  0, 15,  0,  0,  5},
-    { 2,  2,  2,  2,  2,  0,  8,  8,  8,  0,  0, 15, 15, 15,  0,  0},
-    { 2,  2,  2,  2, -1,  8,  8,  8,  0,  0, 15, 15, 15, 15, 15,  0},
-    { 0,  2,  2,  2,  0,  8,  8,  8,  0, 15, 15, 15, 15, 15, 15, 15},
-    {-1,  0,  0,  0,  0,  8,  8,  8,  0,  0,  0, 15, 15, 15,  0,  0},
-    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 15, 15, 15,  0, -1},
-    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 15, 15, 15,  0, -1},
+    { 2,  2,  2,  2,  2,  2, -1,  0,  0, -1,  0,  0, 19,  0,  0,  5},
+    { 2,  2,  2,  2,  2,  0,  8,  8,  8,  0,  0, 19, 19, 19,  0,  0},
+    { 2,  2,  2,  2, -1,  8,  8,  8,  0,  0, 19, 19, 19, 19, 19,  0},
+    { 0,  2,  2,  2,  0,  8,  8,  8,  0, 19, 19, 19, 19, 19, 19, 19},
+    {-1,  0,  0,  0,  0,  8,  8,  8,  0,  0,  0, 19, 19, 19,  0,  0},
+    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
+    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
 };
 // The popup icon: 8 x 8, white like the game's own icon glyphs: Archipelago's ring of six dots,
 // one at the top and one at the bottom as in its logo.
@@ -239,7 +244,7 @@ bool texture_as_expected(const GlFunctions& gl) {
 
 }  // namespace
 
-bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
+bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear, bool arrow_only) {
     drain(gl);  // the game's own pending errors are not ours to read
     if (!gl.IsTexture(texture)) return false;
     int unpack_buffer = 0, pack_buffer = 0;
@@ -268,11 +273,14 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
     }
     if (ok) {
         for (const StandIn& s : kStandIns) {
+            if (arrow_only && s.item != kStandInProgression) continue;
             uint8_t frame[16][16][4] = {};
             for (int y = 0; y < 16 && !clear; ++y) {
                 for (int x = 0; x < 16; ++x) {
-                    if (s.logo[y][x] < 0) continue;
-                    const uint8_t* rgb = kEntryRgb[s.logo[y][x]];
+                    int8_t entry = s.logo[y][x];
+                    if (entry < 0) continue;
+                    if (entry == kArrow) entry = kArrowColors[arrow_phase_];
+                    const uint8_t* rgb = kEntryRgb[entry];
                     frame[y][x][0] = rgb[0];
                     frame[y][x][1] = rgb[1];
                     frame[y][x][2] = rgb[2];
@@ -283,7 +291,7 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
                              kUnsignedByte, frame);
         }
         uint8_t glyph[8][8][4] = {};
-        if (!clear) {
+        if (!clear && !arrow_only) {
             for (int y = 0; y < 8; ++y) {
                 for (int x = 0; x < 8; ++x) {
                     if (kGlyph[y][x] != '#') continue;
@@ -291,7 +299,9 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
                 }
             }
         }
-        gl.TexSubImage2D(kTexture2D, 0, kGlyphX, kGlyphY, 8, 8, kRgba, kUnsignedByte, glyph);
+        if (!arrow_only) {
+            gl.TexSubImage2D(kTexture2D, 0, kGlyphX, kGlyphY, 8, 8, kRgba, kUnsignedByte, glyph);
+        }
     }
     for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, unpack[i]);
     for (int i = 0; i < 4; ++i) gl.PixelStorei(kPackRowLength + i, pack[i]);
@@ -300,12 +310,21 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
     return ok;
 }
 
-void ApItems::paint(BYTE* holder, const GlFunctions& gl) {
+void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms) {
     if (!active() || !gl.loaded()) return;
-    if (frames_to_paint_-- > 0) return;
-    frames_to_paint_ = kRepaintFrames;
-    unsigned texture = texture_of(holder);
-    if (texture != 0 && upload(texture, gl, false)) painted_ = texture;
+    int phase = static_cast<int>((now_ms / kFlashMs) % 2);
+    if (frames_to_paint_-- <= 0) {
+        frames_to_paint_ = kRepaintFrames;
+        arrow_phase_ = phase;
+        unsigned texture = texture_of(holder);
+        if (texture != 0 && upload(texture, gl, false, false)) painted_ = texture;
+        return;
+    }
+    // Between full paints, only the arrow, when its color changes, into a texture already
+    // checked and painted.
+    if (phase == arrow_phase_ || painted_ == 0 || texture_of(holder) != painted_) return;
+    arrow_phase_ = phase;
+    upload(painted_, gl, false, true);
 }
 
 unsigned ApItems::texture_of(BYTE* holder) const {
@@ -339,7 +358,7 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
         records_[i] = nullptr;
     }
     if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
-        upload(painted_, gl, true);
+        upload(painted_, gl, true, false);
     }
     painted_ = 0;
     labels_.clear();
