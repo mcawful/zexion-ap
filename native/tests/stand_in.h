@@ -67,6 +67,17 @@ inline int16_t g_start_count = 0;
 inline int16_t g_start_cells[64 * 2];
 inline uint8_t g_start_flags[64];
 
+// The sprite data: [holder] + 0x40 points at the texture object, whose first dword is the GL
+// texture name.
+inline uint32_t g_texture_object[4] = {7, 0, 0, 0};
+inline BYTE g_sprite_data[0x80];
+inline BYTE* g_sprite_holder = g_sprite_data;
+inline void reset_sprites() {
+    std::memset(g_sprite_data, 0, sizeof(g_sprite_data));
+    *reinterpret_cast<uint32_t**>(g_sprite_data + 0x40) = g_texture_object;
+    g_texture_object[0] = 7;
+}
+
 inline BYTE* g_current_menu = nullptr;
 inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
@@ -185,6 +196,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},
+        {"sprite_texture", rva(&g_sprite_holder)},
     };
 }
 

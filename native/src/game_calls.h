@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "menu.h"
+#include "apitem.h"
 #include "skip.h"
 
 namespace zap {
@@ -77,6 +78,12 @@ constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game
 // digits; every range must lie inside its block. Also "start_table HEX": 5 bytes per room
 // (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
+
+// "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
+// item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
+// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
+// Returns "" or an error.
+std::string parse_labels(const std::string& request, std::map<int, std::string>& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
@@ -141,6 +148,14 @@ public:
     void restore_skip();
     bool skip_offered() const { return skip_.patched(); }
 
+    // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
+    // frame; restore_ap_items puts everything back (before an unload).
+    void set_labels(std::map<int, std::string> labels);
+    void watch_ap_items();
+    void restore_ap_items();
+    bool ap_items_restyled() const { return ap_items_.restyled(); }
+    void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
+
 private:
     bool in_play() const;
     BYTE* player() const;
@@ -193,6 +208,9 @@ private:
     // it. Returns "" or why not.
     std::string ensure_start_table();
     EscapeSkip skip_;
+    BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
+    ApItems ap_items_;
+    GlFunctions gl_;
     int skip_frames_ = 0;  // frames until the next escape-skip check
 };
 
