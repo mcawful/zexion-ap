@@ -1305,8 +1305,9 @@ TARGETS = (
                 7,
                 -0x1D800,
             ),
+            # the read of it at RVA 0x19e9ec on B1, with the 128 slots (0x80) the search runs to
             Pattern(
-                ("66 89 15 ?? ?? ?? ?? 66 41 3B D1 7C DB 66 41 3B D1 75 07 66 89 2D ?? ?? ?? ??"),
+                "0F B7 15 ?? ?? ?? ?? 45 33 DB 41 B9 80 00 00 00 66 83 FA FF",
                 3,
                 "rip",
                 7,
@@ -1359,9 +1360,9 @@ TARGETS = (
                 7,
                 0x0,
             ),
-            # from the instruction at RVA 0x1bf520 on B1
+            # from the item update's read of it at RVA 0x19e342 on B1
             Pattern(
-                "48 8B 05 ?? ?? ?? ?? 48 99 83 E2 07 48 03 C2 83 E0 07 44 38 B3 FE 0C 00 00",
+                "48 8B 05 ?? ?? ?? ?? 48 99 49 0F BF 4C 38 04 48 F7 F9 49 0F BF 4C 38 06",
                 3,
                 "rip",
                 7,

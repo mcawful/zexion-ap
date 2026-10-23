@@ -768,6 +768,27 @@ void test_zexion_items_show_as_themselves() {
           "restore puts the objects back");
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 
+    // The game sets a dressed object's base back itself: it is dressed again.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    BYTE* template_base = g_frames;
+    std::memcpy(pool_slot(3) + 0x1A8, &template_base, sizeof(template_base));
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "a base the game set back is redressed");
+
+    // Scrap Chunk's record is no longer ours (left as another helper left it, say): its objects
+    // are put back and not dressed, since the frame the game computes is no longer the logo's.
+    put_object(7, 91, 48, 5, 2);
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x40) = 3551;  // neither own nor ours
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x02) = 142;
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x06) = 2;
+    game.watch_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8],
+          "a stand-in whose record is not restyled is put back");
+    check(object_base(7) == g_frames, "and not dressed");
+    game.restore_ap_items();
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+
     // A dressed object whose slot was reused by another spawn is not "put back" on restore.
     game.set_labels(labels);
     game.watch_ap_items();
