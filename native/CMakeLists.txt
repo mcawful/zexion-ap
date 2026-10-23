@@ -15,7 +15,7 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
             src/game_calls.cpp src/menu.cpp src/skip.cpp
-            src/apitem.cpp)
+            src/apitem.cpp src/looks.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 

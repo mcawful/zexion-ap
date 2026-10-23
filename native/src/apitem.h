@@ -27,6 +27,8 @@ namespace zap {
 
 constexpr int kStandInItem = 47;         // Scrap Energy: other players' items
 constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progression items
+// The empty item frames their logos are painted into (frames 63 and 95 of the item sprites).
+constexpr int kStandInFrame = 63, kStandInProgressionFrame = 95;
 constexpr int kStandInCount = 2;
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 // The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup

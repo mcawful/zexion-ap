@@ -180,7 +180,16 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
   the game since 2026-10-23 (both logos, the flashing arrow, named popup, restore on
   disconnect and on unload; `docs/re/memory.md`, "Other players' items", which also lists its
-  limits); the popup's narrower box not yet run in the game.
+  limits).
+- **Other Zexion players' items, as themselves.** For a cell whose label is another Zexion
+  player's item (`@N`), every frame call (`src/looks.cpp`) finds the stand-in objects there
+  in the game's pool of live item objects and dresses each as item N: its palette set to
+  N's, and its frame-list base moved so the frame the game computes from the stand-in's
+  record lands on N's, animated with the game's clock. The record, and so the pickup, stay
+  the stand-in's. It writes only objects that are stand-ins with the template's base and
+  palette 8, or that it dressed itself (the same spawn), and puts them back without the
+  label and on unload. Not yet run in the game (`docs/re/memory.md`, "Live item
+  objects").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.

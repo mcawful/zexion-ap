@@ -16,6 +16,7 @@
 
 #include "menu.h"
 #include "apitem.h"
+#include "looks.h"
 #include "skip.h"
 
 namespace zap {
@@ -184,7 +185,8 @@ public:
     // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
     // a frame to put them back.
     bool ap_items_restyled() const {
-        return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth);
+        return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
+               looks_.dressed();
     }
     int popup_width() const { return popup_width_; }  // tests
     void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
@@ -248,9 +250,15 @@ private:
     // in its cell (docs/re/memory.md, "Other players' items").
     static constexpr int kGamePopupWidth = 24;
     BYTE* popup_width_code_ = nullptr;
+    BYTE* item_pool_ = nullptr;
+    BYTE* palette_table_ = nullptr;
+    BYTE* frame_clock_ = nullptr;
+    BYTE* sprite_templates_ = nullptr;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
+    ItemLooks looks_;  // other Zexion players' items shown as themselves
+    ItemLooks::Places looks_places() const;
     void resolve_item_labels();
     void set_popup_width(int width);
     GlFunctions gl_;

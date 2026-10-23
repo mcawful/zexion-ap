@@ -16,7 +16,7 @@ const char* const kConfigKeys[] = {
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
-    "popup_width_code",
+    "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -309,6 +309,10 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     start_flags_ = found["start_flags"];
     sprite_texture_ = found["sprite_texture"];
     popup_width_code_ = found["popup_width_code"];
+    item_pool_ = found["item_pool"];
+    palette_table_ = found["palette_table"];
+    frame_clock_ = found["frame_clock"];
+    sprite_templates_ = found["sprite_templates"];
     gl_ = load_gl();
     configured_ = true;
     return "";
@@ -752,13 +756,18 @@ void Game::set_labels(std::map<int, Label> labels) {
         return;
     }
     std::map<int, std::string> names;
+    std::map<int, int> items;
     label_widths_.clear();
     item_labels_.clear();
     for (auto& [cell, label] : labels) {
         label_widths_[cell] = label.width;
-        if (label.item >= 0) item_labels_[cell] = label;
+        if (label.item >= 0) {
+            item_labels_[cell] = label;
+            items[cell] = label.item;
+        }
         names[cell] = std::move(label.name);
     }
+    looks_.set_items(std::move(items));
     ap_items_.set_labels(std::move(names));
     resolve_item_labels();
 }
@@ -840,10 +849,22 @@ void Game::watch_ap_items() {
     auto it = label_widths_.find(cell);
     set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
                                                                       : kGamePopupWidth);
+    // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
+    if (ap_items_.restyled()) {
+        looks_.apply(looks_places());
+    } else {
+        looks_.restore(looks_places());
+    }
+}
+
+ItemLooks::Places Game::looks_places() const {
+    return {item_pool_, palette_table_, frame_clock_, sprite_templates_, item_records_};
 }
 
 void Game::restore_ap_items() {
     if (!configured_) return;
+    looks_.restore(looks_places());  // the objects first, while their records are still ours
+    looks_.set_items({});
     ap_items_.restore(item_records_, sprite_texture_, gl_);
     set_popup_width(kGamePopupWidth);
     label_widths_.clear();

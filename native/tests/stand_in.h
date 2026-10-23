@@ -22,6 +22,16 @@ inline BYTE g_records[51 * 100];
 __declspec(allocate(".zapcode")) inline unsigned char g_popup_width_code[16] = {0xBA, 0x18, 0, 0,
                                                                               0,    0xC3};
 inline BYTE* g_records_ptr = g_records;
+// The live item objects, the palette table, the item clock and the sprite templates
+// (docs/re/memory.md, "Live item objects").
+inline BYTE g_item_pool[128 * 0x3B0];
+inline BYTE g_palette_objects[64][16];
+inline BYTE* g_palette_table[64];
+inline int64_t g_frame_clock = 1000;
+inline BYTE g_frames[152 * 0x38];
+inline BYTE g_item_template[0x1D8];
+inline BYTE* g_template_list[40];
+inline BYTE** g_sprite_templates = g_template_list;
 struct LastMessage {
     BYTE* last;
     int32_t sequence;
@@ -202,10 +212,20 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"start_flags", rva(g_start_flags)},
         {"sprite_texture", rva(&g_sprite_holder)},
         {"popup_width_code", rva(g_popup_width_code)},
+        {"item_pool", rva(g_item_pool)},
+        {"palette_table", rva(g_palette_table)},
+        {"frame_clock", rva(&g_frame_clock)},
+        {"sprite_templates", rva(&g_sprite_templates)},
     };
 }
 
 inline void reset_game() {
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));
+    for (int i = 0; i < 64; ++i) g_palette_table[i] = g_palette_objects[i];
+    g_frame_clock = 1000;
+    g_template_list[34] = g_item_template;
+    BYTE* frames = g_frames;
+    std::memcpy(g_item_template + 0x1A8, &frames, sizeof(frames));
     std::memset(g_player, 0, sizeof(g_player));
     g_save_loaded = 3;
     g_menu = 0;

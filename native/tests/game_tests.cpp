@@ -678,6 +678,106 @@ void test_zexion_item_labels() {
     game.restore_ap_items();
 }
 
+BYTE* pool_slot(int k) { return g_item_pool + k * 0x3B0; }
+
+void put_object(int k, int32_t spawn, int16_t record, int x, int y) {
+    BYTE* o = pool_slot(k);
+    std::memset(o, 0, 0x3B0);
+    BYTE* frames = g_frames;
+    std::memcpy(o + 0x1A8, &frames, sizeof(frames));
+    BYTE* palette = g_palette_table[8];
+    std::memcpy(o + 0x198, &palette, sizeof(palette));
+    *reinterpret_cast<int16_t*>(o + 0x1A0) = 8;
+    *reinterpret_cast<int32_t*>(o + 0x1BC) = 152;
+    *reinterpret_cast<int32_t*>(o + 0x1D8) = spawn;
+    *reinterpret_cast<int16_t*>(o + 0x1E8) = record;
+    o[0x3AC] = static_cast<BYTE>(y);
+    o[0x3AD] = static_cast<BYTE>(x);
+}
+
+BYTE* object_base(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x1A8); }
+BYTE* object_palette(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x198); }
+int16_t object_palette_number(int k) { return *reinterpret_cast<int16_t*>(pool_slot(k) + 0x1A0); }
+
+void test_zexion_items_show_as_themselves() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    BYTE* box = g_records + 36 * 100;  // the Missile Box: frames 39 to 42, 4 ticks, palette 1
+    *reinterpret_cast<int16_t*>(box + 0x02) = 39;
+    *reinterpret_cast<int16_t*>(box + 0x04) = 4;
+    *reinterpret_cast<int16_t*>(box + 0x06) = 4;
+    box[0x09] = 1;
+    put_object(3, 77, 48, 5, 2);  // a progression stand-in in the Missile Box's cell
+    put_object(4, 78, 48, 6, 2);  // a stand-in in a cell labeled AP ITEM
+    put_object(5, 79, 1, 5, 2);   // a Missile Container of this world, in the same cell
+    std::map<int, zap::Label> labels;
+    // (5, 2): "@36" for ZEXION2; (6, 2): "AP ITEM" for ZEXION2.
+    zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                      "label 6 2 4150204974656d0a464f52205a4558494f4e32",
+                      labels);
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    // clock 1000 / 4 ticks = 250, % 4 frames = 2: frame 41, and the game computes 95.
+    check(object_base(3) == g_frames + (41 - 95) * 0x38,
+          "the stand-in's frame list moved so frame 95 lands on the Missile Box's frame 41");
+    check(object_palette(3) == g_palette_table[1] && object_palette_number(3) == 1,
+          "and the Missile Box's palette");
+    check(object_base(4) == g_frames && object_palette(4) == g_palette_table[8],
+          "a stand-in for another game's item keeps the logo");
+    check(object_base(5) == g_frames && object_palette(5) == g_palette_table[8],
+          "this world's own items are left alone");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+
+    g_frame_clock = 1004;  // 251 % 4 = 3: frame 42
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "the item animates with the clock");
+
+    // The object leaves (its room left) and its slot is taken by a new spawn: that one is
+    // dressed afresh, and the old one is not "put back".
+    put_object(3, 80, 48, 5, 2);
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "a new spawn is dressed too");
+
+    // A base this helper did not write (another build, another tool): left alone.
+    put_object(6, 81, 48, 5, 2);
+    BYTE* odd = g_frames + 0x38;
+    std::memcpy(pool_slot(6) + 0x1A8, &odd, sizeof(odd));
+    game.watch_ap_items();
+    check(object_base(6) == odd && object_palette(6) == g_palette_table[8],
+          "an object not as expected is not written");
+
+    // The label goes: the stand-in shows the logo again.
+    std::map<int, zap::Label> fewer;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", fewer);
+    game.set_labels(fewer);
+    game.watch_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8] &&
+              object_palette_number(3) == 8,
+          "without its label the stand-in is put back");
+
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(object_palette(3) == g_palette_table[1], "dressed again");
+    game.restore_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8],
+          "restore puts the objects back");
+    check(!game.ap_items_restyled(), "and nothing is left to put back");
+
+    // A dressed object whose slot was reused by another spawn is not "put back" on restore.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    put_object(3, 90, 1, 9, 9);  // now a Missile Container somewhere else
+    BYTE* moved = g_frames + 5 * 0x38;
+    std::memcpy(pool_slot(3) + 0x1A8, &moved, sizeof(moved));
+    game.restore_ap_items();
+    check(object_base(3) == moved, "a reused slot is left alone on restore");
+}
+
 void test_popup_text_breaks_before_the_sender() {
     int width = 0;
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
@@ -704,6 +804,7 @@ int main() {
     test_popup_text_breaks_before_the_sender();
     test_pickup_popup_width();
     test_zexion_item_labels();
+    test_zexion_items_show_as_themselves();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();
