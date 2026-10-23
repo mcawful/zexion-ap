@@ -159,7 +159,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   `label X Y HEX`: a name per map cell for the stand-in items, Scrap Energy (47) and Scrap
   Chunk (48), which the world gives every location holding another player's item (48 for a
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
-  records against the game's own values and restyles them (their in-world frames pointed at
+  records against the game's own values and, while a save is loaded and no menu is open
+  (menus such as the equipment screen draw the records too), restyles them (their in-world
+  frames pointed at
   frames that are empty in the game's art, no refill drop at pickup), names them after the
   label for the player's map cell (or AP ITEM): the logo glyph, then the label laid
   out as the popups below are, so the game's own pickup popup shows "PROGRESSION ITEM" (or "AP

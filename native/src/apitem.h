@@ -80,6 +80,10 @@ public:
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
     void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl);
 
+    // Game thread: the records back to the game's own values, the labels and the logo kept
+    // (the next watch restyles them again): for menus, which show the records too.
+    void release(BYTE* records_holder);
+
     bool restyled() const { return records_[0] != nullptr || records_[1] != nullptr; }
     unsigned painted_texture() const { return painted_; }
 

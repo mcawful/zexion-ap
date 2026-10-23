@@ -341,6 +341,15 @@ unsigned ApItems::texture_of(BYTE* holder) const {
 }
 
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl) {
+    release(records_holder);
+    if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
+        upload(painted_, gl, true, false);
+    }
+    painted_ = 0;
+    labels_.clear();
+}
+
+void ApItems::release(BYTE* records_holder) {
     // The records back to the game's own values, whether this helper restyled them or an earlier
     // one left them so.
     for (int i = 0; i < kStandInCount; ++i) {
@@ -358,11 +367,6 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
         }
         records_[i] = nullptr;
     }
-    if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
-        upload(painted_, gl, true, false);
-    }
-    painted_ = 0;
-    labels_.clear();
 }
 
 }  // namespace zap

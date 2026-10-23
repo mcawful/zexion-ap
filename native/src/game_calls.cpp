@@ -841,7 +841,13 @@ void Game::watch_ap_items() {
     uint8_t row = at<uint8_t>(player(), kPlayerCellRow);
     uint8_t column = at<uint8_t>(player(), kPlayerCellColumn);
     int cell = row < 54 && column < 54 ? row * 54 + column : -1;
-    ap_items_.watch(item_records_, cell);
+    // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
+    // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
+    if (*save_loaded_ != kNoSaveLoaded && *menu_state_ == 0) {
+        ap_items_.watch(item_records_, cell);
+    } else {
+        ap_items_.release(item_records_);
+    }
     ap_items_.paint(sprite_texture_, gl_, GetTickCount64());
     // The pickup popup as wide as this cell's label, if the stand-ins are ours; the game's 24
     // elsewhere. Called from the frame call, on the game's thread, so the game is not running
