@@ -40,30 +40,33 @@ constexpr unsigned kUnpackRowLength = 0x0CF2, kUnpackSkipRows = 0x0CF3, kUnpackS
 constexpr unsigned kUnpackBufferBinding = 0x88EF, kPackBufferBinding = 0x88ED;
 constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then skip rows, pixels
 
-// The logo: 16 x 16, levels 0 to 3 (the shader picks a palette shade from the red channel,
-// as the game's grey sprites are drawn: 0x00, 0x67, 0xCC, 0xFF), -1 transparent.
+// The logo: Archipelago's six circles, each cutting a gap into the one drawn before, as in its
+// logo (data/icon.png in Archipelago), at 16 x 16. Levels 0 to 3, -1 transparent: the game's
+// sprite shader (Files/spriteFragment.glfs) draws palette color int(red * 3), so the levels
+// are written as the reds 0x00, 0x67, 0xCC, 0xFF, as in the game's grey sprites.
 constexpr int8_t kLogo[16][16] = {
-    {-1, -1, -1, -1, -1, -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1, -1, 0, 3, 3, 0, -1, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1, 0, 3, 3, 2, 1, 0, -1, -1, -1, -1, -1},
-    {-1, -1, 0, 0, 0, 0, 3, 2, 1, 1, 0, 0, 0, 0, -1, -1},
-    {-1, 0, 3, 3, 2, 0, 0, 1, 1, 0, 0, 3, 3, 2, 0, -1},
-    {-1, 0, 3, 2, 2, 1, 0, 0, 0, 0, 3, 3, 2, 1, 0, -1},
-    {-1, 0, 2, 2, 1, 0, 0, 3, 3, 0, 0, 2, 1, 1, 0, -1},
-    {-1, -1, 0, 0, 0, 0, 3, 3, 2, 1, 0, 0, 0, 0, -1, -1},
-    {-1, -1, 0, 0, 0, 0, 3, 2, 1, 1, 0, 0, 0, 0, -1, -1},
-    {-1, 0, 3, 3, 2, 0, 0, 1, 1, 0, 0, 3, 3, 2, 0, -1},
-    {-1, 0, 3, 2, 2, 1, 0, 0, 0, 0, 3, 3, 2, 1, 0, -1},
-    {-1, 0, 2, 2, 1, 0, 0, 3, 3, 0, 0, 2, 1, 1, 0, -1},
-    {-1, -1, 0, 0, 0, 0, 3, 3, 2, 1, 0, 0, 0, 0, -1, -1},
-    {-1, -1, -1, -1, -1, 0, 3, 2, 1, 1, 0, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1, -1, 0, 1, 1, 0, -1, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1, -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  0,  3,  3,  2,  2,  0, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  3,  3,  2,  2,  2,  2, -1, -1, -1, -1, -1},
+    {-1,  0,  3,  3,  0, -1,  2,  2,  2,  2, -1,  0,  3,  0,  0, -1},
+    { 0,  3,  3,  2,  2,  2, -1,  2,  2, -1,  3,  3,  3,  2,  2,  0},
+    { 3,  3,  2,  2,  2,  2,  0,  2,  1,  0,  3,  3,  2,  2,  2,  2},
+    { 3,  2,  2,  2,  2,  1,  0,  1,  1,  0,  3,  2,  2,  2,  2,  1},
+    { 2,  2, -1, -1, -1,  1,  0, -1, -1,  0,  2, -1, -1, -1, -1,  1},
+    {-1,  0,  3,  3,  0,  0, -1, -1, -1, -1,  0,  3,  3,  3,  0, -1},
+    { 0,  3,  3,  2,  2,  2, -1, -1, -1, -1,  3,  3,  3,  2,  2,  0},
+    { 3,  3,  2,  2,  2,  2, -1,  0,  0, -1,  3,  3,  2,  2,  2,  2},
+    { 3,  2,  2,  2,  2,  0,  3,  3,  3,  2,  0,  2,  2,  2,  1,  1},
+    { 2,  2,  2,  2, -1,  3,  3,  3,  2,  2,  2, -1,  2,  1,  1,  1},
+    { 0,  2,  2,  1,  0,  3,  3,  2,  2,  2,  1,  0,  1,  1,  1,  0},
+    {-1,  0,  0,  0,  0,  3,  2,  2,  2,  1,  1,  0,  0,  0,  0, -1},
+    {-1, -1, -1, -1, -1,  2,  2,  2,  1,  1,  1, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  0,  2,  1,  1,  1,  0, -1, -1, -1, -1, -1},
 };
-// The popup icon: 8 x 8, white like the game's own icon glyphs.
+// The popup icon: 8 x 8, white like the game's own icon glyphs: Archipelago's ring of six dots,
+// one at the top and one at the bottom as in its logo.
 constexpr char kGlyph[8][9] = {
-    "...##...", ".#....#.", "#..##..#", "#.#..#.#",
-    "#.#..#.#", "#..##..#", ".#....#.", "...##...",
+    "...##...", "##.##.##", "##....##", "........",
+    "........", "##....##", "##.##.##", "...##...",
 };
 constexpr uint8_t kShade[4] = {0x00, 0x67, 0xCC, 0xFF};
 
