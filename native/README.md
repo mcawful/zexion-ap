@@ -160,8 +160,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   Chunk (48), which the world gives every location holding another player's item (48 for a
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
   records against the game's own values and, while a save is loaded and no menu is open
-  (menus such as the equipment screen draw the records too), restyles them (their in-world
-  frames pointed at
+  (the pause screen draws item frame 95, blank in the game's art, and the map cursor shows a
+  record's name; in a menu the records are the game's own and the logos are cleared),
+  restyles them (their in-world frames pointed at
   frames that are empty in the game's art, no refill drop at pickup), names them after the
   label for the player's map cell (or AP ITEM): the logo glyph, then the label laid
   out as the popups below are, so the game's own pickup popup shows "PROGRESSION ITEM" (or "AP

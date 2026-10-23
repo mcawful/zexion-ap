@@ -318,6 +318,25 @@ void test_painting() {
     buffered.paint(sprites(), gl, 0);
     check(g_uploads.empty(), "an unpack buffer bound: nothing uploaded");
 
+    // A menu open: the logos come off (menus draw item frames too); back in the world, they go
+    // back on at once.
+    reset_gl();
+    zap::ApItems menu;
+    menu.set_labels({{1, "X"}});
+    menu.paint(sprites(), gl, 0);
+    g_uploads.clear();
+    menu.paint(sprites(), gl, 10, false);
+    bool blank = g_uploads.size() == 3;
+    for (const Upload& u : g_uploads) {
+        for (uint8_t b : u.pixels) blank &= b == 0;
+    }
+    check(blank && menu.painted_texture() == 0, "a menu clears both frames and the glyph");
+    g_uploads.clear();
+    menu.paint(sprites(), gl, 20, false);
+    check(g_uploads.empty(), "and leaves them clear while it stays open");
+    menu.paint(sprites(), gl, 30);
+    check(g_uploads.size() == 3 && menu.painted_texture() == 7, "the world paints them again");
+
     // Restore clears the painted pixels.
     reset_gl();
     zap::ApItems painted;
