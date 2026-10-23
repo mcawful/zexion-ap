@@ -5,7 +5,9 @@ Energy), or 48 (Scrap Chunk) for a progression item, which the helper draws with
 arrow. The client asks the server whom each such location's item is for (``LocationScouts``)
 and sends the helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
 generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
-Circle of the Moon's icons by classification), since another game's item names can be long.
+Circle of the Moon's icons by classification), since another game's item names can be long. For
+another Zexion player's item the popup instead shows the item's own icon and the game's name for
+it, as the Castlevania worlds show their own game's items.
 While the player stands in that cell the helper names the stand-in after it, so the game's own
 pickup popup shows it, with the Archipelago logo the helper paints (native/README.md,
 docs/re/memory.md "Other players' items").
@@ -57,6 +59,14 @@ def label(progression: bool, player_name: str) -> str:
     player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
     who = f"FOR {player}" if player else "FOR"
     return f"{item}\n{who}"
+
+
+def zexion_label(item: int, player_name: str) -> str:
+    """The label for another Zexion player's item: ``@N`` asks the helper for item N's own icon
+    and the game's name for it (native/README.md), then whom it is for."""
+    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
+    who = f"FOR {player}" if player else "FOR"
+    return f"@{item}\n{who}"
 
 
 def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:

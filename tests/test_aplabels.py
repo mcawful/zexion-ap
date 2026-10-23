@@ -25,6 +25,10 @@ def test_long_player_names_are_cut_at_a_word() -> None:
     assert lines(long) == ["@AP ITEM", "FOR LINKSAWAKENERTHEGREA"]
 
 
+def test_another_zexion_players_item_is_named_by_its_record() -> None:
+    assert al.zexion_label(1, "Zexion2") == "@1\nFOR ZEXION2"
+
+
 def test_each_line_fits_the_popup() -> None:
     text = al.label(True, "P" * 60)
     assert lines(text) == ["@PROGRESSION ITEM", "FOR " + "P" * 20]
