@@ -17,6 +17,7 @@ const char* const kConfigKeys[] = {
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
     "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
+    "event_handlers",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -55,6 +56,13 @@ using HudNumberFn = void (*)(void* hud_object, double value);
 using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
+using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
+// A received Energy Shield runs its pickup's area event (Game::run_item_event).
+constexpr uint8_t kEnergyShield = 50;
+constexpr ptrdiff_t kRecordEvent = 0x40;
+constexpr ptrdiff_t kEventRecordSize = 0x28;
+constexpr uint8_t kSpawnEventType = 11;
+constexpr int16_t kShieldObject = 2018;
 
 template <typename T>
 T& at(BYTE* p, ptrdiff_t offset) {
@@ -313,6 +321,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     palette_table_ = found["palette_table"];
     frame_clock_ = found["frame_clock"];
     sprite_templates_ = found["sprite_templates"];
+    event_handlers_ = found["event_handlers"];
     gl_ = load_gl();
     configured_ = true;
     return "";
@@ -474,8 +483,56 @@ void Game::pump_popups() {
             sound_system_, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, kRecordVolume), -1.0f, 0, 8);
     }
+    if (popup.item == kEnergyShield) run_item_event(popup.item);
     popups_.pop_front();
     frames_since_popup_ = 0;
+}
+
+bool Game::run_item_event(uint8_t item) {
+    // A received item whose pickup does more than its inventory byte: the Energy Shield's runs
+    // area event 3553, type 11, which spawns object 2018, the shield (docs/re/memory.md,
+    // "Received Energy Shields"). The helper runs that event as the pickup does (0x1FE85):
+    // the handler for its type, from the table the game fills, with the cell and the record;
+    // the cell is the player's. Every part is checked against B1 first.
+    BYTE* rec = record(item);
+    if (rec == nullptr) return false;
+    int16_t event = at<int16_t>(rec, kRecordEvent);
+    BYTE* table = nullptr;
+    int16_t events = 0;
+    if (event < 0 || !safe_read(event_table_, &table, sizeof(table)) || table == nullptr ||
+        !safe_read(event_count_, &events, sizeof(events)) || event >= events) {
+        return false;
+    }
+    BYTE* ev = table + static_cast<ptrdiff_t>(event) * kEventRecordSize;
+    BYTE copy[kEventRecordSize];
+    if (!safe_read(ev, copy, sizeof(copy))) return false;
+    int16_t subtype, object, self;
+    std::memcpy(&subtype, copy + 2, 2);
+    std::memcpy(&object, copy + 4, 2);
+    std::memcpy(&self, copy + 0x24, 2);
+    if (copy[0] != kSpawnEventType || copy[1] != 0 || subtype != 1 || object != kShieldObject ||
+        self != event) {
+        return false;
+    }
+    void* handler = nullptr;
+    if (!safe_read(event_handlers_ + kSpawnEventType * sizeof(void*), &handler, sizeof(handler)) ||
+        handler == nullptr) {
+        return false;
+    }
+    // The handler must be code in the game's own image.
+    auto address = reinterpret_cast<uintptr_t>(handler);
+    auto image = reinterpret_cast<uintptr_t>(base_);
+    if (address <= image) return false;
+    const IMAGE_SECTION_HEADER* section =
+        section_of(reinterpret_cast<HMODULE>(base_), address - image);
+    if (section == nullptr || (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
+        return false;
+    }
+    BYTE* p = player();
+    auto row = static_cast<char>(at<uint8_t>(p, kPlayerCellRow));
+    auto column = static_cast<char>(at<uint8_t>(p, kPlayerCellColumn));
+    reinterpret_cast<EventFn>(handler)(row, column, ev);
+    return true;
 }
 
 void Game::arm_newgame(NewGamePlan plan) {

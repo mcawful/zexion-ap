@@ -809,6 +809,56 @@ void test_zexion_items_show_as_themselves() {
     check(object_base(3) == moved, "a reused slot is left alone on restore");
 }
 
+void shield_records(int16_t object) {
+    reset_events();
+    BYTE* ev = g_events + 3553 * 0x28;
+    ev[0] = 11;
+    const int16_t words[] = {1, object};
+    std::memcpy(ev + 2, words, sizeof(words));
+    const int16_t self = 3553;
+    std::memcpy(ev + 0x24, &self, sizeof(self));
+    BYTE* shield = g_records + 50 * 100;
+    std::memcpy(shield + 0x0A, "ENERGY SHIELD", sizeof("ENERGY SHIELD"));
+    *reinterpret_cast<int16_t*>(shield + 0x40) = 3553;
+    *reinterpret_cast<int16_t*>(shield + 0x5A) = -1;  // no sound
+    field<uint8_t>(0x107A) = 4;
+    field<uint8_t>(0x107B) = 7;
+}
+
+void test_received_shield() {
+    {
+        zap::Game game;
+        game.configure(GetModuleHandleW(nullptr), stand_in_config());
+        reset_game();
+        shield_records(2018);
+        apply(game, "apply\npopup 50 FROM ALICE");
+        game.pump_popups();
+        check(g_messages == 1, "a received Energy Shield pops up");
+        check(g_spawn_calls == 1 && g_spawn_row == 4 && g_spawn_column == 7 &&
+                  g_spawn_event == g_events + 3553 * 0x28,
+              "and runs its pickup event, the type-11 handler, from the player's cell");
+    }
+    {
+        zap::Game game;
+        game.configure(GetModuleHandleW(nullptr), stand_in_config());
+        reset_game();
+        shield_records(2017);  // not the event traced
+        apply(game, "apply\npopup 50 FROM ALICE");
+        game.pump_popups();
+        check(g_messages == 1 && g_spawn_calls == 0, "an event not as traced is not run");
+    }
+    {
+        zap::Game game;
+        game.configure(GetModuleHandleW(nullptr), stand_in_config());
+        reset_game();
+        shield_records(2018);
+        apply(game, "apply\npopup 36 FROM ALICE");
+        game.pump_popups();
+        check(g_messages == 1 && g_spawn_calls == 0, "other items run no event");
+    }
+    reset_events();
+}
+
 void test_popup_text_breaks_before_the_sender() {
     int width = 0;
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
@@ -836,6 +886,7 @@ int main() {
     test_pickup_popup_width();
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
+    test_received_shield();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();

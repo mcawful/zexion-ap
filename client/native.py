@@ -69,6 +69,7 @@ CONFIG_KEYS = (
     "palette_table",
     "frame_clock",
     "sprite_templates",
+    "event_handlers",
 )
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
