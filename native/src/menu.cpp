@@ -178,6 +178,15 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     return true;
 }
 
+bool ArchipelagoChoice::release(const MenuAddresses& a, WidgetCallback callback) {
+    if (child_ == nullptr) return false;
+    bool put = menu_open(a) && choice_in(menu_, a, reinterpret_cast<void*>(callback)) == child_;
+    if (put) *reinterpret_cast<void**>(child_ + kChildCallback) = a.rando_menu;
+    child_ = nullptr;
+    menu_ = nullptr;
+    return put;
+}
+
 bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback) {
     if (child_ == nullptr) return false;
     bool put = put_back(a, callback);

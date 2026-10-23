@@ -115,6 +115,26 @@ void test_the_callback_goes_back_even_if_the_label_changed() {
     check(stand.callback() == &rando_menu, "the live widget no longer points at the helper");
 }
 
+void test_release_keeps_the_label_and_returns_the_callback() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    choice.install(a, &archipelago);
+    check(choice.release(a, &archipelago), "released");
+    check(stand.text() == "ARCHIPELAGO", "the label still reads ARCHIPELAGO");
+    check(stand.callback() == &rando_menu, "RANDOMIZER's callback is back");
+    check(!choice.installed() && !choice.restore(a, &archipelago), "forgotten: nothing more");
+    check(stand.text() == "ARCHIPELAGO", "and nothing written after");
+
+    Stand closed;
+    zap::MenuAddresses b = closed.addresses();
+    choice.install(b, &archipelago);
+    BYTE file_screen[0x80] = {};
+    closed.current = file_screen;  // the menu closed before the release
+    check(!choice.release(b, &archipelago), "a closed menu is not written");
+    check(closed.callback() == &archipelago, "left as it was");
+}
+
 void test_a_new_panel_replaces_the_old() {
     Stand first, second;
     zap::ArchipelagoChoice choice;
@@ -171,6 +191,7 @@ void test_mismatches_leave_the_menu_alone() {
 int main() {
     test_install_and_restore();
     test_restore_when_another_menu_is_up();
+    test_release_keeps_the_label_and_returns_the_callback();
     test_a_new_panel_replaces_the_old();
     test_a_closed_menu_is_forgotten_unwritten();
     test_a_released_widget_is_left_alone();

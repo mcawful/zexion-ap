@@ -64,6 +64,15 @@ struct ModePanel {
         current = menu;
     }
 
+    // The label as the game builds it, as on a later visit to the file screen.
+    void reset_label() {
+        const char text[] = "RANDOMIZER ";
+        for (int i = 0; i < zap::kLabelLength; ++i) {
+            at<int32_t>(glyphs[i], 0x1C4) = text[i];
+            at<BYTE*>(glyphs[i], 0x1B0) = table.data() + text[i] * 0x38;
+        }
+    }
+
     zap::MenuAddresses addresses() {
         zap::MenuAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
