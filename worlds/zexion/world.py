@@ -175,8 +175,10 @@ class ZexionWorld(World):
                 location.access_rule = rules.requirement(self, entries, tuple(cell), cells)
             region.locations.append(location)
 
-        # The goal: grab Zexion in the core (docs/re/memory.md, "The goal: Zexion's inventory
-        # byte at the grab"). The four keys open the core; RandoCells does not model them.
+        # The goal is the ending (the client reads flag 250: docs/re/memory.md, "The ending:
+        # flag 250"). The logic asks for the grab of Zexion in the core, since after it the game
+        # offers to skip the escape and the final boss to the ship (reported by the owner). The
+        # four keys open the core; RandoCells does not model them.
         core = by_index[cells[GOAL_CELL]]
         goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(Item("Victory", ItemClassification.progression, None, self.player))

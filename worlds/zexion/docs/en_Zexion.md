@@ -8,9 +8,11 @@ in Zexion can belong to other players, and their games can send items to you.
 
 ## What is the goal?
 
-Grabbing Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys. This is the
-moment the game's own "Abridged Finale" setting counts as victory; the escape, the final battle
-and the ending after it are not needed.
+Reaching the ending: the first cutscene after you board the ship. Getting there starts with
+grabbing Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys; after the grab
+the game offers to skip the escape and the final battle to just before the ship, so the seed's
+logic asks for no more than the grab. Finishing the escape and the battle yourself reaches the
+same ending.
 
 ## Which modes are there?
 
