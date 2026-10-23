@@ -131,8 +131,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     the AP start), runs the game's placement, checks the `expect` bytes, writes the edits
     over the placement, puts the player's menu state back, and queues the new game in the
     chosen slot; the watch above reports it in the next frame. Once the game has queued the new
-    game, only RANDOMIZER's callback goes back, so the label reads ARCHIPELAGO through the fade;
-    a refused start puts the whole label back. A section of another mode, or a slot the
+    game, only RANDOMIZER's callback goes back, so the label reads ARCHIPELAGO through the fade
+    (seen in the game, 2026-10-23); a refused start puts the whole label back. A section of another mode, or a slot the
     game will not start a game in, drops the plan with nothing queued, and the client arms it
     again. Working in game for Standard and Easy seeds (2026-10-22): ARCHIPELAGO started the AP
     seed in an empty slot, showed again after backing out of two slots, and RANDOMIZER
