@@ -243,7 +243,8 @@ async def skip_tick(ctx: ZexionContext) -> None:
     else:
         logger.warning(
             "The helper could not offer the escape skip (the game's event is not as expected): "
-            "a first playthrough must finish the escape, which needs the Zenith Thrusters."
+            "a first playthrough must finish the escape, which needs items the seed's logic "
+            "does not ask for (for example the Zenith Thrusters)."
         )
 
 
