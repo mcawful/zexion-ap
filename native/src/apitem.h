@@ -10,8 +10,10 @@
 // from the per-frame call, where the game's context is current), and names the record after
 // the location in the cell the player stands in ("MASTER SWORD FOR ALICE"), or "ARCHIPELAGO
 // ITEM" elsewhere: the game's own pickup popup then shows that name. Every field is checked
-// against the game's own values before the first write; unload puts the record back and
-// clears the painted pixels (transparent, as in the game's art).
+// against the game's own values before the first write, and the texture is read back once
+// (the two places blank, known art where the PNG has it) before the first paint; unload puts
+// the record back to the game's values and clears the painted pixels (transparent, as in the
+// game's art).
 #pragma once
 
 #include <windows.h>
@@ -35,9 +37,12 @@ struct GlFunctions {
     void(WINAPI* TexSubImage2D)(unsigned target, int level, int x, int y, int width, int height,
                                 unsigned format, unsigned type, const void* pixels) = nullptr;
     unsigned(WINAPI* GetError)() = nullptr;
+    void(WINAPI* GetTexImage)(unsigned target, int level, unsigned format, unsigned type,
+                              void* pixels) = nullptr;
+    unsigned char(WINAPI* IsTexture)(unsigned texture) = nullptr;
     bool loaded() const {
         return BindTexture && GetIntegerv && GetTexLevelParameteriv && PixelStorei &&
-               TexSubImage2D && GetError;
+               TexSubImage2D && GetError && GetTexImage && IsTexture;
     }
 };
 
@@ -60,7 +65,8 @@ public:
     // texture changes. `texture_holder` holds the pointer to the sprite data.
     void paint(BYTE* texture_holder, const GlFunctions& gl);
 
-    // Game thread: the record back, the pixels cleared, the labels dropped.
+    // Game thread: the record back to the game's own values (also one an earlier helper left
+    // restyled), the pixels cleared if this helper painted them, the labels dropped.
     void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl);
 
     bool restyled() const { return record_ != nullptr; }
@@ -68,13 +74,15 @@ public:
 
 private:
     BYTE* record(BYTE* records_holder) const;
+    unsigned texture_of(BYTE* texture_holder) const;
+    // Paints (or clears) the logo, the first time for a texture only after reading it back:
+    // the two places blank (or already the logo) and known art where the PNG has it.
     bool upload(unsigned texture, const GlFunctions& gl, bool clear);
 
     std::map<int, std::string> labels_;
     BYTE* record_ = nullptr;
-    BYTE saved_[0x40] = {};  // the record's first 0x40 bytes: animation, icon, palette, name
-    int16_t saved_event_ = 0;
     unsigned painted_ = 0;
+    unsigned verified_ = 0;  // the texture read back and found as expected
     int frames_to_paint_ = 0;
 };
 

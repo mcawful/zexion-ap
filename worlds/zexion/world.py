@@ -236,6 +236,8 @@ class ZexionWorld(World):
             "amounts": list(self.mode["amounts"]),
             "options": {str(t): v for t, v in self.mode["checked_options"].items()},
             "menu": self.menu_setup(),
+            # Other players' items are this item in location_items (client/aplabels.py).
+            "stand_in": FOREIGN,
         }
 
     def menu_setup(self) -> dict[str, Any] | None:

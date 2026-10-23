@@ -92,10 +92,10 @@ def test_items_that_cannot_be_written_are_reported() -> None:
     assert g.inventory == {} and g.not_grantable == {31: 1}
 
 
-def test_an_energy_shield_is_neither_given_nor_reported() -> None:
+def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     target = rc.should_own(START, TABLE, set(), [50, 50])
     g = rc.grants(inv(i0=3, i1=3, i4=1), target)
-    assert g.inventory == {} and g.not_grantable == {}
+    assert g.inventory == {46: 2} and g.not_grantable == {}
 
 
 def test_should_own_counts_start_and_upgrade_codes_under_the_weapon() -> None:
@@ -128,7 +128,15 @@ def test_a_weapon_byte_of_two_still_owes_the_upgrade() -> None:
     assert rc.grants(inv(i0=3, i1=3, i3=2, i4=1), target).inventory == {9: 1}
 
 
-def test_filler_the_game_keeps_elsewhere_is_never_given() -> None:
+def test_scrap_pickups_count_as_scrap_metal() -> None:
+    # Three scrap pickups in play raised byte 46 to 3; two received scrap items are owed on top.
     target = rc.should_own(START, [47, 49, 48, 27], {0, 1, 2}, [47, 49])
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
-    assert g.inventory == {} and g.not_grantable == {}
+    g = rc.grants(inv(i0=3, i1=3, i4=1, i46=3), target)
+    assert g.inventory == {46: 5} and g.not_grantable == {}
+
+
+def test_a_stand_in_pickup_does_not_swallow_a_received_scrap_metal() -> None:
+    # Another player's item (the stand-in, 47) picked up raised byte 46; a Scrap Metal received
+    # afterwards is still owed.
+    target = rc.should_own(START, [47], {0}, [46])
+    assert rc.grants(inv(i0=3, i1=3, i4=1, i46=1), target).inventory == {46: 2}

@@ -622,7 +622,8 @@ std::string parse_labels(const std::string& request, std::map<int, std::string>&
         for (uint8_t c : raw) {
             if (std::isalpha(c)) {
                 name += static_cast<char>(std::toupper(c));
-            } else if (std::isdigit(c) || std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr) {
+            } else if (std::isdigit(c) ||
+                       (c != 0 && std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr)) {
                 name += static_cast<char>(c);
             }
             if (name.size() >= kItemNameMax) break;
@@ -635,6 +636,10 @@ std::string parse_labels(const std::string& request, std::map<int, std::string>&
 }
 
 void Game::set_labels(std::map<int, std::string> labels) {
+    if (labels.empty()) {
+        restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
+        return;
+    }
     ap_items_.set_labels(std::move(labels));
 }
 

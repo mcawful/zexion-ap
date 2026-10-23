@@ -178,7 +178,7 @@ def test_set_item_is_compare_and_set() -> None:
 def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
     g = fake_game()
     with pytest.raises(ValueError, match="not an item"):
-        g.set_item(50, 0, 1)  # Energy Shield: the game does not keep it in byte 50
+        g.set_item(50, 0, 1)  # Energy Shield: its pickup counts in byte 46, not 50
     with pytest.raises(ValueError, match="fit a byte"):
         g.set_item(3, 0, 256)
 

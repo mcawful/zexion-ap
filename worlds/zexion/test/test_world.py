@@ -168,6 +168,7 @@ class TestSlotDataForTheClient(ZexionTestBase):
         location = self.multiworld.get_location(location_name(0), self.player)
         location.item = Item("Something", ItemClassification.progression, 1, self.player + 1)
         self.assertEqual(self.world.fill_slot_data()["location_items"][0], FOREIGN)
+        self.assertEqual(self.world.fill_slot_data()["stand_in"], FOREIGN)
 
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()
