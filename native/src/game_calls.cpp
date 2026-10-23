@@ -460,7 +460,6 @@ void Game::start_archipelago(WidgetCallback callback) {
     if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
     starting_ = true;
     try {
-        choice_.restore(menu_, callback);
         int differs = -1;
         {
             // The menu's state is the player's own (the game keeps it in its preferences): set
@@ -490,6 +489,7 @@ void Game::start_archipelago(WidgetCallback callback) {
             std::snprintf(where, sizeof(where), "0x%X", static_cast<unsigned>(differs));
             newgame_status_ = std::string("refused the placement is not the seed's mode (section +") +
                               where + " differs)";
+            choice_.restore(menu_, callback);
             disarm_newgame();
             return;
         }
@@ -502,9 +502,15 @@ void Game::start_archipelago(WidgetCallback callback) {
         reinterpret_cast<void (*)()>(rando_newgame_fn_)();
         if (at<void*>(transition_fn_, 0) != newgame_fn_) {
             newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
+            choice_.restore(menu_, callback);
             disarm_newgame();
+            return;
         }
+        // The game is leaving the file screen: ARCHIPELAGO stays on the label through the fade,
+        // and only RANDOMIZER's callback goes back, so the closing menu holds nothing of ours.
+        choice_.release(menu_, callback);
     } catch (...) {
+        choice_.restore(menu_, callback);
         disarm_newgame();
         throw;
     }

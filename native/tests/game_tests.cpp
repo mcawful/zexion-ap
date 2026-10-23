@@ -333,8 +333,8 @@ void test_archipelago_choice() {
           "the AP seed is written over the placement before the new game is queued");
     check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
     check(game.newgame_status() == "armed", "the plan waits for the queued new game");
-    check(panel.text() == "RANDOMIZER " && panel.callback() == &rando_menu_fn,
-          "RANDOMIZER is back");
+    check(panel.text() == "ARCHIPELAGO" && panel.callback() == &rando_menu_fn,
+          "the label reads ARCHIPELAGO through the fade; RANDOMIZER's callback is back");
     chosen(panel.child, 7);
     check(g_steps == "placement queue ", "a second press does nothing");
     game.watch_menu(&chosen);
@@ -348,6 +348,9 @@ void test_archipelago_choice() {
     check(g_section[0x26C] == 0, "the queued new game is not written again");
     game.watch_menu(&chosen);
     check(!game.menu_installed(), "the plan is used up");
+
+    // The file screen closes as the new game starts; a later visit builds the panel afresh.
+    panel.reset_label();
 
     // Another mode: the placement's amounts are not the seed's. Nothing is queued.
     g_steps.clear();

@@ -58,6 +58,12 @@ public:
     // wrote RANDOMIZER's callback back.
     bool restore(const MenuAddresses& addresses, WidgetCallback callback);
 
+    // Game thread, once the choice has started a new game: puts RANDOMIZER's callback back but
+    // leaves the label reading ARCHIPELAGO while the menu fades out, then forgets the choice
+    // (the menu is about to close). Only into a menu still open, as restore. Returns true when
+    // it wrote the callback back.
+    bool release(const MenuAddresses& addresses, WidgetCallback callback);
+
     bool installed() const { return child_ != nullptr; }
 
 private:
