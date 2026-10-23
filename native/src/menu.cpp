@@ -17,6 +17,7 @@ constexpr ptrdiff_t kGlyphFrameTable = 0x1A8, kGlyphFrame = 0x1B0, kGlyphFrameCo
 constexpr ptrdiff_t kGlyphFrameIndex = 0x1C4;
 constexpr ptrdiff_t kFrameSize = 0x38;
 constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
+constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
 
 template <typename T>
 bool read(const BYTE* base, ptrdiff_t offset, T& out) {
@@ -163,10 +164,25 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     BYTE* child = choice_in(top, a, a.rando_menu);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
+    // A label left reading ARCHIPELAGO by an earlier release (should its menu ever outlive the
+    // new game) is not taken for the original: RANDOMIZER is.
+    bool already = true;
+    for (int i = 0; i < kLabelLength; ++i) {
+        if (*reinterpret_cast<int32_t*>(glyphs[i] + kGlyphFrameIndex) !=
+            static_cast<unsigned char>(kLabel[i])) {
+            already = false;
+        }
+    }
     for (int i = 0; i < kLabelLength; ++i) {
         BYTE* g = glyphs[i];
-        frames_[i] = *reinterpret_cast<int32_t*>(g + kGlyphFrameIndex);
-        frame_ptrs_[i] = *reinterpret_cast<BYTE**>(g + kGlyphFrame);
+        if (already) {
+            int32_t r = static_cast<unsigned char>(kRandomizer[i]);
+            frames_[i] = r;
+            frame_ptrs_[i] = *reinterpret_cast<BYTE**>(g + kGlyphFrameTable) + r * kFrameSize;
+        } else {
+            frames_[i] = *reinterpret_cast<int32_t*>(g + kGlyphFrameIndex);
+            frame_ptrs_[i] = *reinterpret_cast<BYTE**>(g + kGlyphFrame);
+        }
         int32_t c = static_cast<unsigned char>(kLabel[i]);
         *reinterpret_cast<int32_t*>(g + kGlyphFrameIndex) = c;
         *reinterpret_cast<BYTE**>(g + kGlyphFrame) =
@@ -176,6 +192,15 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     menu_ = top;
     child_ = child;
     return true;
+}
+
+bool ArchipelagoChoice::release(const MenuAddresses& a, WidgetCallback callback) {
+    if (child_ == nullptr) return false;
+    bool put = menu_open(a) && choice_in(menu_, a, reinterpret_cast<void*>(callback)) == child_;
+    if (put) *reinterpret_cast<void**>(child_ + kChildCallback) = a.rando_menu;
+    child_ = nullptr;
+    menu_ = nullptr;
+    return put;
 }
 
 bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback) {
