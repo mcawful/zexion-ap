@@ -90,11 +90,12 @@ constexpr int8_t kLogoArrow[16][16] = {
     {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
     {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
 };
-// The popup icon: 8 x 8, white like the game's own icon glyphs: Archipelago's ring of six dots,
-// one at the top and one at the bottom as in its logo.
+// The popup icon: 8 x 8, white like the game's own icon glyphs: a ring of one-pixel dots, seven
+// pixels wide so that, like the font's letters, it leaves its last column empty and does not
+// touch the text after it.
 constexpr char kGlyph[8][9] = {
-    "...##...", "##.##.##", "##....##", "........",
-    "........", "##....##", "##.##.##", "...##...",
+    "...#....", ".#...#..", "........", "#.....#.",
+    "........", ".#...#..", "...#....", "........",
 };
 // The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
 // items. Both are filler the game counts as Scrap Metal, and both draw in palette 8.
