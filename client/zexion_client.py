@@ -19,7 +19,8 @@ Once connected:
   2026-10-22 with a Standard seed). For a seed whose mode
   the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
   seed's mode gets the AP seed written in as the game builds it (run in game for Standard
-  only). One new game per connection: reconnect to start another. A seed whose starting
+  only). ``--keep-randomizer`` takes that path for every seed, leaving RANDOMIZER on the
+  panel. One new game per connection: reconnect to start another. A seed whose starting
   items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
@@ -114,6 +115,7 @@ class ZexionContext(CommonContext):
         self.kept: set[int] = set()
         self.game_conn: game.Game | None = None
         self.use_helper = True
+        self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
         # The AP new game: None (to arm), "armed", "done" or "unavailable"; disarm_pending asks
@@ -213,6 +215,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         return
     if ctx.newgame_state is None:
         plan = ctx.plan
+        if ctx.keep_randomizer and plan.menu is not None:
+            plan = dataclasses.replace(plan, menu=None)
         try:
             text = newgame.plan_text(plan)
         except newgame.NewGameError as exc:
@@ -317,6 +321,7 @@ def launch(*args: str) -> None:
         ctx = ZexionContext(parsed.connect, parsed.password)
         ctx.auth = parsed.name
         ctx.use_helper = not parsed.no_helper
+        ctx.keep_randomizer = parsed.keep_randomizer
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
         if gui_enabled:
@@ -334,6 +339,11 @@ def launch(*args: str) -> None:
         "--no-helper",
         action="store_true",
         help="Do not load the native helper into the game: items arrive with no popup.",
+    )
+    parser.add_argument(
+        "--keep-randomizer",
+        action="store_true",
+        help="Do not offer ARCHIPELAGO: start the seed from RANDOMIZER, its mode and START GAME.",
     )
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     parsed = handle_url_arg(parser.parse_args(args), parser=parser)
