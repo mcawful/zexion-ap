@@ -3,7 +3,8 @@
 // After Zexion is grabbed, the game runs area event 3665: "if flag 250 is set, go to 3668",
 // and 3668 offers SKIP ESCAPE AND FINAL BATTLE? unless flag 289 (Abridged Finale) is set.
 // Flag 250 is set only by the ending, so a first playthrough never gets the offer and must
-// finish the escape, which needs the Zenith Thrusters (docs/re/memory.md, "The escape skip").
+// finish the escape, which needs one of several combinations of items the logic does not ask
+// for, the Zenith Thrusters alone being one (docs/re/memory.md, "The escape skip").
 // The helper points the record's other branch at 3668 too, in the loaded event table only
 // (nothing is saved), so the offer comes whether or not flag 250 is set. Every field of the
 // record is checked first, and the record is put back on unload if it still reads as patched.
