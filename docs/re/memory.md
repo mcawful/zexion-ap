@@ -175,6 +175,16 @@ Where the running game keeps the state the client needs. Addresses are module-re
 | Build | B1 |
 | Evidence | `lab/data/6d8a94bd4d64/` (the exe and `Objects` copies), the game's `Files/Sprites.png`, 2026-10-23; the live run: `lab/ap/live10/` (`client.log`, `client2.log`, `server.log`), record 47 read with the client's `game.py` before and after each restore, and the owner's report of the logo, the popup and the room, 2026-10-23. |
 
+## Live item objects
+
+| Field | |
+|---|---|
+| Value | Items in the loaded rooms are objects in a fixed pool of 128 at `+0xB6E030`, `0x3B0` bytes each (the spawn function `0x19E970` looks for a free one, a slot whose dword at `+0x1D8` is 0, and copies a 0x1D8-byte template, `[[+0xDF7110] + 0x110]`, into its start). The first `0x1D8` bytes are the sprite: `+0x198` the palette object, `table[n]` from the table at `+0xCDF5C0`, and `+0x1A0` its number n (set at spawn from the record's `+0x09`, `0x19EE8E`); `+0x1A8` the base of the sprite set's frame list (the template's, for every item); `+0x1B0` the frame shown, `+0x1A8` + frame × `0x38`, with the frame number in `+0x1C4` and the set's frame count in `+0x1BC`. The item's update (`0x19E2E0`, installed at `0x1E24A3`) recomputes the frame every frame from the record (`+0x02` + (clock / `+0x04`) mod `+0x06`, the clock a 64-bit count at `+0x3CF750`) and adds it to the object's own `+0x1A8`. After the sprite: `+0x1D8` nonzero while in use (a different number per spawn), `+0x1E8` the item record, `+0x3AC` its map row and `+0x3AD` its column. So one object can be shown as another item without changing what it hands out: its `+0x1A8` moved by (that item's frame − the frame its record computes) × `0x38`, and its `+0x198`/`+0x1A0` set to that item's palette; the record, and so the pickup, stay its own. The game rebuilds an object from its record when its room is entered again. |
+| Status | from disassembly (the pool, the fields, the spawn and the update); measured (the pool and fields read in a live game); working in game for the look (two writes, by hand, 2026-10-23, B1: a stand-in Scrap Chunk at map 13,22 shown as a Missile Container, its colors right, while another stand-in in the same room kept the logo; picked up, it popped up MISSILE CONTAINER over FOR ZEXION2, the server got the check, and the Missile Container count stayed 3) |
+| Method | capstone over the B1 exe copy; `memscan.py` reads of the pool, then `memscan.py write` of slot 0's `+0x198`, `+0x1A0` and `+0x1A8` with the owner's OK |
+| Build | B1 |
+| Evidence | `lab/ap/live12/` (seed with players Zexion and Zexion2, slot 19), the owner's report, 2026-10-23. |
+
 ## The client in a live game
 
 | Field | |
