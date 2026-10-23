@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.4.0";
+constexpr char kVersion[] = "0.5.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -99,6 +99,7 @@ uintptr_t frame(void* argument) {
         try {
             g_mailbox.serve();
             g_game.watch_newgame();
+            g_game.watch_skip();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 if (!g_unloading) g_game.watch_menu(&archipelago_chosen);
                 g_menu_installed.store(g_game.menu_installed());
@@ -148,14 +149,20 @@ void wait_until_no_call_inside() {
 
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") {
-        std::string configured;
+        std::string state;  // configured, then whether the escape skip is offered
         if (g_slot != nullptr) {
-            g_mailbox.call([] { return std::string(g_game.configured() ? "1" : "0"); },
-                           kFrameWaitMs, configured);
+            g_mailbox.call(
+                [] {
+                    return std::string(g_game.configured() ? "1" : "0") +
+                           (g_game.skip_offered() ? "1" : "0");
+                },
+                kFrameWaitMs, state);
         }
+        bool configured = state.size() == 2 && state[0] == '1';
+        bool skip = state.size() == 2 && state[1] == '1';
         return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
-               " hooked=" + (g_slot ? "1" : "0") +
-               " configured=" + (configured == "1" ? "1" : "0");
+               " hooked=" + (g_slot ? "1" : "0") + " configured=" + (configured ? "1" : "0") +
+               " skip=" + (skip ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
@@ -221,6 +228,7 @@ std::string handle(const std::string& request, bool& stop) {
             g_mailbox.call(
                 [] {
                     g_game.disarm_newgame();
+                    g_game.restore_skip();
                     g_game.restore_menu(&archipelago_chosen);
                     g_menu_installed.store(g_game.menu_installed());
                     return std::string();

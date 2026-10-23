@@ -46,10 +46,11 @@ import save_patch
 logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
-# The goal: flag 250, set when the first ending cutscene starts, after the final boss and the
-# ship, and saved with the game (live-tested 2026-10-22)
-# (docs/re/memory.md, "The ending").
-ENDING_FLAG = 250
+# The goal: flag 250 with flag 211 clear. The ending sets flag 250 and clears flags 185 to 212
+# when its first cutscene starts, and both are saved (live-tested 2026-10-22). The escape skip's
+# YES sets flag 250 too, but with flags 185 to 212 set, before the ship (docs/re/memory.md, "The
+# ending: flag 250" and "The escape skip").
+ENDING_FLAG, FINALE_FLAG = 250, 211
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ class Snapshot:
     blob: bytes = b""
     marker: int = 0
     ended: int = 0
+    finale: int = 0
 
 
 def read_once(g: game.Game) -> Snapshot:
@@ -75,6 +77,7 @@ def read_once(g: game.Game) -> Snapshot:
         g.rando_blob(),
         g.rando_marker(),
         g.flag(ENDING_FLAG),
+        g.flag(FINALE_FLAG),
     )
 
 
@@ -147,7 +150,7 @@ class Session:
             return Step()
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
-        step = Step(collected, snap.ended >= 1, {}, True)
+        step = Step(collected, snap.ended >= 1 and snap.finale == 0, {}, True)
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders)
         return step

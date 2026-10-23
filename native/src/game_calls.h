@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "menu.h"
+#include "skip.h"
 
 namespace zap {
 
@@ -121,6 +122,12 @@ public:
     // drops the plan with "refused ..." and nothing queued.
     void start_archipelago(WidgetCallback callback);
 
+    // Game thread, every frame (checked every 30th): offers the escape skip in this game
+    // (skip.h). restore_skip puts the event back (before an unload).
+    void watch_skip();
+    void restore_skip();
+    bool skip_offered() const { return skip_.patched(); }
+
 private:
     bool in_play() const;
     BYTE* player() const;
@@ -162,7 +169,12 @@ private:
     BYTE* randomizer_menu_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;
-    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
+    bool starting_ = false;
+
+    BYTE* event_table_ = nullptr;  // holds the pointer to the loaded area events
+    BYTE* event_count_ = nullptr;
+    EscapeSkip skip_;
+    int skip_frames_ = 0;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 };
 
 }  // namespace zap

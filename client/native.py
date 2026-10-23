@@ -28,7 +28,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.4.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.5.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -58,6 +58,8 @@ CONFIG_KEYS = (
     "rando_menu_fn",
     "placement_fn",
     "rando_newgame_fn",
+    "event_table",
+    "event_count",
 )
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
@@ -354,7 +356,7 @@ class Helper:
                 raise HelperError(f"the helper's pipe closed: {_last_error()}")
 
     def hello(self) -> dict[str, str]:
-        """The helper's hello as fields: version, build, hooked, configured."""
+        """The helper's hello as fields: version, build, hooked, configured, skip."""
         words = self.request("hello").split()
         if len(words) < 2 or words[0] != "zexion-ap":
             raise HelperError(f"unexpected hello: {' '.join(words)!r}")

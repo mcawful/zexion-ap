@@ -12,7 +12,10 @@ Once connected:
   Zexion, then run it.
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
-  the ending begins (flag 250: after the final boss and the ship; live-tested 2026-10-22).
+  the ending begins (flag 250 with flag 211 clear: after the final boss and the ship;
+  live-tested 2026-10-22). With the helper loaded, grabbing Zexion offers the game's
+  SKIP ESCAPE AND FINAL BATTLE? in any game; after YES, the goal comes as the player boards
+  the ship.
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
@@ -217,6 +220,10 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
+    logger.info(
+        "While it runs, grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? in any game; "
+        "the goal is sent when the ending begins, either way."
+    )
 
 
 async def newgame_tick(ctx: ZexionContext) -> None:

@@ -158,6 +158,15 @@ def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     assert session.step(g, [], gap=0).goal
 
 
+def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
+    session, g = setup
+    g.flags[ss.ENDING_FLAG] = 1  # YES: flag 250 at once, flags 185 to 212 set
+    g.flags[ss.FINALE_FLAG] = 1
+    assert not session.step(g, [], gap=0).goal
+    g.flags[ss.FINALE_FLAG] = 0  # the ending clears them as its first cutscene starts
+    assert session.step(g, [], gap=0).goal
+
+
 def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
     session, g = setup
     g.flags[ss.ENDING_FLAG] = 1
