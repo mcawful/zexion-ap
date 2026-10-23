@@ -62,6 +62,14 @@ ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
 SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
 SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
+# The player's link to their Energy Shield (docs/re/memory.md, "Received Energy Shields"): a
+# pointer to the shield object, then that object's handle (a 32-bit serial number, then its
+# pool's type, 2). The pointer is 0 while no shield is up. The object holds the same handle
+# at +0x1D8, with serial 0 once its slot is free, and its own address at +0x3C8.
+SHIELD_LINK = 0xFE8
+SHIELD_POOL_TYPE = 2
+OBJECT_HANDLE = 0x1D8
+OBJECT_SELF = 0x3C8
 
 # What state() returns.
 NO_SAVE = "no save loaded"
@@ -290,8 +298,11 @@ class Game:
 
     # Every access goes through these two, so the liveness check cannot be skipped.
     def _read(self, target: str, offset: int, size: int) -> bytes:
+        return self._read_pointer(self.base + self.rva[target] + offset, size)
+
+    def _read_pointer(self, address: int, size: int) -> bytes:
+        """Read at an address: a located target's, or a pointer the game holds."""
         self._check_alive()
-        address = self.base + self.rva[target] + offset
         try:
             data = self.pm.read_bytes(address, size)
         except Exception as exc:
@@ -387,6 +398,19 @@ class Game:
         so 0 or below counts as dead (0 itself is an assumption)."""
         offset = ENERGY_NOW - INVENTORY_IN_PLAYER_STATE
         return struct.unpack("<h", self._read("inventory", offset, 2))[0]
+
+    def shield_up(self) -> bool:
+        """Whether the player has an Energy Shield up: the player's link to it is set, and the
+        object it points to holds the same live handle and its own address. A link whose
+        object does not match counts as no shield."""
+        link = self._read("inventory", SHIELD_LINK - INVENTORY_IN_PLAYER_STATE, 16)
+        pointer = struct.unpack_from("<Q", link, 0)[0]
+        serial, pool = struct.unpack_from("<IH", link, 8)
+        if pointer == 0 or serial == 0 or pool != SHIELD_POOL_TYPE:
+            return False
+        handle = self._read_pointer(pointer + OBJECT_HANDLE, 8)
+        own = struct.unpack("<Q", self._read_pointer(pointer + OBJECT_SELF, 8))[0]
+        return handle == link[8:16] and own == pointer
 
     def state(self) -> str:
         """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in."""

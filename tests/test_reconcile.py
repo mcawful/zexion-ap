@@ -98,7 +98,31 @@ def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     assert g.inventory == {46: 2} and g.not_grantable == {}
 
 
-def test_shields_owed_are_the_received_ones_not_yet_spawned() -> None:
+def test_a_spawned_shield_counts_once_seen_up_in_play() -> None:
+    assert rc.shield_outcome(in_play=True, up=True, left_play=False, overdue=False) == rc.COUNT
+    # overdue does not matter once it is up
+    assert rc.shield_outcome(in_play=True, up=True, left_play=False, overdue=True) == rc.COUNT
+
+
+def test_a_spawned_shield_not_seen_waits_then_is_spawned_again() -> None:
+    assert rc.shield_outcome(in_play=True, up=False, left_play=False, overdue=False) == rc.WAIT
+    assert rc.shield_outcome(in_play=True, up=False, left_play=False, overdue=True) == rc.AGAIN
+
+
+def test_a_paused_game_waits_for_play_however_long_it_takes() -> None:
+    for up in (False, True):
+        for overdue in (False, True):
+            assert rc.shield_outcome(False, up, left_play=False, overdue=overdue) == rc.WAIT
+
+
+def test_a_death_or_unload_since_the_spawn_means_spawning_again() -> None:
+    # a shield up afterwards may be the reloaded save's own, not the one spawned
+    for in_play in (False, True):
+        for up in (False, True):
+            assert rc.shield_outcome(in_play, up, left_play=True, overdue=False) == rc.AGAIN
+
+
+def test_shields_owed_are_the_received_ones_not_yet_given() -> None:
     assert rc.shields_owed([50, 3, 50, 50], 1) == 2
     assert rc.shields_owed([50], 3) == 0
     assert rc.shields_owed([], 0) == 0
