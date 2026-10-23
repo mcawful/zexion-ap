@@ -160,7 +160,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   Chunk (48), which the world gives every location holding another player's item (48 for a
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
   records against the game's own values and, while a save is loaded and no menu is open
-  (the pause screen draws item frame 95, blank in the game's art, and the map cursor shows a
+  (the equipment screen draws item frame 95, blank in the game's art, and the map cursor shows a
   record's name; in a menu the records are the game's own and the logos are cleared),
   restyles them (their in-world frames pointed at
   frames that are empty in the game's art, no refill drop at pickup), names them after the
@@ -191,8 +191,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   record lands on N's, animated with the game's clock. The record, and so the pickup, stay
   the stand-in's. It writes only objects that are stand-ins with the template's base and
   palette 8, or that it dressed itself (the same spawn), and puts them back without the
-  label and on unload. Not yet run in the game (`docs/re/memory.md`, "Live item
-  objects").
+  label and on unload. Working in the game since 2026-10-23 (`docs/re/memory.md`, "Live
+  item objects").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
