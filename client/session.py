@@ -99,6 +99,9 @@ class Step:
     goal: bool = False
     granted: dict[int, int] = field(default_factory=dict)  # item -> new byte value
     seed_matches: bool = False
+    # No save of this seed is loaded: the title or file-select screen, or another save. What
+    # the game held in play is gone unless its save had it.
+    left_seed: bool = False
 
 
 class Session:
@@ -134,8 +137,10 @@ class Session:
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
-        if snap is None or snap.state == game.NO_SAVE:
+        if snap is None:
             return Step()
+        if snap.state == game.NO_SAVE:
+            return Step(left_seed=True)
         try:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
         except game.GameError:
@@ -143,7 +148,7 @@ class Session:
         if seed is None or list(seed.locations) != self.cells:
             self.say_once("no seed", "The loaded save is not a randomizer save of this seed.")
             self._due = None
-            return Step()
+            return Step(left_seed=True)
         if not save_patch.section_matches(snap.blob, self.plan):
             self.say_once(
                 "other seed",
@@ -151,7 +156,7 @@ class Session:
                 "Load the slot you prepared for this one.",
             )
             self._due = None
-            return Step()
+            return Step(left_seed=True)
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
         if self.plan.options.get(ABRIDGED_FINALE):

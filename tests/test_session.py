@@ -194,7 +194,7 @@ def test_another_seed_gets_nothing(setup) -> None:
     session, g = setup
     g.blob = blob_for(plan(start=(6, 1, 1)))
     g.collect(5)
-    assert session.step(g, [17], gap=0) == ss.Step()
+    assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
     assert g.inv[17] == 0
 
 
@@ -203,15 +203,15 @@ def test_a_normal_save_loaded_after_this_seed_gets_nothing(setup) -> None:
     session, g = setup
     g.marker = 0
     g.collect(5)
-    assert session.step(g, [17], gap=0) == ss.Step()
-    assert session.step(g, [17], gap=0) == ss.Step()
+    assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
+    assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
     assert g.inv[17] == 0
 
 
 def test_no_save_loaded_gets_nothing(setup) -> None:
     session, g = setup
     g.state_value = game.NO_SAVE
-    assert session.step(g, [17], gap=0) == ss.Step()
+    assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
 
 
 def test_a_grant_the_game_changed_first_is_left_for_the_next_poll(setup) -> None:

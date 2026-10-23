@@ -129,8 +129,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
 - **Received Energy Shields.** `shield` → `spawned` or `refused <why>`: runs the Energy
   Shield's pickup event the way its pickup does, from the player's cell, once the player has
   been in play in one cell for a second (`spawn_shield`; checked against B1 first). The client
-  asks for one per received shield not yet spawned, counted in the server's data storage. Not
-  yet run in the game (`docs/re/memory.md`, "Received Energy Shields").
+  asks for one per received shield not yet given, and counts it in the server's data storage
+  once it reads the shield up in the game, or asks again if it does not see it within 3 seconds
+  of play (`docs/re/memory.md`, "Received Energy Shields"). The spawn and the client's check work in game (2026-10-23, B1).
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`

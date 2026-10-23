@@ -49,6 +49,7 @@ import asyncio
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -87,6 +88,20 @@ NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
 LABELS_RETRY_SECONDS = 5.0
 SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
+SHIELD_SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
+SHIELD_MISSES = 3  # spawns in a row not seen before backing off
+SHIELD_BACKOFF_SECONDS = 60.0
+
+
+@dataclass
+class PendingShield:
+    """A received Energy Shield the helper spawned, not counted yet."""
+
+    key: str  # the data storage key of the slot it was spawned for
+    at: float  # when (time.monotonic)
+    left_play: bool = False  # the player died or the save was unloaded since
+
+
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -150,11 +165,20 @@ class ZexionContext(CommonContext):
         # Asks the game loop to take the labels back from the helper (after a disconnect), so
         # Scrap Energy is itself again in whatever game is played next.
         self.labels_clear_pending = False
-        # Received Energy Shields spawned so far, kept in the server's data storage under this
-        # key (per team and slot), so a restart or a shield received offline is not lost.
+        # Received Energy Shields given so far (counted once seen up), kept in the server's data
+        # storage under this key (per team and slot), so a restart or a shield received offline
+        # is not lost.
         self.shield_key: str | None = None
         self.shield_retry_at = 0.0
         self.shield_said = ""
+        # A shield spawned but not counted yet (shields_tick), and how many spawns in a row
+        # were not seen.
+        self.shield_pending: PendingShield | None = None
+        self.shield_misses = 0
+        # Shields counted as given that the server may not hold yet: (key, count), and when
+        # the count was last sent.
+        self.shield_given: tuple[str, int] | None = None
+        self.shield_count_sent_at = 0.0
         # Counts connections and disconnects: a helper reply from an older one is dropped.
         self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
@@ -323,23 +347,116 @@ async def labels_tick(ctx: ZexionContext) -> None:
 
 
 async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
-    """Spawn received Energy Shields not spawned yet, one at a time, through the helper, and
-    count each in the server's data storage (an Energy Shield's effect is its pickup's spawn,
-    not a byte: docs/re/memory.md, "Received Energy Shields")."""
-    helper, key = ctx.helper, ctx.shield_key
-    if helper is None or key is None or key not in ctx.stored_data:
-        return  # no helper, or the count not read from the server yet
-    if time.monotonic() < ctx.shield_retry_at:
+    """Spawn received Energy Shields not given yet, one at a time, through the helper, and
+    count each in the server's data storage once the game shows it up in play; spawn it again
+    if it is not seen within SHIELD_SEEN_SECONDS, or the player died or the save was unloaded
+    first (reconcile.shield_outcome). An Energy Shield's effect is its pickup's spawn, not a
+    byte: docs/re/memory.md, "Received Energy Shields"."""
+    key, game_conn = ctx.shield_key, ctx.game_conn
+    if key is None or key not in ctx.stored_data or game_conn is None:
+        return  # no game, or the count not read from the server yet
+    given = ctx.shield_given
+    if given is not None and given[0] == key:
+        if (ctx.stored_data.get(key) or 0) >= given[1]:
+            ctx.shield_given = None  # the server has it
+        elif time.monotonic() >= ctx.shield_count_sent_at + SHIELD_GAP_SECONDS:
+            await send_shield_count(ctx)
+    pending = ctx.shield_pending
+    if pending is not None and pending.key != key:
+        ctx.shield_pending = pending = None  # spawned for another slot's seed: not counted
+    if pending is not None:
+        await confirm_shield(ctx, game_conn, pending, key)
         return
-    spawned = ctx.stored_data.get(key) or 0
-    if reconcile.shields_owed(received, spawned) <= 0:
+    helper = ctx.helper
+    if helper is None or time.monotonic() < ctx.shield_retry_at:
         return
-    connection = ctx.connection
+    if reconcile.shields_owed(received, shields_given(ctx, key)) <= 0:
+        return
     reply = await asyncio.to_thread(helper.request, "shield")
-    if connection != ctx.connection or helper is not ctx.helper:
-        return
+    if ctx.shield_key not in (None, key):
+        return  # another slot now: the spawn is that game's, not this seed's
     if reply == "spawned":
-        ctx.stored_data[key] = spawned + 1
+        ctx.shield_pending = PendingShield(key, time.monotonic())
+        ctx.shield_said = ""
+    else:
+        if reply != ctx.shield_said and reply != "refused not settled":
+            logger.info(f"A received Energy Shield is waiting: {reply}")
+        ctx.shield_said = reply
+        ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
+
+
+async def confirm_shield(
+    ctx: ZexionContext, game_conn: game.Game, pending: PendingShield, key: str
+) -> None:
+    """One look at the game for a spawned shield: count it, wait, or let it be spawned again."""
+
+    def look() -> tuple[str, bool]:
+        state = game_conn.settled_state()
+        if state != game.IN_PLAY:
+            return state, False
+        try:
+            return state, game_conn.shield_up()
+        except game.GameNotRunning:
+            raise
+        except game.GameError as exc:  # the link leads nowhere readable: not seen
+            said = f"check failed: {exc}"
+            if said != ctx.shield_said:
+                logger.warning(f"Reading the player's Energy Shield failed ({exc}).")
+            ctx.shield_said = said
+            return state, False
+
+    try:
+        state, up = await asyncio.to_thread(look)
+    except game.GameError:  # the state could not be read: look again; the loop sees a close
+        state, up = game.CHANGING, False
+    if ctx.shield_pending is not pending:
+        return
+    if state in (game.DEAD, game.NO_SAVE):
+        pending.left_play = True
+    if state != game.IN_PLAY:
+        pending.at = time.monotonic()  # the time to see it runs in play only
+    overdue = time.monotonic() >= pending.at + SHIELD_SEEN_SECONDS
+    outcome = reconcile.shield_outcome(state == game.IN_PLAY, up, pending.left_play, overdue)
+    if outcome == reconcile.WAIT:
+        return
+    ctx.shield_pending = None
+    if outcome == reconcile.AGAIN:
+        ctx.shield_misses += 1
+        if ctx.shield_misses >= SHIELD_MISSES:
+            logger.warning(
+                f"{ctx.shield_misses} received Energy Shields in a row were not seen in the "
+                f"game; trying again in {SHIELD_BACKOFF_SECONDS:.0f} seconds."
+            )
+            ctx.shield_misses = 0
+            ctx.shield_retry_at = time.monotonic() + SHIELD_BACKOFF_SECONDS
+        else:
+            logger.info("A received Energy Shield was not seen in the game; spawning it again.")
+            ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
+        return
+    ctx.shield_misses = 0
+    ctx.shield_given = (key, shields_given(ctx, key) + 1)
+    logger.info("A received Energy Shield is up.")
+    ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
+    await send_shield_count(ctx)
+
+
+def shields_given(ctx: ZexionContext, key: str) -> int:
+    """Shields counted as given for this slot: the server's number, or this client's when the
+    server has not taken it yet."""
+    stored = ctx.stored_data.get(key) or 0
+    if ctx.shield_given is not None and ctx.shield_given[0] == key:
+        return max(stored, ctx.shield_given[1])
+    return stored
+
+
+async def send_shield_count(ctx: ZexionContext) -> None:
+    """Send the shields counted as given to the server as a maximum, so sending it twice does
+    no harm; shields_tick sends it again until the server's number reaches it."""
+    if ctx.shield_given is None:
+        return
+    key, count = ctx.shield_given
+    ctx.shield_count_sent_at = time.monotonic()
+    try:
         await ctx.send_msgs(
             [
                 {
@@ -347,18 +464,12 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
                     "key": key,
                     "default": 0,
                     "want_reply": True,
-                    "operations": [{"operation": "add", "value": 1}],
+                    "operations": [{"operation": "max", "value": count}],
                 }
             ]
         )
-        logger.info("A received Energy Shield was spawned.")
-        ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
-        ctx.shield_said = ""
-    else:
-        if reply != ctx.shield_said and reply != "refused not settled":
-            logger.info(f"A received Energy Shield is waiting: {reply}")
-        ctx.shield_said = reply
-        ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
+    except Exception as exc:  # a closing connection: sent again once connected
+        logger.warning(f"Sending the Energy Shield count failed ({exc}); sending it again.")
 
 
 async def skip_tick(ctx: ZexionContext) -> None:
@@ -483,6 +594,8 @@ async def game_loop(ctx: ZexionContext) -> None:
             step = await asyncio.to_thread(current.step, ctx.game_conn, codes, senders=senders)
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
+            if ctx.shield_pending is not None:
+                ctx.shield_pending.left_play = True
             ctx.game_conn = None
             ctx.drop_helper()
             continue
@@ -495,9 +608,12 @@ async def game_loop(ctx: ZexionContext) -> None:
         elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
             ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
             await attach_helper(ctx)
+        if step.left_seed and ctx.shield_pending is not None:
+            ctx.shield_pending.left_play = True
         if not step.seed_matches or ctx.session is not current:
             continue  # nothing to send, or the connection changed while the game was read
-        if ctx.helper is not None:
+        shield_work = ctx.shield_pending is not None or ctx.shield_given is not None
+        if ctx.helper is not None or shield_work:
             try:
                 await shields_tick(ctx, codes)
             except native.HelperError as exc:
