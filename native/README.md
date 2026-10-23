@@ -152,7 +152,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   world gives every location holding another player's item. While it has labels, every
   frame call (`src/apitem.cpp`) checks Scrap Energy's record against the game's own values
   and restyles it (its in-world frame and popup icon pointed at a frame and a glyph that
-  are empty in the game's art, no refill drop at pickup), names it after the label for the
+  are empty in the game's art, the Navcore's steady palette in place of Scrap Energy's
+  flashing one, no refill drop at pickup), names it after the label for the
   player's map cell (or ARCHIPELAGO ITEM), so the game's own pickup popup shows "MASTER
   SWORD FOR ALICE", and now and then paints an Archipelago logo into that frame and
   glyph of the sprite texture through OpenGL (the game's context is current in the swap

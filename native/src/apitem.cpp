@@ -22,6 +22,9 @@ constexpr char kOwnName[] = "SCRAP ENERGY";
 // What it becomes.
 constexpr int16_t kLogoFrame = 63, kLogoFrames = 1, kNoEvent = -1;
 constexpr uint8_t kLogoGlyph = 0xEE;
+// The Navcore's and Slide Mod's palette: Scrap Energy's (8) flashes, which the logo should not.
+// Rooms read it as they load (docs/re/memory.md), so it shows from the next room on.
+constexpr uint8_t kLogoPalette = 5;
 constexpr char kDefaultName[] = "ARCHIPELAGO ITEM";
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
@@ -149,6 +152,7 @@ void ApItems::watch(BYTE* holder, int cell) {
         at<int16_t>(r, kEvent) = kNoEvent;
     }
     record_ = r;  // ours now, or already (left by a helper that unloaded without a frame)
+    if (r[kPalette] != kLogoPalette) r[kPalette] = kLogoPalette;
     auto it = labels_.find(cell);
     const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
     char want[kItemNameMax + 1] = {};
