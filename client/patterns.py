@@ -1291,6 +1291,113 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "item_pool",
+        "the pool of 128 live item objects, 0x3B0 bytes each (memory.md, Live item objects)",
+        0xB6E030,
+        (
+            # from the stores of the pool's next-free-slot number, which lies right after the
+            # 128 objects (at RVA 0x19ec55 and 0x19ec78 on B1, in the item spawn function)
+            Pattern(
+                "66 89 15 ?? ?? ?? ?? 0F 1F 40 00 48 0F BF C2 48 69 C8 B0 03 00 00",
+                3,
+                "rip",
+                7,
+                -0x1D800,
+            ),
+            Pattern(
+                ("66 89 15 ?? ?? ?? ?? 66 41 3B D1 7C DB 66 41 3B D1 75 07 66 89 2D ?? ?? ?? ??"),
+                3,
+                "rip",
+                7,
+                -0x1D800,
+            ),
+        ),
+    ),
+    Target(
+        "palette_table",
+        "the palette objects by number, eight bytes each (an object's +0x198 is one of them)",
+        0xCDF5C0,
+        (
+            # from the instruction at RVA 0xfffda on B1, which gives an object palette 0
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8B 11 48 89 82 98 01 00 00 33 C0 66 89 82 A0 01 00 "
+                    "00 48 8B 83 E0 01 00 00 48 8B 96 E8 02 00 00 48 8B 88 80 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x129296 on B1, which reads palette 2
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 89 81 98 01 00 00 66 89 B1 A0 01 00 00 48 8B 83 F0 "
+                    "01 00 00 48 8B 48 10 44 39 B9 BC 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                -0x10,
+            ),
+        ),
+    ),
+    Target(
+        "frame_clock",
+        "the 64-bit count item animations follow (the item update at 0x19e2e0 divides it)",
+        0x3CF750,
+        (
+            # from the instruction at RVA 0x1c6333 on B1
+            Pattern(
+                (
+                    "48 8B 0D ?? ?? ?? ?? 48 8B C1 48 F7 D8 48 0F 48 C1 48 99 48 2B C2 48 D1 F8 "
+                    "48 99 83 E0 01 48 33 C2 48 2B C2 66 83 C0 45"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1bf520 on B1
+            Pattern(
+                "48 8B 05 ?? ?? ?? ?? 48 99 83 E2 07 48 03 C2 83 E0 07 44 38 B3 FE 0C 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "sprite_templates",
+        "holds the pointer to the sprite definitions' object templates; +0x110 is the items'",
+        0xDF7110,
+        (
+            # from the item spawn function at RVA 0x19ec92 on B1, which takes template 34
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 4C 8D 15 ?? ?? ?? ?? 48 8B B0 10 01 00 00 4D 85 C0 "
+                    "75 2D B9 D8 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1032ac on B1
+            Pattern(
+                (
+                    "48 8B 0D ?? ?? ?? ?? 48 8B 93 F0 01 00 00 48 81 C2 10 01 00 00 48 8B 49 08 "
+                    "E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 88 10 01 00 00 4C 39 29"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

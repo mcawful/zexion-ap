@@ -7,7 +7,8 @@ and sends the helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over 
 generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
 Circle of the Moon's icons by classification), since another game's item names can be long. For
 another Zexion player's item the popup instead shows the item's own icon and the game's name for
-it, as the Castlevania worlds show their own game's items.
+it, and the helper shows the item itself in the room, as the Castlevania worlds show their own
+game's items.
 While the player stands in that cell the helper names the stand-in after it, so the game's own
 pickup popup shows it, with the Archipelago logo the helper paints (native/README.md,
 docs/re/memory.md "Other players' items").
