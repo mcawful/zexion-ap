@@ -13,7 +13,8 @@ the module that finds and accesses game state by byte pattern. `native/` holds a
 helper DLL, which runs in the game and gives received items there with the game's own popup,
 sound and HUD refresh (helper phase 2, live-tested on one seed), and starts a new game from the
 AP seed: ARCHIPELAGO in place of RANDOMIZER after an empty slot is picked (helper phase 3,
-live-tested on a Standard seed).
+live-tested on a Standard seed). While loaded, it also offers the game's escape skip after
+Zexion is grabbed (not yet run in game).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -102,6 +103,7 @@ client at another Archipelago folder than `.ap/Archipelago`.
 When it attaches to the game, the client also loads the native helper built from `native/`
 (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
+Loading it also changes the game while it runs: grabbing Zexion offers the escape skip.
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are only for items received
@@ -131,7 +133,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
-  a new game from the AP seed (ARCHIPELAGO); both working in game.
+  a new game from the AP seed (ARCHIPELAGO); both working in game. It also patches the game's
+  loaded event 3665 so the escape skip is offered in any game (`hello` reports `skip=`; not
+  yet run in game).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

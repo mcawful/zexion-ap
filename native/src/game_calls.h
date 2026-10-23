@@ -169,12 +169,12 @@ private:
     BYTE* randomizer_menu_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;
-    bool starting_ = false;
+    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 
     BYTE* event_table_ = nullptr;  // holds the pointer to the loaded area events
     BYTE* event_count_ = nullptr;
     EscapeSkip skip_;
-    int skip_frames_ = 0;  // ARCHIPELAGO pressed; the new game it queued not yet applied
+    int skip_frames_ = 0;  // frames until the next escape-skip check
 };
 
 }  // namespace zap

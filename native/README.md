@@ -89,7 +89,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
-  and `hello`'s `configured` are handed to the game's thread through a one-slot mailbox
+  and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
