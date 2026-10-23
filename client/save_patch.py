@@ -73,6 +73,7 @@ class MenuSetup:
     # map cell (x, y) and flag (1 if it holds object 25). Given for a mode with a second
     # target, whose placement reads it.
     start_table: tuple[tuple[int, int, int], ...] = ()
+    table_build: str = ""  # the start of the SHA-256 of the exe the table was measured on
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
             settings=bytes(menu["settings"]),
             second_target=None if menu["second_target"] is None else tuple(menu["second_target"]),
             start_table=tuple(tuple(room) for room in menu.get("start_table", ())),
+            table_build=menu.get("table_build", ""),
         ),
     )
 

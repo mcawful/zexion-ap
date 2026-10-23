@@ -120,10 +120,18 @@ def test_the_menu_lines_set_the_menu_to_the_seeds_mode() -> None:
     assert save[sp.SECTION + 0x6D2] == 0
 
 
+B1 = "6d8a94bd4d64" + "0" * 52  # a SHA-256 the table's build prefix matches
+TABLE = ((1, 25, 1), (6, 41, 0), (9, 0, 1), (10, 23, 0))
+
+
+def ohko(**changes) -> sp.SeedPlan:
+    fields = dict(second_target=None, start_table=TABLE, table_build="6d8a94bd4d64")
+    fields.update(changes)
+    return plan(menu=menu_setup(**fields), second_start=(2, 134, 15))
+
+
 def test_ohko_carries_the_start_table_and_its_second_targets_flag() -> None:
-    table = ((1, 25, 1), (6, 41, 0), (9, 0, 1), (10, 23, 0))
-    p = plan(menu=menu_setup(second_target=None, start_table=table), second_start=(2, 134, 15))
-    lines = ng.plan_text(p).splitlines()
+    lines = ng.plan_text(ohko(), B1).splitlines()
     rooms = [line for line in lines if line.startswith("start_table")]
     assert rooms == ["start_table " + "0100190001" + "0600290000" + "0900000001" + "0a00170000"]
     save = fresh()
@@ -136,6 +144,27 @@ def test_ohko_carries_the_start_table_and_its_second_targets_flag() -> None:
 def test_a_one_start_mode_carries_no_start_table() -> None:
     lines = ng.plan_text(plan(menu=menu_setup(start_table=((1, 25, 1),)))).splitlines()
     assert not any(line.startswith("start_table") for line in lines)
+
+
+def test_the_randomizer_path_writes_the_second_targets_flag_too() -> None:
+    lines = ng.plan_text(ohko(), B1, offer_choice=False).splitlines()
+    assert not any(line.startswith(("menu", "start_table")) for line in lines)
+    assert f"write {ng.section(sp.SECOND_START):#x} 020086000f0001" in lines
+
+
+@pytest.mark.parametrize(
+    "p, build, why",
+    [
+        (ohko(), "ffff" + "0" * 60, "no start table measured on this game build"),
+        (ohko(table_build=""), B1, "no start table measured on this game build"),
+        (ohko(start_table=((1, 25, 1), (6, 41, 0), (9, 1, 1))), B1, "not room 2"),
+        (ohko(start_table=((54, 0, 0),)), B1, "up to 64 rooms"),
+        (ohko(start_table=((1, 2, 2),)), B1, "up to 64 rooms"),
+    ],
+)
+def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, why) -> None:
+    with pytest.raises(ng.NewGameError, match=why):
+        ng.plan_text(p, build)
 
 
 def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
@@ -151,10 +180,11 @@ def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
         (dict(menu=menu_setup(pool=bytes([2] * 27))), "27 entries"),
         (dict(menu=menu_setup(settings=bytes(63))), "64"),
         (dict(menu=menu_setup(settings=bytes(64))), "setting 42"),
-        (dict(menu=menu_setup(), second_start=(3, 151, 464)), "not in the start table"),
+        (
+            dict(menu=menu_setup(table_build="6d8a94bd4d64"), second_start=(3, 151, 464)),
+            "no start table",
+        ),
         (dict(menu=menu_setup(second_target=None)), "no second target"),
-        (dict(menu=menu_setup(start_table=((54, 0, 0),))), "up to 64 rooms"),
-        (dict(menu=menu_setup(start_table=((1, 2, 2),))), "up to 64 rooms"),
         (dict(menu=menu_setup(second_target=(0, 20))), "three 16-bit"),
         (dict(menu=menu_setup(second_target=(0, 20, -1))), "three 16-bit"),
     ],
