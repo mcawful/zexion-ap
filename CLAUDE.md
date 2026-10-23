@@ -108,7 +108,8 @@ When it attaches to the game, the client also loads the native helper built from
 (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
-no popup. Popups are only for items received after the server's first full list, so a
+no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
+first), and the client loads it again within 30 seconds. Popups are only for items received after the server's first full list, so a
 reconnect does not replay them. With the helper, the client also arms it with the seed,
 once per connection: for a seed whose slot data carries the menu setup (from the world on
 `apworld`), picking an empty slot then offers ARCHIPELAGO, which starts a new game holding

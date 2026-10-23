@@ -27,7 +27,8 @@ Once connected:
   through it, to arrive between frames with the game's own popup and sound (for example
   "MISSILE BOX FROM ALICE") and a HUD refresh; live-tested on 2026-10-22. Without
   the helper, or if it fails, items are written directly, with no popup, and the client tries
-  the helper again every 30 seconds.
+  the helper again every 30 seconds. ``/unload_helper`` unloads it as if it had failed, to
+  test that.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -102,6 +103,16 @@ class ZexionCommandProcessor(ClientCommandProcessor):
             self.output(f"Slot {done.slot} already holds this seed; nothing written.")
         return True
 
+    def _cmd_unload_helper(self) -> bool:
+        """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
+        client loads the helper again within 30 seconds. For testing; it changes the game."""
+        if self.ctx.helper is None:
+            self.output("The helper is not loaded.")
+            return False
+        self.ctx.unload_helper_pending = True
+        self.output("Unloading the helper at the next poll.")
+        return True
+
 
 class ZexionContext(CommonContext):
     game = GAME
@@ -116,6 +127,9 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.use_helper = True
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
+        # /unload_helper: the game loop unloads it but keeps the dead connection, so the
+        # next request fails the way a helper failing mid-session does.
+        self.unload_helper_pending = False
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
         # The AP new game: None (to arm), "armed", "done" or "unavailable"; disarm_pending asks
@@ -265,6 +279,13 @@ async def newgame_tick(ctx: ZexionContext) -> None:
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
+        if ctx.helper is not None and ctx.unload_helper_pending:
+            ctx.unload_helper_pending = False
+            try:
+                reply = await asyncio.to_thread(ctx.helper.request, "unload")
+                logger.info(f"The helper was asked to unload: {reply}")
+            except native.HelperError as exc:
+                logger.warning(f"Unloading the helper failed: {exc}")
         if ctx.helper is not None:
             try:
                 await newgame_tick(ctx)
