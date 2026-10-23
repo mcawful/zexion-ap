@@ -5,20 +5,37 @@ from __future__ import annotations
 import aplabels as al
 
 
-def test_a_label_names_the_item_and_its_player_in_the_fonts_letters() -> None:
-    assert al.label("Master Sword", "Alice") == "MASTER SWORD FOR ALICE"
-    assert al.label("Pokédex", "Bob_2") == "POKDEX FOR BOB2"
-    assert al.label("Hookshot [L2]", "Zoë") == "HOOKSHOT L2 FOR ZO"
+def lines(text: str) -> list[str]:
+    """The popup's lines: the icon, then the label, 24 characters a line."""
+    shown = "@" + text
+    return [shown[i : i + 24].rstrip() for i in range(0, len(shown), 24)]
+
+
+def test_a_label_names_the_item_then_its_player_on_the_next_line() -> None:
+    assert lines(al.label("Master Sword", "Alice")) == ["@MASTER SWORD", "FOR ALICE"]
+    assert lines(al.label("Pokédex", "Bob_2")) == ["@POKDEX", "FOR BOB2"]
+    assert lines(al.label("Hookshot [L2]", "Zoë")) == ["@HOOKSHOT L2", "FOR ZO"]
+
+
+def test_long_names_are_cut_at_a_word() -> None:
+    text = al.label("Progressive Hookshot of Great Length", "LinksAwakenerTheGreat")
+    assert lines(text) == ["@PROGRESSIVE HOOKSHOT OF", "FOR LINKSAWAKENERTHEGREA"]
+    assert lines(al.label("Sword", "Alice in Wonderland Forever")) == [
+        "@SWORD",
+        "FOR ALICE IN WONDERLAND",
+    ]
 
 
 def test_a_label_is_at_most_49_bytes() -> None:
-    text = al.label("A" * 60, "Player")
-    assert len(text) == 49 and text == "A" * 49
+    text = al.label("A" * 60, "P" * 60)
+    assert len(text) <= 49
+    assert lines(text) == ["@" + "A" * 23, "FOR " + "P" * 20]
 
 
 def test_characters_the_font_lacks_are_dropped() -> None:
-    assert al.label("", "") == "FOR"
-    assert al.label("€", "€")[:3] == "FOR"
+    assert al.label("", "") == al.GENERAL
+    assert al.label("€", "Alice") == al.GENERAL
+    assert lines(al.label("Sword", "€")) == ["@SWORD", "FOR"]
 
 
 def test_foreign_locations_are_the_kept_stand_ins() -> None:

@@ -79,6 +79,10 @@ constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game
 // (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
+// A received item's popup text: `head` (the icon and the game's name), then `suffix` ("FROM
+// ALICE") from the start of the next line, its words wrapped at per_line characters.
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line);
+
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
 // (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
