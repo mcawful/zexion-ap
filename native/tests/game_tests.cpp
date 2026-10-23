@@ -610,6 +610,16 @@ void test_pickup_popup_width() {
     check(game.popup_width() == 10 && popup_width_in_code() == 10,
           "in the label's cell the pickup popup is the label's width");
     check(game.ap_items_restyled(), "and unload has something to put back");
+    g_menu = 2;  // a menu open (the equipment screen, say)
+    game.watch_ap_items();
+    check(*reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x02) == 142 &&
+              std::string(reinterpret_cast<const char*>(g_records + 48 * 100 + 0x0A)) ==
+                  "SCRAP CHUNK" &&
+              popup_width_in_code() == 24,
+          "in a menu the stand-ins are the game's own, and the popup width the game's");
+    g_menu = 0;
+    game.watch_ap_items();
+    check(popup_width_in_code() == 10, "back in the world, ours again");
     field<uint8_t>(0x107A) = 3;
     game.watch_ap_items();
     check(popup_width_in_code() == 24, "elsewhere the game's 24");
