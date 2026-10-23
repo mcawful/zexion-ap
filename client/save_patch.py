@@ -60,13 +60,20 @@ class PatchError(ValueError):
 @dataclass(frozen=True)
 class MenuSetup:
     """The randomizer menu as the seed's mode, for the helper's ARCHIPELAGO choice
-    (client/newgame.py); from the slot data of a mode with one start."""
+    (client/newgame.py), from the slot data."""
 
     seed_text: str  # 16 characters, 0-9 and A-F
     start: bytes  # the menu's 27-entry start-with array (0/1)
     pool: bytes  # its 27-entry pool array (0/1)
     settings: bytes  # settings 10 to 73
-    second_target: tuple[int, int, int]  # what START GAME writes there in a one-start mode
+    # What START GAME writes in the second target in a mode with one start; None in a mode
+    # with a second teleport target, whose second start is the seed's own.
+    second_target: tuple[int, int, int] | None
+    # The randomizer menu's start table, as it builds it when it opens: each candidate room's
+    # map cell (x, y) and flag (1 if it holds object 25). Given for a mode with a second
+    # target, whose placement reads it.
+    start_table: tuple[tuple[int, int, int], ...] = ()
+    table_build: str = ""  # the start of the SHA-256 of the exe the table was measured on
 
 
 @dataclass(frozen=True)
@@ -99,7 +106,9 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
             start=bytes(menu["start"]),
             pool=bytes(menu["pool"]),
             settings=bytes(menu["settings"]),
-            second_target=tuple(menu["second_target"]),
+            second_target=None if menu["second_target"] is None else tuple(menu["second_target"]),
+            start_table=tuple(tuple(room) for room in menu.get("start_table", ())),
+            table_build=menu.get("table_build", ""),
         ),
     )
 

@@ -393,6 +393,89 @@ void test_archipelago_choice() {
     g_slot_taken = false;
 }
 
+void test_start_table() {
+    zap::NewGamePlan bad;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nstart_table 0100190001ff", bad).empty(),
+          "a start table not in 5-byte rooms is refused");
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nstart_table 3600000000", bad).empty(),
+          "a room off the 54 x 54 map is refused");
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nstart_table 0100190002", bad).empty(),
+          "a flag other than 0 or 1 is refused");
+
+    zap::Game game;
+    g_choice_game = &game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    reset_game();
+    std::memset(g_section, 0, sizeof(g_section));
+    std::memset(g_randomizer_menu, 0, sizeof(g_randomizer_menu));
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    g_slot_taken = false;
+    g_start_count = 0;
+    std::memset(g_start_cells, 0, sizeof(g_start_cells));
+    std::memset(g_start_flags, 0, sizeof(g_start_flags));
+    stand_in::ModePanel panel(reinterpret_cast<void*>(&panel_handler_fn),
+                              reinterpret_cast<void*>(&widget_handler_fn),
+                              reinterpret_cast<void*>(&rando_menu_fn));
+    g_current_menu = panel.menu;
+    auto press = [&] { reinterpret_cast<zap::WidgetCallback>(panel.callback())(panel.child, 6); };
+    const char* request =
+        "ap_newgame\nexpect 0x6C0 0000\nwrite 0x26C 2E1B\nmenu 0x88 0000\n"
+        "start_table 01001900010600290000";
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame(request, plan).empty() && plan.start_table.size() == 2,
+          "parses the start table");
+
+    // The menu never opened: the table is built as it would build it, before the placement.
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    press();
+    check(g_start_count == 2 && g_start_cells[0] == 1 && g_start_cells[1] == 25 &&
+              g_start_cells[2] == 6 && g_start_cells[3] == 41 && g_start_flags[0] == 1 &&
+              g_start_flags[1] == 0,
+          "an empty start table is filled in");
+    check(g_steps == "placement queue ", "and the new game started");
+    game.watch_newgame();
+
+    // The menu built it already, the same: accepted as it is.
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    panel.reset_label();
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps == "placement queue ", "a matching table: the new game started");
+    game.watch_newgame();
+
+    // A table that differs (another build's rooms, say): refused before anything is placed.
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    g_start_flags[1] = 1;
+    panel.reset_label();
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps.empty(), "a differing table: nothing placed or queued");
+    check(game.newgame_status().rfind("refused the game's start table differs", 0) == 0,
+          "and reported");
+    check(panel.text() == "RANDOMIZER ", "RANDOMIZER is back");
+
+    // A second start outside the table: refused before anything is written.
+    g_steps.clear();
+    g_start_count = 0;
+    zap::NewGamePlan outside;
+    zap::parse_newgame(std::string(request) + "\nwrite 0x6CC 0500", outside);
+    panel.reset_label();
+    game.arm_newgame(outside);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps.empty() && g_start_count == 0, "a second start outside: nothing written");
+    check(game.newgame_status().rfind("refused the second start is outside", 0) == 0,
+          "and reported");
+    g_current_menu = nullptr;
+    g_start_count = 0;
+}
+
 void test_escape_skip() {
     zap::Game game;
     check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
@@ -485,6 +568,7 @@ int main() {
     test_newgame_watch();
     test_archipelago_choice();
     test_escape_skip();
+    test_start_table();
     test_mailbox();
     if (g_failures == 0) std::printf("all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

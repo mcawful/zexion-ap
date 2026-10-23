@@ -51,18 +51,31 @@ struct SectionBytes {
 // randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
 // without it the choice is not offered and only a RANDOMIZER game started by hand gets the
 // plan.
+// One room of the randomizer menu's start table: its map cell and flag (object 25 there).
+struct StartRoom {
+    int16_t x;
+    int16_t y;
+    uint8_t flag;
+};
+
 struct NewGamePlan {
     std::vector<SectionBytes> expect;
     std::vector<SectionBytes> write;
     std::vector<SectionBytes> menu;
+    // The menu's start table as it builds it when it opens; for a mode with Double Teleport,
+    // whose placement reads it. Filled in before the placement if the menu has not built it.
+    std::vector<StartRoom> start_table;
 };
+
+constexpr size_t kStartTableMax = 64;  // the rooms the menu's builder allows
 
 constexpr size_t kSectionSize = 0x908;
 constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
 
 // "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
 // "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
-// digits; every range must lie inside its block.
+// digits; every range must lie inside its block. Also "start_table HEX": 5 bytes per room
+// (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
@@ -173,6 +186,12 @@ private:
 
     BYTE* event_table_ = nullptr;  // holds the pointer to the loaded area events
     BYTE* event_count_ = nullptr;
+    BYTE* start_count_ = nullptr;  // 16-bit
+    BYTE* start_cells_ = nullptr;  // (x, y) 16-bit each
+    BYTE* start_flags_ = nullptr;
+    // The start table: filled from the plan if the game has not built it, or checked against
+    // it. Returns "" or why not.
+    std::string ensure_start_table();
     EscapeSkip skip_;
     int skip_frames_ = 0;  // frames until the next escape-skip check
 };

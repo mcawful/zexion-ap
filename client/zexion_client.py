@@ -19,12 +19,11 @@ Once connected:
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
-  2026-10-22 with Standard and Easy seeds). For a seed whose mode
-  the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
-  seed's mode gets the AP seed written in as the game builds it (run in game for Standard,
-  Easy and OHKO). ``--keep-randomizer`` takes that path for every seed, leaving RANDOMIZER on the
-  panel. One new game per connection: reconnect to start another. A seed whose starting
-  items a new game cannot hold falls back to /prepare.
+  2026-10-22 with Standard and Easy seeds, and on 2026-10-23 with an OHKO seed). Without a
+  menu setup in the slot data, or with ``--keep-randomizer``, RANDOMIZER stays, and a
+  randomizer game started in the seed's mode gets the AP seed written in as the game builds
+  it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
+  start another. A seed whose starting items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -40,7 +39,6 @@ the save's item table, and the game hands them out itself.
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import os
 import sys
 import time
@@ -131,6 +129,7 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.use_helper = True
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
+        self.choice_refused = False  # the game's start table differed: no ARCHIPELAGO
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
         # /unload_helper: the game loop unloads it but keeps the dead connection, so the
         # next request fails the way a helper failing mid-session does.
@@ -157,6 +156,7 @@ class ZexionContext(CommonContext):
             self.session = session.Session(self.plan, slot["locations"])
             self.session.helper = self.helper
             self.newgame_state = None
+            self.choice_refused = False
             self.kept = set(slot["kept_locations"])
             self.goal_sent = False
             logger.info(
@@ -260,19 +260,19 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         return
     if ctx.newgame_state is None:
         plan = ctx.plan
-        if ctx.keep_randomizer and plan.menu is not None:
-            plan = dataclasses.replace(plan, menu=None)
+        build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
+        offer = plan.menu is not None and not ctx.keep_randomizer and not ctx.choice_refused
         try:
-            text = newgame.plan_text(plan)
+            text = newgame.plan_text(plan, build, offer)
         except newgame.NewGameError as exc:
-            if plan.menu is None:
+            if not offer:
                 ctx.newgame_state = "unavailable"
                 logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
                 return
             logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
-            plan = dataclasses.replace(plan, menu=None)
+            offer = False
             try:
-                text = newgame.plan_text(plan)
+                text = newgame.plan_text(plan, build, offer)
             except newgame.NewGameError as again:
                 ctx.newgame_state = "unavailable"
                 logger.info(f"This seed cannot start as a new game ({again}); use /prepare.")
@@ -281,7 +281,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         if reply == "armed":
             ctx.newgame_state = "armed"
             ctx.newgame_polled_at = time.monotonic()
-            if plan.menu is not None:
+            if offer:
                 logger.info(
                     "Ready for a new game: pick an empty slot and choose ARCHIPELAGO (in "
                     "place of RANDOMIZER). It starts the AP seed."
@@ -303,6 +303,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
     elif status.startswith("refused"):
         ctx.newgame_state = None  # arm again for the next try
         logger.warning(f"No new game with the AP seed: {status[len('refused ') :]}.")
+        if "start table" in status:
+            ctx.choice_refused = True  # the game's own table differs: RANDOMIZER from now on
     elif status == "idle":
         ctx.newgame_state = None  # the helper lost the plan (reloaded): arm again
 
