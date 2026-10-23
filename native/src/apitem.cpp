@@ -14,20 +14,20 @@ constexpr ptrdiff_t kRecordSize = 100, kRecordCount = 51;
 constexpr ptrdiff_t kKind = 0x00, kFrame = 0x02, kTicks = 0x04, kFrames = 0x06, kIcon = 0x08;
 constexpr ptrdiff_t kPalette = 0x09, kName = 0x0A, kInventory = 0x3C, kEvent = 0x40;
 constexpr ptrdiff_t kRedirect = 0x54, kPickupClass = 0x58;
-// Scrap Energy as the game loads it (B1).
-constexpr int16_t kOwnKind = 34, kOwnFrame = 134, kOwnTicks = 6, kOwnFrames = 2;
+// What Scrap Energy and Scrap Chunk share as the game loads them (B1).
+constexpr int16_t kOwnKind = 34, kOwnTicks = 6, kOwnFrames = 2;
 constexpr uint8_t kOwnPalette = 8;
-constexpr int16_t kOwnInventory = 46, kOwnEvent = 3549, kOwnClass = 1;
-constexpr char kOwnName[] = "SCRAP ENERGY";
-// What it becomes.
-constexpr int16_t kLogoFrame = 63, kLogoFrames = 1, kNoEvent = -1;
+constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
+// What they become: one frame each, the same popup glyph, no area event at pickup.
+constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
 constexpr uint8_t kLogoGlyph = 0xEE;
 constexpr char kDefaultName[] = "ARCHIPELAGO ITEM";
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
 // glyph c of the 8 x 8 font at ((c % 16) * 8, 976 + (c / 16) * 8); 2048 x 2048 RGBA.
 constexpr int kTextureSize = 2048;
-constexpr int kFrameX = 128 + (kLogoFrame % 8) * 16, kFrameY = 640 + (kLogoFrame / 8) * 16;
+constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
+constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
 constexpr int kGlyphX = (kLogoGlyph % 16) * 8, kGlyphY = 976 + (kLogoGlyph / 16) * 8;
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
 constexpr int kRepaintFrames = 300;
@@ -63,12 +63,47 @@ constexpr int8_t kLogo[16][16] = {
     {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  8, -1, -1, -1, -1, -1},
     {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, -1, -1, -1, -1, -1},
 };
+// The same with Archipelago's up arrow for a progression item, as in its own icons (Factorio's
+// ap.png in Archipelago), over the lower right in entry 15, one of the entries palette 8 cycles
+// (Scrap Energy's glow), so the arrow flashes with it.
+constexpr int8_t kLogoArrow[16][16] = {
+    {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
+    {-1,  0,  9,  9,  0, -1,  3,  3,  3,  3, -1,  0,  1,  0,  0, -1},
+    { 0,  9,  9,  9,  9,  9, -1,  3,  3, -1,  1,  1,  1,  1,  1,  0},
+    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
+    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
+    { 9,  9, -1, -1, -1,  9,  0, -1, -1,  0,  1, -1, -1, -1, -1,  1},
+    {-1,  0,  2,  2,  0,  0, -1, -1, -1, -1,  0,  5,  5,  5,  0, -1},
+    { 0,  2,  2,  2,  2,  2, -1, -1, -1, -1,  5,  0,  0,  0,  5,  0},
+    { 2,  2,  2,  2,  2,  2, -1,  0,  0, -1,  0,  0, 15,  0,  0,  5},
+    { 2,  2,  2,  2,  2,  0,  8,  8,  8,  0,  0, 15, 15, 15,  0,  0},
+    { 2,  2,  2,  2, -1,  8,  8,  8,  0,  0, 15, 15, 15, 15, 15,  0},
+    { 0,  2,  2,  2,  0,  8,  8,  8,  0, 15, 15, 15, 15, 15, 15, 15},
+    {-1,  0,  0,  0,  0,  8,  8,  8,  0,  0,  0, 15, 15, 15,  0,  0},
+    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 15, 15, 15,  0, -1},
+    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 15, 15, 15,  0, -1},
+};
 // The popup icon: 8 x 8, white like the game's own icon glyphs: Archipelago's ring of six dots,
 // one at the top and one at the bottom as in its logo.
 constexpr char kGlyph[8][9] = {
     "...##...", "##.##.##", "##....##", "........",
     "........", "##....##", "##.##.##", "...##...",
 };
+// The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
+// items. Both are filler the game counts as Scrap Metal, and both draw in palette 8.
+struct StandIn {
+    int item;
+    int16_t own_frame, own_event;
+    const char* own_name;
+    int16_t frame;  // the empty item frame its logo is painted into
+    const int8_t (*logo)[16];
+};
+constexpr StandIn kStandIns[kStandInCount] = {
+    {kStandInItem, 134, 3549, "SCRAP ENERGY", 63, kLogo},
+    {kStandInProgression, 142, 3550, "SCRAP CHUNK", 95, kLogoArrow},
+};
+
 // A color for each palette entry, in the middle of its range of int(r * 3 + g * 6 + b * 9).
 constexpr uint8_t kEntryRgb[19][3] = {
     {0, 0, 0},       {128, 0, 0},     {212, 0, 0},     {255, 21, 0},    {255, 64, 0},
@@ -82,25 +117,25 @@ T& at(BYTE* p, ptrdiff_t offset) {
     return *reinterpret_cast<T*>(p + offset);
 }
 
-bool is_own(const BYTE* r) {
+bool is_own(const BYTE* r, const StandIn& s) {
     BYTE copy[kRecordSize];
     std::memcpy(copy, r, sizeof(copy));
     int16_t v;
     auto word = [&](ptrdiff_t o) { std::memcpy(&v, copy + o, 2); return v; };
-    return word(kKind) == kOwnKind && word(kFrame) == kOwnFrame && word(kTicks) == kOwnTicks &&
+    return word(kKind) == kOwnKind && word(kFrame) == s.own_frame && word(kTicks) == kOwnTicks &&
            word(kFrames) == kOwnFrames && copy[kIcon] == 0 && copy[kPalette] == kOwnPalette &&
-           std::memcmp(copy + kName, kOwnName, sizeof(kOwnName)) == 0 &&
-           word(kInventory) == kOwnInventory && word(kEvent) == kOwnEvent &&
+           std::memcmp(copy + kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
+           word(kInventory) == kOwnInventory && word(kEvent) == s.own_event &&
            word(kRedirect) == 0 && word(kPickupClass) == kOwnClass;
 }
 
-bool is_ours(const BYTE* r) {
+bool is_ours(const BYTE* r, const StandIn& s) {
     int16_t frame, frames, event, kind;
     std::memcpy(&kind, r + kKind, 2);
     std::memcpy(&frame, r + kFrame, 2);
     std::memcpy(&frames, r + kFrames, 2);
     std::memcpy(&event, r + kEvent, 2);
-    return kind == kOwnKind && frame == kLogoFrame && frames == kLogoFrames &&
+    return kind == kOwnKind && frame == s.frame && frames == kLogoFrames &&
            r[kIcon] == kLogoGlyph && event == kNoEvent;
 }
 
@@ -125,43 +160,42 @@ GlFunctions load_gl() {
 
 void ApItems::set_labels(std::map<int, std::string> labels) { labels_ = std::move(labels); }
 
-BYTE* ApItems::record(BYTE* holder) const {
+BYTE* ApItems::record(BYTE* holder, int item) const {
     BYTE* records = nullptr;
     if (!safe_read(holder, &records, sizeof(records)) || records == nullptr) return nullptr;
-    BYTE* r = records + kStandInItem * kRecordSize;
+    BYTE* r = records + item * kRecordSize;
     BYTE probe[kRecordSize];
     if (!safe_read(records, probe, 1) || !safe_read(r, probe, sizeof(probe)) ||
         !writable(r, kRecordSize)) {
         return nullptr;
     }
-    static_assert(kStandInItem < kRecordCount);
+    static_assert(kStandInItem < kRecordCount && kStandInProgression < kRecordCount);
     return r;
 }
 
 void ApItems::watch(BYTE* holder, int cell) {
     if (!active()) return;
-    BYTE* r = record(holder);
-    if (r == nullptr) {
-        record_ = nullptr;
-        return;
-    }
-    if (!is_ours(r)) {
-        if (!is_own(r)) {
-            record_ = nullptr;  // neither the game's own nor ours: leave it alone
-            return;
-        }
-        at<int16_t>(r, kFrame) = kLogoFrame;
-        at<int16_t>(r, kFrames) = kLogoFrames;
-        r[kIcon] = kLogoGlyph;
-        at<int16_t>(r, kEvent) = kNoEvent;
-    }
-    record_ = r;  // ours now, or already (left by a helper that unloaded without a frame)
     auto it = labels_.find(cell);
     const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
     char want[kItemNameMax + 1] = {};
     std::memcpy(want, name.data(), (std::min)(name.size(), kItemNameMax));
-    if (std::memcmp(r + kName, want, sizeof(want)) != 0) {
-        std::memcpy(r + kName, want, sizeof(want));
+    for (int i = 0; i < kStandInCount; ++i) {
+        const StandIn& s = kStandIns[i];
+        BYTE* r = record(holder, s.item);
+        records_[i] = nullptr;
+        if (r == nullptr) continue;
+        if (!is_ours(r, s)) {
+            if (!is_own(r, s)) continue;  // neither the game's own nor ours: leave it alone
+            at<int16_t>(r, kFrame) = s.frame;
+            at<int16_t>(r, kFrames) = kLogoFrames;
+            r[kIcon] = kLogoGlyph;
+            at<int16_t>(r, kEvent) = kNoEvent;
+        }
+        records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)
+        // Only one location is in a cell, so both are named for it.
+        if (std::memcmp(r + kName, want, sizeof(want)) != 0) {
+            std::memcpy(r + kName, want, sizeof(want));
+        }
     }
 }
 
@@ -174,8 +208,8 @@ void drain(const GlFunctions& gl) {
     }
 }
 
-// The texture as the PNG was read, the right way up, with the two places to paint blank (or
-// already the logo): read back once per texture.
+// The texture as the PNG was read, the right way up, with the places to paint blank (or already
+// the logos): read back once per texture.
 bool texture_as_expected(const GlFunctions& gl) {
     std::vector<uint8_t> image(static_cast<size_t>(kTextureSize) * kTextureSize * 4);
     gl.GetTexImage(kTexture2D, 0, kRgba, kUnsignedByte, image.data());
@@ -186,10 +220,12 @@ bool texture_as_expected(const GlFunctions& gl) {
     constexpr int kScrapX = 128 + (134 % 8) * 16, kScrapY = 640 + (134 / 8) * 16;
     constexpr int kIconX = (0xC0 % 16) * 8, kIconY = 976 + (0xC0 / 16) * 8;
     if (alpha(kScrapX + 6, kScrapY) != 0xFF || alpha(kIconX + 2, kIconY + 1) != 0xFF) return false;
-    for (int y = 0; y < 16; ++y) {
-        for (int x = 0; x < 16; ++x) {
-            uint8_t a = alpha(kFrameX + x, kFrameY + y);
-            if (a != 0 && a != (kLogo[y][x] < 0 ? 0 : 0xFF)) return false;
+    for (const StandIn& s : kStandIns) {
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                uint8_t a = alpha(frame_x(s.frame) + x, frame_y(s.frame) + y);
+                if (a != 0 && a != (s.logo[y][x] < 0 ? 0 : 0xFF)) return false;
+            }
         }
     }
     for (int y = 0; y < 8; ++y) {
@@ -231,19 +267,23 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
         }
     }
     if (ok) {
-        uint8_t frame[16][16][4] = {};
-        uint8_t glyph[8][8][4] = {};
-        if (!clear) {
-            for (int y = 0; y < 16; ++y) {
+        for (const StandIn& s : kStandIns) {
+            uint8_t frame[16][16][4] = {};
+            for (int y = 0; y < 16 && !clear; ++y) {
                 for (int x = 0; x < 16; ++x) {
-                    if (kLogo[y][x] < 0) continue;
-                    const uint8_t* rgb = kEntryRgb[kLogo[y][x]];
+                    if (s.logo[y][x] < 0) continue;
+                    const uint8_t* rgb = kEntryRgb[s.logo[y][x]];
                     frame[y][x][0] = rgb[0];
                     frame[y][x][1] = rgb[1];
                     frame[y][x][2] = rgb[2];
                     frame[y][x][3] = 0xFF;
                 }
             }
+            gl.TexSubImage2D(kTexture2D, 0, frame_x(s.frame), frame_y(s.frame), 16, 16, kRgba,
+                             kUnsignedByte, frame);
+        }
+        uint8_t glyph[8][8][4] = {};
+        if (!clear) {
             for (int y = 0; y < 8; ++y) {
                 for (int x = 0; x < 8; ++x) {
                     if (kGlyph[y][x] != '#') continue;
@@ -251,7 +291,6 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
                 }
             }
         }
-        gl.TexSubImage2D(kTexture2D, 0, kFrameX, kFrameY, 16, 16, kRgba, kUnsignedByte, frame);
         gl.TexSubImage2D(kTexture2D, 0, kGlyphX, kGlyphY, 8, 8, kRgba, kUnsignedByte, glyph);
     }
     for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, unpack[i]);
@@ -282,20 +321,23 @@ unsigned ApItems::texture_of(BYTE* holder) const {
 }
 
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl) {
-    // The record back to the game's own values, whether this helper restyled it or an earlier
-    // one left it so.
-    BYTE* r = record(records_holder);
-    if (r != nullptr && is_ours(r)) {
-        at<int16_t>(r, kFrame) = kOwnFrame;
-        at<int16_t>(r, kTicks) = kOwnTicks;
-        at<int16_t>(r, kFrames) = kOwnFrames;
-        r[kIcon] = 0;
-        r[kPalette] = kOwnPalette;
-        std::memset(r + kName, 0, kItemNameMax + 1);
-        std::memcpy(r + kName, kOwnName, sizeof(kOwnName));
-        at<int16_t>(r, kEvent) = kOwnEvent;
+    // The records back to the game's own values, whether this helper restyled them or an earlier
+    // one left them so.
+    for (int i = 0; i < kStandInCount; ++i) {
+        const StandIn& s = kStandIns[i];
+        BYTE* r = record(records_holder, s.item);
+        if (r != nullptr && is_ours(r, s)) {
+            at<int16_t>(r, kFrame) = s.own_frame;
+            at<int16_t>(r, kTicks) = kOwnTicks;
+            at<int16_t>(r, kFrames) = kOwnFrames;
+            r[kIcon] = 0;
+            r[kPalette] = kOwnPalette;
+            std::memset(r + kName, 0, kItemNameMax + 1);
+            std::memcpy(r + kName, s.own_name, std::strlen(s.own_name));
+            at<int16_t>(r, kEvent) = s.own_event;
+        }
+        records_[i] = nullptr;
     }
-    record_ = nullptr;
     if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
         upload(painted_, gl, true);
     }

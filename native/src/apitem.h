@@ -1,19 +1,20 @@
 // How other players' items look in the game (helper phase 4).
 //
-// A location holding another player's item is given item 47 (Scrap Energy) by the world. While
-// the client has sent the helper its labels, the helper restyles that item's record (the
-// `Objects` file, 100 bytes per record behind `item_records`; docs/re/memory.md, "Other
-// players' items"): its in-world animation points at frame 63 of the item sprites (one frame,
-// transparent in the game's own art), its popup icon at the font's glyph 0xEE (empty in the
-// game's own art), and its pickup no longer runs area event 3549 (a refill drop). The helper
-// paints an Archipelago logo into that frame and glyph of the game's sprite texture (OpenGL,
-// from the per-frame call, where the game's context is current), and names the record after
-// the location in the cell the player stands in ("MASTER SWORD FOR ALICE"), or "ARCHIPELAGO
-// ITEM" elsewhere: the game's own pickup popup then shows that name. Every field is checked
-// against the game's own values before the first write, and the texture is read back once
-// (the two places blank, known art where the PNG has it) before the first paint; unload puts
-// the record back to the game's values and clears the painted pixels (transparent, as in the
-// game's art).
+// A location holding another player's item is given item 47 (Scrap Energy) by the world, or 48
+// (Scrap Chunk) for a progression item. While the client has sent the helper its labels, the
+// helper restyles both items' records (the `Objects` file, 100 bytes per record behind
+// `item_records`; docs/re/memory.md, "Other players' items"): their in-world animation points
+// at an item frame that is transparent in the game's own art (63 and 95, one frame each), their
+// popup icon at the font's glyph 0xEE (empty in the game's own art), and their pickup no longer
+// runs an area event (3549 and 3550, a refill drop). The helper paints Archipelago's logo into
+// those frames (with its up arrow for progression) and its ring of dots into the glyph of the
+// game's sprite texture (OpenGL, from the per-frame call, where the game's context is current),
+// and names both records after the location in the cell the player stands in ("MASTER SWORD
+// FOR ALICE"), or "ARCHIPELAGO ITEM" elsewhere: the game's own pickup popup then shows that
+// name. Every field is checked against the game's own values before the first write, and the
+// texture is read back once (the places to paint blank, known art where the PNG has it) before
+// the first paint; unload puts the records back to the game's values and clears the painted
+// pixels (transparent, as in the game's art).
 #pragma once
 
 #include <windows.h>
@@ -24,7 +25,9 @@
 
 namespace zap {
 
-constexpr int kStandInItem = 47;
+constexpr int kStandInItem = 47;         // Scrap Energy: other players' items
+constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progression items
+constexpr int kStandInCount = 2;
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 
 // The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (or a test's fakes).
@@ -69,18 +72,18 @@ public:
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
     void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl);
 
-    bool restyled() const { return record_ != nullptr; }
+    bool restyled() const { return records_[0] != nullptr || records_[1] != nullptr; }
     unsigned painted_texture() const { return painted_; }
 
 private:
-    BYTE* record(BYTE* records_holder) const;
+    BYTE* record(BYTE* records_holder, int item) const;
     unsigned texture_of(BYTE* texture_holder) const;
     // Paints (or clears) the logo, the first time for a texture only after reading it back:
     // the two places blank (or already the logo) and known art where the PNG has it.
     bool upload(unsigned texture, const GlFunctions& gl, bool clear);
 
     std::map<int, std::string> labels_;
-    BYTE* record_ = nullptr;
+    BYTE* records_[kStandInCount] = {};
     unsigned painted_ = 0;
     unsigned verified_ = 0;  // the texture read back and found as expected
     int frames_to_paint_ = 0;
