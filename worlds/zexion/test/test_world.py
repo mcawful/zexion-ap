@@ -142,7 +142,11 @@ class TestOHKO(ZexionTestBase):
         slot = self.world.fill_slot_data()
         self.assertEqual(slot["mode"], "ohko")
         self.assertEqual(slot["second_start"]["cell"], list(self.world.second["cell"]))
-        self.assertIsNone(slot["menu"], "a mode with a second target starts from RANDOMIZER")
+        menu = slot["menu"]
+        self.assertIsNone(menu["second_target"], "the seed's second start is written instead")
+        self.assertEqual(len(menu["start_table"]), 34)
+        index = slot["second_start"]["index"]
+        self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(slot["second_start"]["cell"]))
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
 
 

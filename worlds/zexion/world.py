@@ -236,18 +236,22 @@ class ZexionWorld(World):
     def menu_setup(self) -> dict[str, Any] | None:
         """The randomizer menu as this seed's mode, for the client's ARCHIPELAGO choice
         (client/newgame.py): the mode's preset and a seed text of 16 hex digits from this
-        seed and player. None in a mode with a second teleport target, which starts from
-        RANDOMIZER instead."""
-        if self.mode["double_teleport"]:
-            return None
+        seed and player. In a mode with a second teleport target, whose placement reads the
+        menu's start table, the table instead of a second target (the seed's second start is
+        written)."""
         name = f"{self.multiworld.seed_name}:{self.player}".encode()
-        return {
+        setup = {
             "seed_text": hashlib.sha256(name).hexdigest()[:16].upper(),
             "start": list(self.mode["menu"]["start"]),
             "pool": list(self.mode["menu"]["pool"]),
             "settings": list(self.mode["menu"]["settings"]),
-            "second_target": list(self.mode["second_target"]),
+            "second_target": None,
         }
+        if self.mode["double_teleport"]:
+            setup["start_table"] = [list(room) for room in data.START_TABLE]
+        else:
+            setup["second_target"] = list(self.mode["second_target"])
+        return setup
 
     def location_items(self) -> list[int]:
         """The item code the game should hold at each of its locations: this world's own items

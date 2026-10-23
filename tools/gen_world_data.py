@@ -129,6 +129,7 @@ PRESETS = {
 GUNS = range(4, 9)  # the random gun and guns first change these and their upgrades'
 GUN_UPGRADES = range(13, 18)
 COLOR = 12  # the player's choice, not the mode's
+OBJECT_25 = 25  # a start room holding it is flagged in the menu's start table
 
 
 def rdata(exe: bytes, rva: int, size: int) -> bytes:
@@ -320,6 +321,12 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         "region_cells": region_cells,
         "entrances": entrances,
         "location_rules": location_rules,
+        # The randomizer menu's start table, as it builds it when it opens: every candidate
+        # room in order, with its flag (the room holds object 25), checked against the game's
+        # own table (docs/re/memory.md, "Starting a new game" on OHKO).
+        "start_table": [
+            (c["cell"][0], c["cell"][1], int(OBJECT_25 in c["objects"])) for c in candidates
+        ],
     }
 
 
@@ -386,6 +393,9 @@ def render(d: dict, source: str) -> str:
         "",
         "# Location index -> the requirements for collecting its item, where it has any.",
         f"LOCATION_RULES = {d['location_rules']!r}",
+        "",
+        "# The randomizer menu's start table: each candidate room's cell (x, y) and flag.",
+        f"START_TABLE = {d['start_table']!r}",
         "",
     ]
     return "\n".join(out)
