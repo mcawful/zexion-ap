@@ -12,8 +12,7 @@ Once connected:
   Zexion, then run it.
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
-  the ending begins (flag 250: after the final boss and the ship, or the game's skip to the ship
-  after Zexion is grabbed).
+  the ending begins (flag 250: after the final boss and the ship; live-tested 2026-10-22).
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
