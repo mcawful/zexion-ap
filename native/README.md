@@ -86,6 +86,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
       - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
       - `start_table HEX`, the menu's start table, 5 bytes per room (x, y, flag), for a mode
         with Double Teleport.
+    - `ap_labels` and then lines `label X Y HEX` → `labeled N`, or `refused not configured`
+      or `refused no frame`: names for other players' items, by map cell (below).
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
@@ -145,6 +147,19 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
+- **Other players' items (helper phase 4).** The client sends `ap_labels`, then lines
+  `label X Y HEX`: a name per map cell for the stand-in item, Scrap Energy (47), which the
+  world gives every location holding another player's item. While it has labels, every
+  frame call (`src/apitem.cpp`) checks Scrap Energy's record against the game's own values
+  and restyles it (its in-world frame and popup icon pointed at a frame and a glyph that
+  are empty in the game's art, no refill drop at pickup), names it after the label for the
+  player's map cell (or ARCHIPELAGO ITEM), so the game's own pickup popup shows "MASTER
+  SWORD FOR ALICE", and now and then paints an Archipelago logo into that frame and
+  glyph of the sprite texture through OpenGL (the game's context is current in the swap
+  hook), after checking the texture is the 2048 x 2048 sprite sheet; it leaves the game's
+  texture binding, unpack state and GL errors as it found them. Unload restores the record
+  and clears the pixels. Not yet run in the game (`docs/re/memory.md`, "Other players'
+  items").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -187,7 +202,7 @@ the ARCHIPELAGO choice on a stand-in panel), and runs
 
 ## Planned
 
-1. **Helper phase 4:** icons for other games' items.
+1. **Helper phase 4, left over:** run it in the game.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.

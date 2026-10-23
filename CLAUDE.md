@@ -14,7 +14,8 @@ helper DLL, which runs in the game and gives received items there with the game'
 sound and HUD refresh (helper phase 2, live-tested on one seed), and starts a new game from the
 AP seed: ARCHIPELAGO in place of RANDOMIZER after an empty slot is picked (helper phase 3,
 live-tested on a Standard seed). While loaded, it also offers the game's escape skip after
-Zexion is grabbed (live-tested 2026-10-23).
+Zexion is grabbed (live-tested 2026-10-23), and shows other players' items with an
+Archipelago logo and their name at pickup (helper phase 4, not yet run in game).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -130,7 +131,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it;
-  `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`).
+  `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`), and
+  `aplabels.py` other players' items into labels for the helper (`ap_labels`).
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts

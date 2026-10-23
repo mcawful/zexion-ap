@@ -24,6 +24,10 @@ Once connected:
   randomizer game started in the seed's mode gets the AP seed written in as the game builds
   it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
   start another. A seed whose starting items a new game cannot hold falls back to /prepare.
+- With the helper loaded, the client also asks the server what each location holding another
+  player's item holds and sends the helper a label per map cell (client/aplabels.py): the
+  item shows an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (not yet
+  run in the game).
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
