@@ -12,7 +12,8 @@ Once connected:
   Zexion, then run it.
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
-  Zexion is grabbed in the core.
+  the ending begins (flag 250: after the final boss and the ship, or the game's skip to the ship
+  after Zexion is grabbed).
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
@@ -337,7 +338,7 @@ async def game_loop(ctx: ZexionContext) -> None:
             await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
             ctx.goal_sent = True
             ctx.finished_game = True
-            logger.info("Zexion grabbed: goal sent.")
+            logger.info("The ending began: goal sent.")
 
 
 def launch(*args: str) -> None:

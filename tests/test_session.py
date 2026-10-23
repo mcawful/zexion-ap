@@ -35,6 +35,7 @@ class FakeGame:
         self.flicker = False
         self.reads = 0
         self.marker = 1
+        self.flags = bytearray(0x9C4)
 
     def state(self) -> str:
         self.reads += 1
@@ -56,6 +57,9 @@ class FakeGame:
 
     def rando_marker(self) -> int:
         return self.marker
+
+    def flag(self, number: int) -> int:
+        return self.flags[number]
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -140,10 +144,25 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
     session, g = setup
     g.state_value = game.MENU
     g.collect(5)
-    g.inv[ss.GOAL_ITEM] = 1
+    g.flags[ss.ENDING_FLAG] = 1  # the ending's cutscenes read as menu
     step = session.step(g, [17], gap=0)
     assert step.granted == {} and g.inv[17] == 0
     assert step.checked == {5} and step.goal
+
+
+def test_grabbing_zexion_is_not_the_goal(setup) -> None:
+    session, g = setup
+    g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead
+    assert not session.step(g, [], gap=0).goal
+    g.flags[ss.ENDING_FLAG] = 1
+    assert session.step(g, [], gap=0).goal
+
+
+def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
+    session, g = setup
+    g.flags[ss.ENDING_FLAG] = 1
+    g.marker = 0  # a normal save, its flags those of another game
+    assert not session.step(g, [], gap=0).goal
 
 
 def test_nothing_happens_while_the_state_is_changing(setup) -> None:
