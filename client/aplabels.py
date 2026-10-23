@@ -2,16 +2,17 @@
 
 The world fills a location holding another player's item with a stand-in: item 47 (Scrap
 Energy), or 48 (Scrap Chunk) for a progression item, which the helper draws with Archipelago's up
-arrow. The client asks the server what each such location holds (``LocationScouts``) and
-sends the helper a label per map cell, "MASTER SWORD FOR ALICE"; while the player stands in that
-cell the helper names the stand-in after it, so the game's own pickup popup shows it, with the
-Archipelago logo the helper paints (native/README.md, docs/re/memory.md "Other players'
-items").
+arrow. The client asks the server whom each such location's item is for (``LocationScouts``)
+and sends the helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
+generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
+Circle of the Moon's icons by classification), since another game's item names can be long.
+While the player stands in that cell the helper names the stand-in after it, so the game's own
+pickup popup shows it, with the Archipelago logo the helper paints (native/README.md,
+docs/re/memory.md "Other players' items").
 
 Labels keep only what the game's 8 x 8 font draws: upper-case letters, digits, space and a
-little punctuation. A label is two lines, the item (at most 23 characters: the logo glyph comes
-first) and "FOR ALICE" (at most 24), each cut at a word, joined by a newline; the helper lays
-them out in the popup, 24 characters a line, each centered (native/README.md).
+little punctuation. A label is two lines joined by a newline, the item and "FOR ALICE" (at most
+24 characters, cut at a word); the helper lays them out in the popup, each centered.
 
 Pure functions; the client does the networking and talks to the helper.
 """
@@ -25,7 +26,8 @@ STAND_IN = 47  # Scrap Energy: other players' items
 STAND_IN_PROGRESSION = 48  # Scrap Chunk: other players' progression items
 PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
-GENERAL = "ARCHIPELAGO ITEM"
+AP_ITEM = "AP ITEM"
+PROGRESSION_ITEM = "PROGRESSION ITEM"
 
 
 def _font_words(text: str) -> list[str]:
@@ -48,13 +50,12 @@ def _fit(words: list[str], width: int) -> str:
     return line
 
 
-def label(item_name: str, player_name: str) -> str:
-    """The stand-in's name for one location: the item, a newline, then whom it is for."""
-    item = _fit(_font_words(item_name), PER_LINE - 1)  # the logo glyph comes first
+def label(progression: bool, player_name: str) -> str:
+    """The stand-in's name for one location: what kind of item, a newline, then whom it is
+    for."""
+    item = PROGRESSION_ITEM if progression else AP_ITEM
     player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
     who = f"FOR {player}" if player else "FOR"
-    if not item:
-        return GENERAL
     return f"{item}\n{who}"
 
 

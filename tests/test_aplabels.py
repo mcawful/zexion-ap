@@ -10,31 +10,29 @@ def lines(text: str) -> list[str]:
     return ["@" + line if i == 0 else line for i, line in enumerate(text.split("\n"))]
 
 
-def test_a_label_names_the_item_then_its_player_on_the_next_line() -> None:
-    assert lines(al.label("Master Sword", "Alice")) == ["@MASTER SWORD", "FOR ALICE"]
-    assert lines(al.label("Pokédex", "Bob_2")) == ["@POKDEX", "FOR BOB2"]
-    assert lines(al.label("Hookshot [L2]", "Zoë")) == ["@HOOKSHOT L2", "FOR ZO"]
+def test_a_label_says_what_kind_of_item_then_whom_it_is_for() -> None:
+    assert lines(al.label(True, "Alice")) == ["@PROGRESSION ITEM", "FOR ALICE"]
+    assert lines(al.label(False, "Bob_2")) == ["@AP ITEM", "FOR BOB2"]
+    assert lines(al.label(False, "Zoë")) == ["@AP ITEM", "FOR ZO"]
 
 
-def test_long_names_are_cut_at_a_word() -> None:
-    text = al.label("Progressive Hookshot of Great Length", "LinksAwakenerTheGreat")
-    assert lines(text) == ["@PROGRESSIVE HOOKSHOT OF", "FOR LINKSAWAKENERTHEGREA"]
-    assert lines(al.label("Sword", "Alice in Wonderland Forever")) == [
-        "@SWORD",
+def test_long_player_names_are_cut_at_a_word() -> None:
+    assert lines(al.label(True, "Alice in Wonderland Forever")) == [
+        "@PROGRESSION ITEM",
         "FOR ALICE IN WONDERLAND",
     ]
+    long = al.label(False, "LinksAwakenerTheGreat")
+    assert lines(long) == ["@AP ITEM", "FOR LINKSAWAKENERTHEGREA"]
 
 
 def test_each_line_fits_the_popup() -> None:
-    text = al.label("A" * 60, "P" * 60)
-    assert lines(text) == ["@" + "A" * 23, "FOR " + "P" * 20]
+    text = al.label(True, "P" * 60)
+    assert lines(text) == ["@PROGRESSION ITEM", "FOR " + "P" * 20]
     assert all(len(line) <= 24 for line in lines(text))
 
 
 def test_characters_the_font_lacks_are_dropped() -> None:
-    assert al.label("", "") == al.GENERAL
-    assert al.label("€", "Alice") == al.GENERAL
-    assert lines(al.label("Sword", "€")) == ["@SWORD", "FOR"]
+    assert lines(al.label(False, "€")) == ["@AP ITEM", "FOR"]
 
 
 def test_foreign_locations_are_the_kept_stand_ins() -> None:

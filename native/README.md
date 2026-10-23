@@ -159,9 +159,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
   records against the game's own values and restyles them (their in-world frames pointed at
   frames that are empty in the game's art, no refill drop at pickup), names them after the
-  label for the player's map cell (or ARCHIPELAGO ITEM): the logo glyph, then the label laid
-  out as the popups below are, so the game's own pickup popup shows "MASTER SWORD" over "FOR
-  ALICE", both centered (the records keep no icon of their own, so the name is shown as
+  label for the player's map cell (or AP ITEM): the logo glyph, then the label laid
+  out as the popups below are, so the game's own pickup popup shows "PROGRESSION ITEM" (or "AP
+  ITEM") over "FOR ALICE", both centered (the records keep no icon of their own, so the name is shown as
   written). The game's pickup code makes that popup with a line width of 24, as an immediate
   in its code; while the player stands in a labeled cell the helper changes it (from the
   frame call, on the game's thread, after checking the instruction's bytes) to the label's

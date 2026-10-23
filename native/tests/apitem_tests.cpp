@@ -173,7 +173,7 @@ void test_restyle_and_names() {
               get16(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     items.watch(holder(), 7);
-    check(name() == "\xEE" "ARCHIPELAGO ITEM", "elsewhere, the glyph and the general name");
+    check(name() == "\xEE" "AP ITEM", "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
     items.set_labels({{7, long_name}});
     items.watch(holder(), 7);
@@ -346,7 +346,7 @@ void test_label_parser() {
           "two lines, the shorter centered in the longer, whose width is the popup's");
     out.clear();
     zap::parse_labels("ap_labels\nlabel 1 1 c3a97e", out);
-    check(out[55].name == "\xEE" "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
+    check(out[55].name == "\xEE" "AP ITEM", "nothing the font draws: the general name");
     zap::parse_labels("ap_labels\nlabel 2 1 41004221", out);
     check(out[56].name == "\xEE" "AB!", "a NUL byte is dropped, not kept");
     std::map<int, zap::Label> bad;
