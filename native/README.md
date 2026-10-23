@@ -162,8 +162,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   them, and paints nothing while a pixel buffer is bound. `ap_labels` with no lines takes
   the labels back. Unload restores the record (and one an earlier helper left restyled)
   and clears the pixels; it refuses (`error the stand-in item is still restyled (no frame
-  came); not unloading`) if no frame came to do it. Not yet run in the game
-  (`docs/re/memory.md`, "Other players' items", which also lists its limits).
+  came); not unloading`) if no frame came to do it. Working in the game since 2026-10-23
+  (logo, named popup, restore on disconnect and on unload; `docs/re/memory.md`, "Other
+  players' items", which also lists its limits).
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -204,10 +205,6 @@ tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, 
 the ARCHIPELAGO choice on a stand-in panel, and `apitem`, the stand-in item's restyle and
 painting against a fake GL), and runs
 `tests/test_native.py` against the build on Windows.
-
-## Planned
-
-1. **Helper phase 4, left over:** run it in the game.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.
