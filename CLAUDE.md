@@ -15,8 +15,8 @@ there with the game's own popup, sound and HUD refresh (helper phase 2, live-tes
 seed), and starts a new game from the AP seed: ARCHIPELAGO in place of RANDOMIZER after an
 empty slot is picked (helper phase 3, live-tested on a Standard seed). While loaded, it also
 offers the game's escape skip after Zexion is grabbed (live-tested 2026-10-23), and shows
-other players' items with an Archipelago logo and their name at pickup (helper phase 4, not
-yet run in game).
+other players' items with an Archipelago logo and their name at pickup (helper phase 4,
+live-tested 2026-10-23).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
 
 ## Commands
@@ -147,7 +147,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
   a new game from the AP seed (ARCHIPELAGO); both working in game. It also patches the game's
   loaded event 3665 so the escape skip is offered in any game (`hello` reports `skip=`;
-  working in game).
+  working in game), and helper phase 4 shows other players' items with an Archipelago
+  logo and their name (`ap_labels`; working in game).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

@@ -27,8 +27,8 @@ Once connected:
 - With the helper loaded, and slot data saying the world gives other players' items the
   stand-in ("stand_in": 47), the client also asks the server what each location holding
   one holds and sends the helper a label per map cell (client/aplabels.py): the item shows
-  an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (not yet run in the
-  game). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
+  an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (working in the
+  game, 2026-10-23). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
