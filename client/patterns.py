@@ -764,6 +764,72 @@ TARGETS = (
         ),
     ),
     Target(
+        "event_table",
+        "holds a pointer to the loaded area events, 0x28 bytes each (the AreaEvents file)",
+        0xDF6880,
+        (
+            # from the instruction at RVA 0x2a248 on B1
+            Pattern(
+                (
+                    "4C 8B 05 ?? ?? ?? ?? 33 D2 49 81 C0 E0 23 01 00 41 0F B6 CF 49 0F BE 00 "
+                    "FF 94 C6 ?? ?? ?? ?? 0F B6 54 24 7C"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x8355a on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8D 0C 89 44 0F B6 4C C8 22 4C 8D 14 C8 45 84 C9 "
+                    "0F 84 ?? ?? ?? ?? 41 80 F9 01 75 47"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1d3167 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8D 0C 89 44 0F B6 4C C8 22 4C 8D 14 C8 45 84 C9 "
+                    "0F 84 ?? ?? ?? ?? 41 80 F9 01 75 45"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "event_count",
+        "the number of loaded area events (16-bit)",
+        0xEAE9A8,
+        (
+            # from the instruction at RVA 0x1ddf58 on B1 (the loader: 0x28 bytes per event)
+            Pattern(
+                (
+                    "48 8D 15 ?? ?? ?? ?? 41 B8 02 00 00 00 48 8B CB FF 15 ?? ?? ?? ?? 48 8B "
+                    "05 ?? ?? ?? ?? 48 85 C0 75 1A 48 0F BF 0D ?? ?? ?? ?? BA 28 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x4a556 on B1
+            Pattern(
+                "0F BF 05 ?? ?? ?? ?? 3B C8 0F 8D ?? ?? ?? ?? 48 63 C1 0F B6 93 11 02 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
         0xCDD080,

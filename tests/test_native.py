@@ -70,7 +70,7 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
     with pytest.raises(native.HelperError, match="already loaded"):
         native.load(handle, process.pid, BUILT)
     with native.Helper(process.pid) as helper:
-        assert helper.request("hello").endswith("build=unknown hooked=0 configured=0")
+        assert helper.request("hello").endswith("build=unknown hooked=0 configured=0 skip=0")
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.HelperError, match="unknown request"):
             helper.request("nonsense")

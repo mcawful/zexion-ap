@@ -21,6 +21,8 @@ Measured 2026-10-20 with `tools/build_id.py`, on the Steam install that was curr
   - `Files/Enemies`: `8e41d2ef5665ceae` (2,686,584 bytes; added to `tools/build_id.py` on 2026-10-22, read from the same install)
   - `Files/Flags`: `e9882b596fc69a59` (8 bytes)
   - `Files/Text`: `3bf8cd5e07ede18f` (114,050 bytes)
+  - `Files/Bosses`: `265feab61b4aa2cf` (1,176,558 bytes; added to `tools/build_id.py` on 2026-10-22,
+    read from the same install)
 
 ## Engine and mod support (B1)
 

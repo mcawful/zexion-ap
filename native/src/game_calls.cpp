@@ -14,7 +14,7 @@ const char* const kConfigKeys[] = {
     "rando_blob",    "rando_marker",  "transition_fn", "transition_timer", "current_slot",
     "newgame_fn",
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
-    "placement_fn",  "rando_newgame_fn",
+    "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -275,6 +275,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     randomizer_menu_ = found["randomizer_menu"];
     placement_fn_ = found["placement_fn"];
     rando_newgame_fn_ = found["rando_newgame_fn"];
+    event_table_ = found["event_table"];
+    event_count_ = found["event_count"];
     configured_ = true;
     return "";
 }
@@ -506,6 +508,17 @@ void Game::start_archipelago(WidgetCallback callback) {
         disarm_newgame();
         throw;
     }
+}
+
+void Game::watch_skip() {
+    if (!configured_) return;
+    if (skip_frames_-- > 0) return;
+    skip_frames_ = 30;
+    skip_.apply(event_table_, event_count_);
+}
+
+void Game::restore_skip() {
+    if (configured_) skip_.restore(event_table_);
 }
 
 }  // namespace zap

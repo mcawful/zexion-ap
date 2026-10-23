@@ -12,7 +12,11 @@ Once connected:
   Zexion, then run it.
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
-  the ending begins (flag 250: after the final boss and the ship; live-tested 2026-10-22).
+  the ending begins (flag 250 with flag 211 clear, after the final boss and the ship; the
+  goal on flag 250 was live-tested on 2026-10-22, the flag 211 condition not yet). With the
+  helper loaded, grabbing Zexion should offer the game's SKIP ESCAPE AND FINAL BATTLE? in any
+  game, and after YES the goal should come as the player boards the ship (not yet run in
+  the game); the client logs whether the helper put the offer in place.
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
@@ -73,6 +77,7 @@ LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
+SKIP_CHECK_SECONDS = 2.0
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -127,6 +132,7 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.use_helper = True
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
+        self.skip_check_at: float | None = None  # when to ask the helper about the skip
         # /unload_helper: the game loop unloads it but keeps the dead connection, so the
         # next request fails the way a helper failing mid-session does.
         self.unload_helper_pending = False
@@ -217,6 +223,29 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
+    ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
+
+
+async def skip_tick(ctx: ZexionContext) -> None:
+    """Once per helper, a moment after it attaches: say whether it offers the escape skip (it
+    patches the game's event within 30 frames, or leaves an event it does not recognize)."""
+    if ctx.helper is None or ctx.skip_check_at is None or time.monotonic() < ctx.skip_check_at:
+        return
+    ctx.skip_check_at = None
+    hello = await asyncio.to_thread(ctx.helper.hello)
+    if hello.get("configured") != "1":
+        ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS  # no frame came: ask again
+        return
+    if hello.get("skip") == "1":
+        logger.info(
+            "Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; the goal "
+            "is sent when the ending begins, either way."
+        )
+    else:
+        logger.warning(
+            "The helper could not offer the escape skip (the game's event is not as expected): "
+            "a first playthrough must finish the escape, which needs the Zenith Thrusters."
+        )
 
 
 async def newgame_tick(ctx: ZexionContext) -> None:
@@ -292,6 +321,7 @@ async def game_loop(ctx: ZexionContext) -> None:
         if ctx.helper is not None:
             try:
                 await newgame_tick(ctx)
+                await skip_tick(ctx)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()
