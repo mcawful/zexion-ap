@@ -142,7 +142,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
   If every field of the record is as traced, the helper points its other branch at the offer
   too, so grabbing Zexion offers the skip in any game while the helper is loaded; a table the
-  game loads again is patched again. Nothing is saved, and unloading puts the record back.
+  game loads again is patched again. Nothing is saved, and unloading puts the record back (if
+  no frame comes to do it, the record stays pointed at the offer, a game event, until Zexion
+  restarts). Once an unload begins, no frame patches it again.
   `hello` reports it as `skip=1`. Not yet run in the game (`docs/re/memory.md`, "The escape
   skip").
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts

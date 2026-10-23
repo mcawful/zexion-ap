@@ -233,6 +233,9 @@ async def skip_tick(ctx: ZexionContext) -> None:
         return
     ctx.skip_check_at = None
     hello = await asyncio.to_thread(ctx.helper.hello)
+    if hello.get("configured") != "1":
+        ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS  # no frame came: ask again
+        return
     if hello.get("skip") == "1":
         logger.info(
             "Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; the goal "

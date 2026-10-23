@@ -52,6 +52,10 @@ SETTLE_SECONDS = game.SETTLE_SECONDS
 # (measured in a snapshot after YES; the flag 211 condition not yet run): docs/re/memory.md,
 # "The ending: flag 250" and "The escape skip".
 ENDING_FLAG, FINALE_FLAG = 250, 211
+# Under the game's Abridged Finale (setting 32) the grab is the game's victory, and whether
+# its end reaches flag 250 is not known; for such a seed the goal is the grab. No world sets
+# it today: it is off in every mode's preset and the mode check refuses it.
+ABRIDGED_FINALE, GOAL_ITEM = 32, 31
 
 
 @dataclass(frozen=True)
@@ -151,7 +155,11 @@ class Session:
             return Step()
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
-        step = Step(collected, snap.ended >= 1 and snap.finale == 0, {}, True)
+        if self.plan.options.get(ABRIDGED_FINALE):
+            goal = snap.inventory[GOAL_ITEM] >= 1
+        else:
+            goal = snap.ended >= 1 and snap.finale == 0
+        step = Step(collected, goal, {}, True)
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders)
         return step

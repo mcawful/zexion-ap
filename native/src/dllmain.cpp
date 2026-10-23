@@ -99,9 +99,12 @@ uintptr_t frame(void* argument) {
         try {
             g_mailbox.serve();
             g_game.watch_newgame();
-            g_game.watch_skip();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
-                if (!g_unloading) g_game.watch_menu(&archipelago_chosen);
+                // Once an unload has begun, neither the choice nor the skip is put back in.
+                if (!g_unloading) {
+                    g_game.watch_menu(&archipelago_chosen);
+                    g_game.watch_skip();
+                }
                 g_menu_installed.store(g_game.menu_installed());
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
