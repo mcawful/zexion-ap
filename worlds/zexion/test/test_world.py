@@ -10,7 +10,15 @@ from .. import data, rules
 from ..items import code_of
 from ..locations import location_name
 from ..options import START_CELLS
-from ..world import FOREIGN, GOAL_CELL, SCRAP_ENERGY, SCRAP_METAL, ZexionWorld
+from ..world import (
+    FOREIGN,
+    FOREIGN_PROGRESSION,
+    GOAL_CELL,
+    SCRAP_CHUNK,
+    SCRAP_ENERGY,
+    SCRAP_METAL,
+    ZexionWorld,
+)
 from .bases import ZexionTestBase
 
 
@@ -161,14 +169,28 @@ class TestSlotDataForTheClient(ZexionTestBase):
         for i, code in enumerate(items):
             placed = self.multiworld.get_location(location_name(i), self.player).item
             own = code_of[placed.name]
-            self.assertEqual(code, SCRAP_METAL if own == SCRAP_ENERGY else own)
+            self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
         self.assertNotIn(FOREIGN, items, "47 only for another player's item")
+        self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
 
-    def test_another_worlds_item_is_scrap_energy(self) -> None:
-        location = self.multiworld.get_location(location_name(0), self.player)
-        location.item = Item("Something", ItemClassification.progression, 1, self.player + 1)
-        self.assertEqual(self.world.fill_slot_data()["location_items"][0], FOREIGN)
-        self.assertEqual(self.world.fill_slot_data()["stand_in"], FOREIGN)
+    def test_another_worlds_item_is_scrap_energy_or_for_progression_scrap_chunk(self) -> None:
+        kinds = [
+            ItemClassification.progression,
+            ItemClassification.useful,
+            ItemClassification.filler,
+            ItemClassification.trap,
+            ItemClassification.progression | ItemClassification.useful,
+        ]
+        for i, kind in enumerate(kinds):
+            location = self.multiworld.get_location(location_name(i), self.player)
+            location.item = Item("Something", kind, 1, self.player + 1)
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(
+            items[: len(kinds)],
+            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN, FOREIGN_PROGRESSION],
+        )
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["stand_in"], slot["stand_in_progression"]), (47, 48))
 
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()

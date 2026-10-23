@@ -33,11 +33,13 @@ MIN_SPHERE_ZERO = 3  # as tools/gen_world_data.py requires of a single start
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (46, 47, 48, 49)
 # What the game holds at a location whose item is not this world's to hand out natively.
-# Another player's item: Scrap Energy, which the client's helper shows as an Archipelago item
-# named at pickup (client/aplabels.py). A location left out, and this world's own Scrap
-# Energy, are Scrap Metal, so 47 in a location always means another player's item; both are
-# filler that only add to the scrap count.
-FOREIGN, SCRAP_METAL, SCRAP_ENERGY = 47, 46, 47
+# Another player's item: Scrap Energy, or Scrap Chunk for a progression item, which the
+# client's helper shows as an Archipelago item (the progression one with its up arrow), named at
+# pickup (client/aplabels.py). A location left out, and this world's own Scrap Energy and Scrap
+# Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item; all are
+# filler the game counts as Scrap Metal.
+FOREIGN, FOREIGN_PROGRESSION, SCRAP_METAL = 47, 48, 46
+SCRAP_ENERGY, SCRAP_CHUNK = 47, 48
 # Items the client cannot write into the game (client/reconcile.py): placed only in this
 # world, where the game hands them out itself.
 LOCAL_ONLY = ("Energy Shield",)
@@ -238,6 +240,7 @@ class ZexionWorld(World):
             "menu": self.menu_setup(),
             # Other players' items are this item in location_items (client/aplabels.py).
             "stand_in": FOREIGN,
+            "stand_in_progression": FOREIGN_PROGRESSION,
         }
 
     def menu_setup(self) -> dict[str, Any] | None:
@@ -264,8 +267,9 @@ class ZexionWorld(World):
     def location_items(self) -> list[int]:
         """The item code the game should hold at each of its locations: this world's own items
         as the game's item IDs (a progressive weapon as the weapon; the game makes a second
-        copy the upgrade, and Scrap Energy as Scrap Metal), FOREIGN where another world's item
-        is, and Scrap Metal where the location was left out."""
+        copy the upgrade, and Scrap Energy and Scrap Chunk as Scrap Metal), FOREIGN where another
+        world's item is (FOREIGN_PROGRESSION for a progression item), and Scrap Metal where the
+        location was left out."""
         out = []
         for i in range(len(data.LOCATIONS)):
             if i not in self.kept_locations:
@@ -273,10 +277,12 @@ class ZexionWorld(World):
                 continue
             item = self.get_location(location_name(i)).item
             if item is None or item.player != self.player or item.code is None:
-                out.append(FOREIGN)
+                out.append(
+                    FOREIGN_PROGRESSION if item is not None and item.advancement else FOREIGN
+                )
                 continue
             code = code_of[item.name]
-            out.append(SCRAP_METAL if code == SCRAP_ENERGY else code)
+            out.append(SCRAP_METAL if code in (SCRAP_ENERGY, SCRAP_CHUNK) else code)
         return out
 
     def start_items(self) -> dict[int, int]:
