@@ -138,7 +138,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     For a mode with Double Teleport (OHKO) the request carries the randomizer menu's start
     table (`start_table`), which the placement reads: before the placement the callback fills
     it in if the menu never built it, accepts it if it matches, and refuses the start if it
-    differs (not yet run in the game). A section of another mode, or a slot the
+    differs (run in the game for an OHKO seed, 2026-10-23). A section of another mode, or a slot the
     game will not start a game in, drops the plan with nothing queued, and the client arms it
     again. Working in game for Standard and Easy seeds (2026-10-22): ARCHIPELAGO started the AP
     seed in an empty slot, showed again after backing out of two slots, and RANDOMIZER
@@ -187,8 +187,7 @@ the ARCHIPELAGO choice on a stand-in panel), and runs
 
 ## Planned
 
-1. **Helper phase 3, left over:** run OHKO from ARCHIPELAGO in the game.
-2. **Helper phase 4:** icons for other games' items.
+1. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.
