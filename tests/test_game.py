@@ -183,6 +183,15 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(3, 0, 256)
 
 
+def test_a_flag_is_one_byte_of_the_flags_array() -> None:
+    g = FakeGame(pm=FakeProcess(0x1000), base=0, rva={"flags": 0x10}, pid=1, build=None)
+    g.pm.memory[0x10 + 250] = 1
+    assert g.flag(250) == 1 and g.flag(249) == 0
+    for outside in (-1, game.FLAGS):
+        with pytest.raises(ValueError, match="outside"):
+            g.flag(outside)
+
+
 def test_a_failed_write_says_its_state_is_unknown() -> None:
     g = fake_game()
     g.pm.fail_write = True

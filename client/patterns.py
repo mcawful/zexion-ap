@@ -730,6 +730,40 @@ TARGETS = (
         ),
     ),
     Target(
+        "flags",
+        "the loaded game's flags, one byte each (0x9C4 of them; flag 250: the ending began)",
+        0x3CF78D,
+        (
+            # from the instruction at RVA 0x1fcfd2 on B1
+            Pattern(
+                "48 8D 0D ?? ?? ?? ?? 48 3B C1 72 1C 33 C9 41 0F B6 84 0E ED 00 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x9c9c3 on B1 (the load routine)
+            Pattern(
+                (
+                    "48 8D 0D ?? ?? ?? ?? C6 05 ?? ?? ?? ?? 00 89 2D ?? ?? ?? ?? 40 88 2D ?? ?? "
+                    "?? ?? C6 80 20 01 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xa2786 on B1, which bounds the 0x9C4 bytes
+            Pattern(
+                "48 8D 0D ?? ?? ?? ?? 48 3B C1 72 17 41 B8 C4 09 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
         0xCDD080,

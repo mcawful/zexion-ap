@@ -13,7 +13,8 @@ Safety, in order:
   the previous seed's section in memory) and hold this seed (the section's item table and
   start, see ``save_patch.section_matches``); otherwise no check is sent and nothing is
   given.
-- Checks and the goal are read in any state with this seed loaded. Grants are made only in
+- Checks and the goal (the ending's flag) are read in any state with this seed loaded, which
+  covers the ending's cutscenes and credits. Grants are made only in
   play (``game.IN_PLAY``), as compare-and-set writes, and only to make up a difference
   (client/reconcile.py), so a grant undone by a death or reload is made again and none is
   made twice.
@@ -45,7 +46,10 @@ import save_patch
 logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
-GOAL_ITEM = 31  # Zexion: its byte is 1 from the grab in the core until the ship (memory.md)
+# The goal: flag 250, set when the first ending cutscene starts, after the final boss and the
+# ship (or the game's skip to the ship after the grab), and saved with the game
+# (docs/re/memory.md, "The ending").
+ENDING_FLAG = 250
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class Snapshot:
     supplies: tuple[int, ...] = ()
     blob: bytes = b""
     marker: int = 0
+    ended: int = 0
 
 
 def read_once(g: game.Game) -> Snapshot:
@@ -63,7 +68,13 @@ def read_once(g: game.Game) -> Snapshot:
     if state == game.NO_SAVE:
         return Snapshot(state)
     return Snapshot(
-        state, g.map_grid(), g.inventory(), g.supplies(), g.rando_blob(), g.rando_marker()
+        state,
+        g.map_grid(),
+        g.inventory(),
+        g.supplies(),
+        g.rando_blob(),
+        g.rando_marker(),
+        g.flag(ENDING_FLAG),
     )
 
 
@@ -136,7 +147,7 @@ class Session:
             return Step()
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
-        step = Step(collected, snap.inventory[GOAL_ITEM] >= 1, {}, True)
+        step = Step(collected, snap.ended >= 1, {}, True)
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders)
         return step
