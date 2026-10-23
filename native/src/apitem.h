@@ -10,7 +10,7 @@
 // those frames (with its up arrow for progression) and its ring of dots into the glyph of the
 // game's sprite texture (OpenGL, from the per-frame call, where the game's context is current),
 // and names both records after the location in the cell the player stands in ("MASTER SWORD
-// FOR ALICE"), or "ARCHIPELAGO ITEM" elsewhere: the game's own pickup popup then shows that
+// FOR ALICE"), or "AP ITEM" elsewhere: the game's own pickup popup then shows that
 // name. Every field is checked against the game's own values before the first write, and the
 // texture is read back once (the places to paint blank, known art where the PNG has it) before
 // the first paint; unload puts the records back to the game's values and clears the painted
@@ -32,7 +32,7 @@ constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 // The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
 // shows the name as written and it can be centered), and the name where no label is.
 constexpr uint8_t kApItemGlyph = 0xEE;
-constexpr char kApItemName[] = "ARCHIPELAGO ITEM";
+constexpr char kApItemName[] = "AP ITEM";
 
 // The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (or a test's fakes).
 struct GlFunctions {

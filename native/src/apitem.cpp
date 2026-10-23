@@ -21,7 +21,7 @@ constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
 // What they become: one frame each, the same popup glyph, no area event at pickup.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
 constexpr uint8_t kLogoGlyph = kApItemGlyph;
-constexpr char kDefaultName[] = "\xEE" "ARCHIPELAGO ITEM";
+constexpr char kDefaultName[] = "\xEE" "AP ITEM";
 static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),

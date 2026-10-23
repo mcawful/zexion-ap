@@ -26,10 +26,11 @@ Once connected:
   start another. A seed whose starting items a new game cannot hold falls back to /prepare.
 - With the helper loaded, and slot data saying the world gives other players' items the
   stand-ins ("stand_in": 47, and "stand_in_progression": 48 for progression items), the
-  client also asks the server what each location holding
-  one holds and sends the helper a label per map cell (client/aplabels.py): the item shows
-  an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (working in the
-  game, 2026-10-23). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
+  client also asks the server what each location holding one holds and sends the helper a
+  label per map cell (client/aplabels.py): the item shows an Archipelago logo (with its up
+  arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" over "FOR
+  ALICE" (working in the game, 2026-10-23, then with the item's own name). A refusal (no
+  frame yet) is retried; on disconnect the labels are taken back.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -56,6 +57,7 @@ if str(AP_DIR) not in sys.path:
     sys.path.insert(0, str(AP_DIR))
 
 import Utils  # noqa: E402
+from BaseClasses import ItemClassification  # noqa: E402
 from CommonClient import (  # noqa: E402
     ClientCommandProcessor,
     CommonContext,
@@ -286,9 +288,9 @@ async def labels_tick(ctx: ZexionContext) -> None:
         return  # the server has not answered yet
     labels = {}
     for i, info in zip(ctx.foreign, infos, strict=True):
-        item = ctx.item_names.lookup_in_slot(info.item, info.player)
+        progression = bool(info.flags & ItemClassification.progression)
         player = ctx.player_names.get(info.player, "")
-        labels[tuple(ctx.session.cells[i])] = aplabels.label(item, player)
+        labels[tuple(ctx.session.cells[i])] = aplabels.label(progression, player)
     connection = ctx.connection
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
     if connection != ctx.connection or helper is not ctx.helper:
