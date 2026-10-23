@@ -62,6 +62,11 @@ inline int16_t event_else() {
     return v;
 }
 
+// The randomizer menu's start table: a count, the rooms' cells, their flags.
+inline int16_t g_start_count = 0;
+inline int16_t g_start_cells[64 * 2];
+inline uint8_t g_start_flags[64];
+
 inline BYTE* g_current_menu = nullptr;
 inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
@@ -177,6 +182,9 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
         {"event_table", rva(&g_event_table)},
         {"event_count", rva(&g_event_count)},
+        {"start_count", rva(&g_start_count)},
+        {"start_cells", rva(g_start_cells)},
+        {"start_flags", rva(g_start_flags)},
     };
 }
 

@@ -120,6 +120,24 @@ def test_the_menu_lines_set_the_menu_to_the_seeds_mode() -> None:
     assert save[sp.SECTION + 0x6D2] == 0
 
 
+def test_ohko_carries_the_start_table_and_its_second_targets_flag() -> None:
+    table = ((1, 25, 1), (6, 41, 0), (9, 0, 1), (10, 23, 0))
+    p = plan(menu=menu_setup(second_target=None, start_table=table), second_start=(2, 134, 15))
+    lines = ng.plan_text(p).splitlines()
+    rooms = [line for line in lines if line.startswith("start_table")]
+    assert rooms == ["start_table " + "0100190001" + "0600290000" + "0900000001" + "0a00170000"]
+    save = fresh()
+    others = [line for line in lines if not line.startswith("start_table")]
+    apply_text("\n".join(others), save, bytearray(MENU_SIZE))
+    assert struct.unpack_from("<3H", save, sp.SECOND_START) == (2, 134, 15)
+    assert save[sp.SECTION + 0x6D2] == 1, "the flag of start room 2"
+
+
+def test_a_one_start_mode_carries_no_start_table() -> None:
+    lines = ng.plan_text(plan(menu=menu_setup(start_table=((1, 25, 1),)))).splitlines()
+    assert not any(line.startswith("start_table") for line in lines)
+
+
 def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
     assert not any(line.startswith("menu") for line in ng.plan_text(plan()).splitlines())
 
@@ -133,7 +151,10 @@ def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
         (dict(menu=menu_setup(pool=bytes([2] * 27))), "27 entries"),
         (dict(menu=menu_setup(settings=bytes(63))), "64"),
         (dict(menu=menu_setup(settings=bytes(64))), "setting 42"),
-        (dict(menu=menu_setup(), second_start=(3, 151, 464)), "RANDOMIZER"),
+        (dict(menu=menu_setup(), second_start=(3, 151, 464)), "not in the start table"),
+        (dict(menu=menu_setup(second_target=None)), "no second target"),
+        (dict(menu=menu_setup(start_table=((54, 0, 0),))), "up to 64 rooms"),
+        (dict(menu=menu_setup(start_table=((1, 2, 2),))), "up to 64 rooms"),
         (dict(menu=menu_setup(second_target=(0, 20))), "three 16-bit"),
         (dict(menu=menu_setup(second_target=(0, 20, -1))), "three 16-bit"),
     ],

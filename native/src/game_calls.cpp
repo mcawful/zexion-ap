@@ -15,6 +15,7 @@ const char* const kConfigKeys[] = {
     "newgame_fn",
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
+    "start_count",   "start_cells",     "start_flags",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -189,6 +190,24 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
         std::istringstream words(line);
         std::string op, offset_text, hex;
         if (!(words >> op)) continue;
+        if (op == "start_table") {
+            std::vector<uint8_t> raw;
+            if (!(words >> hex) || !parse_hex(hex, raw) || raw.size() % 5 != 0 ||
+                raw.size() / 5 > kStartTableMax || !out.start_table.empty()) {
+                return "bad line " + line;
+            }
+            for (size_t i = 0; i < raw.size(); i += 5) {
+                StartRoom room;
+                std::memcpy(&room.x, raw.data() + i, 2);
+                std::memcpy(&room.y, raw.data() + i + 2, 2);
+                room.flag = raw[i + 4];
+                if (room.x < 0 || room.x >= 54 || room.y < 0 || room.y >= 54 || room.flag > 1) {
+                    return "bad line " + line;
+                }
+                out.start_table.push_back(room);
+            }
+            continue;
+        }
         if (op != "expect" && op != "write" && op != "menu") return "unknown line " + line;
         uint64_t offset = 0;
         SectionBytes edit;
@@ -236,6 +255,12 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
                            (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
             if (rva + kMenuSize > end) return key + " leaves no room for the menu's state";
         }
+        if (key == "start_cells" || key == "start_flags") {
+            uint64_t end = section->VirtualAddress +
+                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+            uint64_t size = key == "start_cells" ? 4 * kStartTableMax : kStartTableMax;
+            if (rva + size > end) return key + " leaves no room for 64 rooms";
+        }
         if (key == "inventory") {
             // The whole player state the helper touches must lie in the same section.
             uint64_t end = section->VirtualAddress +
@@ -277,6 +302,9 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     rando_newgame_fn_ = found["rando_newgame_fn"];
     event_table_ = found["event_table"];
     event_count_ = found["event_count"];
+    start_count_ = found["start_count"];
+    start_cells_ = found["start_cells"];
+    start_flags_ = found["start_flags"];
     configured_ = true;
     return "";
 }
@@ -453,6 +481,34 @@ private:
 
 }  // namespace
 
+std::string Game::ensure_start_table() {
+    const std::vector<StartRoom>& rooms = newgame_.start_table;
+    if (rooms.empty()) return "";
+    int16_t count = at<int16_t>(start_count_, 0);
+    if (count == 0) {
+        // The menu never opened in this run: build the table as it would, count last.
+        for (size_t i = 0; i < rooms.size(); ++i) {
+            at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i)) = rooms[i].x;
+            at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i + 2)) = rooms[i].y;
+            at<uint8_t>(start_flags_, static_cast<ptrdiff_t>(i)) = rooms[i].flag;
+        }
+        at<int16_t>(start_count_, 0) = static_cast<int16_t>(rooms.size());
+        return "";
+    }
+    if (static_cast<size_t>(count) != rooms.size()) {
+        return "the game's start table has " + std::to_string(count) + " rooms, the seed's " +
+               std::to_string(rooms.size());
+    }
+    for (size_t i = 0; i < rooms.size(); ++i) {
+        if (at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i)) != rooms[i].x ||
+            at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i + 2)) != rooms[i].y ||
+            at<uint8_t>(start_flags_, static_cast<ptrdiff_t>(i)) != rooms[i].flag) {
+            return "the game's start table differs from the seed's at room " + std::to_string(i);
+        }
+    }
+    return "";
+}
+
 void Game::start_archipelago(WidgetCallback callback) {
     // The game calls the choice's callback once per press; a press after the plan was dropped,
     // or while a new game is queued, does nothing.
@@ -460,6 +516,13 @@ void Game::start_archipelago(WidgetCallback callback) {
     if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
     starting_ = true;
     try {
+        std::string table = ensure_start_table();
+        if (!table.empty()) {
+            newgame_status_ = "refused " + table;
+            choice_.restore(menu_, callback);
+            disarm_newgame();
+            return;
+        }
         int differs = -1;
         {
             // The menu's state is the player's own (the game keeps it in its preferences): set
