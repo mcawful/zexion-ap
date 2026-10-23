@@ -201,8 +201,9 @@ class TestSlotDataForTheClient(ZexionTestBase):
         self.assertEqual(options, data.MODES["standard"]["checked_options"])
         self.assertIn(72, options)  # Gates
 
-    def test_the_energy_shield_stays_in_this_world(self) -> None:
-        self.assertIn("Energy Shield", self.world.options.local_items.value)
+    def test_the_energy_shield_can_go_to_any_world(self) -> None:
+        # Received, the client's helper runs its pickup event, which gives the shield.
+        self.assertNotIn("Energy Shield", self.world.options.local_items.value)
 
 
 class TestStartInventoryInSlotData(ZexionTestBase):

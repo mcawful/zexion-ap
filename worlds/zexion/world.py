@@ -40,9 +40,6 @@ FILLER_ORDER = (46, 47, 48, 49)
 # filler the game counts as Scrap Metal.
 FOREIGN, FOREIGN_PROGRESSION, SCRAP_METAL = 47, 48, 46
 SCRAP_ENERGY, SCRAP_CHUNK = 47, 48
-# Items the client cannot write into the game (client/reconcile.py): placed only in this
-# world, where the game hands them out itself.
-LOCAL_ONLY = ("Energy Shield",)
 
 
 class ZexionWorld(World):
@@ -90,7 +87,6 @@ class ZexionWorld(World):
             )
             cell = replacement
         self.start = starts[cell]
-        self.options.local_items.value |= set(LOCAL_ONLY)
         self.second = None
         self.kept_locations = set(range(len(data.LOCATIONS)))
         if self.mode["double_teleport"]:
