@@ -830,6 +830,83 @@ TARGETS = (
         ),
     ),
     Target(
+        "start_count",
+        "the start table's count (16-bit): the randomizer menu's start rooms, 0 until it opens",
+        0xEAF7CC,
+        (
+            # from the instruction at RVA 0x1121fe on B1
+            Pattern(
+                "0F BF 0D ?? ?? ?? ?? FF C1 41 83 FE 01 73 11 B8 01 00 00 00",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the start table's builder in the randomizer menu's opening (RVA 0x14bb02 on
+            # B1), which stores the count
+            Pattern(
+                "66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "start_cells",
+        "the start table's map cells, (x, y) as two 16-bit values each",
+        0xEB2070,
+        (
+            # from the instruction at RVA 0xf387f on B1 (START GAME's first step)
+            Pattern(
+                (
+                    "4C 8B 15 ?? ?? ?? ?? 49 0F BF C1 48 6B C8 36 49 0F BF C2 48 03 C8 C6 85 "
+                    "40 01 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the start table's builder in the randomizer menu's opening (RVA 0x14bb02 on
+            # B1), which stores the count; this table is 0x28a4 bytes on from it on B1, and the
+            # other pattern must agree
+            Pattern(
+                "66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36",
+                3,
+                "rip",
+                7,
+                0x28A4,
+            ),
+        ),
+    ),
+    Target(
+        "start_flags",
+        "the start table's flags, one byte per room: 1 if it holds object 25",
+        0xEAFC20,
+        (
+            # from the instruction at RVA 0xf4188 on B1 (START GAME's first step)
+            Pattern(
+                "40 38 35 ?? ?? ?? ?? 89 B5 38 01 00 00 75 17 33 C0",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the start table's builder in the randomizer menu's opening (RVA 0x14bb02 on
+            # B1), which stores the count; this table is 0x454 bytes on from it on B1, and the
+            # other pattern must agree
+            Pattern(
+                "66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36",
+                3,
+                "rip",
+                7,
+                0x454,
+            ),
+        ),
+    ),
+    Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
         0xCDD080,
