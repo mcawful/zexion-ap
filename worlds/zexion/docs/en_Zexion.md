@@ -32,7 +32,7 @@ the mode's starting items reach a few locations are offered.
 
 With the client's in-game helper running, a location holding another player's item shows
 Archipelago's logo, with its flashing up arrow if the item is a progression item, and picking it
-up pops up PROGRESSION ITEM or AP ITEM and whom it is for ("FOR ALICE"); the client then sends
-it to its owner. Items for you arrive while you play, with the
+up pops up PROGRESSION ITEM or AP ITEM and whom it is for ("FOR ALICE"), or, for another Zexion
+player's item, that item's own icon and name; the client then sends it to its owner. Items for you arrive while you play, with the
 game's own popup and the sender's name. Without the helper, another player's item looks like
 Scrap Energy (Scrap Chunk for a progression item), and items for you arrive with no popup.
