@@ -19,11 +19,11 @@ Once connected:
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
-  2026-10-22 with Standard and Easy seeds; for OHKO not yet). Without a menu setup in the
-  slot data, or with ``--keep-randomizer``, RANDOMIZER stays, and a randomizer game started
-  in the seed's mode gets the AP seed written in as the game builds it (run in game for
-  Standard, Easy and OHKO). One new game per connection: reconnect to start another. A seed
-  whose starting items a new game cannot hold falls back to /prepare.
+  2026-10-22 with Standard and Easy seeds, and on 2026-10-23 with an OHKO seed). Without a
+  menu setup in the slot data, or with ``--keep-randomizer``, RANDOMIZER stays, and a
+  randomizer game started in the seed's mode gets the AP seed written in as the game builds
+  it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
+  start another. A seed whose starting items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
