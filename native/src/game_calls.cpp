@@ -383,6 +383,44 @@ bool Game::popup_busy() const {
            at<int32_t>(last, kMessageFramesLeft) > 1;
 }
 
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line) {
+    // The message routine lays text out per_line characters a line and cuts wherever a line
+    // ends (docs/re/memory.md, "Other players' items"), so the suffix starts a line of its own:
+    // the head is padded to the end of its line, and the suffix's words are wrapped, each line
+    // but the last padded the same way.
+    std::string text = head;
+    if (suffix.empty() || per_line <= 0) return text;
+    auto pad = [&] {
+        size_t rest = text.size() % static_cast<size_t>(per_line);
+        if (rest != 0) text.append(static_cast<size_t>(per_line) - rest, ' ');
+    };
+    pad();
+    size_t column = 0;
+    std::istringstream words(suffix);
+    std::string word;
+    while (words >> word) {
+        while (word.size() > static_cast<size_t>(per_line)) {  // longer than a line: cut it
+            if (column != 0) {
+                pad();
+                column = 0;
+            }
+            text += word.substr(0, static_cast<size_t>(per_line));
+            word.erase(0, static_cast<size_t>(per_line));
+        }
+        if (column != 0 && column + 1 + word.size() > static_cast<size_t>(per_line)) {
+            pad();
+            column = 0;
+        }
+        if (column != 0) {
+            text += ' ';
+            ++column;
+        }
+        text += word;
+        column += word.size();
+    }
+    return text;
+}
+
 void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
@@ -393,11 +431,11 @@ void Game::pump_popups() {
         popups_.pop_front();
         return;
     }
-    std::string text;
-    if (rec[kRecordIcon] != 0) text += static_cast<char>(rec[kRecordIcon]);
+    std::string head;
+    if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
     const char* name = reinterpret_cast<const char*>(rec + kRecordName);
-    text.append(name, strnlen(name, kNameMax));
-    if (!popup.suffix.empty()) text += " " + popup.suffix;
+    head.append(name, strnlen(name, kNameMax));
+    std::string text = popup_text(head, popup.suffix, kPopupPerLine);
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
         text.c_str(), kPopupPerLine, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame

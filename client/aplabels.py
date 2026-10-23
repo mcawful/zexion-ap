@@ -9,7 +9,10 @@ Archipelago logo the helper paints (native/README.md, docs/re/memory.md "Other p
 items").
 
 Labels keep only what the game's 8 x 8 font draws: upper-case letters, digits, space and a
-little punctuation, at most 49 bytes (the item record's name field).
+little punctuation, at most 49 bytes (the item record's name field). The popup is the stand-in's
+icon and then its name, 24 characters a line, cut wherever a line ends (docs/re/memory.md, "Other
+players' items"), so a label is laid out in lines: the item on the first (23 characters, after
+the icon), padded with spaces to its end, and "FOR ALICE" on the second, each cut at a word.
 
 Pure functions; the client does the networking and talks to the helper.
 """
@@ -22,16 +25,40 @@ from collections.abc import Iterable, Mapping, Sequence
 STAND_IN = 47  # Scrap Energy: other players' items
 STAND_IN_PROGRESSION = 48  # Scrap Chunk: other players' progression items
 NAME_MAX = 49
+PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
 GENERAL = "ARCHIPELAGO ITEM"
 
 
+def _font_words(text: str) -> list[str]:
+    kept = "".join(c for c in text.upper() if c in FONT)
+    return kept.split()
+
+
+def _fit(words: list[str], width: int) -> str:
+    """As many whole words as fit in `width`; a first word longer than that, cut."""
+    line = ""
+    for word in words:
+        if not line:
+            line = word[:width]
+            if len(word) > width:
+                break
+        elif len(line) + 1 + len(word) <= width:
+            line += " " + word
+        else:
+            break
+    return line
+
+
 def label(item_name: str, player_name: str) -> str:
-    """The stand-in's name for one location: the item, then whom it is for."""
-    text = f"{item_name} FOR {player_name}".upper()
-    kept = "".join(c for c in text if c in FONT)
-    kept = " ".join(kept.split())  # no runs of spaces where characters were dropped
-    return kept[:NAME_MAX].rstrip() or GENERAL
+    """The stand-in's name for one location: the item on the popup's first line, then whom it
+    is for on the second."""
+    item = _fit(_font_words(item_name), PER_LINE - 1)  # the icon takes the first character
+    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
+    who = f"FOR {player}" if player else "FOR"
+    if not item:
+        return GENERAL
+    return (item.ljust(PER_LINE - 1) + who)[:NAME_MAX].rstrip()
 
 
 def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:

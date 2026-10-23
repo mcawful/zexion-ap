@@ -113,7 +113,10 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   keys granted by byte alone: `docs/re/memory.md`, "Keys, the gates and the key markers").
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
   - The text is the item's icon and name from the game's own item record, then the client's
-    suffix (`FROM ALICE`), with any character the game's font does not draw left out.
+    suffix (`FROM ALICE`), with any character the game's font does not draw left out. The game
+    lays a popup out 24 characters a line and cuts wherever a line ends, so the name is padded
+    with spaces to the end of its line and the suffix starts the next, its words wrapped the
+    same way (`popup_text` in `src/game_calls.cpp`).
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
