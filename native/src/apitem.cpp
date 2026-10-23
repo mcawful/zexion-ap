@@ -311,8 +311,17 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear, bool a
     return ok;
 }
 
-void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms) {
+void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms, bool world) {
     if (!active() || !gl.loaded()) return;
+    if (!world) {
+        // Menus draw item frames too (the equipment screen draws frame 95, empty in the game's
+        // art, by the missile count): the logos come off while one is open, and go back on the
+        // first frame after.
+        if (painted_ != 0 && texture_of(holder) == painted_) upload(painted_, gl, true, false);
+        painted_ = 0;
+        frames_to_paint_ = 0;
+        return;
+    }
     int phase = static_cast<int>((now_ms / kFlashMs) % 2);
     if (frames_to_paint_-- <= 0) {
         frames_to_paint_ = kRepaintFrames;

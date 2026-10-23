@@ -74,7 +74,8 @@ public:
     // current): paints the logo into the sprite texture now and then, and whenever the
     // texture changes. `texture_holder` holds the pointer to the sprite data.
     // `now_ms` is a millisecond clock (GetTickCount64): the progression arrow's color follows it.
-    void paint(BYTE* texture_holder, const GlFunctions& gl, uint64_t now_ms);
+    // `world`: false while a menu is open, when the logos are cleared instead.
+    void paint(BYTE* texture_holder, const GlFunctions& gl, uint64_t now_ms, bool world = true);
 
     // Game thread: the record back to the game's own values (also one an earlier helper left
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
