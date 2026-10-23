@@ -10,7 +10,7 @@ from .. import data, rules
 from ..items import code_of
 from ..locations import location_name
 from ..options import START_CELLS
-from ..world import GOAL_CELL, PLACEHOLDER, ZexionWorld
+from ..world import FOREIGN, GOAL_CELL, SCRAP_ENERGY, SCRAP_METAL, ZexionWorld
 from .bases import ZexionTestBase
 
 
@@ -160,12 +160,14 @@ class TestSlotDataForTheClient(ZexionTestBase):
         self.assertEqual(len(items), len(data.LOCATIONS))
         for i, code in enumerate(items):
             placed = self.multiworld.get_location(location_name(i), self.player).item
-            self.assertEqual(code, code_of[placed.name])
+            own = code_of[placed.name]
+            self.assertEqual(code, SCRAP_METAL if own == SCRAP_ENERGY else own)
+        self.assertNotIn(FOREIGN, items, "47 only for another player's item")
 
-    def test_another_worlds_item_is_the_placeholder(self) -> None:
+    def test_another_worlds_item_is_scrap_energy(self) -> None:
         location = self.multiworld.get_location(location_name(0), self.player)
         location.item = Item("Something", ItemClassification.progression, 1, self.player + 1)
-        self.assertEqual(self.world.fill_slot_data()["location_items"][0], PLACEHOLDER)
+        self.assertEqual(self.world.fill_slot_data()["location_items"][0], FOREIGN)
 
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()
@@ -192,8 +194,8 @@ class TestStartInventoryInSlotData(ZexionTestBase):
 class TestOHKOSlotData(ZexionTestBase):
     options = {"mode": "ohko"}
 
-    def test_left_out_locations_hold_the_placeholder(self) -> None:
+    def test_left_out_locations_hold_scrap_metal(self) -> None:
         items = self.world.fill_slot_data()["location_items"]
         left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
         self.assertTrue(left_out)
-        self.assertEqual({items[i] for i in left_out}, {PLACEHOLDER})
+        self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})

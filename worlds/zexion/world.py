@@ -33,7 +33,11 @@ MIN_SPHERE_ZERO = 3  # as tools/gen_world_data.py requires of a single start
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (46, 47, 48, 49)
 # What the game holds at a location whose item is not this world's to hand out natively.
-PLACEHOLDER = 46  # Scrap Metal
+# Another player's item: Scrap Energy, which the client's helper shows as an Archipelago item
+# named at pickup (client/aplabels.py). A location left out, and this world's own Scrap
+# Energy, are Scrap Metal, so 47 in a location always means another player's item; both are
+# filler that only add to the scrap count.
+FOREIGN, SCRAP_METAL, SCRAP_ENERGY = 47, 46, 47
 # Items the client cannot write into the game (client/reconcile.py): placed only in this
 # world, where the game hands them out itself.
 LOCAL_ONLY = ("Energy Shield",)
@@ -258,13 +262,19 @@ class ZexionWorld(World):
     def location_items(self) -> list[int]:
         """The item code the game should hold at each of its locations: this world's own items
         as the game's item IDs (a progressive weapon as the weapon; the game makes a second
-        copy the upgrade), and PLACEHOLDER where another world's item is or the location was
-        left out."""
+        copy the upgrade, and Scrap Energy as Scrap Metal), FOREIGN where another world's item
+        is, and Scrap Metal where the location was left out."""
         out = []
         for i in range(len(data.LOCATIONS)):
-            item = self.get_location(location_name(i)).item if i in self.kept_locations else None
-            own = item is not None and item.player == self.player and item.code is not None
-            out.append(code_of[item.name] if own else PLACEHOLDER)
+            if i not in self.kept_locations:
+                out.append(SCRAP_METAL)
+                continue
+            item = self.get_location(location_name(i)).item
+            if item is None or item.player != self.player or item.code is None:
+                out.append(FOREIGN)
+                continue
+            code = code_of[item.name]
+            out.append(SCRAP_METAL if code == SCRAP_ENERGY else code)
         return out
 
     def start_items(self) -> dict[int, int]:
