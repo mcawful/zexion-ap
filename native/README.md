@@ -148,22 +148,24 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
 - **Other players' items (helper phase 4).** The client sends `ap_labels`, then lines
-  `label X Y HEX`: a name per map cell for the stand-in item, Scrap Energy (47), which the
-  world gives every location holding another player's item. While it has labels, every
-  frame call (`src/apitem.cpp`) checks Scrap Energy's record against the game's own values
-  and restyles it (its in-world frame and popup icon pointed at a frame and a glyph that
-  are empty in the game's art, no refill drop at pickup), names it after the label for the
-  player's map cell (or ARCHIPELAGO ITEM), so the game's own pickup popup shows "MASTER
-  SWORD FOR ALICE", and now and then paints an Archipelago logo into that frame and
-  glyph of the sprite texture through OpenGL (the game's context is current in the swap
-  hook), after checking the texture is the 2048 x 2048 sprite sheet and, once per texture,
-  reading it back to find the game's art where `Sprites.png` has it and the two places
-  blank; it leaves the game's texture binding, pixel-store state and GL errors as it found
-  them, and paints nothing while a pixel buffer is bound. `ap_labels` with no lines takes
-  the labels back. Unload restores the record (and one an earlier helper left restyled)
-  and clears the pixels; it refuses (`error the stand-in item is still restyled (no frame
-  came); not unloading`) if no frame came to do it. Working in the game since 2026-10-23
-  (logo, named popup, restore on disconnect and on unload; `docs/re/memory.md`, "Other
+  `label X Y HEX`: a name per map cell for the stand-in items, Scrap Energy (47) and Scrap
+  Chunk (48), which the world gives every location holding another player's item (48 for a
+  progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
+  records against the game's own values and restyles them (their in-world frames and popup
+  icon pointed at frames and a glyph that are empty in the game's art, no refill drop at
+  pickup), names them after the label for the player's map cell (or ARCHIPELAGO ITEM), so
+  the game's own pickup popup shows "MASTER SWORD FOR ALICE", and now and then paints
+  Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
+  its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
+  is current in the swap hook), after checking the texture is the 2048 x 2048 sprite sheet
+  and, once per texture, reading it back to find the game's art where `Sprites.png` has it
+  and the places to paint blank; it leaves the game's texture binding, pixel-store state
+  and GL errors as it found them, and paints nothing while a pixel buffer is bound.
+  `ap_labels` with no lines takes the labels back. Unload restores the records (and any an
+  earlier helper left restyled) and clears the pixels; it refuses (`error the stand-in item
+  is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
+  the game since 2026-10-23 (logo, named popup, restore on disconnect and on unload); the
+  progression stand-in and its arrow not yet run in the game (`docs/re/memory.md`, "Other
   players' items", which also lists its limits).
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL

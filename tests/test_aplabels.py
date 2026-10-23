@@ -22,8 +22,16 @@ def test_characters_the_font_lacks_are_dropped() -> None:
 
 
 def test_foreign_locations_are_the_kept_stand_ins() -> None:
-    items = [3, 47, 46, 47, 47]
+    items = [3, 47, 46, 47, 47, 48]
     assert al.foreign_locations(items, kept=[0, 1, 3]) == [1, 3]
+    assert al.foreign_locations(items, kept=[1, 5], codes={47, 48}) == [1, 5]
+
+
+def test_the_stand_ins_come_from_slot_data() -> None:
+    assert al.stand_ins({"stand_in": 47, "stand_in_progression": 48}) == {47, 48}
+    assert al.stand_ins({"stand_in": 47}) == {47}
+    assert al.stand_ins({}) == set()
+    assert al.stand_ins({"stand_in_progression": 48}) == set()
 
 
 def test_the_request_lists_each_cell_with_its_label_in_hex() -> None:

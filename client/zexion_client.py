@@ -25,7 +25,8 @@ Once connected:
   it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
   start another. A seed whose starting items a new game cannot hold falls back to /prepare.
 - With the helper loaded, and slot data saying the world gives other players' items the
-  stand-in ("stand_in": 47), the client also asks the server what each location holding
+  stand-ins ("stand_in": 47, and "stand_in_progression": 48 for progression items), the
+  client also asks the server what each location holding
   one holds and sends the helper a label per map cell (client/aplabels.py): the item shows
   an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (working in the
   game, 2026-10-23). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
@@ -177,10 +178,8 @@ class ZexionContext(CommonContext):
             self.kept = set(slot["kept_locations"])
             self.connection += 1
             # Only a world that says it gives other players' items the stand-in has them.
-            self.foreign = (
-                aplabels.foreign_locations(slot["location_items"], self.kept)
-                if slot.get("stand_in") == aplabels.STAND_IN
-                else []
+            self.foreign = aplabels.foreign_locations(
+                slot["location_items"], self.kept, aplabels.stand_ins(slot)
             )
             self.labels_sent = False
             self.labels_retry_at = 0.0

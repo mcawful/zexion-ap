@@ -1,4 +1,4 @@
-// Host tests for other players' items (apitem.h): the stand-in record restyled and named by
+// Host tests for other players' items (apitem.h): the stand-in records restyled and named by
 // cell, the logo painted through a fake OpenGL, and everything put back; and the label parser.
 
 #include <windows.h>
@@ -24,11 +24,12 @@ void check(bool ok, const char* what) {
     }
 }
 
-// --- a stand-in item table: 51 records of 100 bytes, record 47 as the game loads it -------
+// --- a stand-in item table: 51 records of 100 bytes, records 47 and 48 as the game loads them
 
 BYTE g_records[51 * 100];
 BYTE* g_records_ptr = g_records;
 BYTE* const g_scrap = g_records + 47 * 100;
+BYTE* const g_chunk = g_records + 48 * 100;
 
 void put16(BYTE* p, ptrdiff_t o, int16_t v) { std::memcpy(p + o, &v, 2); }
 int16_t get16(const BYTE* p, ptrdiff_t o) {
@@ -37,24 +38,31 @@ int16_t get16(const BYTE* p, ptrdiff_t o) {
     return v;
 }
 
-void reset_records() {
-    std::memset(g_records, 0, sizeof(g_records));
-    put16(g_scrap, 0x00, 34);
-    put16(g_scrap, 0x02, 134);
-    put16(g_scrap, 0x04, 6);
-    put16(g_scrap, 0x06, 2);
-    g_scrap[0x08] = 0;
-    g_scrap[0x09] = 8;
-    std::memcpy(g_scrap + 0x0A, "SCRAP ENERGY", 13);
-    put16(g_scrap, 0x3C, 46);
-    put16(g_scrap, 0x3E, 45);
-    put16(g_scrap, 0x40, 3549);
-    put16(g_scrap, 0x58, 1);
-    put16(g_scrap, 0x5A, 13);
-    put16(g_scrap, 0x60, 244);
+void own_record(BYTE* r, int16_t frame, const char* name, int16_t event) {
+    put16(r, 0x00, 34);
+    put16(r, 0x02, frame);
+    put16(r, 0x04, 6);
+    put16(r, 0x06, 2);
+    r[0x08] = 0;
+    r[0x09] = 8;
+    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
+    put16(r, 0x3C, 46);
+    put16(r, 0x3E, 45);
+    put16(r, 0x40, event);
+    put16(r, 0x58, 1);
+    put16(r, 0x5A, 13);
+    put16(r, 0x60, 244);
 }
 
-std::string name() { return std::string(reinterpret_cast<char*>(g_scrap + 0x0A)); }
+void reset_records() {
+    std::memset(g_records, 0, sizeof(g_records));
+    own_record(g_scrap, 134, "SCRAP ENERGY", 3549);
+    own_record(g_chunk, 142, "SCRAP CHUNK", 3550);
+}
+
+std::string name(const BYTE* r = g_scrap) {
+    return std::string(reinterpret_cast<const char*>(r + 0x0A));
+}
 
 // --- a fake OpenGL ---------------------------------------------------------------------------
 
@@ -88,7 +96,9 @@ void WINAPI fake_sub_image(unsigned, int, int x, int y, int w, int h, unsigned, 
 }
 unsigned WINAPI fake_get_error() { return 0; }
 // The texture as read back: Sprites.png's known art (Scrap Energy's frame at (6, 0), glyph 0xC0
-// at (2, 1)) opaque, unless a test turns it off; the logo's places blank.
+// at (2, 1)) opaque, unless a test turns it off; the logos' places blank, unless a test puts
+// something in frame 95.
+bool g_frame95_used = false;
 bool g_known_art = true;
 int g_readbacks = 0;
 void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) {
@@ -99,6 +109,7 @@ void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) 
     auto opaque = [&](int x, int y) { p[(static_cast<size_t>(y) * 2048 + x) * 4 + 3] = 0xFF; };
     opaque(128 + (134 % 8) * 16 + 6, 640 + (134 / 8) * 16);
     opaque((0xC0 % 16) * 8 + 2, 976 + (0xC0 / 16) * 8 + 1);
+    if (g_frame95_used) opaque(128 + (95 % 8) * 16, 640 + (95 / 8) * 16);  // where the logo is not
 }
 unsigned char WINAPI fake_is_texture(unsigned texture) { return texture != 0; }
 
@@ -130,6 +141,7 @@ void reset_gl() {
     g_uploads.clear();
     g_binds.clear();
     g_known_art = true;
+    g_frame95_used = false;
     g_readbacks = 0;
 }
 
@@ -141,8 +153,9 @@ BYTE* sprites() { return reinterpret_cast<BYTE*>(&g_sprite_holder); }
 void test_restyle_and_names() {
     reset_records();
     zap::ApItems items;
-    BYTE before[100];
+    BYTE before[100], before_chunk[100];
     std::memcpy(before, g_scrap, 100);
+    std::memcpy(before_chunk, g_chunk, 100);
     items.watch(holder(), 5);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "nothing happens before the labels arrive");
@@ -156,6 +169,9 @@ void test_restyle_and_names() {
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
     check(get16(g_scrap, 0x60) == 244 && get16(g_scrap, 0x3C) == 46, "the rest left alone");
     check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
+    check(get16(g_chunk, 0x02) == 95 && get16(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0xEE &&
+              get16(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
+          "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     items.watch(holder(), 7);
     check(name() == "ARCHIPELAGO ITEM", "elsewhere, the general name");
     std::string long_name(60, 'A');
@@ -166,12 +182,28 @@ void test_restyle_and_names() {
 
     items.restore(holder(), sprites(), zap::GlFunctions{});
     check(std::memcmp(before, g_scrap, 100) == 0, "restore puts the whole record back");
-    check(!items.restyled() && !items.active(), "and forgets it");
+    check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and Scrap Chunk's");
+    check(!items.restyled() && !items.active(), "and forgets them");
+}
+
+void test_one_record_not_as_expected_leaves_the_other_restyled() {
+    reset_records();
+    put16(g_chunk, 0x40, 3551);  // not as traced
+    BYTE before_chunk[100];
+    std::memcpy(before_chunk, g_chunk, 100);
+    zap::ApItems items;
+    items.set_labels({{1, "X"}});
+    items.watch(holder(), 1);
+    check(items.restyled() && get16(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
+    check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
+    items.restore(holder(), sprites(), zap::GlFunctions{});
+    check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and restore leaves it alone too");
 }
 
 void test_records_not_as_expected_are_left_alone() {
     reset_records();
     put16(g_scrap, 0x40, 3550);  // another build's event, say
+    put16(g_chunk, 0x40, 3551);
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems items;
@@ -221,12 +253,15 @@ void test_painting() {
     check(g_uploads.empty(), "nothing painted before the labels arrive");
     items.set_labels({{1, "X"}});
     items.paint(sprites(), gl);
-    check(g_uploads.size() == 2, "the frame and the glyph");
-    if (g_uploads.size() != 2) return;
+    check(g_uploads.size() == 3, "two frames and the glyph");
+    if (g_uploads.size() != 3) return;
     check(items.painted_texture() == 7, "into the sprite texture");
     check(g_uploads[0].x == 240 && g_uploads[0].y == 752 && g_uploads[0].w == 16,
           "frame 63 of the item sprites");
-    check(g_uploads[1].x == 112 && g_uploads[1].y == 1088 && g_uploads[1].w == 8,
+    check(g_uploads[1].x == 240 && g_uploads[1].y == 816 && g_uploads[1].w == 16,
+          "frame 95, the arrow logo");
+    check(g_uploads[0].pixels != g_uploads[1].pixels, "the two logos differ");
+    check(g_uploads[2].x == 112 && g_uploads[2].y == 1088 && g_uploads[2].w == 8,
           "glyph 0xEE of the font");
     bool any_opaque = false;
     for (size_t i = 3; i < g_uploads[0].pixels.size(); i += 4) any_opaque |= g_uploads[0].pixels[i] != 0;
@@ -245,6 +280,14 @@ void test_painting() {
     flipped.set_labels({{1, "X"}});
     flipped.paint(sprites(), gl);
     check(g_uploads.empty() && flipped.painted_texture() == 0, "unexpected art: nothing painted");
+
+    // Something already where the arrow logo goes (another build's art, say): never painted.
+    reset_gl();
+    g_frame95_used = true;
+    zap::ApItems used;
+    used.set_labels({{1, "X"}});
+    used.paint(sprites(), gl);
+    check(g_uploads.empty() && used.painted_texture() == 0, "frame 95 not empty: nothing painted");
 
     // Another texture size (not the sprite sheet): nothing uploaded.
     reset_gl();
@@ -269,11 +312,11 @@ void test_painting() {
     painted.paint(sprites(), gl);
     g_uploads.clear();
     painted.restore(holder(), sprites(), gl);
-    bool cleared = g_uploads.size() == 2;
+    bool cleared = g_uploads.size() == 3;
     for (const Upload& u : g_uploads) {
         for (uint8_t b : u.pixels) cleared &= b == 0;
     }
-    check(cleared, "restore clears the frame and the glyph");
+    check(cleared, "restore clears both frames and the glyph");
 }
 
 void test_label_parser() {
@@ -295,6 +338,7 @@ void test_label_parser() {
 
 int main() {
     test_restyle_and_names();
+    test_one_record_not_as_expected_leaves_the_other_restyled();
     test_records_not_as_expected_are_left_alone();
     test_a_record_left_restyled_is_adopted_and_put_back();
     test_a_reload_is_restyled_again();
