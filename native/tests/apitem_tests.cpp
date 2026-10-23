@@ -249,10 +249,10 @@ void test_painting() {
     reset_gl();
     zap::GlFunctions gl = fake_gl();
     zap::ApItems items;
-    items.paint(sprites(), gl);
+    items.paint(sprites(), gl, 0);
     check(g_uploads.empty(), "nothing painted before the labels arrive");
     items.set_labels({{1, "X"}});
-    items.paint(sprites(), gl);
+    items.paint(sprites(), gl, 0);
     check(g_uploads.size() == 3, "two frames and the glyph");
     if (g_uploads.size() != 3) return;
     check(items.painted_texture() == 7, "into the sprite texture");
@@ -270,15 +270,28 @@ void test_painting() {
 
     check(g_readbacks == 1, "the texture read back before the first paint");
     g_uploads.clear();
-    items.paint(sprites(), gl);
+    items.paint(sprites(), gl, 0);
     check(g_uploads.empty(), "not every frame");
+    items.paint(sprites(), gl, 299);
+    check(g_uploads.empty(), "the arrow keeps its color for 300 ms");
+    items.paint(sprites(), gl, 300);
+    check(g_uploads.size() == 1 && g_uploads[0].x == 240 && g_uploads[0].y == 816,
+          "then only the arrow's frame is repainted");
+    std::vector<uint8_t> second = g_uploads.empty() ? std::vector<uint8_t>() : g_uploads[0].pixels;
+    g_uploads.clear();
+    items.paint(sprites(), gl, 450);
+    check(g_uploads.empty(), "not again until the color changes");
+    items.paint(sprites(), gl, 600);
+    check(g_uploads.size() == 1 && g_uploads[0].pixels != second, "and back: the arrow flashes");
+    check(g_bound == 3 && g_row_length == 5, "the game's state put back after an arrow repaint");
+    g_uploads.clear();
 
     // A texture whose known art is not where the PNG has it (flipped, say): never painted.
     reset_gl();
     g_known_art = false;
     zap::ApItems flipped;
     flipped.set_labels({{1, "X"}});
-    flipped.paint(sprites(), gl);
+    flipped.paint(sprites(), gl, 0);
     check(g_uploads.empty() && flipped.painted_texture() == 0, "unexpected art: nothing painted");
 
     // Something already where the arrow logo goes (another build's art, say): never painted.
@@ -286,7 +299,7 @@ void test_painting() {
     g_frame95_used = true;
     zap::ApItems used;
     used.set_labels({{1, "X"}});
-    used.paint(sprites(), gl);
+    used.paint(sprites(), gl, 0);
     check(g_uploads.empty() && used.painted_texture() == 0, "frame 95 not empty: nothing painted");
 
     // Another texture size (not the sprite sheet): nothing uploaded.
@@ -294,7 +307,7 @@ void test_painting() {
     g_width = 1024;
     zap::ApItems other;
     other.set_labels({{1, "X"}});
-    other.paint(sprites(), gl);
+    other.paint(sprites(), gl, 0);
     check(g_uploads.empty() && other.painted_texture() == 0, "a texture of another size is left alone");
 
     // An unpack buffer bound: pixels would be read from it, so nothing is uploaded.
@@ -302,14 +315,14 @@ void test_painting() {
     g_unpack_buffer = 9;
     zap::ApItems buffered;
     buffered.set_labels({{1, "X"}});
-    buffered.paint(sprites(), gl);
+    buffered.paint(sprites(), gl, 0);
     check(g_uploads.empty(), "an unpack buffer bound: nothing uploaded");
 
     // Restore clears the painted pixels.
     reset_gl();
     zap::ApItems painted;
     painted.set_labels({{1, "X"}});
-    painted.paint(sprites(), gl);
+    painted.paint(sprites(), gl, 0);
     g_uploads.clear();
     painted.restore(holder(), sprites(), gl);
     bool cleared = g_uploads.size() == 3;
