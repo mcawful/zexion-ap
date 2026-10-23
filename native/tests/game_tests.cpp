@@ -459,6 +459,19 @@ void test_start_table() {
     check(game.newgame_status().rfind("refused the game's start table differs", 0) == 0,
           "and reported");
     check(panel.text() == "RANDOMIZER ", "RANDOMIZER is back");
+
+    // A second start outside the table: refused before anything is written.
+    g_steps.clear();
+    g_start_count = 0;
+    zap::NewGamePlan outside;
+    zap::parse_newgame(std::string(request) + "\nwrite 0x6CC 0500", outside);
+    panel.reset_label();
+    game.arm_newgame(outside);
+    game.watch_menu(&chosen);
+    press();
+    check(g_steps.empty() && g_start_count == 0, "a second start outside: nothing written");
+    check(game.newgame_status().rfind("refused the second start is outside", 0) == 0,
+          "and reported");
     g_current_menu = nullptr;
     g_start_count = 0;
 }

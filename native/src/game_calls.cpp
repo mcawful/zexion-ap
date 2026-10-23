@@ -484,6 +484,17 @@ private:
 std::string Game::ensure_start_table() {
     const std::vector<StartRoom>& rooms = newgame_.start_table;
     if (rooms.empty()) return "";
+    // The placement reads the flag of the second target's room by its index: it must be one.
+    constexpr uint16_t kSecondTarget = 0x6CC;
+    for (const SectionBytes& e : newgame_.write) {
+        if (e.offset == kSecondTarget && e.bytes.size() >= 2) {
+            int16_t index;
+            std::memcpy(&index, e.bytes.data(), sizeof(index));
+            if (index < 0 || static_cast<size_t>(index) >= rooms.size()) {
+                return "the second start is outside the start table";
+            }
+        }
+    }
     int16_t count = at<int16_t>(start_count_, 0);
     if (count == 0) {
         // The menu never opened in this run: build the table as it would, count last.

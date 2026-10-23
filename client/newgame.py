@@ -26,8 +26,9 @@ amounts, and settings 10 to 73 except 12 (the player's color choice). The second
 target is then written as START GAME would write it, since the choice skips that step. For a
 mode with Double Teleport (OHKO), whose placement reads the start table the menu builds when it
 opens, the request also carries that table (``start_table``), which the helper fills in if
-the menu has not built it. Without a menu setup, the player starts the seed from RANDOMIZER,
-its mode and START GAME.
+the menu has not built it; the table is used only in the game build it was measured on, and
+its flag for the second start is written on the RANDOMIZER path too. Without a menu setup, the
+player starts the seed from RANDOMIZER, its mode and START GAME.
 
 Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
 start (``save_patch.SECTION``).
@@ -87,11 +88,14 @@ def start_with(start_items: dict[int, int]) -> tuple[bytes, dict[int, int]]:
     return bytes(array), {**amounts, "keys": len(keys)}
 
 
-def plan_text(plan: sp.SeedPlan) -> str:
-    """The helper's ``ap_newgame`` request for this seed."""
+def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = True) -> str:
+    """The helper's ``ap_newgame`` request for this seed, in the game build whose exe has the
+    SHA-256 ``build_sha256``. With ``offer_choice`` and a menu setup it carries the
+    ARCHIPELAGO choice's lines too; without, the seed is started from RANDOMIZER."""
     if len(plan.location_items) != sp.LOCATIONS:
         raise NewGameError(f"the seed lists {len(plan.location_items)} locations")
     array, start = start_with(plan.start_items)
+    table = start_table(plan, build_sha256)
     lines = ["ap_newgame"]
     # The new game must be the seed's mode: its amounts and the settings the logic reads.
     lines.append(f"expect {section(sp.AMOUNTS):#x} {struct.pack('<6h', *plan.amounts).hex()}")
@@ -101,8 +105,12 @@ def plan_text(plan: sp.SeedPlan) -> str:
     lines.append(f"write {section(sp.ITEM_TABLE):#x} {bytes(plan.location_items).hex()}")
     lines.append(f"write {section(sp.START_RECORD):#x} {struct.pack('<3H', *plan.start).hex()}")
     if plan.second_start is not None:
-        second = struct.pack("<3H", *plan.second_start).hex()
-        lines.append(f"write {section(sp.SECOND_START):#x} {second}")
+        # With the start table, also the byte after it, as START GAME writes it: the second
+        # start room's flag.
+        second = struct.pack("<3H", *plan.second_start)
+        if table is not None:
+            second += bytes([table[plan.second_start[0]][2]])
+        lines.append(f"write {section(sp.SECOND_START):#x} {second.hex()}")
     lines.append(f"write {section(START_WITH):#x} {array.hex()}")
     for k, name in enumerate(("energy", "missiles", "bombs")):
         lines.append(
@@ -110,16 +118,40 @@ def plan_text(plan: sp.SeedPlan) -> str:
         )
     for bit, t in enumerate(START_KEY_OPTIONS):
         lines.append(f"write {section(sp.OPTIONS + t):#x} {(start['keys'] >> bit) & 1:02x}")
-    if plan.menu is not None:
-        lines += menu_lines(plan)
+    if plan.menu is not None and offer_choice:
+        lines += menu_lines(plan, table)
     return "\n".join(lines)
 
 
-def menu_lines(plan: sp.SeedPlan) -> list[str]:
-    """The ARCHIPELAGO choice's lines: the menu's state as the seed's mode, and the second
-    target as START GAME writes it, with the byte after it: in a mode with one start, the menu
-    setup's target and 0; with a second teleport target, the seed's second start and its room's
-    flag from the start table, which the helper also fills in if the menu never built it."""
+def start_table(plan: sp.SeedPlan, build_sha256: str) -> tuple[tuple[int, int, int], ...] | None:
+    """The menu setup's start table, if it has one measured on this build; checked for shape,
+    and for the seed's second start being the room the table lists at its index."""
+    menu = plan.menu
+    if menu is None or not menu.start_table:
+        return None
+    if not menu.table_build or not build_sha256.lower().startswith(menu.table_build.lower()):
+        return None  # measured on another build: the game's own may differ
+    table = menu.start_table
+    if len(table) > START_TABLE_MAX or not all(
+        len(room) == 3 and 0 <= room[0] < sp.MAP_W and 0 <= room[1] < sp.MAP_W and room[2] in (0, 1)
+        for room in table
+    ):
+        raise NewGameError("the start table is not up to 64 rooms of (x, y, flag)")
+    if plan.second_start is not None:
+        index, column, row = plan.second_start
+        if not 0 <= index < len(table):
+            raise NewGameError(f"the second start {index} is not in the start table")
+        if table[index][:2] != sp.cell_of(column, row):
+            raise NewGameError(f"the second start is not room {index} of the start table")
+    return table
+
+
+def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None) -> list[str]:
+    """The ARCHIPELAGO choice's lines: the menu's state as the seed's mode, and what START
+    GAME's skipped first step would write: in a mode with one start, the menu setup's second
+    target and 0 after it; with a second teleport target, the start table the placement reads
+    (``plan_text`` writes the second start and its flag), which the helper fills in if the
+    menu never built it."""
     menu = plan.menu
     assert menu is not None
     if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
@@ -132,27 +164,20 @@ def menu_lines(plan: sp.SeedPlan) -> list[str]:
         index = t - MENU_FIRST_SETTING
         if 0 <= index < len(menu.settings) and menu.settings[index] != value:
             raise NewGameError(f"the menu's setting {t} is not the seed's mode")
-    table = menu.start_table
-    if len(table) > START_TABLE_MAX or not all(
-        len(room) == 3 and 0 <= room[0] < sp.MAP_W and 0 <= room[1] < sp.MAP_W and room[2] in (0, 1)
-        for room in table
-    ):
-        raise NewGameError("the start table is not up to 64 rooms of (x, y, flag)")
     lines = []
     if plan.second_start is not None:
-        index = plan.second_start[0]
-        if not 0 <= index < len(table):
-            raise NewGameError(f"the second start {index} is not in the start table")
-        target, flag = plan.second_start, table[index][2]
+        if table is None:
+            raise NewGameError("no start table measured on this game build")
         lines.append(f"start_table {b''.join(struct.pack('<hhB', *room) for room in table).hex()}")
     else:
-        if menu.second_target is None:
+        target = menu.second_target
+        if target is None:
             raise NewGameError("the menu setup gives no second target")
-        target, flag = menu.second_target, 0
-    if len(target) != 3 or not all(isinstance(v, int) and 0 <= v <= 0xFFFF for v in target):
-        raise NewGameError(f"the second target {target!r} is not three 16-bit numbers")
+        if len(target) != 3 or not all(isinstance(v, int) and 0 <= v <= 0xFFFF for v in target):
+            raise NewGameError(f"the second target {target!r} is not three 16-bit numbers")
+        second = struct.pack("<3H", *target) + bytes(1)
+        lines.append(f"write {section(sp.SECOND_START):#x} {second.hex()}")
     color = COLOR_SETTING - MENU_FIRST_SETTING
-    second = struct.pack("<3H", *target) + bytes([flag])
     return lines + [
         f"menu {MENU_SEED:#x} {menu.seed_text.encode('ascii').hex()}",
         f"menu {MENU_START:#x} {menu.start.hex()}",
@@ -160,5 +185,4 @@ def menu_lines(plan: sp.SeedPlan) -> list[str]:
         f"menu {MENU_AMOUNTS:#x} {struct.pack('<6h', *plan.amounts).hex()}",
         f"menu {MENU_SETTINGS + MENU_FIRST_SETTING:#x} {menu.settings[:color].hex()}",
         f"menu {MENU_SETTINGS + COLOR_SETTING + 1:#x} {menu.settings[color + 1 :].hex()}",
-        f"write {section(sp.SECOND_START):#x} {second.hex()}",
     ]
