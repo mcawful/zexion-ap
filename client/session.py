@@ -47,7 +47,7 @@ logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
 # The goal: flag 250, set when the first ending cutscene starts, after the final boss and the
-# ship (or the game's skip to the ship after the grab), and saved with the game
+# ship, and saved with the game (live-tested 2026-10-22)
 # (docs/re/memory.md, "The ending").
 ENDING_FLAG = 250
 
