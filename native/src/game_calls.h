@@ -254,6 +254,9 @@ private:
     BYTE* palette_table_ = nullptr;
     BYTE* frame_clock_ = nullptr;
     BYTE* sprite_templates_ = nullptr;
+    BYTE* event_handlers_ = nullptr;  // the area-event handlers, by event type
+    // Game thread, in play: runs a received item's pickup event (the Energy Shield's).
+    bool run_item_event(uint8_t item);
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record

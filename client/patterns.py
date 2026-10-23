@@ -1399,6 +1399,35 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "event_handlers",
+        "the area-event handlers, a function pointer per event type (the pickup calls one)",
+        0xCDD090,
+        (
+            # from two of the places that run an area event through it, at RVA 0xd679 and
+            # 0xd8df on B1: handler[type](cell, cell, record)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CE 49 0F BE 00 41 FF 14 C1 48 8B "
+                    "5C 24 50 48 8B 74 24 58 48 83 C4 40 5F C3 48 89 5C 24 10"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CD 49 0F BE 00 41 FF 14 C1 48 8B "
+                    "5C 24 58"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

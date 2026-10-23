@@ -32,6 +32,17 @@ inline BYTE g_frames[152 * 0x38];
 inline BYTE g_item_template[0x1D8];
 inline BYTE* g_template_list[40];
 inline BYTE** g_sprite_templates = g_template_list;
+// The area-event handlers; type 11's records what it was called with.
+inline int g_spawn_calls = 0;
+inline int g_spawn_row = -1, g_spawn_column = -1;
+inline BYTE* g_spawn_event = nullptr;
+inline void spawn_handler(char row, char column, BYTE* event) {
+    ++g_spawn_calls;
+    g_spawn_row = row;
+    g_spawn_column = column;
+    g_spawn_event = event;
+}
+inline void* g_event_handlers[32];
 struct LastMessage {
     BYTE* last;
     int32_t sequence;
@@ -216,11 +227,16 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"palette_table", rva(g_palette_table)},
         {"frame_clock", rva(&g_frame_clock)},
         {"sprite_templates", rva(&g_sprite_templates)},
+        {"event_handlers", rva(g_event_handlers)},
     };
 }
 
 inline void reset_game() {
     std::memset(g_item_pool, 0, sizeof(g_item_pool));
+    std::memset(g_event_handlers, 0, sizeof(g_event_handlers));
+    g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
+    g_spawn_calls = 0;
+    g_spawn_event = nullptr;
     for (int i = 0; i < 64; ++i) g_palette_table[i] = g_palette_objects[i];
     g_frame_clock = 1000;
     g_template_list[34] = g_item_template;
