@@ -15,7 +15,7 @@ const char* const kConfigKeys[] = {
     "newgame_fn",
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
-    "start_count",   "start_cells",     "start_flags",
+    "start_count",   "start_cells",     "start_flags",     "sprite_texture",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -30,6 +30,7 @@ constexpr ptrdiff_t kHudMissiles = 0xB30, kHudBombs = 0xBB8;
 constexpr ptrdiff_t kWeaponStripTimer = 0xA4C;
 constexpr ptrdiff_t kSuitBits = 0x10D8;
 constexpr ptrdiff_t kX = 0x1100, kY = 0x1108;
+constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
@@ -305,6 +306,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     start_count_ = found["start_count"];
     start_cells_ = found["start_cells"];
     start_flags_ = found["start_flags"];
+    sprite_texture_ = found["sprite_texture"];
+    gl_ = load_gl();
     configured_ = true;
     return "";
 }
@@ -599,6 +602,55 @@ void Game::watch_skip() {
 
 void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
+}
+
+std::string parse_labels(const std::string& request, std::map<int, std::string>& out) {
+    std::istringstream lines(request);
+    std::string line;
+    if (!std::getline(lines, line) || line != "ap_labels") return "not an ap_labels request";
+    while (std::getline(lines, line)) {
+        std::istringstream words(line);
+        std::string op, hex;
+        unsigned x = 0, y = 0;
+        if (!(words >> op)) continue;
+        std::vector<uint8_t> raw;
+        if (op != "label" || !(words >> x >> y >> hex) || x >= 54 || y >= 54 ||
+            !parse_hex(hex, raw)) {
+            return "bad line " + line;
+        }
+        std::string name;
+        for (uint8_t c : raw) {
+            if (std::isalpha(c)) {
+                name += static_cast<char>(std::toupper(c));
+            } else if (std::isdigit(c) || std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr) {
+                name += static_cast<char>(c);
+            }
+            if (name.size() >= kItemNameMax) break;
+        }
+        while (!name.empty() && name.back() == ' ') name.pop_back();
+        if (name.empty()) name = "ARCHIPELAGO ITEM";
+        out[static_cast<int>(y * 54 + x)] = name;
+    }
+    return "";
+}
+
+void Game::set_labels(std::map<int, std::string> labels) {
+    ap_items_.set_labels(std::move(labels));
+}
+
+void Game::watch_ap_items() {
+    if (!configured_ || !ap_items_.active()) return;
+    // The player's map cell, as the player update keeps it: the row then the column, the
+    // grid's index row * 54 + column (docs/re/memory.md, "Other players' items").
+    uint8_t row = at<uint8_t>(player(), kPlayerCellRow);
+    uint8_t column = at<uint8_t>(player(), kPlayerCellColumn);
+    int cell = row < 54 && column < 54 ? row * 54 + column : -1;
+    ap_items_.watch(item_records_, cell);
+    ap_items_.paint(sprite_texture_, gl_);
+}
+
+void Game::restore_ap_items() {
+    if (configured_) ap_items_.restore(item_records_, sprite_texture_, gl_);
 }
 
 }  // namespace zap

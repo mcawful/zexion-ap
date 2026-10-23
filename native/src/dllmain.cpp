@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.6.0";
+constexpr char kVersion[] = "0.7.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -104,6 +104,7 @@ uintptr_t frame(void* argument) {
                 if (!g_unloading) {
                     g_game.watch_menu(&archipelago_chosen);
                     g_game.watch_skip();
+                    g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
                 ReleaseSRWLockExclusive(&g_menu_lock);
@@ -168,6 +169,24 @@ std::string handle(const std::string& request, bool& stop) {
                " skip=" + (skip ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request.rfind("ap_labels", 0) == 0) {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::map<int, std::string> labels;
+        std::string error = zap::parse_labels(request, labels);
+        if (!error.empty()) return "error " + error;
+        std::string result;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    size_t n = labels.size();
+                    g_game.set_labels(std::move(labels));
+                    return "labeled " + std::to_string(n);
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
         request == "newgame_status") {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
@@ -232,6 +251,7 @@ std::string handle(const std::string& request, bool& stop) {
                 [] {
                     g_game.disarm_newgame();
                     g_game.restore_skip();
+                    g_game.restore_ap_items();
                     g_game.restore_menu(&archipelago_chosen);
                     g_menu_installed.store(g_game.menu_installed());
                     return std::string();

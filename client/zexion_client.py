@@ -61,6 +61,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
+import aplabels  # noqa: E402
 import game  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
@@ -130,6 +131,10 @@ class ZexionContext(CommonContext):
         self.use_helper = True
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
         self.choice_refused = False  # the game's start table differed: no ARCHIPELAGO
+        # Other players' items (client/aplabels.py): this world's locations holding one, and
+        # whether the helper has their labels.
+        self.foreign: list[int] = []
+        self.labels_sent = False
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
         # /unload_helper: the game loop unloads it but keeps the dead connection, so the
         # next request fails the way a helper failing mid-session does.
@@ -158,6 +163,15 @@ class ZexionContext(CommonContext):
             self.newgame_state = None
             self.choice_refused = False
             self.kept = set(slot["kept_locations"])
+            self.foreign = aplabels.foreign_locations(slot["location_items"], self.kept)
+            self.labels_sent = False
+            if self.foreign:
+                scouts = [LOCATION_ID_BASE + i for i in self.foreign]
+                asyncio.create_task(
+                    self.send_msgs(
+                        [{"cmd": "LocationScouts", "locations": scouts, "create_as_hint": 0}]
+                    )
+                )
             self.goal_sent = False
             logger.info(
                 f"Seed for Zexion's {slot['mode']} mode. If this slot's game is not prepared "
@@ -188,6 +202,7 @@ class ZexionContext(CommonContext):
         if self.newgame_state == "armed":
             self.newgame_state = None
         self.disarm_pending = False
+        self.labels_sent = False
 
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
@@ -223,6 +238,30 @@ async def attach_helper(ctx: ZexionContext) -> None:
         ctx.session.helper = ctx.helper
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
     ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
+
+
+async def labels_tick(ctx: ZexionContext) -> None:
+    """Once the server has said what each location holding another player's item holds, send
+    the helper a label per map cell (client/aplabels.py)."""
+    if ctx.helper is None or ctx.labels_sent or not ctx.foreign or ctx.session is None:
+        return
+    infos = [ctx.locations_info.get(LOCATION_ID_BASE + i) for i in ctx.foreign]
+    if any(info is None for info in infos):
+        return  # the server has not answered yet
+    labels = {}
+    for i, info in zip(ctx.foreign, infos, strict=True):
+        item = ctx.item_names.lookup_in_slot(info.item, info.player)
+        player = ctx.player_names.get(info.player, "")
+        labels[tuple(ctx.session.cells[i])] = aplabels.label(item, player)
+    reply = await asyncio.to_thread(ctx.helper.request, aplabels.labels_request(labels))
+    if reply.startswith("labeled"):
+        ctx.labels_sent = True
+        logger.info(
+            f"Other players' items show as Archipelago items, named at pickup ({len(labels)})."
+        )
+    else:
+        logger.warning(f"The helper did not take the item labels: {reply}")
+        ctx.labels_sent = True  # do not ask again until the helper is loaded again
 
 
 async def skip_tick(ctx: ZexionContext) -> None:
@@ -324,6 +363,7 @@ async def game_loop(ctx: ZexionContext) -> None:
             try:
                 await newgame_tick(ctx)
                 await skip_tick(ctx)
+                await labels_tick(ctx)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()

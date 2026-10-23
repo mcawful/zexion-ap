@@ -907,6 +907,44 @@ TARGETS = (
         ),
     ),
     Target(
+        "sprite_texture",
+        "holds a pointer to the sprite data; its +0x40 is the Sprites.png texture object",
+        0xCDD060,
+        (
+            # from the instruction at RVA 0x7918a on B1, which stores the texture just loaded from
+            # "Sprites.png" at +0x40
+            Pattern(
+                "48 8B 0D ?? ?? ?? ?? 32 DB 48 89 41 40 48 8B 05 ?? ?? ?? ??",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1a99e5 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 "
+                    "C0 F2 0F 11 80 A8 00 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 A8 B0 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1f92a5 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 "
+                    "C0 F2 0F 11 80 B8 00 00 00 48 8B 05 ?? ?? ?? ?? 0F BF 08 66 0F 6E C1"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
         0xCDD080,
