@@ -1,6 +1,7 @@
 #include "apitem.h"
 
 #include <cstring>
+#include <vector>
 
 #include "menu.h"  // safe_read, writable
 
@@ -36,7 +37,8 @@ constexpr unsigned kTexture2D = 0x0DE1, kTextureBinding2D = 0x8069;
 constexpr unsigned kTextureWidth = 0x1000, kTextureHeight = 0x1001;
 constexpr unsigned kRgba = 0x1908, kUnsignedByte = 0x1401;
 constexpr unsigned kUnpackRowLength = 0x0CF2, kUnpackSkipRows = 0x0CF3, kUnpackSkipPixels = 0x0CF4;
-constexpr unsigned kUnpackBufferBinding = 0x88EF;
+constexpr unsigned kUnpackBufferBinding = 0x88EF, kPackBufferBinding = 0x88ED;
+constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then skip rows, pixels
 
 // The logo: 16 x 16, levels 0 to 3 (the shader picks a palette shade from the red channel,
 // as the game's grey sprites are drawn: 0x00, 0x67, 0xCC, 0xFF), -1 transparent.
@@ -105,6 +107,8 @@ GlFunctions load_gl() {
     gl.PixelStorei = reinterpret_cast<decltype(gl.PixelStorei)>(GetProcAddress(m, "glPixelStorei"));
     gl.TexSubImage2D =
         reinterpret_cast<decltype(gl.TexSubImage2D)>(GetProcAddress(m, "glTexSubImage2D"));
+    gl.GetTexImage = reinterpret_cast<decltype(gl.GetTexImage)>(GetProcAddress(m, "glGetTexImage"));
+    gl.IsTexture = reinterpret_cast<decltype(gl.IsTexture)>(GetProcAddress(m, "glIsTexture"));
     gl.GetError = reinterpret_cast<decltype(gl.GetError)>(GetProcAddress(m, "glGetError"));
     return gl;
 }
@@ -131,19 +135,17 @@ void ApItems::watch(BYTE* holder, int cell) {
         record_ = nullptr;
         return;
     }
-    if (r != record_ || !is_ours(r)) {
+    if (!is_ours(r)) {
         if (!is_own(r)) {
             record_ = nullptr;  // neither the game's own nor ours: leave it alone
             return;
         }
-        std::memcpy(saved_, r, sizeof(saved_));
-        std::memcpy(&saved_event_, r + kEvent, 2);
         at<int16_t>(r, kFrame) = kLogoFrame;
         at<int16_t>(r, kFrames) = kLogoFrames;
         r[kIcon] = kLogoGlyph;
         at<int16_t>(r, kEvent) = kNoEvent;
-        record_ = r;
     }
+    record_ = r;  // ours now, or already (left by a helper that unloaded without a frame)
     auto it = labels_.find(cell);
     const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
     char want[kItemNameMax + 1] = {};
@@ -153,32 +155,80 @@ void ApItems::watch(BYTE* holder, int cell) {
     }
 }
 
+namespace {
+
+constexpr int kMaxErrors = 16;  // a lost context can report an error on every call
+
+void drain(const GlFunctions& gl) {
+    for (int i = 0; i < kMaxErrors && gl.GetError() != 0; ++i) {
+    }
+}
+
+// The texture as the PNG was read, the right way up, with the two places to paint blank (or
+// already the logo): read back once per texture.
+bool texture_as_expected(const GlFunctions& gl) {
+    std::vector<uint8_t> image(static_cast<size_t>(kTextureSize) * kTextureSize * 4);
+    gl.GetTexImage(kTexture2D, 0, kRgba, kUnsignedByte, image.data());
+    if (gl.GetError() != 0) return false;
+    auto alpha = [&](int x, int y) { return image[(static_cast<size_t>(y) * kTextureSize + x) * 4 + 3]; };
+    // Known art, from Sprites.png: Scrap Energy's frame 134 is opaque at (6, 0), and the font's
+    // glyph 0xC0 at (2, 1); a flipped or other image would not be.
+    constexpr int kScrapX = 128 + (134 % 8) * 16, kScrapY = 640 + (134 / 8) * 16;
+    constexpr int kIconX = (0xC0 % 16) * 8, kIconY = 976 + (0xC0 / 16) * 8;
+    if (alpha(kScrapX + 6, kScrapY) != 0xFF || alpha(kIconX + 2, kIconY + 1) != 0xFF) return false;
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            uint8_t a = alpha(kFrameX + x, kFrameY + y);
+            if (a != 0 && a != (kLogo[y][x] < 0 ? 0 : 0xFF)) return false;
+        }
+    }
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            uint8_t a = alpha(kGlyphX + x, kGlyphY + y);
+            if (a != 0 && a != (kGlyph[y][x] == '#' ? 0xFF : 0)) return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
-    int bound = 0, unpack_buffer = 0, row_length = 0, skip_rows = 0, skip_pixels = 0;
+    drain(gl);  // the game's own pending errors are not ours to read
+    if (!gl.IsTexture(texture)) return false;
+    int unpack_buffer = 0, pack_buffer = 0;
     gl.GetIntegerv(kUnpackBufferBinding, &unpack_buffer);
-    if (gl.GetError() != 0) unpack_buffer = 0;  // GL before 2.1: no unpack buffers
-    if (unpack_buffer != 0) return false;        // pixels would come from a buffer: not ours
+    gl.GetIntegerv(kPackBufferBinding, &pack_buffer);
+    if (gl.GetError() != 0) unpack_buffer = pack_buffer = 0;  // GL before 2.1: no such buffers
+    if (unpack_buffer != 0 || pack_buffer != 0) return false;  // pixels would go through a buffer
+    int bound = 0;
+    int unpack[3] = {}, pack[4] = {};
     gl.GetIntegerv(kTextureBinding2D, &bound);
-    gl.GetIntegerv(kUnpackRowLength, &row_length);
-    gl.GetIntegerv(kUnpackSkipRows, &skip_rows);
-    gl.GetIntegerv(kUnpackSkipPixels, &skip_pixels);
+    for (int i = 0; i < 3; ++i) gl.GetIntegerv(kUnpackRowLength + i, &unpack[i]);
+    for (int i = 0; i < 4; ++i) gl.GetIntegerv(kPackRowLength + i, &pack[i]);
     gl.BindTexture(kTexture2D, texture);
     int width = 0, height = 0;
     gl.GetTexLevelParameteriv(kTexture2D, 0, kTextureWidth, &width);
     gl.GetTexLevelParameteriv(kTexture2D, 0, kTextureHeight, &height);
     bool ok = width == kTextureSize && height == kTextureSize;
     if (ok) {
-        gl.PixelStorei(kUnpackRowLength, 0);
-        gl.PixelStorei(kUnpackSkipRows, 0);
-        gl.PixelStorei(kUnpackSkipPixels, 0);
+        for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, 0);
+        for (int i = 0; i < 3; ++i) gl.PixelStorei(kPackRowLength + i, 0);
+        gl.PixelStorei(kPackAlignment, 4);
+        if (texture != verified_) {
+            ok = texture_as_expected(gl);
+            if (ok) verified_ = texture;
+        }
+    }
+    if (ok) {
         uint8_t frame[16][16][4] = {};
         uint8_t glyph[8][8][4] = {};
         if (!clear) {
             for (int y = 0; y < 16; ++y) {
                 for (int x = 0; x < 16; ++x) {
                     if (kLogo[y][x] < 0) continue;
-                    uint8_t s = kShade[kLogo[y][x]];
-                    frame[y][x][0] = frame[y][x][1] = frame[y][x][2] = s;
+                    uint8_t shade = kShade[kLogo[y][x]];
+                    frame[y][x][0] = frame[y][x][1] = frame[y][x][2] = shade;
                     frame[y][x][3] = 0xFF;
                 }
             }
@@ -191,14 +241,11 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
         }
         gl.TexSubImage2D(kTexture2D, 0, kFrameX, kFrameY, 16, 16, kRgba, kUnsignedByte, frame);
         gl.TexSubImage2D(kTexture2D, 0, kGlyphX, kGlyphY, 8, 8, kRgba, kUnsignedByte, glyph);
-        gl.PixelStorei(kUnpackRowLength, row_length);
-        gl.PixelStorei(kUnpackSkipRows, skip_rows);
-        gl.PixelStorei(kUnpackSkipPixels, skip_pixels);
     }
+    for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, unpack[i]);
+    for (int i = 0; i < 4; ++i) gl.PixelStorei(kPackRowLength + i, pack[i]);
     gl.BindTexture(kTexture2D, static_cast<unsigned>(bound));
-    while (gl.GetError() != 0) {
-        // Leave no error of ours for the game to find.
-    }
+    drain(gl);  // leave no error of ours for the game to find
     return ok;
 }
 
@@ -206,32 +253,39 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl) {
     if (!active() || !gl.loaded()) return;
     if (frames_to_paint_-- > 0) return;
     frames_to_paint_ = kRepaintFrames;
+    unsigned texture = texture_of(holder);
+    if (texture != 0 && upload(texture, gl, false)) painted_ = texture;
+}
+
+unsigned ApItems::texture_of(BYTE* holder) const {
     BYTE* sprites = nullptr;
     BYTE* object = nullptr;
     unsigned texture = 0;
     if (!safe_read(holder, &sprites, sizeof(sprites)) ||
         !safe_read(sprites + kSpritesTexture, &object, sizeof(object)) ||
-        !safe_read(object, &texture, sizeof(texture)) || texture == 0) {
-        return;
+        !safe_read(object, &texture, sizeof(texture))) {
+        return 0;
     }
-    if (upload(texture, gl, false)) painted_ = texture;
+    return texture;
 }
 
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl) {
-    if (record_ != nullptr && record(records_holder) == record_ && is_ours(record_)) {
-        std::memcpy(record_, saved_, sizeof(saved_));
-        at<int16_t>(record_, kEvent) = saved_event_;
+    // The record back to the game's own values, whether this helper restyled it or an earlier
+    // one left it so.
+    BYTE* r = record(records_holder);
+    if (r != nullptr && is_ours(r)) {
+        at<int16_t>(r, kFrame) = kOwnFrame;
+        at<int16_t>(r, kTicks) = kOwnTicks;
+        at<int16_t>(r, kFrames) = kOwnFrames;
+        r[kIcon] = 0;
+        r[kPalette] = kOwnPalette;
+        std::memset(r + kName, 0, kItemNameMax + 1);
+        std::memcpy(r + kName, kOwnName, sizeof(kOwnName));
+        at<int16_t>(r, kEvent) = kOwnEvent;
     }
     record_ = nullptr;
-    if (painted_ != 0 && gl.loaded()) {
-        BYTE* sprites = nullptr;
-        BYTE* object = nullptr;
-        unsigned texture = 0;
-        if (safe_read(texture_holder, &sprites, sizeof(sprites)) &&
-            safe_read(sprites + kSpritesTexture, &object, sizeof(object)) &&
-            safe_read(object, &texture, sizeof(texture)) && texture == painted_) {
-            upload(texture, gl, true);
-        }
+    if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
+        upload(painted_, gl, true);
     }
     painted_ = 0;
     labels_.clear();

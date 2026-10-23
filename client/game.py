@@ -46,8 +46,8 @@ MAP_SIZE = 54
 COLLECTED = 0x1B  # map cell value once its item is collected
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
 ITEM_IDS = range(0, 51)  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
-# A collected Energy Shield (item 50) left its byte at 0 in a live game (docs/re/save-format.md),
-# so where the game keeps it is not known; the module never writes byte 50.
+# A collected Energy Shield (item 50) left its byte at 0 in a live game: its pickup counts as
+# Scrap Metal (docs/re/memory.md, "Other players' items"), so the module never writes byte 50.
 WRITABLE_ITEMS = range(0, 50)
 LOCATIONS = 154
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).

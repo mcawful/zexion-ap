@@ -24,10 +24,11 @@ Once connected:
   randomizer game started in the seed's mode gets the AP seed written in as the game builds
   it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
   start another. A seed whose starting items a new game cannot hold falls back to /prepare.
-- With the helper loaded, the client also asks the server what each location holding another
-  player's item holds and sends the helper a label per map cell (client/aplabels.py): the
-  item shows an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (not yet
-  run in the game).
+- With the helper loaded, and slot data saying the world gives other players' items the
+  stand-in ("stand_in": 47), the client also asks the server what each location holding
+  one holds and sends the helper a label per map cell (client/aplabels.py): the item shows
+  an Archipelago logo, and its pickup pops up "MASTER SWORD FOR ALICE" (not yet run in the
+  game). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -80,6 +81,7 @@ POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
+LABELS_RETRY_SECONDS = 5.0  # after the helper refused the labels (no frame came yet)
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
 
 
@@ -139,6 +141,12 @@ class ZexionContext(CommonContext):
         # whether the helper has their labels.
         self.foreign: list[int] = []
         self.labels_sent = False
+        self.labels_retry_at = 0.0
+        # Asks the game loop to take the labels back from the helper (after a disconnect), so
+        # Scrap Energy is itself again in whatever game is played next.
+        self.labels_clear_pending = False
+        # Counts connections and disconnects: a helper reply from an older one is dropped.
+        self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
         # /unload_helper: the game loop unloads it but keeps the dead connection, so the
         # next request fails the way a helper failing mid-session does.
@@ -167,8 +175,15 @@ class ZexionContext(CommonContext):
             self.newgame_state = None
             self.choice_refused = False
             self.kept = set(slot["kept_locations"])
-            self.foreign = aplabels.foreign_locations(slot["location_items"], self.kept)
+            self.connection += 1
+            # Only a world that says it gives other players' items the stand-in has them.
+            self.foreign = (
+                aplabels.foreign_locations(slot["location_items"], self.kept)
+                if slot.get("stand_in") == aplabels.STAND_IN
+                else []
+            )
             self.labels_sent = False
+            self.labels_retry_at = 0.0
             if self.foreign:
                 scouts = [LOCATION_ID_BASE + i for i in self.foreign]
                 asyncio.create_task(
@@ -189,6 +204,11 @@ class ZexionContext(CommonContext):
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         self.plan = None
         self.session = None
+        self.connection += 1
+        self.foreign = []
+        if self.helper is not None:
+            self.labels_clear_pending = True
+        self.labels_sent = False
         if self.newgame_state == "armed":
             self.disarm_pending = True
         self.newgame_state = None
@@ -206,7 +226,8 @@ class ZexionContext(CommonContext):
         if self.newgame_state == "armed":
             self.newgame_state = None
         self.disarm_pending = False
-        self.labels_sent = False
+        self.labels_sent = False  # a new helper starts with no labels
+        self.labels_clear_pending = False
 
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
@@ -246,8 +267,20 @@ async def attach_helper(ctx: ZexionContext) -> None:
 
 async def labels_tick(ctx: ZexionContext) -> None:
     """Once the server has said what each location holding another player's item holds, send
-    the helper a label per map cell (client/aplabels.py)."""
-    if ctx.helper is None or ctx.labels_sent or not ctx.foreign or ctx.session is None:
+    the helper a label per map cell (client/aplabels.py). After a disconnect, take them back."""
+    helper = ctx.helper
+    if helper is None:
+        return
+    if ctx.labels_clear_pending:
+        ctx.labels_clear_pending = False
+        await asyncio.to_thread(helper.request, "ap_labels")  # no labels: Scrap Energy again
+        return
+    if (
+        ctx.labels_sent
+        or not ctx.foreign
+        or ctx.session is None
+        or time.monotonic() < ctx.labels_retry_at
+    ):
         return
     infos = [ctx.locations_info.get(LOCATION_ID_BASE + i) for i in ctx.foreign]
     if any(info is None for info in infos):
@@ -257,12 +290,17 @@ async def labels_tick(ctx: ZexionContext) -> None:
         item = ctx.item_names.lookup_in_slot(info.item, info.player)
         player = ctx.player_names.get(info.player, "")
         labels[tuple(ctx.session.cells[i])] = aplabels.label(item, player)
-    reply = await asyncio.to_thread(ctx.helper.request, aplabels.labels_request(labels))
+    connection = ctx.connection
+    reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
+    if connection != ctx.connection or helper is not ctx.helper:
+        return  # a reconnect or a lost helper meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
         ctx.labels_sent = True
         logger.info(
             f"Other players' items show as Archipelago items, named at pickup ({len(labels)})."
         )
+    elif reply.startswith("refused"):
+        ctx.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # no frame came yet
     else:
         logger.warning(f"The helper did not take the item labels: {reply}")
         ctx.labels_sent = True  # do not ask again until the helper is loaded again

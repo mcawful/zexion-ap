@@ -63,6 +63,8 @@ std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 // The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
 // only tries the lock, so it never waits on the pipe thread, which holds it only briefly.
 std::atomic<bool> g_menu_installed{false};
+// Whether the stand-in item's record is restyled (apitem.h), which unload must undo first.
+std::atomic<bool> g_items_restyled{false};
 SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
@@ -107,6 +109,7 @@ uintptr_t frame(void* argument) {
                     g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
+                g_items_restyled.store(g_game.ap_items_restyled());
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
@@ -254,6 +257,7 @@ std::string handle(const std::string& request, bool& stop) {
                     g_game.restore_ap_items();
                     g_game.restore_menu(&archipelago_chosen);
                     g_menu_installed.store(g_game.menu_installed());
+                    g_items_restyled.store(g_game.ap_items_restyled());
                     return std::string();
                 },
                 kFrameWaitMs, ignored);
@@ -261,6 +265,10 @@ std::string handle(const std::string& request, bool& stop) {
         if (set_unloading(true)) {
             set_unloading(false);
             return "error ARCHIPELAGO is still on the game's menu (no frame came); not unloading";
+        }
+        if (g_items_restyled.load()) {
+            set_unloading(false);
+            return "error the stand-in item is still restyled (no frame came); not unloading";
         }
         if (!unhook()) {
             set_unloading(false);

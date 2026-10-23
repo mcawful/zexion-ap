@@ -87,6 +87,20 @@ void WINAPI fake_sub_image(unsigned, int, int x, int y, int w, int h, unsigned, 
     g_uploads.push_back({x, y, w, h, std::vector<uint8_t>(p, p + w * h * 4)});
 }
 unsigned WINAPI fake_get_error() { return 0; }
+// The texture as read back: Sprites.png's known art (Scrap Energy's frame at (6, 0), glyph 0xC0
+// at (2, 1)) opaque, unless a test turns it off; the logo's places blank.
+bool g_known_art = true;
+int g_readbacks = 0;
+void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) {
+    ++g_readbacks;
+    auto* p = static_cast<uint8_t*>(pixels);
+    std::memset(p, 0, static_cast<size_t>(2048) * 2048 * 4);
+    if (!g_known_art) return;
+    auto opaque = [&](int x, int y) { p[(static_cast<size_t>(y) * 2048 + x) * 4 + 3] = 0xFF; };
+    opaque(128 + (134 % 8) * 16 + 6, 640 + (134 / 8) * 16);
+    opaque((0xC0 % 16) * 8 + 2, 976 + (0xC0 / 16) * 8 + 1);
+}
+unsigned char WINAPI fake_is_texture(unsigned texture) { return texture != 0; }
 
 zap::GlFunctions fake_gl() {
     zap::GlFunctions gl;
@@ -96,6 +110,8 @@ zap::GlFunctions fake_gl() {
     gl.PixelStorei = fake_pixel_store;
     gl.TexSubImage2D = fake_sub_image;
     gl.GetError = fake_get_error;
+    gl.GetTexImage = fake_get_tex_image;
+    gl.IsTexture = fake_is_texture;
     return gl;
 }
 
@@ -113,6 +129,8 @@ void reset_gl() {
     g_row_length = 5;
     g_uploads.clear();
     g_binds.clear();
+    g_known_art = true;
+    g_readbacks = 0;
 }
 
 BYTE* holder() { return reinterpret_cast<BYTE*>(&g_records_ptr); }
@@ -168,6 +186,21 @@ void test_records_not_as_expected_are_left_alone() {
     check(!no_table.restyled(), "no records loaded: nothing");
 }
 
+void test_a_record_left_restyled_is_adopted_and_put_back() {
+    reset_records();
+    BYTE before[100];
+    std::memcpy(before, g_scrap, 100);
+    zap::ApItems earlier;
+    earlier.set_labels({{1, "OLD NAME"}});
+    earlier.watch(holder(), 1);  // and then unloaded with no frame to restore it
+    zap::ApItems later;
+    later.set_labels({{1, "NEW NAME"}});
+    later.watch(holder(), 1);
+    check(later.restyled() && name() == "NEW NAME", "a later helper takes it over and renames it");
+    later.restore(holder(), sprites(), zap::GlFunctions{});
+    check(std::memcmp(before, g_scrap, 100) == 0, "and puts the game's own values back");
+}
+
 void test_a_reload_is_restyled_again() {
     reset_records();
     zap::ApItems items;
@@ -199,9 +232,18 @@ void test_painting() {
     check(any_opaque, "the logo has pixels");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and unpack state put back");
 
+    check(g_readbacks == 1, "the texture read back before the first paint");
     g_uploads.clear();
     items.paint(sprites(), gl);
     check(g_uploads.empty(), "not every frame");
+
+    // A texture whose known art is not where the PNG has it (flipped, say): never painted.
+    reset_gl();
+    g_known_art = false;
+    zap::ApItems flipped;
+    flipped.set_labels({{1, "X"}});
+    flipped.paint(sprites(), gl);
+    check(g_uploads.empty() && flipped.painted_texture() == 0, "unexpected art: nothing painted");
 
     // Another texture size (not the sprite sheet): nothing uploaded.
     reset_gl();
@@ -240,6 +282,8 @@ void test_label_parser() {
     out.clear();
     zap::parse_labels("ap_labels\nlabel 1 1 c3a97e", out);
     check(out[55] == "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
+    zap::parse_labels("ap_labels\nlabel 2 1 41004221", out);
+    check(out[56] == "AB!", "a NUL byte is dropped, not kept");
     std::map<int, std::string> bad;
     check(!zap::parse_labels("ap_labels\nlabel 54 0 41", bad).empty(), "a cell off the map");
     check(!zap::parse_labels("ap_labels\nlabel 1 1 4", bad).empty(), "odd hex");
@@ -251,6 +295,7 @@ void test_label_parser() {
 int main() {
     test_restyle_and_names();
     test_records_not_as_expected_are_left_alone();
+    test_a_record_left_restyled_is_adopted_and_put_back();
     test_a_reload_is_restyled_again();
     test_painting();
     test_label_parser();
