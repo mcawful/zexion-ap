@@ -79,20 +79,30 @@ constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game
 // (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
+// A label for another player's item: the stand-in's name as laid out, and the popup's line
+// width that name is laid out for (its widest line).
+struct Label {
+    std::string name;
+    int width = 0;
+};
+
 // Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
 std::vector<std::string> wrap_words(const std::string& text, size_t width);
 // `lines` as one popup text: with more than one line, each centered in per_line characters and
 // padded to the end of its line; one line as it is.
 std::string center_lines(const std::vector<std::string>& lines, int per_line);
 // A received item's popup text: `head` (the icon and the game's name), then `suffix` ("FROM
-// ALICE") from the next line, its words wrapped at per_line characters, every line centered.
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line);
+// ALICE") from the next line, its words wrapped at per_line characters, every line centered in
+// the widest line, whose width goes to `*width` (the popup's line width: the game sizes a box
+// to it).
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
+                       int* width = nullptr);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
 // (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
 // Returns "" or an error.
-std::string parse_labels(const std::string& request, std::map<int, std::string>& out);
+std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
@@ -159,10 +169,15 @@ public:
 
     // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
     // frame; restore_ap_items puts everything back (before an unload).
-    void set_labels(std::map<int, std::string> labels);
+    void set_labels(std::map<int, Label> labels);
     void watch_ap_items();
     void restore_ap_items();
-    bool ap_items_restyled() const { return ap_items_.restyled(); }
+    // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
+    // a frame to put them back.
+    bool ap_items_restyled() const {
+        return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth);
+    }
+    int popup_width() const { return popup_width_; }  // tests
     void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
 
 private:
@@ -219,6 +234,14 @@ private:
     EscapeSkip skip_;
     BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
+    // The pickup popup's line width: `mov edx, 24` in the game's pickup code, the path items
+    // with no icon take (the stand-ins do), changed to a label's width while the player stands
+    // in its cell (docs/re/memory.md, "Other players' items").
+    static constexpr int kGamePopupWidth = 24;
+    BYTE* popup_width_code_ = nullptr;
+    int popup_width_ = -1;  // what the game holds, once read; -1 before
+    std::map<int, int> label_widths_;
+    void set_popup_width(int width);
     GlFunctions gl_;
     int skip_frames_ = 0;  // frames until the next escape-skip check
 };

@@ -115,9 +115,11 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
   - The text is the item's icon and name from the game's own item record, then the client's
     suffix (`FROM ALICE`), with any character the game's font does not draw left out. The game
-    lays a popup out 24 characters a line and cuts wherever a line ends, so the suffix starts
-    a line of its own, its words wrapped, and each line is centered with spaces before it and
-    padded with spaces after (`popup_text` and `center_lines` in `src/game_calls.cpp`).
+    lays a popup out a given number of characters a line and cuts wherever a line ends, so
+    the suffix starts a line of its own, its words wrapped at 24, each line is centered in
+    the longest with spaces before it and padded with spaces after (`popup_text` and
+    `center_lines` in `src/game_calls.cpp`), and the line width passed is the longest line's,
+    which is how wide the game draws the box.
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
@@ -160,7 +162,11 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   label for the player's map cell (or ARCHIPELAGO ITEM): the logo glyph, then the label laid
   out as the popups below are, so the game's own pickup popup shows "MASTER SWORD" over "FOR
   ALICE", both centered (the records keep no icon of their own, so the name is shown as
-  written), and now and then paints
+  written). The game's pickup code makes that popup with a line width of 24, as an immediate
+  in its code; while the player stands in a labeled cell the helper changes it (from the
+  frame call, on the game's thread, after checking the instruction's bytes) to the label's
+  longest line, so the box is no wider than the text, and puts 24 back elsewhere, and on
+  unload, which waits for a frame to do it. It also now and then paints
   Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
   its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
   is current in the swap hook), after checking the texture is the 2048 x 2048 sprite sheet
@@ -172,7 +178,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
   the game since 2026-10-23 (both logos, the flashing arrow, named popup, restore on
   disconnect and on unload; `docs/re/memory.md`, "Other players' items", which also lists its
-  limits).
+  limits); the popup's narrower box not yet run in the game.
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -192,8 +198,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
   counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
-  restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
-  unloads itself the same way.
+  restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
+  back as `unload` does (retrying each second until a frame comes to do it) and then unhooks
+  and unloads itself the same way; if its hook was replaced, it stays.
 - **Errors.** No exception leaves the helper's thread; on one, the helper stays loaded, its
   hook still working, and stops answering.
 

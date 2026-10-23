@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.7.0";
+constexpr char kVersion[] = "0.8.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -154,6 +154,9 @@ void wait_until_no_call_inside() {
     while (InterlockedCompareExchange(g_trampoline.in_flight, 0, 0) != 0) Sleep(1);
 }
 
+constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
+std::string undo_for_unload();
+
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") {
         std::string state;  // configured, then whether the escape skip is offered
@@ -174,7 +177,7 @@ std::string handle(const std::string& request, bool& stop) {
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request.rfind("ap_labels", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::map<int, std::string> labels;
+        std::map<int, zap::Label> labels;
         std::string error = zap::parse_labels(request, labels);
         if (!error.empty()) return "error " + error;
         std::string result;
@@ -246,38 +249,46 @@ std::string handle(const std::string& request, bool& stop) {
         return result;
     }
     if (request == "unload") {
-        // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
-        set_unloading(true);
-        if (g_slot != nullptr) {
-            std::string ignored;
-            g_mailbox.call(
-                [] {
-                    g_game.disarm_newgame();
-                    g_game.restore_skip();
-                    g_game.restore_ap_items();
-                    g_game.restore_menu(&archipelago_chosen);
-                    g_menu_installed.store(g_game.menu_installed());
-                    g_items_restyled.store(g_game.ap_items_restyled());
-                    return std::string();
-                },
-                kFrameWaitMs, ignored);
-        }
-        if (set_unloading(true)) {
-            set_unloading(false);
-            return "error ARCHIPELAGO is still on the game's menu (no frame came); not unloading";
-        }
-        if (g_items_restyled.load()) {
-            set_unloading(false);
-            return "error the stand-in item is still restyled (no frame came); not unloading";
-        }
-        if (!unhook()) {
-            set_unloading(false);
-            return "error the frame hook was replaced by something else; not unloading";
-        }
+        std::string why = undo_for_unload();
+        if (!why.empty()) return "error " + why + "; not unloading";
         stop = true;
         return "bye";
     }
     return "error unknown request";
+}
+
+// Puts back everything the helper changed in the game, then unhooks: "" or why not, with the
+// helper then still loaded and working.
+std::string undo_for_unload() {
+    // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
+    set_unloading(true);
+    if (g_slot != nullptr) {
+        std::string ignored;
+        g_mailbox.call(
+            [] {
+                g_game.disarm_newgame();
+                g_game.restore_skip();
+                g_game.restore_ap_items();
+                g_game.restore_menu(&archipelago_chosen);
+                g_menu_installed.store(g_game.menu_installed());
+                g_items_restyled.store(g_game.ap_items_restyled());
+                return std::string();
+            },
+            kFrameWaitMs, ignored);
+    }
+    if (set_unloading(true)) {
+        set_unloading(false);
+        return "ARCHIPELAGO is still on the game's menu (no frame came)";
+    }
+    if (g_items_restyled.load()) {
+        set_unloading(false);
+        return "the stand-in item is still restyled (no frame came)";
+    }
+    if (!unhook()) {
+        set_unloading(false);
+        return kHookReplaced;
+    }
+    return "";
 }
 
 DWORD WINAPI helper_thread(void*) {
@@ -285,8 +296,14 @@ DWORD WINAPI helper_thread(void*) {
         hook();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle)) {
             // No pipe (the name was taken, no descriptor, or it broke): nothing could ever
-            // unload us, so undo the hook now and leave.
-            if (!unhook()) return 0;
+            // unload us, so put the game back as unload does and leave, retrying until a frame
+            // comes to do it; if the hook was replaced, stay.
+            for (;;) {
+                std::string why = undo_for_unload();
+                if (why.empty()) break;
+                if (why == kHookReplaced) return 0;
+                Sleep(1000);
+            }
         }
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);

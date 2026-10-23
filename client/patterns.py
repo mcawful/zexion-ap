@@ -1247,6 +1247,50 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "popup_width_code",
+        (
+            "the pickup popup's `mov edx, 24` (its line width) on the path items with no icon "
+            "take; the helper changes the 24 for other players' items"
+        ),
+        0x1F8F6,
+        (
+            # the instruction itself on B1, with the rest of the call's arguments; its value is
+            # wild, since the helper changes it while it runs
+            Pattern(
+                (
+                    "BA ?? ?? ?? ?? C7 44 24 30 B4 00 00 00 41 B9 58 00 00 00 41 B8 A0 00 00 00 "
+                    "E8 ?? ?? ?? ?? 44 38 3D"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+            # from the jump to it at RVA 0x1f7f4 on B1, taken when the record has no icon
+            Pattern(
+                (
+                    "48 0F BF 86 E8 01 00 00 48 6B C8 64 48 8D 69 0A 48 03 EB 44 38 7C 19 08 "
+                    "48 8B CD 0F 84 ?? ?? ?? ?? E8 ?? ?? ?? ?? 41"
+                ),
+                29,
+                "rip",
+                33,
+                0x0,
+            ),
+            # from the end of the icon path just before it (RVA 0x1f8dd on B1)
+            Pattern(
+                (
+                    "48 8D 8C 24 92 00 00 00 4A 8D 14 40 41 B8 6A 00 00 00 E8 ?? ?? ?? ?? EB ?? "
+                    "BA ?? ?? ?? ??"
+                ),
+                0,
+                "at",
+                0,
+                25,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

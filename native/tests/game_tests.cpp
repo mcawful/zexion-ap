@@ -178,9 +178,9 @@ void test_popups() {
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
     game.pump_popups();
     check(g_messages == 1, "the first popup shows at once");
-    check(g_text == std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(13, ' ') + "FROM ALICE",
-          "icon, the game's name, then the sender, each line centered");
-    check(g_message_args[0] == 0x18 && g_message_args[1] == 0xA0 && g_message_args[2] == 0x58 &&
+    check(g_text == "\xC5MISSILE BOX FROM ALICE" && g_message_args[0] == 12,
+          "icon and name, then the sender centered on the next line, the box 12 wide");
+    check(g_message_args[1] == 0xA0 && g_message_args[2] == 0x58 &&
               g_message_args[3] == 0xB4,
           "the pickup popup's arguments");
     check(g_sound == 61 && g_sound_volume == 1.0f && g_sound_pitch == -1.0f &&
@@ -197,7 +197,7 @@ void test_popups() {
     *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 1;
     game.pump_popups();
     check(g_messages == 2 &&
-              g_text == std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(14, ' ') + "FROM BOB",
+              g_text == "\xC5MISSILE BOX  FROM BOB",
           "then shows the next");
 
     reset_game();
@@ -562,17 +562,101 @@ void test_mailbox() {
 
 }  // namespace
 
+// Read and written through volatile: the compiler would otherwise take the array's initial
+// bytes as constants.
+int32_t popup_width_in_code() {
+    volatile unsigned char* code = g_popup_width_code;
+    return code[1] | (code[2] << 8) | (code[3] << 16) | (code[4] << 24);
+}
+
+void set_code_byte(unsigned char value) {
+    DWORD old = 0;
+    VirtualProtect(g_popup_width_code, 1, PAGE_EXECUTE_READWRITE, &old);
+    *static_cast<volatile unsigned char*>(g_popup_width_code) = value;
+    VirtualProtect(g_popup_width_code, 1, old, &old);
+}
+
+void own_stand_in(BYTE* r, int16_t frame, const char* name, int16_t event) {
+    std::memset(r, 0, 100);
+    *reinterpret_cast<int16_t*>(r + 0x00) = 34;
+    *reinterpret_cast<int16_t*>(r + 0x02) = frame;
+    *reinterpret_cast<int16_t*>(r + 0x04) = 6;
+    *reinterpret_cast<int16_t*>(r + 0x06) = 2;
+    r[0x09] = 8;
+    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
+    *reinterpret_cast<int16_t*>(r + 0x3C) = 46;
+    *reinterpret_cast<int16_t*>(r + 0x40) = event;
+    *reinterpret_cast<int16_t*>(r + 0x58) = 1;
+}
+
+void test_pickup_popup_width() {
+    zap::Game game;
+    std::string configured = game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    check(configured.empty(), "configures with the pickup popup's width instruction");
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    std::map<int, zap::Label> labels;
+    // "Map Width" and "For Finder" on two lines, at map cell (5, 2).
+    check(zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572",
+                            labels)
+              .empty(),
+          "a two-line label parses");
+    check(labels[2 * 54 + 5].width == 10, "its width is its widest line");
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;  // row
+    field<uint8_t>(0x107B) = 5;  // column
+    game.watch_ap_items();
+    check(game.popup_width() == 10 && popup_width_in_code() == 10,
+          "in the label's cell the pickup popup is the label's width");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+    field<uint8_t>(0x107A) = 3;
+    game.watch_ap_items();
+    check(popup_width_in_code() == 24, "elsewhere the game's 24");
+    field<uint8_t>(0x107A) = 2;
+    game.watch_ap_items();
+    game.restore_ap_items();
+    check(popup_width_in_code() == 24 && !game.ap_items_restyled(), "restore puts 24 back");
+
+    // A width an earlier helper left (one that went without putting 24 back) is taken over.
+    {
+        DWORD old_protect = 0;
+        VirtualProtect(g_popup_width_code, 5, PAGE_EXECUTE_READWRITE, &old_protect);
+        static_cast<volatile unsigned char*>(g_popup_width_code)[1] = 12;
+        VirtualProtect(g_popup_width_code, 5, old_protect, &old_protect);
+        zap::Game later;
+        later.configure(GetModuleHandleW(nullptr), stand_in_config());
+        later.set_labels(labels);
+        field<uint8_t>(0x107A) = 3;  // not the label's cell
+        later.watch_ap_items();
+        check(popup_width_in_code() == 24, "a later helper puts 24 back over a width left behind");
+        later.restore_ap_items();
+    }
+
+    // Code that is not the traced instruction is left alone.
+    set_code_byte(0xB9);  // mov ecx, not mov edx
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(popup_width_in_code() == 24 && game.popup_width() == 24, "other code: not written");
+    game.restore_ap_items();
+    set_code_byte(0xBA);
+}
+
 void test_popup_text_breaks_before_the_sender() {
-    check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24) ==
-              std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(6 + 7, ' ') + "FROM ALICE",
-          "the sender starts the second line, both lines centered");
+    int width = 0;
+    check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
+                  "\xC5MISSILE BOX FROM ALICE" &&
+              width == 12,
+          "the sender starts the second line, centered in the widest line, which sets the width");
     check(zap::popup_text("\xC5MISSILE BOX", "", 24) == "\xC5MISSILE BOX", "no sender: one line");
     std::string head(24, 'A');
-    check(zap::popup_text(head, "FROM BOB", 24) == head + std::string(8, ' ') + "FROM BOB",
+    check(zap::popup_text(head, "FROM BOB", 24, &width) == head + std::string(8, ' ') + "FROM BOB" &&
+              width == 24,
           "a head that fills its line needs no padding");
-    std::string wrapped = zap::popup_text("X", "FROM A VERY LONG PLAYER NAME HERE", 24);
-    check(wrapped == std::string(11, ' ') + "X" + std::string(12, ' ') +
-                         "FROM A VERY LONG PLAYER" + std::string(1 + 7, ' ') + "NAME HERE",
+    std::string wrapped = zap::popup_text("X", "FROM A VERY LONG PLAYER NAME HERE", 24, &width);
+    check(wrapped == std::string(11, ' ') + "X" + std::string(11, ' ') +
+                         "FROM A VERY LONG PLAYER" + std::string(7, ' ') + "NAME HERE" &&
+              width == 23,
           "a long sender wraps at a word, not inside one");
 }
 
@@ -582,6 +666,7 @@ int main() {
     test_apply();
     test_popups();
     test_popup_text_breaks_before_the_sender();
+    test_pickup_popup_width();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();
