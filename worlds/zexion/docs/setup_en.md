@@ -22,8 +22,9 @@ playing.
    NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room with its
    starting items, and the game saves the new game at once.
 
-For an OHKO seed, RANDOMIZER stays: choose RANDOMIZER, then OHKO with no options changed, and
-START GAME. The client writes the seed in as the game starts it.
+This works for every mode. If you would rather start from the game's own menu, start the client
+with `--keep-randomizer`: RANDOMIZER then stays, and choosing it, the seed's mode with no
+options changed, and START GAME starts the seed the same way.
 
 When the client disconnects, the choice reads RANDOMIZER again.
 
