@@ -95,9 +95,9 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   `options`: the mode's six Energy, missile and bomb amounts and the settings the logic depends
   on (code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43, Gates 72 and 73),
   as the mode's fresh save holds them, for the client to compare with the player's new game.
-  The Energy Shield is kept in this world (`local_items`), because the client does not write
-  its byte, whose meaning is not settled (`save-format.md`, "Inventory: one byte per item ID at
-  0x92F3"); the game hands it out itself.
+  The Energy Shield can be placed in any world: it is no inventory byte (its pickup counts as
+  Scrap Metal and spawns the shield), so a received one is counted as Scrap Metal and spawned by
+  the client's helper (`memory.md`, "Received Energy Shields").
 
 ## Not yet decided
 
