@@ -178,8 +178,9 @@ class ZexionWorld(World):
         # The goal is the ending (the client reads flag 250: docs/re/memory.md, "The ending:
         # flag 250"). The logic asks only for the grab of Zexion in the core: after it, the helper
         # has the game offer its skip to the ship ("The escape skip"); without the helper the
-        # escape needs the Zenith Thrusters (reported by the owner). The four keys open the
-        # core; RandoCells does not model them.
+        # escape needs one of several combinations of items, the Zenith Thrusters alone being
+        # one (reported by the owner). The four keys open the core; RandoCells does not model
+        # them.
         core = by_index[cells[GOAL_CELL]]
         goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(Item("Victory", ItemClassification.progression, None, self.player))

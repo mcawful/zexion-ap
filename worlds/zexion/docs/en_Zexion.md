@@ -12,8 +12,9 @@ Reaching the ending: the first cutscene after you board the ship. Getting there 
 Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys, then the escape and the
 final battle. The seed's logic only makes sure you can reach the grab. While the client's
 in-game helper runs, the game offers SKIP ESCAPE AND FINAL BATTLE? at the grab, which takes you
-to just before the ship; without it, a first playthrough gets no such offer, and the escape
-needs the Zenith Thrusters, which the logic does not ask for.
+to just before the ship. Without it, a first playthrough gets no such offer, and the escape
+needs one of several combinations of items, such as the Zenith Thrusters, which the logic does
+not ask for.
 
 ## Which modes are there?
 
