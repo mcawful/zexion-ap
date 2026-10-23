@@ -15,8 +15,10 @@ sent items from a local server:
 - after a death, every item given back with no popup repeated (`docs/re/memory.md`, "Game
   functions the helper calls").
 
-Not run in the game yet: the client falling back to direct writes when the helper fails, and
-a pickup while a batch arrives. Helper phase 1 is also **working in game** (build B1,
+In a second session (2026-10-22): a pickup while a batch arrived, every count exact; the
+helper unloaded mid-session, items going in by direct write and the client loading it again
+24 s later; and keys received at a gate, which opened (`docs/re/memory.md`, "The client in
+a live game"). Helper phase 1 is also **working in game** (build B1,
 2026-10-22): loaded
 into the running game with slot 7 in play, it reported `build=B1 hooked=1`, counted 166 frame
 calls a second on a 165 Hz monitor, unloaded with the game still in play, loaded again and
@@ -29,9 +31,9 @@ unloaded again; the owner noticed no stutter or hitch. Before that, in test proc
   hooks, counts calls, and survives 300 loads and unloads in CI (3,000 locally) while two
   threads call the hooked function nonstop.
 
-Helper phase 3, a new game from the AP seed, is **working in game** for a Standard seed
-(build B1, 2026-10-22): from RANDOMIZER with the helper writing the seed in, and from
-ARCHIPELAGO, which also showed again after backing out of two slots and gave way to
+Helper phase 3, a new game from the AP seed, is **working in game** (build B1, 2026-10-22):
+from RANDOMIZER with the helper writing the seed in (Standard, Easy and OHKO), and from
+ARCHIPELAGO (Standard and Easy), which also showed again after backing out of two slots and gave way to
 RANDOMIZER when the client disconnected ("New games", below).
 
 The native tests run against a stand-in game: the test program's own data and functions,
@@ -117,8 +119,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     timer above one frame, the randomizer marker set). If the section holds the `expect`
     bytes, it writes the `write` edits once, before the game builds the new game from them;
     otherwise it writes nothing and drops the plan. This is the path for RANDOMIZER, the mode
-    and START GAME (working in game for a Standard seed, 2026-10-22; Easy and OHKO this way
-    not yet run).
+    and START GAME (working in game for Standard, Easy and OHKO seeds, 2026-10-22).
   - With `menu` lines, offers **ARCHIPELAGO** in place of RANDOMIZER on the game-mode panel
     the game shows after an empty slot is picked (`src/menu.cpp`). It reads the panel with
     fault-safe reads and checks every handler, size and pointer on the way before it
@@ -131,7 +132,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     over the placement, puts the player's menu state back, and queues the new game in the
     chosen slot; the watch above reports it in the next frame. A section of another mode, or a slot the
     game will not start a game in, drops the plan with nothing queued, and the client arms it
-    again. Working in game for a Standard seed (2026-10-22): ARCHIPELAGO started the AP
+    again. Working in game for Standard and Easy seeds (2026-10-22): ARCHIPELAGO started the AP
     seed in an empty slot, showed again after backing out of two slots, and RANDOMIZER
     came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
 
@@ -167,12 +168,9 @@ the ARCHIPELAGO choice on a stand-in panel), and runs
 
 ## Planned
 
-1. **Helper phase 2, left over:** receive a key through the helper at a gate (keys granted by
-   byte alone opened one).
-2. **Helper phase 3, left over:** an Easy seed from ARCHIPELAGO; Easy and OHKO through
-   RANDOMIZER; OHKO (Double Teleport) from ARCHIPELAGO, which needs the start table the
-   randomizer menu builds when it opens.
-3. **Helper phase 4:** icons for other games' items.
+1. **Helper phase 3, left over:** OHKO (Double Teleport) from ARCHIPELAGO, which needs the
+   start table the randomizer menu builds when it opens.
+2. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.

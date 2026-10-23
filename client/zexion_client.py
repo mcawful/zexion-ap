@@ -16,17 +16,19 @@ Once connected:
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
-  2026-10-22 with a Standard seed). For a seed whose mode
+  2026-10-22 with Standard and Easy seeds). For a seed whose mode
   the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
-  seed's mode gets the AP seed written in as the game builds it (run in game for Standard
-  only). One new game per connection: reconnect to start another. A seed whose starting
+  seed's mode gets the AP seed written in as the game builds it (run in game for Standard,
+  Easy and OHKO). ``--keep-randomizer`` takes that path for every seed, leaving RANDOMIZER on the
+  panel. One new game per connection: reconnect to start another. A seed whose starting
   items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
   "MISSILE BOX FROM ALICE") and a HUD refresh; live-tested on 2026-10-22. Without
   the helper, or if it fails, items are written directly, with no popup, and the client tries
-  the helper again every 30 seconds.
+  the helper again every 30 seconds. ``/unload_helper`` unloads it as if it had failed, to
+  test that.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -101,6 +103,16 @@ class ZexionCommandProcessor(ClientCommandProcessor):
             self.output(f"Slot {done.slot} already holds this seed; nothing written.")
         return True
 
+    def _cmd_unload_helper(self) -> bool:
+        """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
+        client loads the helper again within 30 seconds. For testing; it changes the game."""
+        if self.ctx.helper is None:
+            self.output("The helper is not loaded.")
+            return False
+        self.ctx.unload_helper_pending = True
+        self.output("Unloading the helper at the next poll.")
+        return True
+
 
 class ZexionContext(CommonContext):
     game = GAME
@@ -114,6 +126,10 @@ class ZexionContext(CommonContext):
         self.kept: set[int] = set()
         self.game_conn: game.Game | None = None
         self.use_helper = True
+        self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
+        # /unload_helper: the game loop unloads it but keeps the dead connection, so the
+        # next request fails the way a helper failing mid-session does.
+        self.unload_helper_pending = False
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
         # The AP new game: None (to arm), "armed", "done" or "unavailable"; disarm_pending asks
@@ -162,7 +178,10 @@ class ZexionContext(CommonContext):
         if self.session is not None:
             self.session.helper = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
-        self.newgame_state = None
+        # A plan the lost helper held is armed again in the next one; a new game already made
+        # (or a seed that cannot make one) stays as it is: one new game per connection.
+        if self.newgame_state == "armed":
+            self.newgame_state = None
         self.disarm_pending = False
 
     def received(self) -> tuple[list[int], list[str]]:
@@ -213,6 +232,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         return
     if ctx.newgame_state is None:
         plan = ctx.plan
+        if ctx.keep_randomizer and plan.menu is not None:
+            plan = dataclasses.replace(plan, menu=None)
         try:
             text = newgame.plan_text(plan)
         except newgame.NewGameError as exc:
@@ -261,6 +282,13 @@ async def newgame_tick(ctx: ZexionContext) -> None:
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
+        if ctx.helper is not None and ctx.unload_helper_pending:
+            ctx.unload_helper_pending = False
+            try:
+                reply = await asyncio.to_thread(ctx.helper.request, "unload")
+                logger.info(f"The helper was asked to unload: {reply}")
+            except native.HelperError as exc:
+                logger.warning(f"Unloading the helper failed: {exc}")
         if ctx.helper is not None:
             try:
                 await newgame_tick(ctx)
@@ -317,6 +345,7 @@ def launch(*args: str) -> None:
         ctx = ZexionContext(parsed.connect, parsed.password)
         ctx.auth = parsed.name
         ctx.use_helper = not parsed.no_helper
+        ctx.keep_randomizer = parsed.keep_randomizer
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
         if gui_enabled:
@@ -334,6 +363,11 @@ def launch(*args: str) -> None:
         "--no-helper",
         action="store_true",
         help="Do not load the native helper into the game: items arrive with no popup.",
+    )
+    parser.add_argument(
+        "--keep-randomizer",
+        action="store_true",
+        help="Do not offer ARCHIPELAGO: start the seed from RANDOMIZER, its mode and START GAME.",
     )
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     parsed = handle_url_arg(parser.parse_args(args), parser=parser)

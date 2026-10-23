@@ -45,8 +45,8 @@ PROCESS = "Zexion.exe"
 MAP_SIZE = 54
 COLLECTED = 0x1B  # map cell value once its item is collected
 ITEM_IDS = range(0, 51)  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
-# Item 50's byte may also be what the logic treats as code 50 (docs/re/save-format.md); until
-# that is measured, the module does not write it.
+# A collected Energy Shield (item 50) left its byte at 0 in a live game (docs/re/save-format.md),
+# so where the game keeps it is not known; the module never writes byte 50.
 WRITABLE_ITEMS = range(0, 50)
 LOCATIONS = 154
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
