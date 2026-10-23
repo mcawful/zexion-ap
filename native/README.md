@@ -39,7 +39,7 @@ RANDOMIZER when the client disconnected ("New games", below).
 The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
-queue, the new-game watch and a whole ARCHIPELAGO press; `tests/menu_tests.cpp` the
+queue, the new-game watch, a whole ARCHIPELAGO press and the escape skip's patch; `tests/menu_tests.cpp` the
 game-mode panel (`tests/stand_in_menu.h`): relabeling, putting it back, closed menus and
 released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
@@ -69,7 +69,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     user, and checks that the process serving it is the game.
   - Requests longer than 64 KB drop the connection.
   - Requests:
-    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1>`
+    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1>`
     - `ping` → `pong frames=<calls since load>`
     - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
@@ -89,7 +89,7 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
-  and `hello`'s `configured` are handed to the game's thread through a one-slot mailbox
+  and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
@@ -137,8 +137,19 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
+- **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
+  game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
+  BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
+  If every field of the record is as traced, the helper points its other branch at the offer
+  too, so grabbing Zexion offers the skip in any game while the helper is loaded; a table the
+  game loads again is patched again. Nothing is saved, and unloading puts the record back (if
+  no frame comes to do it, the record stays pointed at the offer, a game event, until Zexion
+  restarts). Once an unload begins, no frame patches it again.
+  `hello` reports it as `skip=1`. Working in game (2026-10-23: the prompt in a first
+  playthrough, YES to the ship, and the goal at the ending; `docs/re/memory.md`, "The escape
+  skip").
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
-  RANDOMIZER back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
+  RANDOMIZER and event 3665 back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
   menu`) if no frame came to do it, since the menu would point into the unloaded DLL. Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not

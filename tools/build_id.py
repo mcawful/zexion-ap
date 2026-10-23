@@ -17,7 +17,16 @@ from pathlib import Path
 
 from protected import STEAM_APP_ID, game_dir
 
-DATA_FILES = ("RandoCells", "MapData", "Objects", "AreaEvents", "Enemies", "Flags", "Text")
+DATA_FILES = (
+    "RandoCells",
+    "MapData",
+    "Objects",
+    "AreaEvents",
+    "Enemies",
+    "Flags",
+    "Text",
+    "Bosses",
+)
 
 
 MACHINES = {0x8664: "x64", 0x14C: "x86", 0xAA64: "ARM64"}

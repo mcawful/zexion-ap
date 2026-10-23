@@ -74,6 +74,21 @@ bool glyphs_of(BYTE* child, BYTE* (&glyphs)[kLabelLength]) {
 
 }  // namespace
 
+bool writable(const void* at, size_t size) {
+    const BYTE* p = static_cast<const BYTE*>(at);
+    const BYTE* end = p + size;
+    while (p < end) {
+        MEMORY_BASIC_INFORMATION info;
+        if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT ||
+            (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 ||
+            (info.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) == 0) {
+            return false;
+        }
+        p = static_cast<const BYTE*>(info.BaseAddress) + info.RegionSize;
+    }
+    return true;
+}
+
 bool safe_read(const void* from, void* to, size_t size) {
     // The query keeps the read off guard pages (another thread's stack), which an exception
     // handler would disarm; the handler covers memory freed in between.

@@ -13,7 +13,8 @@ Safety, in order:
   the previous seed's section in memory) and hold this seed (the section's item table and
   start, see ``save_patch.section_matches``); otherwise no check is sent and nothing is
   given.
-- Checks and the goal are read in any state with this seed loaded. Grants are made only in
+- Checks and the goal (the ending's flag) are read in any state with this seed loaded, which
+  covers the ending's cutscenes and credits. Grants are made only in
   play (``game.IN_PLAY``), as compare-and-set writes, and only to make up a difference
   (client/reconcile.py), so a grant undone by a death or reload is made again and none is
   made twice.
@@ -45,7 +46,15 @@ import save_patch
 logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
-GOAL_ITEM = 31  # Zexion: its byte is 1 from the grab in the core until the ship (memory.md)
+# The goal: flag 250 with flag 211 clear. The ending sets flag 250 and clears flags 185 to 212
+# when its first cutscene starts, and both are saved. The escape skip's YES sets flag 250 too,
+# before the ship, with flag 211 set. Both live-tested (2026-10-22 and 2026-10-23):
+# docs/re/memory.md, "The ending: flag 250" and "The escape skip".
+ENDING_FLAG, FINALE_FLAG = 250, 211
+# Under the game's Abridged Finale (setting 32) the grab is the game's victory, and whether
+# its end reaches flag 250 is not known; for such a seed the goal is the grab. No world sets
+# it today: it is off in every mode's preset and the mode check refuses it.
+ABRIDGED_FINALE, GOAL_ITEM = 32, 31
 
 
 @dataclass(frozen=True)
@@ -56,6 +65,8 @@ class Snapshot:
     supplies: tuple[int, ...] = ()
     blob: bytes = b""
     marker: int = 0
+    ended: int = 0
+    finale: int = 0
 
 
 def read_once(g: game.Game) -> Snapshot:
@@ -63,7 +74,14 @@ def read_once(g: game.Game) -> Snapshot:
     if state == game.NO_SAVE:
         return Snapshot(state)
     return Snapshot(
-        state, g.map_grid(), g.inventory(), g.supplies(), g.rando_blob(), g.rando_marker()
+        state,
+        g.map_grid(),
+        g.inventory(),
+        g.supplies(),
+        g.rando_blob(),
+        g.rando_marker(),
+        g.flag(ENDING_FLAG),
+        g.flag(FINALE_FLAG),
     )
 
 
@@ -136,7 +154,11 @@ class Session:
             return Step()
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
-        step = Step(collected, snap.inventory[GOAL_ITEM] >= 1, {}, True)
+        if self.plan.options.get(ABRIDGED_FINALE):
+            goal = snap.inventory[GOAL_ITEM] >= 1
+        else:
+            goal = snap.ended >= 1 and snap.finale == 0
+        step = Step(collected, goal, {}, True)
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders)
         return step

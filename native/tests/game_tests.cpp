@@ -390,6 +390,54 @@ void test_archipelago_choice() {
     g_slot_taken = false;
 }
 
+void test_escape_skip() {
+    zap::Game game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    reset_events();
+    game.watch_skip();
+    check(event_else() == 3668 && game.skip_offered(), "event 3665 offers the skip either way");
+    game.watch_skip();  // within its 30 frames: nothing to do
+    game.restore_skip();
+    check(event_else() == -1 && !game.skip_offered(), "restored");
+
+    reset_events();
+    event_3665()[2] = 251;  // not the record traced on B1
+    for (int i = 0; i < 31; ++i) game.watch_skip();
+    check(event_3665()[6] == 0xFF && !game.skip_offered(), "another record is left alone");
+
+    reset_events();
+    g_event_count = 3000;  // the table not loaded in full
+    zap::Game fresh;
+    fresh.configure(GetModuleHandleW(nullptr), stand_in_config());
+    fresh.watch_skip();
+    check(event_else() == -1, "a short table is left alone");
+    g_event_count = kStandInEvents;
+    for (int i = 0; i < 31; ++i) fresh.watch_skip();
+    check(event_else() == 3668, "patched once it is loaded");
+
+    // The game loads its events again into a new table: the new one is patched.
+    static BYTE other[kStandInEvents * 0x28];
+    std::memcpy(other, g_events, sizeof(other));
+    const int16_t none = -1;
+    std::memcpy(other + 3665 * 0x28 + 6, &none, 2);
+    g_event_table = other;
+    for (int i = 0; i < 31; ++i) fresh.watch_skip();
+    int16_t v;
+    std::memcpy(&v, other + 3665 * 0x28 + 6, 2);
+    check(v == 3668, "a reloaded table is patched");
+    fresh.restore_skip();
+    std::memcpy(&v, other + 3665 * 0x28 + 6, 2);
+    check(v == -1, "and restored");
+
+    // Restore only into the table patched, and only if the record still reads as patched.
+    reset_events();
+    for (int i = 0; i < 31; ++i) fresh.watch_skip();
+    g_event_table = other;  // replaced since
+    fresh.restore_skip();
+    check(event_else() == 3668, "a table no longer loaded is not written");
+    g_event_table = g_events;
+}
+
 void test_mailbox() {
     zap::Mailbox box;
     std::string result;
@@ -433,6 +481,7 @@ int main() {
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();
+    test_escape_skip();
     test_mailbox();
     if (g_failures == 0) std::printf("all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

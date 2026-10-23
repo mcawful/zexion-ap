@@ -38,6 +38,30 @@ inline void newgame_fn() { ++g_newgames; }
 // The game-mode panel's surroundings: the most recent menu, the randomizer menu's state, the
 // menu functions, and START GAME's steps, which log their order and queue a new game as the
 // game's do (unless the slot is "taken").
+// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3665 as
+// the game loads it (flag test: flag 250, then 3668, else none).
+constexpr int kStandInEvents = 3700;
+inline BYTE g_events[kStandInEvents * 0x28];
+inline BYTE* g_event_table = g_events;
+inline int16_t g_event_count = kStandInEvents;
+inline BYTE* event_3665() { return g_events + 3665 * 0x28; }
+inline void reset_events() {
+    std::memset(g_events, 0, sizeof(g_events));
+    BYTE* r = event_3665();
+    const int16_t words[] = {250, 3668, -1, -1};
+    r[0] = 14;
+    std::memcpy(r + 2, words, sizeof(words));
+    const int16_t self = 3665;
+    std::memcpy(r + 0x24, &self, sizeof(self));
+    g_event_table = g_events;
+    g_event_count = kStandInEvents;
+}
+inline int16_t event_else() {
+    int16_t v;
+    std::memcpy(&v, event_3665() + 6, sizeof(v));
+    return v;
+}
+
 inline BYTE* g_current_menu = nullptr;
 inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
@@ -151,6 +175,8 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"rando_menu_fn", rva(reinterpret_cast<void*>(&rando_menu_fn))},
         {"placement_fn", rva(reinterpret_cast<void*>(&placement_fn))},
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
+        {"event_table", rva(&g_event_table)},
+        {"event_count", rva(&g_event_count)},
     };
 }
 

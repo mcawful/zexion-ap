@@ -35,6 +35,7 @@ class FakeGame:
         self.flicker = False
         self.reads = 0
         self.marker = 1
+        self.flags = bytearray(0x9C4)
 
     def state(self) -> str:
         self.reads += 1
@@ -56,6 +57,9 @@ class FakeGame:
 
     def rando_marker(self) -> int:
         return self.marker
+
+    def flag(self, number: int) -> int:
+        return self.flags[number]
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -140,10 +144,43 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
     session, g = setup
     g.state_value = game.MENU
     g.collect(5)
-    g.inv[ss.GOAL_ITEM] = 1
+    g.flags[ss.ENDING_FLAG] = 1  # the ending's cutscenes read as menu
     step = session.step(g, [17], gap=0)
     assert step.granted == {} and g.inv[17] == 0
     assert step.checked == {5} and step.goal
+
+
+def test_grabbing_zexion_is_not_the_goal(setup) -> None:
+    session, g = setup
+    g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead
+    assert not session.step(g, [], gap=0).goal
+    g.flags[ss.ENDING_FLAG] = 1
+    assert session.step(g, [], gap=0).goal
+
+
+def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
+    session, g = setup
+    g.flags[ss.ENDING_FLAG] = 1  # YES: flag 250 at once, flags 185 to 212 set
+    g.flags[ss.FINALE_FLAG] = 1
+    assert not session.step(g, [], gap=0).goal
+    g.flags[ss.FINALE_FLAG] = 0  # the ending clears them as its first cutscene starts
+    assert session.step(g, [], gap=0).goal
+
+
+def test_under_abridged_finale_the_grab_is_the_goal() -> None:
+    p = plan(options={**PLAN.options, 32: 1})
+    session = ss.Session(p, [list(c) for c in CELLS])
+    g = FakeGame(PLAN)  # the same item table and start; the game's own settings do not matter
+    assert not session.step(g, [], gap=0).goal
+    g.inv[31] = 1
+    assert session.step(g, [], gap=0).goal
+
+
+def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
+    session, g = setup
+    g.flags[ss.ENDING_FLAG] = 1
+    g.marker = 0  # a normal save, its flags those of another game
+    assert not session.step(g, [], gap=0).goal
 
 
 def test_nothing_happens_while_the_state_is_changing(setup) -> None:

@@ -44,6 +44,7 @@ from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 PROCESS = "Zexion.exe"
 MAP_SIZE = 54
 COLLECTED = 0x1B  # map cell value once its item is collected
+FLAGS = 0x9C4  # the loaded game's flags, one byte each
 ITEM_IDS = range(0, 51)  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
 # A collected Energy Shield (item 50) left its byte at 0 in a live game (docs/re/save-format.md),
 # so where the game keeps it is not known; the module never writes byte 50.
@@ -330,6 +331,13 @@ class Game:
     def inventory(self) -> bytes:
         """One byte per item ID 0-50."""
         return self._read("inventory", 0, len(ITEM_IDS))
+
+    def flag(self, number: int) -> int:
+        """One of the loaded game's flags (0 to 0x9C3; docs/re/memory.md, "Keys, the gates and
+        the key markers" and "The ending")."""
+        if not 0 <= number < FLAGS:
+            raise ValueError(f"flag {number} is outside the 0x{FLAGS:X} flags")
+        return self._read("flags", number, 1)[0]
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         """Compare-and-set an item's inventory byte, then read it back.
