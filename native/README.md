@@ -198,8 +198,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
   counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
-  restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
-  unloads itself the same way.
+  restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
+  back as `unload` does (retrying each second until a frame comes to do it) and then unhooks
+  and unloads itself the same way; if its hook was replaced, it stays.
 - **Errors.** No exception leaves the helper's thread; on one, the helper stays loaded, its
   hook still working, and stops answering.
 

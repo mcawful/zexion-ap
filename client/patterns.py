@@ -1255,10 +1255,11 @@ TARGETS = (
         ),
         0x1F8F6,
         (
-            # the instruction itself on B1, with the rest of the call's arguments
+            # the instruction itself on B1, with the rest of the call's arguments; its value is
+            # wild, since the helper changes it while it runs
             Pattern(
                 (
-                    "BA 18 00 00 00 C7 44 24 30 B4 00 00 00 41 B9 58 00 00 00 41 B8 A0 00 00 00 "
+                    "BA ?? ?? ?? ?? C7 44 24 30 B4 00 00 00 41 B9 58 00 00 00 41 B8 A0 00 00 00 "
                     "E8 ?? ?? ?? ?? 44 38 3D"
                 ),
                 0,
@@ -1277,8 +1278,17 @@ TARGETS = (
                 33,
                 0x0,
             ),
-            # from the end of the icon path just before it (RVA 0x1f8e9 on B1)
-            Pattern("41 B8 6A 00 00 00 E8 ?? ?? ?? ?? EB ?? BA 18 00 00 00", 0, "at", 0, 13),
+            # from the end of the icon path just before it (RVA 0x1f8dd on B1)
+            Pattern(
+                (
+                    "48 8D 8C 24 92 00 00 00 4A 8D 14 40 41 B8 6A 00 00 00 E8 ?? ?? ?? ?? EB ?? "
+                    "BA ?? ?? ?? ??"
+                ),
+                0,
+                "at",
+                0,
+                25,
+            ),
         ),
     ),
 )

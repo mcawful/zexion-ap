@@ -732,18 +732,25 @@ void Game::set_labels(std::map<int, Label> labels) {
 }
 
 void Game::set_popup_width(int width) {
-    if (width == popup_width_ || popup_width_code_ == nullptr) return;
+    if (popup_width_code_ == nullptr) return;
     if (width < 1 || width > kGamePopupWidth) width = kGamePopupWidth;
-    // `mov edx, imm32`: B1's instruction, holding what this helper last wrote (24 at first);
-    // anything else is not the code traced, and is left alone.
+    if (width == popup_width_) return;  // already so (popup_width_ starts unknown: -1)
+    // `mov edx, imm32`: B1's instruction, holding 24 or a width a helper wrote (this one, or
+    // one that left without putting 24 back). Anything else is not the code traced: it is
+    // left alone, and not counted as ours to put back.
     BYTE now[5] = {};
-    if (!safe_read(popup_width_code_, now, sizeof(now)) || now[0] != 0xBA) return;
     int32_t imm = 0;
-    std::memcpy(&imm, now + 1, sizeof(imm));
-    if (imm != popup_width_) return;
+    if (safe_read(popup_width_code_, now, sizeof(now))) std::memcpy(&imm, now + 1, sizeof(imm));
+    if (now[0] != 0xBA || imm < 1 || imm > kGamePopupWidth) {
+        popup_width_ = kGamePopupWidth;
+        popup_width_code_ = nullptr;
+        return;
+    }
+    popup_width_ = imm;
+    if (imm == width) return;
     DWORD old = 0;
     if (!VirtualProtect(popup_width_code_ + 1, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &old)) {
-        return;
+        return;  // not written: popup_width_ says what the game still holds
     }
     int32_t value = width;
     std::memcpy(popup_width_code_ + 1, &value, sizeof(value));

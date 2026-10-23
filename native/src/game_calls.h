@@ -175,7 +175,7 @@ public:
     // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
     // a frame to put them back.
     bool ap_items_restyled() const {
-        return ap_items_.restyled() || popup_width_ != kGamePopupWidth;
+        return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth);
     }
     int popup_width() const { return popup_width_; }  // tests
     void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
@@ -239,7 +239,7 @@ private:
     // in its cell (docs/re/memory.md, "Other players' items").
     static constexpr int kGamePopupWidth = 24;
     BYTE* popup_width_code_ = nullptr;
-    int popup_width_ = kGamePopupWidth;
+    int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     void set_popup_width(int width);
     GlFunctions gl_;

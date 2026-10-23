@@ -618,6 +618,21 @@ void test_pickup_popup_width() {
     game.restore_ap_items();
     check(popup_width_in_code() == 24 && !game.ap_items_restyled(), "restore puts 24 back");
 
+    // A width an earlier helper left (one that went without putting 24 back) is taken over.
+    {
+        DWORD old_protect = 0;
+        VirtualProtect(g_popup_width_code, 5, PAGE_EXECUTE_READWRITE, &old_protect);
+        static_cast<volatile unsigned char*>(g_popup_width_code)[1] = 12;
+        VirtualProtect(g_popup_width_code, 5, old_protect, &old_protect);
+        zap::Game later;
+        later.configure(GetModuleHandleW(nullptr), stand_in_config());
+        later.set_labels(labels);
+        field<uint8_t>(0x107A) = 3;  // not the label's cell
+        later.watch_ap_items();
+        check(popup_width_in_code() == 24, "a later helper puts 24 back over a width left behind");
+        later.restore_ap_items();
+    }
+
     // Code that is not the traced instruction is left alone.
     set_code_byte(0xB9);  // mov ecx, not mov edx
     game.set_labels(labels);
