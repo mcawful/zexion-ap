@@ -12,11 +12,10 @@ Once connected:
   Zexion, then run it.
 - While Zexion runs with that slot loaded, the client sends each location the map marks as
   collected, gives the items other worlds send (client/session.py), and reports the goal when
-  the ending begins (flag 250 with flag 211 clear, after the final boss and the ship; the
-  goal on flag 250 was live-tested on 2026-10-22, the flag 211 condition not yet). With the
-  helper loaded, grabbing Zexion should offer the game's SKIP ESCAPE AND FINAL BATTLE? in any
-  game, and after YES the goal should come as the player boards the ship (not yet run in
-  the game); the client logs whether the helper put the offer in place.
+  the ending begins (flag 250 with flag 211 clear, after the final boss and the ship). With the
+  helper loaded, grabbing Zexion offers the game's SKIP ESCAPE AND FINAL BATTLE? in any game,
+  and after YES the goal comes as the player boards the ship (both live-tested 2026-10-22 and
+  2026-10-23); the client logs whether the helper put the offer in place.
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on

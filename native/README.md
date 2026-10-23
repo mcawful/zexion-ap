@@ -145,7 +145,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   game loads again is patched again. Nothing is saved, and unloading puts the record back (if
   no frame comes to do it, the record stays pointed at the offer, a game event, until Zexion
   restarts). Once an unload begins, no frame patches it again.
-  `hello` reports it as `skip=1`. Not yet run in the game (`docs/re/memory.md`, "The escape
+  `hello` reports it as `skip=1`. Working in game (2026-10-23: the prompt in a first
+  playthrough, YES to the ship, and the goal at the ending; `docs/re/memory.md`, "The escape
   skip").
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
   RANDOMIZER and event 3665 back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's

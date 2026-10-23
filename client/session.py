@@ -47,10 +47,9 @@ logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
 # The goal: flag 250 with flag 211 clear. The ending sets flag 250 and clears flags 185 to 212
-# when its first cutscene starts, and both are saved (the goal on flag 250 live-tested
-# 2026-10-22). The escape skip's YES sets flag 250 too, before the ship, with flag 211 set
-# (measured in a snapshot after YES; the flag 211 condition not yet run): docs/re/memory.md,
-# "The ending: flag 250" and "The escape skip".
+# when its first cutscene starts, and both are saved. The escape skip's YES sets flag 250 too,
+# before the ship, with flag 211 set. Both live-tested (2026-10-22 and 2026-10-23):
+# docs/re/memory.md, "The ending: flag 250" and "The escape skip".
 ENDING_FLAG, FINALE_FLAG = 250, 211
 # Under the game's Abridged Finale (setting 32) the grab is the game's victory, and whether
 # its end reaches flag 250 is not known; for such a seed the goal is the grab. No world sets
