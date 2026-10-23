@@ -20,8 +20,9 @@ constexpr uint8_t kOwnPalette = 8;
 constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
 // What they become: one frame each, the same popup glyph, no area event at pickup.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
-constexpr uint8_t kLogoGlyph = 0xEE;
-constexpr char kDefaultName[] = "ARCHIPELAGO ITEM";
+constexpr uint8_t kLogoGlyph = kApItemGlyph;
+constexpr char kDefaultName[] = "\xEE" "ARCHIPELAGO ITEM";
+static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
 // glyph c of the 8 x 8 font at ((c % 16) * 8, 976 + (c / 16) * 8); 2048 x 2048 RGBA.
@@ -141,7 +142,7 @@ bool is_ours(const BYTE* r, const StandIn& s) {
     std::memcpy(&frames, r + kFrames, 2);
     std::memcpy(&event, r + kEvent, 2);
     return kind == kOwnKind && frame == s.frame && frames == kLogoFrames &&
-           r[kIcon] == kLogoGlyph && event == kNoEvent;
+           (r[kIcon] == 0 || r[kIcon] == kLogoGlyph) && event == kNoEvent;
 }
 
 }  // namespace
@@ -193,7 +194,6 @@ void ApItems::watch(BYTE* holder, int cell) {
             if (!is_own(r, s)) continue;  // neither the game's own nor ours: leave it alone
             at<int16_t>(r, kFrame) = s.frame;
             at<int16_t>(r, kFrames) = kLogoFrames;
-            r[kIcon] = kLogoGlyph;
             at<int16_t>(r, kEvent) = kNoEvent;
         }
         records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)

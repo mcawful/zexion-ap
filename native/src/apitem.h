@@ -29,6 +29,10 @@ constexpr int kStandInItem = 47;         // Scrap Energy: other players' items
 constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progression items
 constexpr int kStandInCount = 2;
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
+// The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
+// shows the name as written and it can be centered), and the name where no label is.
+constexpr uint8_t kApItemGlyph = 0xEE;
+constexpr char kApItemName[] = "ARCHIPELAGO ITEM";
 
 // The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (or a test's fakes).
 struct GlFunctions {

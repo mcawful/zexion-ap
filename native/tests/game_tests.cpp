@@ -178,7 +178,8 @@ void test_popups() {
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
     game.pump_popups();
     check(g_messages == 1, "the first popup shows at once");
-    check(g_text == "\xC5MISSILE BOX" + std::string(12, ' ') + "FROM ALICE", "icon, the game's name, then the sender");
+    check(g_text == std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(13, ' ') + "FROM ALICE",
+          "icon, the game's name, then the sender, each line centered");
     check(g_message_args[0] == 0x18 && g_message_args[1] == 0xA0 && g_message_args[2] == 0x58 &&
               g_message_args[3] == 0xB4,
           "the pickup popup's arguments");
@@ -195,7 +196,9 @@ void test_popups() {
     check(g_messages == 1 && game.queued_popups() == 1, "waits while the last popup shows");
     *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 1;
     game.pump_popups();
-    check(g_messages == 2 && g_text == "\xC5MISSILE BOX" + std::string(12, ' ') + "FROM BOB", "then shows the next");
+    check(g_messages == 2 &&
+              g_text == std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(14, ' ') + "FROM BOB",
+          "then shows the next");
 
     reset_game();
     apply(game, "apply\npopup 36 X");
@@ -561,15 +564,15 @@ void test_mailbox() {
 
 void test_popup_text_breaks_before_the_sender() {
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24) ==
-              "\xC5MISSILE BOX" + std::string(12, ' ') + "FROM ALICE",
-          "the sender starts the second line");
+              std::string(6, ' ') + "\xC5MISSILE BOX" + std::string(6 + 7, ' ') + "FROM ALICE",
+          "the sender starts the second line, both lines centered");
     check(zap::popup_text("\xC5MISSILE BOX", "", 24) == "\xC5MISSILE BOX", "no sender: one line");
     std::string head(24, 'A');
-    check(zap::popup_text(head, "FROM BOB", 24) == head + "FROM BOB",
+    check(zap::popup_text(head, "FROM BOB", 24) == head + std::string(8, ' ') + "FROM BOB",
           "a head that fills its line needs no padding");
     std::string wrapped = zap::popup_text("X", "FROM A VERY LONG PLAYER NAME HERE", 24);
-    check(wrapped == "X" + std::string(23, ' ') + "FROM A VERY LONG PLAYER" + std::string(1, ' ') +
-                         "NAME HERE",
+    check(wrapped == std::string(11, ' ') + "X" + std::string(12, ' ') +
+                         "FROM A VERY LONG PLAYER" + std::string(1 + 7, ' ') + "NAME HERE",
           "a long sender wraps at a word, not inside one");
 }
 
