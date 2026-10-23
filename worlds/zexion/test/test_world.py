@@ -145,6 +145,7 @@ class TestOHKO(ZexionTestBase):
         menu = slot["menu"]
         self.assertIsNone(menu["second_target"], "the seed's second start is written instead")
         self.assertEqual(len(menu["start_table"]), 34)
+        self.assertEqual(menu["table_build"], data.DATA_BUILD)
         index = slot["second_start"]["index"]
         self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(slot["second_start"]["cell"]))
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))

@@ -249,6 +249,7 @@ class ZexionWorld(World):
         }
         if self.mode["double_teleport"]:
             setup["start_table"] = [list(room) for room in data.START_TABLE]
+            setup["table_build"] = data.DATA_BUILD
         else:
             setup["second_target"] = list(self.mode["second_target"])
         return setup

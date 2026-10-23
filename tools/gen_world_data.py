@@ -321,6 +321,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         "region_cells": region_cells,
         "entrances": entrances,
         "location_rules": location_rules,
+        "build": cells_path.parent.name,
         # The randomizer menu's start table, as it builds it when it opens: every candidate
         # room in order, with its flag (the room holds object 25), checked against the game's
         # own table (docs/re/memory.md, "Starting a new game" on OHKO).
@@ -394,8 +395,10 @@ def render(d: dict, source: str) -> str:
         "# Location index -> the requirements for collecting its item, where it has any.",
         f"LOCATION_RULES = {d['location_rules']!r}",
         "",
-        "# The randomizer menu's start table: each candidate room's cell (x, y) and flag.",
+        "# The randomizer menu's start table: each candidate room's cell (x, y) and flag, and",
+        "# the start of the SHA-256 of the exe whose data it came from (the build it holds in).",
         f"START_TABLE = {d['start_table']!r}",
+        f"DATA_BUILD = {d['build']!r}",
         "",
     ]
     return "\n".join(out)
