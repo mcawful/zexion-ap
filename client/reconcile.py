@@ -36,13 +36,14 @@ PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
-# Items whose byte cannot be written: Zexion (the goal) and the Energy Shield, whose byte is
-# not understood (docs/re/save-format.md).
-NOT_GRANTABLE = {31, 50}
-# Filler the game does not keep in its own byte: a collected Scrap Energy or Area Map left its
-# byte at 0 in the owner's randomizer save while Scrap Metal's count rose (docs/re/save-format.md,
-# "Inventory"). Scrap Chunk (48) is assumed to behave the same. Never given, never reported.
-FILLER_WITHOUT_BYTE = {47, 48, 49}
+# Items whose byte cannot be written: Zexion (the goal).
+NOT_GRANTABLE = {31}
+# Items the game does not keep in their own byte. A collected Scrap Energy or Area Map left its
+# byte at 0 in the owner's randomizer save while Scrap Metal's count rose, and Scrap Chunk (48)
+# is assumed to behave the same; a collected Energy Shield left byte 50 at 0 in a live game
+# (docs/re/save-format.md, "Inventory"). The game hands them out itself: never given, never
+# reported.
+WITHOUT_BYTE = {47, 48, 49, 50}
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
@@ -94,7 +95,7 @@ def grants(inventory: bytes, target: Counter[int]) -> Grants:
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
         missing = want - have[item]
-        if missing <= 0 or item in FILLER_WITHOUT_BYTE:
+        if missing <= 0 or item in WITHOUT_BYTE:
             continue
         if item in NOT_GRANTABLE:
             stuck[item] = missing

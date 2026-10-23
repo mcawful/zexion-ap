@@ -16,10 +16,10 @@ Once connected:
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
-  2026-10-22 with a Standard seed). For a seed whose mode
+  2026-10-22 with Standard and Easy seeds). For a seed whose mode
   the choice cannot set up (OHKO), RANDOMIZER stays, and a randomizer game started in the
-  seed's mode gets the AP seed written in as the game builds it (run in game for Standard
-  only). ``--keep-randomizer`` takes that path for every seed, leaving RANDOMIZER on the
+  seed's mode gets the AP seed written in as the game builds it (run in game for Standard,
+  Easy and OHKO). ``--keep-randomizer`` takes that path for every seed, leaving RANDOMIZER on the
   panel. One new game per connection: reconnect to start another. A seed whose starting
   items a new game cannot hold falls back to /prepare.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
@@ -178,7 +178,10 @@ class ZexionContext(CommonContext):
         if self.session is not None:
             self.session.helper = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
-        self.newgame_state = None
+        # A plan the lost helper held is armed again in the next one; a new game already made
+        # (or a seed that cannot make one) stays as it is: one new game per connection.
+        if self.newgame_state == "armed":
+            self.newgame_state = None
         self.disarm_pending = False
 
     def received(self) -> tuple[list[int], list[str]]:

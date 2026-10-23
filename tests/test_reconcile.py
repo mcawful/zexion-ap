@@ -87,9 +87,15 @@ def test_a_third_copy_of_a_weapon_is_reported() -> None:
 
 
 def test_items_that_cannot_be_written_are_reported() -> None:
+    target = rc.should_own(START, TABLE, set(), [31])
+    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    assert g.inventory == {} and g.not_grantable == {31: 1}
+
+
+def test_an_energy_shield_is_neither_given_nor_reported() -> None:
     target = rc.should_own(START, TABLE, set(), [50, 50])
     g = rc.grants(inv(i0=3, i1=3, i4=1), target)
-    assert g.inventory == {} and g.not_grantable == {50: 2}
+    assert g.inventory == {} and g.not_grantable == {}
 
 
 def test_should_own_counts_start_and_upgrade_codes_under_the_weapon() -> None:
