@@ -163,17 +163,17 @@ void test_restyle_and_names() {
     items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
     items.watch(holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
-    check(get16(g_scrap, 0x02) == 63 && get16(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0xEE,
-          "the logo frame, one frame, the logo glyph");
+    check(get16(g_scrap, 0x02) == 63 && get16(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0,
+          "the logo frame, one frame, no icon of its own (the name starts with the glyph)");
     check(get16(g_scrap, 0x40) == -1, "no refill drop at pickup");
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
     check(get16(g_scrap, 0x60) == 244 && get16(g_scrap, 0x3C) == 46, "the rest left alone");
     check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
-    check(get16(g_chunk, 0x02) == 95 && get16(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0xEE &&
+    check(get16(g_chunk, 0x02) == 95 && get16(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0 &&
               get16(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     items.watch(holder(), 7);
-    check(name() == "ARCHIPELAGO ITEM", "elsewhere, the general name");
+    check(name() == "\xEE" "ARCHIPELAGO ITEM", "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
     items.set_labels({{7, long_name}});
     items.watch(holder(), 7);
@@ -335,12 +335,20 @@ void test_painting() {
 void test_label_parser() {
     std::map<int, std::string> out;
     check(zap::parse_labels("ap_labels\nlabel 5 2 4d617374657220537764", out).empty(), "parses");
-    check(out.size() == 1 && out[2 * 54 + 5] == "MASTER SWD", "upper-cased, by cell");
+    check(out.size() == 1 && out[2 * 54 + 5] == "\xEE" "MASTER SWD",
+          "upper-cased, by cell, after the glyph; one line as it is");
+    out.clear();
+    zap::parse_labels("ap_labels\nlabel 5 2 " + std::string("4d617020576964746826") + "0a" +
+                          "466f722046696e646572",
+                      out);
+    check(out[2 * 54 + 5] ==
+              std::string(6, ' ') + "\xEE" "MAP WIDTH&" + std::string(7 + 7, ' ') + "FOR FINDER",
+          "two lines, each centered");
     out.clear();
     zap::parse_labels("ap_labels\nlabel 1 1 c3a97e", out);
-    check(out[55] == "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
+    check(out[55] == "\xEE" "ARCHIPELAGO ITEM", "nothing the font draws: the general name");
     zap::parse_labels("ap_labels\nlabel 2 1 41004221", out);
-    check(out[56] == "AB!", "a NUL byte is dropped, not kept");
+    check(out[56] == "\xEE" "AB!", "a NUL byte is dropped, not kept");
     std::map<int, std::string> bad;
     check(!zap::parse_labels("ap_labels\nlabel 54 0 41", bad).empty(), "a cell off the map");
     check(!zap::parse_labels("ap_labels\nlabel 1 1 4", bad).empty(), "odd hex");

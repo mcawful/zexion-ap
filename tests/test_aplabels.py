@@ -6,9 +6,8 @@ import aplabels as al
 
 
 def lines(text: str) -> list[str]:
-    """The popup's lines: the icon, then the label, 24 characters a line."""
-    shown = "@" + text
-    return [shown[i : i + 24].rstrip() for i in range(0, len(shown), 24)]
+    """The popup's lines as the helper gets them: the logo glyph ("@" here) starts the first."""
+    return ["@" + line if i == 0 else line for i, line in enumerate(text.split("\n"))]
 
 
 def test_a_label_names_the_item_then_its_player_on_the_next_line() -> None:
@@ -26,10 +25,10 @@ def test_long_names_are_cut_at_a_word() -> None:
     ]
 
 
-def test_a_label_is_at_most_49_bytes() -> None:
+def test_each_line_fits_the_popup() -> None:
     text = al.label("A" * 60, "P" * 60)
-    assert len(text) <= 49
     assert lines(text) == ["@" + "A" * 23, "FOR " + "P" * 20]
+    assert all(len(line) <= 24 for line in lines(text))
 
 
 def test_characters_the_font_lacks_are_dropped() -> None:

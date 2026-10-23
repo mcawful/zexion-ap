@@ -383,42 +383,57 @@ bool Game::popup_busy() const {
            at<int32_t>(last, kMessageFramesLeft) > 1;
 }
 
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line) {
-    // The message routine lays text out per_line characters a line and cuts wherever a line
-    // ends (docs/re/memory.md, "Other players' items"), so the suffix starts a line of its own:
-    // the head is padded to the end of its line, and the suffix's words are wrapped, each line
-    // but the last padded the same way.
-    std::string text = head;
-    if (suffix.empty() || per_line <= 0) return text;
-    auto pad = [&] {
-        size_t rest = text.size() % static_cast<size_t>(per_line);
-        if (rest != 0) text.append(static_cast<size_t>(per_line) - rest, ' ');
-    };
-    pad();
-    size_t column = 0;
-    std::istringstream words(suffix);
+std::vector<std::string> wrap_words(const std::string& text, size_t width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::istringstream words(text);
     std::string word;
     while (words >> word) {
-        while (word.size() > static_cast<size_t>(per_line)) {  // longer than a line: cut it
-            if (column != 0) {
-                pad();
-                column = 0;
-            }
-            text += word.substr(0, static_cast<size_t>(per_line));
-            word.erase(0, static_cast<size_t>(per_line));
+        while (word.size() > width) {  // longer than a line: cut it
+            if (!line.empty()) lines.push_back(line);
+            line.clear();
+            lines.push_back(word.substr(0, width));
+            word.erase(0, width);
         }
-        if (column != 0 && column + 1 + word.size() > static_cast<size_t>(per_line)) {
-            pad();
-            column = 0;
+        if (word.empty()) continue;
+        if (!line.empty() && line.size() + 1 + word.size() > width) {
+            lines.push_back(line);
+            line.clear();
         }
-        if (column != 0) {
-            text += ' ';
-            ++column;
+        if (!line.empty()) line += ' ';
+        line += word;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+std::string center_lines(const std::vector<std::string>& lines, int per_line) {
+    // The message routine lays text out per_line characters a line and cuts wherever a line
+    // ends, with no line-break code, and sizes a one-line box to its text (docs/re/memory.md,
+    // "Other players' items"). So with more than one line, each is centered by spaces before it
+    // and padded with spaces to the end of its line; one line stays as it is.
+    if (lines.size() == 1 || per_line <= 0) return lines.empty() ? std::string() : lines[0];
+    const size_t width = static_cast<size_t>(per_line);
+    std::string text;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string& line = lines[i];
+        if (line.size() < width) text.append((width - line.size()) / 2, ' ');
+        text += line;
+        if (i + 1 < lines.size() && text.size() % width != 0) {
+            text.append(width - text.size() % width, ' ');
         }
-        text += word;
-        column += word.size();
     }
     return text;
+}
+
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line) {
+    std::vector<std::string> lines{head};
+    if (per_line > 0) {
+        for (std::string& line : wrap_words(suffix, static_cast<size_t>(per_line))) {
+            lines.push_back(std::move(line));
+        }
+    }
+    return center_lines(lines, per_line);
 }
 
 void Game::pump_popups() {
@@ -656,18 +671,35 @@ std::string parse_labels(const std::string& request, std::map<int, std::string>&
             !parse_hex(hex, raw)) {
             return "bad line " + line;
         }
-        std::string name;
+        // Up to two lines (the item, then whom it is for), each kept to the font's characters
+        // and to its line: the first after the logo glyph.
+        std::vector<std::string> parts{std::string()};
         for (uint8_t c : raw) {
+            if (c == '\n') {
+                if (parts.size() == 2) break;
+                parts.emplace_back();
+                continue;
+            }
+            std::string& part = parts.back();
             if (std::isalpha(c)) {
-                name += static_cast<char>(std::toupper(c));
+                part += static_cast<char>(std::toupper(c));
             } else if (std::isdigit(c) ||
                        (c != 0 && std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr)) {
-                name += static_cast<char>(c);
+                part += static_cast<char>(c);
             }
-            if (name.size() >= kItemNameMax) break;
         }
+        std::vector<std::string> shown;
+        for (size_t i = 0; i < parts.size(); ++i) {
+            size_t width = static_cast<size_t>(kPopupPerLine) - (i == 0 ? 1 : 0);
+            std::vector<std::string> wrapped = wrap_words(parts[i], width);
+            std::string text = wrapped.empty() ? std::string() : wrapped.front();
+            if (i == 0 && text.empty()) text = kApItemName;
+            if (i == 0) text.insert(text.begin(), static_cast<char>(kApItemGlyph));
+            if (!text.empty()) shown.push_back(text);
+        }
+        std::string name = center_lines(shown, kPopupPerLine);
+        if (name.size() > kItemNameMax) name.resize(kItemNameMax);
         while (!name.empty() && name.back() == ' ') name.pop_back();
-        if (name.empty()) name = "ARCHIPELAGO ITEM";
         out[static_cast<int>(y * 54 + x)] = name;
     }
     return "";

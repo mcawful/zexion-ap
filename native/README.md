@@ -87,7 +87,8 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
       - `start_table HEX`, the menu's start table, 5 bytes per room (x, y, flag), for a mode
         with Double Teleport.
     - `ap_labels` and then lines `label X Y HEX` → `labeled N`, or `refused not configured`
-      or `refused no frame`: names for other players' items, by map cell (below).
+      or `refused no frame`: names for other players' items, by map cell (below); HEX is the
+      item and whom it is for, joined by a newline.
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
@@ -114,9 +115,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
   - The text is the item's icon and name from the game's own item record, then the client's
     suffix (`FROM ALICE`), with any character the game's font does not draw left out. The game
-    lays a popup out 24 characters a line and cuts wherever a line ends, so the name is padded
-    with spaces to the end of its line and the suffix starts the next, its words wrapped the
-    same way (`popup_text` in `src/game_calls.cpp`).
+    lays a popup out 24 characters a line and cuts wherever a line ends, so the suffix starts
+    a line of its own, its words wrapped, and each line is centered with spaces before it and
+    padded with spaces after (`popup_text` and `center_lines` in `src/game_calls.cpp`).
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
@@ -154,10 +155,12 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   `label X Y HEX`: a name per map cell for the stand-in items, Scrap Energy (47) and Scrap
   Chunk (48), which the world gives every location holding another player's item (48 for a
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
-  records against the game's own values and restyles them (their in-world frames and popup
-  icon pointed at frames and a glyph that are empty in the game's art, no refill drop at
-  pickup), names them after the label for the player's map cell (or ARCHIPELAGO ITEM), so
-  the game's own pickup popup shows "MASTER SWORD FOR ALICE", and now and then paints
+  records against the game's own values and restyles them (their in-world frames pointed at
+  frames that are empty in the game's art, no refill drop at pickup), names them after the
+  label for the player's map cell (or ARCHIPELAGO ITEM): the logo glyph, then the label laid
+  out as the popups below are, so the game's own pickup popup shows "MASTER SWORD" over "FOR
+  ALICE", both centered (the records keep no icon of their own, so the name is shown as
+  written), and now and then paints
   Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
   its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
   is current in the swap hook), after checking the texture is the 2048 x 2048 sprite sheet
