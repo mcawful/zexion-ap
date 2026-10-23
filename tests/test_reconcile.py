@@ -98,6 +98,12 @@ def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     assert g.inventory == {46: 2} and g.not_grantable == {}
 
 
+def test_shields_owed_are_the_received_ones_not_yet_spawned() -> None:
+    assert rc.shields_owed([50, 3, 50, 50], 1) == 2
+    assert rc.shields_owed([50], 3) == 0
+    assert rc.shields_owed([], 0) == 0
+
+
 def test_should_own_counts_start_and_upgrade_codes_under_the_weapon() -> None:
     assert rc.should_own({9: 1}, TABLE, set(), [3]) == Counter({3: 2})
 

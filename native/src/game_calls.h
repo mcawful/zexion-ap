@@ -184,6 +184,13 @@ public:
     void restore_ap_items();
     // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
     // a frame to put them back.
+    // Game thread, every frame: notes how long the player has been in play in one cell.
+    void note_play(uint64_t now_ms);
+    // Game thread (the `shield` request): spawns a received Energy Shield the way its pickup
+    // does, once the player has been in play in one cell for a second: "spawned", or
+    // "refused <why>".
+    std::string spawn_shield(uint64_t now_ms);
+
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
                looks_.dressed();
@@ -255,8 +262,10 @@ private:
     BYTE* frame_clock_ = nullptr;
     BYTE* sprite_templates_ = nullptr;
     BYTE* event_handlers_ = nullptr;  // the area-event handlers, by event type
-    // Game thread, in play: runs a received item's pickup event (the Energy Shield's).
-    bool run_item_event(uint8_t item);
+    // Runs a received item's pickup event (the Energy Shield's): "" or why not.
+    std::string run_item_event(uint8_t item);
+    int play_cell_ = -1;
+    uint64_t play_since_ms_ = 0;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record

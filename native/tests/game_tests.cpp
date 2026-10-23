@@ -826,36 +826,38 @@ void shield_records(int16_t object) {
 }
 
 void test_received_shield() {
-    {
-        zap::Game game;
-        game.configure(GetModuleHandleW(nullptr), stand_in_config());
-        reset_game();
-        shield_records(2018);
-        apply(game, "apply\npopup 50 FROM ALICE");
-        game.pump_popups();
-        check(g_messages == 1, "a received Energy Shield pops up");
-        check(g_spawn_calls == 1 && g_spawn_row == 4 && g_spawn_column == 7 &&
-                  g_spawn_event == g_events + 3553 * 0x28,
-              "and runs its pickup event, the type-11 handler, from the player's cell");
-    }
-    {
-        zap::Game game;
-        game.configure(GetModuleHandleW(nullptr), stand_in_config());
-        reset_game();
-        shield_records(2017);  // not the event traced
-        apply(game, "apply\npopup 50 FROM ALICE");
-        game.pump_popups();
-        check(g_messages == 1 && g_spawn_calls == 0, "an event not as traced is not run");
-    }
-    {
-        zap::Game game;
-        game.configure(GetModuleHandleW(nullptr), stand_in_config());
-        reset_game();
-        shield_records(2018);
-        apply(game, "apply\npopup 36 FROM ALICE");
-        game.pump_popups();
-        check(g_messages == 1 && g_spawn_calls == 0, "other items run no event");
-    }
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    shield_records(2018);
+    apply(game, "apply\npopup 50 FROM ALICE");
+    game.pump_popups();
+    check(g_messages == 1 && g_spawn_calls == 0, "the popup alone spawns nothing");
+
+    check(game.spawn_shield(5000) == "refused not settled", "not before the player has settled");
+    game.note_play(5000);
+    check(game.spawn_shield(5500) == "refused not settled", "half a second is not enough");
+    game.note_play(5600);
+    check(game.spawn_shield(6000) == "spawned", "a second in one cell: spawned");
+    check(g_spawn_calls == 1 && g_spawn_row == 4 && g_spawn_column == 7 &&
+              g_spawn_event == g_events + 3553 * 0x28,
+          "through the type-11 handler, from the player's cell, with event 3553");
+
+    field<uint8_t>(0x107A) = 5;  // another cell: settling starts again
+    game.note_play(6100);
+    check(game.spawn_shield(6500) == "refused not settled", "a new cell settles again");
+    field<int16_t>(0xCEA) = 0;  // dead
+    game.note_play(8000);
+    check(game.spawn_shield(9000) == "refused not settled", "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    field<uint8_t>(0x107A) = 0xFF;  // the raw cell can be -1
+    game.note_play(10000);
+    check(game.spawn_shield(11500) == "refused off the map", "not from off the map");
+    field<uint8_t>(0x107A) = 4;
+    game.note_play(12000);
+    shield_records(2017);  // not the event traced
+    check(game.spawn_shield(13500) == "refused event not as traced", "an event not as traced");
+    check(g_spawn_calls == 1, "nothing else spawned");
     reset_events();
 }
 

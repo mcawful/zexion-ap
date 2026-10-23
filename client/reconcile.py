@@ -45,6 +45,9 @@ NOT_GRANTABLE = {31}
 # players' items are Scrap Energy in this world's locations) or received.
 SCRAP_METAL = 46
 COUNTED_AS_SCRAP = {47, 48, 49, 50}
+# The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
+# "Received Energy Shields"), which the helper does for a received one.
+ENERGY_SHIELD = 50
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
@@ -72,6 +75,11 @@ def should_own(
     for item in received:
         count(item)
     return total
+
+
+def shields_owed(received: Iterable[int], spawned: int) -> int:
+    """How many received Energy Shields have not been spawned yet."""
+    return max(0, sum(1 for item in received if item == ENERGY_SHIELD) - max(0, spawned))
 
 
 def owned(inventory: bytes) -> Counter[int]:
