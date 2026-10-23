@@ -47,7 +47,7 @@ OPTIONS = 0x1308F  # setting t at OPTIONS + t
 
 SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
-WRITABLE_ITEMS = range(0, 50)  # item 50's byte is not understood (client/game.py)
+WRITABLE_ITEMS = range(0, 50)  # not byte 50: the game keeps the Energy Shield elsewhere (game.py)
 ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
 # Where the save keeps current bombs is not known, so a seed cannot start with bombs.
 BOMB_ITEMS = (2, 37)  # Mega Bomb, Bomb Box
