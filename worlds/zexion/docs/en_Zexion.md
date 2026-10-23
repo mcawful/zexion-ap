@@ -8,11 +8,12 @@ in Zexion can belong to other players, and their games can send items to you.
 
 ## What is the goal?
 
-Reaching the ending: the first cutscene after you board the ship. Getting there starts with
-grabbing Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys; after the grab
-the game offers to skip the escape and the final battle to just before the ship, so the seed's
-logic asks for no more than the grab. Finishing the escape and the battle yourself reaches the
-same ending.
+Reaching the ending: the first cutscene after you board the ship. Getting there means grabbing
+Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys, then the escape and the
+final battle. The seed's logic only makes sure you can reach the grab; the escape needs the
+Zenith Thrusters, which the logic does not yet ask for, so a seed can leave you unable to
+finish it. (The game offers to skip the escape and the battle only on a save that has already
+finished the game.)
 
 ## Which modes are there?
 
