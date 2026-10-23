@@ -153,7 +153,7 @@ void test_restyle_and_names() {
     check(get16(g_scrap, 0x02) == 63 && get16(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0xEE,
           "the logo frame, one frame, the logo glyph");
     check(get16(g_scrap, 0x40) == -1, "no refill drop at pickup");
-    check(g_scrap[0x09] == 5, "the Navcore's steady palette, not Scrap Energy's flashing one");
+    check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
     check(get16(g_scrap, 0x60) == 244 && get16(g_scrap, 0x3C) == 46, "the rest left alone");
     check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
     items.watch(holder(), 7);

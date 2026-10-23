@@ -5,8 +5,7 @@
 // `Objects` file, 100 bytes per record behind `item_records`; docs/re/memory.md, "Other
 // players' items"): its in-world animation points at frame 63 of the item sprites (one frame,
 // transparent in the game's own art), its popup icon at the font's glyph 0xEE (empty in the
-// game's own art), its palette is the Navcore's (Scrap Energy's flashes), and its pickup no
-// longer runs area event 3549 (a refill drop). The helper
+// game's own art), and its pickup no longer runs area event 3549 (a refill drop). The helper
 // paints an Archipelago logo into that frame and glyph of the game's sprite texture (OpenGL,
 // from the per-frame call, where the game's context is current), and names the record after
 // the location in the cell the player stands in ("MASTER SWORD FOR ALICE"), or "ARCHIPELAGO

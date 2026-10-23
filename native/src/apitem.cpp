@@ -22,9 +22,6 @@ constexpr char kOwnName[] = "SCRAP ENERGY";
 // What it becomes.
 constexpr int16_t kLogoFrame = 63, kLogoFrames = 1, kNoEvent = -1;
 constexpr uint8_t kLogoGlyph = 0xEE;
-// The Navcore's and Slide Mod's palette: Scrap Energy's (8) flashes, which the logo should not.
-// Rooms read it as they load (docs/re/memory.md), so it shows from the next room on.
-constexpr uint8_t kLogoPalette = 5;
 constexpr char kDefaultName[] = "ARCHIPELAGO ITEM";
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
@@ -44,26 +41,27 @@ constexpr unsigned kUnpackBufferBinding = 0x88EF, kPackBufferBinding = 0x88ED;
 constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then skip rows, pixels
 
 // The logo: Archipelago's six circles, each cutting a gap into the one drawn before, as in its
-// logo (data/icon.png in Archipelago), at 16 x 16. Levels 0 to 3, -1 transparent: the game's
-// sprite shader (Files/spriteFragment.glfs) draws palette color int(red * 3), so the levels
-// are written as the reds 0x00, 0x67, 0xCC, 0xFF, as in the game's grey sprites.
+// logo (data/icon.png in Archipelago), at 16 x 16, each circle in its own color of Scrap
+// Energy's palette. Each value is a palette entry, -1 transparent: items are drawn with
+// Files/tileFragment.glfs, which shows entry int(red * 3 + green * 6 + blue * 9) of the item's
+// 19-color palette (docs/re/memory.md, "Other players' items").
 constexpr int8_t kLogo[16][16] = {
-    {-1, -1, -1, -1, -1,  0,  3,  3,  2,  2,  0, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1,  3,  3,  2,  2,  2,  2, -1, -1, -1, -1, -1},
-    {-1,  0,  3,  3,  0, -1,  2,  2,  2,  2, -1,  0,  3,  0,  0, -1},
-    { 0,  3,  3,  2,  2,  2, -1,  2,  2, -1,  3,  3,  3,  2,  2,  0},
-    { 3,  3,  2,  2,  2,  2,  0,  2,  1,  0,  3,  3,  2,  2,  2,  2},
-    { 3,  2,  2,  2,  2,  1,  0,  1,  1,  0,  3,  2,  2,  2,  2,  1},
-    { 2,  2, -1, -1, -1,  1,  0, -1, -1,  0,  2, -1, -1, -1, -1,  1},
-    {-1,  0,  3,  3,  0,  0, -1, -1, -1, -1,  0,  3,  3,  3,  0, -1},
-    { 0,  3,  3,  2,  2,  2, -1, -1, -1, -1,  3,  3,  3,  2,  2,  0},
-    { 3,  3,  2,  2,  2,  2, -1,  0,  0, -1,  3,  3,  2,  2,  2,  2},
-    { 3,  2,  2,  2,  2,  0,  3,  3,  3,  2,  0,  2,  2,  2,  1,  1},
-    { 2,  2,  2,  2, -1,  3,  3,  3,  2,  2,  2, -1,  2,  1,  1,  1},
-    { 0,  2,  2,  1,  0,  3,  3,  2,  2,  2,  1,  0,  1,  1,  1,  0},
-    {-1,  0,  0,  0,  0,  3,  2,  2,  2,  1,  1,  0,  0,  0,  0, -1},
-    {-1, -1, -1, -1, -1,  2,  2,  2,  1,  1,  1, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1,  0,  2,  1,  1,  1,  0, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
+    {-1,  0,  9,  9,  0, -1,  3,  3,  3,  3, -1,  0,  1,  0,  0, -1},
+    { 0,  9,  9,  9,  9,  9, -1,  3,  3, -1,  1,  1,  1,  1,  1,  0},
+    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
+    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
+    { 9,  9, -1, -1, -1,  9,  0, -1, -1,  0,  1, -1, -1, -1, -1,  1},
+    {-1,  0, 10, 10,  0,  0, -1, -1, -1, -1,  0,  5,  5,  5,  0, -1},
+    { 0, 10, 10, 10, 10, 10, -1, -1, -1, -1,  5,  5,  5,  5,  5,  0},
+    {10, 10, 10, 10, 10, 10, -1,  0,  0, -1,  5,  5,  5,  5,  5,  5},
+    {10, 10, 10, 10, 10,  0,  8,  8,  8,  8,  0,  5,  5,  5,  5,  5},
+    {10, 10, 10, 10, -1,  8,  8,  8,  8,  8,  8, -1,  5,  5,  5,  5},
+    { 0, 10, 10, 10,  0,  8,  8,  8,  8,  8,  8,  0,  5,  5,  5,  0},
+    {-1,  0,  0,  0,  0,  8,  8,  8,  8,  8,  8,  0,  0,  0,  0, -1},
+    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  8, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, -1, -1, -1, -1, -1},
 };
 // The popup icon: 8 x 8, white like the game's own icon glyphs: Archipelago's ring of six dots,
 // one at the top and one at the bottom as in its logo.
@@ -71,7 +69,13 @@ constexpr char kGlyph[8][9] = {
     "...##...", "##.##.##", "##....##", "........",
     "........", "##....##", "##.##.##", "...##...",
 };
-constexpr uint8_t kShade[4] = {0x00, 0x67, 0xCC, 0xFF};
+// A color for each palette entry, in the middle of its range of int(r * 3 + g * 6 + b * 9).
+constexpr uint8_t kEntryRgb[19][3] = {
+    {0, 0, 0},       {128, 0, 0},     {212, 0, 0},     {255, 21, 0},    {255, 64, 0},
+    {255, 106, 0},   {255, 149, 0},   {255, 191, 0},   {255, 234, 0},   {255, 255, 14},
+    {255, 255, 42},  {255, 255, 71},  {255, 255, 99},  {255, 255, 128}, {255, 255, 156},
+    {255, 255, 184}, {255, 255, 212}, {255, 255, 241}, {255, 255, 255},
+};
 
 template <typename T>
 T& at(BYTE* p, ptrdiff_t offset) {
@@ -152,7 +156,6 @@ void ApItems::watch(BYTE* holder, int cell) {
         at<int16_t>(r, kEvent) = kNoEvent;
     }
     record_ = r;  // ours now, or already (left by a helper that unloaded without a frame)
-    if (r[kPalette] != kLogoPalette) r[kPalette] = kLogoPalette;
     auto it = labels_.find(cell);
     const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
     char want[kItemNameMax + 1] = {};
@@ -234,8 +237,10 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear) {
             for (int y = 0; y < 16; ++y) {
                 for (int x = 0; x < 16; ++x) {
                     if (kLogo[y][x] < 0) continue;
-                    uint8_t shade = kShade[kLogo[y][x]];
-                    frame[y][x][0] = frame[y][x][1] = frame[y][x][2] = shade;
+                    const uint8_t* rgb = kEntryRgb[kLogo[y][x]];
+                    frame[y][x][0] = rgb[0];
+                    frame[y][x][1] = rgb[1];
+                    frame[y][x][2] = rgb[2];
                     frame[y][x][3] = 0xFF;
                 }
             }
