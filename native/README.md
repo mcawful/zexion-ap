@@ -164,9 +164,9 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   `ap_labels` with no lines takes the labels back. Unload restores the records (and any an
   earlier helper left restyled) and clears the pixels; it refuses (`error the stand-in item
   is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
-  the game since 2026-10-23 (logo, named popup, restore on disconnect and on unload); the
-  progression stand-in and its arrow not yet run in the game (`docs/re/memory.md`, "Other
-  players' items", which also lists its limits).
+  the game since 2026-10-23 (both logos, the flashing arrow, named popup, restore on
+  disconnect and on unload; `docs/re/memory.md`, "Other players' items", which also lists its
+  limits).
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
