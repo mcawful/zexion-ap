@@ -50,5 +50,7 @@ the items other players find for you (only while you are in play, not in menus),
 your goal when the ending begins, as you leave on the ship after grabbing Zexion in the core. If you die or reload, items received since your
 last save are given again. With the DeathLink option on, the client also sends your deaths to
 the other players and ends your life when one of them dies; the second part needs the helper.
+With Area Map hints on (the default), each Area Map you get makes an Archipelago hint for one
+of your upgrades or keys, and the helper shows it in a popup.
 
 Only play the seed's slot while the client is connected.

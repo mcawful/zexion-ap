@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, PerGameCommonOptions, Toggle
+from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Toggle
 
 from .data import CELL_AREAS, MODES
 
@@ -66,9 +66,22 @@ class AllowAssists(Toggle):
     display_name = "Allow Assists"
 
 
+class AreaMapHints(DefaultOnToggle):
+    """Makes each Area Map a hint. Every Area Map this player gets, found in this world or
+    sent by another player, reveals where one of this player's upgrades or keys not received
+    yet is, in any world (supplies such as Missile Containers are not hinted): the client
+    creates an Archipelago hint for it, shown in every player's hint list, and with the
+    client's in-game helper a popup names it ("HINT: SLIDE MOD IS AT GUARDIA 22,7", with "IN
+    ALICE'S WORLD" after another world's location). Off, an Area Map is filler that counts as
+    Scrap Metal."""
+
+    display_name = "Area Map Hints"
+
+
 @dataclass
 class ZexionOptions(PerGameCommonOptions):
     mode: Mode
     start_room: StartRoom
     death_link: DeathLink
     allow_assists: AllowAssists
+    area_map_hints: AreaMapHints

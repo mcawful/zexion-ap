@@ -17,6 +17,7 @@ from .items import (
     FILLER_NAME,
     GAME,
     GAME_ITEMS,
+    ITEM_ID_BASE,
     KEYS,
     NAMES,
     PROGRESSIVE,
@@ -40,6 +41,9 @@ FILLER_ORDER = (46, 47, 48, 49)
 # Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item; all are
 # filler the game counts as Scrap Metal.
 FOREIGN, FOREIGN_PROGRESSION, SCRAP_METAL = 47, 48, 46
+# Supplies, with many copies in every pool (Energy Tank, Missile Container, Mega Bomb, Missile
+# Box, Bomb Box): progression for the rules' counts, but not worth an Area Map's hint.
+NOT_HINTED = {0, 1, 2, 36, 37}
 SCRAP_ENERGY, SCRAP_CHUNK = 47, 48
 
 
@@ -239,7 +243,29 @@ class ZexionWorld(World):
             "stand_in_progression": FOREIGN_PROGRESSION,
             "death_link": bool(self.options.death_link),
             "allow_assists": bool(self.options.allow_assists),
+            "hints": self.hint_targets() if self.options.area_map_hints else [],
         }
+
+    def hint_targets(self) -> list[list[int]]:
+        """Where each of this player's progression items is, as [player, location id, item
+        code], in a random order: the client hints the next one the player does not have for
+        each Area Map (client/hints.py). Supplies (NOT_HINTED), starting items, which are in no
+        location, and events are left out."""
+        out = []
+        for location in self.multiworld.get_filled_locations():
+            item = location.item
+            if (
+                item.player != self.player
+                or not item.advancement
+                or item.code is None
+                or location.address is None
+                or item.code - ITEM_ID_BASE in NOT_HINTED
+            ):
+                continue
+            out.append([location.player, location.address, item.code - ITEM_ID_BASE])
+        out.sort()  # the multiworld's order, so the shuffle below alone decides
+        self.random.shuffle(out)
+        return out
 
     def menu_setup(self) -> dict[str, Any] | None:
         """The randomizer menu as this seed's mode, for the client's ARCHIPELAGO choice

@@ -14,6 +14,7 @@ from ..world import (
     FOREIGN,
     FOREIGN_PROGRESSION,
     GOAL_CELL,
+    NOT_HINTED,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
     SCRAP_METAL,
@@ -274,3 +275,43 @@ class TestOHKOSlotData(ZexionTestBase):
         left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
         self.assertTrue(left_out)
         self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
+
+
+class TestAreaMapHints(ZexionTestBase):
+    """Area Maps are hints by default: the slot data lists where this player's progression
+    items are, for the client (client/hints.py)."""
+
+    def test_the_hint_list_holds_every_placed_progression_item_but_supplies_once(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        hints = self.world.fill_slot_data()["hints"]
+        placed = [
+            loc
+            for loc in self.multiworld.get_filled_locations()
+            if loc.item.player == self.player
+            and loc.item.advancement
+            and loc.address is not None
+            and code_of[loc.item.name] not in NOT_HINTED
+        ]
+        self.assertEqual(len(hints), len(placed))
+        self.assertEqual(len({(p, loc) for p, loc, _ in hints}), len(hints), "no location twice")
+        for player, address, code in hints:
+            location = self.multiworld.get_location(
+                self.multiworld.worlds[player].location_id_to_name[address], player
+            )
+            self.assertEqual(code_of[location.item.name], code)
+            self.assertTrue(location.item.advancement)
+
+    def test_the_goal_event_and_supplies_are_not_hinted(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        codes = {code for _, _, code in self.world.fill_slot_data()["hints"]}
+        self.assertTrue({27, 28, 29, 30} <= codes, "the four keys are hinted")
+        self.assertTrue(all(isinstance(code, int) and 0 <= code <= 50 for code in codes))
+        self.assertFalse(codes & NOT_HINTED)
+
+
+class TestAreaMapHintsOff(ZexionTestBase):
+    options = {"area_map_hints": False}
+
+    def test_no_hints_without_the_option(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        self.assertEqual(self.world.fill_slot_data()["hints"], [])
