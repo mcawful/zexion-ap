@@ -21,7 +21,8 @@ to a group's count.
     randocells.py SAVE.sav --start X,Y        any randomizer save, from one given cell
         [--cells FILE]
 
-X, Y are in the order the game displays them (docs/re/randocells.md, "Grid order").
+--start takes X,Y as the pause screen shows them; cells printed are this repo's (x, y), which
+the game shows as X = y, Y = x (docs/re/randocells.md, "Grid order").
 """
 
 from __future__ import annotations
@@ -457,7 +458,8 @@ def main(argv: list[str] | None = None) -> int:
     initial = inventory_from_save(data) if args.fresh else Counter()
     settings = Settings.from_save(data)
     if args.start:
-        start = tuple(int(v) for v in args.start.split(","))
+        shown_x, shown_y = (int(v) for v in args.start.split(","))
+        start = (shown_y, shown_x)
     elif args.fresh and starts_from_save(data):
         start = starts_from_save(data)
     else:

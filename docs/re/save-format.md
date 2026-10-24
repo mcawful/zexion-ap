@@ -212,7 +212,7 @@ backs up the slot first and works only while Zexion is closed).
 | Status | measured (layout, from the game's code and from saves; item 24's byte seen set by a pickup); working in game (items 16 and 17 granted live through it, see `memory.md`); measured (byte 50 still 0 after a live Energy Shield pickup, 2026-10-22) |
 | Method | disassembly of RVA `0x16DB41`; save comparison; live grants (`memory.md`); `grant.py show` after a live Energy Shield pickup; the item records' names read from the `Objects` file (`memory.md`, "Game functions the helper calls") |
 | Build | B1 |
-| Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20; the keys: `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav` and `slot25-after-ending.sav`, 2026-10-21; the filler: slot 2 in `lab/backups/20261021-102032-1/`, 2026-10-21; the names: records 26 and 37 of `lab/data/6d8a94bd4d64/Objects`, B1, 2026-10-22; the Energy Shield: picked up at map 16,20 in slot 9 (`lab/ap/live4/client.log`), then `grant.py show` listing no item 50, 2026-10-22. |
+| Evidence | `lab/backups/20261020-223111/`, `20261020-224429/`, `20261020-213828/` (slot 28), 2026-10-20; the keys: `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav` and `slot25-after-ending.sav`, 2026-10-21; the filler: slot 2 in `lab/backups/20261021-102032-1/`, 2026-10-21; the names: records 26 and 37 of `lab/data/6d8a94bd4d64/Objects`, B1, 2026-10-22; the Energy Shield: picked up at Kresezoa 20,16 in slot 9 (`lab/ap/live4/client.log`), then `grant.py show` listing no item 50, 2026-10-22. |
 
 ## The randomizer section holds the seed's settings
 
