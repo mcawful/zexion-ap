@@ -38,6 +38,11 @@ Once connected:
   the helper, or if it fails, items are written directly, with no popup, and the client tries
   the helper again every 30 seconds. ``/unload_helper`` unloads it as if it had failed, to
   test that.
+- For a seed with DeathLink on (slot data "death_link"), the client sends the player's deaths
+  (in play, then dead) to the other players, and deals the deaths received from them, queued,
+  through the helper, one each time the player is in play (client/deathlink.py): the one thing
+  the client does that costs the player progress, as a death goes back to the last save.
+  Live-tested 2026-10-23.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -71,6 +76,7 @@ from CommonClient import (  # noqa: E402
 from NetUtils import ClientStatus  # noqa: E402
 
 import aplabels  # noqa: E402
+import deathlink  # noqa: E402
 import game  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
@@ -88,6 +94,7 @@ NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
 LABELS_RETRY_SECONDS = 5.0
 SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
+DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 SHIELD_SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
 SHIELD_MISSES = 3  # spawns in a row not seen before backing off
 SHIELD_BACKOFF_SECONDS = 60.0
@@ -179,6 +186,12 @@ class ZexionContext(CommonContext):
         # the count was last sent.
         self.shield_given: tuple[str, int] | None = None
         self.shield_count_sent_at = 0.0
+        # DeathLink, when the seed's slot data turns it on (client/deathlink.py).
+        self.death_link_on = False
+        self.deaths = deathlink.DeathLink()
+        self.death_key: tuple | None = None  # (seed, team, slot) the deaths are for
+        self.death_retry_at = 0.0
+        self.death_said = ""
         # Counts connections and disconnects: a helper reply from an older one is dropped.
         self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
@@ -212,6 +225,14 @@ class ZexionContext(CommonContext):
             self.connection += 1
             self.shield_key = f"zexion_shields_{self.team}_{self.slot}"
             self.set_notify(self.shield_key)
+            death_key = (self.seed_name, self.team, self.slot)
+            if death_key != self.death_key:  # another seed or slot: nothing carries over
+                self.death_key = death_key
+                self.deaths = deathlink.DeathLink()
+            self.death_link_on = bool(slot.get("death_link", False))
+            asyncio.create_task(self.update_death_link(self.death_link_on))
+            if self.death_link_on:
+                logger.info("DeathLink is on for this seed.")
             # Only a world that says it gives other players' items the stand-in has them.
             self.foreign = aplabels.foreign_locations(
                 slot["location_items"], self.kept, aplabels.stand_ins(slot)
@@ -248,6 +269,18 @@ class ZexionContext(CommonContext):
             self.disarm_pending = True
         self.newgame_state = None
         await super().disconnect(allow_autoreconnect)
+
+    def on_deathlink(self, data: dict) -> None:
+        super().on_deathlink(data)
+        if not self.death_link_on:
+            return
+        queued = self.deaths.receive()
+        if queued > 1:
+            logger.info(f"DeathLink: {queued} deaths are queued, dealt one after another.")
+        if self.helper is None:
+            logger.warning(
+                "DeathLink: the in-game helper is not running, so the death waits for it."
+            )
 
     def drop_helper(self) -> None:
         if self.helper is not None:
@@ -472,6 +505,37 @@ async def send_shield_count(ctx: ZexionContext) -> None:
         logger.warning(f"Sending the Energy Shield count failed ({exc}); sending it again.")
 
 
+async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """Send a death of the player's own to the other players, and deal the ones received from
+    them, queued, through the helper, one each time the player is in play (client/deathlink.py)."""
+    now = time.monotonic()
+    state = game.NO_SAVE if step.left_seed else step.state
+    if ctx.deaths.observe(state, now):
+        try:
+            await ctx.send_death(f"{ctx.player_names.get(ctx.slot, 'A player')} died in Zexion.")
+        except Exception as exc:  # a closing connection: this death is not sent
+            logger.warning(f"DeathLink: sending the death failed ({exc}).")
+    if step.goal and ctx.deaths.owed:
+        ctx.deaths.ending()
+        logger.info("DeathLink: the ending began, so the received deaths queued are dropped.")
+    helper = ctx.helper
+    if not ctx.deaths.owed or helper is None or state != game.IN_PLAY or now < ctx.death_retry_at:
+        return
+    ctx.deaths.dealing(now)  # a death seen after a lost reply is this one
+    reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
+    if reply == "died":
+        ctx.deaths.dealt(time.monotonic())
+        ctx.death_said = ""
+        more = f" ({ctx.deaths.owed} more queued)" if ctx.deaths.owed else ""
+        logger.info(f"DeathLink: the received death was dealt{more}.")
+        return
+    ctx.deaths.refused()
+    if reply != ctx.death_said and reply != "refused not settled":
+        logger.info(f"DeathLink: the received death is waiting: {reply}")
+    ctx.death_said = reply
+    ctx.death_retry_at = time.monotonic() + DEATH_RETRY_SECONDS
+
+
 async def skip_tick(ctx: ZexionContext) -> None:
     """Once per helper, a moment after it attaches: say whether it offers the escape skip (it
     patches the game's event within 30 frames, or leaves an event it does not recognize)."""
@@ -610,6 +674,12 @@ async def game_loop(ctx: ZexionContext) -> None:
             await attach_helper(ctx)
         if step.left_seed and ctx.shield_pending is not None:
             ctx.shield_pending.left_play = True
+        if ctx.death_link_on and ctx.session is current:
+            try:
+                await deathlink_tick(ctx, step)
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+                ctx.drop_helper()
         if not step.seed_matches or ctx.session is not current:
             continue  # nothing to send, or the connection changed while the game was read
         shield_work = ctx.shield_pending is not None or ctx.shield_given is not None

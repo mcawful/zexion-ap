@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.9.0";
+constexpr char kVersion[] = "0.10.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -180,6 +180,15 @@ std::string handle(const std::string& request, bool& stop) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::string result;
         if (!g_mailbox.call([] { return g_game.spawn_shield(GetTickCount64()); }, kFrameWaitMs,
+                            result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "die") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (!g_mailbox.call([] { return g_game.kill(GetTickCount64()); }, kFrameWaitMs,
                             result)) {
             return "refused no frame";
         }

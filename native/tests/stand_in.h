@@ -187,6 +187,19 @@ inline uint64_t rva(const void* p) {
     return reinterpret_cast<uint64_t>(p) - reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
 }
 
+// The death routine and the byte it returns early on.
+inline BYTE g_halt_flag = 0;
+inline int g_deaths = 0;
+inline void* g_death_player = nullptr;
+inline int16_t g_death_energy = -100;
+inline char g_death_kind = -1;
+inline void death_fn(void* player, char kind) {
+    ++g_deaths;
+    g_death_player = player;
+    g_death_kind = kind;
+    std::memcpy(&g_death_energy, static_cast<BYTE*>(player) + 0xCEA, sizeof(g_death_energy));
+}
+
 inline std::map<std::string, uint64_t> stand_in_config() {
     return {
         {"inventory", rva(g_inventory)},
@@ -228,6 +241,8 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"frame_clock", rva(&g_frame_clock)},
         {"sprite_templates", rva(&g_sprite_templates)},
         {"event_handlers", rva(g_event_handlers)},
+        {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
+        {"halt_flag", rva(&g_halt_flag)},
     };
 }
 
@@ -237,6 +252,11 @@ inline void reset_game() {
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
+    g_halt_flag = 0;
+    g_deaths = 0;
+    g_death_player = nullptr;
+    g_death_energy = -100;
+    g_death_kind = -1;
     for (int i = 0; i < 64; ++i) g_palette_table[i] = g_palette_objects[i];
     g_frame_clock = 1000;
     g_template_list[34] = g_item_template;

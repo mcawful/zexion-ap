@@ -17,7 +17,7 @@ const char* const kConfigKeys[] = {
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
     "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
-    "event_handlers",
+    "event_handlers", "death_fn",      "halt_flag",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -64,6 +64,9 @@ constexpr ptrdiff_t kEventRecordSize = 0x28;
 constexpr uint8_t kSpawnEventType = 11;
 constexpr int16_t kShieldObject = 2018;
 constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before a shield
+// The player's death (docs/re/memory.md, "DeathLink"): death_fn(player, 0), as the game's
+// damage code calls it once energy is 0 or below.
+using DeathFn = void (*)(void* player, char kind);
 
 template <typename T>
 T& at(BYTE* p, ptrdiff_t offset) {
@@ -99,7 +102,7 @@ bool is_function(const std::string& key) {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
         "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
-        "rando_newgame_fn", "popup_width_code",
+        "rando_newgame_fn", "popup_width_code", "death_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -323,6 +326,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     frame_clock_ = found["frame_clock"];
     sprite_templates_ = found["sprite_templates"];
     event_handlers_ = found["event_handlers"];
+    death_fn_ = found["death_fn"];
+    halt_flag_ = found["halt_flag"];
     gl_ = load_gl();
     configured_ = true;
     return "";
@@ -510,6 +515,28 @@ std::string Game::spawn_shield(uint64_t now_ms) {
     }
     std::string why = run_item_event(kEnergyShield);
     return why.empty() ? "spawned" : "refused " + why;
+}
+
+std::string Game::kill(uint64_t now_ms) {
+    // A received DeathLink: the player dies as from damage, through the shield too. The game's
+    // damage code calls the death routine once energy is 0 or below (0x1B9D3A, 0x1F07A,
+    // 0x4771B); the helper sets energy to 0 and calls it the same way, once the player has been
+    // in play in one cell for a second (not during a load, a respawn or a room change). The
+    // routine returns at once while the halt flag is set, which would leave the player alive at
+    // 0 energy, so that is refused first. It also posts a message and writes through the
+    // result unchecked (0x1DA6E7, 0x1DA6EF), which is NULL when all four message slots are
+    // busy; each message cuts the previous one short, and the helper shows one popup at a
+    // time, so it waits until the last message has ended.
+    if (!configured_) return "refused not configured";
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
+        return "refused not settled";
+    }
+    if (*halt_flag_ != 0) return "refused halted";
+    if (popup_busy()) return "refused message showing";
+    BYTE* p = player();
+    at<int16_t>(p, kEnergy) = 0;
+    reinterpret_cast<DeathFn>(death_fn_)(p, 0);
+    return "died";
 }
 
 std::string Game::run_item_event(uint8_t item) {

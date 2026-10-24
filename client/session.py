@@ -102,6 +102,7 @@ class Step:
     # No save of this seed is loaded: the title or file-select screen, or another save. What
     # the game held in play is gone unless its save had it.
     left_seed: bool = False
+    state: str = ""  # the settled game.state() of this seed's save; "" when not read
 
 
 class Session:
@@ -163,7 +164,7 @@ class Session:
             goal = snap.inventory[GOAL_ITEM] >= 1
         else:
             goal = snap.ended >= 1 and snap.finale == 0
-        step = Step(collected, goal, {}, True)
+        step = Step(collected, goal, {}, True, state=snap.state)
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders)
         return step

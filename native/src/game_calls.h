@@ -190,6 +190,10 @@ public:
     // does, once the player has been in play in one cell for a second: "spawned", or
     // "refused <why>".
     std::string spawn_shield(uint64_t now_ms);
+    // Game thread (the `die` request, a received DeathLink): kills the player as the game's
+    // damage code does, once the player has been in play in one cell for a second and no
+    // message is showing: "died", or "refused <why>".
+    std::string kill(uint64_t now_ms);
 
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
@@ -266,6 +270,8 @@ private:
     std::string run_item_event(uint8_t item);
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
+    void* death_fn_ = nullptr;
+    BYTE* halt_flag_ = nullptr;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
