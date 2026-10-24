@@ -108,6 +108,7 @@ inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
 inline void panel_handler_fn() {}
 inline void rando_menu_fn(void*, int) {}
+inline void assist_menu_fn(void*, int) {}
 inline std::string g_steps;
 inline bool g_slot_taken = false;
 // The placement: reads the start, copies the menu's amounts into the section, and writes its
@@ -227,6 +228,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"widget_handler_fn", rva(reinterpret_cast<void*>(&widget_handler_fn))},
         {"panel_handler_fn", rva(reinterpret_cast<void*>(&panel_handler_fn))},
         {"rando_menu_fn", rva(reinterpret_cast<void*>(&rando_menu_fn))},
+        {"assist_menu_fn", rva(reinterpret_cast<void*>(&assist_menu_fn))},
         {"placement_fn", rva(reinterpret_cast<void*>(&placement_fn))},
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
         {"event_table", rva(&g_event_table)},

@@ -899,6 +899,32 @@ void test_received_death() {
     check(g_deaths == 1, "no other death");
 }
 
+void test_assist_watch() {
+    zap::Game game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                  reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    game.watch_assists();
+    check(options.callback() == &assist_menu_fn, "not armed: left alone");
+    game.set_assists_locked(true);
+    game.watch_assists();
+    check(options.callback() == nullptr &&
+              options.code(7) == zap::kLockGlyph && options.style() == 5,
+          "armed: ASSIST locked, with the padlock, in style 5");
+    game.set_assists_locked(false);
+    game.watch_assists();
+    check(options.callback() == &assist_menu_fn &&
+              options.code(7) == 0 && options.style() == 0x15,
+          "disarmed: put back");
+    game.set_assists_locked(true);
+    game.watch_assists();
+    game.restore_assists();
+    check(options.callback() == &assist_menu_fn,
+          "restored before an unload");
+    g_current_menu = nullptr;
+}
+
 void test_popup_text_breaks_before_the_sender() {
     int width = 0;
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
@@ -928,6 +954,7 @@ int main() {
     test_zexion_items_show_as_themselves();
     test_received_shield();
     test_received_death();
+    test_assist_watch();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();
