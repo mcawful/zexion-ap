@@ -9,8 +9,10 @@ from Options import OptionError
 from .. import data, rules
 from ..items import code_of
 from ..locations import location_name
+from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS
 from ..world import (
+    DISC_REPLACES,
     FOREIGN,
     FOREIGN_PROGRESSION,
     GOAL_CELL,
@@ -136,6 +138,7 @@ class TestStartRoomNotOffered(unittest.TestCase):
             mode=types.SimpleNamespace(value=1),
             start_room=types.SimpleNamespace(value=start_room),
             local_items=types.SimpleNamespace(value=set()),
+            goal=types.SimpleNamespace(value=0),
         )
         world.random = random.Random(1)
         world.player = 1
@@ -315,3 +318,176 @@ class TestAreaMapHintsOff(ZexionTestBase):
     def test_no_hints_without_the_option(self) -> None:
         distribute_items_restrictive(self.multiworld)
         self.assertEqual(self.world.fill_slot_data()["hints"], [])
+
+
+def pool_names(test: ZexionTestBase) -> list[str]:
+    return [i.name for i in test.multiworld.itempool if i.player == test.player]
+
+
+class TestCoreIsTheDefaultGoal(ZexionTestBase):
+    def test_no_discs_and_the_keys_in_the_pool(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("OS Install Disk", pool)
+        self.assertEqual(
+            sum(pool.count(k) for k in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")), 4
+        )
+        slot = self.world.fill_slot_data()
+        self.assertEqual(
+            (slot["goal"], slot["discs_required"], slot["disc_locations"]), ("core", 0, [])
+        )
+
+
+class DiscHuntBase(ZexionTestBase):
+    mode = "standard"
+    placed, required = 20, 15
+
+    @property
+    def run_default_tests(self) -> bool:
+        return type(self) is not DiscHuntBase
+
+    def setUp(self) -> None:
+        self.options = {
+            "mode": self.mode,
+            "goal": "os_install_disks",
+            "os_install_disks": self.placed,
+            "os_install_disks_required": self.required,
+        }
+        super().setUp()
+
+
+class TestDiscHuntStandard(DiscHuntBase):
+    def test_the_keys_are_gone_and_the_discs_are_in(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 20)
+        for key in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key"):
+            self.assertNotIn(key, pool)
+        self.assertEqual(len(pool), len(data.LOCATIONS))
+
+    def test_discs_take_scrap_then_area_maps(self) -> None:
+        # Standard: 12 Scrap and the keys' 4 places, then 4 of its 9 Area Maps.
+        pool = pool_names(self)
+        for name in ("Scrap Metal", "Scrap Energy", "Scrap Chunk"):
+            self.assertNotIn(name, pool)
+        self.assertEqual(pool.count("Area Map"), 9 - 4)
+        self.assertEqual(pool.count("Energy Shield"), 6)
+        self.assertEqual(pool.count("Missile Container"), 62, "supplies untouched")
+
+    def test_no_core_event_and_the_discs_win(self) -> None:
+        self.assertNotIn("Zexion", [loc.name for loc in self.multiworld.get_locations(self.player)])
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state))
+        discs = self.get_items_by_name("OS Install Disk")
+        self.collect(discs[:14])
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state))
+        self.collect(discs[14])
+        self.assertTrue(self.multiworld.has_beaten_game(self.multiworld.state))
+
+    def test_discs_are_hinted_but_not_balanced(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        hints = self.world.fill_slot_data()["hints"]
+        self.assertEqual(sum(1 for _, _, code in hints if code == 44), 20, "every disk")
+        disc = self.world.create_item("OS Install Disk")
+        self.assertTrue(disc.advancement)
+        self.assertTrue(disc.skip_in_prog_balancing)
+
+    def test_own_discs_are_stand_ins_listed_for_the_client(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        slot = self.world.fill_slot_data()
+        own = [
+            i
+            for i in range(len(data.LOCATIONS))
+            if self.multiworld.get_location(location_name(i), self.player).item.name
+            == "OS Install Disk"
+        ]
+        self.assertTrue(own)
+        self.assertEqual(slot["disc_locations"], own)
+        self.assertEqual({slot["location_items"][i] for i in own}, {FOREIGN_PROGRESSION})
+        self.assertNotIn(44, slot["location_items"], "the game never hands out a disc")
+        self.assertEqual(
+            (slot["goal"], slot["discs_required"], slot["discs_placed"]),
+            ("os_install_disks", 15, 20),
+        )
+        self.assertEqual(slot["discs_start"], 0)
+
+
+class TestDiscHuntStandardFull(DiscHuntBase):
+    placed, required = 30, 30  # the options' most
+
+    def test_every_area_map_and_most_energy_shields_give_way(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 30)
+        self.assertNotIn("Area Map", pool)
+        self.assertEqual(pool.count("Energy Shield"), 1)
+
+
+class TestDiscHuntOHKO(DiscHuntBase):
+    mode = "ohko"
+    placed, required = 30, 30
+
+    def test_ohko_fits_30_in_scrap_after_its_left_out_locations(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 30)
+        self.assertEqual(pool.count("Area Map"), 5, "no hint given up")
+        self.assertEqual(len(pool), len(self.world.kept_locations))
+
+
+class TestDiscHuntEasy(DiscHuntBase):
+    mode = "easy"
+    placed, required = 10, 10
+
+    def test_ten_discs_take_scrap_only(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 10)
+        self.assertEqual(pool.count("Area Map"), 4)
+        self.assertEqual(pool.count("Scrap Metal"), 20 + 4 - 10)
+
+
+class TestDiscStartInventory(DiscHuntBase):
+    def test_a_starting_disc_is_counted_not_written(self) -> None:
+        self.multiworld.push_precollected(self.world.create_item("OS Install Disk"))
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["discs_start"], 1)
+        self.assertNotIn("44", slot["start_items"])
+
+
+class TestDiscOptionsChecked(unittest.TestCase):
+    def world(self, mode: int, placed: int, required: int) -> ZexionWorld:
+        world = ZexionWorld.__new__(ZexionWorld)
+        world.options = types.SimpleNamespace(
+            mode=types.SimpleNamespace(value=mode),
+            start_room=types.SimpleNamespace(value=len(START_CELLS)),
+            local_items=types.SimpleNamespace(value=set()),
+            goal=types.SimpleNamespace(value=1),
+            os_install_disks=types.SimpleNamespace(value=placed),
+            os_install_disks_required=types.SimpleNamespace(value=required),
+        )
+        world.random = random.Random(1)
+        world.player = 1
+        world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
+        return world
+
+    def test_room_per_mode(self) -> None:
+        for mode, room in ((0, 31), (1, 31), (2, 41)):
+            world = self.world(mode, 1, 1)
+            world.generate_early()
+            self.assertEqual(world.disc_room(), room, mode)
+
+    def test_too_many_discs_is_an_error(self) -> None:
+        with self.assertRaises(OptionError):
+            self.world(1, 32, 1).generate_early()
+
+    def test_more_required_than_placed_is_an_error(self) -> None:
+        with self.assertRaises(OptionError):
+            self.world(1, 10, 11).generate_early()
+
+    def test_what_discs_replace_is_read_by_no_rule(self) -> None:
+        codes = set()
+        for reqs in data.LOCATION_RULES.values():
+            codes |= {c for c, _ in reqs}
+        for ways in data.ENTRANCES.values():
+            for way in ways:
+                if way is not None:
+                    codes |= {c for c, _ in way[0]}
+        # Codes from 50 up are derived from the items (logic.derive), not item counts: 50 there
+        # is not the Energy Shield.
+        items = {c for c in codes if c < FIRST_SPECIAL}
+        self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))

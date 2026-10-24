@@ -66,15 +66,25 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Build | B1 |
 | Evidence | 2026-10-21. |
 
-## The goal is the core, behind the four keys
+## The core goal is the core, behind the four keys
 
 | Field | |
 |---|---|
-| Value | The world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client detects the goal as item 31's byte going 0 → 1. |
+| Value | With the Goal option's default, core (the OS Install Disks goal is below), the world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client detects the goal as item 31's byte going 0 → 1. |
 | Status | measured (the cell, the byte); reported by the owner (the keys) |
 | Method | as in `memory.md` |
 | Build | B1 |
 | Evidence | 2026-10-21. |
+
+## The OS Install Disks goal: the disks, then the ending
+
+| Field | |
+|---|---|
+| Value | With the Goal option's OS Install Disks, the world has no core event: the keys are left out of the pool (their places become Scrap Metal), OS Install Disks (the game's Data Disc, item 44) are added in their number, each taking the place of, in order, Scrap Metal, Scrap Energy, Scrap Chunk, Area Map, Energy Shield, and the completion condition is having the number required. No location or passage rule reads any of these items or the keys (codes 27 to 30, 44, 46 to 50 among item codes; rule codes from 50 up are derived ones, `logic.derive`), so the pool's logic is unchanged. Room per mode (after left-out locations): Easy 31, Standard 31, OHKO 41, more being an `OptionError`; the options stop at 30 (the owner's cap), with defaults of 16 placed and 12 required, which fit Standard without taking an Area Map. Nothing places an item behind the game's secret boss: its passage (cell (22, 48)) leads to a map of its own, and none of the 154 locations is there. The client sends the goal when the game's ending begins with the player holding enough disks (`memory.md`, "The mission prompt"): once they have them, the helper offers RETURN HOME WITH THE DISKS?, whose YES starts the ending. |
+| Status | from the world's data (the rule codes, the pools, the room); generated and filled by Archipelago's tests in all three modes; working in game (2026-10-24, B1: a Standard seed of 3 of 20 disks, the goal sent at the ending reached from the prompt's YES, its question then END THE MISSION?; then with RETURN HOME WITH THE DISKS?, NO and the question again on the next load, helper 0.17.1). The goal needs the client's helper: without it nothing offers the ending, and with no keys the core is closed for good under Gates Vanilla (OHKO); whether Gates Unlocked (Easy, Standard) opens it without keys is not traced (`randocells.md`). |
+| Method | `worlds/zexion/test/test_world.py`; Archipelago's general tests; the live runs |
+| Build | B1 |
+| Evidence | `lab/ap/live22/`, `lab/ap/live23/` (the seeds, their spoilers, the client and server logs), 2026-10-24 |
 
 ## OHKO: two starts, and only the locations they reach
 

@@ -8,13 +8,24 @@ in Zexion can belong to other players, and their games can send items to you.
 
 ## What is the goal?
 
-Reaching the ending: the first cutscene after you board the ship. Getting there means grabbing
+With the Goal option's default, core: reaching the ending, the first cutscene after you board
+the ship. Getting there means grabbing
 Zexion in the core, which takes the Alpha, Beta, Gamma and Omega Keys, then the escape and the
 final battle. The seed's logic only makes sure you can reach the grab. While the client's
 in-game helper runs, the game offers SKIP ESCAPE AND FINAL BATTLE? at the grab, which takes you
 to just before the ship. Without it, a first playthrough gets no such offer, and the escape
 needs one of several combinations of items, such as the Zenith Thrusters, which the logic does
 not ask for.
+
+With OS Install Disks: find enough OS Install Disks, shuffled through the multiworld (how many
+are placed and how many win are options). The four keys are left out. This goal needs the
+client's in-game helper: once you have enough disks, it has the game ask RETURN HOME WITH THE
+DISKS?, and YES plays the game's ending, which is your goal; NO lets you keep exploring, and
+the question comes back the next time you load your save. The disks are not put in the game's
+inventory: the client counts them, each one's popup gives your count, the equipment screen
+shows them beside the Energy Tank, and the pause screen shows the count where the keys were.
+The room that showed you where the keys are tells you how many disks you need; until you have
+been there the popups give the count alone and the pause screen shows "OF ?".
 
 ## Which modes are there?
 
@@ -35,14 +46,16 @@ way, as in "Guardia 22,7", so you can find them on the in-game map.
 With the client's in-game helper running, a location holding another player's item shows
 Archipelago's logo, with its flashing up arrow if the item is a progression item, and picking it
 up pops up PROGRESSION ITEM or AP ITEM and whom it is for ("FOR ALICE"), or, for another Zexion
-player's item, that item's own icon and name; the client then sends it to its owner. Items for you arrive while you play, with the
+player's item, that item's own icon and name; the client then sends it to its owner. With the
+OS Install Disks goal, your own disks in your world look and pop up as OS Install Disks (as a
+Scrap Chunk without the helper) and are counted, not put in the game's inventory. Items for you arrive while you play, with the
 game's own popup and the sender's name. Without the helper, another player's item looks like
 Scrap Energy (Scrap Chunk for a progression item), and items for you arrive with no popup.
 
 ## What do Area Maps do?
 
 With the Area Map Hints option (on by default), each Area Map is a hint. Every Area Map you
-get, found in your world or sent by another player, reveals where one of your upgrades or keys
+get, found in your world or sent by another player, reveals where one of your upgrades, keys or OS Install Disks
 is that you do not have yet, in any world (supplies such as Missile Containers and Energy Tanks
 are not hinted). The hint shows in your client's and every player's hint list, and with the
 client's in-game helper running, a popup names it as the hint list does, such as "HINT:

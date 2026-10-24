@@ -2,8 +2,11 @@
 
 Item codes are the game's item IDs (``ItemNames.txt``). Each weapon and its upgrade are one
 progressive item, because the game itself counts a second copy of a weapon as its upgrade
-(docs/re/randocells.md). Items the randomizer never places (the eggs, the Data Disc, Super Fly,
-Zexion) are left out.
+(docs/re/randocells.md). Items the randomizer never places (the eggs, Super Fly, Zexion) are
+left out. The game's Data Disc, which the randomizer never places either, is the OS Install
+Disk of the OS Install Disks goal (the Goal option): an Archipelago-only count, never written
+into the game's inventory, since holding one changes the game's endings (docs/re/memory.md, "The
+Data Disc").
 
 One item is not the game's: Assist Unlock (code 100), never in the pool. Sent from the server
 console (``/send PLAYER Assist Unlock``) as an escape hatch, it makes the client stop locking the
@@ -57,6 +60,7 @@ NAMES = {
     34: "G-Diffuser",
     36: "Missile Box",
     37: "Bomb Box",
+    44: "OS Install Disk",
     46: "Scrap Metal",
     47: "Scrap Energy",
     48: "Scrap Chunk",
@@ -66,10 +70,11 @@ NAMES = {
 }
 
 # Everything the rules read, directly or through the codes derived from items
-# (worlds/zexion/logic.py), plus the keys for the goal.
+# (worlds/zexion/logic.py), plus the keys for the core goal.
 PROGRESSION = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37}
 FILLER = {46, 47, 48, 49}
+DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
 KEYS = ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")
 FILLER_NAME = "Scrap Metal"
@@ -79,6 +84,8 @@ code_of = {name: code for code, name in NAMES.items()}
 
 
 def classification(code: int) -> ItemClassification:
+    if code == DATA_DISC:
+        return ItemClassification.progression_skip_balancing
     if code in PROGRESSION:
         return ItemClassification.progression
     if code in FILLER:

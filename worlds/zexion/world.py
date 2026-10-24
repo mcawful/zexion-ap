@@ -14,6 +14,7 @@ from worlds.AutoWorld import World
 
 from . import data, logic, rules, web_world
 from .items import (
+    DATA_DISC,
     FILLER_NAME,
     GAME,
     GAME_ITEMS,
@@ -27,7 +28,7 @@ from .items import (
     item_name_to_id,
 )
 from .locations import ZexionLocation, cell_name, location_name, location_name_to_id
-from .options import AUTOMATIC, MODE_NAMES, START_CELLS, ZexionOptions
+from .options import AUTOMATIC, MODE_NAMES, START_CELLS, Goal, ZexionOptions
 
 GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
 AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
@@ -38,12 +39,19 @@ FILLER_ORDER = (46, 47, 48, 49)
 # Another player's item: Scrap Energy, or Scrap Chunk for a progression item, which the
 # client's helper shows as an Archipelago item (the progression one with its up arrow), named at
 # pickup (client/aplabels.py). A location left out, and this world's own Scrap Energy and Scrap
-# Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item; all are
-# filler the game counts as Scrap Metal.
+# Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item, or (48)
+# one of this world's own OS Install Disks, which the game must not hand out (location_items);
+# all are filler the game counts as Scrap Metal.
 FOREIGN, FOREIGN_PROGRESSION, SCRAP_METAL = 47, 48, 46
 # Supplies, with many copies in every pool (Energy Tank, Missile Container, Mega Bomb, Missile
-# Box, Bomb Box): progression for the rules' counts, but not worth an Area Map's hint.
+# Box, Bomb Box): progression for the rules' counts, but not worth an Area Map's hint. The OS
+# Install Disks are hinted: each is a step to the goal (the owner's call).
 NOT_HINTED = {0, 1, 2, 36, 37}
+KEY_CODES = (27, 28, 29, 30)
+# With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
+# places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
+# them (worlds/zexion/data.py).
+DISC_REPLACES = (46, 47, 48, 49, 50)
 SCRAP_ENERGY, SCRAP_CHUNK = 47, 48
 
 
@@ -96,6 +104,34 @@ class ZexionWorld(World):
         self.kept_locations = set(range(len(data.LOCATIONS)))
         if self.mode["double_teleport"]:
             self.pick_second_start(starts)
+        if self.disc_hunt:
+            self.check_discs()
+
+    @property
+    def disc_hunt(self) -> bool:
+        return self.options.goal.value == Goal.option_os_install_disks
+
+    def disc_room(self) -> int:
+        """How many OS Install Disks this mode's pool has room for: its Scrap, the keys' places,
+        Area Maps and Energy Shields, less the filler that left-out locations take out."""
+        pool = Counter(self.mode["pool"])
+        room = sum(pool[c] for c in DISC_REPLACES) + sum(pool[c] for c in KEY_CODES)
+        return room - (len(data.LOCATIONS) - len(self.kept_locations))
+
+    def check_discs(self) -> None:
+        placed = self.options.os_install_disks.value
+        required = self.options.os_install_disks_required.value
+        if required > placed:
+            raise OptionError(
+                f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
+                f"more than OS Install Disks ({placed})"
+            )
+        room = self.disc_room()
+        if placed > room:
+            raise OptionError(
+                f"Zexion ({self.player_name}): {self.mode_name} mode has room for {room} OS "
+                f"Install Disks, not {placed}"
+            )
 
     def pick_second_start(self, starts: dict) -> None:
         """Pick the second teleport target: a room that, together with the start, lets the
@@ -187,7 +223,10 @@ class ZexionWorld(World):
         # has the game offer its skip to the ship ("The escape skip"); without the helper the
         # escape needs one of several combinations of items, the Zenith Thrusters alone being
         # one (reported by the owner). The four keys open the core; RandoCells does not model
-        # them.
+        # them. With the OS Install Disks goal there is no event: the disks are the goal
+        # (set_rules).
+        if self.disc_hunt:
+            return
         core = by_index[cells[GOAL_CELL]]
         goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(Item("Victory", ItemClassification.progression, None, self.player))
@@ -204,10 +243,22 @@ class ZexionWorld(World):
             if filler is None:
                 raise OptionError(f"Zexion: {self.mode_name}'s pool has too little filler")
             codes.remove(filler)
+        if self.disc_hunt:
+            # The keys' places become Scrap Metal, then each disc takes one of DISC_REPLACES.
+            codes = [c for c in codes if c not in KEY_CODES] + [SCRAP_METAL] * len(KEY_CODES)
+            for _ in range(self.options.os_install_disks.value):
+                codes.remove(next(c for c in DISC_REPLACES if c in codes))
+            codes += [DATA_DISC] * self.options.os_install_disks.value
         pool = [self.create_item(NAMES[code]) for code in codes]
         self.multiworld.itempool += pool
 
     def set_rules(self) -> None:
+        if self.disc_hunt:
+            required = self.options.os_install_disks_required.value
+            self.multiworld.completion_condition[self.player] = lambda state: state.has(
+                NAMES[DATA_DISC], self.player, required
+            )
+            return
         self.get_location("Zexion").access_rule = lambda state: state.has_all(KEYS, self.player)
         self.multiworld.completion_condition[self.player] = lambda state: state.has(
             "Victory", self.player
@@ -244,7 +295,30 @@ class ZexionWorld(World):
             "death_link": bool(self.options.death_link),
             "allow_assists": bool(self.options.allow_assists),
             "hints": self.hint_targets() if self.options.area_map_hints else [],
+            # The OS Install Disks goal (client/discs.py): the disks are counted by the client
+            # and never written into the game's inventory, so this world's own are stand-ins
+            # in location_items, listed here by location index.
+            "goal": "os_install_disks" if self.disc_hunt else "core",
+            "discs_required": self.options.os_install_disks_required.value if self.disc_hunt else 0,
+            "discs_placed": self.options.os_install_disks.value if self.disc_hunt else 0,
+            "discs_start": self.precollected_discs(),
+            "disc_locations": self.disc_locations(),
         }
+
+    def precollected_discs(self) -> int:
+        precollected = self.multiworld.precollected_items[self.player]
+        return sum(1 for item in precollected if item.name == NAMES[DATA_DISC])
+
+    def disc_locations(self) -> list[int]:
+        """The location indices holding this world's own OS Install Disks."""
+        out = []
+        for i in range(len(data.LOCATIONS)):
+            if i not in self.kept_locations:
+                continue
+            item = self.get_location(location_name(i)).item
+            if item is not None and item.player == self.player and item.name == NAMES[DATA_DISC]:
+                out.append(i)
+        return out
 
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item
@@ -292,8 +366,9 @@ class ZexionWorld(World):
         """The item code the game should hold at each of its locations: this world's own items
         as the game's item IDs (a progressive weapon as the weapon; the game makes a second
         copy the upgrade, and Scrap Energy and Scrap Chunk as Scrap Metal), FOREIGN where another
-        world's item is (FOREIGN_PROGRESSION for a progression item), and Scrap Metal where the
-        location was left out."""
+        world's item is (FOREIGN_PROGRESSION for a progression item, and for this world's own
+        OS Install Disk, which the game must not hand out), and Scrap Metal where the location was
+        left out."""
         out = []
         for i in range(len(data.LOCATIONS)):
             if i not in self.kept_locations:
@@ -306,6 +381,9 @@ class ZexionWorld(World):
                 )
                 continue
             code = code_of[item.name]
+            if code == DATA_DISC:
+                out.append(FOREIGN_PROGRESSION)
+                continue
             # Scrap Energy and Chunk, and an item that is not the game's (Assist Unlock, only
             # ever placed by plando), are handed out as Scrap Metal.
             own_scrap = code in (SCRAP_ENERGY, SCRAP_CHUNK) or code not in GAME_ITEMS
@@ -318,7 +396,9 @@ class ZexionWorld(World):
         counts = Counter(
             code_of[item.name]
             for item in self.multiworld.precollected_items[self.player]
-            if item.code is not None and code_of[item.name] in GAME_ITEMS
+            if item.code is not None
+            and code_of[item.name] in GAME_ITEMS
+            and code_of[item.name] != DATA_DISC
         )
         out: dict[int, int] = {}
         for code, n in counts.items():

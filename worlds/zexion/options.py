@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Toggle
+from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Range, Toggle
 
 from .data import CELL_AREAS, MODES
 
@@ -68,14 +68,50 @@ class AllowAssists(Toggle):
 
 class AreaMapHints(DefaultOnToggle):
     """Makes each Area Map a hint. Every Area Map this player gets, found in this world or
-    sent by another player, reveals where one of this player's upgrades or keys not received
-    yet is, in any world (supplies such as Missile Containers are not hinted): the client
+    sent by another player, reveals where one of this player's upgrades, keys or OS Install
+    Disks not received yet is, in any world (supplies such as Missile Containers are not
+    hinted): the client
     creates an Archipelago hint for it, shown in every player's hint list, and with the
     client's in-game helper a popup names it ("HINT: SLIDE MOD IS AT GUARDIA 22,7", with "IN
     ALICE'S WORLD" after another world's location). Off, an Area Map is filler that counts as
     Scrap Metal."""
 
     display_name = "Area Map Hints"
+
+
+class Goal(Choice):
+    """What wins the game. Core: grab Zexion in the core, behind the four keys, as in the
+    game's own randomizer. OS Install Disks: find enough OS Install Disks, shuffled into the
+    multiworld (OS Install Disks and OS Install Disks Required); the four keys are left out of
+    the item pool, and the core is not needed. The disks are counted by the client, not put in
+    the game's inventory (they are the game's Data Disc, which changes its endings)."""
+
+    display_name = "Goal"
+    option_core = 0
+    option_os_install_disks = 1
+    default = 0
+
+
+class OSInstallDisks(Range):
+    """With the OS Install Disks goal, how many disks are shuffled into the multiworld. Each
+    takes the place of an item in this world's pool: Scrap (the keys' places among it), then
+    Area Maps, then Energy Shields. Without taking an Area Map or an Energy Shield, 26 fit in
+    Easy, 16 in Standard and 30 in OHKO; up to 30 fit in every mode."""
+
+    display_name = "OS Install Disks"
+    range_start = 1
+    range_end = 30
+    default = 16
+
+
+class OSInstallDisksRequired(Range):
+    """With the OS Install Disks goal, how many disks win the game. At most OS Install
+    Disks."""
+
+    display_name = "OS Install Disks Required"
+    range_start = 1
+    range_end = 30
+    default = 12
 
 
 @dataclass
@@ -85,3 +121,6 @@ class ZexionOptions(PerGameCommonOptions):
     death_link: DeathLink
     allow_assists: AllowAssists
     area_map_hints: AreaMapHints
+    goal: Goal
+    os_install_disks: OSInstallDisks
+    os_install_disks_required: OSInstallDisksRequired
