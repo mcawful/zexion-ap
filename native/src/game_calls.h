@@ -275,6 +275,7 @@ private:
     static constexpr int kGamePopupWidth = 24;
     BYTE* popup_width_code_ = nullptr;
     BYTE* item_pool_ = nullptr;
+    BYTE* object_pool_ = nullptr;  // the general objects (items in reversed-gravity rooms)
     BYTE* palette_table_ = nullptr;
     BYTE* frame_clock_ = nullptr;
     BYTE* sprite_templates_ = nullptr;

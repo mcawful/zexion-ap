@@ -25,6 +25,9 @@ inline BYTE* g_records_ptr = g_records;
 // The live item objects, the palette table, the item clock and the sprite templates
 // (docs/re/memory.md, "Live item objects").
 inline BYTE g_item_pool[128 * 0x3B0];
+// The general object pool and the object definitions (items in reversed-gravity rooms).
+inline BYTE g_object_pool[1000 * 0x5C8];
+
 inline BYTE g_palette_objects[64][16];
 inline BYTE* g_palette_table[64];
 inline int64_t g_frame_clock = 1000;
@@ -239,6 +242,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"sprite_texture", rva(&g_sprite_holder)},
         {"popup_width_code", rva(g_popup_width_code)},
         {"item_pool", rva(g_item_pool)},
+        {"object_pool", rva(g_object_pool)},
         {"palette_table", rva(g_palette_table)},
         {"frame_clock", rva(&g_frame_clock)},
         {"sprite_templates", rva(&g_sprite_templates)},
@@ -250,6 +254,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
 
 inline void reset_game() {
     std::memset(g_item_pool, 0, sizeof(g_item_pool));
+    std::memset(g_object_pool, 0, sizeof(g_object_pool));
     std::memset(g_event_handlers, 0, sizeof(g_event_handlers));
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
     g_spawn_calls = 0;
