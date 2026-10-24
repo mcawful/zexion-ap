@@ -9,9 +9,11 @@
 // runs an area event (3549 and 3550, a refill drop). The helper paints Archipelago's logo into
 // those frames (with its up arrow for progression) and its ring of dots into the glyph of the
 // game's sprite texture (OpenGL, from the per-frame call, where the game's context is current),
-// and names both records after the location in the cell the player stands in ("MASTER SWORD
-// FOR ALICE"), or "AP ITEM" elsewhere: the game's own pickup popup then shows that
-// name. Every field is checked against the game's own values before the first write, and the
+// and names each record after a location ("MASTER SWORD FOR ALICE"), or "AP ITEM" where no label
+// is: the game's own pickup popup then shows that name. The location is the one a live object of
+// that stand-in within the player's reach belongs to, by the map cell the object carries (an
+// enemy's drop lands wherever the enemy dies, and a room can span several cells); else the
+// player's cell's, if it has a label; else that of the nearest such object in the loaded rooms. Every field is checked against the game's own values before the first write, and the
 // texture is read back once (the places to paint blank, known art where the PNG has it) before
 // the first paint; unload puts the records back to the game's values and clears the painted
 // pixels (transparent, as in the game's art).
@@ -22,6 +24,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace zap {
 
@@ -54,6 +57,25 @@ struct GlFunctions {
                TexSubImage2D && GetError && GetTexImage && IsTexture;
     }
 };
+
+// A live stand-in object in the loaded rooms: its record (47 or 48), the map cell its location
+// is in (index y * 54 + x), and where it is, in pixels like the player's position.
+struct StandInSeen {
+    int item = 0;
+    int cell = -1;
+    double x = 0, y = 0;
+};
+
+// How far from the player (pixels, between the positions) an object counts as within reach:
+// more than a stand-in's and the player's half-sizes together, less than half a cell.
+constexpr double kStandInReach = 96;
+
+// For each stand-in record (47, then 48), the map cell to name it after: the cell of the nearest
+// object of that record with a labeled cell, if within kStandInReach; else `player_cell`, if it
+// has a label; else that nearest object's cell, wherever it is; else `player_cell`. Returns the
+// record (0 or 1) whose object is nearest within reach, the one a pickup is about to take, or -1.
+int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
+               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]);
 
 // From opengl32.dll if the process has loaded it; otherwise all null.
 GlFunctions load_gl();
@@ -88,10 +110,15 @@ public:
     const std::map<int, std::string>& labels() const { return labels_; }
     bool active() const { return !labels_.empty(); }
 
-    // Game thread, every frame while active: restyles the record if it reads as the game's own
-    // (again, if the game reloaded its records), and names it for the player's cell.
-    // `records_holder` holds the pointer to the records; `cell` is the player's map cell index.
-    void watch(BYTE* records_holder, int cell);
+    // Game thread, every frame while active: restyles the records if they read as the game's
+    // own (again, if the game reloaded its records), and names each for its cell in `cells`
+    // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records.
+    void watch(BYTE* records_holder, const int (&cells)[2]);
+    // Both named for one cell.
+    void watch(BYTE* records_holder, int cell) {
+        const int cells[2] = {cell, cell};
+        watch(records_holder, cells);
+    }
 
     // Game thread, every frame while active (from the swap hook, the game's GL context
     // current): paints the logo into the sprite texture now and then, and whenever the

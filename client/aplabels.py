@@ -9,9 +9,9 @@ Circle of the Moon's icons by classification), since another game's item names c
 another Zexion player's item the popup instead shows the item's own icon and the game's name for
 it, and the helper shows the item itself in the room, as the Castlevania worlds show their own
 game's items.
-While the player stands in that cell the helper names the stand-in after it, so the game's own
-pickup popup shows it, with the Archipelago logo the helper paints (native/README.md,
-docs/re/memory.md "Other players' items").
+The helper names each stand-in after the label of the cell its item object carries (an enemy's
+drop lands wherever the enemy dies), so the game's own pickup popup shows it, with the
+Archipelago logo the helper paints (native/README.md, docs/re/memory.md "Other players' items").
 
 Labels keep only what the game's 8 x 8 font draws: upper-case letters, digits, space and a
 little punctuation. A label is two lines joined by a newline, the item and "FOR ALICE" (at most
