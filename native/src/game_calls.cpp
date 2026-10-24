@@ -18,6 +18,7 @@ const char* const kConfigKeys[] = {
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
     "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
     "event_handlers", "death_fn",      "halt_flag",       "assist_menu_fn",
+    "object_pool",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -329,6 +330,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     sprite_templates_ = found["sprite_templates"];
     event_handlers_ = found["event_handlers"];
     death_fn_ = found["death_fn"];
+    object_pool_ = found["object_pool"];
     halt_flag_ = found["halt_flag"];
     gl_ = load_gl();
     configured_ = true;
@@ -991,7 +993,8 @@ void Game::watch_ap_items() {
 }
 
 ItemLooks::Places Game::looks_places() const {
-    return {item_pool_, palette_table_, frame_clock_, sprite_templates_, item_records_};
+    return {item_pool_,     palette_table_, frame_clock_, sprite_templates_,
+            item_records_,  object_pool_};
 }
 
 void Game::restore_ap_items() {

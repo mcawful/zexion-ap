@@ -1486,6 +1486,30 @@ TARGETS = (
         ),
     ),
     Target(
+        "object_pool",
+        "the general objects, 1000 of 0x5C8 bytes (items in reversed-gravity rooms among them)",
+        0x758440,
+        (
+            # the store of the pool's next-free-slot number, which lies right after the 1000
+            # objects, at RVA 0x44bf1 on B1, in the object spawn function (with the 0x5C8 stride)
+            Pattern(
+                "66 89 15 ?? ?? ?? ?? 0F 1F 84 00 00 00 00 00 48 0F BF C2 48 69 C8 C8 05 00 00",
+                3,
+                "rip",
+                7,
+                -0x169540,
+            ),
+            # the read of it at RVA 0x44bd7 on B1, with the 1000 slots (0x3E8) the search runs to
+            Pattern(
+                "0F B7 15 ?? ?? ?? ?? 41 B8 E8 03 00 00 66 41 3B D3",
+                3,
+                "rip",
+                7,
+                -0x169540,
+            ),
+        ),
+    ),
+    Target(
         "halt_flag",
         "a byte the death routine (and much of the game) returns early on while it is set",
         0x345EF4,

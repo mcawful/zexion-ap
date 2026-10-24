@@ -231,8 +231,13 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   record lands on N's, animated with the game's clock. The record, and so the pickup, stay
   the stand-in's. It writes only objects that are stand-ins with the template's base and
   palette 8, or that it dressed itself (the same spawn), and puts them back without the
-  label and on unload. Working in the game since 2026-10-23 (`docs/re/memory.md`, "Live
-  item objects").
+  label and on unload. Some rooms show an item through an object in the game's general
+  object pool instead (type 2026 in the reversed-gravity rooms, 715 elsewhere; their cell at
+  `+0x210`): a scan of that pool every 30 frames finds any live object drawing a stand-in's
+  logo (the item sprites' frame list at frame 63 or 95), whatever its type, and it is dressed
+  by its frame shown (`+0x1B0`, which those objects' updates do not recompute) and palette,
+  its frame list left as the game's. Working in the game since 2026-10-23, both kinds too
+  (`docs/re/memory.md`, "Live item objects").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.

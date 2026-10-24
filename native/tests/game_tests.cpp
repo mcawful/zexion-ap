@@ -709,6 +709,74 @@ BYTE* object_base(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x1A8
 BYTE* object_palette(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x198); }
 int16_t object_palette_number(int k) { return *reinterpret_cast<int16_t*>(pool_slot(k) + 0x1A0); }
 
+BYTE* general_slot(int k) { return g_object_pool + k * 0x5C8; }
+
+// An item as some rooms show it: an object in the general pool (type 2026 in the reversed-gravity
+// rooms, 715 elsewhere) with the sprite fields an item object has, its cell at +0x210 and +0x211,
+// and the frame its stand-in record gives.
+void put_flipped(int k, int32_t spawn, int32_t frame, int x, int y) {
+    BYTE* o = general_slot(k);
+    std::memset(o, 0, 0x5C8);
+    BYTE* frames = g_frames;
+    std::memcpy(o + 0x1A8, &frames, sizeof(frames));
+    BYTE* shown = g_frames + frame * 0x38;
+    std::memcpy(o + 0x1B0, &shown, sizeof(shown));
+    BYTE* palette = g_palette_table[8];
+    std::memcpy(o + 0x198, &palette, sizeof(palette));
+    *reinterpret_cast<int16_t*>(o + 0x1A0) = 8;
+    *reinterpret_cast<int32_t*>(o + 0x1BC) = 152;
+    *reinterpret_cast<int32_t*>(o + 0x1C4) = frame;
+    *reinterpret_cast<int32_t*>(o + 0x1D8) = spawn;
+    o[0x210] = static_cast<BYTE>(y);
+    o[0x211] = static_cast<BYTE>(x);
+}
+
+BYTE* general_ptr(int k, ptrdiff_t at) { return *reinterpret_cast<BYTE**>(general_slot(k) + at); }
+
+void test_flipped_items_show_as_themselves() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    BYTE* box = g_records + 36 * 100;  // the Missile Box: frames 39 to 42, 4 ticks, palette 1
+    *reinterpret_cast<int16_t*>(box + 0x02) = 39;
+    *reinterpret_cast<int16_t*>(box + 0x04) = 4;
+    *reinterpret_cast<int16_t*>(box + 0x06) = 4;
+    box[0x09] = 1;
+    g_frame_clock = 1000;  // 250 % 4 = 2: frame 41
+    put_flipped(12, 501, 95, 5, 2);  // a progression stand-in in the Missile Box's cell
+    put_flipped(13, 502, 95, 6, 2);  // one in a cell labeled AP ITEM
+    put_flipped(14, 503, 95, 5, 2);  // one in that cell drawing another sprite set: not an item
+    BYTE* other_list = g_frames + 0x38;
+    std::memcpy(general_slot(14) + 0x1A8, &other_list, sizeof(other_list));
+    put_flipped(15, 504, 40, 5, 2);  // one at a frame that is not a logo's: not a stand-in
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                      "label 6 2 4150204974656d0a464f52205a4558494f4e32",
+                      labels);
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 41 * 0x38,
+          "a reversed-gravity stand-in shown as the Missile Box's frame 41, its list untouched");
+    check(general_ptr(12, 0x198) == g_palette_table[1] &&
+              *reinterpret_cast<int16_t*>(general_slot(12) + 0x1A0) == 1,
+          "in its palette");
+    check(general_ptr(13, 0x1A8) == g_frames && general_ptr(13, 0x198) == g_palette_table[8],
+          "another game's item keeps the logo");
+    check(general_ptr(14, 0x1B0) == g_frames + 95 * 0x38 && general_ptr(15, 0x1B0) == g_frames + 40 * 0x38,
+          "objects not showing a logo are left alone");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+
+    game.restore_ap_items();
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 95 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[8],
+          "restore puts it back");
+    check(!game.ap_items_restyled(), "and nothing is left to put back");
+}
+
 void test_zexion_items_show_as_themselves() {
     zap::Game game;
     game.configure(GetModuleHandleW(nullptr), stand_in_config());
@@ -952,6 +1020,7 @@ int main() {
     test_pickup_popup_width();
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
+    test_flipped_items_show_as_themselves();
     test_received_shield();
     test_received_death();
     test_assist_watch();
