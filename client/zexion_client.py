@@ -22,8 +22,10 @@ Once connected:
   2026-10-22 with Standard and Easy seeds, and on 2026-10-23 with an OHKO seed). Without a
   menu setup in the slot data, or with ``--keep-randomizer``, RANDOMIZER stays, and a
   randomizer game started in the seed's mode gets the AP seed written in as the game builds
-  it (run in game for Standard, Easy and OHKO). One new game per connection: reconnect to
-  start another. A seed whose starting items a new game cannot hold falls back to /prepare.
+  it (run in game for Standard, Easy and OHKO). Once a new game has the seed and its save is
+  loaded in play, the helper is armed again, so any further empty slot can start the seed too
+  (a player may keep several saves of one seed). A seed whose starting items a new game cannot
+  hold falls back to /prepare.
 - With the helper loaded, and slot data saying the world gives other players' items the
   stand-ins ("stand_in": 47, and "stand_in_progression": 48 for progression items), the
   client also asks the server what each location holding one holds and sends the helper a
@@ -242,6 +244,7 @@ class ZexionContext(CommonContext):
         # The AP new game: None (to arm), "armed", "done" or "unavailable"; disarm_pending asks
         # the game loop, the helper's only user, to disarm it.
         self.newgame_state: str | None = None
+        self.newgame_said: tuple | None = None  # (connection, offer) "Ready" was logged for
         self.newgame_polled_at = 0.0
         self.disarm_pending = False
         self.goal_sent = False
@@ -358,8 +361,9 @@ class ZexionContext(CommonContext):
         if self.session is not None:
             self.session.helper = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
-        # A plan the lost helper held is armed again in the next one; a new game already made
-        # (or a seed that cannot make one) stays as it is: one new game per connection.
+        # A plan the lost helper held is armed again in the next one; a new game just made
+        # waits until its save is in play (game_loop), and a seed that cannot make one stays
+        # as it is.
         if self.newgame_state == "armed":
             self.newgame_state = None
         self.disarm_pending = False
@@ -835,6 +839,9 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         if reply == "armed":
             ctx.newgame_state = "armed"
             ctx.newgame_polled_at = time.monotonic()
+            if ctx.newgame_said == (ctx.connection, offer):
+                return  # armed again after a new game: said once per connection
+            ctx.newgame_said = (ctx.connection, offer)
             if offer:
                 logger.info(
                     "Ready for a new game: pick an empty slot and choose ARCHIPELAGO (in "
@@ -928,6 +935,11 @@ async def game_loop(ctx: ZexionContext) -> None:
         if step.left_seed and ctx.shield_pending is not None:
             ctx.shield_pending.left_play = True
         if ctx.session is current:
+            if step.seed_matches and ctx.newgame_state == "done":
+                # The new game holds the seed and is in play: arm again for another slot.
+                ctx.newgame_state = None
+                choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
+                logger.info(f"{choice} is armed again: another empty slot can start this seed.")
             if step.seed_matches:
                 ctx.seed_loaded = True
             elif step.left_seed:

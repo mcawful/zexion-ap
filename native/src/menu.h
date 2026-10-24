@@ -3,7 +3,11 @@
 // After the player picks an empty slot, the game shows NORMAL / RANDOMIZER. While armed, the
 // helper finds that panel, rewrites RANDOMIZER's label to ARCHIPELAGO (same length, so its 11
 // glyphs are just given other characters) and points the choice at the helper's callback; on
-// disarm it puts RANDOMIZER back. Structure layout as traced on B1 (docs/re/memory.md, "The
+// disarm it puts RANDOMIZER back. While the mouse is on it, it moves the right-hand side of the
+// border the panel draws round it a character out (fit_border), as the game's border is sized
+// for RANDOMIZER's ten letters and a blank; so that this happens in the frame the game lays the
+// border out, the panel's handler (+0x2F8) is the helper's panel_hook while the choice is
+// installed, put back with the callback. Structure layout as traced on B1 (docs/re/memory.md, "The
 // game-mode panel"): the open menus form a list from the top one at `current_menu` down
 // through [menu+0x78]; a menu's panels at [menu+0], the game-mode panel 3; a panel's handler
 // at +0x2F8, capacity at +0x1E8, children at +0x1E0; a child's callback at +0x2C0, handler at
@@ -37,6 +41,10 @@ bool writable(const void* at, size_t size);
 struct MenuAddresses {
     BYTE* current_menu = nullptr;  // holds a pointer to the top open menu
     void* panel_handler = nullptr;
+    // The helper's stand-in for the game-mode panel's handler (dllmain.cpp): calls the game's,
+    // then fits ARCHIPELAGO's hover border at once (fit_border). Null: the handler is left as
+    // the game's, and the border is fitted from the frame call only.
+    void* panel_hook = nullptr;
     void* widget_handler = nullptr;
     void* rando_menu = nullptr;  // RANDOMIZER's own callback
     void* assist_menu = nullptr;  // ASSIST's own callback (the options menu, a save loaded)
@@ -67,15 +75,29 @@ public:
     bool release(const MenuAddresses& addresses, WidgetCallback callback);
 
     bool installed() const { return child_ != nullptr; }
+    // Whether a panel may still hold the helper's panel_hook (until put back, or its menu
+    // closed): the helper must not unload while it does.
+    bool holds_hook() const { return hook_panel_ != nullptr; }
+
+    // Game thread, each frame while installed: if the mouse is on ARCHIPELAGO and the panel has
+    // just laid its border out round it, moves the border's right-hand pieces 8 pixels right
+    // and stretches its top and bottom edges to meet them. Returns true when it moved them.
+    bool fit_border(const MenuAddresses& addresses);
 
 private:
     // The game-mode panel's choice 1 in `menu`, if it holds `expected_callback`.
     static BYTE* choice_in(BYTE* menu, const MenuAddresses& addresses, void* expected_callback);
     bool menu_open(const MenuAddresses& addresses) const;
+    static BYTE* panel_of(BYTE* menu);  // the game-mode panel (panel 3) of a menu, unchecked
+    // Puts the game's handler back on the panel given the hook, whatever became of the
+    // choice, or forgets the panel once its menu is closed (freed with it).
+    void put_handler_back(const MenuAddresses& addresses);
     bool put_back(const MenuAddresses& addresses, WidgetCallback callback);
 
     BYTE* menu_ = nullptr;
     BYTE* child_ = nullptr;
+    BYTE* hook_menu_ = nullptr;   // the menu whose panel holds panel_hook
+    BYTE* hook_panel_ = nullptr;  // that panel
     int32_t frames_[kLabelLength] = {};
     BYTE* frame_ptrs_[kLabelLength] = {};
 };

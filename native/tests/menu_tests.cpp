@@ -23,10 +23,11 @@ void check(bool ok, const char* what) {
     }
 }
 
-void panel_handler() {}
-void widget_handler() {}
-void rando_menu(void*, int) {}
 int g_calls = 0;
+// Bodies of their own: the linker folds identical functions into one address.
+void panel_handler() { g_calls += 100; }
+void widget_handler() { g_calls += 200; }
+void rando_menu(void*, int) { g_calls += 300; }
 void archipelago(void*, int) { ++g_calls; }
 
 struct Stand : stand_in::ModePanel {
@@ -49,6 +50,128 @@ void test_install_and_restore() {
     check(stand.text() == "RANDOMIZER ", "the label is back");
     check(stand.callback() == reinterpret_cast<void*>(&rando_menu), "the callback is back");
     check(!choice.installed() && !choice.restore(a, &archipelago), "restores once");
+}
+
+void test_the_border_under_the_mouse_fits_archipelago() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    // The panel's border as the game lays it out round a label at x = 160: eight 8 x 8 pieces,
+    // the top and bottom edges 80.1 long, the right-hand pieces at 240.1.
+    BYTE pieces[8][0x160] = {};
+    auto at_d = [](BYTE* p, ptrdiff_t o) -> double& { return *reinterpret_cast<double*>(p + o); };
+    const double xs[8] = {152, 160, 240.1, 240.1, 240.1, 160, 152, 152};
+    auto lay_out = [&] {
+        for (int i = 0; i < 8; ++i) {
+            *reinterpret_cast<BYTE**>(stand.panel + 0x278 + 8 * i) = pieces[i];
+            at_d(pieces[i], 0x40) = xs[i];
+            at_d(pieces[i], 0x128) = xs[i];
+            at_d(pieces[i], 0x138) = xs[i] + (i == 1 || i == 5 ? 80.1 : 8.0);
+            *reinterpret_cast<float*>(pieces[i] + 0x114) = i == 1 || i == 5 ? 80.1f : 8.0f;
+            at_d(pieces[i], 0x158) = i == 1 || i == 5 ? 80.1 : 8.0;
+            at_d(pieces[i], 0xA8) = at_d(pieces[i], 0xB8) = i == 1 || i == 5 ? 80.1 : 8.0;
+        }
+    };
+    lay_out();
+    *reinterpret_cast<int32_t*>(stand.panel + 0x2B8) = 96;
+    *reinterpret_cast<int32_t*>(stand.panel + 0x2DC) = -1;  // the mouse on nothing
+    at_d(stand.label, 0x40) = 160;
+    choice.install(a, &archipelago);
+    check(!choice.fit_border(a) && at_d(pieces[2], 0x40) == 240.1, "no border moved with the mouse elsewhere");
+    *reinterpret_cast<int32_t*>(stand.panel + 0x2DC) = 1;  // on ARCHIPELAGO
+    check(choice.fit_border(a), "the border fitted under the mouse");
+    check(at_d(pieces[2], 0x40) == 248.1 && at_d(pieces[3], 0x128) == 248.1 &&
+              at_d(pieces[4], 0x138) == 256.1 && at_d(pieces[0], 0x40) == 152,
+          "its right-hand pieces 8 to the right, the left-hand ones where they were");
+    check(*reinterpret_cast<float*>(pieces[1] + 0x114) == 88.1f && at_d(pieces[5], 0x158) == 88.1 &&
+              at_d(pieces[1], 0x138) == 248.1 && at_d(pieces[1], 0xA8) == 88.1 &&
+              at_d(pieces[5], 0xB8) == 88.1 && at_d(pieces[0], 0xA8) == 8.0,
+          "its top and bottom edges 8 longer");
+    check(!choice.fit_border(a) && at_d(pieces[2], 0x40) == 248.1, "and only once");
+    choice.restore(a, &archipelago);
+
+    // Anything else about the panel, and nothing is moved.
+    auto fitted = [&] { return at_d(pieces[2], 0x40) == 248.1 && at_d(pieces[1], 0x158) == 88.1; };
+    lay_out();  // the next hover
+    choice.install(a, &archipelago);
+    *reinterpret_cast<int32_t*>(stand.panel + 0x2B8) = 104;  // a width from measured text
+    check(!choice.fit_border(a) && at_d(pieces[2], 0x40) == 240.1, "another width: untouched");
+    *reinterpret_cast<int32_t*>(stand.panel + 0x2B8) = 96;
+    *reinterpret_cast<BYTE**>(stand.panel + 0x278 + 8 * 7) = nullptr;
+    check(!choice.fit_border(a) && at_d(pieces[2], 0x40) == 240.1, "a piece missing: untouched");
+    *reinterpret_cast<BYTE**>(stand.panel + 0x278 + 8 * 7) = pieces[7];
+    BYTE other_child[0x300] = {};
+    stand.children[1] = other_child;
+    check(!choice.fit_border(a) && at_d(pieces[2], 0x40) == 240.1,
+          "another widget in ARCHIPELAGO's place: untouched");
+    stand.children[1] = stand.child;
+    check(choice.fit_border(a) && fitted(), "and fitted once all is as the game lays it out");
+    choice.restore(a, &archipelago);
+}
+
+int g_hook_calls = 0;
+void panel_hook() { g_hook_calls += 3; }  // a body of its own: the linker folds identical ones
+void other_handler() { g_hook_calls += 5; }
+
+void test_the_panel_handler_is_the_helpers_while_installed() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    a.panel_hook = reinterpret_cast<void*>(&panel_hook);
+    void*& handler = *reinterpret_cast<void**>(stand.panel + 0x2F8);
+    check(choice.install(a, &archipelago) && handler == a.panel_hook,
+          "installing makes the panel's handler the helper's");
+    check(!choice.install(a, &archipelago), "and the panel is still taken for the game-mode one");
+    check(choice.restore(a, &archipelago) && handler == a.panel_handler,
+          "restoring puts the game's handler back");
+    choice.install(a, &archipelago);
+    check(choice.release(a, &archipelago) && handler == a.panel_handler,
+          "and so does releasing after ARCHIPELAGO was chosen");
+    handler = reinterpret_cast<void*>(&other_handler);  // a handler that is neither
+    check(!choice.install(a, &archipelago) && handler == reinterpret_cast<void*>(&other_handler),
+          "another handler: the panel is not taken, nothing written");
+}
+
+void test_the_panel_handler_goes_back_whatever_became_of_the_choice() {
+    Stand stand;
+    zap::ArchipelagoChoice choice;
+    zap::MenuAddresses a = stand.addresses();
+    a.panel_hook = reinterpret_cast<void*>(&panel_hook);
+    void*& handler = *reinterpret_cast<void**>(stand.panel + 0x2F8);
+    choice.install(a, &archipelago);
+    // The choice no longer looks like the one relabeled: its callback is not the helper's.
+    *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    check(!choice.restore(a, &archipelago), "the choice is not written");
+    check(handler == a.panel_handler && !choice.holds_hook(),
+          "but the game's handler is back on the panel");
+
+    // Released likewise.
+    *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    choice.install(a, &archipelago);
+    *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    check(!choice.release(a, &archipelago) && handler == a.panel_handler && !choice.holds_hook(),
+          "released: the game's handler back too");
+
+    // A menu closed: freed with its panel, which is not written; the hook is forgotten.
+    choice.install(a, &archipelago);
+    BYTE file_screen[0x80] = {};
+    stand.current = file_screen;
+    check(!choice.restore(a, &archipelago) && handler == a.panel_hook && !choice.holds_hook(),
+          "a closed menu's panel is left as it is, and forgotten");
+
+    // Another panel in the open menu's place: the old one is not known to be alive, so the hook
+    // stays remembered (and the helper loaded) until the menu closes.
+    stand.current = stand.menu;
+    handler = a.panel_handler;
+    *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    choice.install(a, &archipelago);
+    BYTE replacement[0x300] = {};
+    stand.panels[3] = replacement;
+    choice.restore(a, &archipelago);
+    check(choice.holds_hook() && handler == a.panel_hook, "a panel swapped out: still held");
+    stand.panels[3] = stand.panel;
+    choice.restore(a, &archipelago);
+    check(!choice.holds_hook() && handler == a.panel_handler, "put back once it is in place again");
 }
 
 void test_restore_when_another_menu_is_up() {
@@ -341,6 +464,9 @@ void test_assist_lock_leaves_anything_else_alone() {
 }
 
 int main() {
+    test_the_panel_handler_is_the_helpers_while_installed();
+    test_the_panel_handler_goes_back_whatever_became_of_the_choice();
+    test_the_border_under_the_mouse_fits_archipelago();
     test_assist_lock_and_unlock();
     test_assist_lock_follows_the_menu();
     test_assist_lock_leaves_anything_else_alone();
