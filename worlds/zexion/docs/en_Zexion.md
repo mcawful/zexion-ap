@@ -23,7 +23,9 @@ client's in-game helper: once you have enough disks, it has the game ask RETURN 
 DISKS?, and YES plays the game's ending, which is your goal; NO lets you keep exploring, and
 the question comes back the next time you load your save. The disks are not put in the game's
 inventory: the client counts them, each one's popup gives your count, the equipment screen
-shows them beside the Energy Tank, and the pause screen shows the count where the keys were.
+shows them beside the Energy Tank, and the pause screen shows the count where the keys were,
+as does the file select for your saves of the seed once you have one (the client must be
+running).
 The room that showed you where the keys are tells you how many disks you need; until you have
 been there the popups give the count alone and the pause screen shows "OF ?".
 
