@@ -10,11 +10,21 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its map cell as the game displays it, "Map *x*,*y*" (`randocells.md`, "Grid order"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
-| Status | measured (the list and its order; the display order, from one reading checked against the explored map) |
+| Value | The world's locations are the 154 cells of the randomizer's location list, in its order, which is the same in every seed (`save-format.md`, "What changes between randomizer seeds"). Each is named after its area and its map cell as the game displays them (below, "Location names"). A location whose cell has its own item requirements (byte `+0x44` of the cell's record) gets them as its access rule: 61 of the 154. |
+| Status | measured (the list and its order) |
 | Method | `tools/gen_world_data.py` reading the location list of the fresh Easy and Standard saves (it checks the two are identical) and each cell's record |
 | Build | B1 |
 | Evidence | `lab/backups/20261020-212018/Save Game 28.sav` and `Save Game 29.sav`, and `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-21. |
+
+## Location names
+
+| Field | |
+|---|---|
+| Value | A location, start room or second teleport target is named "*Area* *X*,*Y*", as in "Guardia 22,7": the area the pause screen names after REGION:, then the cell's X and Y as the pause screen shows them (this repo's cell (x, y) is X = y, Y = x: `randocells.md`, "Grid order"). Start-room options are the same in lower case with underscores, as in `kresezoa_16_13`. The area comes from the pause screen's own lookup (`0x16CD7B`): the cell's area is the 16-bit value at `+0x361C58` + (X × 54 + Y) × `0x9A`, and the region's text is entry `[+0xCDE231 + area × 2]` of the `Text` file (32-byte entries after a 6-byte header). Both tables are loaded from the `MapData` file: the cell records start at file offset `0x3E5749` (the same `0x9A`-byte records; their area equal to the loaded table's, read from the running game, in all 2,916 cells) and the area table at `0x45F94D`, the region the second byte of each 2-byte entry. `tools/gen_world_data.py` reads them for every location and start room (`CELL_AREAS` in `data.py`), after checking both files' hashes. The 154 locations lie in 11 areas (Kresezoa, Machinus, Crysmoon, Guardia, Pulsava, Phobyss, Vulknor, Fijedar, Vallahar, Exodia, R'Talva: text entries 0 to 7, 18, 19 and 22), and the names are unique. |
+| Status | from disassembly (the lookup) and measured (the file offsets); two of the 11 areas, Pulsava and Guardia, checked against the pause screen, the other nine from the lookup alone |
+| Method | disassembly of the pause screen's REGION: line; the file offsets by matching the loaded tables to `MapData`; the owner's readings of the pause screen: X37 Y18 in Pulsava, and X22 Y7 in Guardia, both what the lookup gives |
+| Build | B1 (`MapData` sha256 `79a0510f4dbbee0f…`, `Text` `3bf8cd5e07ede18f…`) |
+| Evidence | `lab/data/6d8a94bd4d64/MapData` and `Text`; the owner's readings in the `live15` seed, 2026-10-23 |
 
 ## Regions are cells joined by open passages
 
@@ -50,7 +60,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | Neither the world nor the game's own flood fill checks that a player can get back from where they go. Some passages lead into pockets whose way out needs an item: from the default start (13, 16), the open passage east from (22, 26) into (23, 26) has an empty requirement list on the way back, and the pocket's only other exit, past location "Map 27,24", needs Slide Mod. Collecting that location without Slide Mod would cut the player off from the start's other early locations. With only the starting items, 3 to 204 reachable cells per start are such pockets; with every item, 23 cells still have no way back (for example (21, 8) and (24, 6)). The game's own seeds have the same pockets, and the game provides the escape: the pause menu offers a teleport back to the start from anywhere (the owner's report). So the pockets are not soft-locks, and the logic needs no change: the teleport only adds a way back to the start, which is already reachable. It goes to the seed's start as the save records it, a patched start included: in the patched slot 26 (start moved to (23, 22)), teleporting from a few rooms away put the owner back in that save room. |
+| Value | Neither the world nor the game's own flood fill checks that a player can get back from where they go. Some passages lead into pockets whose way out needs an item: from the default start (13, 16), the open passage east from (22, 26) into (23, 26) has an empty requirement list on the way back, and the pocket's only other exit, past location "Machinus 27,24", needs Slide Mod. Collecting that location without Slide Mod would cut the player off from the start's other early locations. With only the starting items, 3 to 204 reachable cells per start are such pockets; with every item, 23 cells still have no way back (for example (21, 8) and (24, 6)). The game's own seeds have the same pockets, and the game provides the escape: the pause menu offers a teleport back to the start from anywhere (the owner's report). So the pockets are not soft-locks, and the logic needs no change: the teleport only adds a way back to the start, which is already reachable. It goes to the seed's start as the save records it, a patched start included: in the patched slot 26 (start moved to (23, 22)), teleporting from a few rooms away put the owner back in that save room. |
 | Status | measured (the pockets, from the data); working in game (the teleport from the pause menu, from anywhere, and to a patched start: slot 26, 2026-10-21) |
 | Method | the `logic-reviewer` subagent's route search over `worlds/zexion/data.py` and the cell-by-cell flood fill; the owner's account of using the teleport |
 | Build | B1 |

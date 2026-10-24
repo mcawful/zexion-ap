@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from Options import Choice, DeathLink, PerGameCommonOptions, Toggle
 
-from .data import MODES
+from .data import CELL_AREAS, MODES
 
 
 class Mode(Choice):
@@ -31,18 +31,22 @@ AUTOMATIC = len(START_CELLS)
 
 
 def _make_start_room() -> type[Choice]:
-    attrs = {f"option_map_{x}_{y}": i for i, (x, y) in enumerate(START_CELLS)}
+    attrs = {
+        f"option_{CELL_AREAS[(a, b)].lower().replace(chr(39), '')}_{b}_{a}": i
+        for i, (a, b) in enumerate(START_CELLS)
+    }
     attrs["option_automatic"] = AUTOMATIC
     attrs["default"] = AUTOMATIC
     attrs["display_name"] = "Start Room"
     attrs["__module__"] = __name__  # so the class pickles: it is found as options.StartRoom
     attrs["__qualname__"] = "StartRoom"
     attrs["__doc__"] = (
-        "The save room the game starts in, by its map cell as the game displays it. Easy and "
+        "The save room the game starts in, by its area and its map cell as the game displays "
+        "them (X then Y). Easy and "
         "Standard accept only rooms from which their starting items reach a few locations; "
         "OHKO accepts any, and picks a second teleport target that makes up the rest. For a "
         "room the chosen mode does not accept, one it accepts is picked at random instead. "
-        "'automatic' takes map 13,16 when the mode accepts it, otherwise the mode's first "
+        "'automatic' takes kresezoa_16_13 when the mode accepts it, otherwise the mode's first "
         "room; 'random' picks any of the listed rooms."
     )
     return type("StartRoom", (Choice,), attrs)

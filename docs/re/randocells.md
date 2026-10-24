@@ -14,15 +14,15 @@ reachability sweep for a seed. Format per `docs/re/README.md`.
 | Build | B1 |
 | Evidence | `lab/data/loader.asm` (local), 2026-10-20. File size 247,860 = 2,916 × 85. |
 
-## Grid order: row-major, index = y × 54 + x
+## Grid order: index = X × 54 + Y, and this repo's (x, y) is the game's (Y, X)
 
 | Field | |
 |---|---|
-| Value | Record *i* is the map cell (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. The game's own coordinate display uses the same order, (x, y): standing next to Zexion in the core, the owner read x 32, y 45, and the save marks cell (32, 45) as explored and (45, 32) as not explored, in a save whose owner had explored every room (ITEMS 150/150), so (45, 32) is not a room at all; and in the map's per-cell object table (`save-format.md`, "The continue point and the seed's start", read from the `MapData` file) (32, 45) holds an object and (45, 32) none. An earlier reading, the save room at (23, 22) as x 22, y 23, does not fit: cell (22, 23) holds no object, and the save point saved there at tile column 333, row 449 is cell x 23, y 22 by the tile formula in the same entry. It is taken as misread. |
-| Status | measured (the index; the display order, from one reading checked against the save's explored map) |
-| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85); the display order from the owner's reading at the core, checked against the explored map of the save made there and against the object table in `MapData` |
+| Value | Record *i* is the map cell this repo writes as (x, y) = (*i* mod 54, *i* div 54), the same grid as the save's map at file `0x877F` and the randomizer's location cells. **The game displays that cell as X = y, Y = x**: its X (left to right, cells 320 pixels wide) is the record number divided by 54, and its Y (top to bottom, 224 pixels high) the remainder. The names x and y, used for the pair throughout this repo's code and docs, came from an earlier reading that had the order the other way round (below); the pair itself is unchanged, and what players see (location and start-room names, `locations.md`, "Location names") gives X first. Evidence for the display order, 2026-10-23: the owner read X37 Y18 on the pause screen in Pulsava, the player's cell bytes read 37 at `+0x107A` (floor of the horizontal pixel position / 320) and 18 at `+0x107B` (`memory.md`, "Item records"), and MapData's area for this repo's cell (18, 37) is Pulsava, for (37, 18) Kresezoa (the area of cells that are no room); the owner stood at X22 Y7 and at X22 Y1 for the locations this repo writes as (7, 22) and (1, 22), whose items the helper dressed by those cells (`memory.md`, "Live item objects"); and the save room at (23, 22), read as x 22, y 23, saves at tile column 333, row 449. **The earlier reading**, at the core next to Zexion as x 32, y 45, was checked against the save's explored map, which marks (32, 45) explored and (45, 32) not: that holds with the order above too, so it was the reading, taken as x then y, that had the axes swapped. |
+| Status | measured (the index; the display order, from three readings on the pause screen and the player's cell bytes, 2026-10-23) |
+| Method | disassembly: the load-time checker (RVA `0x1AC8E0`) indexes records as `row × 0x11EE + column × 0x55` (`0x11EE` = 54 × 85); the display order from the owner's readings checked against the player's cell bytes and against MapData's area for the cell |
 | Build | B1 |
-| Evidence | `lab/data/logic.asm` (local), 2026-10-20. The display order: `lab/work/slot25-after-ending.sav` (map grid), 2026-10-21. |
+| Evidence | `lab/data/logic.asm` (local), 2026-10-20. The core reading: `lab/work/slot25-after-ending.sav` (map grid), 2026-10-21. The display order: the owner's readings in the `live15` seed (`lab/ap/live15/`), and `lab/data/6d8a94bd4d64/MapData`, 2026-10-23. |
 
 ## Record layout
 

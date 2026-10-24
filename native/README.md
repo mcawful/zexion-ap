@@ -87,7 +87,7 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
       - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
       - `start_table HEX`, the menu's start table, 5 bytes per room (x, y, flag), for a mode
         with Double Teleport.
-    - `ap_labels` and then lines `label X Y HEX` → `labeled N`, or `refused not configured`
+    - `ap_labels` and then lines `label X Y HEX` (X, Y this repo's cell (x, y), which the game shows as X = y, Y = x) → `labeled N`, or `refused not configured`
       or `refused no frame`: names for other players' items, by map cell (below); HEX is the
       item and whom it is for, joined by a newline, or `@N` and whom it is for, for another
       Zexion player's item N, which the helper names from that item's record (its icon and
@@ -196,7 +196,7 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
 - **Other players' items (helper phase 4).** The client sends `ap_labels`, then lines
-  `label X Y HEX`: a name per map cell for the stand-in items, Scrap Energy (47) and Scrap
+  `label X Y HEX`: a name per map cell (this repo's (x, y), not the pause screen's X and Y) for the stand-in items, Scrap Energy (47) and Scrap
   Chunk (48), which the world gives every location holding another player's item (48 for a
   progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
   records against the game's own values and, while a save is loaded and no menu is open

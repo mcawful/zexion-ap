@@ -26,7 +26,9 @@ the start room and, in OHKO, the second teleport target.
 ## Where does the game start?
 
 In one of the game's own start rooms, chosen with the Start Room option. Only rooms from which
-the mode's starting items reach a few locations are offered.
+the mode's starting items reach a few locations are offered. Each is named by its area and its
+X and Y as the pause screen shows them, as in `kresezoa_16_13`; locations are named the same
+way, as in "Guardia 22,7", so you can find them on the in-game map.
 
 ## What does another world's item look like in Zexion?
 

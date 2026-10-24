@@ -69,7 +69,7 @@ save folders:
 .venv/Scripts/python tools/build_id.py          # which game build is installed (read-only)
 .venv/Scripts/python tools/save_lab.py slots    # see /save-lab for the rest
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
-.venv/Scripts/python tools/game_data.py RandoCells --exe   # copy game data into lab/data/<build>/
+.venv/Scripts/python tools/game_data.py RandoCells MapData Text --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
 .venv/Scripts/python tools/gen_world_data.py           # regenerate worlds/zexion/data.py
 .venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for data or a function

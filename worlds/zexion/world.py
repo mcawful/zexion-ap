@@ -25,7 +25,7 @@ from .items import (
     code_of,
     item_name_to_id,
 )
-from .locations import ZexionLocation, location_name, location_name_to_id
+from .locations import ZexionLocation, cell_name, location_name, location_name_to_id
 from .options import AUTOMATIC, MODE_NAMES, START_CELLS, ZexionOptions
 
 GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
@@ -83,8 +83,8 @@ class ZexionWorld(World):
             # rooms (the two cannot be told apart): take one the mode offers instead.
             replacement = self.random.choice(sorted(starts))
             logging.warning(
-                f"Zexion ({self.player_name}): start room map {cell[0]},{cell[1]} is not offered "
-                f"in {self.mode_name} mode; using map {replacement[0]},{replacement[1]}"
+                f"Zexion ({self.player_name}): start room {cell_name(cell)} is not offered "
+                f"in {self.mode_name} mode; using {cell_name(replacement)}"
             )
             cell = replacement
         self.start = starts[cell]
@@ -117,9 +117,9 @@ class ZexionWorld(World):
                 raise OptionError(f"Zexion: {self.mode_name} mode has no pair of start rooms")
             a, b = self.random.choice(pairs)
             logging.warning(
-                f"Zexion ({self.player_name}): no second target suits start room map "
-                f"{self.start['cell'][0]},{self.start['cell'][1]} in {self.mode_name} mode; "
-                f"starting at map {a['cell'][0]},{a['cell'][1]} instead"
+                f"Zexion ({self.player_name}): no second target suits start room "
+                f"{cell_name(self.start['cell'])} in {self.mode_name} mode; "
+                f"starting at {cell_name(a['cell'])} instead"
             )
             self.start = a
             partners = [b]
@@ -210,12 +210,11 @@ class ZexionWorld(World):
         )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:
-        x, y = self.start["cell"]
         spoiler_handle.write(f"Mode:                            {self.mode_name}\n")
-        spoiler_handle.write(f"Start room:                      map {x},{y}\n")
+        spoiler_handle.write(f"Start room:                      {cell_name(self.start['cell'])}\n")
         if self.second is not None:
-            x, y = self.second["cell"]
-            spoiler_handle.write(f"Second teleport target:          map {x},{y}\n")
+            target = cell_name(self.second["cell"])
+            spoiler_handle.write(f"Second teleport target:          {target}\n")
 
     def fill_slot_data(self) -> Mapping[str, Any]:
         return {

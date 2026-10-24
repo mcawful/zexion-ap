@@ -163,9 +163,19 @@ class TestStartRoomNotOffered(unittest.TestCase):
 
 
 class TestNames(ZexionTestBase):
-    def test_location_names_use_the_games_coordinate_order(self) -> None:
-        x, y = data.LOCATIONS[0]
-        self.assertEqual(location_name(0), f"Map {x},{y}")
+    def test_location_names_give_the_area_and_the_games_x_then_y(self) -> None:
+        # Cell (7, 22), where the owner read X22, Y7 in Guardia (docs/re/locations.md).
+        self.assertEqual(location_name(data.LOCATIONS.index((7, 22))), "Guardia 22,7")
+        self.assertEqual(location_name(data.LOCATIONS.index((1, 22))), "Exodia 22,1")
+
+    def test_location_names_are_unique(self) -> None:
+        names = [location_name(i) for i in range(len(data.LOCATIONS))]
+        self.assertEqual(len(set(names)), len(names))
+
+    def test_start_rooms_are_named_the_same_way(self) -> None:
+        from ..options import StartRoom
+
+        self.assertIn("kresezoa_16_13", StartRoom.options)
 
 
 class TestOHKO(ZexionTestBase):
