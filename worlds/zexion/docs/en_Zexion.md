@@ -37,6 +37,18 @@ player's item, that item's own icon and name; the client then sends it to its ow
 game's own popup and the sender's name. Without the helper, another player's item looks like
 Scrap Energy (Scrap Chunk for a progression item), and items for you arrive with no popup.
 
+## Can I use the assist menu?
+
+Not by default. The game's assist menu (pause, OPTIONS, ASSIST) has save states and settings
+that make the game easier; with the client's in-game helper running, ASSIST is greyed out
+with a padlock, the cursor skips it, and it does not open while your seed's save is loaded, so the assists stay at their
+defaults. A seed
+generated with the Allow Assists option leaves it alone. Without the helper, nothing stops it.
+
+If a locked seed turns out to need the assists, the host can lift the lock for good by sending
+you the Assist Unlock item from the server console: `/send YOURNAME Assist Unlock`. It is never
+placed in the seed, so it only arrives that way.
+
 ## Does Zexion support DeathLink?
 
 Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too; when

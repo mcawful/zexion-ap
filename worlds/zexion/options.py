@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, PerGameCommonOptions
+from Options import Choice, DeathLink, PerGameCommonOptions, Toggle
 
 from .data import MODES
 
@@ -51,8 +51,20 @@ def _make_start_room() -> type[Choice]:
 StartRoom = _make_start_room()
 
 
+class AllowAssists(Toggle):
+    """Lets the game's assist menu (pause, OPTIONS, ASSIST: save states, less damage, refills,
+    longer invincibility and the like) be used. Off by default: the client's in-game helper
+    greys out ASSIST, puts a padlock after it, has the cursor skip it and keeps it from opening
+    while this seed's save is loaded, so the assists stay at their defaults. To lift the lock
+    later in a seed, send that player the Assist Unlock item from the server console
+    (/send PLAYER Assist Unlock)."""
+
+    display_name = "Allow Assists"
+
+
 @dataclass
 class ZexionOptions(PerGameCommonOptions):
     mode: Mode
     start_room: StartRoom
     death_link: DeathLink
+    allow_assists: AllowAssists

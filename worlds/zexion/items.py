@@ -4,6 +4,11 @@ Item codes are the game's item IDs (``ItemNames.txt``). Each weapon and its upgr
 progressive item, because the game itself counts a second copy of a weapon as its upgrade
 (docs/re/randocells.md). Items the randomizer never places (the eggs, the Data Disc, Super Fly,
 Zexion) are left out.
+
+One item is not the game's: Assist Unlock (code 100), never in the pool. Sent from the server
+console (``/send PLAYER Assist Unlock``) as an escape hatch, it makes the client stop locking the
+assist menu for a seed generated with Allow Assists off (client/zexion_client.py; live-tested
+2026-10-23).
 """
 
 from __future__ import annotations
@@ -12,6 +17,10 @@ from BaseClasses import Item, ItemClassification
 
 GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
+
+# Not an item of the game's: the client's escape hatch from the assist lock.
+ASSIST_UNLOCK = 100
+GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 
 # Progressive weapon item code -> its upgrade's code.
 PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
@@ -53,6 +62,7 @@ NAMES = {
     48: "Scrap Chunk",
     49: "Area Map",
     50: "Energy Shield",
+    ASSIST_UNLOCK: "Assist Unlock",
 }
 
 # Everything the rules read, directly or through the codes derived from items

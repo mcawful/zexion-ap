@@ -58,6 +58,35 @@ class TestDeathLinkIsOffByDefault(ZexionTestBase):
         self.assertIs(self.world.fill_slot_data()["death_link"], False)
 
 
+class TestAssistsAreLockedByDefault(ZexionTestBase):
+    def test_slot_data_disallows_assists(self) -> None:
+        self.assertIs(self.world.fill_slot_data()["allow_assists"], False)
+
+
+class TestAssistsAllowed(ZexionTestBase):
+    options = {"allow_assists": True}
+
+    def test_slot_data_allows_assists(self) -> None:
+        self.assertIs(self.world.fill_slot_data()["allow_assists"], True)
+
+
+class TestAssistUnlockIsNeverPlaced(ZexionTestBase):
+    def test_it_is_not_in_the_pool(self) -> None:
+        self.assertEqual(self.count("Assist Unlock"), 0)
+
+    def test_it_can_be_made(self) -> None:
+        item = self.world.create_item("Assist Unlock")
+        self.assertEqual(item.code, 3392510_000 + 100)
+        self.assertFalse(item.advancement)
+
+
+class TestAssistUnlockAtTheStart(ZexionTestBase):
+    options = {"start_inventory": {"Assist Unlock": 1}}
+
+    def test_it_is_not_written_into_the_save(self) -> None:
+        self.assertNotIn("100", self.world.fill_slot_data()["start_items"])
+
+
 class TestDeathLinkOn(ZexionTestBase):
     options = {"death_link": True}
 

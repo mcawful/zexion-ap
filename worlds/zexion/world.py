@@ -16,6 +16,7 @@ from . import data, logic, rules, web_world
 from .items import (
     FILLER_NAME,
     GAME,
+    GAME_ITEMS,
     KEYS,
     NAMES,
     PROGRESSIVE,
@@ -238,6 +239,7 @@ class ZexionWorld(World):
             "stand_in": FOREIGN,
             "stand_in_progression": FOREIGN_PROGRESSION,
             "death_link": bool(self.options.death_link),
+            "allow_assists": bool(self.options.allow_assists),
         }
 
     def menu_setup(self) -> dict[str, Any] | None:
@@ -279,7 +281,10 @@ class ZexionWorld(World):
                 )
                 continue
             code = code_of[item.name]
-            out.append(SCRAP_METAL if code in (SCRAP_ENERGY, SCRAP_CHUNK) else code)
+            # Scrap Energy and Chunk, and an item that is not the game's (Assist Unlock, only
+            # ever placed by plando), are handed out as Scrap Metal.
+            own_scrap = code in (SCRAP_ENERGY, SCRAP_CHUNK) or code not in GAME_ITEMS
+            out.append(SCRAP_METAL if own_scrap else code)
         return out
 
     def start_items(self) -> dict[int, int]:
@@ -288,7 +293,7 @@ class ZexionWorld(World):
         counts = Counter(
             code_of[item.name]
             for item in self.multiworld.precollected_items[self.player]
-            if item.code is not None
+            if item.code is not None and code_of[item.name] in GAME_ITEMS
         )
         out: dict[int, int] = {}
         for code, n in counts.items():
