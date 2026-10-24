@@ -154,11 +154,14 @@ struct OptionsMenu {
             at<void*>(g, 0x198) = palette_objects[1];  // the menu's own palette: number 26, say
             at<int16_t>(g, 0x1A0) = 26;
         }
+        palettes[26] = palette_objects[1];
         current = menu;
     }
 
     BYTE palette_objects[2][16] = {};
-    BYTE* palettes[2] = {palette_objects[0], palette_objects[1]};
+    // The palette table by number, as the game's: 0 the locked look's, 26 the menu's own; the
+    // rest empty, so a lookup reads the table and nothing past it.
+    BYTE* palettes[65] = {palette_objects[0]};
 
     zap::MenuAddresses addresses() {
         zap::MenuAddresses a;

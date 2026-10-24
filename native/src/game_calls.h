@@ -173,7 +173,17 @@ public:
     // Game thread: puts RANDOMIZER back now (before an unload).
     void restore_menu(WidgetCallback callback);
     // Whether a menu holds the helper's callback (ARCHIPELAGO). The locked ASSIST holds none.
-    bool menu_installed() const { return choice_.installed(); }
+    // ARCHIPELAGO on the menu, or the helper's handler possibly still on its panel.
+    bool menu_installed() const { return choice_.installed() || choice_.holds_hook(); }
+    // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
+    void set_panel_hook(void* hook) { panel_hook_ = hook; }
+    // The game's own handler for the game-mode panel, for the stand-in to call; null before
+    // configure.
+    void* panel_handler() const { return menu_.panel_handler; }
+    // Game thread, from the stand-in after the game's handler: fits ARCHIPELAGO's hover border.
+    void fit_archipelago_border() {
+        if (configured_ && choice_.installed()) choice_.fit_border(menu_);
+    }
 
     // The options menu's ASSIST entry (menu.h, AssistLock): set_assists_locked arms it (the
     // `assists` request); the watch runs every frame, locking it while armed and unlocking it
@@ -262,6 +272,7 @@ private:
     std::string newgame_status_ = "idle";
 
     MenuAddresses menu_;
+    void* panel_hook_ = nullptr;
     ArchipelagoChoice choice_;
     AssistLock assists_;
     bool assists_locked_ = false;

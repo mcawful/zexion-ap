@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.14.0";
+constexpr char kVersion[] = "0.15.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -85,6 +85,23 @@ void archipelago_chosen(void*, int) {
         // Nothing may unwind into the game.
     }
     g_menu_installed.store(g_game.menu_installed());
+    g_in_callback.fetch_sub(1);
+}
+
+// The game-mode panel's handler while ARCHIPELAGO is offered (menu.h): the game's own first,
+// then ARCHIPELAGO's hover border fitted in the same frame. The game's widget code calls it,
+// as ARCHIPELAGO's callback, on its thread outside the frame call, with the widget and the
+// event (the game's handler reads no more); unload takes it off the panel with the callback.
+void panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
+    g_in_callback.fetch_add(1);
+    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
+    auto handler = reinterpret_cast<Handler>(g_game.panel_handler());
+    if (handler != nullptr) handler(widget, event, r8, r9);
+    try {
+        g_game.fit_archipelago_border();
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
     g_in_callback.fetch_sub(1);
 }
 
@@ -273,6 +290,7 @@ std::string handle(const std::string& request, bool& stop) {
             if (!error.empty()) return "error " + error;
             HMODULE exe = GetModuleHandleW(nullptr);
             if (!g_mailbox.call([&] {
+                    g_game.set_panel_hook(reinterpret_cast<void*>(&panel_event));
                     std::string e = g_game.configure(exe, rvas);
                     return e.empty() ? std::string("ok") : "error " + e;
                 }, kFrameWaitMs, result)) {

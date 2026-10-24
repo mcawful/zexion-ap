@@ -1,5 +1,7 @@
 #include "menu.h"
 
+#include <cmath>
+#include <initializer_list>
 #include <cstring>
 
 namespace zap {
@@ -22,6 +24,24 @@ constexpr ptrdiff_t kLabelCapacity = 0x1D8, kLabelGlyphs = 0x228;
 constexpr ptrdiff_t kGlyphFrameTable = 0x1A8, kGlyphFrame = 0x1B0, kGlyphFrameCount = 0x1BC;
 constexpr ptrdiff_t kGlyphFrameIndex = 0x1C4;
 constexpr ptrdiff_t kFrameSize = 0x38;
+// The border the panel draws round the button under the mouse (docs/re/memory.md, "The
+// game-mode panel"): on hover the panel's handler makes it 8 pixels wider than the label's 11
+// glyphs (0xAE531 to 0xAE545), from 8 pixels left of the label, out of eight 8 x 8 pieces whose
+// pointers the panel holds from +0x278: top-left, top, top-right, right, bottom-right, bottom,
+// bottom-left, left. Each is an object with its x at +0x40 and the x of the rectangle it is
+// drawn in from +0x128 to +0x138 (doubles); the top and bottom edges also keep their length at
+// +0x114 (a float), their right at +0x158, and the right-hand corners of the quad they are drawn
+// as at +0xA8 and +0xB8 (doubles, read live: 80.1, as the length). That is even round RANDOMIZER, whose eleventh
+// glyph is a blank, but puts the right-hand pieces on ARCHIPELAGO's last letter.
+constexpr ptrdiff_t kPanelBorderPieces = 0x278, kPanelBorderWidth = 0x2B8;
+constexpr int kBorderPieces = 8;
+constexpr int kTop = 1, kTopRight = 2, kRight = 3, kBottomRight = 4, kBottom = 5;
+constexpr ptrdiff_t kPieceX = 0x40, kPieceLeft = 0x128, kPieceRight = 0x138;
+constexpr ptrdiff_t kEdgeLength = 0x114, kEdgeLocalRight = 0x158;
+constexpr ptrdiff_t kEdgeQuadRight1 = 0xA8, kEdgeQuadRight2 = 0xB8;
+constexpr int32_t kGameBorderWidth = kLabelLength * 8 + 8;  // 96
+constexpr double kEdgeAsLaid = 80.1;  // the game's top edge, from the label's x (read live)
+constexpr double kBorderMove = 8.0;   // one character: as far past the label as on its left
 constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
 constexpr ptrdiff_t kMenuPanelCount = 8;  // 32-bit, after the panel list at +0
@@ -131,7 +151,8 @@ BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* exp
     void* child_handler = nullptr;
     if (!read(menu, 0, panels) ||
         !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel) ||
-        !read(panel, kPanelHandler, handler) || handler != a.panel_handler ||
+        !read(panel, kPanelHandler, handler) ||
+        (handler != a.panel_handler && (a.panel_hook == nullptr || handler != a.panel_hook)) ||
         !read(panel, kPanelCapacity, capacity) || capacity != 4 ||
         !read(panel, kPanelChildren, children) ||
         !read(reinterpret_cast<BYTE*>(children), 8, child) || !read(child, kReleased, released) ||
@@ -178,6 +199,32 @@ bool ArchipelagoChoice::put_back(const MenuAddresses& a, WidgetCallback callback
     return true;
 }
 
+BYTE* ArchipelagoChoice::panel_of(BYTE* menu) {
+    BYTE** panels = nullptr;
+    BYTE* panel = nullptr;
+    if (!read(menu, 0, panels) || !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel)) {
+        return nullptr;
+    }
+    return panel;
+}
+
+void ArchipelagoChoice::put_handler_back(const MenuAddresses& a) {
+    if (hook_panel_ == nullptr) return;
+    if (!is_open(a, hook_menu_)) {
+        // Closed: its panels were freed with it (docs/re/memory.md, "The game-mode panel").
+        hook_menu_ = hook_panel_ = nullptr;
+        return;
+    }
+    // Only on the panel still in the menu's place: one the menu no longer lists is not known
+    // to be alive, so it stays remembered (and the helper loaded) until the menu closes.
+    void* handler = nullptr;
+    if (panel_of(hook_menu_) != hook_panel_ || !read(hook_panel_, kPanelHandler, handler)) return;
+    if (handler == a.panel_hook) {
+        *reinterpret_cast<void**>(hook_panel_ + kPanelHandler) = a.panel_handler;
+    }
+    hook_menu_ = hook_panel_ = nullptr;
+}
+
 bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback) {
     BYTE* top = nullptr;
     if (!read(a.current_menu, 0, top)) top = nullptr;
@@ -189,7 +236,8 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
         child_ = nullptr;
         menu_ = nullptr;
     }
-    if (top == nullptr) return false;
+    put_handler_back(a);
+    if (top == nullptr || hook_panel_ != nullptr) return false;
     BYTE* child = choice_in(top, a, a.rando_menu);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
@@ -218,12 +266,69 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
             *reinterpret_cast<BYTE**>(g + kGlyphFrameTable) + c * kFrameSize;
     }
     *reinterpret_cast<void**>(child + kChildCallback) = reinterpret_cast<void*>(callback);
+    // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
+    // out (only over the game's own; checked by choice_in on the way).
+    BYTE* panel = panel_of(top);
+    void* handler = nullptr;
+    if (panel != nullptr && a.panel_hook != nullptr && read(panel, kPanelHandler, handler) &&
+        handler == a.panel_handler) {
+        *reinterpret_cast<void**>(panel + kPanelHandler) = a.panel_hook;
+        hook_menu_ = top;
+        hook_panel_ = panel;
+    }
     menu_ = top;
     child_ = child;
     return true;
 }
 
+bool ArchipelagoChoice::fit_border(const MenuAddresses& a) {
+    if (child_ == nullptr || !menu_open(a)) return false;
+    BYTE** panels = nullptr;
+    BYTE* panel = nullptr;
+    BYTE** children = nullptr;
+    BYTE* child = nullptr;
+    int32_t selected = -1, width = 0;
+    BYTE* label = nullptr;
+    double label_x = 0;
+    if (!read(menu_, 0, panels) ||
+        !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel) ||
+        !read(panel, kPanelChildren, children) ||
+        !read(reinterpret_cast<BYTE*>(children), 8, child) || child != child_ ||
+        !read(panel, kPanelSelected, selected) || selected != 1 ||
+        !read(panel, kPanelBorderWidth, width) || width != kGameBorderWidth ||
+        !read(child_, kChildLabel, label) || !read(label, kPieceX, label_x)) {
+        return false;
+    }
+    BYTE* pieces[kBorderPieces] = {};
+    if (!safe_read(panel + kPanelBorderPieces, pieces, sizeof(pieces))) return false;
+    for (BYTE* piece : pieces) {
+        BYTE probe[kEdgeLocalRight + 8];
+        if (piece == nullptr || !safe_read(piece, probe, sizeof(probe)) ||
+            !writable(piece, sizeof(probe))) {
+            return false;
+        }
+    }
+    // Only a border as the game laid it out round this label: its top-right piece where the
+    // top edge ends, 80.1 past the label's x (once moved, it is 8 further and left alone).
+    double right_x = 0;
+    read(pieces[kTopRight], kPieceX, right_x);
+    if (std::fabs(right_x - (label_x + kEdgeAsLaid)) > 0.5) return false;
+    for (int i : {kTopRight, kRight, kBottomRight}) {
+        for (ptrdiff_t field : {kPieceX, kPieceLeft, kPieceRight}) {
+            *reinterpret_cast<double*>(pieces[i] + field) += kBorderMove;
+        }
+    }
+    for (int i : {kTop, kBottom}) {
+        *reinterpret_cast<float*>(pieces[i] + kEdgeLength) += static_cast<float>(kBorderMove);
+        for (ptrdiff_t field : {kEdgeLocalRight, kPieceRight, kEdgeQuadRight1, kEdgeQuadRight2}) {
+            *reinterpret_cast<double*>(pieces[i] + field) += kBorderMove;
+        }
+    }
+    return true;
+}
+
 bool ArchipelagoChoice::release(const MenuAddresses& a, WidgetCallback callback) {
+    put_handler_back(a);
     if (child_ == nullptr) return false;
     bool put = menu_open(a) && choice_in(menu_, a, reinterpret_cast<void*>(callback)) == child_;
     if (put) *reinterpret_cast<void**>(child_ + kChildCallback) = a.rando_menu;
@@ -233,6 +338,7 @@ bool ArchipelagoChoice::release(const MenuAddresses& a, WidgetCallback callback)
 }
 
 bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback) {
+    put_handler_back(a);
     if (child_ == nullptr) return false;
     bool put = put_back(a, callback);
     child_ = nullptr;
