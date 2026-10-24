@@ -24,6 +24,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+import save_patch
+
 DATA_DISC = 44  # the game's item ID, its Data Disc (worlds/zexion/items.py)
 NAME = "OS INSTALL DISK"  # what the game's record calls DATA DISC is called here
 
@@ -86,6 +88,35 @@ def request(count: int, required: int, told: bool = True) -> str:
 
 
 OFF = "discs"  # the request taking it all back
+
+SLOT_COPY = 0x908  # a slot's copy of its randomizer section (client/game.py)
+SLOTS_OFF = "disk_slots"  # the file select's count taken back
+
+
+def seed_slots(
+    markers: Sequence[tuple[int, bool]], copies: bytes, plan: save_patch.SeedPlan
+) -> list[int]:
+    """The save slots (1 to 30) holding this seed: a randomizer save (marker 1) in use, whose
+    copy of its randomizer section holds this seed. The copy is not cleared when a slot is
+    deleted or given a normal game, hence the marker."""
+    out = []
+    for n, (marker, used) in enumerate(markers, start=1):
+        copy = copies[(n - 1) * SLOT_COPY : n * SLOT_COPY]
+        if (
+            marker == 1
+            and used
+            and len(copy) == SLOT_COPY
+            and save_patch.section_matches(copy, plan)
+        ):
+            out.append(n)
+    return out
+
+
+def slots_request(count: int, required: int, slots: Sequence[int]) -> str:
+    """The helper's ``disk_slots`` request: the count, the number needed, and the slots holding
+    the seed, whose file select entries show the disks in place of the keys."""
+    listed = ",".join(str(n) for n in slots) if slots else "-"
+    return f"disk_slots {count} {required} {listed}"
 
 
 def scan_line(required: int) -> str:

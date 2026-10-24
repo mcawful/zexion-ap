@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <set>
 #include <string>
 
 #include "build.h"
@@ -43,7 +44,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.17.2";
+constexpr char kVersion[] = "0.18.5";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -155,6 +156,22 @@ void mission_open() {
     g_in_callback.fetch_sub(1);
 }
 
+// The save entries' handler while the file select shows the disk count (files.h): the game's
+// own first (it fills the entry on event 0xF), then the entry rewritten. Called by the game's
+// widget code on its thread outside the frame call; unload puts the game's back first.
+void file_entry_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
+    g_in_callback.fetch_add(1);
+    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
+    auto handler = reinterpret_cast<Handler>(g_game.file_entry_original(widget));
+    if (handler != nullptr) handler(widget, event, r8, r9);
+    try {
+        g_game.file_event(widget, event);
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_in_callback.fetch_sub(1);
+}
+
 void mission_yes(void* widget, int event) {
     g_in_callback.fetch_add(1);
     void* no = nullptr;
@@ -186,6 +203,7 @@ uintptr_t frame(void* argument) {
                 // The client went away: what it asked for that changes the game goes too.
                 g_game.set_assists_locked(false);
                 g_game.set_discs(0, 0, "");
+                g_game.set_disk_slots(0, 0, {});
             }
             g_mailbox.serve();
             g_game.watch_newgame();
@@ -198,6 +216,7 @@ uintptr_t frame(void* argument) {
                     g_game.watch_discs();
                     g_game.watch_equipment();
                     g_game.watch_mission();
+                    g_game.watch_files();
                     g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
@@ -318,6 +337,27 @@ std::string handle(const std::string& request, bool& stop) {
         }
         return result;
     }
+    if (request == "disk_slots" || request.rfind("disk_slots ", 0) == 0) {
+        // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count
+        // for the slots holding the seed (files.h).
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        int count = 0, required = 0;
+        std::set<int> slots;
+        std::string error = zap::parse_disk_slots(request, count, required, slots);
+        if (!error.empty()) return "error " + error;
+        std::string result;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    bool on = !slots.empty();
+                    g_game.set_disk_slots(count, required, std::move(slots));
+                    return std::string(on ? "disk_slots on" : "disk_slots off");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request == "discs_status") {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::string result;
@@ -411,6 +451,7 @@ std::string handle(const std::string& request, bool& stop) {
                     g_game.set_equipment_panel_hook(reinterpret_cast<void*>(&equip_panel_event));
                     g_game.set_mission_hooks(reinterpret_cast<void*>(&mission_open),
                                              reinterpret_cast<void*>(&mission_yes));
+                    g_game.set_file_entry_hook(reinterpret_cast<void*>(&file_entry_event));
                     std::string e = g_game.configure(exe, rvas);
                     return e.empty() ? std::string("ok") : "error " + e;
                 }, kFrameWaitMs, result)) {
@@ -445,6 +486,9 @@ std::string undo_for_unload() {
     int disc_count = 0, discs_required = 0;
     bool discs_told = true;
     std::string scan_line;
+    // And the file select's count.
+    int file_count = 0, file_required = 0;
+    std::set<int> file_slots;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
@@ -454,11 +498,15 @@ std::string undo_for_unload() {
                 discs_required = g_game.discs_required();
                 discs_told = g_game.discs_told();
                 scan_line = g_game.scan_line();
+                file_count = g_game.files().count();
+                file_required = g_game.files().required();
+                file_slots = g_game.files().slots();
                 g_game.disarm_newgame();
                 g_game.restore_skip();
                 g_game.set_discs(0, 0, "");
                 g_game.restore_discs();
                 g_game.restore_mission();
+                g_game.restore_files();
                 g_game.restore_ap_items();
                 g_game.restore_menu(&archipelago_chosen);
                 g_game.set_assists_locked(false);
@@ -473,13 +521,16 @@ std::string undo_for_unload() {
     }
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        if (was_locked || !scan_line.empty()) {
+        if (was_locked || !scan_line.empty() || !file_slots.empty()) {
             std::string ignored;
             g_mailbox.call(
                 [&] {
                     if (was_locked) g_game.set_assists_locked(true);
                     if (!scan_line.empty()) {
                         g_game.set_discs(disc_count, discs_required, scan_line, discs_told);
+                    }
+                    if (!file_slots.empty()) {
+                        g_game.set_disk_slots(file_count, file_required, file_slots);
                     }
                     return std::string();
                 },

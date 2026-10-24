@@ -52,6 +52,33 @@ def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
     assert discs.OFF == "discs"
 
 
+def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
+    import save_patch
+
+    plan = save_patch.SeedPlan(
+        location_items=[46] * 154,
+        start_items={},
+        start=(6, 191, 329),
+        second_start=None,
+        amounts=None,
+        options={},
+    )
+    ours = bytearray(discs.SLOT_COPY)
+    ours[0x26C : 0x26C + 154] = bytes(plan.location_items)
+    ours[0x310:0x316] = bytes.fromhex("0600bf004901")
+    other = bytearray(discs.SLOT_COPY)
+    copies = bytes(ours) + bytes(ours) + bytes(ours) + bytes(other) + bytes(discs.SLOT_COPY) * 26
+    markers = [(1, True), (0, True), (1, False), (1, True)] + [(0, False)] * 26
+    # Slot 1 ours; 2 a normal save over a stale copy; 3 empty; 4 another seed.
+    assert discs.seed_slots(markers, copies, plan) == [1]
+
+
+def test_the_slots_request() -> None:
+    assert discs.slots_request(3, 15, [4, 5]) == "disk_slots 3 15 4,5"
+    assert discs.slots_request(3, 15, []) == "disk_slots 3 15 -"
+    assert discs.SLOTS_OFF == "disk_slots"
+
+
 def test_the_scanner_line_fits_one_line_of_the_game_text() -> None:
     assert discs.scan_line(15) == "COLLECT 15 OS INSTALL DISKS!"
     assert discs.scan_line(1) == "COLLECT 1 OS INSTALL DISK!"

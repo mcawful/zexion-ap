@@ -45,6 +45,7 @@ closed menus and released widgets, and the ASSIST lock (its look, the cursor ord
 back); `tests/game_tests.cpp` also the received shield and death, the ASSIST watch, the
 scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
+`tests/files_tests.cpp` the file select's disk count,
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
 through the real pipe and hook in a busy host.
 
@@ -108,6 +109,10 @@ through the real pipe and hook in a busy host.
       <why>`: the OS Install Disks goal (below): the count, the number needed, the scanner's
       line in hex (one line of the game's font, under 32 characters), and whether the player
       has been told the number (1, from the scanner's flag 39) or not (0, "OF ?").
+    - `disk_slots COUNT REQUIRED SLOTS` → `disk_slots on`, `disk_slots` (or no slot) →
+      `disk_slots off`, or `refused <why>`: the file select's disk count (below) for the save
+      slots holding the seed, SLOTS a comma list (1 to 30) or `-`. REQUIRED is checked but
+      not shown.
     - `discs_status` → what the equipment screen last did: `shown N`, `not shown: <why>` or
       `not shown yet`.
     - `mission_prompt` → `queued`: offer RETURN HOME WITH THE DISKS? when the game is next idle
@@ -118,7 +123,7 @@ through the real pipe and hook in a busy host.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
-  `discs`, `discs_status`, `mission_prompt`, `mission_status`,
+  `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
   `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -304,10 +309,19 @@ through the real pipe and hook in a busy host.
     relabels the question RETURN HOME WITH THE DISKS? and points YES at the helper; YES calls
     the game's NO to close the prompt, then, once idle again, the helper starts the game's
     ending (routine 4). An opener another transition replaced is set again once idle.
+  While the client has sent `disk_slots` with slots (the client reads which save slots hold
+  the seed, a save loaded or not), it also shows the count on the file select, COPY FILE and
+  DELETE FILE in place of the keys (`src/files.cpp`): it points each entry's handler at its
+  own, which calls the game's and rewrites the entry after it fills it, and checks the
+  entries each frame; for those slots, a squashed DISK (font glyphs 0xFC and 0xFD, painted
+  while on) over KEYS and the count below it, moved 5 pixels down, centered on the items
+  bracket; nothing with no disk. When off and before an unload, the game's frames for the
+  keys, the count's glyphs' place and the handlers go back, in menus still open; a refused
+  unload turns the count on again.
   Working in game: the scanner's line, the equipment screen, the disk glyph, the disk row
-  (as a whole) and the prompt, NO and YES to the ending (2026-10-24, B1; `docs/re/memory.md`,
-  "The scanner", "The equipment screen", "The mission prompt", "The pause screen's KEYS
-  row").
+  (as a whole), the prompt, NO and YES to the ending, and the file select's count and its
+  put-back on a disconnect (a seed's save with no disk not seen) (2026-10-24, B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission
+  prompt", "The pause screen's KEYS row", "The file select").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -323,7 +337,7 @@ through the real pipe and hook in a busy host.
   again, puts RANDOMIZER (with the panel's handler), ASSIST and event 3665 back in a frame call,
   with the OS Install Disks goal's changes (the scanner's text, the pause screen's branch,
   EQUIPMENT's callback and the Energy Tank panel's handler, a prompt opener not yet run and a
-  prompt's YES, pointed at NO), and refuses (`error a menu
+  prompt's YES, pointed at NO, and the file screens' entry handlers), and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
   ARCHIPELAGO off, or while an open menu's panel or entry, or the game's transition routine,
   may still hold one of the helper's functions, since the game would call into the unloaded
