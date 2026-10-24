@@ -127,10 +127,12 @@ no popup; the client's `/unload_helper` unloads it as if it had failed, to test 
 first), and the client loads it again within 30 seconds. Popups are not for items the slot
 already held when the client connected (the list the server sends right after connecting), so
 a reconnect does not replay them. With the helper, the client also arms it with the seed,
-once per connection: for a seed whose slot data carries the menu setup (from the world on
-`apworld`), picking an empty slot then offers ARCHIPELAGO, which starts a new game holding
-the seed with no `/prepare` (run in game for all three modes; for OHKO the helper also fills
-in the menu's start table). With `--keep-randomizer`, RANDOMIZER stays:
+and again once each new game holding it is in play, so one seed can start several saves: for
+a seed whose slot data carries the menu setup (from the world on `apworld`), picking an empty
+slot then offers ARCHIPELAGO, which starts a new game holding the seed with no `/prepare` (run
+in game for all three modes; for OHKO the helper also fills in the menu's start table; two
+saves of one seed from one connection run in game 2026-10-24, B1; the helper also fits the
+hover border round ARCHIPELAGO). With `--keep-randomizer`, RANDOMIZER stays:
 started in the seed's mode, the helper writes the seed in as the game starts (run in game
 for all three modes).
 

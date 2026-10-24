@@ -325,6 +325,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     newgame_fn_ = found["newgame_fn"];
     menu_.current_menu = found["current_menu"];
     menu_.panel_handler = found["panel_handler_fn"];
+    menu_.panel_hook = panel_hook_;
     menu_.widget_handler = found["widget_handler_fn"];
     menu_.rando_menu = found["rando_menu_fn"];
     menu_.assist_menu = found["assist_menu_fn"];
@@ -739,7 +740,8 @@ void Game::watch_menu(WidgetCallback callback) {
     if (!configured_) return;
     if (newgame_armed_ && !newgame_.menu.empty() && !starting_) {
         choice_.install(menu_, callback);
-    } else if (choice_.installed()) {
+        if (choice_.installed()) choice_.fit_border(menu_);
+    } else if (choice_.installed() || choice_.holds_hook()) {
         choice_.restore(menu_, callback);
     }
 }

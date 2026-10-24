@@ -191,15 +191,24 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   - With `menu` lines, offers **ARCHIPELAGO** in place of RANDOMIZER on the game-mode panel
     the game shows after an empty slot is picked (`src/menu.cpp`). It reads the panel with
     fault-safe reads and checks every handler, size and pointer on the way before it
-    relabels the choice and points it at the helper's own callback. RANDOMIZER is put back as
+    relabels the choice and points it at the helper's own callback. The border the panel draws
+    round the button under the mouse is sized for RANDOMIZER's ten letters and a blank, so its
+    right-hand side would sit on ARCHIPELAGO's last letter: while ARCHIPELAGO is offered the
+    panel's handler is the helper's, which calls the game's and then moves that side a
+    character out and stretches the top and bottom edges to meet it, in the frame the game
+    lays the border out (`fit_border`; the frame call does the same, for a border laid out
+    without the handler; working in the game since 2026-10-24, fitted from the first frame).
+    RANDOMIZER, and the game's handler, are put back as
     soon as its menu is not the top one, on `disarm`, and before an unload, but only while
     that menu is still open: the game frees a closed menu's widgets without clearing them, so
-    the helper then forgets the choice without writing. The callback, called by the game's
+    the helper then forgets the choice without writing. The game's handler goes back even if
+    the choice no longer looks like the one relabeled. The callback, called by the game's
     widget code on its thread, sets the menu's state to the seed's mode, writes the edits (for
     the AP start), runs the game's placement, checks the `expect` bytes, writes the edits
     over the placement, puts the player's menu state back, and queues the new game in the
     chosen slot; the watch above reports it in the next frame. Once the game has queued the new
-    game, only RANDOMIZER's callback goes back, so the label reads ARCHIPELAGO through the fade
+    game, only RANDOMIZER's callback (and the panel's handler) goes back, so the label reads
+    ARCHIPELAGO through the fade
     (seen in the game, 2026-10-23); a refused start puts the whole label back.
     For a mode with Double Teleport (OHKO) the request carries the randomizer menu's start
     table (`start_table`), which the placement reads: before the placement the callback fills
@@ -268,14 +277,17 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   playthrough, YES to the ship, and the goal at the ending; `docs/re/memory.md`, "The escape
   skip").
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST
-  again, puts RANDOMIZER, ASSIST and event 3665 back in a frame call, and refuses (`error a menu
+  again, puts RANDOMIZER (with the panel's handler), ASSIST and event 3665 back in a frame call,
+  and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
-  ARCHIPELAGO off, since the menu would point into the unloaded DLL (the locked ASSIST holds
+  ARCHIPELAGO off, or while an open menu's panel may still hold the helper's handler, since
+  the menu would point into the unloaded DLL (the locked ASSIST holds
   no callback of the helper's, so it cannot). Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
-  counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
+  counted inside (and for a call still inside ARCHIPELAGO's callback or the panel's handler),
+  and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
   restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
   back as `unload` does (retrying each second until a frame comes to do it) and then unhooks
