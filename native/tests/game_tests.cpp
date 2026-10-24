@@ -61,6 +61,17 @@ void test_parsers() {
     zap::Batch longer;
     zap::parse_batch("apply\npopup 1 " + std::string(100, 'a'), longer);
     check(longer.popups[0].suffix.size() == 40, "the suffix is capped");
+    zap::Batch notice;
+    check(zap::parse_batch("apply\nnotice 49 Hint: Phaser at Machinus 29,30", notice).empty() &&
+              notice.popups.size() == 1 && notice.popups[0].bare &&
+              notice.popups[0].suffix == "HINT: PHASER AT MACHINUS 29,30",
+          "a notice keeps its colon and has no head");
+    zap::Batch plain;
+    zap::parse_batch("apply\npopup 49 Hint: X", plain);
+    check(!plain.popups[0].bare && plain.popups[0].suffix == "HINT X",
+          "a popup's suffix still drops the colon");
+    zap::Batch empty_notice;
+    check(!zap::parse_batch("apply\nnotice 49 ~~", empty_notice).empty(), "an empty notice is refused");
 }
 
 // The RVA of the start of the section holding `p` in this program.
@@ -199,6 +210,75 @@ void test_popups() {
     check(g_messages == 2 &&
               g_text == "\xC5MISSILE BOX  FROM BOB",
           "then shows the next");
+
+    // A notice: its text alone, wrapped and centered, with the item's sound.
+    reset_game();
+    apply(game, "apply\nnotice 36 HINT: PHASER AT MACHINUS 29,30");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == "HINT: PHASER AT MACHINUS29,30" && g_message_args[0] == 24,
+          "a notice is its text alone, left-aligned, wrapped at 24");
+    int w = 0;
+    check(zap::notice_text("HINT: AB CDEFGHIJKLMNOPQRSTUVW", 24, &w) ==
+                  "HINT: AB" + std::string(13, ' ') + "CDEFGHIJKLMNOPQRSTUVW" &&
+              w == 21,
+          "whole words to a line, each line padded to the box's width");
+    check(zap::wrap_hyphenated("HINT: ABCDEFGHIJKLMNOPQRSTUVWXYZ0123", 24) ==
+              std::vector<std::string>{"HINT: ABCDEFGHIJKLMNOPQ-", "RSTUVWXYZ0123"},
+          "a word longer than a line is split with a hyphen at the line's end");
+    {
+        // A full line, then a word longer than a line: it starts a new line, no line runs over.
+        auto lines = zap::wrap_hyphenated("HINT: MAGNUS ARMOR IS AT " + std::string(25, 'A'), 24);
+        bool within = !lines.empty();
+        for (const std::string& line : lines) within = within && line.size() <= 24;
+        check(within && lines[0] == "HINT: MAGNUS ARMOR IS AT" &&
+                  lines[1] == std::string(23, 'A') + "-" && lines[2] == "AA",
+              "a long word after a full line is split from a line of its own");
+        int width = 0;
+        zap::notice_text("HINT: MAGNUS ARMOR IS AT " + std::string(25, 'A'), 24, &width);
+        check(width == 24, "and the popup stays 24 wide");
+    }
+    check(g_sound == 61, "with the item's own sound");
+    check(*reinterpret_cast<int32_t*>(g_message + 0x1FC) == 4 * 1 + 7 &&
+              *reinterpret_cast<double*>(g_message + 0x48) == 0x58 - 1,
+          "a two-line notice keeps the game's box");
+
+    // Three lines and the blank one: the box made for the three, centred on them.
+    reset_game();
+    ::apply(game, "apply\nnotice 36 HINT: GAMMA KEY IS AT AN OLD TOWER BY THE SEA IN ALICE'S WORLD");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(*reinterpret_cast<int32_t*>(g_message + 0x1FC) == 4 * 3 + 4 &&
+              *reinterpret_cast<double*>(g_message + 0x48) == 0x58 - 1 - 4,
+          "a notice of three lines gets a box fitted to them");
+    {
+        std::string text =
+            zap::notice_text("HINT: GAMMA KEY IS AT AN OLD TOWER BY THE SEA IN ALICE'S WORLD", 24);
+        *reinterpret_cast<double*>(g_message + 0x48) = 0x58 - 1;
+        *reinterpret_cast<int32_t*>(g_message + 0x1FC) = 99;  // not what the game wrote
+        zap::fit_notice_box(g_message, text, 24);
+        check(*reinterpret_cast<int32_t*>(g_message + 0x1FC) == 99,
+              "a message not as the game made it is left alone");
+    }
+
+    // A long notice: every line shown, up to what the game's 256-byte message slot holds. A
+    // 24-letter word makes the box 24 wide, then each 12-letter word takes a line of its own,
+    // padded to 24: past 255 bytes, cut to the whole lines that fit (10 of 24), then the
+    // blank line that keeps the last one in the game's window.
+    reset_game();
+    std::string words(24, 'Y');
+    for (int i = 0; i < 14; ++i) words += " ABCDEFGHIJKL";
+    ::apply(game, "apply\nnotice 36 " + words);
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text.size() == 241 && g_text.back() == ' ' && g_message_args[0] == 24 &&
+              g_text.rfind(std::string(24, 'Y') + "ABCDEFGHIJKL", 0) == 0,
+          "a notice past the message slot is cut to whole lines that fit");
+    check(zap::notice_text("HINT: GAMMA KEY IS AT AN OLD TOWER IN ALICE'S WORLD", 24, &w) ==
+                  "HINT: GAMMA KEY IS AT AN" "OLD TOWER IN ALICE'S    " "WORLD" +
+                      std::string(19, ' ') + " " &&
+              w == 24,
+          "three lines or more end with a blank line, so the game's window shows the last");
+    zap::Batch long_notice;
+    zap::parse_batch("apply\nnotice 49 " + std::string(300, 'a'), long_notice);
+    check(long_notice.popups[0].suffix.size() == 200, "a notice is capped at 200 characters");
 
     reset_game();
     apply(game, "apply\npopup 36 X");

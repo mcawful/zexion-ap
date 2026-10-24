@@ -27,7 +27,8 @@ the helper applies between frames (client/native.py): it checks again that the g
 play and that every byte still holds what this poll read, writes all or none, sets missiles,
 bombs and energy as a pickup would, refreshes the HUD, and shows the game's popup for each
 item received since the last batch (not for those the server already held when the client
-connected: ``mark_announced``). When nothing is owed but max missiles or bombs lag behind the
+connected: ``mark_announced``); an Area Map with a hint gets a notice instead, the hint's text
+alone (``notes``, client/hints.py). When nothing is owed but max missiles or bombs lag behind the
 counts, it sends a refresh that sets them. A helper that fails is dropped, and grants go back
 to direct writes. Both ran in the game on 2026-10-22 (native/README.md).
 """
@@ -114,8 +115,9 @@ class Session:
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
-        # How many received items have had their popup. None until the server's first full
-        # list arrives (mark_announced): what came before this connection is not announced.
+        # How many received items have had their popup. None until the client has seen
+        # what the slot held when it connected (mark_announced, from the packet right after
+        # Connected): that is not announced.
         self._announced: int | None = None
 
     def mark_announced(self, count: int) -> None:
@@ -133,8 +135,11 @@ class Session:
         received: list[int],
         gap: float = SETTLE_SECONDS,
         senders: list[str] | None = None,
+        notes: dict[int, str] | None = None,
     ) -> Step:
-        """One poll. ``senders`` names who sent each of ``received`` (for popups)."""
+        """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
+        replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
+        client/hints.py)."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -166,7 +171,7 @@ class Session:
             goal = snap.ended >= 1 and snap.finale == 0
         step = Step(collected, goal, {}, True, state=snap.state)
         if snap.state == game.IN_PLAY:
-            step.granted = self.give(g, snap, collected, received, gap, senders)
+            step.granted = self.give(g, snap, collected, received, gap, senders, notes)
         return step
 
     def give(
@@ -177,6 +182,7 @@ class Session:
         received: list[int],
         gap: float,
         senders: list[str] | None = None,
+        notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         target = reconcile.should_own(plan.start_items, plan.location_items, collected, received)
@@ -191,7 +197,7 @@ class Session:
             return {}  # owed for the first time: wait for the next poll to agree
         if self.helper is not None:
             try:
-                return self.give_through_helper(snap, result.inventory, received, senders)
+                return self.give_through_helper(snap, result.inventory, received, senders, notes)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
                 self.helper.close()
@@ -229,8 +235,9 @@ class Session:
         owed: dict[int, int],
         received: list[int],
         senders: list[str] | None,
+        notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        popups: list[tuple[int, str]] = []
+        popups: list[tuple[int, str] | tuple[int, str, bool]] = []
         start = self._announced if self._announced is not None else len(received)
         # A progressive weapon received while its weapon is owned arrives as the upgrade, so
         # its popup names the upgrade.
@@ -242,7 +249,11 @@ class Session:
                     item = reconcile.PROGRESSIVE[item]
                 weapons.add(received[index])
             sender = senders[index] if senders and index < len(senders) else ""
-            popups.append((item, f"FROM {sender}" if sender else ""))
+            note = (notes or {}).get(index)
+            if note:
+                popups.append((item, note, True))  # a notice: the hint alone
+            else:
+                popups.append((item, f"FROM {sender}" if sender else ""))
         if not owed and not popups:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, {}, before) != before:
