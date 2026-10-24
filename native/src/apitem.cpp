@@ -181,13 +181,47 @@ BYTE* ApItems::record(BYTE* holder, int item) const {
     return r;
 }
 
-void ApItems::watch(BYTE* holder, int cell) {
-    if (!active()) return;
-    auto it = labels_.find(cell);
-    const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
-    char want[kItemNameMax + 1] = {};
-    std::memcpy(want, name.data(), (std::min)(name.size(), kItemNameMax));
+int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
+               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]) {
+    const bool player_labeled = labels.count(player_cell) != 0;
+    int touching = -1;
+    double touching_d = 0;
     for (int i = 0; i < kStandInCount; ++i) {
+        const int item = i == 0 ? kStandInItem : kStandInProgression;
+        double best = 0;
+        int best_cell = -1;
+        for (const StandInSeen& s : seen) {
+            if (s.item != item || labels.count(s.cell) == 0) continue;
+            const double dx = s.x - player_x, dy = s.y - player_y;
+            const double d = dx * dx + dy * dy;
+            if (best_cell < 0 || d < best) {
+                best = d;
+                best_cell = s.cell;
+            }
+        }
+        const bool in_reach = best_cell >= 0 && best <= kStandInReach * kStandInReach;
+        if (in_reach) {
+            cells[i] = best_cell;
+            if (touching < 0 || best < touching_d) {
+                touching = i;
+                touching_d = best;
+            }
+        } else if (player_labeled || best_cell < 0) {
+            cells[i] = player_cell;
+        } else {
+            cells[i] = best_cell;
+        }
+    }
+    return touching;
+}
+
+void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
+    if (!active()) return;
+    for (int i = 0; i < kStandInCount; ++i) {
+        auto it = labels_.find(cells[i]);
+        const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
+        char want[kItemNameMax + 1] = {};
+        std::memcpy(want, name.data(), (std::min)(name.size(), kItemNameMax));
         const StandIn& s = kStandIns[i];
         BYTE* r = record(holder, s.item);
         records_[i] = nullptr;
@@ -199,7 +233,6 @@ void ApItems::watch(BYTE* holder, int cell) {
             at<int16_t>(r, kEvent) = kNoEvent;
         }
         records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)
-        // Only one location is in a cell, so both are named for it.
         if (std::memcmp(r + kName, want, sizeof(want)) != 0) {
             std::memcpy(r + kName, want, sizeof(want));
         }

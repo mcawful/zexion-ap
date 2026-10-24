@@ -43,9 +43,22 @@ public:
     // cells, and puts back any it dressed whose cell no longer names an item.
     void apply(const Places& at);
 
+    // Game thread, every frame while the stand-ins are restyled, before apply: every 30 frames,
+    // finds the general objects showing a stand-in's logo (flipped_slots), and puts back any it
+    // dressed that no longer shows one.
+    void scan(const Places& at);
+
     // Game thread: puts back every object it dressed that is still that spawn; forgets them.
     void restore(const Places& at);
     bool dressed() const;
+    // General objects showing a stand-in's logo at the last scan (slots of the pool); each
+    // still to be checked with shows_stand_in, as the list can be 30 frames old.
+    const std::vector<int>& flipped_slots() const { return flipped_slots_; }
+    // A live object drawing from the item sprites' frame list (`base`, item_frame_base) at a
+    // logo frame, empty in the game's own art: a stand-in.
+    static bool shows_stand_in(const BYTE* object, const BYTE* base);
+    // The item sprites' frame list (every item object's base, the template's), or null.
+    static BYTE* item_frame_base(const Places& at);
 
     static constexpr int kSlots = 128;
     static constexpr int kObjectSlots = 1000;
@@ -59,7 +72,7 @@ private:
     // it; forgets it only if put back, or if it is no longer that spawn.
     void undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
 
-    // General objects showing a stand-in's logo: found every 30 frames, dressed every frame.
+    // General objects showing a stand-in's logo (found by scan), dressed every frame.
     void apply_flipped(const Places& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                        int64_t clock, const bool (&ours)[2]);
     void undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);

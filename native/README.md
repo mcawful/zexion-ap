@@ -203,14 +203,16 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   (the equipment screen draws item frame 95, blank in the game's art, and the map cursor shows a
   record's name; in a menu the records are the game's own and the logos are cleared),
   restyles them (their in-world frames pointed at
-  frames that are empty in the game's art, no refill drop at pickup), names them after the
-  label for the player's map cell (or AP ITEM): the logo glyph, then the label laid
+  frames that are empty in the game's art, no refill drop at pickup), names each after the
+  label for the cell of a live stand-in of its kind within reach of the player (the cell the
+  item object carries: an enemy's drop lands wherever the enemy dies), else the player's
+  cell's if it has one, else the nearest such stand-in's (or AP ITEM): the logo glyph, then the label laid
   out as the popups below are, so the game's own pickup popup shows "PROGRESSION ITEM" (or "AP
   ITEM") over "FOR ALICE", both centered (the records keep no icon of their own, so the name is shown as
   written). The game's pickup code makes that popup with a line width of 24, as an immediate
-  in its code; while the player stands in a labeled cell the helper changes it (from the
-  frame call, on the game's thread, after checking the instruction's bytes) to the label's
-  longest line, so the box is no wider than the text, and puts 24 back elsewhere, and on
+  in its code; while a stand-in is named after a label (the one within reach, or the
+  player's cell's) the helper changes it (from the frame call, on the game's thread, after
+  checking the instruction's bytes) to that label's longest line, so the box is no wider than the text, and puts 24 back elsewhere, and on
   unload, which waits for a frame to do it. It also now and then paints
   Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
   its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
