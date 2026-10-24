@@ -70,6 +70,17 @@ def zexion_label(item: int, player_name: str) -> str:
     return f"@{item}\n{who}"
 
 
+def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
+    """Whether the helper should hold the labels after a poll: while this seed's save is loaded,
+    and not while another save (or none) is, where Scrap Energy and Scrap Chunk are the game's
+    own (their refill drop included). A poll that could not tell keeps what was wanted."""
+    if seed_matches:
+        return True
+    if left_seed:
+        return False
+    return wanted
+
+
 def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:
     """The stand-in items the world says it uses (none for a world from before them)."""
     codes = set()
