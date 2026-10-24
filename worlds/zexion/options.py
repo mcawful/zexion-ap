@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from Options import Choice, PerGameCommonOptions
+from Options import Choice, DeathLink, PerGameCommonOptions
 
 from .data import MODES
 
@@ -55,3 +55,4 @@ StartRoom = _make_start_room()
 class ZexionOptions(PerGameCommonOptions):
     mode: Mode
     start_room: StartRoom
+    death_link: DeathLink

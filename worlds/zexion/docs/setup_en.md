@@ -48,6 +48,7 @@ says so), the client writes the seed into a saved new game:
 Keep the client running while you play. It sends each location as you collect it, gives you
 the items other players find for you (only while you are in play, not in menus), and reports
 your goal when the ending begins, as you leave on the ship after grabbing Zexion in the core. If you die or reload, items received since your
-last save are given again.
+last save are given again. With the DeathLink option on, the client also sends your deaths to
+the other players and ends your life when one of them dies; the second part needs the helper.
 
 Only play the seed's slot while the client is connected.

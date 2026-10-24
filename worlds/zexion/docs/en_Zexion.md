@@ -36,3 +36,12 @@ up pops up PROGRESSION ITEM or AP ITEM and whom it is for ("FOR ALICE"), or, for
 player's item, that item's own icon and name; the client then sends it to its owner. Items for you arrive while you play, with the
 game's own popup and the sender's name. Without the helper, another player's item looks like
 Scrap Energy (Scrap Chunk for a progression item), and items for you arrive with no popup.
+
+## Does Zexion support DeathLink?
+
+Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too; when
+another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
+received together queue: each one kills you in turn, after you respawn. A death
+in Zexion takes you back to your last save, so it costs everything since you saved. Dying from
+another player's death needs the client's in-game helper: without it, that death waits until
+the helper runs again.

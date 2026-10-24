@@ -53,6 +53,18 @@ class TestDefaultStart(ZexionTestBase):
         self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
 
 
+class TestDeathLinkIsOffByDefault(ZexionTestBase):
+    def test_slot_data_says_death_link_is_off(self) -> None:
+        self.assertIs(self.world.fill_slot_data()["death_link"], False)
+
+
+class TestDeathLinkOn(ZexionTestBase):
+    options = {"death_link": True}
+
+    def test_slot_data_says_death_link_is_on(self) -> None:
+        self.assertIs(self.world.fill_slot_data()["death_link"], True)
+
+
 class TestStandardIsTheDefault(ZexionTestBase):
     def test_mode_and_items_are_standards(self) -> None:
         self.assertEqual(self.world.mode_name, "standard")

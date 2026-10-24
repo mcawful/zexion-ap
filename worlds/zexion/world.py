@@ -237,6 +237,7 @@ class ZexionWorld(World):
             # Other players' items are this item in location_items (client/aplabels.py).
             "stand_in": FOREIGN,
             "stand_in_progression": FOREIGN_PROGRESSION,
+            "death_link": bool(self.options.death_link),
         }
 
     def menu_setup(self) -> dict[str, Any] | None:
