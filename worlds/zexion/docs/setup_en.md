@@ -22,6 +22,9 @@ playing.
    NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room with its
    starting items, and the game saves the new game at once.
 
+Once that game is in play, ARCHIPELAGO is offered again (the client says so), so another empty
+slot can start a second save of the same seed; every save of the seed counts, whatever its slot.
+
 This works for every mode. If you would rather start from the game's own menu, start the client
 with `--keep-randomizer`: RANDOMIZER then stays, and choosing it, the seed's mode with no
 options changed, and START GAME starts the seed the same way.
