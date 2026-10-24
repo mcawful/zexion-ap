@@ -2,8 +2,10 @@
 
 The world fills a location holding another player's item with a stand-in: item 47 (Scrap
 Energy), or 48 (Scrap Chunk) for a progression item, which the helper draws with Archipelago's up
-arrow. The client asks the server whom each such location's item is for (``LocationScouts``)
-and sends the helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
+arrow; and, with the OS Install Disks goal, one holding this player's own disk with 48 too,
+labeled ``@44 OS INSTALL DISK`` (own_label): the disk's look, its glyph and that name. The
+client asks the server whom each such location's item is for (``LocationScouts``) and sends the
+helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
 generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
 Circle of the Moon's icons by classification), since another game's item names can be long. For
 another Zexion player's item the popup instead shows the item's own icon and the game's name for
@@ -26,7 +28,7 @@ import string
 from collections.abc import Iterable, Mapping, Sequence
 
 STAND_IN = 47  # Scrap Energy: other players' items
-STAND_IN_PROGRESSION = 48  # Scrap Chunk: other players' progression items
+STAND_IN_PROGRESSION = 48  # Scrap Chunk: other players' progression items, and own disks
 PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
 AP_ITEM = "AP ITEM"
@@ -70,6 +72,14 @@ def zexion_label(item: int, player_name: str) -> str:
     return f"@{item}\n{who}"
 
 
+def own_label(item: int, name: str = "") -> str:
+    """The label for one of this player's own items the world put a stand-in for (an OS Install
+    Disk, client/discs.py): its icon, and ``name`` in place of the game's name for it (the
+    helper's "@N NAME", native/README.md), for no one else."""
+    kept = " ".join(_font_words(name))[: PER_LINE - 1]
+    return f"@{item} {kept}" if kept else f"@{item}"
+
+
 def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
     """Whether the helper should hold the labels after a poll: while this seed's save is loaded,
     and not while another save (or none) is, where Scrap Energy and Scrap Chunk are the game's
@@ -94,7 +104,8 @@ def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:
 def foreign_locations(
     location_items: Sequence[int], kept: Iterable[int], codes: Iterable[int] = (STAND_IN,)
 ) -> list[int]:
-    """Indices of this world's locations that hold another player's item."""
+    """Indices of this world's locations that hold a stand-in: another player's item, or one
+    of this player's own the game must not hand out (an OS Install Disk, client/discs.py)."""
     keep, wanted = set(kept), set(codes)
     return [i for i, code in enumerate(location_items) if code in wanted and i in keep]
 

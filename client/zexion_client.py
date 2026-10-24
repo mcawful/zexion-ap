@@ -59,6 +59,17 @@ Once connected:
   or, for one found here, one after the game's pickup popup. Which item each Area Map hinted is
   kept in the server's data storage. Received Area Maps live-tested 2026-10-24 (B1); one found
   in the player's own world not yet.
+- For a seed with the OS Install Disks goal (slot data "goal": "os_install_disks"), the client
+  counts the disks (client/discs.py): received, and found in this world (what it reported
+  from the game's map, kept in the server's data storage for every save of the seed, so a
+  release gives none). A disk is never put in the game's inventory:
+  a received one pops up as "OS INSTALL DISK 3 OF 15" ("OF 15" once the scanner has said how
+  many), one found here, a stand-in labeled as one, gets the same popup after the game's own.
+  The helper shows the count on the equipment and pause screens and in the scanner's message.
+  Once the player has enough, the helper offers RETURN HOME WITH THE DISKS? (once per load,
+  until the save has reached the ending); YES starts the game's ending, and the goal is sent
+  when the ending begins with enough disks, as the core goal is. Working in game 2026-10-24
+  (B1).
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -93,6 +104,7 @@ from NetUtils import ClientStatus  # noqa: E402
 
 import aplabels  # noqa: E402
 import deathlink  # noqa: E402
+import discs  # noqa: E402
 import game  # noqa: E402
 import hints  # noqa: E402
 import native  # noqa: E402
@@ -210,6 +222,10 @@ class ZexionContext(CommonContext):
         # storage under this key (per team and slot), so a restart or a shield received offline
         # is not lost.
         self.shield_key: str | None = None
+        # This world's locations the player has found in game, in any save of the seed, kept in
+        # the server's data storage under this key (own_found): a release, which checks every
+        # location on the server, never writes it.
+        self.found_key: str | None = None
         self.shield_retry_at = 0.0
         self.shield_said = ""
         # A shield spawned but not counted yet (shields_tick), and how many spawns in a row
@@ -248,6 +264,28 @@ class ZexionContext(CommonContext):
         self.newgame_polled_at = 0.0
         self.disarm_pending = False
         self.goal_sent = False
+        self.goal_withheld = False  # an ending without enough disks, said once
+        # This load of the seed's save was seen before its ending (flag 250 clear): with the OS
+        # Install Disks goal, only an ending that begins in it is the goal, not one a save held.
+        self.ending_unseen = False
+        # The OS Install Disks goal (client/discs.py): the seed's hunt, or None for the core
+        # goal, and this world's own disk locations whose popup was shown (or that were checked
+        # before this connection's first look).
+        self.discs: discs.DiscHunt | None = None
+        self.discs_announced: set[int] = set()
+        self.discs_ready = False
+        # Whether this seed's save has had the scanner's message, which says how many disks are
+        # needed: until then the popups give the count alone.
+        self.discs_told = False
+        # RETURN HOME WITH THE DISKS? offered for this load of the save (mission_tick).
+        self.mission_asked = False
+        # What the helper was last told (discs.request, or discs.OFF; None: nothing yet, or a
+        # new helper, which may hold an earlier client's).
+        self.discs_sent: str | None = None
+        self.discs_retry_at = 0.0
+        # What the helper last said of the count on the equipment screen, and when it is asked.
+        self.discs_status = ""
+        self.discs_status_at = 0.0
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -277,6 +315,8 @@ class ZexionContext(CommonContext):
             self.connection += 1
             self.shield_key = f"zexion_shields_{self.team}_{self.slot}"
             self.set_notify(self.shield_key)
+            self.found_key = f"zexion_found_{self.team}_{self.slot}"
+            self.set_notify(self.found_key)
             # A world from before Area Map hints sends no "hints": Area Maps are filler.
             self.hint_targets = [list(t) for t in slot.get("hints", [])]
             self.hints_key = f"zexion_hints_{self.team}_{self.slot}"
@@ -316,6 +356,20 @@ class ZexionContext(CommonContext):
                     )
                 )
             self.goal_sent = False
+            self.discs = discs.from_slot_data(slot)
+            self.discs_announced = set()
+            self.discs_ready = False
+            self.discs_told = False
+            self.mission_asked = False
+            if self.discs is not None and not self.use_helper:
+                logger.warning(
+                    "This seed's goal is the OS Install Disks, which needs the in-game helper "
+                    "(started without it): nothing will offer the ending."
+                )
+            if self.discs is not None:
+                logger.info(
+                    f"The goal is {self.discs.required} of {self.discs.placed} OS Install Disks."
+                )
             logger.info(
                 f"Seed for Zexion's {slot['mode']} mode. If this slot's game is not prepared "
                 "yet: make a new randomizer game in that mode, save, close Zexion, and run "
@@ -327,6 +381,7 @@ class ZexionContext(CommonContext):
         self.session = None
         self.connection += 1
         self.shield_key = None
+        self.found_key = None
         self.hint_targets = []
         self.hints_key = None
         self.hints_ready = False
@@ -335,6 +390,7 @@ class ZexionContext(CommonContext):
         self.lock_assists = False
         self.assists_want = False  # unlocked on the next helper tick
         self.foreign = []
+        self.discs = None
         self.labels_sent = False
         self.labels_want = False  # taken back by labels_tick, which runs while a helper is attached
         if self.newgame_state == "armed":
@@ -422,15 +478,105 @@ def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
 
 def owned_from_locations(ctx: ZexionContext) -> set[tuple[int, int]]:
     """The (player, location) of each item the player has from a location: received from
-    another world, or found in one of this world's checked locations."""
+    another world, or found in one of this world's locations (own_found)."""
     owned = {(item.player, item.location) for item in ctx.items_received}
-    owned |= {(ctx.slot, location) for location in ctx.checked_locations}
+    owned |= {(ctx.slot, LOCATION_ID_BASE + i) for i in own_found(ctx)}
     return owned
 
 
-def own_area_map_checks(ctx: ZexionContext) -> list[int]:
-    """This world's checked locations, as indices, the server knows of."""
-    return [loc - LOCATION_ID_BASE for loc in ctx.checked_locations if loc >= LOCATION_ID_BASE]
+async def mission_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """With the OS Install Disks goal, once the player has enough disks, have the helper offer
+    RETURN HOME WITH THE DISKS? (native/src/mission.h), whose YES starts the game's ending: once
+    per load of this seed's save, in play, until that save has reached the ending (flag 250)."""
+    hunt = ctx.discs
+    helper = ctx.helper
+    if (
+        hunt is None
+        or helper is None
+        or ctx.mission_asked
+        or not step.seed_matches
+        or step.state != game.IN_PLAY
+        or step.ended
+        or not ctx.items_listed
+    ):
+        return
+    if discs.owned(hunt, ctx.received()[0], own_found(ctx)) < hunt.required:
+        return
+    reply = await asyncio.to_thread(helper.request, "mission_prompt")
+    if helper is not ctx.helper or reply != "queued":
+        return
+    ctx.mission_asked = True
+    logger.info(
+        "Enough OS Install Disks: RETURN HOME WITH THE DISKS? is offered. YES starts the game's "
+        "ending, which sends the goal; NO plays on, and it is offered again on the next load."
+    )
+
+
+async def discs_found_tick(ctx: ZexionContext) -> None:
+    """Pop up the count after the game's own popup for each of this world's disks the player has
+    just found (not for those the save held when this connection first saw it)."""
+    hunt = ctx.discs
+    if hunt is None or not ctx.items_listed or not ctx.seed_loaded:
+        return
+    checked = own_found(ctx)
+    own = hunt.locations & set(checked)
+    if not ctx.discs_ready:
+        ctx.discs_announced = set(own)
+        ctx.discs_ready = True
+        return
+    new = own - ctx.discs_announced
+    if not new:
+        return
+    ctx.discs_announced |= new
+    if not ctx.seed_loaded or ctx.helper is None:
+        return
+    have = discs.owned(hunt, ctx.received()[0], checked)
+    first = have - len(new) + 1
+    popups = [
+        (discs.DATA_DISC, discs.note(first + k, hunt.required if ctx.discs_told else None), True)
+        for k in range(len(new))
+    ]
+    try:
+        reply = await asyncio.to_thread(ctx.helper.apply, native.batch_text([], popups))
+        if reply != "applied":
+            logger.info(f"The OS Install Disk's popup was not shown: {reply}")
+    except native.HelperError as exc:
+        logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+        ctx.drop_helper()
+
+
+def own_found(ctx: ZexionContext) -> list[int]:
+    """This world's locations the player has found, as indices: those this client has reported
+    from the game's map, and those any client of this slot has recorded as found in the
+    server's data storage (store_found), so another save of the seed counts them too. Not every
+    location the server has as checked, which after a release (on the goal) is all of them: a
+    release gives no OS Install Disk, and no Area Map hint, the player did not find."""
+    found = {loc - LOCATION_ID_BASE for loc in ctx.locations_checked if loc >= LOCATION_ID_BASE}
+    stored = ctx.stored_data.get(ctx.found_key) if ctx.found_key else None
+    if isinstance(stored, dict):  # the key is open to any client in the room: only indices
+        found |= {int(k) for k in stored if isinstance(k, str) and k.isdigit() and int(k) < 154}
+    return sorted(found)
+
+
+async def store_found(ctx: ZexionContext, locations: set[int]) -> None:
+    """Record locations just found in game (ids) in the server's data storage (own_found)."""
+    if not ctx.found_key or not locations:
+        return
+    value = {str(loc - LOCATION_ID_BASE): 1 for loc in locations if loc >= LOCATION_ID_BASE}
+    try:
+        await ctx.send_msgs(
+            [
+                {
+                    "cmd": "Set",
+                    "key": ctx.found_key,
+                    "default": {},
+                    "want_reply": False,
+                    "operations": [{"operation": "update", "value": value}],
+                }
+            ]
+        )
+    except Exception as exc:  # a closing connection: the next connection reports them again
+        logger.warning(f"Recording the locations found failed ({exc}).")
 
 
 async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
@@ -442,7 +588,7 @@ async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
     used = hints_used(ctx)
     if used is None:
         return  # the server's not read yet
-    keys = hints.area_maps(codes, ctx.plan.location_items, own_area_map_checks(ctx))
+    keys = hints.area_maps(codes, ctx.plan.location_items, own_found(ctx))
     new = hints.assign(ctx.hint_targets, used, keys, owned_from_locations(ctx))
     stored = stored_hints(ctx)
     if not new:
@@ -539,6 +685,8 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
+    ctx.discs_sent = None  # likewise its scanner line
+    ctx.mission_asked = False  # and any prompt asked of the one before
     # Likewise it may hold an earlier client's labels: taken back unless this seed's save is
     # loaded, where this seed's are sent over them.
     ctx.labels_held = True
@@ -565,6 +713,41 @@ async def assists_tick(ctx: ZexionContext) -> None:
         )
     else:
         ctx.assists_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
+
+
+async def discs_helper_tick(ctx: ZexionContext) -> None:
+    """With the OS Install Disks goal, give the helper the count and the scanner's line while this
+    seed's save is loaded (docs/re/memory.md, "The scanner"), and take them back otherwise.
+    Sent when that changes, or to a new helper."""
+    helper = ctx.helper
+    if helper is None or time.monotonic() < ctx.discs_retry_at:
+        return
+    hunt = ctx.discs
+    if hunt is not None and ctx.seed_loaded and ctx.items_listed:
+        have = discs.owned(hunt, ctx.received()[0], own_found(ctx))
+        want = discs.request(have, hunt.required, ctx.discs_told)
+    else:
+        want = discs.OFF
+    if want == ctx.discs_sent:
+        if want != discs.OFF and time.monotonic() >= ctx.discs_status_at:
+            # Whether the equipment screen showed the count when last opened (logged on change).
+            ctx.discs_status_at = time.monotonic() + LABELS_RETRY_SECONDS
+            status = await asyncio.to_thread(helper.request, "discs_status")
+            if helper is ctx.helper and status != ctx.discs_status:
+                ctx.discs_status = status
+                logger.info(f"The equipment screen's OS Install Disk count: {status}.")
+        return
+    reply = await asyncio.to_thread(helper.request, want)
+    if helper is not ctx.helper:
+        return
+    if reply == ("discs off" if want == discs.OFF else "discs on"):
+        if want == discs.OFF and ctx.discs_sent not in (None, discs.OFF):
+            logger.info("Not this seed's save: the scanner's message is the game's again.")
+        elif want != discs.OFF and ctx.discs_sent in (None, discs.OFF):
+            logger.info("The scanner's message names the OS Install Disks needed.")
+        ctx.discs_sent = want
+    else:
+        ctx.discs_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
 
 
 async def labels_tick(ctx: ZexionContext) -> None:
@@ -600,11 +783,15 @@ async def labels_tick(ctx: ZexionContext) -> None:
     if any(info is None for info in infos):
         return  # the server has not answered yet
     labels = {}
+    own = 0
     for i, info in zip(ctx.foreign, infos, strict=True):
         player = ctx.player_names.get(info.player, "")
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
-        if slot is not None and slot.game == GAME and 0 <= code <= 50:
+        if info.player == ctx.slot and 0 <= code <= 50:
+            text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
+            own += 1
+        elif slot is not None and slot.game == GAME and 0 <= code <= 50:
             text = aplabels.zexion_label(code, player)  # another Zexion player's own item
         else:
             text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
@@ -616,7 +803,9 @@ async def labels_tick(ctx: ZexionContext) -> None:
     if reply.startswith("labeled"):
         ctx.labels_sent = ctx.labels_held = True
         logger.info(
-            f"Other players' items show as Archipelago items, named at pickup ({len(labels)})."
+            f"Other players' items show as Archipelago items, named at pickup "
+            f"({len(labels) - own})"
+            + (f"; this world's own OS Install Disks as themselves ({own})." if own else ".")
         )
     elif reply.startswith("refused"):
         ctx.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # no frame came yet
@@ -793,9 +982,13 @@ async def skip_tick(ctx: ZexionContext) -> None:
         ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS  # no frame came: ask again
         return
     if hello.get("skip") == "1":
+        goal = (
+            "the goal is the OS Install Disks"
+            if ctx.discs is not None
+            else "the goal is sent when the ending begins, either way"
+        )
         logger.info(
-            "Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; the goal "
-            "is sent when the ending begins, either way."
+            f"Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; {goal}."
         )
     else:
         logger.warning(
@@ -886,6 +1079,7 @@ async def game_loop(ctx: ZexionContext) -> None:
                 await skip_tick(ctx)
                 await labels_tick(ctx)
                 await assists_tick(ctx)
+                await discs_helper_tick(ctx)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()
@@ -913,6 +1107,10 @@ async def game_loop(ctx: ZexionContext) -> None:
                 if str(exc) != ctx.hints_failed:
                     ctx.hints_failed = str(exc)
                     logger.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
+            # The hunt as of this poll: a disconnect while the game is read clears ctx.discs.
+            hunt = ctx.discs
+            if hunt is not None:  # a received disc pops up with the count
+                notes |= discs.received_notes(hunt, codes, own_found(ctx), ctx.discs_told)
             step = await asyncio.to_thread(
                 current.step, ctx.game_conn, codes, senders=senders, notes=notes
             )
@@ -942,8 +1140,13 @@ async def game_loop(ctx: ZexionContext) -> None:
                 logger.info(f"{choice} is armed again: another empty slot can start this seed.")
             if step.seed_matches:
                 ctx.seed_loaded = True
+                ctx.discs_told = step.scanned
+                if not step.ended:
+                    ctx.ending_unseen = True  # this load is before the ending: one can begin
             elif step.left_seed:
                 ctx.seed_loaded = False
+                ctx.mission_asked = False  # offered again on the next load
+                ctx.ending_unseen = False
         if step.seed_matches:
             if ctx.lock_assists and ctx.assists_unlocked():
                 ctx.lock_assists = False
@@ -975,11 +1178,35 @@ async def game_loop(ctx: ZexionContext) -> None:
         if new:
             ctx.locations_checked |= new
             await ctx.check_locations(new)
+            await store_found(ctx, new)
+        await discs_found_tick(ctx)
+        if ctx.helper is not None:
+            try:
+                await mission_tick(ctx, step)
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+                ctx.drop_helper()
         if step.goal and not ctx.goal_sent and not ctx.finished_game:
-            await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
-            ctx.goal_sent = True
-            ctx.finished_game = True
-            logger.info("The ending began: goal sent.")
+            # The goal is the ending; with the OS Install Disks goal, only with enough disks.
+            have = None if hunt is None else discs.owned(hunt, codes, own_found(ctx))
+            if hunt is not None and not ctx.ending_unseen:
+                pass  # a save that had reached its ending before: not this ending
+            elif hunt is None or have >= hunt.required:
+                await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
+                ctx.goal_sent = True
+                ctx.finished_game = True
+                logger.info(
+                    "The ending began: goal sent."
+                    if hunt is None
+                    else f"The ending began with {have} of {hunt.required} OS Install Disks: "
+                    "goal sent."
+                )
+            elif not ctx.goal_withheld:
+                ctx.goal_withheld = True
+                logger.warning(
+                    f"The ending began with {have} of {hunt.required} OS Install Disks: not the "
+                    "goal."
+                )
 
 
 def launch(*args: str) -> None:

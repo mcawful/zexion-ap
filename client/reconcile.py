@@ -38,6 +38,9 @@ UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {31}
+# Items never put in the inventory: the Data Disc, which the client counts instead
+# (client/discs.py), as holding one changes the game's endings.
+NOT_IN_INVENTORY = {44}
 # Items the game counts in Scrap Metal's byte: every record from 46 to 50 names inventory byte
 # 46 as the one its pickup increments (docs/re/memory.md, "Other players' items"), and a
 # collected Scrap Energy or Area Map left its own byte at 0 while Scrap Metal's count rose
@@ -65,6 +68,8 @@ def should_own(
     total: Counter[int] = Counter()
 
     def count(item: int, n: int = 1) -> None:
+        if item in NOT_IN_INVENTORY:
+            return
         item = SCRAP_METAL if item in COUNTED_AS_SCRAP else item
         total[UPGRADE_OF.get(item, item)] += n
 

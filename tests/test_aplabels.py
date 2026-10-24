@@ -67,3 +67,8 @@ def test_labels_are_wanted_only_while_this_seeds_save_is_loaded() -> None:
     # A poll that could not tell (a load in progress) keeps what was wanted.
     assert al.labels_wanted(seed_matches=False, left_seed=False, wanted=True)
     assert not al.labels_wanted(seed_matches=False, left_seed=False, wanted=False)
+
+
+def test_an_own_disc_is_named_by_its_record_for_no_one() -> None:
+    assert al.own_label(44) == "@44"
+    assert al.own_label(44, "OS Install Disk") == "@44 OS INSTALL DISK"

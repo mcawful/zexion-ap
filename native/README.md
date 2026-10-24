@@ -42,7 +42,11 @@ game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, 
 queue, the new-game watch, a whole ARCHIPELAGO press and the escape skip's patch; `tests/menu_tests.cpp` the
 game-mode panel and the options menu (`tests/stand_in_menu.h`): relabeling, putting it back,
 closed menus and released widgets, and the ASSIST lock (its look, the cursor order, putting it
-back); `tests/game_tests.cpp` also the received shield and death and the ASSIST watch; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
+back); `tests/game_tests.cpp` also the received shield and death, the ASSIST watch, the
+scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
+screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
+`tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
+through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -74,7 +78,8 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
     - `ping` → `pong frames=<calls since load>`
     - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
-      inside the game's image, functions in its code and data outside it, or the whole
+      inside the game's image, functions in its code and data outside it (writable, except the
+      C runtime's `malloc` and `free` import slots, which are only read), or the whole
       configuration is refused.
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
@@ -92,16 +97,28 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
       or `refused no frame`: names for other players' items, by map cell (below); HEX is the
       item and whom it is for, joined by a newline, or `@N` and whom it is for, for another
       Zexion player's item N, which the helper names from that item's record (its icon and
-      the game's name) once the records are loaded.
+      the game's name) once the records are loaded; `@N NAME` gives item N that name instead
+      (this player's own OS Install Disk, which the game's record calls DATA DISC, with the
+      disk glyph the helper paints, the record having no icon).
     - `shield` → `spawned`, or `refused <why>`: a received Energy Shield (below).
     - `die` → `died`, or `refused <why>`: a received DeathLink (below).
     - `assists lock` → `locked`, `assists free` → `free`, or `refused <why>`: the options
       menu's ASSIST entry (below).
+    - `discs COUNT REQUIRED HEX TOLD` → `discs on`, `discs` → `discs off`, or `refused
+      <why>`: the OS Install Disks goal (below): the count, the number needed, the scanner's
+      line in hex (one line of the game's font, under 32 characters), and whether the player
+      has been told the number (1, from the scanner's flag 39) or not (0, "OF ?").
+    - `discs_status` → what the equipment screen last did: `shown N`, `not shown: <why>` or
+      `not shown yet`.
+    - `mission_prompt` → `queued`: offer RETURN HOME WITH THE DISKS? when the game is next idle
+      in play; `mission_status` → `asked`, `opening`, `asked again: another transition came
+      first`, `shown`, `yes: ending when idle`, `ending started` or what was not as traced.
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
+  `discs`, `discs_status`, `mission_prompt`, `mission_status`,
   `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -265,6 +282,32 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   by its frame shown (`+0x1B0`, which those objects' updates do not recompute) and palette,
   its frame list left as the game's. Working in the game since 2026-10-23, both kinds too
   (`docs/re/memory.md`, "Live item objects").
+- **The OS Install Disks goal.** While the client has sent `discs` (this seed's save loaded,
+  the seed's goal the OS Install Disks), the helper:
+  - rewrites the scanner's message, Text entry 12 in the loaded table, ENERGY KEYS DETECTED!,
+    to the client's line, COLLECT 15 OS INSTALL DISKS! (`src/scan.cpp`, every 30th frame
+    call; only over the game's text or its own; put back when off and before an unload);
+  - paints the disk glyph, a ring round a hub, into font glyph 0xFB (empty in the game's art),
+    and clears it when off;
+  - with one disk or more, adds the disk to the equipment screen (`src/equip.cpp`): it points
+    the pause screen's EQUIPMENT entry at its own callback, which calls the game's and then,
+    before the screen's first frame, moves the Energy Tank left and makes a second widget for
+    the disk (the game's widget constructor, the Data Disc's record, the count as its label),
+    reachable by cursor and mouse, and wraps the panel's handler to show OS INSTALL DISK, its
+    icon and description when it is selected; the game frees the widget with the menu;
+  - turns the pause screen's KEYS row into the disk row (`src/pause.cpp`): the `jne` that
+    builds the row only once flag 39 is set made a `jmp`, then on the frame after the pause
+    screen opens, the small Data Disc icon in the middle and the count (" 2 OF ? ",
+    " 2 OF 15 " once told) on the label's line, the key slots and icons hidden;
+  - on `mission_prompt` (`src/mission.cpp`), once idle in play with no popup showing, sets the
+    game's transition routine to its own opener, which runs the game's YES/NO prompt builder,
+    relabels the question RETURN HOME WITH THE DISKS? and points YES at the helper; YES calls
+    the game's NO to close the prompt, then, once idle again, the helper starts the game's
+    ending (routine 4). An opener another transition replaced is set again once idle.
+  Working in game: the scanner's line, the equipment screen, the disk glyph, the disk row
+  (as a whole) and the prompt, NO and YES to the ending (2026-10-24, B1; `docs/re/memory.md`,
+  "The scanner", "The equipment screen", "The mission prompt", "The pause screen's KEYS
+  row").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -278,15 +321,20 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   skip").
 - **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST
   again, puts RANDOMIZER (with the panel's handler), ASSIST and event 3665 back in a frame call,
-  and refuses (`error a menu
+  with the OS Install Disks goal's changes (the scanner's text, the pause screen's branch,
+  EQUIPMENT's callback and the Energy Tank panel's handler, a prompt opener not yet run and a
+  prompt's YES, pointed at NO), and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
-  ARCHIPELAGO off, or while an open menu's panel may still hold the helper's handler, since
-  the menu would point into the unloaded DLL (the locked ASSIST holds
+  ARCHIPELAGO off, or while an open menu's panel or entry, or the game's transition routine,
+  may still hold one of the helper's functions, since the game would call into the unloaded
+  DLL; likewise while the scanner's text or the pause screen's branch is still the helper's
+  (the locked ASSIST holds
   no callback of the helper's, so it cannot). Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
-  counted inside (and for a call still inside ARCHIPELAGO's callback or the panel's handler),
+  counted inside (and for a call still inside ARCHIPELAGO's callback, a panel's handler,
+  EQUIPMENT's callback, the prompt's opener or its YES),
   and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
   restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
