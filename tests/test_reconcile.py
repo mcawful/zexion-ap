@@ -170,3 +170,13 @@ def test_a_stand_in_pickup_does_not_swallow_a_received_scrap_metal() -> None:
     # afterwards is still owed.
     target = rc.should_own(START, [47], {0}, [46])
     assert rc.grants(inv(i0=3, i1=3, i4=1, i46=1), target).inventory == {46: 2}
+
+
+def test_a_data_disc_is_never_put_in_the_inventory() -> None:
+    # Counted by the client instead (client/discs.py): received, or the secret boss's own.
+    target = rc.should_own(START, TABLE, set(), [44, 44])
+    assert target[44] == 0
+    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    assert 44 not in g.inventory and 44 not in g.not_grantable
+    g = rc.grants(inv(i0=3, i1=3, i4=1, i44=1), target)
+    assert 44 not in g.inventory, "the secret boss's disc is left alone"

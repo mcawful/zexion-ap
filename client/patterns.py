@@ -830,6 +830,456 @@ TARGETS = (
         ),
     ),
     Target(
+        "text_table",
+        "holds a pointer to the loaded Text table, 32 bytes an entry (the Text file)",
+        0x3CF688,
+        (
+            # from the instruction at RVA 0x10f318 on B1 (in the function at 0x10f110)
+            Pattern(
+                (
+                    "48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 "
+                    "00 74 32 0F BE 05 ?? ?? ?? ?? 33 C9"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x10f554 on B1 (in the function at 0x10f380)
+            Pattern(
+                (
+                    "48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 "
+                    "00 74 34"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x10f8e8 on B1 (in the function at 0x10f5c0)
+            Pattern(
+                (
+                    "48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 "
+                    "00 74 32 0F BE 05 ?? ?? ?? ?? 41 B9 8F 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "equipment_fn",
+        "the pause menu's EQUIPMENT callback, which builds the equipment screen",
+        0x12BA90,
+        (
+            # from the instruction at RVA 0x167777 on B1 (the pause menu's builder)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 4C 89 6C 24 30 4C 89 6C 24 28 48 89 44 24 20 E8 ?? "
+                    "?? ?? ?? F3 0F 10 35 ?? ?? ?? ?? 48 8B C8 48 8B 07 48 89 48 08"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1671b7 on B1
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 4C 89 6C 24 30 4C 89 6C 24 28 48 89 44 24 20 E8 ?? "
+                    "?? ?? ?? 48 8B C8"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                (
+                    "48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC C8 00 "
+                    "00 00 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 44 0F 29 90 78 FF FF FF 48 "
+                    "8B 05 ?? ?? ?? ?? 48 33 C4 48 89 45 C7 48 8B 05 ?? ?? ?? ?? 48 8D 0D ?? "
+                    "?? ?? ?? 48 89 48 68"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "equip_panel_fn",
+        "the equipment screen's panel handler",
+        0xB2160,
+        (
+            # from the instruction at RVA 0x12dfb4 on B1 (the Energy Tank panel)
+            Pattern(
+                (
+                    "4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 4C 8D 0D ?? "
+                    "?? ?? ?? 48 8D 45 A7"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x12c81f on B1
+            Pattern(
+                ("4C 8D 05 ?? ?? ?? ?? 33 D2 B9 0A 00 00 00 E8 ?? ?? ?? ?? 48 8B F8 41 8B F5"),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 B8 EE FF FF"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "widget_move_fn",
+        "places a widget at its panel's position plus an offset, with its label",
+        0xAA8C0,
+        (
+            # from the call at RVA 0x10561d on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 41 8B FF 4C 89 A3 E8 02 00 00 44 89 A3 C6 02 00 00 44 88 "
+                    "BB C3 02 00 00 44 89 BB D8 01 00 00 44 39 BB E8 01 00 00 7E 2B"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1432cf on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 44 89 64 24 40 48 8D 93 60 02 00 00 C7 44 24 38 30 00 00 "
+                    "00 41 B9 06 00 00 00 C7 44 24 30 18 00 00 00 41 B8 02 00 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("48 89 5C 24 08 57 48 83 EC 20 48 8B B9 D8 01 00 00 48 8B D9 45 84 C9"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "text_place_fn",
+        "places a text object's glyphs from (x, y), 8 pixels apart",
+        0xA79E0,
+        (
+            # from the call at RVA 0x12ef28 on B1 (the missile count)
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 41 BF 01 00 00 00 41 0F BF 96 C0 0C 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x12f017 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 48 8B 48 08 B8 02 00 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("48 83 EC 58 66 41 0F 6E C0 45 8B D0"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "widget_new_fn",
+        "makes a menu widget: its label, panel, handler, callback, record and index",
+        0xAA610,
+        (
+            # from the call at RVA 0x17f011 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 48 89 01 48 8B 87 E0 01 00 00 48 8B "
+                    "08 48 8B 81 F0 01 00 00 C7 80 DC 01 00 00 1D 00 00 00 B8 56 55 55 55"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x162569 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 45 8B C6 48 89 41 20 48 8B 8F E0 01 "
+                    "00 00 48 8B 41 20 4C 8B 88 F0 01 00 00 45 39 B1 D8 01 00 00 7E 54"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 28 48 8B E9"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "sprite_sheet_fn",
+        "gives an object a sprite definition's frames (the item icons for the equipment screen)",
+        0x74780,
+        (
+            # from the call at RVA 0x180ff6 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 4D 8B 16 49 8B 42 20 48 8B 88 E0 01 00 00 48 8B 01 48 8B "
+                    "88 F0 01 00 00 48 8B 81 38 02 00 00 48 8B 08 44 39 B9 BC 01 00 00"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x1285b6 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 49 FF C2 49 83 FA 17 75 CE 48 8B 8F E0 01 00 00 0F 28 DF "
+                    "44 89 7C 24 28 41 B8 95 00 00 00 F3 0F 11 7C 24 20 48 8B 49 20"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "panel_link_fn",
+        "links a panel's widgets, their labels and glyphs into its menu's draw list",
+        0xABB30,
+        (
+            # from the call at RVA 0x12f7e9 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 45 33 C0 48 8B 93 F0 01 00 00 48 8B "
+                    "89 F8 01 00 00 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 08 4C 39 29"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x136664 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 45 33 C0 48 8B 93 F0 01 00 00 48 8B "
+                    "89 D0 02 00 00 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 08 4C 39 21"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("48 89 5C 24 08 57 48 83 EC 20 33 DB"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "text_set_fn",
+        "writes a string into a text object's glyphs from one glyph on, blanking the rest",
+        0xA61C0,
+        (
+            # from the call at RVA 0x1119c7 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 44 38 25 ?? ?? ?? ?? 48 8B 85 E0 01 00 00 48 8B 50 10 74 "
+                    "23 C6 44 24 30 01 0F 28 DE 44 89 64 24 28 44 8B C6"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x179407 on B1
+            Pattern(
+                (
+                    "E8 ?? ?? ?? ?? 48 8B 8B E0 01 00 00 45 33 C0 48 8B 01 4C 8B 88 F0 01 00 "
+                    "00 45 39 81 D8 01 00 00 7E 54"
+                ),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("40 53 55 56 57 48 83 EC 28 48 8B F9"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "routine_table",
+        "the transition routines: 2 the pause (idle), 4 the ending, 15 the escape skip's prompt",
+        0x3CF5F0,
+        (
+            # from the instruction at RVA 0x9498f on B1 (entry 8)
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 0F 4F 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 C7 "
+                    "05 ?? ?? ?? ?? 00 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                -0x40,
+            ),
+            # from the instruction at RVA 0x1a355 on B1 (entry 5)
+            Pattern(
+                ("48 8B 05 ?? ?? ?? ?? 33 F6 48 89 05 ?? ?? ?? ?? 66 89 35 ?? ?? ?? ?? EB 11"),
+                3,
+                "rip",
+                7,
+                -0x28,
+            ),
+        ),
+    ),
+    Target(
+        "keys_branch",
+        "the pause screen's jne past its KEYS panel when flag 39 is set (75 2E)",
+        0x168C7D,
+        (
+            # from the instruction at RVA 0x168c76 on B1 (cmp flag 39, then the jne, its opcode
+            # wild: the helper makes it a jmp while it runs)
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 ?? 2E 80 BB A9 10 00 00 00 75 25 80 BB AA 10 00 00 "
+                    "00 75 1C"
+                ),
+                0,
+                "at",
+                0,
+                0x7,
+            ),
+            # the same, with the four key tests (0x168c76 to 0x168ca3 on B1)
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 ?? 2E 80 BB A9 10 00 00 00 75 25 80 BB AA 10 00 00 "
+                    "00 75 1C 80 BB AB 10 00 00 00 75 13 80 BB AC 10 00 00 00 75 0A 40 32 FF"
+                ),
+                0,
+                "at",
+                0,
+                0x7,
+            ),
+            # from the main loop's reference to the pause-open routine 0x168bd0 (RVA 0x7ac28 on
+            # B1), the branch 0xad into it
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? 4C 8B 05 ?? ?? ?? ?? 48 89 B4 24 "
+                    "A0 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0xAD,
+            ),
+        ),
+    ),
+    Target(
+        "malloc_slot",
+        "the import slot of the C runtime's malloc, the game's heap",
+        0x2097A0,
+        (
+            # from the call at RVA 0x89fd2 on B1
+            Pattern(
+                (
+                    "FF 15 ?? ?? ?? ?? 45 33 DB 48 85 C0 0F 84 ?? ?? ?? ?? 4C 8B F8 EB 03 4C "
+                    "8B F9 49 8B CF 49 8B C6 BA 03 00 00 00 66 0F 1F 84 00 00 00 00 00"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+            # from the call at RVA 0x8f345 on B1
+            Pattern(
+                (
+                    "FF 15 ?? ?? ?? ?? 48 8B D0 41 B9 FF FF FF FF 48 85 C0 0F 84 ?? ?? ?? ?? "
+                    "48 8B CA 48 8B C3 4D 8B C4 66 66 0F 1F 84 00 00 00 00 00"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "free_slot",
+        "the import slot of the C runtime's free, which a closing menu frees its arrays with",
+        0x209798,
+        (
+            # from the call at RVA 0x1b4e8c on B1
+            Pattern(
+                (
+                    "FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 49 8B DE 4D 85 F6 74 0D 49 "
+                    "8B 7E 18 39 6F 18 0F 84 ?? ?? ?? ?? 48 8B 74 24 68 4C 8B 64 24 40"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+            # from the call at RVA 0x1b4e95 on B1
+            Pattern(
+                (
+                    "FF 15 ?? ?? ?? ?? 49 8B DE 4D 85 F6 74 0D 49 8B 7E 18 39 6F 18 0F 84 ?? "
+                    "?? ?? ?? 48 8B 74 24 68 4C 8B 64 24 40"
+                ),
+                2,
+                "rip",
+                6,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "start_count",
         "the start table's count (16-bit): the randomizer menu's start rooms, 0 until it opens",
         0xEAF7CC,

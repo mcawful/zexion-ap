@@ -52,6 +52,10 @@ SETTLE_SECONDS = game.SETTLE_SECONDS
 # before the ship, with flag 211 set. Both live-tested (2026-10-22 and 2026-10-23):
 # docs/re/memory.md, "The ending: flag 250" and "The escape skip".
 ENDING_FLAG, FINALE_FLAG = 250, 211
+# Set once the scanner has shown where the keys are, or said how many OS Install Disks are
+# needed (docs/re/memory.md, "The scanner"); also set from the start of a game whose map is
+# revealed in full.
+SCANNED_FLAG = 39
 # Under the game's Abridged Finale (setting 32) the grab is the game's victory, and whether
 # its end reaches flag 250 is not known; for such a seed the goal is the grab. No world sets
 # it today: it is off in every mode's preset and the mode check refuses it.
@@ -68,6 +72,7 @@ class Snapshot:
     marker: int = 0
     ended: int = 0
     finale: int = 0
+    scanned: int = 0
 
 
 def read_once(g: game.Game) -> Snapshot:
@@ -83,6 +88,7 @@ def read_once(g: game.Game) -> Snapshot:
         g.rando_marker(),
         g.flag(ENDING_FLAG),
         g.flag(FINALE_FLAG),
+        g.flag(SCANNED_FLAG),
     )
 
 
@@ -104,6 +110,8 @@ class Step:
     # the game held in play is gone unless its save had it.
     left_seed: bool = False
     state: str = ""  # the settled game.state() of this seed's save; "" when not read
+    scanned: bool = False  # this seed's save has had the scanner's message (flag 39)
+    ended: bool = False  # this seed's save has reached the game's ending (flag 250)
 
 
 class Session:
@@ -169,7 +177,15 @@ class Session:
             goal = snap.inventory[GOAL_ITEM] >= 1
         else:
             goal = snap.ended >= 1 and snap.finale == 0
-        step = Step(collected, goal, {}, True, state=snap.state)
+        step = Step(
+            collected,
+            goal,
+            {},
+            True,
+            state=snap.state,
+            scanned=snap.scanned != 0,
+            ended=snap.ended != 0,
+        )
         if snap.state == game.IN_PLAY:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)
         return step

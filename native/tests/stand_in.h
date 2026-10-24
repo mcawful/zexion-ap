@@ -84,6 +84,15 @@ inline void reset_events() {
     g_event_table = g_events;
     g_event_count = kStandInEvents;
 }
+// The loaded Text table: 32 bytes an entry, behind a pointer; entry 12 the scanner's message.
+inline BYTE g_texts[20 * 32];
+inline BYTE* g_text_table = g_texts;
+inline BYTE* text_12() { return g_texts + 12 * 32; }
+inline void reset_texts() {
+    std::memset(g_texts, 0, sizeof(g_texts));
+    std::memcpy(text_12(), "ENERGY KEYS DETECTED!", 21);
+    g_text_table = g_texts;
+}
 inline int16_t event_else() {
     int16_t v;
     std::memcpy(&v, event_3665() + 6, sizeof(v));
@@ -112,6 +121,22 @@ inline void widget_handler_fn() {}
 inline void panel_handler_fn() {}
 inline void rando_menu_fn(void*, int) {}
 inline void assist_menu_fn(void*, int) {}
+// The equipment screen's functions (equip.h), never called by these tests: bodies of their
+// own, so the linker keeps them apart.
+inline int g_equip_calls = 0;
+inline void equipment_fn(void*, int) { g_equip_calls += 1; }
+inline void equip_panel_fn() { g_equip_calls += 2; }
+inline void widget_move_fn(void*, int, int, bool) { g_equip_calls += 3; }
+inline void text_place_fn(void*, int, int) { g_equip_calls += 4; }
+inline void* widget_new_fn() { g_equip_calls += 5; return nullptr; }
+inline void sprite_sheet_fn(void*, void*) { g_equip_calls += 6; }
+inline void panel_link_fn(void*) { g_equip_calls += 7; }
+inline void text_set_fn(void*, const char*, int, int) { g_equip_calls += 8; }
+inline void* g_malloc_slot = nullptr;
+inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
+// The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
+__declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
+inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
 // The placement: reads the start, copies the menu's amounts into the section, and writes its
@@ -242,6 +267,19 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
         {"event_table", rva(&g_event_table)},
         {"event_count", rva(&g_event_count)},
+        {"text_table", rva(&g_text_table)},
+        {"equipment_fn", rva(reinterpret_cast<void*>(&equipment_fn))},
+        {"equip_panel_fn", rva(reinterpret_cast<void*>(&equip_panel_fn))},
+        {"widget_move_fn", rva(reinterpret_cast<void*>(&widget_move_fn))},
+        {"text_place_fn", rva(reinterpret_cast<void*>(&text_place_fn))},
+        {"widget_new_fn", rva(reinterpret_cast<void*>(&widget_new_fn))},
+        {"sprite_sheet_fn", rva(reinterpret_cast<void*>(&sprite_sheet_fn))},
+        {"panel_link_fn", rva(reinterpret_cast<void*>(&panel_link_fn))},
+        {"text_set_fn", rva(reinterpret_cast<void*>(&text_set_fn))},
+        {"malloc_slot", rva(&g_malloc_slot)},
+        {"free_slot", rva(&g_free_slot)},
+        {"routine_table", rva(g_routine_table)},
+        {"keys_branch", rva(g_keys_branch)},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},

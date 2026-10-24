@@ -18,7 +18,10 @@ const char* const kConfigKeys[] = {
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
     "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
     "event_handlers", "death_fn",      "halt_flag",       "assist_menu_fn",
-    "object_pool",
+    "object_pool",   "text_table",
+    "equipment_fn",  "equip_panel_fn", "widget_move_fn", "text_place_fn",
+    "malloc_slot",   "free_slot",     "widget_new_fn", "sprite_sheet_fn", "panel_link_fn",
+    "text_set_fn",   "routine_table", "keys_branch",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -113,6 +116,8 @@ bool is_function(const std::string& key) {
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
         "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
         "rando_newgame_fn", "popup_width_code", "death_fn", "assist_menu_fn",
+        "equipment_fn", "equip_panel_fn", "widget_move_fn", "text_place_fn",
+        "widget_new_fn", "sprite_sheet_fn", "panel_link_fn", "text_set_fn", "keys_branch",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -272,7 +277,9 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         if (code != is_function(key)) {
             return key + (code ? " is in code, not data" : " is not in code");
         }
-        if (!code && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
+        // The C runtime's import slots are only read, in the read-only data they live in.
+        bool import_slot = key == "malloc_slot" || key == "free_slot";
+        if (!code && !import_slot && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
             return key + " is in read-only data";
         }
         if (key == "rando_blob") {
@@ -335,6 +342,38 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     rando_newgame_fn_ = found["rando_newgame_fn"];
     event_table_ = found["event_table"];
     event_count_ = found["event_count"];
+    text_table_ = found["text_table"];
+    equip_at_.current_menu = found["current_menu"];
+    equip_at_.widget_handler = found["widget_handler_fn"];
+    equip_at_.equipment_fn = found["equipment_fn"];
+    equip_at_.equip_panel_fn = found["equip_panel_fn"];
+    equip_at_.widget_move_fn = found["widget_move_fn"];
+    equip_at_.text_place_fn = found["text_place_fn"];
+    equip_at_.widget_new_fn = found["widget_new_fn"];
+    equip_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
+    equip_at_.panel_link_fn = found["panel_link_fn"];
+    equip_at_.text_set_fn = found["text_set_fn"];
+    equip_at_.malloc_slot = found["malloc_slot"];
+    equip_at_.free_slot = found["free_slot"];
+    equip_at_.sprite_templates = found["sprite_templates"];
+    equip_at_.item_records = found["item_records"];
+    equip_at_.hook = equip_hook_;
+    equip_at_.panel_hook = equip_panel_hook_;
+    mission_at_.current_menu = found["current_menu"];
+    mission_at_.transition_fn = found["transition_fn"];
+    mission_at_.transition_timer = found["transition_timer"];
+    mission_at_.routine_table = found["routine_table"];
+    mission_at_.widget_handler = found["widget_handler_fn"];
+    mission_at_.text_set_fn = found["text_set_fn"];
+    mission_at_.open_hook = mission_open_hook_;
+    pause_at_.current_menu = found["current_menu"];
+    pause_at_.equipment_fn = found["equipment_fn"];
+    pause_at_.equipment_hook = equip_hook_;
+    pause_at_.widget_handler = found["widget_handler_fn"];
+    pause_at_.sprite_templates = found["sprite_templates"];
+    pause_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
+    pause_at_.keys_branch = found["keys_branch"];
+    mission_at_.yes_hook = mission_yes_hook_;
     start_count_ = found["start_count"];
     start_cells_ = found["start_cells"];
     start_flags_ = found["start_flags"];
@@ -906,6 +945,112 @@ void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
 }
 
+std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
+                        bool& told) {
+    count = required = 0;
+    told = false;
+    line.clear();
+    if (request == "discs") return "";
+    if (request.rfind("discs ", 0) != 0) return "not a discs request";
+    std::istringstream words(request.substr(6));
+    std::string hex, extra;
+    int told_word = 1;
+    std::vector<uint8_t> raw;
+    if (!(words >> count >> required >> hex) || count < 0 || count > 255 || required < 1 ||
+        required > 255 || !parse_hex(hex, raw)) {
+        count = required = 0;
+        return "bad discs request";
+    }
+    if ((words >> told_word && (told_word < 0 || told_word > 1)) || (words >> extra)) {
+        count = required = 0;
+        return "bad discs request";
+    }
+    told = told_word == 1;
+    std::string text(raw.begin(), raw.end());
+    if (!scan_line_ok(text)) {
+        count = required = 0;
+        return "the scanner's line is not one line of the game's font";
+    }
+    line = std::move(text);
+    return "";
+}
+
+void Game::set_discs(int count, int required, std::string scan_line, bool told) {
+    disc_count_ = count;
+    discs_required_ = required;
+    discs_told_ = told;
+    scan_line_ = std::move(scan_line);
+    pause_row_.set(scan_line_.empty() ? std::string() : pause_row_text(count, told ? required : 0));
+    if (scan_line_.empty() && configured_) mission_.cancel(mission_at_);  // not this seed now
+    scan_frames_ = 0;  // checked in the next frame
+}
+
+void Game::watch_discs() {
+    if (!configured_) return;
+    if (scan_frames_-- > 0) return;
+    scan_frames_ = 30;
+    if (!scan_line_.empty()) {
+        scan_.apply(text_table_, scan_line_);
+    } else if (scan_.written()) {
+        scan_.restore(text_table_);
+    }
+}
+
+void Game::restore_discs() {
+    if (!configured_) return;
+    scan_.restore(text_table_);
+    equip_.restore(equip_at_);
+    equip_screen_.restore(equip_at_);
+    pause_row_.restore(pause_at_);
+    disk_glyph_.clear(sprite_texture_, gl_);
+}
+
+void Game::watch_equipment() {
+    if (!configured_) return;
+    equip_screen_.tidy(equip_at_);
+    pause_row_.watch(pause_at_);
+    if (!scan_line_.empty()) {
+        disk_glyph_.paint(sprite_texture_, gl_);  // the disk's popup icon while the count is on
+        equip_.install(equip_at_);
+    } else {
+        if (disk_glyph_.painted()) disk_glyph_.clear(sprite_texture_, gl_);
+        if (equip_.installed()) equip_.restore(equip_at_);
+        if (equip_screen_.holds_hook()) equip_screen_.restore(equip_at_);
+    }
+}
+
+void Game::equipment_built() {
+    if (!configured_ || scan_line_.empty()) return;
+    std::string why = equip_screen_.add(equip_at_, disc_count_);
+    equip_status_ = why.empty() ? "shown " + std::to_string(disc_count_) : "not shown: " + why;
+}
+
+void Game::watch_mission() {
+    if (!configured_) return;
+    // Not over a popup: once none is showing or queued, and the last one a moment ago.
+    // Another save, or none: a prompt asked for in the last one is dropped.
+    int save = *save_loaded_;
+    if (save != mission_save_) {
+        if (mission_save_ != -1) mission_.cancel(mission_at_);
+        mission_save_ = save;
+    }
+    bool idle = in_play() && popups_.empty() && !popup_busy() &&
+                frames_since_popup_ >= kPopupGapFrames;
+    mission_.watch(mission_at_, idle);
+}
+
+void Game::mission_open() {
+    if (configured_) mission_.open(mission_at_);
+}
+
+void Game::restore_mission() {
+    if (configured_) mission_.restore(mission_at_);
+}
+
+void Game::equipment_event(void* widget, intptr_t event) {
+    if (configured_) equip_screen_.on_event(equip_at_, widget, event);
+}
+
 Label layout_label(const std::string& first, const std::string& who) {
     std::vector<std::string> shown{first};
     if (!who.empty()) shown.push_back(who);
@@ -935,17 +1080,33 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         }
         // Up to two lines (the item, then whom it is for), each kept to the font's characters
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
-        // another Zexion player, made from its record later (Game::set_labels).
+        // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
+        // it this name instead of the record's (this player's own OS Install Disk).
         std::vector<std::string> parts{std::string()};
         int item = -1;
         size_t at = 0;
+        std::string item_name;
         if (!raw.empty() && raw[0] == '@') {
             int n = 0;
             size_t i = 1;
             while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
-            if (i > 1 && n < 51 && (i == raw.size() || raw[i] == '\n')) {
+            size_t end = i;
+            if (i > 1 && i < raw.size() && raw[i] == ' ') {
+                for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
+                    uint8_t c = raw[end];
+                    if (std::isalpha(c)) {
+                        item_name += static_cast<char>(std::toupper(c));
+                    } else if (std::isdigit(c) || (c != 0 && std::strchr(" .,'!?-:()/&",
+                                                                          static_cast<char>(c)))) {
+                        item_name += static_cast<char>(c);
+                    }
+                }
+            }
+            if (i > 1 && n < 51 && (end == raw.size() || raw[end] == '\n')) {
                 item = n;
-                at = i;
+                at = end;
+            } else {
+                item_name.clear();
             }
         }
         for (size_t k = at; k < raw.size(); ++k) {
@@ -981,6 +1142,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
                                    who);
         label.item = item;
         label.who = who;
+        label.item_name = item_name;
         out[static_cast<int>(y * 54 + x)] = label;
     }
     return "";
@@ -1020,7 +1182,9 @@ void Game::resolve_item_labels() {
         BYTE record[kRecordSize];
         if (!safe_read(records + pending.item * kRecordSize, record, sizeof(record))) return;
         std::string name;
-        if (pending.item == kStandInItem || pending.item == kStandInProgression) {
+        if (!pending.item_name.empty()) {
+            name = pending.item_name;  // this player's own, named by the client
+        } else if (pending.item == kStandInItem || pending.item == kStandInProgression) {
             // The stand-ins' records are restyled: their own names, as the game loads them.
             name = pending.item == kStandInItem ? "SCRAP ENERGY" : "SCRAP CHUNK";
             record[kRecordIcon] = 0;
@@ -1031,7 +1195,9 @@ void Game::resolve_item_labels() {
         }
         if (name.size() > static_cast<size_t>(kPopupPerLine) - 1) name.resize(kPopupPerLine - 1);
         if (name.empty()) name = kApItemName;  // a record with no name
-        uint8_t icon = record[kRecordIcon] != 0 ? record[kRecordIcon] : kApItemGlyph;
+        uint8_t icon = record[kRecordIcon] != 0 ? record[kRecordIcon]
+                       : pending.item == kDiskItem ? kDiskGlyph  // the helper's (equip.h)
+                                                   : kApItemGlyph;
         Label done = layout_label(std::string(1, static_cast<char>(icon)) + name, pending.who);
         names[it->first] = done.name;
         label_widths_[it->first] = done.width;
