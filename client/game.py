@@ -41,6 +41,10 @@ from dataclasses import dataclass
 
 from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
+SLOTS = 30  # save slots
+SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
+SLOT_COPY = 0x908  # a slot's copy of its randomizer section
+
 PROCESS = "Zexion.exe"
 MAP_SIZE = 54
 COLLECTED = 0x1B  # map cell value once its item is collected
@@ -441,6 +445,21 @@ class Game:
         save leaves the previous randomizer section in memory (measured), so ``rando_blob()``
         means something only while this reads 1."""
         return struct.unpack("<H", self._read("rando_marker", 0, 2))[0]
+
+    def slot_markers(self) -> list[tuple[int, bool]]:
+        """Each of the 30 save slots' randomizer marker (block +0x9400, 1 for a randomizer
+        save) and whether it holds a save (block +0x935E not 0xFF), from the slot array."""
+        out = []
+        for n in range(SLOTS):
+            marker = struct.unpack("<H", self._read("slot_array", n * SLOT_STRIDE + 0x9400, 2))[0]
+            used = self._read("slot_array", n * SLOT_STRIDE + 0x935E, 1)[0] != 0xFF
+            out.append((marker, used))
+        return out
+
+    def rando_slot_copies(self) -> bytes:
+        """The game's copy of each slot's randomizer section (30 of SLOT_COPY bytes, in the
+        loaded section's layout; docs/re/memory.md, "The file select")."""
+        return self._read("rando_slots", 0, SLOTS * SLOT_COPY)
 
     def rando_blob(self) -> bytes:
         """The loaded save's randomizer section, as from file offset 0x12814."""

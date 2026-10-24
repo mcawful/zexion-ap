@@ -1222,6 +1222,188 @@ TARGETS = (
         ),
     ),
     Target(
+        "rando_slots",
+        "every slot's copy of its randomizer section, 0x908 bytes each (the section's layout)",
+        0x347830,
+        (
+            # from the instruction at RVA 0xa2b63 on B1
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? "
+                    "?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 8C 24 E8 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0xf9cc1 on B1 (copying a file)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? "
+                    "?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 85 00 03 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x163f10 on B1 (the file writer)
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? "
+                    "?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 7C 24 50"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "file_panel_fn",
+        "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)",
+        0xB6920,
+        (
+            # from the instruction at RVA 0x17e908 on B1 (the file select's builder)
+            Pattern(
+                ("4C 8D 05 ?? ?? ?? ?? 41 8B D5 B9 04 00 00 00 49 89 46 68"),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("48 8B C4 56 57 48 83 EC 58 48 8B B9 F8 01 00 00"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "file_entry_fn",
+        "the file select's save entry handler (event 0xF fills the entry)",
+        0xE1ED0,
+        (
+            # from the instruction at RVA 0x17f196 on B1 (the builder, entry 3)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? F7 2D ?? ?? ?? ?? 4C 8B C7 8B C2 C1 E8 1F 03 D0 8D "
+                    "04 52 BA 91 00 00 00 48 63 C8 48 83 C1 02"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x17f097 on B1 (entry 2)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? F7 2D ?? ?? ?? ?? 4C 8B C7 8B C2 C1 E8 1F 03 D0 8D "
+                    "04 52 BA 91 00 00 00 48 63 C8 48 FF C1"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 81 EC D0 00 00 00"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "copy_entry_fn",
+        "COPY FILE's save entry handler",
+        0xF7550,
+        (
+            # from the instruction at RVA 0x17418f on B1 (COPY FILE's builder)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 "
+                    "00 00 48 FF C8 48 69 C8 08 94 00 00 42 80 BC 29 5E 93 00 00 FF"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x17427f on B1
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 10 48 63 81 30 02 "
+                    "00 00 48 FF C8 48 69 C8 08 94 00 00 42 80 BC 29 5E 93 00 00 FF"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1, through its prologue to its own first moves
+            Pattern(
+                (
+                    "48 89 5C 24 10 48 89 6C 24 18 56 41 54 41 55 41 56 41 57 48 83 EC 60 48 8B "
+                    "99 D8 01 00 00 8B F2 0F 29 74 24 50 48 8B E9 F3 0F 10 35 ?? ?? ?? ?? 41 BC 10 "
+                    "00 00 00"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "delete_entry_fn",
+        "DELETE FILE's save entry handler",
+        0xF67F0,
+        (
+            # from the instruction at RVA 0x171c20 on B1 (DELETE FILE's builder)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 "
+                    "00 00 48 FF C8 48 69 C8 08 94 00 00 49 8D 85 ?? ?? ?? ??"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x171d11 on B1
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 10 48 63 81 30 02 "
+                    "00 00 48 FF C8 48 69 C8 08 94 00 00 49 8D 85 ?? ?? ?? ??"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1, through its prologue to its own first moves
+            Pattern(
+                (
+                    "48 89 5C 24 10 48 89 6C 24 18 56 57 41 55 41 56 41 57 48 83 EC 60 48 8B 99 "
+                    "D8 01 00 00 8B EA 0F 29 74 24 50 4C 8B F1 F3 0F 10 35 ?? ?? ?? ?? 48 8D 3D ?? "
+                    "?? ?? ??"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "malloc_slot",
         "the import slot of the C runtime's malloc, the game's heap",
         0x2097A0,

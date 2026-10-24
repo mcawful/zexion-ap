@@ -65,7 +65,9 @@ Once connected:
   release gives none). A disk is never put in the game's inventory:
   a received one pops up as "OS INSTALL DISK 3 OF 15" ("OF 15" once the scanner has said how
   many), one found here, a stand-in labeled as one, gets the same popup after the game's own.
-  The helper shows the count on the equipment and pause screens and in the scanner's message.
+  The helper shows the count on the equipment and pause screens and in the scanner's message,
+  and, with the helper loaded, on the file select for the save slots holding the seed (read
+  from the game every SLOTS_READ_SECONDS, sent as the helper's `disk_slots` request).
   Once the player has enough, the helper offers RETURN HOME WITH THE DISKS? (once per load,
   until the save has reached the ending); YES starts the game's ending, and the goal is sent
   when the ending begins with enough disks, as the core goal is. Working in game 2026-10-24
@@ -123,6 +125,7 @@ HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
 LABELS_RETRY_SECONDS = 5.0
+SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
 SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
@@ -286,6 +289,10 @@ class ZexionContext(CommonContext):
         # What the helper last said of the count on the equipment screen, and when it is asked.
         self.discs_status = ""
         self.discs_status_at = 0.0
+        # The file select's count (discs.slots_request): what the helper was last told, and
+        # when the slots are read again.
+        self.slots_sent: str | None = None
+        self.slots_read_at = 0.0
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -686,6 +693,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
         ctx.session.helper = ctx.helper
     ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
     ctx.discs_sent = None  # likewise its scanner line
+    ctx.slots_sent = None  # and its file select
     ctx.mission_asked = False  # and any prompt asked of the one before
     # Likewise it may hold an earlier client's labels: taken back unless this seed's save is
     # loaded, where this seed's are sent over them.
@@ -748,6 +756,35 @@ async def discs_helper_tick(ctx: ZexionContext) -> None:
         ctx.discs_sent = want
     else:
         ctx.discs_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
+
+
+async def slots_tick(ctx: ZexionContext) -> None:
+    """With the OS Install Disks goal, give the helper the disk count for the file select's
+    entries of the slots holding this seed (read from the game every few seconds), and take it
+    back otherwise."""
+    helper = ctx.helper
+    if helper is None or time.monotonic() < ctx.slots_read_at:
+        return
+    ctx.slots_read_at = time.monotonic() + SLOTS_READ_SECONDS
+    hunt, plan, g = ctx.discs, ctx.plan, ctx.game_conn
+    want = discs.SLOTS_OFF
+    if hunt is not None and plan is not None and g is not None and ctx.items_listed:
+        try:
+            markers = await asyncio.to_thread(g.slot_markers)
+            copies = await asyncio.to_thread(g.rando_slot_copies)
+        except game.GameError:
+            return  # read again in a moment
+        slots = discs.seed_slots(markers, copies, plan)
+        if slots:
+            have = discs.owned(hunt, ctx.received()[0], own_found(ctx))
+            want = discs.slots_request(have, hunt.required, slots)
+    if want == ctx.slots_sent:
+        return
+    reply = await asyncio.to_thread(helper.request, want)
+    if helper is ctx.helper and reply == (
+        "disk_slots off" if want == discs.SLOTS_OFF else "disk_slots on"
+    ):
+        ctx.slots_sent = want
 
 
 async def labels_tick(ctx: ZexionContext) -> None:
@@ -1080,6 +1117,7 @@ async def game_loop(ctx: ZexionContext) -> None:
                 await labels_tick(ctx)
                 await assists_tick(ctx)
                 await discs_helper_tick(ctx)
+                await slots_tick(ctx)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()

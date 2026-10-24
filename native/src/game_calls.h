@@ -20,6 +20,7 @@
 #include "equip.h"
 #include "mission.h"
 #include "pause.h"
+#include "files.h"
 #include "scan.h"
 #include "skip.h"
 
@@ -190,7 +191,7 @@ public:
     // pointed at the helper's callback.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
-               equip_screen_.holds_hook() || mission_.holds_hook();
+               equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook();
     }
     // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
     void set_panel_hook(void* hook) { panel_hook_ = hook; }
@@ -258,6 +259,18 @@ public:
         mission_yes_hook_ = yes;
     }
     void request_mission() { mission_.request(); }
+    // The file select's disk count (files.h): before configure, the helper's stand-in for the
+    // save entries' handler; the `disk_slots` request sets what to show; the watch runs every
+    // frame; the stand-in calls the game's handler (file_entry_original) and then file_event.
+    void set_file_entry_hook(void* hook) { file_hook_ = hook; }
+    void set_disk_slots(int count, int required, std::set<int> slots) {
+        files_.set(count, required, std::move(slots));
+    }
+    void watch_files();
+    void* file_entry_original(void* widget) const { return files_.original(widget); }
+    const FileDisks& files() const { return files_; }
+    void file_event(void* widget, intptr_t event);
+    void restore_files();
     void watch_mission();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
@@ -335,6 +348,8 @@ private:
     bool assists_locked_ = false;
     FontGlyph lock_glyph_{kLockGlyph, kLockRows};
     FontGlyph disk_glyph_{kDiskGlyph, kDiskRows};  // the disk's popup icon (equip.h)
+    FontGlyph disk_header_[2] = {{kDiskHeaderGlyphs[0], kDiskHeaderRows[0]},
+                                 {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
     BYTE* randomizer_menu_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;
@@ -357,6 +372,9 @@ private:
     MissionAddresses mission_at_;
     PauseAddresses pause_at_;
     PauseDiskRow pause_row_;
+    FileAddresses files_at_;
+    FileDisks files_;
+    void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;
     void* mission_open_hook_ = nullptr;
