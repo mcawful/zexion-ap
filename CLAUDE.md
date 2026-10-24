@@ -122,6 +122,14 @@ For a seed with Area Map hints (the world's default), each Area Map the player g
 where one of the player's progression items is: the client creates the Archipelago hint and
 the helper's popup names it (live-tested 2026-10-24 for Area Maps received from the server,
 hints of up to five lines; an Area Map picked up in the player's own world not yet).
+For a seed with the OS Install Disks goal (the world's Goal option), the four keys are left
+out and the game's Data Disc, named OS Install Disk, is shuffled in: the client counts them
+(never writing the game's disc byte) and pops up the count, and the helper reworks the
+scanner's message, adds the disk to the equipment screen and turns the pause screen's KEYS
+row into a disk count. Once the player has enough, the helper offers RETURN HOME WITH THE
+DISKS?, whose YES starts the game's ending, which sends the goal (YES and NO live-tested
+2026-10-24). This goal
+needs the helper: without it nothing offers the ending.
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are not for items the slot
@@ -157,7 +165,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`),
   `aplabels.py` other players' items into labels for the helper (`ap_labels`),
   `deathlink.py` decides when a death goes out and when a received one is dealt (`die`), and
-  `hints.py` which item each Area Map hints and the popup that names it.
+  `hints.py` which item each Area Map hints and the popup that names it, and `discs.py` the
+  OS Install Disks count, its popups and the helper's `discs` request.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
@@ -165,7 +174,10 @@ Nothing in `tests/` needs the game, and CI never runs it.
   loaded event 3665 so the escape skip is offered in any game (`hello` reports `skip=`;
   working in game), and helper phase 4 shows other players' items with an Archipelago
   logo and their name (`ap_labels`; working in game). It also deals received DeathLinks
-  (`die`) and can lock the options menu's ASSIST entry (`assists`).
+  (`die`) and can lock the options menu's ASSIST entry (`assists`). For the OS Install Disks
+  goal (`discs`, `mission_prompt`; working in game): the scanner's message (`scan.cpp`), the
+  equipment screen (`equip.cpp`), the pause screen's disk row (`pause.cpp`) and the RETURN
+  HOME WITH THE DISKS? prompt (`mission.cpp`).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

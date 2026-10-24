@@ -17,6 +17,10 @@
 #include "menu.h"
 #include "apitem.h"
 #include "looks.h"
+#include "equip.h"
+#include "mission.h"
+#include "pause.h"
+#include "scan.h"
 #include "skip.h"
 
 namespace zap {
@@ -91,6 +95,9 @@ struct Label {
     // second line.
     int item = -1;
     std::string who;
+    // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
+    // the game's record calls DATA DISC).
+    std::string item_name;
 };
 
 // A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in
@@ -133,6 +140,11 @@ std::string parse_config(const std::string& request, std::map<std::string, uint6
 // same and :, at most 200, and is shown alone, with no icon or name (notice_text).
 std::string parse_batch(const std::string& request, Batch& out);
 
+// A `discs` request: "discs" (off: count 0, required 0, line "") or "discs COUNT REQUIRED HEX",
+// the scanner's line in hex (scan.h). Returns "" or what is wrong.
+std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
+                        bool& told);
+
 class Game {
 public:
     // Checks every key is present and lies inside `image` (functions in executable code, data
@@ -174,7 +186,12 @@ public:
     void restore_menu(WidgetCallback callback);
     // Whether a menu holds the helper's callback (ARCHIPELAGO). The locked ASSIST holds none.
     // ARCHIPELAGO on the menu, or the helper's handler possibly still on its panel.
-    bool menu_installed() const { return choice_.installed() || choice_.holds_hook(); }
+    // ARCHIPELAGO on the menu, the helper's handler possibly still on its panel, or EQUIPMENT
+    // pointed at the helper's callback.
+    bool menu_installed() const {
+        return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
+               equip_screen_.holds_hook() || mission_.holds_hook();
+    }
     // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
     void set_panel_hook(void* hook) { panel_hook_ = hook; }
     // The game's own handler for the game-mode panel, for the stand-in to call; null before
@@ -207,6 +224,46 @@ public:
     void watch_skip();
     void restore_skip();
     bool skip_offered() const { return skip_.patched(); }
+
+    // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show and
+    // the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
+    // rewording the scanner's message while a line is set and putting it back otherwise;
+    // restore_discs puts it back now (before an unload).
+    void set_discs(int count, int required, std::string scan_line, bool told = true);
+    void watch_discs();
+    void restore_discs();
+    bool scan_written() const { return scan_.written(); }
+    int disc_count() const { return disc_count_; }
+    bool discs_told() const { return discs_told_; }
+    bool keys_branch_patched() const { return pause_row_.patched(); }
+    int discs_required() const { return discs_required_; }
+    const std::string& scan_line() const { return scan_line_; }
+    // The count on the equipment screen (equip.h): before configure, the helper's stand-in for
+    // EQUIPMENT's callback; every frame, the watch points EQUIPMENT at it while the count is
+    // shown (and back otherwise); the stand-in calls the game's, then equipment_built.
+    void set_equipment_hook(void* hook) { equip_hook_ = hook; }
+    void* equipment_fn() const { return equip_at_.equipment_fn; }
+    void watch_equipment();
+    void equipment_built();
+    // The Energy Tank panel's handler while it shows the disk (equip.h): before configure, the
+    // helper's stand-in; it calls the game's (equip_panel_fn), then equipment_event.
+    void set_equipment_panel_hook(void* hook) { equip_panel_hook_ = hook; }
+    void* equip_panel_fn() const { return equip_at_.equip_panel_fn; }
+    void equipment_event(void* widget, intptr_t event);
+    // RETURN HOME WITH THE DISKS? (mission.h): before configure, the helper's opener and YES; the
+    // `mission_prompt` request asks for it; the watch runs every frame; the opener and YES call
+    // mission_open and mission_yes; restore_mission puts back what it holds (before an unload).
+    void set_mission_hooks(void* open, void* yes) {
+        mission_open_hook_ = open;
+        mission_yes_hook_ = yes;
+    }
+    void request_mission() { mission_.request(); }
+    void watch_mission();
+    void mission_open();
+    void* mission_yes() { return mission_.yes(); }
+    void restore_mission();
+    std::string mission_status() const { return mission_.status(); }
+    std::string equipment_status() const { return equip_status_; }
 
     // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
     // frame; restore_ap_items puts everything back (before an unload).
@@ -277,6 +334,7 @@ private:
     AssistLock assists_;
     bool assists_locked_ = false;
     FontGlyph lock_glyph_{kLockGlyph, kLockRows};
+    FontGlyph disk_glyph_{kDiskGlyph, kDiskRows};  // the disk's popup icon (equip.h)
     BYTE* randomizer_menu_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;
@@ -291,6 +349,25 @@ private:
     // it. Returns "" or why not.
     std::string ensure_start_table();
     EscapeSkip skip_;
+    BYTE* text_table_ = nullptr;  // holds the pointer to the loaded Text table
+    ScanText scan_;
+    EquipAddresses equip_at_;
+    EquipmentHook equip_;
+    EquipmentScreen equip_screen_;
+    MissionAddresses mission_at_;
+    PauseAddresses pause_at_;
+    PauseDiskRow pause_row_;
+    bool discs_told_ = true;
+    MissionPrompt mission_;
+    void* mission_open_hook_ = nullptr;
+    int mission_save_ = -1;  // the save slot loaded when last watched (-1: none yet)
+    void* mission_yes_hook_ = nullptr;
+    void* equip_hook_ = nullptr;
+    void* equip_panel_hook_ = nullptr;
+    std::string equip_status_ = "not shown yet";
+    std::string scan_line_;
+    int disc_count_ = 0, discs_required_ = 0;
+    int scan_frames_ = 0;  // frames until the next scanner check
     BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
     // The pickup popup's line width: `mov edx, 24` in the game's pickup code, the path items

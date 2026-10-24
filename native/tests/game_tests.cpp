@@ -559,6 +559,78 @@ void test_start_table() {
     g_start_count = 0;
 }
 
+void test_scanner_line() {
+    zap::Game game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    reset_texts();
+    auto text = [](BYTE* entry) { return std::string(reinterpret_cast<char*>(entry)); };
+    auto tail_zero = [](BYTE* entry) {
+        for (int i = 21; i < 32; ++i) {
+            if (entry[i] != 0) return false;
+        }
+        return true;
+    };
+    game.watch_discs();
+    check(text(text_12()) == "ENERGY KEYS DETECTED!" && !game.scan_written(), "off: untouched");
+
+    game.set_discs(0, 15, "COLLECT 15 DATA DISCS!");
+    game.watch_discs();
+    check(text(text_12()) == "COLLECT 15 DATA DISCS!" && game.scan_written(), "reworded");
+    game.set_discs(3, 3, "COLLECT 3 DATA DISCS!");
+    game.watch_discs();
+    check(text(text_12()) == "COLLECT 3 DATA DISCS!" && text_12()[21] == 0,
+          "a new line over its own, the rest zeros");
+    game.set_discs(0, 0, "");
+    game.watch_discs();
+    check(text(text_12()) == "ENERGY KEYS DETECTED!" && tail_zero(text_12()) &&
+              !game.scan_written(),
+          "off again: the game's text back");
+
+    // Another text in the entry (another language, say): left alone.
+    std::memcpy(text_12(), "ENERGIESCHLUESSEL!\0\0\0", 21);
+    game.set_discs(0, 15, "COLLECT 15 DATA DISCS!");
+    for (int i = 0; i < 31; ++i) game.watch_discs();
+    check(text(text_12()) == "ENERGIESCHLUESSEL!" && !game.scan_written(), "another text untouched");
+
+    // The game loads its texts again into a new table: the new one is written; restore puts
+    // back only the table it wrote, and only while it still reads as written.
+    reset_texts();
+    for (int i = 0; i < 31; ++i) game.watch_discs();
+    static BYTE other[20 * 32];
+    std::memset(other, 0, sizeof(other));
+    std::memcpy(other + 12 * 32, "ENERGY KEYS DETECTED!", 21);
+    g_text_table = other;
+    for (int i = 0; i < 31; ++i) game.watch_discs();
+    check(text(other + 12 * 32) == "COLLECT 15 DATA DISCS!", "a reloaded table is written too");
+    game.restore_discs();
+    check(text(other + 12 * 32) == "ENERGY KEYS DETECTED!", "restored before an unload");
+    g_text_table = g_texts;
+    reset_texts();
+
+    int count = -1, required = -1;
+    std::string line;
+    bool told = false;
+    check(zap::parse_discs("discs", count, required, line, told).empty() && count == 0 &&
+              required == 0 && line.empty(),
+          "discs alone: off");
+    check(zap::parse_discs("discs 3 15 434f4c4c454354", count, required, line, told).empty() &&
+              count == 3 && required == 15 && line == "COLLECT" && told,
+          "discs with a count, the required number and a line");
+    check(zap::parse_discs("discs 3 15 434f4c4c454354 0", count, required, line, told).empty() &&
+              !told,
+          "and whether the player has been told how many are needed");
+    check(!zap::parse_discs("discs 3 15 434f4c4c454354 2", count, required, line, told).empty(),
+          "told is 0 or 1");
+    check(!zap::parse_discs("discs 3 15 636f6c6c656374", count, required, line, told).empty(),
+          "lower case is not the game's font");
+    check(!zap::parse_discs("discs 3 0 41", count, required, line, told).empty(), "none required");
+    check(!zap::parse_discs("discs 3 15", count, required, line, told).empty(), "no line");
+    std::string hex;
+    for (int i = 0; i < 32; ++i) hex += "41";  // 32 A's
+    check(!zap::parse_discs("discs 3 15 " + hex, count, required, line, told).empty(),
+          "32 characters do not fit with the zero after them");
+}
+
 void test_escape_skip() {
     zap::Game game;
     check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
@@ -765,6 +837,40 @@ void test_zexion_item_labels() {
     game.watch_ap_items();
     name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
     check(name == " \xEE" "AP ITEM" "  FOR ZEXION2", "a record with no name: AP ITEM");
+
+    // "@36 OS INSTALL DISK", for no one: the item's icon, the client's name for it.
+    std::string hex;
+    for (unsigned char c : std::string("@36 os install disk")) {
+        char two[3];
+        std::snprintf(two, sizeof(two), "%02x", c);
+        hex += two;
+    }
+    std::map<int, zap::Label> own;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex, own).empty() &&
+              own[2 * 54 + 8].item == 36 && own[2 * 54 + 8].item_name == "OS INSTALL DISK" &&
+              own[2 * 54 + 8].who.empty(),
+          "an own item's label: the item and its name");
+    game.set_labels(own);
+    field<uint8_t>(0x107B) = 8;
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == "\xC5OS INSTALL DISK", "named as the client says, after the item's icon");
+    // An OS Install Disk (item 44, whose record has no icon): the helper's disk glyph.
+    std::string disk_hex;
+    for (unsigned char c : std::string("@44 os install disk")) {
+        char two[3];
+        std::snprintf(two, sizeof(two), "%02x", c);
+        disk_hex += two;
+    }
+    std::map<int, zap::Label> disk;
+    zap::parse_labels("ap_labels\nlabel 8 2 " + disk_hex, disk);
+    game.set_labels(disk);
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == "\xFBOS INSTALL DISK", "a disk: the disk glyph, not the logo");
+    std::map<int, zap::Label> bad;
+    zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
+    check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
     game.restore_ap_items();
 }
 
@@ -1186,6 +1292,7 @@ int main() {
     test_newgame_watch();
     test_archipelago_choice();
     test_escape_skip();
+    test_scanner_line();
     test_start_table();
     test_mailbox();
     if (g_failures == 0) std::printf("all passed\n");

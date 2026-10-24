@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.15.0";
+constexpr char kVersion[] = "0.17.2";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -65,6 +65,11 @@ std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_menu_installed{false};
 // Whether the stand-in item's record is restyled (apitem.h), which unload must undo first.
 std::atomic<bool> g_items_restyled{false};
+// Whether the scanner's message is still the helper's (scan.h): unload waits for it, since a
+// later helper would not take it for the game's.
+std::atomic<bool> g_scan_written{false};
+// Likewise the pause screen's branch (pause.h), left as `jmp` the game would build its KEYS row.
+std::atomic<bool> g_branch_patched{false};
 SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
@@ -105,6 +110,62 @@ void panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
     g_in_callback.fetch_sub(1);
 }
 
+// EQUIPMENT's callback while the disk count is shown (equip.h): the game's own builds the
+// screen, then the count is added in the same call, before the screen's first frame. Like
+// ARCHIPELAGO's, the game's widget code calls it on its thread outside the frame call; unload
+// takes it off the pause menu first and waits for a call still inside it.
+void equipment_chosen(void* widget, int event) {
+    g_in_callback.fetch_add(1);
+    auto game_fn = reinterpret_cast<void (*)(void*, int)>(g_game.equipment_fn());
+    if (game_fn != nullptr) game_fn(widget, event);
+    try {
+        g_game.equipment_built();
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_in_callback.fetch_sub(1);
+}
+
+// The Energy Tank panel's handler while it shows the disk (equip.h): the game's own first, then
+// the disk's name and description when the disk is hovered or selected. Called by the game's
+// widget code on its thread outside the frame call; unload takes it off the panel first.
+void equip_panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
+    g_in_callback.fetch_add(1);
+    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
+    auto handler = reinterpret_cast<Handler>(g_game.equip_panel_fn());
+    if (handler != nullptr) handler(widget, event, r8, r9);
+    try {
+        g_game.equipment_event(widget, event);
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_in_callback.fetch_sub(1);
+}
+
+// RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition routine, on its
+// thread outside the frame call; it builds the game's prompt and relabels it. YES: the game's
+// NO (closing the prompt), then the ending once idle. Unload takes both off first.
+void mission_open() {
+    g_in_callback.fetch_add(1);
+    try {
+        g_game.mission_open();
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_in_callback.fetch_sub(1);
+}
+
+void mission_yes(void* widget, int event) {
+    g_in_callback.fetch_add(1);
+    void* no = nullptr;
+    try {
+        no = g_game.mission_yes();
+    } catch (...) {
+    }
+    if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
+    g_in_callback.fetch_sub(1);
+}
+
 // Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
 bool set_unloading(bool unloading) {
     AcquireSRWLockExclusive(&g_menu_lock);
@@ -121,7 +182,11 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_game.note_play(GetTickCount64());
-            if (g_unlock_assists.exchange(false)) g_game.set_assists_locked(false);
+            if (g_unlock_assists.exchange(false)) {
+                // The client went away: what it asked for that changes the game goes too.
+                g_game.set_assists_locked(false);
+                g_game.set_discs(0, 0, "");
+            }
             g_mailbox.serve();
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
@@ -130,10 +195,15 @@ uintptr_t frame(void* argument) {
                     g_game.watch_menu(&archipelago_chosen);
                     g_game.watch_assists();
                     g_game.watch_skip();
+                    g_game.watch_discs();
+                    g_game.watch_equipment();
+                    g_game.watch_mission();
                     g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
                 g_items_restyled.store(g_game.ap_items_restyled());
+                g_scan_written.store(g_game.scan_written());
+                g_branch_patched.store(g_game.keys_branch_patched());
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
@@ -232,6 +302,52 @@ std::string handle(const std::string& request, bool& stop) {
         }
         return result;
     }
+    if (request == "mission_prompt" || request == "mission_status") {
+        // "mission_prompt": offer RETURN HOME WITH THE DISKS? when the game is next idle in play.
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        bool ask = request == "mission_prompt";
+        std::string result;
+        if (!g_mailbox.call(
+                [ask] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    if (ask) g_game.request_mission();
+                    return ask ? std::string("queued") : g_game.mission_status();
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "discs_status") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (!g_mailbox.call([] { return g_game.equipment_status(); }, kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "discs" || request.rfind("discs ", 0) == 0) {
+        // "discs": off. "discs COUNT REQUIRED HEX": the OS Install Disks goal's count and the
+        // scanner's line, its characters in hex (scan.h).
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        int count = 0, required = 0;
+        bool told = false;
+        std::string line;
+        std::string error = zap::parse_discs(request, count, required, line, told);
+        if (!error.empty()) return "error " + error;
+        std::string result;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    bool on = !line.empty();
+                    g_game.set_discs(count, required, std::move(line), told);
+                    return std::string(on ? "discs on" : "discs off");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("ap_labels", 0) == 0) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
         std::map<int, zap::Label> labels;
@@ -291,6 +407,10 @@ std::string handle(const std::string& request, bool& stop) {
             HMODULE exe = GetModuleHandleW(nullptr);
             if (!g_mailbox.call([&] {
                     g_game.set_panel_hook(reinterpret_cast<void*>(&panel_event));
+                    g_game.set_equipment_hook(reinterpret_cast<void*>(&equipment_chosen));
+                    g_game.set_equipment_panel_hook(reinterpret_cast<void*>(&equip_panel_event));
+                    g_game.set_mission_hooks(reinterpret_cast<void*>(&mission_open),
+                                             reinterpret_cast<void*>(&mission_yes));
                     std::string e = g_game.configure(exe, rvas);
                     return e.empty() ? std::string("ok") : "error " + e;
                 }, kFrameWaitMs, result)) {
@@ -321,30 +441,46 @@ std::string undo_for_unload() {
     // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
     set_unloading(true);
     bool was_locked = false;  // ASSIST's lock, armed again should the unload be refused
+    // The disk count and scanner line, likewise given back on a refusal.
+    int disc_count = 0, discs_required = 0;
+    bool discs_told = true;
+    std::string scan_line;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
-            [&was_locked] {
+            [&] {
                 was_locked = g_game.assists_locked();
+                disc_count = g_game.disc_count();
+                discs_required = g_game.discs_required();
+                discs_told = g_game.discs_told();
+                scan_line = g_game.scan_line();
                 g_game.disarm_newgame();
                 g_game.restore_skip();
+                g_game.set_discs(0, 0, "");
+                g_game.restore_discs();
+                g_game.restore_mission();
                 g_game.restore_ap_items();
                 g_game.restore_menu(&archipelago_chosen);
                 g_game.set_assists_locked(false);
                 g_game.restore_assists();
                 g_menu_installed.store(g_game.menu_installed());
                 g_items_restyled.store(g_game.ap_items_restyled());
+                g_scan_written.store(g_game.scan_written());
+                g_branch_patched.store(g_game.keys_branch_patched());
                 return std::string();
             },
             kFrameWaitMs, ignored);
     }
-    auto refuse = [was_locked](const std::string& why) {
+    auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        if (was_locked) {
+        if (was_locked || !scan_line.empty()) {
             std::string ignored;
             g_mailbox.call(
-                [] {
-                    g_game.set_assists_locked(true);
+                [&] {
+                    if (was_locked) g_game.set_assists_locked(true);
+                    if (!scan_line.empty()) {
+                        g_game.set_discs(disc_count, discs_required, scan_line, discs_told);
+                    }
                     return std::string();
                 },
                 kFrameWaitMs, ignored);
@@ -353,6 +489,8 @@ std::string undo_for_unload() {
     };
     if (set_unloading(true)) return refuse("a menu still holds the helper's callback (no frame came)");
     if (g_items_restyled.load()) return refuse("the stand-in item is still restyled (no frame came)");
+    if (g_scan_written.load()) return refuse("the scanner's message is still the helper's (no frame came)");
+    if (g_branch_patched.load()) return refuse("the pause screen's branch is still the helper's (no frame came)");
     if (!unhook()) return refuse(kHookReplaced);
     return "";
 }
