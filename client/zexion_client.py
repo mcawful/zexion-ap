@@ -30,7 +30,9 @@ Once connected:
   label per map cell (client/aplabels.py): the item shows an Archipelago logo (with its up
   arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" (another
   Zexion player's item: its own icon and name) over "FOR ALICE" (working in the game,
-  2026-10-23). A refusal (no frame yet) is retried; on disconnect the labels are taken back.
+  2026-10-23). The helper holds the labels only while this seed's save is loaded; while
+  another save (or none) is, and on disconnect, they are taken back, so Scrap Energy and Scrap
+  Chunk are the game's own there. A refusal (no frame yet) is retried.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -173,11 +175,13 @@ class ZexionContext(CommonContext):
         # Other players' items (client/aplabels.py): this world's locations holding one, and
         # whether the helper has their labels.
         self.foreign: list[int] = []
-        self.labels_sent = False
+        self.labels_sent = False  # the helper holds this connection's labels
+        self.labels_held = False  # the helper may hold labels (ours, or an earlier client's)
+        self.labels_refused = False  # the helper would not take them: not asked again
         self.labels_retry_at = 0.0
-        # Asks the game loop to take the labels back from the helper (after a disconnect), so
-        # Scrap Energy is itself again in whatever game is played next.
-        self.labels_clear_pending = False
+        # Whether the helper should hold them: only while this seed's save is loaded
+        # (aplabels.labels_wanted), so other saves keep Scrap Energy as the game's own.
+        self.labels_want = False
         # Received Energy Shields given so far (counted once seen up), kept in the server's data
         # storage under this key (per team and slot), so a restart or a shield received offline
         # is not lost.
@@ -253,6 +257,7 @@ class ZexionContext(CommonContext):
                 slot["location_items"], self.kept, aplabels.stand_ins(slot)
             )
             self.labels_sent = False
+            self.labels_want = False  # until a poll of this connection finds its save
             self.labels_retry_at = 0.0
             if self.foreign:
                 scouts = [LOCATION_ID_BASE + i for i in self.foreign]
@@ -279,9 +284,8 @@ class ZexionContext(CommonContext):
         self.lock_assists = False
         self.assists_want = False  # unlocked on the next helper tick
         self.foreign = []
-        if self.helper is not None:
-            self.labels_clear_pending = True
         self.labels_sent = False
+        self.labels_want = False  # taken back by labels_tick, which runs while a helper is attached
         if self.newgame_state == "armed":
             self.disarm_pending = True
         self.newgame_state = None
@@ -311,8 +315,8 @@ class ZexionContext(CommonContext):
         if self.newgame_state == "armed":
             self.newgame_state = None
         self.disarm_pending = False
-        self.labels_sent = False  # a new helper starts with no labels
-        self.labels_clear_pending = False
+        # The next helper (perhaps this one, still loaded) is treated as holding labels.
+        self.labels_sent = self.labels_held = self.labels_refused = False
 
     def assists_unlocked(self) -> bool:
         """Whether this slot has received Assist Unlock (from the server console, say): the
@@ -354,6 +358,10 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
+    # Likewise it may hold an earlier client's labels: taken back unless this seed's save is
+    # loaded, where this seed's are sent over them.
+    ctx.labels_held = True
+    ctx.labels_sent = ctx.labels_refused = False
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
     ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
 
@@ -380,16 +388,28 @@ async def assists_tick(ctx: ZexionContext) -> None:
 
 async def labels_tick(ctx: ZexionContext) -> None:
     """Once the server has said what each location holding another player's item holds, send
-    the helper a label per map cell (client/aplabels.py). After a disconnect, take them back."""
+    the helper a label per map cell (client/aplabels.py), while this seed's save is loaded. While
+    another save (or none) is loaded, and after a disconnect, take them back."""
     helper = ctx.helper
     if helper is None:
         return
-    if ctx.labels_clear_pending:
-        ctx.labels_clear_pending = False
-        await asyncio.to_thread(helper.request, "ap_labels")  # no labels: Scrap Energy again
+    if not ctx.labels_want:
+        if not ctx.labels_held or time.monotonic() < ctx.labels_retry_at:
+            return
+        ours = ctx.labels_sent
+        reply = await asyncio.to_thread(helper.request, "ap_labels")  # none: Scrap Energy again
+        if helper is not ctx.helper:
+            return
+        if reply.startswith("labeled"):
+            ctx.labels_sent = ctx.labels_held = False
+            if ours:
+                logger.info("Not this seed's save: other players' items are Scrap Energy again.")
+        else:
+            ctx.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # asked again later
         return
     if (
         ctx.labels_sent
+        or ctx.labels_refused
         or not ctx.foreign
         or ctx.session is None
         or time.monotonic() < ctx.labels_retry_at
@@ -413,7 +433,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
     if connection != ctx.connection or helper is not ctx.helper:
         return  # a reconnect or a lost helper meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
-        ctx.labels_sent = True
+        ctx.labels_sent = ctx.labels_held = True
         logger.info(
             f"Other players' items show as Archipelago items, named at pickup ({len(labels)})."
         )
@@ -421,7 +441,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
         ctx.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # no frame came yet
     else:
         logger.warning(f"The helper did not take the item labels: {reply}")
-        ctx.labels_sent = True  # do not ask again until the helper is loaded again
+        ctx.labels_refused = True  # not asked again until a helper is attached again
 
 
 async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
@@ -727,6 +747,10 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.assists_want = ctx.lock_assists
         elif step.left_seed:
             ctx.assists_want = False
+        if ctx.session is current:  # a poll from before a reconnect says nothing of this seed
+            ctx.labels_want = aplabels.labels_wanted(
+                step.seed_matches, step.left_seed, ctx.labels_want
+            )
         if ctx.death_link_on and ctx.session is current:
             try:
                 await deathlink_tick(ctx, step)

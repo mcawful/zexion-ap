@@ -59,3 +59,11 @@ def test_the_request_lists_each_cell_with_its_label_in_hex() -> None:
         "label 1 0 58",
         "label 5 2 " + b"SWORD FOR AL".hex(),
     ]
+
+
+def test_labels_are_wanted_only_while_this_seeds_save_is_loaded() -> None:
+    assert al.labels_wanted(seed_matches=True, left_seed=False, wanted=False)
+    assert not al.labels_wanted(seed_matches=False, left_seed=True, wanted=True)
+    # A poll that could not tell (a load in progress) keeps what was wanted.
+    assert al.labels_wanted(seed_matches=False, left_seed=False, wanted=True)
+    assert not al.labels_wanted(seed_matches=False, left_seed=False, wanted=False)
