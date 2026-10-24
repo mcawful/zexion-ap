@@ -141,6 +141,12 @@ inline int g_message_args[5];
 inline bool g_message_fails = false;
 inline int g_messages = 0;
 inline void* message_fn(const char* text, int per_line, int x, int y, int, int, int frames) {
+    // As the game's (0x182670): the box's centre at y - 1, its half-height 4 per line past the
+    // first plus 7.
+    const int len = static_cast<int>(std::strlen(text));
+    const int extra = per_line > 0 && len > 0 ? (len - 1) / per_line : 0;
+    *reinterpret_cast<double*>(g_message + 0x48) = y - 1;
+    *reinterpret_cast<int32_t*>(g_message + 0x1FC) = 4 * extra + 7;
     g_text = text;
     g_message_args[0] = per_line;
     g_message_args[1] = x;

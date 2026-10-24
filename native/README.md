@@ -79,7 +79,8 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
-      - `popup ITEM SUFFIX`.
+      - `popup ITEM SUFFIX`;
+      - `notice ITEM TEXT`, a popup of the text alone (an Area Map's hint).
     - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`, or
       `refused not configured` or `refused no frame`:
       - `expect OFFSET HEX`, bytes the randomizer section must hold (the seed's mode);
@@ -120,13 +121,28 @@ back); `tests/game_tests.cpp` also the received shield and death and the ASSIST 
   hides the key's map marker; the gates read the key bytes, and a gate opened in the game for
   keys granted by byte alone: `docs/re/memory.md`, "Keys, the gates and the key markers").
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
-  - The text is the item's icon and name from the game's own item record, then the client's
-    suffix (`FROM ALICE`), with any character the game's font does not draw left out. The game
-    lays a popup out a given number of characters a line and cuts wherever a line ends, so
-    the suffix starts a line of its own, its words wrapped at 24, each line is centered in
-    the longest with spaces before it and padded with spaces after (`popup_text` and
-    `center_lines` in `src/game_calls.cpp`), and the line width passed is the longest line's,
-    which is how wide the game draws the box.
+  - A `popup`'s text is the item's icon and name from the game's own item record, then the
+    client's suffix (`FROM ALICE`), up to 40 characters, of which only letters (upper-cased),
+    digits, spaces and `.,'!?-` are kept. The game lays a popup out a given number of
+    characters a line and cuts wherever a line ends, so the suffix starts a line of its own,
+    its words wrapped at 24, each line is centered in the longest with spaces before it and
+    padded with spaces after (`popup_text` and `center_lines` in `src/game_calls.cpp`), and
+    the line width passed is the longest line's, which is how wide the game draws the box.
+  - A `notice` is its text alone, up to 200 characters, keeping `:` too (an Area Map's hint,
+    "HINT: SLIDE MOD IS AT GUARDIA 22,7", `client/hints.py`): left-aligned, words wrapped
+    whole at 24 (a word longer than a line is split, a hyphen ending the line: tested only
+    against the stand-in), each line but
+    the last padded with spaces to the widest, which is the box's width (`notice_text`). The
+    game shows a popup's text past two or three lines only in part, so a notice of three lines
+    or more ends with a blank line, which makes the game show every real line, and once the
+    game has made the message the helper fits its box back to the real lines (`fit_notice_box`:
+    its half-height and centre, only if they read what the game wrote for that text). The game
+    copies a message into a 256-byte slot with no check (`docs/re/memory.md`, "Game functions
+    the helper calls"), so lines past what it holds are left out. Working in the game since
+    2026-10-24, up to five lines.
+  - An `apply` may hold popups alone, with no `cas` lines: the client sends a notice that way
+    for an Area Map found in the world, after the game's own pickup popup (its sound plays
+    again; not run in the game yet).
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A

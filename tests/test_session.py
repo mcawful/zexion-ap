@@ -297,6 +297,18 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
 
 
+def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    session.mark_announced(0)
+    received, senders = [17, 49], ["Bob", "Alice"]
+    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
+    session.step(g, received, gap=0, senders=senders, notes=notes)
+    session.step(g, received, gap=0, senders=senders, notes=notes)
+    lines = helper.requests[-1].splitlines()
+    popups = [line for line in lines if line.startswith(("popup", "notice"))]
+    assert popups == ["popup 17 FROM Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
+
+
 def test_no_popups_before_the_servers_list_arrives(setup) -> None:
     session, g = setup
     helper = FakeHelper(g)

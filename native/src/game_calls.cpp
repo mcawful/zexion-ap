@@ -49,6 +49,15 @@ constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupPerLine = 0x18, kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 constexpr int kPopupGapFrames = 20;
 constexpr size_t kSuffixMax = 40;
+// A notice's text as sent, and its laid-out text (padding included): the game copies a
+// message's text into a 256-byte slot with no check, overrunning the next slot past that
+// (docs/re/memory.md, "Game functions the helper calls"), so a notice is cut to whole lines
+// that fit, the NUL included.
+constexpr size_t kNoticeMax = 200;
+constexpr size_t kMessageMax = 255;
+// The popup message's box: its centre's y (a double) and its half-height (docs/re/memory.md,
+// "Game functions the helper calls").
+constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -147,7 +156,12 @@ std::string parse_batch(const std::string& request, Batch& out) {
                                static_cast<uint8_t>(value)});
         } else if (op == "refresh") {
             out.refresh = true;
-        } else if (op == "popup") {
+        } else if (op == "popup" || op == "notice") {
+            // "popup ITEM SUFFIX": the item's icon and name, then the suffix. "notice ITEM
+            // TEXT": the text alone (the item's sound); it also keeps colons.
+            const bool bare = op == "notice";
+            const char* kept = bare ? " .,'!?-:" : " .,'!?-";
+            const size_t most = bare ? kNoticeMax : kSuffixMax;
             unsigned item = 0;
             if (!(words >> item) || item >= kRecordItems) return "bad line " + line;
             std::string rest;
@@ -157,13 +171,14 @@ std::string parse_batch(const std::string& request, Batch& out) {
                 auto u = static_cast<unsigned char>(c);
                 if (std::isalpha(u)) {
                     suffix += static_cast<char>(std::toupper(u));
-                } else if (std::isdigit(u) || std::strchr(" .,'!?-", c) != nullptr) {
+                } else if (std::isdigit(u) || (c != 0 && std::strchr(kept, c) != nullptr)) {
                     suffix += c;
                 }
-                if (suffix.size() >= kSuffixMax) break;
+                if (suffix.size() >= most) break;
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
-            out.popups.push_back({static_cast<uint8_t>(item), suffix});
+            if (bare && suffix.empty()) return "bad line " + line;
+            out.popups.push_back({static_cast<uint8_t>(item), suffix, bare});
         } else if (!op.empty()) {
             return "unknown line " + line;
         }
@@ -467,6 +482,91 @@ std::string popup_text(const std::string& head, const std::string& suffix, int p
     return center_lines(lines, w);
 }
 
+std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::istringstream words(text);
+    std::string word;
+    while (words >> word) {
+        // A word that fits a line starts a new one if it does not fit this one; a longer one
+        // starts where it is and is split, a hyphen ending each line it fills.
+        if (word.size() <= width && !line.empty() && line.size() + 1 + word.size() > width) {
+            lines.push_back(line);
+            line.clear();
+        }
+        while (word.size() > width && width > 1) {
+            std::string head = line.empty() ? std::string() : line + ' ';
+            if (head.size() + 2 > width) {  // no room for a letter and the hyphen: a new line
+                lines.push_back(line);
+                line.clear();
+                continue;
+            }
+            const size_t room = width - head.size();
+            lines.push_back(head + word.substr(0, room - 1) + '-');
+            line.clear();
+            word.erase(0, room - 1);
+        }
+        if (!line.empty()) line += ' ';
+        line += word;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+std::string notice_text(const std::string& text, int per_line, int* width) {
+    if (per_line <= 0) {
+        if (width != nullptr) *width = per_line;
+        return text;
+    }
+    std::vector<std::string> lines = wrap_hyphenated(text, static_cast<size_t>(per_line));
+    size_t widest = 0;
+    for (const std::string& line : lines) widest = (std::max)(widest, line.size());
+    // Never wider than asked: the game is only ever given the widths it uses itself.
+    const size_t w = widest == 0 ? static_cast<size_t>(per_line)
+                                 : (std::min)(widest, static_cast<size_t>(per_line));
+    if (width != nullptr) *width = static_cast<int>(w);
+    // The game shows a popup of n lines through a window from y = 88 - 4n to 88 + 3n while its
+    // text runs to 88 + 4n (measured, docs/re/memory.md, "Game functions the helper calls"), so
+    // from 3 lines on the last line is cut. One blank line more (a space past a full last line)
+    // makes the window reach far enough for up to 7 lines of text. Lines past what the game's
+    // 256-byte message slot holds, the NUL and that space included, are left out.
+    const bool blank_line = lines.size() >= 3;
+    size_t fit = (kMessageMax - (blank_line ? 1 : 0)) / w;
+    if (lines.size() > fit) lines.resize(fit);
+    // Left-aligned: each line but the last padded with spaces to the box's width, where the
+    // game starts the next line (it cuts every `w` characters, with no line-break code).
+    std::string out;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        out += lines[i];
+        if (i + 1 < lines.size() || blank_line) out.append(w - lines[i].size(), ' ');
+    }
+    if (blank_line) out += ' ';
+    return out;
+}
+
+void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
+    // A notice ending in its blank line (notice_text): the game sized its box for that line too,
+    // a line's worth of empty box under the text. The box is the message's own: centred on its
+    // y (+0x48), opening to a half-height (+0x1FC) of 4 per line past the first plus 7, set from
+    // the text's length (0x182A90). Given the half-height for its real lines plus one, and its
+    // centre moved 4 up onto them, it fits them with about 4 pixels above and below, the least
+    // that still shows every line (docs/re/memory.md, "Game functions the helper calls"). Only a
+    // message holding what the game wrote for that text is changed.
+    if (message == nullptr || per_line <= 0) return;
+    const size_t w = static_cast<size_t>(per_line);
+    if (text.size() % w != 1 || text.size() / w < 3) return;
+    const int lines = static_cast<int>(text.size() / w);
+    int32_t half = 0;
+    double y = 0;
+    std::memcpy(&half, message + kMessageHalfHeight, sizeof(half));
+    std::memcpy(&y, message + kMessageY, sizeof(y));
+    if (half != 4 * lines + 7 || !(y == kPopupY - 1)) return;
+    half = 4 * lines + 4;
+    y -= 4;
+    std::memcpy(message + kMessageHalfHeight, &half, sizeof(half));
+    std::memcpy(message + kMessageY, &y, sizeof(y));
+}
+
 void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
@@ -477,15 +577,21 @@ void Game::pump_popups() {
         popups_.pop_front();
         return;
     }
-    std::string head;
-    if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
-    const char* name = reinterpret_cast<const char*>(rec + kRecordName);
-    head.append(name, strnlen(name, kNameMax));
     int per_line = kPopupPerLine;
-    std::string text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
+    std::string text;
+    if (popup.bare) {
+        text = notice_text(popup.suffix, kPopupPerLine, &per_line);
+    } else {
+        std::string head;
+        if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
+        const char* name = reinterpret_cast<const char*>(rec + kRecordName);
+        head.append(name, strnlen(name, kNameMax));
+        text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
+    }
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
+    if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     BYTE* p = player();
     auto sound = at<int16_t>(rec, kRecordSound);
     if (sound >= 0) {

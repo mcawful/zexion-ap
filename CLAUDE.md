@@ -118,10 +118,15 @@ ASSIST entry, puts a padlock after it, has the cursor skip it and keeps it from 
 that seed's save is loaded (the lock live-tested 2026-10-23; unlocking in another save not
 yet). Sending the slot the Assist Unlock item (server console: `/send NAME Assist Unlock`)
 lifts the lock for good, as an escape hatch (live-tested 2026-10-23).
+For a seed with Area Map hints (the world's default), each Area Map the player gets hints
+where one of the player's progression items is: the client creates the Archipelago hint and
+the helper's popup names it (live-tested 2026-10-24 for Area Maps received from the server,
+hints of up to five lines; an Area Map picked up in the player's own world not yet).
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
-first), and the client loads it again within 30 seconds. Popups are only for items received
-after the server's first full list, so a reconnect does not replay them. With the helper, the client also arms it with the seed,
+first), and the client loads it again within 30 seconds. Popups are not for items the slot
+already held when the client connected (the list the server sends right after connecting), so
+a reconnect does not replay them. With the helper, the client also arms it with the seed,
 once per connection: for a seed whose slot data carries the menu setup (from the world on
 `apworld`), picking an empty slot then offers ARCHIPELAGO, which starts a new game holding
 the seed with no `/prepare` (run in game for all three modes; for OHKO the helper also fills
@@ -148,8 +153,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it;
   `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`),
-  `aplabels.py` other players' items into labels for the helper (`ap_labels`), and
-  `deathlink.py` decides when a death goes out and when a received one is dealt (`die`).
+  `aplabels.py` other players' items into labels for the helper (`ap_labels`),
+  `deathlink.py` decides when a death goes out and when a received one is dealt (`die`), and
+  `hints.py` which item each Area Map hints and the popup that names it.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
