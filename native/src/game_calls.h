@@ -191,6 +191,8 @@ public:
     // frame; restore_ap_items puts everything back (before an unload).
     void set_labels(std::map<int, Label> labels);
     void watch_ap_items();
+    // The live stand-in objects in both pools, with their cells and positions (name_cells).
+    std::vector<StandInSeen> stand_ins_seen() const;
     void restore_ap_items();
     // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
     // a frame to put them back.
@@ -270,8 +272,9 @@ private:
     BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
     // The pickup popup's line width: `mov edx, 24` in the game's pickup code, the path items
-    // with no icon take (the stand-ins do), changed to a label's width while the player stands
-    // in its cell (docs/re/memory.md, "Other players' items").
+    // with no icon take (the stand-ins do), changed to the width of the label a stand-in was
+    // named after: the one within reach, or the player's cell's (docs/re/memory.md, "Other
+    // players' items").
     static constexpr int kGamePopupWidth = 24;
     BYTE* popup_width_code_ = nullptr;
     BYTE* item_pool_ = nullptr;

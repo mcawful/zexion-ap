@@ -893,6 +893,83 @@ void shield_records(int16_t object) {
     field<uint8_t>(0x107B) = 7;
 }
 
+void place(BYTE* o, double x, double y) {
+    std::memcpy(o + 0x40, &x, sizeof(x));
+    std::memcpy(o + 0x48, &y, sizeof(y));
+}
+
+std::string record_text(int item) {
+    return std::string(reinterpret_cast<const char*>(g_records + item * 100 + 0x0A));
+}
+
+void test_stand_ins_named_by_their_own_cell() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    std::map<int, zap::Label> labels;
+    // (5, 2): "MAP WIDTH" for FINDER; (6, 2): "AP ITEM" for ZEXION2.
+    zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572\n"
+                      "label 6 2 4150204974656d0a464f52205a4558494f4e32",
+                      labels);
+    game.set_labels(labels);
+    // The player in a cell with no label (a boss arena's other cell), at (1000, 600).
+    field<uint8_t>(0x107A) = 3;
+    field<uint8_t>(0x107B) = 9;
+    field<double>(0x1100) = 1000;
+    field<double>(0x1108) = 600;
+    put_object(3, 77, 48, 5, 2);  // a drop for (5, 2), far away
+    place(pool_slot(3), 3000, 600);
+    put_object(4, 78, 48, 6, 2);  // a drop for (6, 2), close by
+    place(pool_slot(4), 1010, 610);
+    game.watch_ap_items();
+    check(record_text(48).find("ZEXION2") != std::string::npos,
+          "a stand-in is named for the location of the nearest one, not the player's cell");
+    check(record_text(47).find("FINDER") == std::string::npos &&
+              record_text(47).find("ZEXION2") == std::string::npos,
+          "the other stand-in, with none of its own loaded, for the player's cell: AP ITEM");
+    field<double>(0x1100) = 2990;
+    game.watch_ap_items();
+    check(record_text(48).find("FINDER") != std::string::npos, "and follows the player");
+    check(game.popup_width() == 10, "the popup as wide as the label of the stand-in within reach");
+
+    // An object off the map, or in a cell with no label, is not taken.
+    place(pool_slot(3), -5, 600);
+    game.watch_ap_items();
+    check(record_text(48).find("ZEXION2") != std::string::npos, "a position off the map is not used");
+    put_object(3, 79, 48, 7, 2);
+    place(pool_slot(3), 2990, 600);
+    game.watch_ap_items();
+    check(record_text(48).find("ZEXION2") != std::string::npos, "nor a cell with no label");
+
+    // A stand-in shown by a general object (found by the scan every 30 frames) counts too.
+    put_flipped(12, 501, 63, 5, 2);
+    place(general_slot(12), 2995, 600);
+    for (int i = 0; i < 32; ++i) game.watch_ap_items();  // through the next scan
+    check(record_text(47).find("FINDER") != std::string::npos,
+          "a general object's stand-in is named for its own cell");
+
+    // Out of reach of every stand-in, a labeled cell of the player's own comes first.
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;  // (5, 2): FINDER
+    field<double>(0x1100) = 1600;
+    game.watch_ap_items();
+    check(record_text(48).find("FINDER") != std::string::npos,
+          "a stand-in out of reach does not beat the player's labeled cell");
+    check(game.popup_width() == 10, "and the popup is that cell's width");
+
+    // A general object no longer showing a logo is not taken, even before the next scan.
+    put_flipped(12, 501, 40, 5, 2);
+    field<uint8_t>(0x107A) = 3;
+    field<uint8_t>(0x107B) = 9;
+    field<double>(0x1100) = 2995;
+    game.watch_ap_items();
+    check(record_text(47).find("FINDER") == std::string::npos,
+          "a general object is checked again before its cell is used");
+    game.restore_ap_items();
+}
+
 void test_received_shield() {
     zap::Game game;
     game.configure(GetModuleHandleW(nullptr), stand_in_config());
@@ -1021,6 +1098,7 @@ int main() {
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
+    test_stand_ins_named_by_their_own_cell();
     test_received_shield();
     test_received_death();
     test_assist_watch();

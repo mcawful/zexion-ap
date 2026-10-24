@@ -181,38 +181,50 @@ void ItemLooks::undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standi
     d = {};
 }
 
-void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palette, BYTE* records,
-                              int64_t clock, const bool (&ours)[2]) {
-    if (at.object_pool == nullptr) return;
-    // An object showing a stand-in: live, drawing from the item sprites' frame list (the
-    // template's), at one of the two logo frames, which are empty in the game's own art.
-    auto shows_logo = [&](const BYTE* o) {
-        int32_t frame = field<int32_t>(o, kFrameIndex);
-        return field<int32_t>(o, kSpawn) != 0 && field<BYTE*>(o, kFrameBase) == base &&
-               (frame == logo_frame(kStandInItem) || frame == logo_frame(kStandInProgression));
-    };
-    if (frames_to_scan_-- <= 0) {
-        frames_to_scan_ = kScanFrames;
-        objects_.resize(kObjectSize * kObjectSlots);
-        flipped_slots_.clear();
-        if (safe_read(at.object_pool, objects_.data(), objects_.size())) {
-            for (int slot = 0; slot < kObjectSlots; ++slot) {
-                const BYTE* o = objects_.data() + slot * kObjectSize;
-                if (shows_logo(o)) {
-                    flipped_slots_.push_back(slot);
-                }
-            }
-        }
-        // Any dressed earlier and not found now is put back if it is still ours.
+// An object showing a stand-in: live, drawing from the item sprites' frame list (the
+// template's), at one of the two logo frames, which are empty in the game's own art.
+BYTE* ItemLooks::item_frame_base(const Places& at) {
+    BYTE* templates = read_pointer(at.sprite_templates);
+    BYTE* item_template = templates != nullptr ? read_pointer(templates + kItemTemplate) : nullptr;
+    return item_template != nullptr ? read_pointer(item_template + kFrameBase) : nullptr;
+}
+
+bool ItemLooks::shows_stand_in(const BYTE* o, const BYTE* base) {
+    int32_t frame = field<int32_t>(o, kFrameIndex);
+    return field<int32_t>(o, kSpawn) != 0 && field<BYTE*>(o, kFrameBase) == base &&
+           (frame == logo_frame(kStandInItem) || frame == logo_frame(kStandInProgression));
+}
+
+void ItemLooks::scan(const Places& at) {
+    if (at.object_pool == nullptr || frames_to_scan_-- > 0) return;
+    frames_to_scan_ = kScanFrames;
+    BYTE* base = item_frame_base(at);
+    BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
+    flipped_slots_.clear();
+    if (base == nullptr) return;
+    objects_.resize(kObjectSize * kObjectSlots);
+    if (safe_read(at.object_pool, objects_.data(), objects_.size())) {
         for (int slot = 0; slot < kObjectSlots; ++slot) {
-            if (flipped_dressed_[slot].spawn == 0) continue;
-            bool found = false;
-            for (int s : flipped_slots_) found = found || s == slot;
-            if (!found) {
-                undress_flipped(at.object_pool + slot * kObjectSize, slot, base, standin_palette);
+            if (shows_stand_in(objects_.data() + slot * kObjectSize, base)) {
+                flipped_slots_.push_back(slot);
             }
         }
     }
+    // Any dressed earlier and not found now is put back if it is still ours.
+    for (int slot = 0; slot < kObjectSlots; ++slot) {
+        if (flipped_dressed_[slot].spawn == 0) continue;
+        bool found = false;
+        for (int s : flipped_slots_) found = found || s == slot;
+        if (!found) {
+            undress_flipped(at.object_pool + slot * kObjectSize, slot, base, standin_palette);
+        }
+    }
+}
+
+void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palette, BYTE* records,
+                              int64_t clock, const bool (&ours)[2]) {
+    if (at.object_pool == nullptr) return;
+    auto shows_logo = [&](const BYTE* o) { return shows_stand_in(o, base); };
     for (int slot : flipped_slots_) {
         BYTE* object = at.object_pool + slot * kObjectSize;
         BYTE seen[kObjectSize];
@@ -289,6 +301,8 @@ void ItemLooks::restore_flipped(const Places& at, BYTE* base, BYTE* standin_pale
 
 void ItemLooks::restore(const Places& at) {
     if (at.pool == nullptr || !dressed()) {
+        flipped_slots_.clear();  // found again by the next scan
+        frames_to_scan_ = 0;
         for (Dressed& d : dressed_) d = {};
         for (Dressed& d : flipped_dressed_) d = {};
         return;

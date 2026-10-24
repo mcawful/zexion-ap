@@ -972,24 +972,87 @@ void Game::watch_ap_items() {
     // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
     // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
     bool world = *save_loaded_ != kNoSaveLoaded && *menu_state_ == 0;
+    // The cell whose label sets the popup's width: the player's, or the one the stand-in about to
+    // be picked up was named for.
+    int width_cell = cell;
     if (world) {
-        ap_items_.watch(item_records_, cell);
+        // Each stand-in named for the location of one of its kind within reach, by the cell the
+        // object carries: a drop lands wherever its enemy dies, and a room can span several
+        // cells (apitem.h). The general objects among them as of the last scan, below.
+        int cells[kStandInCount];
+        int touching = name_cells(stand_ins_seen(), at<double>(player(), kX),
+                                  at<double>(player(), kY), cell, ap_items_.labels(), cells);
+        if (touching >= 0) width_cell = cells[touching];
+        ap_items_.watch(item_records_, cells);
     } else {
         ap_items_.release(item_records_);
     }
     ap_items_.paint(sprite_texture_, gl_, GetTickCount64(), world);
-    // The pickup popup as wide as this cell's label, if the stand-ins are ours; the game's 24
+    // The pickup popup as wide as that label (width_cell's), if the stand-ins are ours; the game's 24
     // elsewhere. Called from the frame call, on the game's thread, so the game is not running
     // the instruction while it changes.
-    auto it = label_widths_.find(cell);
+    auto it = label_widths_.find(width_cell);
     set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
                                                                       : kGamePopupWidth);
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
+        looks_.scan(looks_places());
         looks_.apply(looks_places());
     } else {
         looks_.restore(looks_places());
     }
+}
+
+std::vector<StandInSeen> Game::stand_ins_seen() const {
+    // Item objects keep their position at +0x40 and +0x48 (doubles, pixels, as the player's),
+    // and the general objects are assumed to, sharing the sprite fields; the item pool's cell is
+    // at +0x3AC and +0x3AD, the general pool's at +0x210 and +0x211 (docs/re/memory.md, "Live
+    // item objects"). A position off the map is not used.
+    constexpr ptrdiff_t kObjX = 0x40, kObjY = 0x48, kSpawn = 0x1D8, kRecord = 0x1E8;
+    constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;
+    constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211, kFrameIndex = 0x1C4;
+    constexpr size_t kItemSize = 0x3B0, kGeneralSize = 0x5C8;
+    constexpr double kMapWidth = 54 * 320.0, kMapHeight = 54 * 224.0 + 8;
+    std::vector<StandInSeen> out;
+    BYTE* base = ItemLooks::item_frame_base(looks_places());
+    auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {
+        double x = 0, y = 0;
+        std::memcpy(&x, o + kObjX, sizeof(x));
+        std::memcpy(&y, o + kObjY, sizeof(y));
+        if (row >= 54 || column >= 54 || !(x >= 0 && x < kMapWidth) || !(y >= 0 && y < kMapHeight)) {
+            return;
+        }
+        out.push_back({item, row * 54 + column, x, y});
+    };
+    if (item_pool_ != nullptr) {
+        static BYTE pool[kItemSize * ItemLooks::kSlots];  // the game thread's only
+        if (!safe_read(item_pool_, pool, sizeof(pool))) return out;
+        for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
+            const BYTE* o = pool + slot * kItemSize;
+            int32_t spawn = 0;
+            int16_t record = 0;
+            std::memcpy(&spawn, o + kSpawn, sizeof(spawn));
+            std::memcpy(&record, o + kRecord, sizeof(record));
+            if (spawn == 0 || (record != kStandInItem && record != kStandInProgression)) continue;
+            add(record, o[kItemRow], o[kItemColumn], o);
+        }
+    }
+    if (object_pool_ != nullptr && base != nullptr) {
+        BYTE o[kGeneralRow + 2];
+        for (int slot : looks_.flipped_slots()) {
+            // Checked again: the list is from the last scan, up to 30 frames ago.
+            if (slot < 0 || slot >= ItemLooks::kObjectSlots ||
+                !safe_read(object_pool_ + slot * kGeneralSize, o, sizeof(o)) ||
+                !ItemLooks::shows_stand_in(o, base)) {
+                continue;
+            }
+            int32_t frame = 0;
+            std::memcpy(&frame, o + kFrameIndex, sizeof(frame));
+            int item = frame == kStandInFrame ? kStandInItem : kStandInProgression;
+            add(item, o[kGeneralRow], o[kGeneralColumn], o);
+        }
+    }
+    return out;
 }
 
 ItemLooks::Places Game::looks_places() const {
