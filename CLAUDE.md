@@ -120,7 +120,9 @@ For a seed with the OS Install Disks goal (the world's Goal option), the four ke
 out and the game's Data Disc, named OS Install Disk, is shuffled in: the client counts them
 (never writing the game's disc byte) and pops up the count, and the helper reworks the
 scanner's message, adds the disk to the equipment screen and turns the pause screen's KEYS
-row into a disk count. Once the player has enough, the helper offers RETURN HOME WITH THE
+row into a disk count. The file select shows the count in place of the keys for the seed's
+saves, and the game's own again once the client disconnects (live-tested 2026-10-24; a
+seed's save with no disk not yet). Once the player has enough, the helper offers RETURN HOME WITH THE
 DISKS?, whose YES starts the game's ending, which sends the goal (YES and NO live-tested
 2026-10-24). This goal
 needs the helper: without it nothing offers the ending.
@@ -157,7 +159,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `aplabels.py` other players' items into labels for the helper (`ap_labels`),
   `deathlink.py` decides when a death goes out and when a received one is dealt (`die`), and
   `hints.py` which item each Area Map hints and the popup that names it, and `discs.py` the
-  OS Install Disks count, its popups and the helper's `discs` request.
+  OS Install Disks count, its popups and the helper's `discs` and `disk_slots` requests.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
@@ -167,8 +169,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   logo and their name (`ap_labels`; working in game). It also deals received DeathLinks
   (`die`) and can lock the options menu's ASSIST entry (`assists`). For the OS Install Disks
   goal (`discs`, `mission_prompt`; working in game): the scanner's message (`scan.cpp`), the
-  equipment screen (`equip.cpp`), the pause screen's disk row (`pause.cpp`) and the RETURN
-  HOME WITH THE DISKS? prompt (`mission.cpp`).
+  equipment screen (`equip.cpp`), the pause screen's disk row (`pause.cpp`), the RETURN
+  HOME WITH THE DISKS? prompt (`mission.cpp`) and, with `disk_slots`, the file select's count
+  (`files.cpp`).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

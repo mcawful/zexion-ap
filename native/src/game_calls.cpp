@@ -22,6 +22,7 @@ const char* const kConfigKeys[] = {
     "equipment_fn",  "equip_panel_fn", "widget_move_fn", "text_place_fn",
     "malloc_slot",   "free_slot",     "widget_new_fn", "sprite_sheet_fn", "panel_link_fn",
     "text_set_fn",   "routine_table", "keys_branch",
+    "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -118,6 +119,7 @@ bool is_function(const std::string& key) {
         "rando_newgame_fn", "popup_width_code", "death_fn", "assist_menu_fn",
         "equipment_fn", "equip_panel_fn", "widget_move_fn", "text_place_fn",
         "widget_new_fn", "sprite_sheet_fn", "panel_link_fn", "text_set_fn", "keys_branch",
+        "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -373,6 +375,12 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     pause_at_.sprite_templates = found["sprite_templates"];
     pause_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
     pause_at_.keys_branch = found["keys_branch"];
+    files_at_.current_menu = found["current_menu"];
+    files_at_.file_panel_fn = found["file_panel_fn"];
+    files_at_.entry_fns[0] = found["file_entry_fn"];
+    files_at_.entry_fns[1] = found["copy_entry_fn"];
+    files_at_.entry_fns[2] = found["delete_entry_fn"];
+    files_at_.hook = file_hook_;
     mission_at_.yes_hook = mission_yes_hook_;
     start_count_ = found["start_count"];
     start_cells_ = found["start_cells"];
@@ -1010,7 +1018,9 @@ void Game::watch_equipment() {
     equip_screen_.tidy(equip_at_);
     pause_row_.watch(pause_at_);
     if (!scan_line_.empty()) {
-        disk_glyph_.paint(sprite_texture_, gl_);  // the disk's popup icon while the count is on
+        disk_glyph_.paint(sprite_texture_, gl_);  // the disk's icon while a count is shown
+    }
+    if (!scan_line_.empty()) {
         equip_.install(equip_at_);
     } else {
         if (disk_glyph_.painted()) disk_glyph_.clear(sprite_texture_, gl_);
@@ -1037,6 +1047,29 @@ void Game::watch_mission() {
     bool idle = in_play() && popups_.empty() && !popup_busy() &&
                 frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(mission_at_, idle);
+}
+
+void Game::watch_files() {
+    if (!configured_) return;
+    files_.watch(files_at_);
+    for (FontGlyph& glyph : disk_header_) {
+        if (files_.on()) {
+            glyph.paint(sprite_texture_, gl_);  // DISK over the keys while the count is on
+        } else if (glyph.painted()) {
+            glyph.clear(sprite_texture_, gl_);
+        }
+    }
+}
+
+void Game::file_event(void* widget, intptr_t event) {
+    if (configured_) files_.on_event(files_at_, widget, event);
+}
+
+void Game::restore_files() {
+    if (!configured_) return;
+    files_.set(0, 0, {});
+    files_.restore(files_at_);
+    for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_);
 }
 
 void Game::mission_open() {

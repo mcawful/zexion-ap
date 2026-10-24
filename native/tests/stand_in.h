@@ -132,6 +132,10 @@ inline void* widget_new_fn() { g_equip_calls += 5; return nullptr; }
 inline void sprite_sheet_fn(void*, void*) { g_equip_calls += 6; }
 inline void panel_link_fn(void*) { g_equip_calls += 7; }
 inline void text_set_fn(void*, const char*, int, int) { g_equip_calls += 8; }
+inline void file_panel_fn() { g_equip_calls += 9; }
+inline void file_entry_fn() { g_equip_calls += 10; }
+inline void copy_entry_fn() { g_equip_calls += 11; }
+inline void delete_entry_fn() { g_equip_calls += 12; }
 inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
@@ -280,6 +284,10 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"free_slot", rva(&g_free_slot)},
         {"routine_table", rva(g_routine_table)},
         {"keys_branch", rva(g_keys_branch)},
+        {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
+        {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
+        {"copy_entry_fn", rva(reinterpret_cast<void*>(&copy_entry_fn))},
+        {"delete_entry_fn", rva(reinterpret_cast<void*>(&delete_entry_fn))},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},

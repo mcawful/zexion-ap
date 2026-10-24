@@ -14,7 +14,7 @@ add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
-            src/game_calls.cpp src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
+            src/game_calls.cpp src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp src/files.cpp
             src/apitem.cpp src/looks.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
@@ -66,3 +66,7 @@ add_test(NAME mission COMMAND zap_mission_tests)
 add_executable(zap_pause_tests tests/pause_tests.cpp)
 target_link_libraries(zap_pause_tests PRIVATE zap_core)
 add_test(NAME pause COMMAND zap_pause_tests)
+
+add_executable(zap_files_tests tests/files_tests.cpp)
+target_link_libraries(zap_files_tests PRIVATE zap_core)
+add_test(NAME files COMMAND zap_files_tests)
