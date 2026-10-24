@@ -112,7 +112,12 @@ When it attaches to the game, the client also loads the native helper built from
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
 Loading it also changes the game while it runs: grabbing Zexion offers the escape skip.
 For a seed with DeathLink on, the client sends the player's deaths and deals the ones it
-receives through the helper (the helper kills the player; live-tested 2026-10-23).
+receives through the helper (the helper kills the player; live-tested 2026-10-23). For a
+seed that disallows assists (the world's default), the helper greys out the options menu's
+ASSIST entry, puts a padlock after it, has the cursor skip it and keeps it from opening while
+that seed's save is loaded (the lock live-tested 2026-10-23; unlocking in another save not
+yet). Sending the slot the Assist Unlock item (server console: `/send NAME Assist Unlock`)
+lifts the lock for good, as an escape hatch (live-tested 2026-10-23).
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are only for items received
@@ -151,7 +156,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   a new game from the AP seed (ARCHIPELAGO); both working in game. It also patches the game's
   loaded event 3665 so the escape skip is offered in any game (`hello` reports `skip=`;
   working in game), and helper phase 4 shows other players' items with an Archipelago
-  logo and their name (`ap_labels`; working in game).
+  logo and their name (`ap_labels`; working in game). It also deals received DeathLinks
+  (`die`) and can lock the options menu's ASSIST entry (`assists`).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

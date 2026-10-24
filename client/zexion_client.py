@@ -43,6 +43,11 @@ Once connected:
   through the helper, one each time the player is in play (client/deathlink.py): the one thing
   the client does that costs the player progress, as a death goes back to the last save.
   Live-tested 2026-10-23.
+- For a seed that disallows assists (slot data "allow_assists" false, the world's default),
+  the client has the helper grey out the options menu's ASSIST entry, put a padlock after it
+  and keep it from opening while this seed's save is loaded, and unlocks it otherwise, or for
+  good once the slot receives Assist Unlock (sent from the server console as an escape hatch).
+  The lock live-tested 2026-10-23; unlocking in another save not yet.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -87,6 +92,7 @@ import session  # noqa: E402
 
 GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # worlds/zexion/items.py
+ASSIST_UNLOCK = 100  # worlds/zexion/items.py: lifts the assist lock; not an item of the game's
 LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
@@ -192,6 +198,13 @@ class ZexionContext(CommonContext):
         self.death_key: tuple | None = None  # (seed, team, slot) the deaths are for
         self.death_retry_at = 0.0
         self.death_said = ""
+        # The assist menu (docs/re/memory.md, "The assist menu"): whether this seed's slot data
+        # disallows assists, whether the helper should lock ASSIST now (this seed's save
+        # loaded), and what the helper was last told (None: nothing yet, or a new helper).
+        self.lock_assists = False
+        self.assists_want = False
+        self.assists_sent: bool | None = None
+        self.assists_retry_at = 0.0
         # Counts connections and disconnects: a helper reply from an older one is dropped.
         self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
@@ -229,6 +242,8 @@ class ZexionContext(CommonContext):
             if death_key != self.death_key:  # another seed or slot: nothing carries over
                 self.death_key = death_key
                 self.deaths = deathlink.DeathLink()
+            # A seed from before the option has no "allow_assists": nothing is locked.
+            self.lock_assists = slot.get("allow_assists", True) is False
             self.death_link_on = bool(slot.get("death_link", False))
             asyncio.create_task(self.update_death_link(self.death_link_on))
             if self.death_link_on:
@@ -261,6 +276,8 @@ class ZexionContext(CommonContext):
         self.session = None
         self.connection += 1
         self.shield_key = None
+        self.lock_assists = False
+        self.assists_want = False  # unlocked on the next helper tick
         self.foreign = []
         if self.helper is not None:
             self.labels_clear_pending = True
@@ -297,12 +314,19 @@ class ZexionContext(CommonContext):
         self.labels_sent = False  # a new helper starts with no labels
         self.labels_clear_pending = False
 
+    def assists_unlocked(self) -> bool:
+        """Whether this slot has received Assist Unlock (from the server console, say): the
+        assist lock's escape hatch, kept by the server like any received item."""
+        return any(item.item - ITEM_ID_BASE == ASSIST_UNLOCK for item in self.items_received)
+
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
         own), kept in step: anything that is not a Zexion item is left out of both."""
         codes, senders = [], []
         for item in self.items_received:
             code = item.item - ITEM_ID_BASE
+            if code == ASSIST_UNLOCK:
+                continue  # not for the inventory: see assists_unlocked
             if 0 <= code <= 50:
                 codes.append(code)
                 senders.append(
@@ -329,8 +353,29 @@ async def attach_helper(ctx: ZexionContext) -> None:
         return
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
+    ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
     ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
+
+
+async def assists_tick(ctx: ZexionContext) -> None:
+    """Tell the helper to lock the options menu's ASSIST entry while this seed's save is loaded
+    and the seed disallows assists, and to unlock it otherwise (docs/re/memory.md, "The assist
+    menu"). Sent when that changes, or to a new helper."""
+    helper = ctx.helper
+    want = ctx.assists_want
+    if helper is None or want == ctx.assists_sent or time.monotonic() < ctx.assists_retry_at:
+        return
+    reply = await asyncio.to_thread(helper.request, "assists lock" if want else "assists free")
+    if helper is not ctx.helper:
+        return
+    if reply == ("locked" if want else "free"):
+        ctx.assists_sent = want
+        logger.info(
+            "The assist menu is locked for this seed." if want else "The assist menu is unlocked."
+        )
+    else:
+        ctx.assists_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
 
 
 async def labels_tick(ctx: ZexionContext) -> None:
@@ -636,6 +681,7 @@ async def game_loop(ctx: ZexionContext) -> None:
                 await newgame_tick(ctx)
                 await skip_tick(ctx)
                 await labels_tick(ctx)
+                await assists_tick(ctx)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()
@@ -674,6 +720,13 @@ async def game_loop(ctx: ZexionContext) -> None:
             await attach_helper(ctx)
         if step.left_seed and ctx.shield_pending is not None:
             ctx.shield_pending.left_play = True
+        if step.seed_matches:
+            if ctx.lock_assists and ctx.assists_unlocked():
+                ctx.lock_assists = False
+                logger.info("Assist Unlock received: the assist menu is no longer locked.")
+            ctx.assists_want = ctx.lock_assists
+        elif step.left_seed:
+            ctx.assists_want = False
         if ctx.death_link_on and ctx.session is current:
             try:
                 await deathlink_tick(ctx, step)

@@ -40,8 +40,9 @@ The native tests run against a stand-in game: the test program's own data and fu
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
 queue, the new-game watch, a whole ARCHIPELAGO press and the escape skip's patch; `tests/menu_tests.cpp` the
-game-mode panel (`tests/stand_in_menu.h`): relabeling, putting it back, closed menus and
-released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
+game-mode panel and the options menu (`tests/stand_in_menu.h`): relabeling, putting it back,
+closed menus and released widgets, and the ASSIST lock (its look, the cursor order, putting it
+back); `tests/game_tests.cpp` also the received shield and death and the ASSIST watch; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -93,11 +94,13 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
       the game's name) once the records are loaded.
     - `shield` → `spawned`, or `refused <why>`: a received Energy Shield (below).
     - `die` → `died`, or `refused <why>`: a received DeathLink (below).
+    - `assists lock` → `locked`, `assists free` → `free`, or `refused <why>`: the options
+      menu's ASSIST entry (below).
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
-- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`,
+- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
   `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -140,6 +143,29 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   check it was made): energy to 0, then the game's death routine (`kill`; the routine and the
   byte found by pattern, checked by `config`), through an Energy Shield too. The client queues received deaths and asks once a second
   while the player is in play, one death at a time. Works in game (2026-10-23, B1; `docs/re/memory.md`, "DeathLink").
+- **The assist menu.** While locked (`assists lock`), each frame call looks for the options
+  menu's ASSIST entry in the top menu (a live widget with the game's handler, ASSIST's
+  callback, found by pattern, and a 12-glyph label reading ASSIST and six blanks), draws it in
+  the style of the controls screen's STYLE: AUTO (5), puts a padlock after it (font glyph
+  `0xEF`, empty in the game's art, which the helper paints into the sprite texture while the
+  lock is armed and clears after) and clears its callback, so pressing it does nothing (the
+  game's widget handler calls a callback only if one is set) and nothing in the menu points
+  into the helper. It stays locked while the options menu is open, under another menu too, and
+  draws the locked look again each frame the options menu is on top: style 5 under palette 0
+  with STYLE: AUTO's grey tint (the options menu takes another palette after some screens, the
+  map's 26 among them). It also moves ASSIST past the panel's selectable entries (the panel's
+  `+0x1EC` counts the children the cursor reaches, from the first), the ones after it up one
+  and renumbered, so the cursor skips it; only when each one it moves is as expected.
+  `assists free`, an unload, or the
+  menu closing puts it back (into a menu still open only; the widget it locked is found again by its pointer, so a label changed
+  meanwhile still gets the game's callback back). The lock is dropped when any pipe client disconnects
+  other than through `unload` (the AP client exited or crashed, or `tools/helper.py` was done),
+  and armed again if an unload is refused. An unload no frame comes for leaves it locked (and
+  moved) until the options menu closes, harmlessly: nothing in it points into the helper. `locked` means armed:
+  whether an entry was found shows only in the game. The client locks it while a seed that
+  disallows assists has its save loaded, until the slot receives Assist Unlock. The lock works in game (2026-10-23, B1; `docs/re/memory.md`,
+  "The assist menu"), unlocking too (by Assist Unlock); the unlock that loading another save
+  triggers has not been run in the game.
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`
@@ -218,9 +244,11 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   `hello` reports it as `skip=1`. Working in game (2026-10-23: the prompt in a first
   playthrough, YES to the ship, and the goal at the ending; `docs/re/memory.md`, "The escape
   skip").
-- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
-  RANDOMIZER and event 3665 back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
-  menu`) if no frame came to do it, since the menu would point into the unloaded DLL. Then it
+- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST
+  again, puts RANDOMIZER, ASSIST and event 3665 back in a frame call, and refuses (`error a menu
+  still holds the helper's callback (no frame came); not unloading`) if no frame came to take
+  ARCHIPELAGO off, since the menu would point into the unloaded DLL (the locked ASSIST holds
+  no callback of the helper's, so it cannot). Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
@@ -245,7 +273,7 @@ ctest --test-dir native/build -C Release --output-on-failure
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
 tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
-the ARCHIPELAGO choice on a stand-in panel, and `apitem`, the stand-in item's restyle and
+the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, and `apitem`, the stand-in item's restyle and
 painting against a fake GL), and runs
 `tests/test_native.py` against the build on Windows.
 

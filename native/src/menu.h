@@ -39,6 +39,8 @@ struct MenuAddresses {
     void* panel_handler = nullptr;
     void* widget_handler = nullptr;
     void* rando_menu = nullptr;  // RANDOMIZER's own callback
+    void* assist_menu = nullptr;  // ASSIST's own callback (the options menu, a save loaded)
+    BYTE* palette_table = nullptr;  // the palette objects by number (a glyph's +0x198, +0x1A0)
 };
 
 using WidgetCallback = void (*)(void* widget, int event);
@@ -76,6 +78,66 @@ private:
     BYTE* child_ = nullptr;
     int32_t frames_[kLabelLength] = {};
     BYTE* frame_ptrs_[kLabelLength] = {};
+};
+
+// The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"): with a save
+// loaded, the options menu (pause, OPTIONS) has a widget labeled ASSIST whose callback opens
+// the assist menu. While locked, the helper finds it in the top menu, gives its label the style
+// the controls screen's STYLE: AUTO is drawn in (style 5 under palette 0 with its grey tint, the
+// owner's choice, pinned: the options menu itself takes another palette after some screens),
+// puts a padlock after
+// it (its eighth glyph given the lock's character, as ARCHIPELAGO's glyphs are given theirs)
+// and clears its callback: the generic widget handler calls a callback only if it is set
+// (0xD0270), so pressing it does nothing, and nothing in the menu points into the helper. It
+// also moves the entry past the panel's selectable ones (the panel's +0x1EC counts the
+// children the cursor reaches, from the first: as the controls screen's STYLE: AUTO, the last
+// of two with a count of 1), so the cursor skips it.
+// Unlocking puts all of it back. As for the ARCHIPELAGO choice, it
+// writes only into a widget whose menu is still open and that is not released, and checks
+// every value first: the menu's panel list and count, each panel's children and capacity, the
+// widget's handler and callback, and a label of 12 glyphs reading ASSIST and six blanks.
+// ASSIST's label has 12 glyphs (the widget constructor's width at 0x16285A): ASSIST, then six
+// blanks (character 0), as read live.
+constexpr int kAssistLength = 12;
+// The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
+// helper paints it, apitem.h FontGlyph), with a blank before it.
+constexpr uint8_t kLockGlyph = 0xEF;
+extern const char kLockRows[8][9];
+
+class AssistLock {
+public:
+    // Game thread, each frame while locked. Returns true when it locked an entry this frame.
+    bool install(const MenuAddresses& addresses);
+    // Game thread: unlocks the entry this locked, if its menu is still open; otherwise forgets
+    // it. Returns true when it wrote the callback back.
+    bool restore(const MenuAddresses& addresses);
+    bool installed() const { return child_ != nullptr; }
+
+private:
+    // The ASSIST widget in `menu` holding `expected_callback`, or nullptr; with its panel and its
+    // place among the panel's children.
+    static BYTE* assist_in(BYTE* menu, const MenuAddresses& addresses, void* expected_callback,
+                           BYTE** panel = nullptr, int32_t* index = nullptr);
+    // Moves the entry at `index` of `panel` past the panel's selectable entries (the first
+    // [panel+0x1EC] children are the ones the cursor reaches), renumbering those that shift.
+    void move_out(BYTE* panel, int32_t index);
+    // Puts it back, if the panel is as move_out left it.
+    void move_back();
+    // Whether the widget this locked is still a live child of a panel of its menu, its
+    // callback clear: found by its pointer, so a label changed meanwhile does not hide it.
+    bool still_locked(const MenuAddresses& addresses) const;
+
+    BYTE* menu_ = nullptr;
+    BYTE* child_ = nullptr;
+    BYTE* panel_ = nullptr;
+    int32_t moved_from_ = -1;  // ASSIST's place before move_out; -1 if not moved
+    int32_t selectable_ = 0;   // the panel's selectable count before move_out
+    int32_t frames_[kAssistLength] = {};  // ASSIST's glyphs as they were
+    BYTE* frame_ptrs_[kAssistLength] = {};
+    int32_t styles_[kAssistLength] = {};
+    void* palettes_[kAssistLength] = {};
+    int16_t palette_numbers_[kAssistLength] = {};
+    float tints_[kAssistLength][6] = {};
 };
 
 }  // namespace zap

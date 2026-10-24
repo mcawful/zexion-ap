@@ -16,6 +16,8 @@ std::wstring pipe_name(unsigned long pid);
 // that disconnects is replaced by the next one. Returns true once `handle` sets `stop` (after
 // the reply is sent), false if the pipe could not be created or breaks.
 using Handler = std::function<std::string(const std::string& request, bool& stop)>;
-bool serve_pipe(const std::wstring& name, const Handler& handle);
+// `on_disconnect`, if given, runs (on the pipe thread) each time a client goes away.
+bool serve_pipe(const std::wstring& name, const Handler& handle,
+                const std::function<void()>& on_disconnect = {});
 
 }  // namespace zap

@@ -161,7 +161,17 @@ public:
     void watch_menu(WidgetCallback callback);
     // Game thread: puts RANDOMIZER back now (before an unload).
     void restore_menu(WidgetCallback callback);
+    // Whether a menu holds the helper's callback (ARCHIPELAGO). The locked ASSIST holds none.
     bool menu_installed() const { return choice_.installed(); }
+
+    // The options menu's ASSIST entry (menu.h, AssistLock): set_assists_locked arms it (the
+    // `assists` request); the watch runs every frame, locking it while armed and unlocking it
+    // otherwise; restore_assists unlocks it now (before an unload).
+    void set_assists_locked(bool locked) { assists_locked_ = locked; }
+    bool assists_locked() const { return assists_locked_; }
+    void watch_assists();
+    void restore_assists();
+    bool assist_lock_installed() const { return assists_.installed(); }
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
     // mode, writes the plan (for the AP start), runs the game's placement, checks the section
@@ -240,6 +250,9 @@ private:
 
     MenuAddresses menu_;
     ArchipelagoChoice choice_;
+    AssistLock assists_;
+    bool assists_locked_ = false;
+    FontGlyph lock_glyph_{kLockGlyph, kLockRows};
     BYTE* randomizer_menu_ = nullptr;
     void* placement_fn_ = nullptr;
     void* rando_newgame_fn_ = nullptr;

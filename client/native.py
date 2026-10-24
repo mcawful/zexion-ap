@@ -28,7 +28,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.10.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.11.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -72,6 +72,7 @@ CONFIG_KEYS = (
     "event_handlers",
     "death_fn",
     "halt_flag",
+    "assist_menu_fn",
 )
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent

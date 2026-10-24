@@ -17,7 +17,7 @@ const char* const kConfigKeys[] = {
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
     "start_count",   "start_cells",     "start_flags",     "sprite_texture",
     "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
-    "event_handlers", "death_fn",      "halt_flag",
+    "event_handlers", "death_fn",      "halt_flag",       "assist_menu_fn",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -102,7 +102,7 @@ bool is_function(const std::string& key) {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
         "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
-        "rando_newgame_fn", "popup_width_code", "death_fn",
+        "rando_newgame_fn", "popup_width_code", "death_fn", "assist_menu_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -311,6 +311,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     menu_.panel_handler = found["panel_handler_fn"];
     menu_.widget_handler = found["widget_handler_fn"];
     menu_.rando_menu = found["rando_menu_fn"];
+    menu_.assist_menu = found["assist_menu_fn"];
+    menu_.palette_table = found["palette_table"];
     randomizer_menu_ = found["randomizer_menu"];
     placement_fn_ = found["placement_fn"];
     rando_newgame_fn_ = found["rando_newgame_fn"];
@@ -636,6 +638,23 @@ void Game::watch_menu(WidgetCallback callback) {
 
 void Game::restore_menu(WidgetCallback callback) {
     if (configured_) choice_.restore(menu_, callback);
+}
+
+void Game::watch_assists() {
+    if (!configured_) return;
+    if (assists_locked_) {
+        lock_glyph_.paint(sprite_texture_, gl_);  // the padlock in the font while armed
+        assists_.install(menu_);
+        return;
+    }
+    if (assists_.installed()) assists_.restore(menu_);
+    if (lock_glyph_.painted()) lock_glyph_.clear(sprite_texture_, gl_);
+}
+
+void Game::restore_assists() {
+    if (!configured_) return;
+    assists_.restore(menu_);
+    lock_glyph_.clear(sprite_texture_, gl_);
 }
 
 namespace {

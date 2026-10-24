@@ -376,7 +376,39 @@ void test_label_parser() {
 
 }  // namespace
 
+void test_font_glyph() {
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
+    lock.paint(sprites(), gl);
+    const int x = (zap::kLockGlyph % 16) * 8, y = 976 + (zap::kLockGlyph / 16) * 8;
+    check(lock.painted() && g_uploads.size() == 1 && g_uploads[0].x == x && g_uploads[0].y == y &&
+              g_uploads[0].w == 8 && g_uploads[0].h == 8,
+          "the padlock goes into its font slot");
+    auto alpha = [&](const Upload& u, int px, int py) { return u.pixels[(py * 8 + px) * 4 + 3]; };
+    check(alpha(g_uploads[0], 2, 0) == 0xFF && alpha(g_uploads[0], 0, 0) == 0 &&
+              alpha(g_uploads[0], 3, 4) == 0 && alpha(g_uploads[0], 0, 6) == 0xFF,
+          "drawn from its rows");
+    check(g_bound == 3 && g_row_length == 5, "the game's binding and pixel store are put back");
+    lock.paint(sprites(), gl);
+    check(g_uploads.size() == 1, "not painted again every frame");
+    lock.clear(sprites(), gl);
+    bool blank = true;
+    for (uint8_t v : g_uploads.back().pixels) blank = blank && v == 0;
+    check(!lock.painted() && g_uploads.size() == 2 && blank, "cleared");
+
+    reset_gl();
+    g_known_art = false;
+    zap::FontGlyph other(zap::kLockGlyph, zap::kLockRows);
+    other.paint(sprites(), gl);
+    check(!other.painted() && g_uploads.empty(), "a texture not as expected is left alone");
+    int reads = g_readbacks;
+    for (int i = 0; i < 10; ++i) other.paint(sprites(), gl);
+    check(g_readbacks == reads, "and not read back again every frame");
+}
+
 int main() {
+    test_font_glyph();
     test_restyle_and_names();
     test_one_record_not_as_expected_leaves_the_other_restyled();
     test_records_not_as_expected_are_left_alone();

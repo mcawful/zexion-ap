@@ -1460,6 +1460,32 @@ TARGETS = (
         ),
     ),
     Target(
+        "assist_menu_fn",
+        "ASSIST's callback in the options menu with a save loaded: opens the assist menu",
+        0x153D20,
+        (
+            # the options menu's construction of ASSIST, at RVA 0x16286c on B1
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 44 24 20 E8 ?? ?? ?? ?? 48 "
+                    "8B 8F E0 01 00 00 45 8B C6 48 89 04 D9 4C 8B 97 E0 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 68",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "halt_flag",
         "a byte the death routine (and much of the game) returns early on while it is set",
         0x345EF4,

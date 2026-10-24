@@ -58,6 +58,29 @@ struct GlFunctions {
 // From opengl32.dll if the process has loaded it; otherwise all null.
 GlFunctions load_gl();
 
+// One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
+// game's art (the locked ASSIST's padlock, menu.h). Painted while wanted, again now and then
+// and whenever the texture changes, and cleared when no longer wanted.
+class FontGlyph {
+public:
+    // `rows`: 8 strings of 8, '#' for an opaque white pixel.
+    FontGlyph(uint8_t code, const char (*rows)[9]) : code_(code), rows_(rows) {}
+    // Game thread (the GL context current). `texture_holder` holds the pointer to the sprite
+    // data.
+    void paint(BYTE* texture_holder, const GlFunctions& gl);
+    void clear(BYTE* texture_holder, const GlFunctions& gl);
+    bool painted() const { return painted_ != 0; }
+
+private:
+    bool upload(unsigned texture, const GlFunctions& gl, bool clear);
+    uint8_t code_;
+    const char (*rows_)[9];
+    unsigned painted_ = 0;
+    unsigned verified_ = 0;
+    unsigned failed_ = 0;  // a texture it could not paint into: tried again only now and then
+    int frames_to_paint_ = 0;
+};
+
 class ApItems {
 public:
     // Game thread. The labels by map cell (index y * 54 + x), already filtered to the font.
