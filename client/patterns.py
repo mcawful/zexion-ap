@@ -1428,6 +1428,66 @@ TARGETS = (
             ),
         ),
     ),
+    Target(
+        "death_fn",
+        "the player's death: death_fn(player, 0), called once energy is 0 or below (DeathLink)",
+        0x1D9FA0,
+        (
+            # the touch handler's call after damage, at RVA 0x1f07a on B1
+            Pattern(
+                "E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 66 83 F8 03 0F 85 ?? ?? ?? ?? 49 8B B6 40 01 00 00",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # another hit's call, at RVA 0x1b9d3a on B1
+            Pattern(
+                "E8 ?? ?? ?? ?? 80 BB FE 0C 00 00 00 0F 28 7C 24 40",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "40 53 48 81 EC 90 00 00 00 80 3D ?? ?? ?? ?? 00",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "halt_flag",
+        "a byte the death routine (and much of the game) returns early on while it is set",
+        0x345EF4,
+        (
+            # from the test at RVA 0x178c85 on B1
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 75 1E 33 C9 FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 33 "
+                    "C9 C6 80 20 01 00 00 00 FF 15 ?? ?? ?? ?? 48 8B 83 E0 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the test at RVA 0x1ccb93 on B1, in the player's update
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 75 10 66 FF 8B BE 0C 00 00 33 C0 66 89 83 8C 10 00 00 "
+                    "FF 05 ?? ?? ?? ?? B9 CC 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
 )
 
 BY_NAME = {t.name: t for t in TARGETS}

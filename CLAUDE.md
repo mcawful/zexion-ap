@@ -105,6 +105,8 @@ When it attaches to the game, the client also loads the native helper built from
 (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
 Loading it also changes the game while it runs: grabbing Zexion offers the escape skip.
+For a seed with DeathLink on, the client sends the player's deaths and deals the ones it
+receives through the helper (the helper kills the player; live-tested 2026-10-23).
 `--no-helper`, a missing build or a helper that fails means items are written directly, with
 no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are only for items received
@@ -131,8 +133,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
   menu, dead or no save loaded). `native.py` loads the native helper and talks to it;
-  `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`), and
-  `aplabels.py` other players' items into labels for the helper (`ap_labels`).
+  `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`),
+  `aplabels.py` other players' items into labels for the helper (`ap_labels`), and
+  `deathlink.py` decides when a death goes out and when a received one is dealt (`die`).
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts

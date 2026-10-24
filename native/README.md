@@ -91,12 +91,14 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
       item and whom it is for, joined by a newline, or `@N` and whom it is for, for another
       Zexion player's item N, which the helper names from that item's record (its icon and
       the game's name) once the records are loaded.
+    - `shield` → `spawned`, or `refused <why>`: a received Energy Shield (below).
+    - `die` → `died`, or `refused <why>`: a received DeathLink (below).
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
-- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
-  and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
+- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`,
+  `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
@@ -132,6 +134,12 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   asks for one per received shield not yet given, and counts it in the server's data storage
   once it reads the shield up in the game, or asks again if it does not see it within 3 seconds
   of play (`docs/re/memory.md`, "Received Energy Shields"). The spawn and the client's check work in game (2026-10-23, B1).
+- **DeathLink.** `die` → `died` or `refused <why>`: deals a death received from another player
+  as the game's damage code does, once the player has been in play in one cell for a second,
+  the game's halt byte is clear and no message is showing (the routine posts one and does not
+  check it was made): energy to 0, then the game's death routine (`kill`; the routine and the
+  byte found by pattern, checked by `config`), through an Energy Shield too. The client queues received deaths and asks once a second
+  while the player is in play, one death at a time. Works in game (2026-10-23, B1; `docs/re/memory.md`, "DeathLink").
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`

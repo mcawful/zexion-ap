@@ -861,6 +861,44 @@ void test_received_shield() {
     reset_events();
 }
 
+void test_received_death() {
+    zap::Game game;
+    check(game.kill(1000) == "refused not configured", "nothing before configure");
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    check(game.kill(1000) == "refused not settled", "not before the player was seen in play");
+    game.note_play(1000);
+    check(game.kill(1500) == "refused not settled", "half a second is not enough");
+    field<uint8_t>(0x107A) = 9;  // another cell (a room change): settles again
+    game.note_play(1600);
+    check(game.kill(2000) == "refused not settled", "a new cell settles again");
+    g_last_message.last = g_message;  // a message still showing
+    g_last_message.sequence = 7;
+    *reinterpret_cast<int32_t*>(g_message + 0x1D8) = 7;
+    *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 30;
+    check(game.kill(2700) == "refused message showing" && g_deaths == 0,
+          "not while a message shows: the death routine posts one unchecked");
+    *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 0;
+    g_halt_flag = 1;
+    check(game.kill(2700) == "refused halted" && g_deaths == 0 && field<int16_t>(0xCEA) == 48,
+          "not while the game is halted, and energy left alone");
+    g_halt_flag = 0;
+    field<int32_t>(0x103C) = 80;  // a shield up (its strength) does not stop it
+    check(game.kill(2700) == "died", "a second in play in one cell: died");
+    check(g_deaths == 1 && g_death_player == g_player && g_death_kind == 0 &&
+              g_death_energy == 0,
+          "the death routine, with the player, kind 0, and energy already 0");
+    game.note_play(2800);  // energy 0: not in play
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(2900);  // alive again (a respawn): settles again
+    check(game.kill(3200) == "refused not settled", "a respawn settles again");
+    g_last_message.last = nullptr;
+    g_menu = 3;
+    game.note_play(4000);
+    check(game.kill(4000) == "refused not settled", "not in a menu");
+    check(g_deaths == 1, "no other death");
+}
+
 void test_popup_text_breaks_before_the_sender() {
     int width = 0;
     check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
@@ -889,6 +927,7 @@ int main() {
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
     test_received_shield();
+    test_received_death();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();
