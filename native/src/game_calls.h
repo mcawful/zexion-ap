@@ -34,6 +34,7 @@ struct Cas {
 struct Popup {
     uint8_t item;
     std::string suffix;  // already filtered to the font (see parse_batch)
+    bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
 };
 
 struct Batch {
@@ -107,6 +108,15 @@ std::string center_lines(const std::vector<std::string>& lines, int per_line);
 // to it).
 std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
                        int* width = nullptr);
+// A notice's popup text: `text` alone, left-aligned, its words wrapped whole at per_line
+// characters (a word longer than a line split with a hyphen at the line's end), the box as
+// wide as the widest line (`*width`). The frame call keeps it within the game's 256-byte
+// message slot.
+std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width);
+std::string notice_text(const std::string& text, int per_line, int* width = nullptr);
+// Game thread, right after the game made a notice's message from `text`: fits the box to the
+// notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
+void fit_notice_box(BYTE* message, const std::string& text, int per_line);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
@@ -117,9 +127,10 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
 
-// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX".
-// Returns "" or an error. The suffix keeps only what the game's font draws: letters (made
-// upper-case), digits, space and . , ' ! ? -, at most 40 characters.
+// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
+// "notice ITEM TEXT". Returns "" or an error. A popup's suffix keeps only letters (made
+// upper-case), digits, space and . , ' ! ? -, at most 40 characters; a notice's text keeps the
+// same and :, at most 200, and is shown alone, with no icon or name (notice_text).
 std::string parse_batch(const std::string& request, Batch& out);
 
 class Game {

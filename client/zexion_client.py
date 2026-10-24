@@ -50,6 +50,13 @@ Once connected:
   and keep it from opening while this seed's save is loaded, and unlocks it otherwise, or for
   good once the slot receives Assist Unlock (sent from the server console as an escape hatch).
   The lock live-tested 2026-10-23; unlocking in another save not yet.
+- For a seed with Area Map hints (slot data "hints", the world's default), each Area Map the
+  player gets, received from another world or found in one of this world's locations, hints
+  the next progression item of this player's that the player does not have (client/hints.py):
+  the client creates the Archipelago hint and names it in a popup, the received Area Map's own
+  or, for one found here, one after the game's pickup popup. Which item each Area Map hinted is
+  kept in the server's data storage. Received Area Maps live-tested 2026-10-24 (B1); one found
+  in the player's own world not yet.
 
 The client asks the server only for items from other worlds: this world's own items are in
 the save's item table, and the game hands them out itself.
@@ -85,6 +92,7 @@ from NetUtils import ClientStatus  # noqa: E402
 import aplabels  # noqa: E402
 import deathlink  # noqa: E402
 import game  # noqa: E402
+import hints  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
 import prepare  # noqa: E402
@@ -101,6 +109,7 @@ HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
 LABELS_RETRY_SECONDS = 5.0
+HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
 SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 SHIELD_SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
@@ -182,6 +191,19 @@ class ZexionContext(CommonContext):
         # Whether the helper should hold them: only while this seed's save is loaded
         # (aplabels.labels_wanted), so other saves keep Scrap Energy as the game's own.
         self.labels_want = False
+        # Area Maps as hints (client/hints.py): the world's list of where this player's
+        # progression items are, the data storage key holding the entry each Area Map used, and
+        # the list this client last stored (ahead of the server's until it is echoed back).
+        self.hint_targets: list[list[int]] = []
+        self.hints_key: str | None = None
+        self.hints_mine: dict[str, tuple[int, int]] | None = None
+        self.hints_sent_at = 0.0
+        self.hints_ready = False  # this connection has looked once: later finds get a popup
+        self.hints_identity: tuple | None = None  # (seed, team, slot) hints_mine is for
+        self.items_listed = False  # the server's full item list has come for this connection
+        self.awaiting_backlog = False  # Connected came: the next packet may be that list
+        self.seed_loaded = False  # the last poll found this seed's save loaded
+        self.hints_failed = ""  # the last error the hints raised, said once
         # Received Energy Shields given so far (counted once seen up), kept in the server's data
         # storage under this key (per team and slot), so a restart or a shield received offline
         # is not lost.
@@ -231,7 +253,17 @@ class ZexionContext(CommonContext):
         await self.send_connect()
 
     def on_package(self, cmd: str, args: dict) -> None:
+        if self.awaiting_backlog and cmd != "Connected":
+            # The server sends what the slot already holds right after Connected, in the same
+            # message, and nothing when it holds nothing: so only the packet after Connected can
+            # be that list. A later list from index 0 is the slot's first item, popped up.
+            self.awaiting_backlog = False
+            if self.session is not None:
+                backlog = cmd == "ReceivedItems" and args.get("index") == 0
+                self.session.mark_announced(len(self.received()[0]) if backlog else 0)
+            self.items_listed = True
         if cmd == "Connected":
+            self.awaiting_backlog = True
             slot = args["slot_data"]
             self.plan = save_patch.plan_from_slot_data(slot)
             self.session = session.Session(self.plan, slot["locations"])
@@ -242,6 +274,20 @@ class ZexionContext(CommonContext):
             self.connection += 1
             self.shield_key = f"zexion_shields_{self.team}_{self.slot}"
             self.set_notify(self.shield_key)
+            # A world from before Area Map hints sends no "hints": Area Maps are filler.
+            self.hint_targets = [list(t) for t in slot.get("hints", [])]
+            self.hints_key = f"zexion_hints_{self.team}_{self.slot}"
+            identity = (self.seed_name, self.team, self.slot)
+            if identity != self.hints_identity:  # another seed or slot: nothing carries over
+                self.hints_identity = identity
+                self.hints_mine = None
+            # Wait for this connection's own read of the stored hints and its item list.
+            self.stored_data.pop(self.hints_key, None)
+            self.items_listed = False
+            self.seed_loaded = False
+            self.hints_ready = False
+            if self.hint_targets:
+                self.set_notify(self.hints_key)
             death_key = (self.seed_name, self.team, self.slot)
             if death_key != self.death_key:  # another seed or slot: nothing carries over
                 self.death_key = death_key
@@ -272,15 +318,17 @@ class ZexionContext(CommonContext):
                 "yet: make a new randomizer game in that mode, save, close Zexion, and run "
                 "/prepare SLOT."
             )
-        if cmd == "ReceivedItems" and args.get("index") == 0 and self.session is not None:
-            # The server's full list: what it holds was received before this connection.
-            self.session.mark_announced(len(self.received()[0]))
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         self.plan = None
         self.session = None
         self.connection += 1
         self.shield_key = None
+        self.hint_targets = []
+        self.hints_key = None
+        self.hints_ready = False
+        self.items_listed = False
+        self.seed_loaded = False
         self.lock_assists = False
         self.assists_want = False  # unlocked on the next helper tick
         self.foreign = []
@@ -339,6 +387,135 @@ class ZexionContext(CommonContext):
             else:
                 logger.warning(f"Received item {item.item}, which is not a Zexion item; ignored.")
         return codes, senders
+
+
+def hints_used(ctx: ZexionContext) -> dict[str, tuple[int, int]] | None:
+    """The entry each Area Map used, by its key (client/hints.py): the server's, with this
+    client's on top until the server has them; None until the server's have been read."""
+    key = ctx.hints_key
+    if key is None or key not in ctx.stored_data:
+        return None
+    return stored_hints(ctx) | (ctx.hints_mine or {})
+
+
+def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
+    """The server's stored entries, each a key and two ints; anything else is skipped (the
+    key is open to any client in the room)."""
+    stored = ctx.stored_data.get(ctx.hints_key)
+    if not isinstance(stored, dict):
+        return {}
+    out = {}
+    for k, v in stored.items():
+        if (
+            isinstance(k, str)
+            and isinstance(v, list | tuple)
+            and len(v) == 2
+            and all(isinstance(x, int) and not isinstance(x, bool) for x in v)
+        ):
+            out[k] = (v[0], v[1])
+    return out
+
+
+def owned_from_locations(ctx: ZexionContext) -> set[tuple[int, int]]:
+    """The (player, location) of each item the player has from a location: received from
+    another world, or found in one of this world's checked locations."""
+    owned = {(item.player, item.location) for item in ctx.items_received}
+    owned |= {(ctx.slot, location) for location in ctx.checked_locations}
+    return owned
+
+
+def own_area_map_checks(ctx: ZexionContext) -> list[int]:
+    """This world's checked locations, as indices, the server knows of."""
+    return [loc - LOCATION_ID_BASE for loc in ctx.checked_locations if loc >= LOCATION_ID_BASE]
+
+
+async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
+    """Give each Area Map the player has and has not used yet the next item to hint
+    (hints.assign), create the Archipelago hints, store which entry each used, and pop up the
+    hint of an Area Map just found in this world (the game showed its own pickup popup)."""
+    if not ctx.hint_targets or ctx.plan is None or not ctx.items_listed:
+        return  # no hints, or the server's item list not here yet (what the player owns)
+    used = hints_used(ctx)
+    if used is None:
+        return  # the server's not read yet
+    keys = hints.area_maps(codes, ctx.plan.location_items, own_area_map_checks(ctx))
+    new = hints.assign(ctx.hint_targets, used, keys, owned_from_locations(ctx))
+    stored = stored_hints(ctx)
+    if not new:
+        behind = ctx.hints_mine and any(k not in stored for k in ctx.hints_mine)
+        if behind and time.monotonic() >= ctx.hints_sent_at + HINTS_RESEND_SECONDS:
+            await store_hints(ctx)  # the server has not taken the last ones yet
+        ctx.hints_ready = True
+        return
+    by_player: dict[int, list[int]] = {}
+    for player, location in new.values():
+        if (player, location) != hints.NONE_LEFT:
+            by_player.setdefault(player, []).append(location)
+    try:
+        for player, locations in by_player.items():
+            await ctx.send_msgs([{"cmd": "CreateHints", "player": player, "locations": locations}])
+    except Exception as exc:  # a closing connection: tried again once connected
+        logger.warning(f"Creating the Area Map hints failed ({exc}); trying again.")
+        return
+    ctx.hints_mine = (ctx.hints_mine or {}) | new
+    await store_hints(ctx)
+    # An Area Map just found in this world: its hint after the game's own pickup popup. Not
+    # for those found before this connection's first look (ctx.hints_ready).
+    found = [k for k in new if k.startswith("l")]
+    if ctx.hints_ready and ctx.seed_loaded and found and ctx.helper is not None:
+        popups = [(hints.AREA_MAP, hint_note(ctx, new[k]), True) for k in found]
+        try:
+            reply = await asyncio.to_thread(ctx.helper.apply, native.batch_text([], popups))
+            if reply != "applied":
+                logger.info(f"The Area Map's hint popup was not shown: {reply}")
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    ctx.hints_ready = True
+
+
+async def store_hints(ctx: ZexionContext) -> None:
+    ctx.hints_sent_at = time.monotonic()
+    value = {k: list(v) for k, v in (ctx.hints_mine or {}).items()}
+    try:
+        await ctx.send_msgs(
+            [
+                {
+                    "cmd": "Set",
+                    "key": ctx.hints_key,
+                    "default": {},
+                    "want_reply": True,
+                    "operations": [{"operation": "update", "value": value}],
+                }
+            ]
+        )
+    except Exception as exc:  # a closing connection: sent again once connected
+        logger.warning(f"Storing the Area Map hints failed ({exc}); sending them again.")
+
+
+def hint_note(ctx: ZexionContext, entry: tuple[int, int]) -> str:
+    """An entry's popup text (hints.popup_note), or NO HINTS LEFT."""
+    code_at = {(p, loc): code for p, loc, code in ctx.hint_targets}
+    if tuple(entry) == hints.NONE_LEFT or tuple(entry) not in code_at:
+        return hints.NO_HINT_NOTE
+    player, location = entry
+    item = ctx.item_names.lookup_in_slot(ITEM_ID_BASE + code_at[(player, location)], ctx.slot)
+    place = ctx.location_names.lookup_in_slot(location, player)
+    whose = None if player == ctx.slot else ctx.player_names.get(player, "ANOTHER PLAYER")
+    return hints.popup_note(item, place, whose)
+
+
+def hint_notes(ctx: ZexionContext, codes: list[int]) -> dict[int, str]:
+    """The popup text of each received Area Map whose hint is known, by its position among
+    ``codes``."""
+    used = hints_used(ctx) if ctx.hint_targets else None
+    if not used:
+        return {}
+    return {
+        index: hint_note(ctx, used[key])
+        for index, key in hints.received_area_maps(codes).items()
+        if key in used
+    }
 
 
 async def attach_helper(ctx: ZexionContext) -> None:
@@ -721,7 +898,17 @@ async def game_loop(ctx: ZexionContext) -> None:
         current = ctx.session
         try:
             codes, senders = ctx.received()
-            step = await asyncio.to_thread(current.step, ctx.game_conn, codes, senders=senders)
+            notes: dict[int, str] = {}
+            try:
+                await hints_tick(ctx, codes)
+                notes = hint_notes(ctx, codes)
+            except Exception as exc:  # the hints must never stop items or checks
+                if str(exc) != ctx.hints_failed:
+                    ctx.hints_failed = str(exc)
+                    logger.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
+            step = await asyncio.to_thread(
+                current.step, ctx.game_conn, codes, senders=senders, notes=notes
+            )
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
             if ctx.shield_pending is not None:
@@ -740,6 +927,11 @@ async def game_loop(ctx: ZexionContext) -> None:
             await attach_helper(ctx)
         if step.left_seed and ctx.shield_pending is not None:
             ctx.shield_pending.left_play = True
+        if ctx.session is current:
+            if step.seed_matches:
+                ctx.seed_loaded = True
+            elif step.left_seed:
+                ctx.seed_loaded = False
         if step.seed_matches:
             if ctx.lock_assists and ctx.assists_unlocked():
                 ctx.lock_assists = False

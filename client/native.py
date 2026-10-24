@@ -28,7 +28,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.13.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.14.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -97,17 +97,26 @@ def config_text(rvas: dict[str, int]) -> str:
 
 
 def batch_text(
-    cas: list[tuple[int, int, int]], popups: list[tuple[int, str]], refresh: bool = False
+    cas: list[tuple[int, int, int]],
+    popups: list[tuple[int, str] | tuple[int, str, bool]],
+    refresh: bool = False,
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
-    (item, suffix) popups shown one at a time, each with its item's icon, name and sound."""
+    popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
+    name, or (item, text, True) a notice, the text alone (an Area Map's hint)."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
         lines.append("refresh")
-    for item, suffix in popups:
-        clean = " ".join(suffix.split())  # one line, single spaces
-        lines.append(f"popup {item} {clean}".rstrip())
+    for popup in popups:
+        item, text = popup[0], popup[1]
+        notice = len(popup) > 2 and bool(popup[2])
+        clean = " ".join(text.split())  # one line, single spaces
+        if notice:
+            if clean:
+                lines.append(f"notice {item} {clean}")
+        else:
+            lines.append(f"popup {item} {clean}".rstrip())
     return "\n".join(lines)
 
 
