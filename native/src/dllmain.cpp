@@ -43,7 +43,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.6.0";
+constexpr char kVersion[] = "0.12.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -63,9 +63,15 @@ std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 // The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
 // only tries the lock, so it never waits on the pipe thread, which holds it only briefly.
 std::atomic<bool> g_menu_installed{false};
+// Whether the stand-in item's record is restyled (apitem.h), which unload must undo first.
+std::atomic<bool> g_items_restyled{false};
 SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
+// Set by the pipe thread when its client goes away (the AP client exited or crashed): the next
+// frame unlocks ASSIST, before it serves any request, so a reconnected client's lock comes
+// after it. A lock is only for while the client says its seed's save is loaded.
+std::atomic<bool> g_unlock_assists{false};
 
 // ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
 // the frame call (so outside the trampoline's count). Unload therefore first takes it off the
@@ -97,15 +103,20 @@ uintptr_t frame(void* argument) {
     // (the hook-test target is called from several), only one does the work.
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
+            g_game.note_play(GetTickCount64());
+            if (g_unlock_assists.exchange(false)) g_game.set_assists_locked(false);
             g_mailbox.serve();
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 // Once an unload has begun, neither the choice nor the skip is put back in.
                 if (!g_unloading) {
                     g_game.watch_menu(&archipelago_chosen);
+                    g_game.watch_assists();
                     g_game.watch_skip();
+                    g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
+                g_items_restyled.store(g_game.ap_items_restyled());
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
@@ -150,6 +161,9 @@ void wait_until_no_call_inside() {
     while (InterlockedCompareExchange(g_trampoline.in_flight, 0, 0) != 0) Sleep(1);
 }
 
+constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
+std::string undo_for_unload();
+
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") {
         std::string state;  // configured, then whether the escape skip is offered
@@ -168,6 +182,57 @@ std::string handle(const std::string& request, bool& stop) {
                " skip=" + (skip ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (request == "shield") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (!g_mailbox.call([] { return g_game.spawn_shield(GetTickCount64()); }, kFrameWaitMs,
+                            result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "die") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::string result;
+        if (!g_mailbox.call([] { return g_game.kill(GetTickCount64()); }, kFrameWaitMs,
+                            result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "assists lock" || request == "assists free") {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        bool lock = request == "assists lock";
+        std::string result;
+        if (!g_mailbox.call(
+                [lock] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    g_game.set_assists_locked(lock);
+                    return std::string(lock ? "locked" : "free");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request.rfind("ap_labels", 0) == 0) {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        std::map<int, zap::Label> labels;
+        std::string error = zap::parse_labels(request, labels);
+        if (!error.empty()) return "error " + error;
+        std::string result;
+        if (!g_mailbox.call(
+                [&] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    size_t n = labels.size();
+                    g_game.set_labels(std::move(labels));
+                    return "labeled " + std::to_string(n);
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
     if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
         request == "newgame_status") {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
@@ -224,41 +289,70 @@ std::string handle(const std::string& request, bool& stop) {
         return result;
     }
     if (request == "unload") {
-        // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
-        set_unloading(true);
-        if (g_slot != nullptr) {
-            std::string ignored;
-            g_mailbox.call(
-                [] {
-                    g_game.disarm_newgame();
-                    g_game.restore_skip();
-                    g_game.restore_menu(&archipelago_chosen);
-                    g_menu_installed.store(g_game.menu_installed());
-                    return std::string();
-                },
-                kFrameWaitMs, ignored);
-        }
-        if (set_unloading(true)) {
-            set_unloading(false);
-            return "error ARCHIPELAGO is still on the game's menu (no frame came); not unloading";
-        }
-        if (!unhook()) {
-            set_unloading(false);
-            return "error the frame hook was replaced by something else; not unloading";
-        }
+        std::string why = undo_for_unload();
+        if (!why.empty()) return "error " + why + "; not unloading";
         stop = true;
         return "bye";
     }
     return "error unknown request";
 }
 
+// Puts back everything the helper changed in the game, then unhooks: "" or why not, with the
+// helper then still loaded and working.
+std::string undo_for_unload() {
+    // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
+    set_unloading(true);
+    bool was_locked = false;  // ASSIST's lock, armed again should the unload be refused
+    if (g_slot != nullptr) {
+        std::string ignored;
+        g_mailbox.call(
+            [&was_locked] {
+                was_locked = g_game.assists_locked();
+                g_game.disarm_newgame();
+                g_game.restore_skip();
+                g_game.restore_ap_items();
+                g_game.restore_menu(&archipelago_chosen);
+                g_game.set_assists_locked(false);
+                g_game.restore_assists();
+                g_menu_installed.store(g_game.menu_installed());
+                g_items_restyled.store(g_game.ap_items_restyled());
+                return std::string();
+            },
+            kFrameWaitMs, ignored);
+    }
+    auto refuse = [was_locked](const std::string& why) {
+        set_unloading(false);
+        if (was_locked) {
+            std::string ignored;
+            g_mailbox.call(
+                [] {
+                    g_game.set_assists_locked(true);
+                    return std::string();
+                },
+                kFrameWaitMs, ignored);
+        }
+        return why;
+    };
+    if (set_unloading(true)) return refuse("a menu still holds the helper's callback (no frame came)");
+    if (g_items_restyled.load()) return refuse("the stand-in item is still restyled (no frame came)");
+    if (!unhook()) return refuse(kHookReplaced);
+    return "";
+}
+
 DWORD WINAPI helper_thread(void*) {
     try {
         hook();
-        if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle)) {
+        if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle,
+                             [] { g_unlock_assists.store(true); })) {
             // No pipe (the name was taken, no descriptor, or it broke): nothing could ever
-            // unload us, so undo the hook now and leave.
-            if (!unhook()) return 0;
+            // unload us, so put the game back as unload does and leave, retrying until a frame
+            // comes to do it; if the hook was replaced, stay.
+            for (;;) {
+                std::string why = undo_for_unload();
+                if (why.empty()) break;
+                if (why == kHookReplaced) return 0;
+                Sleep(1000);
+            }
         }
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);

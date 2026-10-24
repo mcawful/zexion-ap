@@ -38,12 +38,16 @@ UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {31}
-# Items the game does not keep in their own byte. A collected Scrap Energy or Area Map left its
-# byte at 0 in the owner's randomizer save while Scrap Metal's count rose, and Scrap Chunk (48)
-# is assumed to behave the same; a collected Energy Shield left byte 50 at 0 in a live game
-# (docs/re/save-format.md, "Inventory"). The game hands them out itself: never given, never
-# reported.
-WITHOUT_BYTE = {47, 48, 49, 50}
+# Items the game counts in Scrap Metal's byte: every record from 46 to 50 names inventory byte
+# 46 as the one its pickup increments (docs/re/memory.md, "Other players' items"), and a
+# collected Scrap Energy or Area Map left its own byte at 0 while Scrap Metal's count rose
+# (docs/re/save-format.md, "Inventory"). So each counts as one Scrap Metal, collected (other
+# players' items are Scrap Energy in this world's locations) or received.
+SCRAP_METAL = 46
+COUNTED_AS_SCRAP = {47, 48, 49, 50}
+# The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
+# "Received Energy Shields"), which the helper does for a received one.
+ENERGY_SHIELD = 50
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
@@ -59,14 +63,48 @@ def should_own(
 ) -> Counter[int]:
     """How many of each item the player should own, progressive weapons under the weapon."""
     total: Counter[int] = Counter()
-    for item, n in start_items.items():
+
+    def count(item: int, n: int = 1) -> None:
+        item = SCRAP_METAL if item in COUNTED_AS_SCRAP else item
         total[UPGRADE_OF.get(item, item)] += n
+
+    for item, n in start_items.items():
+        count(item, n)
     for i in collected:
-        item = location_items[i]
-        total[UPGRADE_OF.get(item, item)] += 1
+        count(location_items[i])
     for item in received:
-        total[UPGRADE_OF.get(item, item)] += 1
+        count(item)
     return total
+
+
+# What a look at the game says about a shield the helper spawned (shield_outcome).
+COUNT, WAIT, AGAIN = "count", "wait", "again"
+
+
+def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> str:
+    """Whether a spawned Energy Shield counts as given (COUNT), needs another look (WAIT), or
+    must be spawned again (AGAIN), from one look at the game: ``in_play``, the settled state
+    reads in play; ``up``, the player has a shield up; ``left_play``, the player died or the
+    save was unloaded since the spawn, which takes back what the last save did not hold;
+    ``overdue``, the time to see it has run out.
+
+    The link to the shield is set from the frame it appears (docs/re/memory.md, "Received
+    Energy Shields"), so a shield up in play counts at once: the check confirms that it
+    appeared, not that it lasts, or a player under fire would be given shield after shield. A
+    shield already up is refreshed by the new one and looks the same, so it counts too."""
+    if left_play:
+        return AGAIN
+    if not in_play:
+        return WAIT  # paused or loading: look again once in play
+    if up:
+        return COUNT
+    return AGAIN if overdue else WAIT
+
+
+def shields_owed(received: Iterable[int], spawned: int) -> int:
+    """How many received Energy Shields have not been given yet (``spawned``: those counted
+    as given)."""
+    return max(0, sum(1 for item in received if item == ENERGY_SHIELD) - max(0, spawned))
 
 
 def owned(inventory: bytes) -> Counter[int]:
@@ -95,7 +133,7 @@ def grants(inventory: bytes, target: Counter[int]) -> Grants:
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
         missing = want - have[item]
-        if missing <= 0 or item in WITHOUT_BYTE:
+        if missing <= 0:
             continue
         if item in NOT_GRANTABLE:
             stuck[item] = missing

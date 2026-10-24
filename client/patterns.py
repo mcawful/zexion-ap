@@ -907,6 +907,44 @@ TARGETS = (
         ),
     ),
     Target(
+        "sprite_texture",
+        "holds a pointer to the sprite data; its +0x40 is the Sprites.png texture object",
+        0xCDD060,
+        (
+            # from the instruction at RVA 0x7918a on B1, which stores the texture just loaded from
+            # "Sprites.png" at +0x40
+            Pattern(
+                "48 8B 0D ?? ?? ?? ?? 32 DB 48 89 41 40 48 8B 05 ?? ?? ?? ??",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1a99e5 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 "
+                    "C0 F2 0F 11 80 A8 00 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 A8 B0 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1f92a5 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 "
+                    "C0 F2 0F 11 80 B8 00 00 00 48 8B 05 ?? ?? ?? ?? 0F BF 08 66 0F 6E C1"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
         0xCDD080,
@@ -1205,6 +1243,297 @@ TARGETS = (
                 0,
                 "at",
                 0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "popup_width_code",
+        (
+            "the pickup popup's `mov edx, 24` (its line width) on the path items with no icon "
+            "take; the helper changes the 24 for other players' items"
+        ),
+        0x1F8F6,
+        (
+            # the instruction itself on B1, with the rest of the call's arguments; its value is
+            # wild, since the helper changes it while it runs
+            Pattern(
+                (
+                    "BA ?? ?? ?? ?? C7 44 24 30 B4 00 00 00 41 B9 58 00 00 00 41 B8 A0 00 00 00 "
+                    "E8 ?? ?? ?? ?? 44 38 3D"
+                ),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+            # from the jump to it at RVA 0x1f7f4 on B1, taken when the record has no icon
+            Pattern(
+                (
+                    "48 0F BF 86 E8 01 00 00 48 6B C8 64 48 8D 69 0A 48 03 EB 44 38 7C 19 08 "
+                    "48 8B CD 0F 84 ?? ?? ?? ?? E8 ?? ?? ?? ?? 41"
+                ),
+                29,
+                "rip",
+                33,
+                0x0,
+            ),
+            # from the end of the icon path just before it (RVA 0x1f8dd on B1)
+            Pattern(
+                (
+                    "48 8D 8C 24 92 00 00 00 4A 8D 14 40 41 B8 6A 00 00 00 E8 ?? ?? ?? ?? EB ?? "
+                    "BA ?? ?? ?? ??"
+                ),
+                0,
+                "at",
+                0,
+                25,
+            ),
+        ),
+    ),
+    Target(
+        "item_pool",
+        "the pool of 128 live item objects, 0x3B0 bytes each (memory.md, Live item objects)",
+        0xB6E030,
+        (
+            # from the stores of the pool's next-free-slot number, which lies right after the
+            # 128 objects (at RVA 0x19ec55 and 0x19ec78 on B1, in the item spawn function)
+            Pattern(
+                "66 89 15 ?? ?? ?? ?? 0F 1F 40 00 48 0F BF C2 48 69 C8 B0 03 00 00",
+                3,
+                "rip",
+                7,
+                -0x1D800,
+            ),
+            # the read of it at RVA 0x19e9ec on B1, with the 128 slots (0x80) the search runs to
+            Pattern(
+                "0F B7 15 ?? ?? ?? ?? 45 33 DB 41 B9 80 00 00 00 66 83 FA FF",
+                3,
+                "rip",
+                7,
+                -0x1D800,
+            ),
+        ),
+    ),
+    Target(
+        "palette_table",
+        "the palette objects by number, eight bytes each (an object's +0x198 is one of them)",
+        0xCDF5C0,
+        (
+            # from the instruction at RVA 0xfffda on B1, which gives an object palette 0
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8B 11 48 89 82 98 01 00 00 33 C0 66 89 82 A0 01 00 "
+                    "00 48 8B 83 E0 01 00 00 48 8B 96 E8 02 00 00 48 8B 88 80 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x129296 on B1, which reads palette 2
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 89 81 98 01 00 00 66 89 B1 A0 01 00 00 48 8B 83 F0 "
+                    "01 00 00 48 8B 48 10 44 39 B9 BC 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                -0x10,
+            ),
+        ),
+    ),
+    Target(
+        "frame_clock",
+        "the 64-bit count item animations follow (the item update at 0x19e2e0 divides it)",
+        0x3CF750,
+        (
+            # from the instruction at RVA 0x1c6333 on B1
+            Pattern(
+                (
+                    "48 8B 0D ?? ?? ?? ?? 48 8B C1 48 F7 D8 48 0F 48 C1 48 99 48 2B C2 48 D1 F8 "
+                    "48 99 83 E0 01 48 33 C2 48 2B C2 66 83 C0 45"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the item update's read of it at RVA 0x19e342 on B1
+            Pattern(
+                "48 8B 05 ?? ?? ?? ?? 48 99 49 0F BF 4C 38 04 48 F7 F9 49 0F BF 4C 38 06",
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "sprite_templates",
+        "holds the pointer to the sprite definitions' object templates; +0x110 is the items'",
+        0xDF7110,
+        (
+            # from the item spawn function at RVA 0x19ec92 on B1, which takes template 34
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 4C 8D 15 ?? ?? ?? ?? 48 8B B0 10 01 00 00 4D 85 C0 "
+                    "75 2D B9 D8 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x1032ac on B1
+            Pattern(
+                (
+                    "48 8B 0D ?? ?? ?? ?? 48 8B 93 F0 01 00 00 48 81 C2 10 01 00 00 48 8B 49 08 "
+                    "E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 88 10 01 00 00 4C 39 29"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "event_handlers",
+        "the area-event handlers, a function pointer per event type (the pickup calls one)",
+        0xCDD090,
+        (
+            # from two of the places that run an area event through it, at RVA 0xd679 and
+            # 0xd8df on B1: handler[type](cell, cell, record)
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CE 49 0F BE 00 41 FF 14 C1 48 8B "
+                    "5C 24 50 48 8B 74 24 58 48 83 C4 40 5F C3 48 89 5C 24 10"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            Pattern(
+                (
+                    "4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CD 49 0F BE 00 41 FF 14 C1 48 8B "
+                    "5C 24 58"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "death_fn",
+        "the player's death: death_fn(player, 0), called once energy is 0 or below (DeathLink)",
+        0x1D9FA0,
+        (
+            # the touch handler's call after damage, at RVA 0x1f07a on B1
+            Pattern(
+                "E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 66 83 F8 03 0F 85 ?? ?? ?? ?? 49 8B B6 40 01 00 00",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # another hit's call, at RVA 0x1b9d3a on B1
+            Pattern(
+                "E8 ?? ?? ?? ?? 80 BB FE 0C 00 00 00 0F 28 7C 24 40",
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "40 53 48 81 EC 90 00 00 00 80 3D ?? ?? ?? ?? 00",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "assist_menu_fn",
+        "ASSIST's callback in the options menu with a save loaded: opens the assist menu",
+        0x153D20,
+        (
+            # the options menu's construction of ASSIST, at RVA 0x16286c on B1
+            Pattern(
+                (
+                    "48 8D 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 44 24 20 E8 ?? ?? ?? ?? 48 "
+                    "8B 8F E0 01 00 00 45 8B C6 48 89 04 D9 4C 8B 97 E0 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 68",
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "object_pool",
+        "the general objects, 1000 of 0x5C8 bytes (items in reversed-gravity rooms among them)",
+        0x758440,
+        (
+            # the store of the pool's next-free-slot number, which lies right after the 1000
+            # objects, at RVA 0x44bf1 on B1, in the object spawn function (with the 0x5C8 stride)
+            Pattern(
+                "66 89 15 ?? ?? ?? ?? 0F 1F 84 00 00 00 00 00 48 0F BF C2 48 69 C8 C8 05 00 00",
+                3,
+                "rip",
+                7,
+                -0x169540,
+            ),
+            # the read of it at RVA 0x44bd7 on B1, with the 1000 slots (0x3E8) the search runs to
+            Pattern(
+                "0F B7 15 ?? ?? ?? ?? 41 B8 E8 03 00 00 66 41 3B D3",
+                3,
+                "rip",
+                7,
+                -0x169540,
+            ),
+        ),
+    ),
+    Target(
+        "halt_flag",
+        "a byte the death routine (and much of the game) returns early on while it is set",
+        0x345EF4,
+        (
+            # from the test at RVA 0x178c85 on B1
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 75 1E 33 C9 FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 33 "
+                    "C9 C6 80 20 01 00 00 00 FF 15 ?? ?? ?? ?? 48 8B 83 E0 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the test at RVA 0x1ccb93 on B1, in the player's update
+            Pattern(
+                (
+                    "80 3D ?? ?? ?? ?? 00 75 10 66 FF 8B BE 0C 00 00 33 C0 66 89 83 8C 10 00 00 "
+                    "FF 05 ?? ?? ?? ?? B9 CC 01 00 00"
+                ),
+                2,
+                "rip",
+                7,
                 0x0,
             ),
         ),

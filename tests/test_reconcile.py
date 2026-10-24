@@ -92,10 +92,40 @@ def test_items_that_cannot_be_written_are_reported() -> None:
     assert g.inventory == {} and g.not_grantable == {31: 1}
 
 
-def test_an_energy_shield_is_neither_given_nor_reported() -> None:
+def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     target = rc.should_own(START, TABLE, set(), [50, 50])
     g = rc.grants(inv(i0=3, i1=3, i4=1), target)
-    assert g.inventory == {} and g.not_grantable == {}
+    assert g.inventory == {46: 2} and g.not_grantable == {}
+
+
+def test_a_spawned_shield_counts_once_seen_up_in_play() -> None:
+    assert rc.shield_outcome(in_play=True, up=True, left_play=False, overdue=False) == rc.COUNT
+    # overdue does not matter once it is up
+    assert rc.shield_outcome(in_play=True, up=True, left_play=False, overdue=True) == rc.COUNT
+
+
+def test_a_spawned_shield_not_seen_waits_then_is_spawned_again() -> None:
+    assert rc.shield_outcome(in_play=True, up=False, left_play=False, overdue=False) == rc.WAIT
+    assert rc.shield_outcome(in_play=True, up=False, left_play=False, overdue=True) == rc.AGAIN
+
+
+def test_a_paused_game_waits_for_play_however_long_it_takes() -> None:
+    for up in (False, True):
+        for overdue in (False, True):
+            assert rc.shield_outcome(False, up, left_play=False, overdue=overdue) == rc.WAIT
+
+
+def test_a_death_or_unload_since_the_spawn_means_spawning_again() -> None:
+    # a shield up afterwards may be the reloaded save's own, not the one spawned
+    for in_play in (False, True):
+        for up in (False, True):
+            assert rc.shield_outcome(in_play, up, left_play=True, overdue=False) == rc.AGAIN
+
+
+def test_shields_owed_are_the_received_ones_not_yet_given() -> None:
+    assert rc.shields_owed([50, 3, 50, 50], 1) == 2
+    assert rc.shields_owed([50], 3) == 0
+    assert rc.shields_owed([], 0) == 0
 
 
 def test_should_own_counts_start_and_upgrade_codes_under_the_weapon() -> None:
@@ -128,7 +158,15 @@ def test_a_weapon_byte_of_two_still_owes_the_upgrade() -> None:
     assert rc.grants(inv(i0=3, i1=3, i3=2, i4=1), target).inventory == {9: 1}
 
 
-def test_filler_the_game_keeps_elsewhere_is_never_given() -> None:
+def test_scrap_pickups_count_as_scrap_metal() -> None:
+    # Three scrap pickups in play raised byte 46 to 3; two received scrap items are owed on top.
     target = rc.should_own(START, [47, 49, 48, 27], {0, 1, 2}, [47, 49])
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
-    assert g.inventory == {} and g.not_grantable == {}
+    g = rc.grants(inv(i0=3, i1=3, i4=1, i46=3), target)
+    assert g.inventory == {46: 5} and g.not_grantable == {}
+
+
+def test_a_stand_in_pickup_does_not_swallow_a_received_scrap_metal() -> None:
+    # Another player's item (the stand-in, 47) picked up raised byte 46; a Scrap Metal received
+    # afterwards is still owed.
+    target = rc.should_own(START, [47], {0}, [46])
+    assert rc.grants(inv(i0=3, i1=3, i4=1, i46=1), target).inventory == {46: 2}

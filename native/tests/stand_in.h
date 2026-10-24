@@ -17,7 +17,35 @@ inline BYTE* const g_inventory = g_player + 0x108E;
 inline BYTE g_save_loaded = 0;
 inline BYTE g_menu = 0;
 inline BYTE g_records[51 * 100];
+// The pickup popup's `mov edx, 24`, in a section of its own that executes, as in the game's code.
+#pragma section(".zapcode", read, execute)
+__declspec(allocate(".zapcode")) inline unsigned char g_popup_width_code[16] = {0xBA, 0x18, 0, 0,
+                                                                              0,    0xC3};
 inline BYTE* g_records_ptr = g_records;
+// The live item objects, the palette table, the item clock and the sprite templates
+// (docs/re/memory.md, "Live item objects").
+inline BYTE g_item_pool[128 * 0x3B0];
+// The general object pool and the object definitions (items in reversed-gravity rooms).
+inline BYTE g_object_pool[1000 * 0x5C8];
+
+inline BYTE g_palette_objects[64][16];
+inline BYTE* g_palette_table[64];
+inline int64_t g_frame_clock = 1000;
+inline BYTE g_frames[152 * 0x38];
+inline BYTE g_item_template[0x1D8];
+inline BYTE* g_template_list[40];
+inline BYTE** g_sprite_templates = g_template_list;
+// The area-event handlers; type 11's records what it was called with.
+inline int g_spawn_calls = 0;
+inline int g_spawn_row = -1, g_spawn_column = -1;
+inline BYTE* g_spawn_event = nullptr;
+inline void spawn_handler(char row, char column, BYTE* event) {
+    ++g_spawn_calls;
+    g_spawn_row = row;
+    g_spawn_column = column;
+    g_spawn_event = event;
+}
+inline void* g_event_handlers[32];
 struct LastMessage {
     BYTE* last;
     int32_t sequence;
@@ -67,11 +95,23 @@ inline int16_t g_start_count = 0;
 inline int16_t g_start_cells[64 * 2];
 inline uint8_t g_start_flags[64];
 
+// The sprite data: [holder] + 0x40 points at the texture object, whose first dword is the GL
+// texture name.
+inline uint32_t g_texture_object[4] = {7, 0, 0, 0};
+inline BYTE g_sprite_data[0x80];
+inline BYTE* g_sprite_holder = g_sprite_data;
+inline void reset_sprites() {
+    std::memset(g_sprite_data, 0, sizeof(g_sprite_data));
+    *reinterpret_cast<uint32_t**>(g_sprite_data + 0x40) = g_texture_object;
+    g_texture_object[0] = 7;
+}
+
 inline BYTE* g_current_menu = nullptr;
 inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
 inline void panel_handler_fn() {}
 inline void rando_menu_fn(void*, int) {}
+inline void assist_menu_fn(void*, int) {}
 inline std::string g_steps;
 inline bool g_slot_taken = false;
 // The placement: reads the start, copies the menu's amounts into the section, and writes its
@@ -151,6 +191,19 @@ inline uint64_t rva(const void* p) {
     return reinterpret_cast<uint64_t>(p) - reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
 }
 
+// The death routine and the byte it returns early on.
+inline BYTE g_halt_flag = 0;
+inline int g_deaths = 0;
+inline void* g_death_player = nullptr;
+inline int16_t g_death_energy = -100;
+inline char g_death_kind = -1;
+inline void death_fn(void* player, char kind) {
+    ++g_deaths;
+    g_death_player = player;
+    g_death_kind = kind;
+    std::memcpy(&g_death_energy, static_cast<BYTE*>(player) + 0xCEA, sizeof(g_death_energy));
+}
+
 inline std::map<std::string, uint64_t> stand_in_config() {
     return {
         {"inventory", rva(g_inventory)},
@@ -178,6 +231,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"widget_handler_fn", rva(reinterpret_cast<void*>(&widget_handler_fn))},
         {"panel_handler_fn", rva(reinterpret_cast<void*>(&panel_handler_fn))},
         {"rando_menu_fn", rva(reinterpret_cast<void*>(&rando_menu_fn))},
+        {"assist_menu_fn", rva(reinterpret_cast<void*>(&assist_menu_fn))},
         {"placement_fn", rva(reinterpret_cast<void*>(&placement_fn))},
         {"rando_newgame_fn", rva(reinterpret_cast<void*>(&rando_newgame_fn))},
         {"event_table", rva(&g_event_table)},
@@ -185,10 +239,36 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},
+        {"sprite_texture", rva(&g_sprite_holder)},
+        {"popup_width_code", rva(g_popup_width_code)},
+        {"item_pool", rva(g_item_pool)},
+        {"object_pool", rva(g_object_pool)},
+        {"palette_table", rva(g_palette_table)},
+        {"frame_clock", rva(&g_frame_clock)},
+        {"sprite_templates", rva(&g_sprite_templates)},
+        {"event_handlers", rva(g_event_handlers)},
+        {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
+        {"halt_flag", rva(&g_halt_flag)},
     };
 }
 
 inline void reset_game() {
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));
+    std::memset(g_object_pool, 0, sizeof(g_object_pool));
+    std::memset(g_event_handlers, 0, sizeof(g_event_handlers));
+    g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
+    g_spawn_calls = 0;
+    g_spawn_event = nullptr;
+    g_halt_flag = 0;
+    g_deaths = 0;
+    g_death_player = nullptr;
+    g_death_energy = -100;
+    g_death_kind = -1;
+    for (int i = 0; i < 64; ++i) g_palette_table[i] = g_palette_objects[i];
+    g_frame_clock = 1000;
+    g_template_list[34] = g_item_template;
+    BYTE* frames = g_frames;
+    std::memcpy(g_item_template + 0x1A8, &frames, sizeof(frames));
     std::memset(g_player, 0, sizeof(g_player));
     g_save_loaded = 3;
     g_menu = 0;

@@ -178,7 +178,7 @@ def test_set_item_is_compare_and_set() -> None:
 def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
     g = fake_game()
     with pytest.raises(ValueError, match="not an item"):
-        g.set_item(50, 0, 1)  # Energy Shield: the game does not keep it in byte 50
+        g.set_item(50, 0, 1)  # Energy Shield: its pickup counts in byte 46, not 50
     with pytest.raises(ValueError, match="fit a byte"):
         g.set_item(3, 0, 256)
 
@@ -254,6 +254,55 @@ def test_set_supplies_refuses_values_that_do_not_fit() -> None:
     g = player_game()
     with pytest.raises(ValueError, match="16 bits"):
         g.set_supplies((0,) * 6, (0x8000, 0, 0, 0, 0, 0))
+
+
+SHIELD_AT = 0x1400  # the fake's shield object
+
+
+def put_shield(
+    g: FakeGame, pointer: int = SHIELD_AT, serial: int = 0x8DD1, live: bool = True
+) -> None:
+    """The player's link to a shield object at ``pointer``, and that object, as measured."""
+    link = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + game.SHIELD_LINK
+    handle = struct.pack("<IHH", serial, game.SHIELD_POOL_TYPE, 0)
+    g.pm.memory[link : link + 24] = struct.pack("<Q", pointer) + handle + struct.pack("<Q", 4)
+    own = struct.pack("<IHH", serial if live else 0, game.SHIELD_POOL_TYPE, 0)
+    at = SHIELD_AT + game.OBJECT_HANDLE
+    g.pm.memory[at : at + 8] = own
+    at = SHIELD_AT + game.OBJECT_SELF
+    g.pm.memory[at : at + 8] = struct.pack("<Q", SHIELD_AT)
+
+
+def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
+    g = player_game()
+    assert not g.shield_up()  # no link
+    put_shield(g)
+    assert g.shield_up()
+    put_shield(g, pointer=0)  # broken: the game clears the pointer
+    assert not g.shield_up()
+
+
+def test_a_link_to_an_object_that_does_not_match_is_no_shield() -> None:
+    g = player_game()
+    put_shield(g, live=False)  # the object's slot was freed
+    assert not g.shield_up()
+    put_shield(g)
+    at = SHIELD_AT + game.OBJECT_HANDLE
+    g.pm.memory[at : at + 4] = struct.pack("<I", 0x9999)  # the slot now holds another object
+    assert not g.shield_up()
+    put_shield(g)
+    at = SHIELD_AT + game.OBJECT_SELF
+    g.pm.memory[at : at + 8] = struct.pack("<Q", 0x1800)  # not an object of the pool
+    assert not g.shield_up()
+    put_shield(g, pointer=0x1C00)  # points somewhere else entirely
+    assert not g.shield_up()
+
+
+def test_a_link_pointing_outside_the_game_is_an_error() -> None:
+    g = player_game()
+    put_shield(g, pointer=0x10_0000)  # past the fake's memory: a short read
+    with pytest.raises(game.GameError, match="short read"):
+        g.shield_up()
 
 
 def test_an_exited_game_is_reported_as_not_running() -> None:

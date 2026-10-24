@@ -72,8 +72,9 @@ int wmain(int argc, wchar_t** argv) {
     check(stand_in::g_inventory[36] == 1 && stand_in::field<int16_t>(0xCC0) == 13,
           "the batch landed in the stand-in game");
     for (int i = 0; i < 200 && stand_in::g_messages == 0; ++i) Sleep(5);
-    check(stand_in::g_messages == 1 && stand_in::g_text == "\xC5MISSILE BOX FROM ALICE",
-          "the popup was shown from a frame call", stand_in::g_text);
+    check(stand_in::g_messages == 1 &&
+              stand_in::g_text == "\xC5MISSILE BOX FROM ALICE" && stand_in::g_message_args[0] == 12,
+          "the popup was shown from a frame call, the sender on its own line", stand_in::g_text);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused item 36 holds 1", "a stale expectation is refused", reply);

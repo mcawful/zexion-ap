@@ -14,7 +14,8 @@ add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
-            src/game_calls.cpp src/menu.cpp src/skip.cpp)
+            src/game_calls.cpp src/menu.cpp src/skip.cpp
+            src/apitem.cpp src/looks.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 
@@ -49,3 +50,7 @@ add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hoo
 add_executable(zap_menu_tests tests/menu_tests.cpp)
 target_link_libraries(zap_menu_tests PRIVATE zap_core)
 add_test(NAME menu COMMAND zap_menu_tests)
+
+add_executable(zap_apitem_tests tests/apitem_tests.cpp)
+target_link_libraries(zap_apitem_tests PRIVATE zap_core)
+add_test(NAME apitem COMMAND zap_apitem_tests)

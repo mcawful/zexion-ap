@@ -199,7 +199,154 @@ void test_mismatches_leave_the_menu_alone() {
 
 }  // namespace
 
+void assist_menu(void*, int) {}
+struct Options : stand_in::OptionsMenu {
+    Options()
+        : stand_in::OptionsMenu(reinterpret_cast<void*>(&widget_handler),
+                                reinterpret_cast<void*>(&assist_menu)) {}
+};
+
+void test_assist_lock_and_unlock() {
+    Options options;
+    zap::AssistLock lock;
+    zap::MenuAddresses a = options.addresses();
+    check(lock.install(a), "locks ASSIST in the options menu's second panel");
+    check(options.callback() == nullptr &&
+              options.text() == "ASSIST" && options.code(6) == 0 &&
+              options.code(7) == zap::kLockGlyph && options.style() == 5,
+          "ASSIST, a blank and the padlock, in style 5, its callback cleared");
+    check(options.palette().first == options.palette_objects[0] && options.palette().second == 0,
+          "under palette 0, whatever the menu's own");
+    check(Options::at<float>(options.glyphs[0], 0x68) < 0.5f &&
+              Options::at<float>(options.glyphs[11], 0x80) < 0.5f &&
+              Options::at<float>(options.glyphs[0], 0x74) == 1.0f,
+          "tinted grey, its alpha left alone");
+    check(!lock.install(a), "locks once");
+    check(lock.restore(a), "unlocks");
+    check(options.callback() == reinterpret_cast<void*>(&assist_menu) &&
+              options.text() == "ASSIST" && options.code(7) == 0 && options.style() == 0x15,
+          "the game's callback, label and style are back");
+    check(options.palette().first == options.palette_objects[1] && options.palette().second == 26,
+          "and the menu's own palette");
+    check(Options::at<float>(options.glyphs[0], 0x68) == 1.0f, "and its own tint");
+    check(!lock.installed() && !lock.restore(a), "unlocks once");
+}
+
+void test_assist_lock_moves_assist_past_the_selectable_entries() {
+    Options options;
+    zap::AssistLock lock;
+    zap::MenuAddresses a = options.addresses();
+    BYTE* back = options.children[7];
+    Options::at<int32_t>(options.second, 0x2DC) = 7;  // the cursor on BACK
+    lock.install(a);
+    check(Options::at<int32_t>(options.second, 0x1EC) == 7 && options.children[6] == back &&
+              options.children[7] == options.child &&
+              Options::at<int32_t>(back, 0x1E0) == 6 &&
+              Options::at<int32_t>(options.child, 0x1E0) == 7,
+          "ASSIST moved past the selectable entries, BACK up one, each renumbered");
+    check(Options::at<int32_t>(options.second, 0x2DC) == 6, "the cursor stays on BACK");
+    lock.restore(a);
+    check(Options::at<int32_t>(options.second, 0x1EC) == 8 && options.children[6] == options.child &&
+              options.children[7] == back && Options::at<int32_t>(back, 0x1E0) == 7 &&
+              Options::at<int32_t>(options.child, 0x1E0) == 6 &&
+              Options::at<int32_t>(options.second, 0x2DC) == 7,
+          "and all put back, the cursor still on BACK");
+}
+
+void test_assist_lock_leaves_an_unexpected_order_alone() {
+    Options options;
+    zap::AssistLock lock;
+    zap::MenuAddresses a = options.addresses();
+    Options::at<int32_t>(options.children[7], 0x1E0) = 3;  // not numbered by its place
+    lock.install(a);
+    check(lock.installed() && options.callback() == nullptr &&
+              Options::at<int32_t>(options.second, 0x1EC) == 8 && options.children[6] == options.child,
+          "locked, but not moved");
+    lock.restore(a);
+    check(options.children[6] == options.child && Options::at<int32_t>(options.second, 0x1EC) == 8,
+          "and nothing moved back");
+}
+
+void test_assist_lock_follows_the_menu() {
+    Options options;
+    zap::AssistLock lock;
+    zap::MenuAddresses a = options.addresses();
+    lock.install(a);
+    BYTE above[0x80] = {};
+    Options::at<BYTE*>(above, 0x78) = options.menu;  // VIDEO, say, opened on top
+    options.current = above;
+    check(!lock.install(a) && lock.installed() && options.callback() == nullptr,
+          "another menu on top: still locked while the options menu is open below");
+    options.current = options.menu;
+    for (BYTE* g : options.glyph_list) {  // the game redraws, in another palette
+        Options::at<int32_t>(g, 0x1D0) = 0x15;
+        Options::at<void*>(g, 0x198) = options.palette_objects[1];
+        Options::at<int16_t>(g, 0x1A0) = 26;
+    }
+    check(!lock.install(a) && options.style() == 5 && options.code(7) == zap::kLockGlyph &&
+              options.palette().second == 0,
+          "back on top: the locked look is drawn again over the game's restyle");
+    options.current = nullptr;  // the options menu closed and freed
+    check(!lock.install(a) && !lock.installed(), "a closed menu is forgotten");
+    check(options.callback() == nullptr,
+          "unwritten: the freed widget is left as it was");
+}
+
+void test_assist_lock_comes_off_even_if_the_label_changed() {
+    Options options;
+    zap::AssistLock lock;
+    zap::MenuAddresses a = options.addresses();
+    lock.install(a);
+    Options::at<int32_t>(options.glyphs[0], 0x1C4) = 'Z';  // relabeled while locked
+    check(!lock.install(a) && lock.installed(),
+          "still locked: found by its pointer, not its label");
+    check(lock.restore(a), "unlocks");
+    check(options.callback() == reinterpret_cast<void*>(&assist_menu),
+          "the game's callback is back whatever the label says");
+}
+
+void test_assist_lock_leaves_anything_else_alone() {
+    {
+        Options options;
+        zap::AssistLock lock;
+        Options::at<int32_t>(options.glyphs[5], 0x1C4) = 'X';  // ASSISX: not the entry
+        check(!lock.install(options.addresses()), "another label: left alone");
+    }
+    {
+        Options options;
+        zap::AssistLock lock;
+        Options::at<int32_t>(options.child, 0x1C8) = 2;  // released
+        check(!lock.install(options.addresses()), "a released widget");
+    }
+    {
+        Options options;
+        zap::AssistLock lock;
+        zap::MenuAddresses a = options.addresses();
+        a.assist_menu = nullptr;  // not configured
+        check(!lock.install(a), "no ASSIST callback known: nothing found");
+    }
+    {
+        Options options;
+        zap::AssistLock lock;
+        Options::at<int32_t>(options.menu, 8) = 40;  // not a panel count
+        check(!lock.install(options.addresses()), "a panel count out of range");
+    }
+    {
+        Options options;
+        zap::AssistLock lock;
+        Options::at<void*>(options.child, 0x2C8) = nullptr;  // another handler
+        check(!lock.install(options.addresses()), "another widget handler");
+        check(options.text() == "ASSIST", "and its label untouched");
+    }
+}
+
 int main() {
+    test_assist_lock_and_unlock();
+    test_assist_lock_follows_the_menu();
+    test_assist_lock_leaves_anything_else_alone();
+    test_assist_lock_comes_off_even_if_the_label_changed();
+    test_assist_lock_moves_assist_past_the_selectable_entries();
+    test_assist_lock_leaves_an_unexpected_order_alone();
     test_install_and_restore();
     test_restore_when_another_menu_is_up();
     test_release_keeps_the_label_and_returns_the_callback();

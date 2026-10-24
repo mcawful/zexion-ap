@@ -40,8 +40,9 @@ The native tests run against a stand-in game: the test program's own data and fu
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
 queue, the new-game watch, a whole ARCHIPELAGO press and the escape skip's patch; `tests/menu_tests.cpp` the
-game-mode panel (`tests/stand_in_menu.h`): relabeling, putting it back, closed menus and
-released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
+game-mode panel and the options menu (`tests/stand_in_menu.h`): relabeling, putting it back,
+closed menus and released widgets, and the ASSIST lock (its look, the cursor order, putting it
+back); `tests/game_tests.cpp` also the received shield and death and the ASSIST watch; `tests/apply_test.cpp` goes through the real pipe and hook in a busy host.
 
 ## How it works
 
@@ -86,12 +87,21 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
       - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
       - `start_table HEX`, the menu's start table, 5 bytes per room (x, y, flag), for a mode
         with Double Teleport.
+    - `ap_labels` and then lines `label X Y HEX` → `labeled N`, or `refused not configured`
+      or `refused no frame`: names for other players' items, by map cell (below); HEX is the
+      item and whom it is for, joined by a newline, or `@N` and whom it is for, for another
+      Zexion player's item N, which the helper names from that item's record (its icon and
+      the game's name) once the records are loaded.
+    - `shield` → `spawned`, or `refused <why>`: a received Energy Shield (below).
+    - `die` → `died`, or `refused <why>`: a received DeathLink (below).
+    - `assists lock` → `locked`, `assists free` → `free`, or `refused <why>`: the options
+      menu's ASSIST entry (below).
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
-- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `disarm`, `newgame_status`
-  and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
+- **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
+  `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
@@ -111,11 +121,51 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   keys granted by byte alone: `docs/re/memory.md`, "Keys, the gates and the key markers").
 - **Popups.** One at a time, in a frame call, once the game's last popup has ended:
   - The text is the item's icon and name from the game's own item record, then the client's
-    suffix (`FROM ALICE`), with any character the game's font does not draw left out.
+    suffix (`FROM ALICE`), with any character the game's font does not draw left out. The game
+    lays a popup out a given number of characters a line and cuts wherever a line ends, so
+    the suffix starts a line of its own, its words wrapped at 24, each line is centered in
+    the longest with spaces before it and padded with spaces after (`popup_text` and
+    `center_lines` in `src/game_calls.cpp`), and the line width passed is the longest line's,
+    which is how wide the game draws the box.
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
     popup whose item has no record (the records not loaded yet) is dropped.
+- **Received Energy Shields.** `shield` → `spawned` or `refused <why>`: runs the Energy
+  Shield's pickup event the way its pickup does, from the player's cell, once the player has
+  been in play in one cell for a second (`spawn_shield`; checked against B1 first). The client
+  asks for one per received shield not yet given, and counts it in the server's data storage
+  once it reads the shield up in the game, or asks again if it does not see it within 3 seconds
+  of play (`docs/re/memory.md`, "Received Energy Shields"). The spawn and the client's check work in game (2026-10-23, B1).
+- **DeathLink.** `die` → `died` or `refused <why>`: deals a death received from another player
+  as the game's damage code does, once the player has been in play in one cell for a second,
+  the game's halt byte is clear and no message is showing (the routine posts one and does not
+  check it was made): energy to 0, then the game's death routine (`kill`; the routine and the
+  byte found by pattern, checked by `config`), through an Energy Shield too. The client queues received deaths and asks once a second
+  while the player is in play, one death at a time. Works in game (2026-10-23, B1; `docs/re/memory.md`, "DeathLink").
+- **The assist menu.** While locked (`assists lock`), each frame call looks for the options
+  menu's ASSIST entry in the top menu (a live widget with the game's handler, ASSIST's
+  callback, found by pattern, and a 12-glyph label reading ASSIST and six blanks), draws it in
+  the style of the controls screen's STYLE: AUTO (5), puts a padlock after it (font glyph
+  `0xEF`, empty in the game's art, which the helper paints into the sprite texture while the
+  lock is armed and clears after) and clears its callback, so pressing it does nothing (the
+  game's widget handler calls a callback only if one is set) and nothing in the menu points
+  into the helper. It stays locked while the options menu is open, under another menu too, and
+  draws the locked look again each frame the options menu is on top: style 5 under palette 0
+  with STYLE: AUTO's grey tint (the options menu takes another palette after some screens, the
+  map's 26 among them). It also moves ASSIST past the panel's selectable entries (the panel's
+  `+0x1EC` counts the children the cursor reaches, from the first), the ones after it up one
+  and renumbered, so the cursor skips it; only when each one it moves is as expected.
+  `assists free`, an unload, or the
+  menu closing puts it back (into a menu still open only; the widget it locked is found again by its pointer, so a label changed
+  meanwhile still gets the game's callback back). The lock is dropped when any pipe client disconnects
+  other than through `unload` (the AP client exited or crashed, or `tools/helper.py` was done),
+  and armed again if an unload is refused. An unload no frame comes for leaves it locked (and
+  moved) until the options menu closes, harmlessly: nothing in it points into the helper. `locked` means armed:
+  whether an entry was found shows only in the game. The client locks it while a seed that
+  disallows assists has its save loaded, until the slot receives Assist Unlock. The lock works in game (2026-10-23, B1; `docs/re/memory.md`,
+  "The assist menu"), unlocking too (by Assist Unlock); the unlock that loading another save
+  triggers has not been run in the game.
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`
@@ -145,6 +195,49 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
     came back when the client disconnected (`docs/re/memory.md`, "The game-mode panel").
 
   The layouts are in `docs/re/memory.md`, "Starting a new game" and "The game-mode panel".
+- **Other players' items (helper phase 4).** The client sends `ap_labels`, then lines
+  `label X Y HEX`: a name per map cell for the stand-in items, Scrap Energy (47) and Scrap
+  Chunk (48), which the world gives every location holding another player's item (48 for a
+  progression item). While it has labels, every frame call (`src/apitem.cpp`) checks both
+  records against the game's own values and, while a save is loaded and no menu is open
+  (the equipment screen draws item frame 95, blank in the game's art, and the map cursor shows a
+  record's name; in a menu the records are the game's own and the logos are cleared),
+  restyles them (their in-world frames pointed at
+  frames that are empty in the game's art, no refill drop at pickup), names them after the
+  label for the player's map cell (or AP ITEM): the logo glyph, then the label laid
+  out as the popups below are, so the game's own pickup popup shows "PROGRESSION ITEM" (or "AP
+  ITEM") over "FOR ALICE", both centered (the records keep no icon of their own, so the name is shown as
+  written). The game's pickup code makes that popup with a line width of 24, as an immediate
+  in its code; while the player stands in a labeled cell the helper changes it (from the
+  frame call, on the game's thread, after checking the instruction's bytes) to the label's
+  longest line, so the box is no wider than the text, and puts 24 back elsewhere, and on
+  unload, which waits for a frame to do it. It also now and then paints
+  Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
+  its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
+  is current in the swap hook), after checking the texture is the 2048 x 2048 sprite sheet
+  and, once per texture, reading it back to find the game's art where `Sprites.png` has it
+  and the places to paint blank; it leaves the game's texture binding, pixel-store state
+  and GL errors as it found them, and paints nothing while a pixel buffer is bound.
+  `ap_labels` with no lines takes the labels back. Unload restores the records (and any an
+  earlier helper left restyled) and clears the pixels; it refuses (`error the stand-in item
+  is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
+  the game since 2026-10-23 (both logos, the flashing arrow, named popup, restore on
+  disconnect and on unload; `docs/re/memory.md`, "Other players' items", which also lists its
+  limits).
+- **Other Zexion players' items, as themselves.** For a cell whose label is another Zexion
+  player's item (`@N`), every frame call (`src/looks.cpp`) finds the stand-in objects there
+  in the game's pool of live item objects and dresses each as item N: its palette set to
+  N's, and its frame-list base moved so the frame the game computes from the stand-in's
+  record lands on N's, animated with the game's clock. The record, and so the pickup, stay
+  the stand-in's. It writes only objects that are stand-ins with the template's base and
+  palette 8, or that it dressed itself (the same spawn), and puts them back without the
+  label and on unload. Some rooms show an item through an object in the game's general
+  object pool instead (type 2026 in the reversed-gravity rooms, 715 elsewhere; their cell at
+  `+0x210`): a scan of that pool every 30 frames finds any live object drawing a stand-in's
+  logo (the item sprites' frame list at frame 63 or 95), whatever its type, and it is dressed
+  by its frame shown (`+0x1B0`, which those objects' updates do not recompute) and palette,
+  its frame list left as the game's. Working in the game since 2026-10-23, both kinds too
+  (`docs/re/memory.md`, "Live item objects").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -156,16 +249,19 @@ released widgets; `tests/apply_test.cpp` goes through the real pipe and hook in 
   `hello` reports it as `skip=1`. Working in game (2026-10-23: the prompt in a first
   playthrough, YES to the ship, and the goal at the ending; `docs/re/memory.md`, "The escape
   skip").
-- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO again, puts
-  RANDOMIZER and event 3665 back in a frame call, and refuses (`error ARCHIPELAGO is still on the game's
-  menu`) if no frame came to do it, since the menu would point into the unloaded DLL. Then it
+- **Unloading.** `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST
+  again, puts RANDOMIZER, ASSIST and event 3665 back in a frame call, and refuses (`error a menu
+  still holds the helper's callback (no frame came); not unloading`) if no frame came to take
+  ARCHIPELAGO off, since the menu would point into the unloaded DLL (the locked ASSIST holds
+  no callback of the helper's, so it cannot). Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
   counted inside (and for a call still inside ARCHIPELAGO's callback), and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
-  restarting the game. If the pipe cannot be created, or breaks, the helper unhooks and
-  unloads itself the same way.
+  restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
+  back as `unload` does (retrying each second until a frame comes to do it) and then unhooks
+  and unloads itself the same way; if its hook was replaced, it stays.
 - **Errors.** No exception leaves the helper's thread; on one, the helper stays loaded, its
   hook still working, and stops answering.
 
@@ -181,13 +277,10 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
-tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, and `menu`,
-the ARCHIPELAGO choice on a stand-in panel), and runs
+tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
+the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, and `apitem`, the stand-in item's restyle and
+painting against a fake GL), and runs
 `tests/test_native.py` against the build on Windows.
-
-## Planned
-
-1. **Helper phase 4:** icons for other games' items.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.

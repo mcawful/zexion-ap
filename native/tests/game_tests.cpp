@@ -178,8 +178,9 @@ void test_popups() {
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
     game.pump_popups();
     check(g_messages == 1, "the first popup shows at once");
-    check(g_text == "\xC5MISSILE BOX FROM ALICE", "icon, the game's name, then the sender");
-    check(g_message_args[0] == 0x18 && g_message_args[1] == 0xA0 && g_message_args[2] == 0x58 &&
+    check(g_text == "\xC5MISSILE BOX FROM ALICE" && g_message_args[0] == 12,
+          "icon and name, then the sender centered on the next line, the box 12 wide");
+    check(g_message_args[1] == 0xA0 && g_message_args[2] == 0x58 &&
               g_message_args[3] == 0xB4,
           "the pickup popup's arguments");
     check(g_sound == 61 && g_sound_volume == 1.0f && g_sound_pitch == -1.0f &&
@@ -195,7 +196,9 @@ void test_popups() {
     check(g_messages == 1 && game.queued_popups() == 1, "waits while the last popup shows");
     *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 1;
     game.pump_popups();
-    check(g_messages == 2 && g_text == "\xC5MISSILE BOX FROM BOB", "then shows the next");
+    check(g_messages == 2 &&
+              g_text == "\xC5MISSILE BOX  FROM BOB",
+          "then shows the next");
 
     reset_game();
     apply(game, "apply\npopup 36 X");
@@ -559,11 +562,468 @@ void test_mailbox() {
 
 }  // namespace
 
+// Read and written through volatile: the compiler would otherwise take the array's initial
+// bytes as constants.
+int32_t popup_width_in_code() {
+    volatile unsigned char* code = g_popup_width_code;
+    return code[1] | (code[2] << 8) | (code[3] << 16) | (code[4] << 24);
+}
+
+void set_code_byte(unsigned char value) {
+    DWORD old = 0;
+    VirtualProtect(g_popup_width_code, 1, PAGE_EXECUTE_READWRITE, &old);
+    *static_cast<volatile unsigned char*>(g_popup_width_code) = value;
+    VirtualProtect(g_popup_width_code, 1, old, &old);
+}
+
+void own_stand_in(BYTE* r, int16_t frame, const char* name, int16_t event) {
+    std::memset(r, 0, 100);
+    *reinterpret_cast<int16_t*>(r + 0x00) = 34;
+    *reinterpret_cast<int16_t*>(r + 0x02) = frame;
+    *reinterpret_cast<int16_t*>(r + 0x04) = 6;
+    *reinterpret_cast<int16_t*>(r + 0x06) = 2;
+    r[0x09] = 8;
+    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
+    *reinterpret_cast<int16_t*>(r + 0x3C) = 46;
+    *reinterpret_cast<int16_t*>(r + 0x40) = event;
+    *reinterpret_cast<int16_t*>(r + 0x58) = 1;
+}
+
+void test_pickup_popup_width() {
+    zap::Game game;
+    std::string configured = game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    check(configured.empty(), "configures with the pickup popup's width instruction");
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    std::map<int, zap::Label> labels;
+    // "Map Width" and "For Finder" on two lines, at map cell (5, 2).
+    check(zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572",
+                            labels)
+              .empty(),
+          "a two-line label parses");
+    check(labels[2 * 54 + 5].width == 10, "its width is its widest line");
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;  // row
+    field<uint8_t>(0x107B) = 5;  // column
+    game.watch_ap_items();
+    check(game.popup_width() == 10 && popup_width_in_code() == 10,
+          "in the label's cell the pickup popup is the label's width");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+    g_menu = 2;  // a menu open (the equipment screen, say)
+    game.watch_ap_items();
+    check(*reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x02) == 142 &&
+              std::string(reinterpret_cast<const char*>(g_records + 48 * 100 + 0x0A)) ==
+                  "SCRAP CHUNK" &&
+              popup_width_in_code() == 24,
+          "in a menu the stand-ins are the game's own, and the popup width the game's");
+    g_menu = 0;
+    game.watch_ap_items();
+    check(popup_width_in_code() == 10, "back in the world, ours again");
+    field<uint8_t>(0x107A) = 3;
+    game.watch_ap_items();
+    check(popup_width_in_code() == 24, "elsewhere the game's 24");
+    field<uint8_t>(0x107A) = 2;
+    game.watch_ap_items();
+    game.restore_ap_items();
+    check(popup_width_in_code() == 24 && !game.ap_items_restyled(), "restore puts 24 back");
+
+    // A width an earlier helper left (one that went without putting 24 back) is taken over.
+    {
+        DWORD old_protect = 0;
+        VirtualProtect(g_popup_width_code, 5, PAGE_EXECUTE_READWRITE, &old_protect);
+        static_cast<volatile unsigned char*>(g_popup_width_code)[1] = 12;
+        VirtualProtect(g_popup_width_code, 5, old_protect, &old_protect);
+        zap::Game later;
+        later.configure(GetModuleHandleW(nullptr), stand_in_config());
+        later.set_labels(labels);
+        field<uint8_t>(0x107A) = 3;  // not the label's cell
+        later.watch_ap_items();
+        check(popup_width_in_code() == 24, "a later helper puts 24 back over a width left behind");
+        later.restore_ap_items();
+    }
+
+    // Code that is not the traced instruction is left alone.
+    set_code_byte(0xB9);  // mov ecx, not mov edx
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(popup_width_in_code() == 24 && game.popup_width() == 24, "other code: not written");
+    game.restore_ap_items();
+    set_code_byte(0xBA);
+}
+
+void test_zexion_item_labels() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    std::map<int, zap::Label> labels;
+    // "@36" (the Missile Box) for ZEXION2 at (5, 2); "@47" (Scrap Energy) at (6, 2).
+    check(zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                            "label 6 2 4034370a464f52205a4558494f4e32\n"
+                            "label 7 2 4033370a464f52205a4558494f4e32",
+                            labels)
+              .empty(),
+          "item labels parse");
+    check(labels[2 * 54 + 5].item == 36 && labels[2 * 54 + 5].who == "FOR ZEXION2",
+          "the item and whom it is for");
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    std::string name(reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A));
+    check(name == "\xC5MISSILE BOX" "FOR ZEXION2",
+          "named from the item's record: its icon and the game's name, then whom it is for");
+    check(popup_width_in_code() == 12, "the box as wide as the item's line");
+    field<uint8_t>(0x107B) = 6;
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == "\xEE" "SCRAP ENERGY FOR ZEXION2",
+          "a stand-in item of theirs takes the stand-in's own name and the logo glyph");
+    field<uint8_t>(0x107B) = 7;  // item 37, whose record holds no name here
+    game.watch_ap_items();
+    name = reinterpret_cast<const char*>(g_records + 47 * 100 + 0x0A);
+    check(name == " \xEE" "AP ITEM" "  FOR ZEXION2", "a record with no name: AP ITEM");
+    game.restore_ap_items();
+}
+
+BYTE* pool_slot(int k) { return g_item_pool + k * 0x3B0; }
+
+void put_object(int k, int32_t spawn, int16_t record, int x, int y) {
+    BYTE* o = pool_slot(k);
+    std::memset(o, 0, 0x3B0);
+    BYTE* frames = g_frames;
+    std::memcpy(o + 0x1A8, &frames, sizeof(frames));
+    BYTE* palette = g_palette_table[8];
+    std::memcpy(o + 0x198, &palette, sizeof(palette));
+    *reinterpret_cast<int16_t*>(o + 0x1A0) = 8;
+    *reinterpret_cast<int32_t*>(o + 0x1BC) = 152;
+    *reinterpret_cast<int32_t*>(o + 0x1D8) = spawn;
+    *reinterpret_cast<int16_t*>(o + 0x1E8) = record;
+    o[0x3AC] = static_cast<BYTE>(y);
+    o[0x3AD] = static_cast<BYTE>(x);
+}
+
+BYTE* object_base(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x1A8); }
+BYTE* object_palette(int k) { return *reinterpret_cast<BYTE**>(pool_slot(k) + 0x198); }
+int16_t object_palette_number(int k) { return *reinterpret_cast<int16_t*>(pool_slot(k) + 0x1A0); }
+
+BYTE* general_slot(int k) { return g_object_pool + k * 0x5C8; }
+
+// An item as some rooms show it: an object in the general pool (type 2026 in the reversed-gravity
+// rooms, 715 elsewhere) with the sprite fields an item object has, its cell at +0x210 and +0x211,
+// and the frame its stand-in record gives.
+void put_flipped(int k, int32_t spawn, int32_t frame, int x, int y) {
+    BYTE* o = general_slot(k);
+    std::memset(o, 0, 0x5C8);
+    BYTE* frames = g_frames;
+    std::memcpy(o + 0x1A8, &frames, sizeof(frames));
+    BYTE* shown = g_frames + frame * 0x38;
+    std::memcpy(o + 0x1B0, &shown, sizeof(shown));
+    BYTE* palette = g_palette_table[8];
+    std::memcpy(o + 0x198, &palette, sizeof(palette));
+    *reinterpret_cast<int16_t*>(o + 0x1A0) = 8;
+    *reinterpret_cast<int32_t*>(o + 0x1BC) = 152;
+    *reinterpret_cast<int32_t*>(o + 0x1C4) = frame;
+    *reinterpret_cast<int32_t*>(o + 0x1D8) = spawn;
+    o[0x210] = static_cast<BYTE>(y);
+    o[0x211] = static_cast<BYTE>(x);
+}
+
+BYTE* general_ptr(int k, ptrdiff_t at) { return *reinterpret_cast<BYTE**>(general_slot(k) + at); }
+
+void test_flipped_items_show_as_themselves() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    BYTE* box = g_records + 36 * 100;  // the Missile Box: frames 39 to 42, 4 ticks, palette 1
+    *reinterpret_cast<int16_t*>(box + 0x02) = 39;
+    *reinterpret_cast<int16_t*>(box + 0x04) = 4;
+    *reinterpret_cast<int16_t*>(box + 0x06) = 4;
+    box[0x09] = 1;
+    g_frame_clock = 1000;  // 250 % 4 = 2: frame 41
+    put_flipped(12, 501, 95, 5, 2);  // a progression stand-in in the Missile Box's cell
+    put_flipped(13, 502, 95, 6, 2);  // one in a cell labeled AP ITEM
+    put_flipped(14, 503, 95, 5, 2);  // one in that cell drawing another sprite set: not an item
+    BYTE* other_list = g_frames + 0x38;
+    std::memcpy(general_slot(14) + 0x1A8, &other_list, sizeof(other_list));
+    put_flipped(15, 504, 40, 5, 2);  // one at a frame that is not a logo's: not a stand-in
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                      "label 6 2 4150204974656d0a464f52205a4558494f4e32",
+                      labels);
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 41 * 0x38,
+          "a reversed-gravity stand-in shown as the Missile Box's frame 41, its list untouched");
+    check(general_ptr(12, 0x198) == g_palette_table[1] &&
+              *reinterpret_cast<int16_t*>(general_slot(12) + 0x1A0) == 1,
+          "in its palette");
+    check(general_ptr(13, 0x1A8) == g_frames && general_ptr(13, 0x198) == g_palette_table[8],
+          "another game's item keeps the logo");
+    check(general_ptr(14, 0x1B0) == g_frames + 95 * 0x38 && general_ptr(15, 0x1B0) == g_frames + 40 * 0x38,
+          "objects not showing a logo are left alone");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+
+    game.restore_ap_items();
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 95 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[8],
+          "restore puts it back");
+    check(!game.ap_items_restyled(), "and nothing is left to put back");
+}
+
+void test_zexion_items_show_as_themselves() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    own_stand_in(g_records + 47 * 100, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+    BYTE* box = g_records + 36 * 100;  // the Missile Box: frames 39 to 42, 4 ticks, palette 1
+    *reinterpret_cast<int16_t*>(box + 0x02) = 39;
+    *reinterpret_cast<int16_t*>(box + 0x04) = 4;
+    *reinterpret_cast<int16_t*>(box + 0x06) = 4;
+    box[0x09] = 1;
+    put_object(3, 77, 48, 5, 2);  // a progression stand-in in the Missile Box's cell
+    put_object(4, 78, 48, 6, 2);  // a stand-in in a cell labeled AP ITEM
+    put_object(5, 79, 1, 5, 2);   // a Missile Container of this world, in the same cell
+    std::map<int, zap::Label> labels;
+    // (5, 2): "@36" for ZEXION2; (6, 2): "AP ITEM" for ZEXION2.
+    zap::parse_labels("ap_labels\nlabel 5 2 4033360a464f52205a4558494f4e32\n"
+                      "label 6 2 4150204974656d0a464f52205a4558494f4e32",
+                      labels);
+    game.set_labels(labels);
+    field<uint8_t>(0x107A) = 2;
+    field<uint8_t>(0x107B) = 5;
+    game.watch_ap_items();
+    // clock 1000 / 4 ticks = 250, % 4 frames = 2: frame 41, and the game computes 95.
+    check(object_base(3) == g_frames + (41 - 95) * 0x38,
+          "the stand-in's frame list moved so frame 95 lands on the Missile Box's frame 41");
+    check(object_palette(3) == g_palette_table[1] && object_palette_number(3) == 1,
+          "and the Missile Box's palette");
+    check(object_base(4) == g_frames && object_palette(4) == g_palette_table[8],
+          "a stand-in for another game's item keeps the logo");
+    check(object_base(5) == g_frames && object_palette(5) == g_palette_table[8],
+          "this world's own items are left alone");
+    check(game.ap_items_restyled(), "and unload has something to put back");
+
+    g_frame_clock = 1004;  // 251 % 4 = 3: frame 42
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "the item animates with the clock");
+
+    // The object leaves (its room left) and its slot is taken by a new spawn: that one is
+    // dressed afresh, and the old one is not "put back".
+    put_object(3, 80, 48, 5, 2);
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "a new spawn is dressed too");
+
+    // A base this helper did not write (another build, another tool): left alone.
+    put_object(6, 81, 48, 5, 2);
+    BYTE* odd = g_frames + 0x38;
+    std::memcpy(pool_slot(6) + 0x1A8, &odd, sizeof(odd));
+    game.watch_ap_items();
+    check(object_base(6) == odd && object_palette(6) == g_palette_table[8],
+          "an object not as expected is not written");
+
+    // The label goes: the stand-in shows the logo again.
+    std::map<int, zap::Label> fewer;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", fewer);
+    game.set_labels(fewer);
+    game.watch_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8] &&
+              object_palette_number(3) == 8,
+          "without its label the stand-in is put back");
+
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(object_palette(3) == g_palette_table[1], "dressed again");
+    game.restore_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8],
+          "restore puts the objects back");
+    check(!game.ap_items_restyled(), "and nothing is left to put back");
+
+    // The game sets a dressed object's base back itself: it is dressed again.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    BYTE* template_base = g_frames;
+    std::memcpy(pool_slot(3) + 0x1A8, &template_base, sizeof(template_base));
+    game.watch_ap_items();
+    check(object_base(3) == g_frames + (42 - 95) * 0x38, "a base the game set back is redressed");
+
+    // Scrap Chunk's record is no longer ours (left as another helper left it, say): its objects
+    // are put back and not dressed, since the frame the game computes is no longer the logo's.
+    put_object(7, 91, 48, 5, 2);
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x40) = 3551;  // neither own nor ours
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x02) = 142;
+    *reinterpret_cast<int16_t*>(g_records + 48 * 100 + 0x06) = 2;
+    game.watch_ap_items();
+    check(object_base(3) == g_frames && object_palette(3) == g_palette_table[8],
+          "a stand-in whose record is not restyled is put back");
+    check(object_base(7) == g_frames, "and not dressed");
+    game.restore_ap_items();
+    own_stand_in(g_records + 48 * 100, 142, "SCRAP CHUNK", 3550);
+
+    // A dressed object whose slot was reused by another spawn is not "put back" on restore.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    put_object(3, 90, 1, 9, 9);  // now a Missile Container somewhere else
+    BYTE* moved = g_frames + 5 * 0x38;
+    std::memcpy(pool_slot(3) + 0x1A8, &moved, sizeof(moved));
+    game.restore_ap_items();
+    check(object_base(3) == moved, "a reused slot is left alone on restore");
+}
+
+void shield_records(int16_t object) {
+    reset_events();
+    BYTE* ev = g_events + 3553 * 0x28;
+    ev[0] = 11;
+    const int16_t words[] = {1, object};
+    std::memcpy(ev + 2, words, sizeof(words));
+    const int16_t self = 3553;
+    std::memcpy(ev + 0x24, &self, sizeof(self));
+    BYTE* shield = g_records + 50 * 100;
+    std::memcpy(shield + 0x0A, "ENERGY SHIELD", sizeof("ENERGY SHIELD"));
+    *reinterpret_cast<int16_t*>(shield + 0x40) = 3553;
+    *reinterpret_cast<int16_t*>(shield + 0x5A) = -1;  // no sound
+    field<uint8_t>(0x107A) = 4;
+    field<uint8_t>(0x107B) = 7;
+}
+
+void test_received_shield() {
+    zap::Game game;
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    shield_records(2018);
+    apply(game, "apply\npopup 50 FROM ALICE");
+    game.pump_popups();
+    check(g_messages == 1 && g_spawn_calls == 0, "the popup alone spawns nothing");
+
+    check(game.spawn_shield(5000) == "refused not settled", "not before the player has settled");
+    game.note_play(5000);
+    check(game.spawn_shield(5500) == "refused not settled", "half a second is not enough");
+    game.note_play(5600);
+    check(game.spawn_shield(6000) == "spawned", "a second in one cell: spawned");
+    check(g_spawn_calls == 1 && g_spawn_row == 4 && g_spawn_column == 7 &&
+              g_spawn_event == g_events + 3553 * 0x28,
+          "through the type-11 handler, from the player's cell, with event 3553");
+
+    field<uint8_t>(0x107A) = 5;  // another cell: settling starts again
+    game.note_play(6100);
+    check(game.spawn_shield(6500) == "refused not settled", "a new cell settles again");
+    field<int16_t>(0xCEA) = 0;  // dead
+    game.note_play(8000);
+    check(game.spawn_shield(9000) == "refused not settled", "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    field<uint8_t>(0x107A) = 0xFF;  // the raw cell can be -1
+    game.note_play(10000);
+    check(game.spawn_shield(11500) == "refused off the map", "not from off the map");
+    field<uint8_t>(0x107A) = 4;
+    game.note_play(12000);
+    shield_records(2017);  // not the event traced
+    check(game.spawn_shield(13500) == "refused event not as traced", "an event not as traced");
+    check(g_spawn_calls == 1, "nothing else spawned");
+    reset_events();
+}
+
+void test_received_death() {
+    zap::Game game;
+    check(game.kill(1000) == "refused not configured", "nothing before configure");
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    check(game.kill(1000) == "refused not settled", "not before the player was seen in play");
+    game.note_play(1000);
+    check(game.kill(1500) == "refused not settled", "half a second is not enough");
+    field<uint8_t>(0x107A) = 9;  // another cell (a room change): settles again
+    game.note_play(1600);
+    check(game.kill(2000) == "refused not settled", "a new cell settles again");
+    g_last_message.last = g_message;  // a message still showing
+    g_last_message.sequence = 7;
+    *reinterpret_cast<int32_t*>(g_message + 0x1D8) = 7;
+    *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 30;
+    check(game.kill(2700) == "refused message showing" && g_deaths == 0,
+          "not while a message shows: the death routine posts one unchecked");
+    *reinterpret_cast<int32_t*>(g_message + 0x1EC) = 0;
+    g_halt_flag = 1;
+    check(game.kill(2700) == "refused halted" && g_deaths == 0 && field<int16_t>(0xCEA) == 48,
+          "not while the game is halted, and energy left alone");
+    g_halt_flag = 0;
+    field<int32_t>(0x103C) = 80;  // a shield up (its strength) does not stop it
+    check(game.kill(2700) == "died", "a second in play in one cell: died");
+    check(g_deaths == 1 && g_death_player == g_player && g_death_kind == 0 &&
+              g_death_energy == 0,
+          "the death routine, with the player, kind 0, and energy already 0");
+    game.note_play(2800);  // energy 0: not in play
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(2900);  // alive again (a respawn): settles again
+    check(game.kill(3200) == "refused not settled", "a respawn settles again");
+    g_last_message.last = nullptr;
+    g_menu = 3;
+    game.note_play(4000);
+    check(game.kill(4000) == "refused not settled", "not in a menu");
+    check(g_deaths == 1, "no other death");
+}
+
+void test_assist_watch() {
+    zap::Game game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                  reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    game.watch_assists();
+    check(options.callback() == &assist_menu_fn, "not armed: left alone");
+    game.set_assists_locked(true);
+    game.watch_assists();
+    check(options.callback() == nullptr &&
+              options.code(7) == zap::kLockGlyph && options.style() == 5,
+          "armed: ASSIST locked, with the padlock, in style 5");
+    game.set_assists_locked(false);
+    game.watch_assists();
+    check(options.callback() == &assist_menu_fn &&
+              options.code(7) == 0 && options.style() == 0x15,
+          "disarmed: put back");
+    game.set_assists_locked(true);
+    game.watch_assists();
+    game.restore_assists();
+    check(options.callback() == &assist_menu_fn,
+          "restored before an unload");
+    g_current_menu = nullptr;
+}
+
+void test_popup_text_breaks_before_the_sender() {
+    int width = 0;
+    check(zap::popup_text("\xC5MISSILE BOX", "FROM ALICE", 24, &width) ==
+                  "\xC5MISSILE BOX FROM ALICE" &&
+              width == 12,
+          "the sender starts the second line, centered in the widest line, which sets the width");
+    check(zap::popup_text("\xC5MISSILE BOX", "", 24) == "\xC5MISSILE BOX", "no sender: one line");
+    std::string head(24, 'A');
+    check(zap::popup_text(head, "FROM BOB", 24, &width) == head + std::string(8, ' ') + "FROM BOB" &&
+              width == 24,
+          "a head that fills its line needs no padding");
+    std::string wrapped = zap::popup_text("X", "FROM A VERY LONG PLAYER NAME HERE", 24, &width);
+    check(wrapped == std::string(11, ' ') + "X" + std::string(11, ' ') +
+                         "FROM A VERY LONG PLAYER" + std::string(7, ' ') + "NAME HERE" &&
+              width == 23,
+          "a long sender wraps at a word, not inside one");
+}
+
 int main() {
     test_parsers();
     test_configure();
     test_apply();
     test_popups();
+    test_popup_text_breaks_before_the_sender();
+    test_pickup_popup_width();
+    test_zexion_item_labels();
+    test_zexion_items_show_as_themselves();
+    test_flipped_items_show_as_themselves();
+    test_received_shield();
+    test_received_death();
+    test_assist_watch();
     test_newgame_parser();
     test_newgame_watch();
     test_archipelago_choice();

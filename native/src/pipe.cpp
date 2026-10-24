@@ -53,7 +53,8 @@ std::wstring pipe_name(unsigned long pid) {
     return L"\\\\.\\pipe\\zexion-ap-" + std::to_wstring(pid);
 }
 
-bool serve_pipe(const std::wstring& name, const Handler& handle) {
+bool serve_pipe(const std::wstring& name, const Handler& handle,
+                const std::function<void()>& on_disconnect) {
     PSECURITY_DESCRIPTOR descriptor = current_user_only();
     if (descriptor == nullptr) return false;
     SECURITY_ATTRIBUTES attributes{sizeof(attributes), descriptor, FALSE};
@@ -88,6 +89,7 @@ bool serve_pipe(const std::wstring& name, const Handler& handle) {
         }
         if (stop) FlushFileBuffers(pipe);  // let the last reply reach the client
         DisconnectNamedPipe(pipe);
+        if (!stop && on_disconnect) on_disconnect();
     }
     CloseHandle(pipe);
     return true;

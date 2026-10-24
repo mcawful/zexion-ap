@@ -15,7 +15,10 @@ const char* const kConfigKeys[] = {
     "newgame_fn",
     "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
     "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
-    "start_count",   "start_cells",     "start_flags",
+    "start_count",   "start_cells",     "start_flags",     "sprite_texture",
+    "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
+    "event_handlers", "death_fn",      "halt_flag",       "assist_menu_fn",
+    "object_pool",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -30,6 +33,7 @@ constexpr ptrdiff_t kHudMissiles = 0xB30, kHudBombs = 0xBB8;
 constexpr ptrdiff_t kWeaponStripTimer = 0xA4C;
 constexpr ptrdiff_t kSuitBits = 0x10D8;
 constexpr ptrdiff_t kX = 0x1100, kY = 0x1108;
+constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
@@ -53,6 +57,17 @@ using HudNumberFn = void (*)(void* hud_object, double value);
 using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
+using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
+// A received Energy Shield runs its pickup's area event (Game::run_item_event).
+constexpr uint8_t kEnergyShield = 50;
+constexpr ptrdiff_t kRecordEvent = 0x40;
+constexpr ptrdiff_t kEventRecordSize = 0x28;
+constexpr uint8_t kSpawnEventType = 11;
+constexpr int16_t kShieldObject = 2018;
+constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before a shield
+// The player's death (docs/re/memory.md, "DeathLink"): death_fn(player, 0), as the game's
+// damage code calls it once energy is 0 or below.
+using DeathFn = void (*)(void* player, char kind);
 
 template <typename T>
 T& at(BYTE* p, ptrdiff_t offset) {
@@ -88,7 +103,7 @@ bool is_function(const std::string& key) {
         "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
         "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
         "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
-        "rando_newgame_fn",
+        "rando_newgame_fn", "popup_width_code", "death_fn", "assist_menu_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
@@ -297,6 +312,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     menu_.panel_handler = found["panel_handler_fn"];
     menu_.widget_handler = found["widget_handler_fn"];
     menu_.rando_menu = found["rando_menu_fn"];
+    menu_.assist_menu = found["assist_menu_fn"];
+    menu_.palette_table = found["palette_table"];
     randomizer_menu_ = found["randomizer_menu"];
     placement_fn_ = found["placement_fn"];
     rando_newgame_fn_ = found["rando_newgame_fn"];
@@ -305,6 +322,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     start_count_ = found["start_count"];
     start_cells_ = found["start_cells"];
     start_flags_ = found["start_flags"];
+    sprite_texture_ = found["sprite_texture"];
+    popup_width_code_ = found["popup_width_code"];
+    item_pool_ = found["item_pool"];
+    palette_table_ = found["palette_table"];
+    frame_clock_ = found["frame_clock"];
+    sprite_templates_ = found["sprite_templates"];
+    event_handlers_ = found["event_handlers"];
+    death_fn_ = found["death_fn"];
+    object_pool_ = found["object_pool"];
+    halt_flag_ = found["halt_flag"];
+    gl_ = load_gl();
     configured_ = true;
     return "";
 }
@@ -380,6 +408,65 @@ bool Game::popup_busy() const {
            at<int32_t>(last, kMessageFramesLeft) > 1;
 }
 
+std::vector<std::string> wrap_words(const std::string& text, size_t width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::istringstream words(text);
+    std::string word;
+    while (words >> word) {
+        while (word.size() > width) {  // longer than a line: cut it
+            if (!line.empty()) lines.push_back(line);
+            line.clear();
+            lines.push_back(word.substr(0, width));
+            word.erase(0, width);
+        }
+        if (word.empty()) continue;
+        if (!line.empty() && line.size() + 1 + word.size() > width) {
+            lines.push_back(line);
+            line.clear();
+        }
+        if (!line.empty()) line += ' ';
+        line += word;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+std::string center_lines(const std::vector<std::string>& lines, int per_line) {
+    // The message routine lays text out per_line characters a line and cuts wherever a line
+    // ends, with no line-break code, and sizes a one-line box to its text (docs/re/memory.md,
+    // "Other players' items"). So with more than one line, each is centered by spaces before it
+    // and padded with spaces to the end of its line; one line stays as it is.
+    if (lines.size() == 1 || per_line <= 0) return lines.empty() ? std::string() : lines[0];
+    const size_t width = static_cast<size_t>(per_line);
+    std::string text;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string& line = lines[i];
+        if (line.size() < width) text.append((width - line.size()) / 2, ' ');
+        text += line;
+        if (i + 1 < lines.size() && text.size() % width != 0) {
+            text.append(width - text.size() % width, ' ');
+        }
+    }
+    return text;
+}
+
+std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
+                       int* width) {
+    std::vector<std::string> lines{head};
+    if (per_line > 0) {
+        for (std::string& line : wrap_words(suffix, static_cast<size_t>(per_line))) {
+            lines.push_back(std::move(line));
+        }
+    }
+    size_t widest = 0;
+    for (const std::string& line : lines) widest = (std::max)(widest, line.size());
+    int w = (std::min)(static_cast<int>(widest), per_line);
+    if (w <= 0) w = per_line;
+    if (width != nullptr) *width = w;
+    return center_lines(lines, w);
+}
+
 void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
@@ -390,13 +477,14 @@ void Game::pump_popups() {
         popups_.pop_front();
         return;
     }
-    std::string text;
-    if (rec[kRecordIcon] != 0) text += static_cast<char>(rec[kRecordIcon]);
+    std::string head;
+    if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
     const char* name = reinterpret_cast<const char*>(rec + kRecordName);
-    text.append(name, strnlen(name, kNameMax));
-    if (!popup.suffix.empty()) text += " " + popup.suffix;
+    head.append(name, strnlen(name, kNameMax));
+    int per_line = kPopupPerLine;
+    std::string text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
-        text.c_str(), kPopupPerLine, kPopupX, kPopupY, 0, 0, kPopupFrames);
+        text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
     BYTE* p = player();
     auto sound = at<int16_t>(rec, kRecordSound);
@@ -407,6 +495,98 @@ void Game::pump_popups() {
     }
     popups_.pop_front();
     frames_since_popup_ = 0;
+}
+
+void Game::note_play(uint64_t now_ms) {
+    // How long the player has been in play in one cell: a spawned shield waits for that, not
+    // for a load, a respawn or a room change still settling.
+    if (!configured_ || !in_play()) {
+        play_since_ms_ = 0;
+        return;
+    }
+    BYTE* p = player();
+    int cell = at<uint8_t>(p, kPlayerCellRow) * 256 + at<uint8_t>(p, kPlayerCellColumn);
+    if (play_since_ms_ == 0 || cell != play_cell_) {
+        play_cell_ = cell;
+        play_since_ms_ = now_ms;
+    }
+}
+
+std::string Game::spawn_shield(uint64_t now_ms) {
+    if (!configured_) return "refused not configured";
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
+        return "refused not settled";
+    }
+    std::string why = run_item_event(kEnergyShield);
+    return why.empty() ? "spawned" : "refused " + why;
+}
+
+std::string Game::kill(uint64_t now_ms) {
+    // A received DeathLink: the player dies as from damage, through the shield too. The game's
+    // damage code calls the death routine once energy is 0 or below (0x1B9D3A, 0x1F07A,
+    // 0x4771B); the helper sets energy to 0 and calls it the same way, once the player has been
+    // in play in one cell for a second (not during a load, a respawn or a room change). The
+    // routine returns at once while the halt flag is set, which would leave the player alive at
+    // 0 energy, so that is refused first. It also posts a message and writes through the
+    // result unchecked (0x1DA6E7, 0x1DA6EF), which is NULL when all four message slots are
+    // busy; each message cuts the previous one short, and the helper shows one popup at a
+    // time, so it waits until the last message has ended.
+    if (!configured_) return "refused not configured";
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
+        return "refused not settled";
+    }
+    if (*halt_flag_ != 0) return "refused halted";
+    if (popup_busy()) return "refused message showing";
+    BYTE* p = player();
+    at<int16_t>(p, kEnergy) = 0;
+    reinterpret_cast<DeathFn>(death_fn_)(p, 0);
+    return "died";
+}
+
+std::string Game::run_item_event(uint8_t item) {
+    // A received Energy Shield's effect is its pickup's area event, 3553, type 11, which
+    // spawns object 2018, the shield (docs/re/memory.md, "Received Energy Shields"). The
+    // helper runs that event as the pickup does (0x1FE85): the handler for its type, from the
+    // table the game fills, with a cell and the record; the cell is the player's. Every part
+    // is checked against B1 first.
+    BYTE* rec = record(item);
+    if (rec == nullptr) return "no item record";
+    int16_t event = at<int16_t>(rec, kRecordEvent);
+    BYTE* table = nullptr;
+    int16_t events = 0;
+    if (event < 0 || !safe_read(event_table_, &table, sizeof(table)) || table == nullptr ||
+        !safe_read(event_count_, &events, sizeof(events)) || event >= events) {
+        return "no event";
+    }
+    BYTE* ev = table + static_cast<ptrdiff_t>(event) * kEventRecordSize;
+    BYTE copy[kEventRecordSize];
+    if (!safe_read(ev, copy, sizeof(copy))) return "no event";
+    int16_t subtype, object, self;
+    std::memcpy(&subtype, copy + 2, 2);
+    std::memcpy(&object, copy + 4, 2);
+    std::memcpy(&self, copy + 0x24, 2);
+    if (copy[0] != kSpawnEventType || copy[1] != 0 || subtype != 1 || object != kShieldObject ||
+        self != event) {
+        return "event not as traced";
+    }
+    void* handler = nullptr;
+    if (!safe_read(event_handlers_ + kSpawnEventType * sizeof(void*), &handler, sizeof(handler)) ||
+        handler == nullptr) {
+        return "no handler";
+    }
+    // The handler must be code in the game's own image.
+    auto address = reinterpret_cast<uintptr_t>(handler);
+    auto image = reinterpret_cast<uintptr_t>(base_);
+    const IMAGE_SECTION_HEADER* section =
+        address > image ? section_of(reinterpret_cast<HMODULE>(base_), address - image) : nullptr;
+    if (section == nullptr || (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
+        return "handler not in the game's code";
+    }
+    BYTE* p = player();
+    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
+    if (row >= 54 || column >= 54) return "off the map";  // the raw cell can be -1
+    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
+    return "";
 }
 
 void Game::arm_newgame(NewGamePlan plan) {
@@ -460,6 +640,23 @@ void Game::watch_menu(WidgetCallback callback) {
 
 void Game::restore_menu(WidgetCallback callback) {
     if (configured_) choice_.restore(menu_, callback);
+}
+
+void Game::watch_assists() {
+    if (!configured_) return;
+    if (assists_locked_) {
+        lock_glyph_.paint(sprite_texture_, gl_);  // the padlock in the font while armed
+        assists_.install(menu_);
+        return;
+    }
+    if (assists_.installed()) assists_.restore(menu_);
+    if (lock_glyph_.painted()) lock_glyph_.clear(sprite_texture_, gl_);
+}
+
+void Game::restore_assists() {
+    if (!configured_) return;
+    assists_.restore(menu_);
+    lock_glyph_.clear(sprite_texture_, gl_);
 }
 
 namespace {
@@ -599,6 +796,215 @@ void Game::watch_skip() {
 
 void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
+}
+
+Label layout_label(const std::string& first, const std::string& who) {
+    std::vector<std::string> shown{first};
+    if (!who.empty()) shown.push_back(who);
+    size_t widest = 0;
+    for (const std::string& part : shown) widest = (std::max)(widest, part.size());
+    Label label;
+    label.width = (std::min)(static_cast<int>(widest), kPopupPerLine);
+    label.name = center_lines(shown, label.width);
+    if (label.name.size() > kItemNameMax) label.name.resize(kItemNameMax);
+    while (!label.name.empty() && label.name.back() == ' ') label.name.pop_back();
+    return label;
+}
+
+std::string parse_labels(const std::string& request, std::map<int, Label>& out) {
+    std::istringstream lines(request);
+    std::string line;
+    if (!std::getline(lines, line) || line != "ap_labels") return "not an ap_labels request";
+    while (std::getline(lines, line)) {
+        std::istringstream words(line);
+        std::string op, hex;
+        unsigned x = 0, y = 0;
+        if (!(words >> op)) continue;
+        std::vector<uint8_t> raw;
+        if (op != "label" || !(words >> x >> y >> hex) || x >= 54 || y >= 54 ||
+            !parse_hex(hex, raw)) {
+            return "bad line " + line;
+        }
+        // Up to two lines (the item, then whom it is for), each kept to the font's characters
+        // and to its line: the first after the logo glyph. A first line "@N" names item N of
+        // another Zexion player, made from its record later (Game::set_labels).
+        std::vector<std::string> parts{std::string()};
+        int item = -1;
+        size_t at = 0;
+        if (!raw.empty() && raw[0] == '@') {
+            int n = 0;
+            size_t i = 1;
+            while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
+            if (i > 1 && n < 51 && (i == raw.size() || raw[i] == '\n')) {
+                item = n;
+                at = i;
+            }
+        }
+        for (size_t k = at; k < raw.size(); ++k) {
+            uint8_t c = raw[k];
+            if (c == '\n') {
+                if (parts.size() == 2) break;
+                parts.emplace_back();
+                continue;
+            }
+            std::string& part = parts.back();
+            if (std::isalpha(c)) {
+                part += static_cast<char>(std::toupper(c));
+            } else if (std::isdigit(c) ||
+                       (c != 0 && std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr)) {
+                part += static_cast<char>(c);
+            }
+        }
+        std::string first, who;
+        {
+            std::vector<std::string> wrapped =
+                wrap_words(parts[0], static_cast<size_t>(kPopupPerLine) - 1);
+            first = wrapped.empty() ? std::string(kApItemName) : wrapped.front();
+            first.insert(first.begin(), static_cast<char>(kApItemGlyph));
+        }
+        if (parts.size() > 1) {
+            std::vector<std::string> wrapped =
+                wrap_words(parts[1], static_cast<size_t>(kPopupPerLine));
+            if (!wrapped.empty()) who = wrapped.front();
+        }
+        Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
+                                                   kApItemName
+                                             : first,
+                                   who);
+        label.item = item;
+        label.who = who;
+        out[static_cast<int>(y * 54 + x)] = label;
+    }
+    return "";
+}
+
+void Game::set_labels(std::map<int, Label> labels) {
+    if (labels.empty()) {
+        restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
+        return;
+    }
+    std::map<int, std::string> names;
+    std::map<int, int> items;
+    label_widths_.clear();
+    item_labels_.clear();
+    for (auto& [cell, label] : labels) {
+        label_widths_[cell] = label.width;
+        if (label.item >= 0) {
+            item_labels_[cell] = label;
+            items[cell] = label.item;
+        }
+        names[cell] = std::move(label.name);
+    }
+    looks_.set_items(std::move(items));
+    ap_items_.set_labels(std::move(names));
+    resolve_item_labels();
+}
+
+void Game::resolve_item_labels() {
+    // Another Zexion player's item: its own icon and the game's name for it, from the item's
+    // record, once the records are loaded.
+    if (item_labels_.empty() || !configured_) return;
+    BYTE* records = nullptr;
+    if (!safe_read(item_records_, &records, sizeof(records)) || records == nullptr) return;
+    std::map<int, std::string> names = ap_items_.labels();
+    for (auto it = item_labels_.begin(); it != item_labels_.end();) {
+        const Label& pending = it->second;
+        BYTE record[kRecordSize];
+        if (!safe_read(records + pending.item * kRecordSize, record, sizeof(record))) return;
+        std::string name;
+        if (pending.item == kStandInItem || pending.item == kStandInProgression) {
+            // The stand-ins' records are restyled: their own names, as the game loads them.
+            name = pending.item == kStandInItem ? "SCRAP ENERGY" : "SCRAP CHUNK";
+            record[kRecordIcon] = 0;
+        } else {
+            for (size_t i = 0; i < kNameMax && record[kRecordName + i] != 0; ++i) {
+                name += static_cast<char>(record[kRecordName + i]);
+            }
+        }
+        if (name.size() > static_cast<size_t>(kPopupPerLine) - 1) name.resize(kPopupPerLine - 1);
+        if (name.empty()) name = kApItemName;  // a record with no name
+        uint8_t icon = record[kRecordIcon] != 0 ? record[kRecordIcon] : kApItemGlyph;
+        Label done = layout_label(std::string(1, static_cast<char>(icon)) + name, pending.who);
+        names[it->first] = done.name;
+        label_widths_[it->first] = done.width;
+        it = item_labels_.erase(it);
+    }
+    ap_items_.set_labels(std::move(names));
+}
+
+void Game::set_popup_width(int width) {
+    if (popup_width_code_ == nullptr) return;
+    if (width < 1 || width > kGamePopupWidth) width = kGamePopupWidth;
+    if (width == popup_width_) return;  // already so (popup_width_ starts unknown: -1)
+    // `mov edx, imm32`: B1's instruction, holding 24 or a width a helper wrote (this one, or
+    // one that left without putting 24 back). Anything else is not the code traced: it is
+    // left alone, and not counted as ours to put back.
+    BYTE now[5] = {};
+    int32_t imm = 0;
+    if (safe_read(popup_width_code_, now, sizeof(now))) std::memcpy(&imm, now + 1, sizeof(imm));
+    if (now[0] != 0xBA || imm < 1 || imm > kGamePopupWidth) {
+        popup_width_ = kGamePopupWidth;
+        popup_width_code_ = nullptr;
+        return;
+    }
+    popup_width_ = imm;
+    if (imm == width) return;
+    DWORD old = 0;
+    if (!VirtualProtect(popup_width_code_ + 1, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &old)) {
+        return;  // not written: popup_width_ says what the game still holds
+    }
+    int32_t value = width;
+    std::memcpy(popup_width_code_ + 1, &value, sizeof(value));
+    DWORD unused = 0;
+    VirtualProtect(popup_width_code_ + 1, sizeof(int32_t), old, &unused);
+    FlushInstructionCache(GetCurrentProcess(), popup_width_code_, sizeof(now));
+    popup_width_ = width;
+}
+
+void Game::watch_ap_items() {
+    if (!configured_ || !ap_items_.active()) return;
+    resolve_item_labels();
+    // The player's map cell, as the player update keeps it: the row then the column, the
+    // grid's index row * 54 + column (docs/re/memory.md, "Other players' items").
+    uint8_t row = at<uint8_t>(player(), kPlayerCellRow);
+    uint8_t column = at<uint8_t>(player(), kPlayerCellColumn);
+    int cell = row < 54 && column < 54 ? row * 54 + column : -1;
+    // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
+    // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
+    bool world = *save_loaded_ != kNoSaveLoaded && *menu_state_ == 0;
+    if (world) {
+        ap_items_.watch(item_records_, cell);
+    } else {
+        ap_items_.release(item_records_);
+    }
+    ap_items_.paint(sprite_texture_, gl_, GetTickCount64(), world);
+    // The pickup popup as wide as this cell's label, if the stand-ins are ours; the game's 24
+    // elsewhere. Called from the frame call, on the game's thread, so the game is not running
+    // the instruction while it changes.
+    auto it = label_widths_.find(cell);
+    set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
+                                                                      : kGamePopupWidth);
+    // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
+    if (ap_items_.restyled()) {
+        looks_.apply(looks_places());
+    } else {
+        looks_.restore(looks_places());
+    }
+}
+
+ItemLooks::Places Game::looks_places() const {
+    return {item_pool_,     palette_table_, frame_clock_, sprite_templates_,
+            item_records_,  object_pool_};
+}
+
+void Game::restore_ap_items() {
+    if (!configured_) return;
+    looks_.restore(looks_places());  // the objects first, while their records are still ours
+    looks_.set_items({});
+    ap_items_.restore(item_records_, sprite_texture_, gl_);
+    set_popup_width(kGamePopupWidth);
+    label_widths_.clear();
+    item_labels_.clear();
 }
 
 }  // namespace zap
