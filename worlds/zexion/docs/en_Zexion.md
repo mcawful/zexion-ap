@@ -54,19 +54,21 @@ Scrap Chunk without the helper) and are counted, not put in the game's inventory
 game's own popup and the sender's name. Without the helper, another player's item looks like
 Scrap Energy (Scrap Chunk for a progression item), and items for you arrive with no popup.
 
-## What do Area Maps do?
+## What do Area Maps and Intel Chips do?
 
-With the Area Map Hints option (on by default), each Area Map is a hint. Every Area Map you
-get, found in your world or sent by another player, reveals where one of your upgrades, keys or OS Install Disks
-is that you do not have yet, in any world (supplies such as Missile Containers and Energy Tanks
-are not hinted). The hint shows in your client's and every player's hint list, and with the
-client's in-game helper running, a popup names it as the hint list does, such as "HINT:
-SLIDE MOD IS AT GUARDIA 22,7" for one in your world or "HINT: SLIDE MOD IS AT <ITS LOCATION>
-IN ALICE'S WORLD" for one in another; an Area Map you pick up in your world should show the
-game's own popup first, then that one (not tried in the game yet). Without the helper the hint
-is still made, with no popup. Once every such item has been hinted or found, an Area Map says
-HINT: NO HINTS LEFT. With the option off,
-an Area Map is filler that counts as Scrap Metal.
+With the Area Map Hints option (on by default), the Area Maps become Intel Chips, and each one
+is a hint. Every Intel Chip you get, found in your world or sent by another player, reveals
+where one of your upgrades, keys or OS Install Disks is that you do not have yet, in any world
+(supplies such as Missile Containers and Energy Tanks are not hinted). The hint shows in your
+client's and every player's hint list, and with the client's in-game helper running, a popup
+names it as the hint list does, such as "HINT: SLIDE MOD IS AT GUARDIA 22,7" for one in your
+world or "HINT: SLIDE MOD IS AT <ITS LOCATION> IN ALICE'S WORLD" for one in another; one you
+pick up in your world shows the game's own popup first, then that one. In the game an Intel
+Chip looks like the Area Map, named INTEL CHIP, and does not reveal the map around it (with
+the helper; without it the game shows it as AREA MAP and reveals the map as usual). Without
+the helper the hint is still made, with no popup. Once every such item has been hinted or
+found, an Intel Chip says HINT: NO HINTS LEFT. With the option off, Area Maps stay Area Maps:
+filler that counts as Scrap Metal.
 
 ## Can I use the assist menu?
 

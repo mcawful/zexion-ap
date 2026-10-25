@@ -14,10 +14,13 @@ from worlds.AutoWorld import World
 
 from . import data, logic, rules, web_world
 from .items import (
+    AREA_MAP,
     DATA_DISC,
+    DRAWN_AS,
     FILLER_NAME,
     GAME,
     GAME_ITEMS,
+    INTEL_CHIP,
     ITEM_ID_BASE,
     KEYS,
     NAMES,
@@ -249,6 +252,9 @@ class ZexionWorld(World):
             for _ in range(self.options.os_install_disks.value):
                 codes.remove(next(c for c in DISC_REPLACES if c in codes))
             codes += [DATA_DISC] * self.options.os_install_disks.value
+        if self.options.area_map_hints:
+            # Each Area Map left is a hint: an Intel Chip, which the game holds as the Area Map.
+            codes = [INTEL_CHIP if c == AREA_MAP else c for c in codes]
         pool = [self.create_item(NAMES[code]) for code in codes]
         self.multiworld.itempool += pool
 
@@ -295,6 +301,8 @@ class ZexionWorld(World):
             "death_link": bool(self.options.death_link),
             "allow_assists": bool(self.options.allow_assists),
             "hints": self.hint_targets() if self.options.area_map_hints else [],
+            # The Area Maps are Intel Chips (items.py): the helper renames the game's.
+            "intel_chip": bool(self.options.area_map_hints),
             # The OS Install Disks goal (client/discs.py): the disks are counted by the client
             # and never written into the game's inventory, so this world's own are stand-ins
             # in location_items, listed here by location index.
@@ -323,8 +331,8 @@ class ZexionWorld(World):
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item
         code], in a random order: the client hints the next one the player does not have for
-        each Area Map (client/hints.py). Supplies (NOT_HINTED), starting items, which are in no
-        location, and events are left out."""
+        each Intel Chip (client/hints.py). Supplies (NOT_HINTED), starting items, which are in
+        no location, and events are left out."""
         out = []
         for location in self.multiworld.get_filled_locations():
             item = location.item
@@ -384,6 +392,7 @@ class ZexionWorld(World):
             if code == DATA_DISC:
                 out.append(FOREIGN_PROGRESSION)
                 continue
+            code = DRAWN_AS.get(code, code)  # an Intel Chip: the Area Map
             # Scrap Energy and Chunk, and an item that is not the game's (Assist Unlock, only
             # ever placed by plando), are handed out as Scrap Metal.
             own_scrap = code in (SCRAP_ENERGY, SCRAP_CHUNK) or code not in GAME_ITEMS

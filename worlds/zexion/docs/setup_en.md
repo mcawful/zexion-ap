@@ -55,7 +55,8 @@ your goal when the ending begins, as you leave on the ship after grabbing Zexion
 the helper offers once you have enough disks: this goal needs the helper). If you die or reload, items received since your
 last save are given again. With the DeathLink option on, the client also sends your deaths to
 the other players and ends your life when one of them dies; the second part needs the helper.
-With Area Map hints on (the default), each Area Map you get makes an Archipelago hint for one
-of your upgrades, keys or OS Install Disks, and the helper shows it in a popup.
+With Area Map hints on (the default), each Intel Chip (the Area Map, renamed) you get makes an
+Archipelago hint for one of your upgrades, keys or OS Install Disks, and the helper shows it in
+a popup.
 
 Only play the seed's slot while the client is connected.

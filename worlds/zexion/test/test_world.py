@@ -2,12 +2,12 @@ import random
 import types
 import unittest
 
-from BaseClasses import Item, ItemClassification
+from BaseClasses import Item, ItemClassification, LocationProgressType
 from Fill import distribute_items_restrictive
 from Options import OptionError
 
 from .. import data, rules
-from ..items import code_of
+from ..items import DRAWN_AS, code_of
 from ..locations import location_name
 from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS
@@ -223,7 +223,7 @@ class TestSlotDataForTheClient(ZexionTestBase):
         self.assertEqual(len(items), len(data.LOCATIONS))
         for i, code in enumerate(items):
             placed = self.multiworld.get_location(location_name(i), self.player).item
-            own = code_of[placed.name]
+            own = DRAWN_AS.get(code_of[placed.name], code_of[placed.name])  # Intel Chip: 49
             self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
         self.assertNotIn(FOREIGN, items, "47 only for another player's item")
         self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
@@ -319,6 +319,54 @@ class TestAreaMapHintsOff(ZexionTestBase):
         distribute_items_restrictive(self.multiworld)
         self.assertEqual(self.world.fill_slot_data()["hints"], [])
 
+    def test_area_maps_stay_area_maps(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("Intel Chip", pool)
+        self.assertEqual(pool.count("Area Map"), 9)
+        self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
+
+
+class TestIntelChips(ZexionTestBase):
+    """With hints on (the default) the Area Maps are Intel Chips, which the game holds as the
+    Area Map."""
+
+    def test_area_maps_become_intel_chips(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("Area Map", pool)
+        self.assertEqual(pool.count("Intel Chip"), 9)
+        chip = self.world.create_item("Intel Chip")
+        self.assertEqual(chip.code, 3392510_000 + 101)
+        self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
+        self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
+
+    def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        slot = self.world.fill_slot_data()
+        own = [
+            i
+            for i in range(len(data.LOCATIONS))
+            if self.multiworld.get_location(location_name(i), self.player).item.name == "Intel Chip"
+        ]
+        self.assertTrue(own)
+        self.assertEqual({slot["location_items"][i] for i in own}, {49})
+        self.assertNotIn(101, slot["location_items"])
+
+
+class TestIntelChipsLeaveFillerForExcludedLocations(ZexionTestBase):
+    """Standard with the OS Install Disks goal's defaults has no Scrap left: its filler is the
+    Intel Chips, which an excluded location can take (found by the logic review)."""
+
+    options = {"goal": "os_install_disks", "os_install_disks": 16, "os_install_disks_required": 12}
+
+    def test_an_excluded_location_fills(self) -> None:
+        # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
+        location = self.multiworld.get_location(location_name(0), self.player)
+        location.progress_type = LocationProgressType.EXCLUDED
+        distribute_items_restrictive(self.multiworld)
+        item = location.item
+        self.assertIsNotNone(item)
+        self.assertEqual(item.classification, ItemClassification.filler)
+
 
 def pool_names(test: ZexionTestBase) -> list[str]:
     return [i.name for i in test.multiworld.itempool if i.player == test.player]
@@ -368,7 +416,7 @@ class TestDiscHuntStandard(DiscHuntBase):
         pool = pool_names(self)
         for name in ("Scrap Metal", "Scrap Energy", "Scrap Chunk"):
             self.assertNotIn(name, pool)
-        self.assertEqual(pool.count("Area Map"), 9 - 4)
+        self.assertEqual(pool.count("Intel Chip"), 9 - 4, "Area Maps, as hints")
         self.assertEqual(pool.count("Energy Shield"), 6)
         self.assertEqual(pool.count("Missile Container"), 62, "supplies untouched")
 
@@ -415,7 +463,7 @@ class TestDiscHuntStandardFull(DiscHuntBase):
     def test_every_area_map_and_most_energy_shields_give_way(self) -> None:
         pool = pool_names(self)
         self.assertEqual(pool.count("OS Install Disk"), 30)
-        self.assertNotIn("Area Map", pool)
+        self.assertNotIn("Intel Chip", pool)
         self.assertEqual(pool.count("Energy Shield"), 1)
 
 
@@ -426,7 +474,7 @@ class TestDiscHuntOHKO(DiscHuntBase):
     def test_ohko_fits_30_in_scrap_after_its_left_out_locations(self) -> None:
         pool = pool_names(self)
         self.assertEqual(pool.count("OS Install Disk"), 30)
-        self.assertEqual(pool.count("Area Map"), 5, "no hint given up")
+        self.assertEqual(pool.count("Intel Chip"), 5, "no hint given up")
         self.assertEqual(len(pool), len(self.world.kept_locations))
 
 
@@ -437,7 +485,7 @@ class TestDiscHuntEasy(DiscHuntBase):
     def test_ten_discs_take_scrap_only(self) -> None:
         pool = pool_names(self)
         self.assertEqual(pool.count("OS Install Disk"), 10)
-        self.assertEqual(pool.count("Area Map"), 4)
+        self.assertEqual(pool.count("Intel Chip"), 4)
         self.assertEqual(pool.count("Scrap Metal"), 20 + 4 - 10)
 
 
