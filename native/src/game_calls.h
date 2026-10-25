@@ -154,6 +154,12 @@ public:
     // the addresses. Game thread. Returns "" or an error.
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas);
     bool configured() const { return configured_; }
+    // Whether a client is there: set by `config`, cleared when the client goes away. Without
+    // one, nothing the helper does on its own (the escape skip) runs.
+    bool active() const { return active_; }
+    void set_active(bool active) { active_ = active; }
+    // Popups not shown yet dropped (the client that sent them went away).
+    void clear_popups() { popups_.clear(); }
 
     // Game thread. In play (a save loaded, no menu, energy above 0) or refused; then every
     // compare-and-set or none; then (after writes, or for "refresh") missiles, bombs and energy
@@ -321,6 +327,7 @@ private:
     void refresh_hud();
 
     bool configured_ = false;
+    bool active_ = false;
     BYTE* base_ = nullptr;
     BYTE* inventory_ = nullptr;
     BYTE* save_loaded_ = nullptr;

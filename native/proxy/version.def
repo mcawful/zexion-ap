@@ -1,0 +1,21 @@
+; The 17 exports of Windows' version.dll, at its ordinals (System32, 10.0.26100), each passed on to
+; the real one (version.cpp). VerLanguageNameA/W are forwarders in the real one too.
+LIBRARY version
+EXPORTS
+    GetFileVersionInfoA = p_GetFileVersionInfoA @1
+    GetFileVersionInfoByHandle = p_GetFileVersionInfoByHandle @2
+    GetFileVersionInfoExA = p_GetFileVersionInfoExA @3
+    GetFileVersionInfoExW = p_GetFileVersionInfoExW @4
+    GetFileVersionInfoSizeA = p_GetFileVersionInfoSizeA @5
+    GetFileVersionInfoSizeExA = p_GetFileVersionInfoSizeExA @6
+    GetFileVersionInfoSizeExW = p_GetFileVersionInfoSizeExW @7
+    GetFileVersionInfoSizeW = p_GetFileVersionInfoSizeW @8
+    GetFileVersionInfoW = p_GetFileVersionInfoW @9
+    VerFindFileA = p_VerFindFileA @10
+    VerFindFileW = p_VerFindFileW @11
+    VerInstallFileA = p_VerInstallFileA @12
+    VerInstallFileW = p_VerInstallFileW @13
+    VerLanguageNameA = KERNEL32.VerLanguageNameA @14
+    VerLanguageNameW = KERNEL32.VerLanguageNameW @15
+    VerQueryValueA = p_VerQueryValueA @16
+    VerQueryValueW = p_VerQueryValueW @17
