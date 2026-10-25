@@ -44,7 +44,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.18.5";
+constexpr char kVersion[] = "0.19.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -64,7 +64,8 @@ std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 // The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
 // only tries the lock, so it never waits on the pipe thread, which holds it only briefly.
 std::atomic<bool> g_menu_installed{false};
-// Whether the stand-in item's record is restyled (apitem.h), which unload must undo first.
+// Whether an item record is restyled (the stand-ins, apitem.h; the Area Map, intel.h), which
+// unload must undo first.
 std::atomic<bool> g_items_restyled{false};
 // Whether the scanner's message is still the helper's (scan.h): unload waits for it, since a
 // later helper would not take it for the game's.
@@ -204,6 +205,7 @@ uintptr_t frame(void* argument) {
                 g_game.set_assists_locked(false);
                 g_game.set_discs(0, 0, "");
                 g_game.set_disk_slots(0, 0, {});
+                g_game.set_intel(false);
             }
             g_mailbox.serve();
             g_game.watch_newgame();
@@ -217,6 +219,7 @@ uintptr_t frame(void* argument) {
                     g_game.watch_equipment();
                     g_game.watch_mission();
                     g_game.watch_files();
+                    g_game.watch_intel();
                     g_game.watch_ap_items();
                 }
                 g_menu_installed.store(g_game.menu_installed());
@@ -315,6 +318,22 @@ std::string handle(const std::string& request, bool& stop) {
                     if (!g_game.configured()) return std::string("refused not configured");
                     g_game.set_assists_locked(lock);
                     return std::string(lock ? "locked" : "free");
+                },
+                kFrameWaitMs, result)) {
+            return "refused no frame";
+        }
+        return result;
+    }
+    if (request == "intel on" || request == "intel off") {
+        // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        bool on = request == "intel on";
+        std::string result;
+        if (!g_mailbox.call(
+                [on] {
+                    if (!g_game.configured()) return std::string("refused not configured");
+                    g_game.set_intel(on);
+                    return std::string(on ? "intel on" : "intel off");
                 },
                 kFrameWaitMs, result)) {
             return "refused no frame";
@@ -486,6 +505,7 @@ std::string undo_for_unload() {
     int disc_count = 0, discs_required = 0;
     bool discs_told = true;
     std::string scan_line;
+    bool intel = false;  // and the Area Map named INTEL CHIP
     // And the file select's count.
     int file_count = 0, file_required = 0;
     std::set<int> file_slots;
@@ -501,12 +521,14 @@ std::string undo_for_unload() {
                 file_count = g_game.files().count();
                 file_required = g_game.files().required();
                 file_slots = g_game.files().slots();
+                intel = g_game.intel_on();
                 g_game.disarm_newgame();
                 g_game.restore_skip();
                 g_game.set_discs(0, 0, "");
                 g_game.restore_discs();
                 g_game.restore_mission();
                 g_game.restore_files();
+                g_game.restore_intel();
                 g_game.restore_ap_items();
                 g_game.restore_menu(&archipelago_chosen);
                 g_game.set_assists_locked(false);
@@ -521,7 +543,7 @@ std::string undo_for_unload() {
     }
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        if (was_locked || !scan_line.empty() || !file_slots.empty()) {
+        if (was_locked || !scan_line.empty() || !file_slots.empty() || intel) {
             std::string ignored;
             g_mailbox.call(
                 [&] {
@@ -532,6 +554,7 @@ std::string undo_for_unload() {
                     if (!file_slots.empty()) {
                         g_game.set_disk_slots(file_count, file_required, file_slots);
                     }
+                    if (intel) g_game.set_intel(true);
                     return std::string();
                 },
                 kFrameWaitMs, ignored);
@@ -539,7 +562,7 @@ std::string undo_for_unload() {
         return why;
     };
     if (set_unloading(true)) return refuse("a menu still holds the helper's callback (no frame came)");
-    if (g_items_restyled.load()) return refuse("the stand-in item is still restyled (no frame came)");
+    if (g_items_restyled.load()) return refuse("an item record is still restyled (no frame came)");
     if (g_scan_written.load()) return refuse("the scanner's message is still the helper's (no frame came)");
     if (g_branch_patched.load()) return refuse("the pause screen's branch is still the helper's (no frame came)");
     if (!unhook()) return refuse(kHookReplaced);

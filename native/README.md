@@ -45,7 +45,7 @@ closed menus and released widgets, and the ASSIST lock (its look, the cursor ord
 back); `tests/game_tests.cpp` also the received shield and death, the ASSIST watch, the
 scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
-`tests/files_tests.cpp` the file select's disk count,
+`tests/files_tests.cpp` the file select's disk count, `tests/intel_tests.cpp` the Intel Chip,
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
 through the real pipe and hook in a busy host.
 
@@ -100,7 +100,9 @@ through the real pipe and hook in a busy host.
       Zexion player's item N, which the helper names from that item's record (its icon and
       the game's name) once the records are loaded; `@N NAME` gives item N that name instead
       (this player's own OS Install Disk, which the game's record calls DATA DISC, with the
-      disk glyph the helper paints, the record having no icon).
+      disk glyph the helper paints, the record having no icon; and, for another Zexion
+      player, an OS Install Disk, an Area Map and an Intel Chip, drawn as item 49:
+      `client/aplabels.py`, `zexion_look`).
     - `shield` → `spawned`, or `refused <why>`: a received Energy Shield (below).
     - `die` → `died`, or `refused <why>`: a received DeathLink (below).
     - `assists lock` → `locked`, `assists free` → `free`, or `refused <why>`: the options
@@ -113,6 +115,8 @@ through the real pipe and hook in a busy host.
       `disk_slots off`, or `refused <why>`: the file select's disk count (below) for the save
       slots holding the seed, SLOTS a comma list (1 to 30) or `-`. REQUIRED is checked but
       not shown.
+    - `intel on` → `intel on`, `intel off` → `intel off`, or `refused <why>`: the Area Map
+      named INTEL CHIP with its map reveal off (below).
     - `discs_status` → what the equipment screen last did: `shown N`, `not shown: <why>` or
       `not shown yet`.
     - `mission_prompt` → `queued`: offer RETURN HOME WITH THE DISKS? when the game is next idle
@@ -123,7 +127,7 @@ through the real pipe and hook in a busy host.
     - `unload` → `bye` (see below).
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
-  `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
+  `intel`, `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
   `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -152,8 +156,11 @@ through the real pipe and hook in a busy host.
     the line width passed is the longest line's, which is how wide the game draws the box.
   - A `notice` is its text alone, up to 200 characters, keeping `:` too (an Area Map's hint,
     "HINT: SLIDE MOD IS AT GUARDIA 22,7", `client/hints.py`): left-aligned, words wrapped
-    whole at 24 (a word longer than a line is split, a hyphen ending the line: tested only
-    against the stand-in), each line but
+    whole at 24 (only a word longer than a whole line is split, from where it starts, a hyphen
+    ending each line it fills: seen in game 2026-10-25, B1, helper 0.19.0, with a made-up hint
+    sent through the pipe by a one-off script, "HINT: SLIDE MOD IS AT
+    SUPERCALIFRAGILISTICEXPIALIDOCIOUS 22,7", shown as the three lines expected; the owner's
+    reading, not saved), each line but
     the last padded with spaces to the widest, which is the box's width (`notice_text`). The
     game shows a popup's text past two or three lines only in part, so a notice of three lines
     or more ends with a blank line, which makes the game show every real line, and once the
@@ -163,8 +170,8 @@ through the real pipe and hook in a busy host.
     the helper calls"), so lines past what it holds are left out. Working in the game since
     2026-10-24, up to five lines.
   - An `apply` may hold popups alone, with no `cas` lines: the client sends a notice that way
-    for an Area Map found in the world, after the game's own pickup popup (its sound plays
-    again; not run in the game yet).
+    for an Area Map (or Intel Chip) found in the world, after the game's own pickup popup
+    (its sound plays again; working in game 2026-10-25).
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
@@ -202,8 +209,8 @@ through the real pipe and hook in a busy host.
   moved) until the options menu closes, harmlessly: nothing in it points into the helper. `locked` means armed:
   whether an entry was found shows only in the game. The client locks it while a seed that
   disallows assists has its save loaded, until the slot receives Assist Unlock. The lock works in game (2026-10-23, B1; `docs/re/memory.md`,
-  "The assist menu"), unlocking too (by Assist Unlock); the unlock that loading another save
-  triggers has not been run in the game.
+  "The assist menu"), unlocking too (by Assist Unlock, and on loading another save,
+  2026-10-25).
 - **New games (helper phase 3).** While a plan is armed, each frame call:
   - Watches for a randomizer new game the game has queued (its new-game routine set to run, a
     timer above one frame, the randomizer marker set). If the section holds the `expect`
@@ -268,7 +275,7 @@ through the real pipe and hook in a busy host.
   and the places to paint blank; it leaves the game's texture binding, pixel-store state
   and GL errors as it found them, and paints nothing while a pixel buffer is bound.
   `ap_labels` with no lines takes the labels back. Unload restores the records (and any an
-  earlier helper left restyled) and clears the pixels; it refuses (`error the stand-in item
+  earlier helper left restyled) and clears the pixels; it refuses (`error an item record
   is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
   the game since 2026-10-23 (both logos, the flashing arrow, named popup, restore on
   disconnect and on unload; `docs/re/memory.md`, "Other players' items", which also lists its
@@ -287,6 +294,13 @@ through the real pipe and hook in a busy host.
   by its frame shown (`+0x1B0`, which those objects' updates do not recompute) and palette,
   its frame list left as the game's. Working in the game since 2026-10-23, both kinds too
   (`docs/re/memory.md`, "Live item objects").
+- **Intel Chips.** While the client has sent `intel on` (this seed's save loaded, its Area
+  Maps Intel Chips: the world's Area Map Hints), each frame call checks the Area Map's item
+  record (49) and, if it reads as the game loads it, names it INTEL CHIP and sets its pickup's
+  area event (3551, which reveals the map around it) to none (`src/intel.cpp`); `intel off`,
+  the client going away and an unload put the name and event back, and an unload refuses
+  while the record is still renamed (`error an item record is still restyled`). Working in game (2026-10-25,
+  B1; `docs/re/memory.md`, "Intel Chips").
 - **The OS Install Disks goal.** While the client has sent `discs` (this seed's save loaded,
   the seed's goal the OS Install Disks), the helper:
   - rewrites the scanner's message, Text entry 12 in the loaded table, ENERGY KEYS DETECTED!,
@@ -319,9 +333,10 @@ through the real pipe and hook in a busy host.
   keys, the count's glyphs' place and the handlers go back, in menus still open; a refused
   unload turns the count on again.
   Working in game: the scanner's line, the equipment screen, the disk glyph, the disk row
-  (as a whole), the prompt, NO and YES to the ending, and the file select's count and its
-  put-back on a disconnect (a seed's save with no disk not seen) (2026-10-24, B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission
-  prompt", "The pause screen's KEYS row", "The file select").
+  (as a whole), the prompt, NO and YES to the ending, and the file select's count, its
+  put-back on a disconnect and nothing for a save with no disk (2026-10-24 and 2026-10-25,
+  B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission prompt", "The
+  pause screen's KEYS row", "The file select").
 - **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
@@ -337,7 +352,8 @@ through the real pipe and hook in a busy host.
   again, puts RANDOMIZER (with the panel's handler), ASSIST and event 3665 back in a frame call,
   with the OS Install Disks goal's changes (the scanner's text, the pause screen's branch,
   EQUIPMENT's callback and the Energy Tank panel's handler, a prompt opener not yet run and a
-  prompt's YES, pointed at NO, and the file screens' entry handlers), and refuses (`error a menu
+  prompt's YES, pointed at NO, and the file screens' entry handlers) and the Area Map's
+  record (INTEL CHIP), and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
   ARCHIPELAGO off, or while an open menu's panel or entry, or the game's transition routine,
   may still hold one of the helper's functions, since the game would call into the unloaded
