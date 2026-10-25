@@ -10,10 +10,22 @@ yet in a full game, so treat any seed as a test.
 - The client's in-game helper, `zexion_ap.dll`. The client loads it into Zexion when it
   attaches; without it, use `/prepare` (below). Or let the game load it as it starts: with
   Zexion closed, copy `zexion_ap.dll` and `version.dll` from the same release into Zexion's
-  folder (Steam: Zexion, Manage, Browse local files). Without the client running, the game then
-  plays as it always does. To update, replace both files with the game closed; to remove them,
+  folder (Steam: Zexion, Manage, Browse local files). Without the client running, a save that
+  is not from a seed you have played with the client plays as it always does. To update, replace both files with the game closed; to remove them,
   delete both (or, to turn them off for a while, create an empty file named
-  `zexion_ap.disabled` beside them).
+  `zexion_ap.disabled` beside them). With the files there, a save of a seed you have played
+  with the client keeps its look when you play it without the client: Archipelago items,
+  Intel Chips, the ASSIST lock and your OS Install Disk count (counting disks you find in
+  your own world), with a notice that the client is not connected. Items from other players,
+  hints and finishing the goal wait until you run the client again; what you pick up is sent
+  then, after a notice that the client is connected, and the popups it would have shown (a
+  disk's count, an Intel Chip's hint) come then too. For this, the client has the helper keep a
+  few small files in `%LOCALAPPDATA%\ZexionAP`; deleting that folder is safe (the client writes
+  them again), and with `zexion_ap.disabled` the helper does not load at all. Once the client
+  has connected with the helper running, the title screen shows ARCHIPELAGO MOD and the
+  helper's version under the copyright line, from then on also when the game starts without
+  the client, so you can see which helper is in; while no client is connected, it also
+  says to start the client.
 
 ## Starting a game
 
@@ -57,11 +69,17 @@ Keep the client running while you play. It sends each location as you collect it
 the items other players find for you (only while you are in play, not in menus), and reports
 your goal when the ending begins, as you leave on the ship after grabbing Zexion in the core
 (with the OS Install Disks goal, when you answer YES to RETURN HOME WITH THE DISKS?, which
-the helper offers once you have enough disks: this goal needs the helper). If you die or reload, items received since your
-last save are given again. With the DeathLink option on, the client also sends your deaths to
+the helper offers when you save at the landing pod you started from with enough disks:
+this goal needs the helper). If you die or reload, items received since your
+last save are given again. Items that arrive once the ending has begun (as a release or
+collect on your goal) are given the next time you load that save. With the DeathLink option on, the client also sends your deaths to
 the other players and ends your life when one of them dies; the second part needs the helper.
 With Area Map hints on (the default), each Intel Chip (the Area Map, renamed) you get makes an
 Archipelago hint for one of your upgrades, keys or OS Install Disks, and the helper shows it in
 a popup.
 
-Only play the seed's slot while the client is connected.
+Play the seed's slot while the client is connected. If you load a save of a different
+seed, the game says the client is for another seed, and nothing is sent or received
+for that save. Without it (with the helper loaded with
+the game) you can keep playing: what you pick up is sent when the client next connects with
+that save loaded, but items from other players, hints and finishing the goal wait for it.

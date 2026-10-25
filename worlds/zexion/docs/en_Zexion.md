@@ -19,9 +19,10 @@ not ask for.
 
 With OS Install Disks: find enough OS Install Disks, shuffled through the multiworld (how many
 are placed and how many win are options). The four keys are left out. This goal needs the
-client's in-game helper: once you have enough disks, it has the game ask RETURN HOME WITH THE
-DISKS?, and YES plays the game's ending, which is your goal; NO lets you keep exploring, and
-the question comes back the next time you load your save. The disks are not put in the game's
+client's in-game helper: once you have enough disks, the game tells you to save at the
+landing pod you started from, and saving there asks RETURN HOME WITH THE DISKS?. YES plays
+the game's ending, which is your goal; NO lets you keep exploring, and the question comes
+back the next time you save at the pod. The disks are not put in the game's
 inventory: the client counts them, each one's popup gives your count, the equipment screen
 shows them beside the Energy Tank, and the pause screen shows the count where the keys were,
 as does the file select for your saves of the seed once you have one (the client must be
