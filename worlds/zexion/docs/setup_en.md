@@ -6,26 +6,35 @@ yet in a full game, so treat any seed as a test.
 ## Requirements
 
 - Zexion on Steam (Windows), the build the client knows (it refuses others).
-- Archipelago 0.6.8 or newer, with this world installed.
-- The client's in-game helper, `zexion_ap.dll`. The client loads it into Zexion when it
-  attaches; without it, use `/prepare` (below). Or let the game load it as it starts: with
-  Zexion closed, copy `zexion_ap.dll` and `version.dll` from the same release into Zexion's
-  folder (Steam: Zexion, Manage, Browse local files). Without the client running, a save that
-  is not from a seed you have played with the client plays as it always does. To update, replace both files with the game closed; to remove them,
-  delete both (or, to turn them off for a while, create an empty file named
-  `zexion_ap.disabled` beside them). With the files there, a save of a seed you have played
-  with the client keeps its look when you play it without the client: Archipelago items,
-  Intel Chips, the ASSIST lock and your OS Install Disk count (counting disks you find in
-  your own world), with a notice that the client is not connected. Items from other players,
-  hints and finishing the goal wait until you run the client again; what you pick up is sent
-  then, after a notice that the client is connected, and the popups it would have shown (a
-  disk's count, an Intel Chip's hint) come then too. For this, the client has the helper keep a
-  few small files in `%LOCALAPPDATA%\ZexionAP`; deleting that folder is safe (the client writes
-  them again), and with `zexion_ap.disabled` the helper does not load at all. Once the client
-  has connected with the helper running, the title screen shows ARCHIPELAGO MOD and the
-  helper's version under the copyright line, from then on also when the game starts without
-  the client, so you can see which helper is in; while no client is connected, it also
-  says to start the client.
+- Archipelago 0.6.8 or newer.
+- A release of this world: `zexion.apworld`, `zexion_ap.dll` and `version.dll`, all three
+  from the same release.
+
+## Installing
+
+1. Install the world: in the Archipelago Launcher, choose Install APWorld and pick
+   `zexion.apworld` (or open the file). The Launcher then lists **Zexion Client**.
+2. Install the client's in-game helper: with Zexion closed, copy `zexion_ap.dll` and
+   `version.dll` into Zexion's folder (Steam: Zexion, Manage, Browse local files). The game
+   then loads the helper as it starts. The title screen shows ARCHIPELAGO MOD and the
+   helper's version under the copyright line once the client has connected with it once, and
+   from then on also without the client, so you can see which helper is in; while no client
+   is connected, it also says to start the client.
+
+To update, replace all three with the game closed; the client tells you when the helper in
+the game's folder is not the version it needs, and works without it until you do (items still
+arrive, with no popups). To remove the helper, delete both DLLs (or, to turn it off for a
+while, create an empty file named `zexion_ap.disabled` beside them). A save that is not from a
+seed you have played with the client plays as it always does.
+
+With the helper there, a save of a seed you have played with the client keeps its look when
+you play it without the client: Archipelago items, Intel Chips, the ASSIST lock and your OS
+Install Disk count (counting disks you find in your own world), with a notice that the client
+is not connected. Items from other players, hints and finishing the goal wait until you run the
+client again; what you pick up is sent then, after a notice that the client is connected, and
+the popups it would have shown (a disk's count, an Intel Chip's hint) come then too. For this,
+the client has the helper keep a few small files in `%LOCALAPPDATA%\ZexionAP`; deleting that
+folder is safe (the client writes them again).
 
 ## Starting a game
 
@@ -33,17 +42,17 @@ The client starts the seed as a new game in an empty slot; it never changes a ga
 playing.
 
 1. Start Zexion and stay at the title screen.
-2. Start the client and connect to the server. Once it attaches to Zexion it says "Ready for a
-   new game".
+2. In the Archipelago Launcher, open Zexion Client and connect to the server. Once it attaches
+   to Zexion it says how to play: load this seed's save, or start a new game.
 3. In Zexion, pick an empty slot. Where the game offers NORMAL and RANDOMIZER, it now offers
    NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room with its
    starting items, and the game saves the new game at once.
 
-Once that game is in play, ARCHIPELAGO is offered again (the client says so), so another empty
+Once that game is in play, ARCHIPELAGO is offered again, so another empty
 slot can start a second save of the same seed; every save of the seed counts, whatever its slot.
 
 This works for every mode. If you would rather start from the game's own menu, start the client
-with `--keep-randomizer`: RANDOMIZER then stays, and choosing it, the seed's mode with no
+with `--keep-randomizer` (from a command line): RANDOMIZER then stays, and choosing it, the seed's mode with no
 options changed, and START GAME starts the seed the same way.
 
 When the client disconnects, the choice reads RANDOMIZER again.
@@ -80,6 +89,6 @@ a popup.
 
 Play the seed's slot while the client is connected. If you load a save of a different
 seed, the game says the client is for another seed, and nothing is sent or received
-for that save. Without it (with the helper loaded with
-the game) you can keep playing: what you pick up is sent when the client next connects with
+for that save. Without the client (with the helper in the game's folder) you can keep
+playing: what you pick up is sent when the client next connects with
 that save loaded, but items from other players, hints and finishing the goal wait for it.
