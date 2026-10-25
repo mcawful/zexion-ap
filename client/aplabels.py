@@ -9,7 +9,8 @@ helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
 generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
 Circle of the Moon's icons by classification), since another game's item names can be long. For
 another Zexion player's item the popup instead shows the item's own icon and the game's name for
-it, and the helper shows the item itself in the room, as the Castlevania worlds show their own
+it (or, for an OS Install Disk, an Area Map and an Intel Chip, the name given here: zexion_look),
+and the helper shows the item itself in the room, as the Castlevania worlds show their own
 game's items.
 The helper names each stand-in after the label of the cell its item object carries (an enemy's
 drop lands wherever the enemy dies), so the game's own pickup popup shows it, with the
@@ -64,12 +65,30 @@ def label(progression: bool, player_name: str) -> str:
     return f"{item}\n{who}"
 
 
-def zexion_label(item: int, player_name: str) -> str:
+# Another Zexion player's items whose name in this game is not what the game's own record
+# says in every seed: the OS Install Disk (the game's DATA DISC), the Area Map, whose record this
+# player's own seed may have the helper rename INTEL CHIP (Area Map Hints), and the Intel Chip,
+# an item that is not the game's (code 101, worlds/zexion/items.py), drawn as the Area Map.
+# Each is its record's look under the name given here.
+ZEXION_LOOKS = {44: (44, "OS INSTALL DISK"), 49: (49, "AREA MAP"), 101: (49, "INTEL CHIP")}
+
+
+def zexion_look(code: int) -> tuple[int, str] | None:
+    """The record and the name another Zexion player's item ``code`` is shown with (an empty
+    name: the record's own), or None for a code that is not a Zexion item."""
+    if code in ZEXION_LOOKS:
+        return ZEXION_LOOKS[code]
+    return (code, "") if 0 <= code <= 50 else None
+
+
+def zexion_label(item: int, player_name: str, name: str = "") -> str:
     """The label for another Zexion player's item: ``@N`` asks the helper for item N's own icon
-    and the game's name for it (native/README.md), then whom it is for."""
+    and the game's name for it (native/README.md), or ``name`` in its place (``@N NAME``,
+    zexion_look), then whom it is for."""
     player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
     who = f"FOR {player}" if player else "FOR"
-    return f"@{item}\n{who}"
+    kept = " ".join(_font_words(name))[: PER_LINE - 1]
+    return f"@{item} {kept}\n{who}" if kept else f"@{item}\n{who}"
 
 
 def own_label(item: int, name: str = "") -> str:

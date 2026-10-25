@@ -1072,6 +1072,16 @@ void Game::restore_files() {
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_);
 }
 
+void Game::watch_intel() {
+    if (configured_) intel_.watch(item_records_);
+}
+
+void Game::restore_intel() {
+    if (!configured_) return;
+    intel_.set(false);
+    intel_.restore(item_records_);
+}
+
 void Game::mission_open() {
     if (configured_) mission_.open(mission_at_);
 }
