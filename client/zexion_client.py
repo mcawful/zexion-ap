@@ -3,7 +3,11 @@
     .venv/Scripts/python client/zexion_client.py [archipelago://name:password@host:port]
 
 It needs Archipelago's own modules: by default the pinned checkout in .ap/Archipelago
-(tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names.
+(tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names. It is also started from
+Archipelago's Launcher as Zexion Client (worlds/zexion/__init__.py, run_client, from the
+apworld tools/build_apworld.py builds), where Archipelago is the Launcher's own.
+``--verbose`` also shows what the client sets up in the game for the seed (the labels, the
+ASSIST lock and so on); without it the window shows only what the player acts on.
 
 Once connected:
 
@@ -15,7 +19,8 @@ Once connected:
   the ending begins (flag 250 with flag 211 clear, after the final boss and the ship). With the
   helper loaded, grabbing Zexion offers the game's SKIP ESCAPE AND FINAL BATTLE? in any game,
   and after YES the goal comes as the player boards the ship (both live-tested 2026-10-22 and
-  2026-10-23); the client logs whether the helper put the offer in place.
+  2026-10-23); the client warns if the helper could not put the offer in place (with
+  --verbose it also says when it did).
 - With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
   /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
   ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
@@ -95,6 +100,7 @@ the save's item table, and the game hands them out itself.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 import time
@@ -103,7 +109,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 AP_DIR = Path(os.environ.get("ZEXION_AP_DIR", HERE.parent / ".ap" / "Archipelago"))
-if str(AP_DIR) not in sys.path:
+if AP_DIR.is_dir() and str(AP_DIR) not in sys.path:  # from the Launcher, its own is in use
     sys.path.insert(0, str(AP_DIR))
 
 import Utils  # noqa: E402
@@ -133,6 +139,16 @@ import save_patch  # noqa: E402
 import session  # noqa: E402
 
 GAME = "Zexion"
+# The client's window shows what the player acts on (the connection, the helper, ARCHIPELAGO,
+# warnings); what it sets up in the game for the seed is a detail, shown with --verbose.
+VERBOSE = False
+
+
+def detail(message: str) -> None:
+    """A setup note: in the window and the log with --verbose, else at debug level."""
+    (logger.info if VERBOSE else logger.debug)(message)
+
+
 ITEM_ID_BASE = 3392510_000  # worlds/zexion/items.py
 ASSIST_UNLOCK = 100  # worlds/zexion/items.py: lifts the assist lock; not an item of the game's
 LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
@@ -205,6 +221,11 @@ class ZexionContext(CommonContext):
     game = GAME
     items_handling = 0b001  # items from other worlds only
     command_processor = ZexionCommandProcessor
+
+    def make_gui(self):
+        ui = super().make_gui()
+        ui.base_title = "Archipelago Zexion Client"
+        return ui
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
@@ -382,7 +403,7 @@ class ZexionContext(CommonContext):
             self.death_link_on = bool(slot.get("death_link", False))
             asyncio.create_task(self.update_death_link(self.death_link_on))
             if self.death_link_on:
-                logger.info("DeathLink is on for this seed.")
+                detail("DeathLink is on for this seed.")
             # Only a world that says it gives other players' items the stand-in has them.
             self.foreign = aplabels.foreign_locations(
                 slot["location_items"], self.kept, aplabels.stand_ins(slot)
@@ -407,10 +428,11 @@ class ZexionContext(CommonContext):
                     "(started without it): nothing will offer the ending."
                 )
             if self.discs is not None:
-                logger.info(
+                detail(
                     f"The goal is {self.discs.required} of {self.discs.placed} OS Install Disks."
                 )
-            logger.info(
+            # Without the helper, /prepare is the way in: said in the window.
+            (detail if self.use_helper else logger.info)(
                 f"Seed for Zexion's {slot['mode']} mode. If this slot's game is not prepared "
                 "yet: make a new randomizer game in that mode, save, close Zexion, and run "
                 "/prepare SLOT."
@@ -448,7 +470,7 @@ class ZexionContext(CommonContext):
             return
         queued = self.deaths.receive()
         if queued > 1:
-            logger.info(f"DeathLink: {queued} deaths are queued, dealt one after another.")
+            detail(f"DeathLink: {queued} deaths are queued, dealt one after another.")
         if self.helper is None:
             logger.warning(
                 "DeathLink: the in-game helper is not running, so the death waits for it."
@@ -563,7 +585,7 @@ async def mission_tick(ctx: ZexionContext, step: session.Step) -> None:
         if helper is not ctx.helper or reply != "applied":
             return
         home.reminded = True
-        logger.info(
+        detail(
             "Enough OS Install Disks: save at the landing pod (the seed's start) to be offered "
             "RETURN HOME WITH THE DISKS?."
         )
@@ -573,7 +595,7 @@ async def mission_tick(ctx: ZexionContext, step: session.Step) -> None:
     if helper is not ctx.helper or reply != "queued":
         return
     home.offer = False
-    logger.info(
+    detail(
         "Saved at the landing pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "
         "offered. YES starts the game's ending, which sends the goal; NO plays on, and it is "
         "offered again after the next save there."
@@ -623,7 +645,7 @@ async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
     if helper is ctx.helper and not reply.startswith("refused"):
         ctx.client_back_sent = True
         if reply == "shown":
-            logger.info("This save was played without the client: told the client is back.")
+            detail("This save was played without the client: told the client is back.")
 
 
 async def followups_tick(ctx: ZexionContext, step: session.Step) -> None:
@@ -815,8 +837,9 @@ async def attach_helper(ctx: ZexionContext) -> None:
     ctx.labels_held = True
     ctx.labels_sent = ctx.labels_refused = False
     for note in notes:
-        logger.info(note)
-    logger.info("The in-game helper is running: received items are sent with the game's popup.")
+        # Where the helper came from is a detail; a copy to update is not.
+        (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
+    logger.info(f"The in-game helper {native.VERSION} is running.")
     ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
 
 
@@ -833,7 +856,7 @@ async def assists_tick(ctx: ZexionContext) -> None:
         return
     if reply == ("locked" if want else "free"):
         ctx.assists_sent = want
-        logger.info(
+        detail(
             "The assist menu is locked for this seed." if want else "The assist menu is unlocked."
         )
     else:
@@ -854,7 +877,7 @@ async def intel_tick(ctx: ZexionContext) -> None:
     if reply == ("intel on" if want else "intel off"):
         ctx.intel_sent = want
         if want:
-            logger.info("The Area Maps are Intel Chips for this seed.")
+            detail("The Area Maps are Intel Chips for this seed.")
     else:
         ctx.intel_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
 
@@ -879,16 +902,16 @@ async def discs_helper_tick(ctx: ZexionContext) -> None:
             status = await asyncio.to_thread(helper.request, "discs_status")
             if helper is ctx.helper and status != ctx.discs_status:
                 ctx.discs_status = status
-                logger.info(f"The equipment screen's OS Install Disk count: {status}.")
+                detail(f"The equipment screen's OS Install Disk count: {status}.")
         return
     reply = await asyncio.to_thread(helper.request, want)
     if helper is not ctx.helper:
         return
     if reply == ("discs off" if want == discs.OFF else "discs on"):
         if want == discs.OFF and ctx.discs_sent not in (None, discs.OFF):
-            logger.info("Not this seed's save: the scanner's message is the game's again.")
+            detail("Not this seed's save: the scanner's message is the game's again.")
         elif want != discs.OFF and ctx.discs_sent in (None, discs.OFF):
-            logger.info("The scanner's message names the OS Install Disks needed.")
+            detail("The scanner's message names the OS Install Disks needed.")
         ctx.discs_sent = want
     else:
         ctx.discs_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
@@ -1040,7 +1063,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
         if reply.startswith("labeled"):
             ctx.labels_sent = ctx.labels_held = False
             if ours:
-                logger.info("Not this seed's save: other players' items are Scrap Energy again.")
+                detail("Not this seed's save: other players' items are Scrap Energy again.")
         else:
             ctx.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # asked again later
         return
@@ -1062,7 +1085,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
         return  # a reconnect or a lost helper meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
         ctx.labels_sent = ctx.labels_held = True
-        logger.info(
+        detail(
             f"Other players' items show as Archipelago items, named at pickup "
             f"({len(labels) - own})"
             + (f"; this world's own OS Install Disks as themselves ({own})." if own else ".")
@@ -1110,7 +1133,7 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         ctx.shield_said = ""
     else:
         if reply != ctx.shield_said and reply != "refused not settled":
-            logger.info(f"A received Energy Shield is waiting: {reply}")
+            detail(f"A received Energy Shield is waiting: {reply}")
         ctx.shield_said = reply
         ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
 
@@ -1160,12 +1183,12 @@ async def confirm_shield(
             ctx.shield_misses = 0
             ctx.shield_retry_at = time.monotonic() + SHIELD_BACKOFF_SECONDS
         else:
-            logger.info("A received Energy Shield was not seen in the game; spawning it again.")
+            detail("A received Energy Shield was not seen in the game; spawning it again.")
             ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
         return
     ctx.shield_misses = 0
     ctx.shield_given = (key, shields_given(ctx, key) + 1)
-    logger.info("A received Energy Shield is up.")
+    detail("A received Energy Shield is up.")
     ctx.shield_retry_at = time.monotonic() + SHIELD_GAP_SECONDS
     await send_shield_count(ctx)
 
@@ -1214,7 +1237,7 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
             logger.warning(f"DeathLink: sending the death failed ({exc}).")
     if step.goal and ctx.deaths.owed:
         ctx.deaths.ending()
-        logger.info("DeathLink: the ending began, so the received deaths queued are dropped.")
+        detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
     if not ctx.deaths.owed or helper is None or state != game.IN_PLAY or now < ctx.death_retry_at:
         return
@@ -1224,11 +1247,11 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         ctx.deaths.dealt(time.monotonic())
         ctx.death_said = ""
         more = f" ({ctx.deaths.owed} more queued)" if ctx.deaths.owed else ""
-        logger.info(f"DeathLink: the received death was dealt{more}.")
+        detail(f"DeathLink: the received death was dealt{more}.")
         return
     ctx.deaths.refused()
     if reply != ctx.death_said and reply != "refused not settled":
-        logger.info(f"DeathLink: the received death is waiting: {reply}")
+        detail(f"DeathLink: the received death is waiting: {reply}")
     ctx.death_said = reply
     ctx.death_retry_at = time.monotonic() + DEATH_RETRY_SECONDS
 
@@ -1249,7 +1272,7 @@ async def skip_tick(ctx: ZexionContext) -> None:
             if ctx.discs is not None
             else "the goal is sent when the ending begins, either way"
         )
-        logger.info(
+        detail(
             f"Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; {goal}."
         )
     else:
@@ -1299,14 +1322,14 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             ctx.newgame_said = (ctx.connection, offer)
             if offer:
                 logger.info(
-                    "Ready for a new game: pick an empty slot and choose ARCHIPELAGO (in "
-                    "place of RANDOMIZER). It starts the AP seed."
+                    "To play, load this seed's save, or start a new game: pick an empty slot "
+                    "and choose ARCHIPELAGO."
                 )
             else:
                 logger.info(
-                    "Ready for a new game: in an empty slot choose RANDOMIZER, pick this seed's "
-                    "mode with no options changed, and START GAME. The AP seed is written in "
-                    "as the game starts."
+                    "To play, load this seed's save, or start a new game: in an empty slot "
+                    "choose RANDOMIZER, pick this seed's mode with no options changed, and "
+                    "START GAME (the AP seed is written in as the game starts)."
                 )
         return
     if time.monotonic() - ctx.newgame_polled_at < NEWGAME_POLL_SECONDS:
@@ -1315,7 +1338,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
     status = await asyncio.to_thread(helper.request, "newgame_status")
     if status.startswith("applied"):
         ctx.newgame_state = "done"
-        logger.info(f"The new game holds the AP seed ({status}).")
+        detail(f"The new game holds the AP seed ({status}).")
     elif status.startswith("refused"):
         ctx.newgame_state = None  # arm again for the next try
         logger.warning(f"No new game with the AP seed: {status[len('refused ') :]}.")
@@ -1388,6 +1411,8 @@ async def game_loop(ctx: ZexionContext) -> None:
             logger.info("Zexion has closed.")
             if ctx.shield_pending is not None:
                 ctx.shield_pending.left_play = True
+            with contextlib.suppress(Exception):
+                ctx.game_conn.pm.close_process()  # the exited game's handle
             ctx.game_conn = None
             ctx.drop_helper()
             continue
@@ -1407,7 +1432,7 @@ async def game_loop(ctx: ZexionContext) -> None:
                 # The new game holds the seed and is in play: arm again for another slot.
                 ctx.newgame_state = None
                 choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
-                logger.info(f"{choice} is armed again: another empty slot can start this seed.")
+                detail(f"{choice} is armed again: another empty slot can start this seed.")
             if step.seed_matches:
                 ctx.seed_loaded = True
                 ctx.discs_told = step.scanned
@@ -1520,8 +1545,15 @@ def launch(*args: str) -> None:
         action="store_true",
         help="Do not offer ARCHIPELAGO: start the seed from RANDOMIZER, its mode and START GAME.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Also show what the client sets up in the game for the seed (for testing).",
+    )
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     parsed = handle_url_arg(parser.parse_args(args), parser=parser)
+    global VERBOSE
+    VERBOSE = parsed.verbose
     if parsed.url:
         # The name goes in the Connect packet; websockets refuses a URL with a name and no
         # password, so connect to the host and port alone.

@@ -86,12 +86,33 @@ Energy Tanks, Missile Containers and Mega Bombs also need the player-state field
 `helper.py load` and `unload` change the running game too: ask before each one. They log to
 `lab/helper.jsonl`, and `load` refuses a build `client/game.py` does not know.
 
-The client. It needs Archipelago from `.ap/` with the world installed there (AP will not connect
-a client whose game it does not know):
+The client. From source it needs Archipelago from `.ap/` with the world installed there (AP will
+not connect a client whose game it does not know); from the Launcher (below), the Launcher's own:
 
 ```sh
-.venv/Scripts/python client/zexion_client.py --nogui archipelago://NAME@localhost:38281
+.venv/Scripts/python client/zexion_client.py --nogui --verbose archipelago://NAME@localhost:38281
 ```
+
+Its window shows what the player acts on (the connection, the helper, how to start,
+warnings); `--verbose` also shows what it sets up in the game for the seed (the labels,
+the ASSIST lock, INTEL CHIP and so on), which live tests of the client read in its log.
+
+A release for Archipelago's own Launcher (on `apworld`, where the world is):
+
+```sh
+.venv/Scripts/python tools/build_apworld.py   # dist/: zexion.apworld, zexion_ap.dll, version.dll
+```
+
+The apworld is `worlds/zexion` (without its tests) with `client/*.py` in `zexion/client/`;
+the world registers a **Zexion Client** launcher entry (and `archipelago://` links for
+Zexion), which puts that folder on the path and runs the client (`run_client` in
+`worlds/zexion/__init__.py`; from source, it uses this repo's `client/`). The build refuses
+a helper whose version is not the client's, and a DLL older than its sources (after a
+checkout that touched them, too: rebuild `native/` first). The packaged client has no helper build of its
+own, so it uses the helper the player copied into the game's folder. Run from the owner's
+Archipelago 0.6.8 Launcher, 2026-10-25, B1: the apworld installed, the Launcher's entry
+started the client, which connected and attached to the game and the helper, and, on the
+`live27` seed, sent the checks picked up and gave a received Missile Box with its popup.
 
 Once connected, its `/prepare SLOT` writes the seed into a slot holding a new randomizer game
 of the seed's mode (run in game for Standard only so far), saved at once (a slot that already holds the seed is left alone). It
@@ -99,7 +120,7 @@ replaces the slot file after a verified backup, which goes to `zexion_backups/` 
 Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
 save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.
 With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real. `ZEXION_AP_DIR` points the
-client at another Archipelago folder than `.ap/Archipelago`.
+client at another Archipelago folder than `.ap/Archipelago` (unused from the Launcher).
 
 When it attaches to the game, the client also loads the native helper built from `native/`
 (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
@@ -187,7 +208,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   player should own minus what the inventory holds), `save_patch.py` and `prepare.py` (writing
   a seed into a fresh save), `patterns.py` (byte patterns for each piece of game state) and
   `game.py` (attach, locate by pattern, read and write with checks, and `state()`: in play,
-  menu, dead or no save loaded). `native.py` loads the native helper and talks to it;
+  menu, dead or no save loaded), `process.py` (the game's memory through the Windows API,
+  as Archipelago's release bundles no pymem; the RE tools still use pymem). `native.py`
+  loads the native helper and talks to it;
   `newgame.py` turns the seed into the helper's new-game request (`ap_newgame`),
   `aplabels.py` other players' items into labels for the helper (`ap_labels`),
   `deathlink.py` decides when a death goes out and when a received one is dealt (`die`), and
@@ -214,8 +237,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   ©2026 MCAWFUL, under the title screen's copyright line, with START THE AP CLIENT TO
   PLAY A SEED above them while no client is connected (`title.cpp`; the two lines
   working in game 2026-10-25).
-- `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
-  tools and the write-guard hook.
+- `tools/`: RE and save tooling, and `build_apworld.py`, the release builder (on `apworld`; see
+  Commands). `tools/protected.py` defines the protected folders for both the tools and the
+  write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
 - `tests/`: pytest, host-only.
 - `lab/` (gitignored): save backups, working copies, memory snapshots.

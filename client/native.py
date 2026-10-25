@@ -493,6 +493,11 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
         if not built:
+            if not ROOT.is_dir():  # the client in an apworld: the player installs the helper
+                raise HelperError(
+                    "none is loaded in the game: with Zexion closed, copy this release's "
+                    "zexion_ap.dll and version.dll into Zexion's folder"
+                )
             raise HelperError(f"none is loaded in the game, and there is no build at {dll}")
         load(handle, g.pid, dll, if_absent=True)
     helper = Helper(g.pid)
