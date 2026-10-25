@@ -13,8 +13,9 @@ in the game with a local AP server, and the module that finds and accesses game 
 pattern. `native/` holds an in-game helper DLL, which runs in the game and gives received items
 there with the game's own popup, sound and HUD refresh (helper phase 2, live-tested on one
 seed), and starts a new game from the AP seed: ARCHIPELAGO in place of RANDOMIZER after an
-empty slot is picked (helper phase 3, live-tested on a Standard seed). While loaded, it also
-offers the game's escape skip after Zexion is grabbed (live-tested 2026-10-23), and shows
+empty slot is picked (helper phase 3, live-tested on a Standard seed). While a client is
+connected, it also offers the game's escape skip after Zexion is grabbed (live-tested
+2026-10-23), and shows
 other players' items with an Archipelago logo and their name at pickup (helper phase 4,
 live-tested 2026-10-23).
 [`docs/re/README.md`](docs/re/README.md) lists what has been measured so far.
@@ -110,7 +111,13 @@ client at another Archipelago folder than `.ap/Archipelago`.
 When it attaches to the game, the client also loads the native helper built from `native/`
 (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) and sends received items through it,
 with the game's popup; ask before a run that loads it into the game, as for `helper.py load`.
-Loading it also changes the game while it runs: grabbing Zexion offers the escape skip.
+A helper already in the game is used instead: the player may put `zexion_ap.dll` and the proxy
+`version.dll` (`native/build/proxy/Release/`) in the game's folder, and the game then loads it
+as it starts (live-tested 2026-10-25). That is the player's own step, with the game closed:
+our tools never write the game's folder. While a client is connected the helper also changes
+the game (grabbing Zexion offers the escape skip); when the client goes away it puts all of it
+back and does nothing until a client connects again (live-tested 2026-10-25 for the item
+records, ASSIST and the escape skip).
 For a seed with DeathLink on, the client sends the player's deaths and deals the ones it
 receives through the helper (the helper kills the player; live-tested 2026-10-23). For a
 seed that disallows assists (the world's default), the helper greys out the options menu's
@@ -134,8 +141,8 @@ saves (nothing with no disk), and the game's own again once the client disconnec
 DISKS?, whose YES starts the game's ending, which sends the goal (YES and NO live-tested
 2026-10-24). This goal
 needs the helper: without it nothing offers the ending.
-`--no-helper`, a missing build or a helper that fails means items are written directly, with
-no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
+`--no-helper`, no helper to use (none loaded in the game, and neither a build nor a copy in the
+game's folder) or a helper that fails means items are written directly, with no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are not for items the slot
 already held when the client connected (the list the server sends right after connecting), so
 a reconnect does not replay them. With the helper, the client also arms it with the seed,
@@ -172,7 +179,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `hints.py` which item each Area Map (Intel Chip) hints and the popup that names it, and `discs.py` the
   OS Install Disks count, its popups and the helper's `discs` and `disk_slots` requests.
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
-  hook on the game's thread and a command pipe (`native/README.md`). Helper phase 2 applies
+  hook on the game's thread and a command pipe (`native/README.md`). `native/proxy/` is the
+  proxy `version.dll` (built by the same CMake project into `native/build/proxy/Release/`) that
+  a player puts with the helper in the game's folder so the game loads it as it starts. Helper phase 2 applies
   grants between frames, with the game's popup, sound and HUD refresh; helper phase 3 starts
   a new game from the AP seed (ARCHIPELAGO); both working in game. It also patches the game's
   loaded event 3665 so the escape skip is offered in any game (`hello` reports `skip=`;

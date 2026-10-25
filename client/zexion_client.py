@@ -35,8 +35,9 @@ Once connected:
   (working in the game, 2026-10-23). The helper holds the labels only while this seed's save
   is loaded; while another save (or none) is, and on disconnect, they are taken back, so
   Scrap Energy and Scrap Chunk are the game's own there. A refusal (no frame yet) is retried.
-- When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
-  game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
+- When it attaches to Zexion it uses the native helper (native/, client/native.py) the game
+  loaded with the proxy in its folder, or loads it into the game, unless started with
+  ``--no-helper`` or there is none to load. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
   "MISSILE BOX FROM ALICE") and a HUD refresh; live-tested on 2026-10-22. Without
   the helper, or if it fails, items are written directly, with no popup, and the client tries
@@ -694,12 +695,10 @@ async def attach_helper(ctx: ZexionContext) -> None:
     """Load and configure the native helper in the attached game, or carry on without it."""
     if not ctx.use_helper:
         return
-    dll = native.default_dll()
-    if not dll.is_file():
-        logger.info(f"No native helper at {dll}: items will arrive with no popup.")
-        return
+    dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
+    notes: list[str] = []
     try:
-        ctx.helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll)
+        ctx.helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
     except native.HelperError as exc:
         logger.warning(f"The in-game helper could not be used ({exc}); items arrive with no popup.")
         ctx.drop_helper()
@@ -715,6 +714,8 @@ async def attach_helper(ctx: ZexionContext) -> None:
     # loaded, where this seed's are sent over them.
     ctx.labels_held = True
     ctx.labels_sent = ctx.labels_refused = False
+    for note in notes:
+        logger.info(note)
     logger.info("The in-game helper is running: received items are sent with the game's popup.")
     ctx.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS
 

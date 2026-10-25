@@ -11,11 +11,13 @@ optional HUD refresh, and popups. The AP client (client/session.py) grants throu
 is attached; tools/helper.py loads and unloads it for tests.
 
 Loading: a remote thread runs ``LoadLibraryW`` on the helper's path, with a timeout, under a
-named mutex so two loaders cannot race. Talking: the client opens the pipe at the
-identification level only (the server cannot act as the user) and checks that the process
-serving it is the game, so another program that took the name first is refused. Loading is a
-change to the running game, made only when asked, and the helper hooks nothing in a build it
-does not know.
+named mutex so two loaders cannot race. The player may instead have put the helper in the
+game's folder with the proxy ``version.dll`` (native/README.md, "The proxy"), which loads it as
+the game starts, under the same mutex; ``attach`` then uses that one. Talking: the client
+opens the pipe at the identification level only (the server cannot act as the user) and checks
+that the process serving it is the game, so another program that took the name first is
+refused. Loading is a change to the running game, made only when asked, and the helper hooks
+nothing in a build it does not know.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.19.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.20.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -199,6 +201,8 @@ def _psapi():
     k.EnumProcessModulesEx.argtypes = [h, ctypes.POINTER(wintypes.HMODULE), d, ctypes.POINTER(d), d]
     k.GetModuleBaseNameW.restype = d
     k.GetModuleBaseNameW.argtypes = [h, wintypes.HMODULE, wintypes.LPWSTR, d]
+    k.GetModuleFileNameExW.restype = d
+    k.GetModuleFileNameExW.argtypes = [h, wintypes.HMODULE, wintypes.LPWSTR, d]
     return k
 
 
@@ -239,6 +243,16 @@ def module_names(process_handle: int, attempts: int = 5) -> list[str]:
             return names
         time.sleep(0.02)
     raise HelperError(f"cannot list the game's modules: {_last_error()}")
+
+
+def game_folder_dll(process_handle: int) -> Path | None:
+    """The helper beside the game's executable (where the player put it with the proxy), if
+    there is one there. Only read: the client never writes the game's folder."""
+    path = ctypes.create_unicode_buffer(1024)
+    if not _PSAPI.GetModuleFileNameExW(process_handle, None, path, len(path)):
+        return None
+    dll = Path(path.value).parent / DLL_NAME
+    return dll if dll.is_file() else None
 
 
 def is_loaded(process_handle: int) -> bool:
@@ -287,8 +301,15 @@ def _load_library(process_handle: int, path: Path, seconds: float) -> None:
             _K.VirtualFreeEx(process_handle, remote, 0, MEM_RELEASE)
 
 
-def load(process_handle: int, pid: int, dll: Path, seconds: float = LOAD_SECONDS) -> None:
-    """Load the helper into the process. Refuses if a helper is already loaded."""
+def load(
+    process_handle: int,
+    pid: int,
+    dll: Path,
+    seconds: float = LOAD_SECONDS,
+    if_absent: bool = False,
+) -> bool:
+    """Load the helper into the process: True once loaded. A helper already loaded is refused,
+    or with ``if_absent`` left as it is (False): the proxy may have loaded it meanwhile."""
     if not dll.is_file():
         raise HelperError(f"{dll} does not exist; build native/ first (native/README.md)")
     mutex = _K.CreateMutexW(None, False, f"Local\\zexion-ap-load-{pid}")
@@ -299,10 +320,13 @@ def load(process_handle: int, pid: int, dll: Path, seconds: float = LOAD_SECONDS
             raise HelperError("another loader is busy with this game")
         try:
             if is_loaded(process_handle):
+                if if_absent:
+                    return False
                 raise HelperError("a helper is already loaded; unload it first")
             _load_library(process_handle, dll.resolve(), seconds)
             if not is_loaded(process_handle):
                 raise HelperError(f"loading {dll.name} into the game failed")
+            return True
         finally:
             _K.ReleaseMutex(mutex)
     finally:
@@ -427,20 +451,51 @@ class Helper:
         self.close()
 
 
-def attach(g, dll: Path) -> Helper:
+def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     """The helper in game ``g``, loaded if it is not, and configured. ``g`` is an attached
-    ``game.Game``. A helper of another version is unloaded and the built one loaded instead."""
+    ``game.Game``. A helper already loaded (by the proxy in the game's folder, or by an earlier
+    client) is used. One of another version is unloaded and the built ``dll`` loaded instead,
+    if there is one; a copy in the game's folder that cannot be replaced so is refused, as the
+    player has to update it there. ``notes`` collects what the client should tell the player."""
     handle = g.pm.process_handle
+    built = dll.is_file()
+    if not built:
+        # No build: the game folder's copy, as the proxy loads it (after an unload, say).
+        dll = game_folder_dll(handle) or dll
+        built = dll.is_file()
     if is_loaded(handle):
         with Helper(g.pid) as old:
-            stale = old.hello()["version"] != VERSION
-            if stale and (old.request("unload") != "bye" or not wait_unloaded(handle)):
-                raise HelperError("could not replace a helper of another version")
+            hello = old.hello()
+            version = hello.get("version", "")
+            in_folder = hello.get("folder") == "1"
+            if version != VERSION:
+                if in_folder and not built:
+                    raise HelperError(
+                        f"the helper in the game's folder is version {version}, and this client "
+                        f"needs {VERSION}: copy this release's zexion_ap.dll and version.dll there"
+                    )
+                if old.request("unload") != "bye" or not wait_unloaded(handle):
+                    raise HelperError("could not replace a helper of another version")
+                if in_folder and notes is not None:
+                    notes.append(
+                        f"The helper in the game's folder is version {version}; the built "
+                        f"{VERSION} is used instead (update the game folder's copy)."
+                    )
+            elif in_folder and notes is not None:
+                notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
-        load(handle, g.pid, dll)
+        if not built:
+            raise HelperError(f"none is loaded in the game, and there is no build at {dll}")
+        load(handle, g.pid, dll, if_absent=True)
     helper = Helper(g.pid)
     try:
         hello = helper.hello()
+        # The proxy may have loaded its copy after the version check above: checked again.
+        if hello.get("version") != VERSION:
+            raise HelperError(
+                f"the helper loaded is version {hello.get('version')}, not {VERSION}; "
+                "trying again replaces it"
+            )
         if hello.get("hooked") != "1":
             raise HelperError(f"the helper did not hook the game: {hello}")
         helper.configure(dict(g.rva))

@@ -641,6 +641,18 @@ void test_escape_skip() {
     game.restore_skip();
     check(event_else() == -1 && !game.skip_offered(), "restored");
 
+    // No client (it went away): the base game's event, until a client configures it again.
+    reset_events();
+    check(game.active(), "active once configured");
+    game.set_active(false);
+    for (int i = 0; i < 31; ++i) game.watch_skip();
+    check(event_else() == -1 && !game.skip_offered(), "no client: no skip");
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty() && game.active(),
+          "a client's config: active again");
+    for (int i = 0; i < 31; ++i) game.watch_skip();
+    check(event_else() == 3668, "and the skip offered again");
+    game.restore_skip();
+
     reset_events();
     event_3665()[2] = 251;  // not the record traced on B1
     for (int i = 0; i < 31; ++i) game.watch_skip();
