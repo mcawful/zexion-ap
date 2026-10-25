@@ -44,6 +44,11 @@ from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
 SLOT_COPY = 0x908  # a slot's copy of its randomizer section
+# The loaded slot's block from +0x9354 (file 0x9356): a 16-bit value that changed with each
+# save (play time, assumed), then the continue point's row (+0x935A) and column (+0x935C). The
+# game rewrites the block on every save (measured, docs/re/save-format.md).
+SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
+PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
 
 PROCESS = "Zexion.exe"
 MAP_SIZE = 54
@@ -300,6 +305,18 @@ class Game:
             return GameNotRunning(f"{PROCESS} (pid {self.pid}) exited during {what}")
         return GameError(f"{what} at {address:#x} failed in a running game: {exc}")
 
+    def code_checks(self, keys: Iterable[str], size: int) -> dict[str, bytes]:
+        """The first ``size`` bytes of each located target among ``keys`` that lies in the
+        game's code (.text), as the game holds them: what the helper compares before it uses
+        cached addresses (client/offline.py)."""
+        start, length = code_section(self._read_pointer(self.base, 0x1000))
+        out = {}
+        for key in keys:
+            rva = self.rva.get(key)
+            if rva is not None and start <= rva < start + length:
+                out[key] = self._read_pointer(self.base + rva, size)
+        return out
+
     # Every access goes through these two, so the liveness check cannot be skipped.
     def _read(self, target: str, offset: int, size: int) -> bytes:
         return self._read_pointer(self.base + self.rva[target] + offset, size)
@@ -455,6 +472,21 @@ class Game:
             used = self._read("slot_array", n * SLOT_STRIDE + 0x935E, 1)[0] != 0xFF
             out.append((marker, used))
         return out
+
+    def save_stamp(self) -> bytes:
+        """The loaded slot (``current_slot``, 0-based, 4 bytes) and its block's bytes from
+        SAVE_STAMP_AT: new after every save, its continue point the save point last used."""
+        raw = self._read("current_slot", 0, 4)
+        slot = struct.unpack("<i", raw)[0]
+        if not 0 <= slot < SLOTS:
+            raise GameError(f"the current slot reads {slot}")
+        return raw + self._read("slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, SAVE_STAMP_SIZE)
+
+    def player_cell(self) -> tuple[int, int]:
+        """The player's map cell as the player update keeps it (docs/re/memory.md, "Other
+        players' items"): +0x107A, floor(x / 320), and +0x107B, floor((y - 8) / 224)."""
+        raw = self._read("inventory", PLAYER_CELL - INVENTORY_IN_PLAYER_STATE, 2)
+        return raw[0], raw[1]
 
     def rando_slot_copies(self) -> bytes:
         """The game's copy of each slot's randomizer section (30 of SLOT_COPY bytes, in the

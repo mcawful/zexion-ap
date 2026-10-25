@@ -22,7 +22,9 @@
 #include "pause.h"
 #include "files.h"
 #include "intel.h"
+#include "offline.h"
 #include "scan.h"
+#include "title.h"
 #include "skip.h"
 
 namespace zap {
@@ -41,6 +43,7 @@ struct Popup {
     uint8_t item;
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
+    bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
 };
 
 struct Batch {
@@ -152,7 +155,9 @@ public:
     // Checks every key is present and lies inside `image` (functions in executable code, data
     // in writable data, with room for the whole player state around the inventory), then keeps
     // the addresses. Game thread. Returns "" or an error.
-    std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas);
+    // `active`: a client sent it (false: the offline cache, offline.h).
+    std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
+                          bool active = true);
     bool configured() const { return configured_; }
     // Whether a client is there: set by `config`, cleared when the client goes away. Without
     // one, nothing the helper does on its own (the escape skip) runs.
@@ -271,7 +276,14 @@ public:
     // frame; the stand-in calls the game's handler (file_entry_original) and then file_event.
     void set_file_entry_hook(void* hook) { file_hook_ = hook; }
     void set_disk_slots(int count, int required, std::set<int> slots) {
-        files_.set(count, required, std::move(slots));
+        (void)required;  // not shown (the owner's layout)
+        client_file_counts_.clear();
+        for (int slot : slots) client_file_counts_[slot] = count;
+        apply_file_counts();
+    }
+    void set_disk_slot_counts(std::map<int, int> counts) {
+        client_file_counts_ = std::move(counts);
+        apply_file_counts();
     }
     void watch_files();
     void* file_entry_original(void* widget) const { return files_.original(widget); }
@@ -282,8 +294,32 @@ public:
     // Game thread: the Area Map named INTEL CHIP, its map reveal off, while on (`intel`,
     // intel.h), and put back.
     void set_intel(bool on) { intel_.set(on); }
+
+    // Game thread: AP saves without the client (offline.h). The seeds the client left, read
+    // from its files; each frame, while no client is there, a save of one of them is given its
+    // look, and the file select their disk counts. `offline_state` for `hello`: "-" with none,
+    // else how many, then ":" and the file of the one loaded.
+    void set_offline(std::vector<OfflineSeed> seeds);
+    void watch_offline();
+    void leave_offline();
+    std::string offline_state() const;
+    // Game thread (`other_save`, from a client whose session sees a randomizer save in play
+    // that is not its seed's): THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. once a load and
+    // again after a reconnect (whether shown now),
+    // and the save's offline look if the helper has its seed's file, until the save goes.
+    bool other_save();
+    // Game thread (`client_back`, from a client whose session has seen its seed's save in play):
+    // if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once. Whether it did.
+    bool client_back();
     bool intel_on() const { return intel_.on(); }
     void watch_intel();
+    // Game thread: the title screen's mod lines (title.h): the version they name, the watch
+    // (configured, client or not), and hidden before an unload. `title_state` for `hello`:
+    // "1" up, "0" not, else why they could not be made.
+    void set_title_version(const std::string& version) { title_.set_version(version); }
+    void watch_title();
+    void hide_title();
+    std::string title_state() const;
     void restore_intel();
     void watch_mission();
     void mission_open();
@@ -328,6 +364,29 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
+    // Offline (offline.h).
+    void leave_offline_seed();
+    void drop_offline_warning();
+    bool offline_warned_ = false;  // this load's warning queued
+    // The seed whose save this load was dressed offline (-1: none), kept through a client's
+    // short connections (they undress it): `client_back` tells the player the client is back.
+    int offline_played_ = -1;
+    bool other_save_ = false;     // a client said the loaded save is not its seed's
+    bool other_warned_ = false;   // this load's other-seed notice queued
+    bool other_mode() const { return active_ && other_save_; }
+    bool section_is(const OfflineSeed& seed, const BYTE* section) const;
+    std::vector<OfflineSeed> offline_seeds_;
+    int offline_index_ = -1;  // the seed whose save is loaded
+    int offline_count_ = -1, offline_told_ = -1;
+    int offline_frames_ = 0;
+    bool offline_skip_ = false;
+    // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
+    std::map<int, int> client_file_counts_, offline_file_counts_;
+    void apply_file_counts();
+    BYTE* map_grid_ = nullptr;
+    BYTE* flags_ = nullptr;
+    BYTE* slot_array_ = nullptr;
+    BYTE* rando_slots_ = nullptr;
     BYTE* base_ = nullptr;
     BYTE* inventory_ = nullptr;
     BYTE* save_loaded_ = nullptr;
@@ -390,6 +449,9 @@ private:
     FileAddresses files_at_;
     FileDisks files_;
     IntelChip intel_;
+    TitleAddresses title_at_;
+    TitleLines title_;
+    std::string title_error_;
     void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;

@@ -34,7 +34,13 @@ Once connected:
   Zexion player's item: its own icon and name, aplabels.zexion_look) over "FOR ALICE"
   (working in the game, 2026-10-23). The helper holds the labels only while this seed's save
   is loaded; while another save (or none) is, and on disconnect, they are taken back, so
-  Scrap Energy and Scrap Chunk are the game's own there. A refusal (no frame yet) is retried.
+  Scrap Energy and Scrap Chunk are the game's own there (except the helper's offline look,
+  below, which also dresses a save of another known seed: other_save_tick). A refusal (no
+  frame yet) is retried.
+- While connected it sends the helper what it needs for this seed's saves without the client
+  (client/offline.py, ``offline_put``): the addresses and a small file per seed, which the
+  helper writes into %LOCALAPPDATA%\\ZexionAP and uses while no client is there (live-tested
+  2026-10-25).
 - When it attaches to Zexion it uses the native helper (native/, client/native.py) the game
   loaded with the proxy in its folder, or loads it into the game, unless started with
   ``--no-helper`` or there is none to load. Items are then sent
@@ -57,18 +63,23 @@ Once connected:
   player gets, received from another world or found in one of this world's locations, hints
   the next progression item of this player's that the player does not have (client/hints.py):
   the client creates the Archipelago hint and names it in a popup, the received Area Map's own
-  or, for one found here, one after the game's pickup popup. Which item each Area Map hinted is
-  kept in the server's data storage. Received Area Maps live-tested 2026-10-24 (B1), one found
-  in the player's own world 2026-10-25. Such a seed's Area Maps are Intel Chips (slot data
-  "intel_chip"): the client counts a received one as the game's Area Map, and while this
-  seed's save is loaded has the helper name the Area Map INTEL CHIP and turn off its map
-  reveal (`intel on`; live-tested 2026-10-25).
+  or, for one found here, one after the game's pickup popup (followups_tick). Which item each
+  Area Map hinted is kept in the server's data storage. Received Area Maps live-tested
+  2026-10-24 (B1), one found in the player's own world 2026-10-25. Such a seed's Area Maps
+  are Intel Chips (slot data "intel_chip"): the client counts a received one as the game's
+  Area Map, and while this seed's save is loaded has the helper name the Area Map INTEL CHIP
+  and turn off its map reveal (`intel on`; live-tested 2026-10-25).
 - For a seed with the OS Install Disks goal (slot data "goal": "os_install_disks"), the client
   counts the disks (client/discs.py): received, and found in this world (what it reported
   from the game's map, kept in the server's data storage for every save of the seed, so a
   release gives none). A disk is never put in the game's inventory:
   a received one pops up as "OS INSTALL DISK 3 OF 15" ("OF 15" once the scanner has said how
   many), one found here, a stand-in labeled as one, gets the same popup after the game's own.
+  Those follow-up popups (a found disk's count, a found Area Map's hint) are shown once for
+  each, whenever it was found, offline too: the server's data storage keeps which were shown
+  (followups_tick), and the loaded save's missing ones come when the client can show them,
+  after ARCHIPELAGO CLIENT CONNECTED. if the save was played offline (client_back_tick;
+  live-tested 2026-10-25).
   The helper shows the count on the equipment and pause screens and in the scanner's message,
   and, with the helper loaded, on the file select for the save slots holding the seed (read
   from the game every SLOTS_READ_SECONDS, sent as the helper's `disk_slots` request).
@@ -115,6 +126,7 @@ import game  # noqa: E402
 import hints  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
+import offline  # noqa: E402
 import prepare  # noqa: E402
 import reconcile  # noqa: E402
 import save_patch  # noqa: E402
@@ -130,6 +142,7 @@ NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
 LABELS_RETRY_SECONDS = 5.0
 SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
+OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
 SHIELD_GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
@@ -219,7 +232,6 @@ class ZexionContext(CommonContext):
         self.hints_key: str | None = None
         self.hints_mine: dict[str, tuple[int, int]] | None = None
         self.hints_sent_at = 0.0
-        self.hints_ready = False  # this connection has looked once: later finds get a popup
         self.hints_identity: tuple | None = None  # (seed, team, slot) hints_mine is for
         self.items_listed = False  # the server's full item list has come for this connection
         self.awaiting_backlog = False  # Connected came: the next packet may be that list
@@ -233,6 +245,13 @@ class ZexionContext(CommonContext):
         # the server's data storage under this key (own_found): a release, which checks every
         # location on the server, never writes it.
         self.found_key: str | None = None
+        # The follow-up popups (a disk's count, an Intel Chip's hint) shown for this world's own
+        # finds, by location index: the server's record, and this client's until it has them.
+        self.popped_key: str | None = None
+        self.popped_mine: set[int] = set()
+        self.save_collected: set[int] = set()  # the loaded save's collected locations
+        self.client_back_sent = False  # the helper asked once per attach (client_back)
+        self.other_save_sent = False  # the helper told of another seed's save, this load
         self.shield_retry_at = 0.0
         self.shield_said = ""
         # A shield spawned but not counted yet (shields_tick), and how many spawns in a row
@@ -282,16 +301,14 @@ class ZexionContext(CommonContext):
         # Install Disks goal, only an ending that begins in it is the goal, not one a save held.
         self.ending_unseen = False
         # The OS Install Disks goal (client/discs.py): the seed's hunt, or None for the core
-        # goal, and this world's own disk locations whose popup was shown (or that were checked
-        # before this connection's first look).
+        # goal (the found disks' popups: followups_tick).
         self.discs: discs.DiscHunt | None = None
-        self.discs_announced: set[int] = set()
-        self.discs_ready = False
         # Whether this seed's save has had the scanner's message, which says how many disks are
         # needed: until then the popups give the count alone.
         self.discs_told = False
-        # RETURN HOME WITH THE DISKS? offered for this load of the save (mission_tick).
-        self.mission_asked = False
+        # For this load of the save: the landing-pod reminder and the saves watched for one at
+        # the pod, after which RETURN HOME WITH THE DISKS? is offered (mission_tick).
+        self.return_home = discs.ReturnHome()
         # What the helper was last told (discs.request, or discs.OFF; None: nothing yet, or a
         # new helper, which may hold an earlier client's).
         self.discs_sent: str | None = None
@@ -303,6 +320,10 @@ class ZexionContext(CommonContext):
         # when the slots are read again.
         self.slots_sent: str | None = None
         self.slots_read_at = 0.0
+        # The helper's files for AP saves without the client (client/offline.py).
+        self.offline_at = 0.0
+        self.offline_failed = False
+        self.offline_sent: dict[str, str] = {}  # what the helper last kept, by kind
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -334,6 +355,9 @@ class ZexionContext(CommonContext):
             self.set_notify(self.shield_key)
             self.found_key = f"zexion_found_{self.team}_{self.slot}"
             self.set_notify(self.found_key)
+            self.popped_key = f"zexion_popped_{self.team}_{self.slot}"
+            self.set_notify(self.popped_key)
+            self.popped_mine = set()
             # A world from before Area Map hints sends no "hints": Area Maps are filler.
             self.hint_targets = [list(t) for t in slot.get("hints", [])]
             self.hints_key = f"zexion_hints_{self.team}_{self.slot}"
@@ -345,7 +369,6 @@ class ZexionContext(CommonContext):
             self.stored_data.pop(self.hints_key, None)
             self.items_listed = False
             self.seed_loaded = False
-            self.hints_ready = False
             if self.hint_targets:
                 self.set_notify(self.hints_key)
             death_key = (self.seed_name, self.team, self.slot)
@@ -376,10 +399,8 @@ class ZexionContext(CommonContext):
                 )
             self.goal_sent = False
             self.discs = discs.from_slot_data(slot)
-            self.discs_announced = set()
-            self.discs_ready = False
             self.discs_told = False
-            self.mission_asked = False
+            self.return_home = discs.ReturnHome()
             if self.discs is not None and not self.use_helper:
                 logger.warning(
                     "This seed's goal is the OS Install Disks, which needs the in-game helper "
@@ -401,9 +422,11 @@ class ZexionContext(CommonContext):
         self.connection += 1
         self.shield_key = None
         self.found_key = None
+        self.popped_key = None
+        self.popped_mine = set()
+        self.save_collected = set()
         self.hint_targets = []
         self.hints_key = None
-        self.hints_ready = False
         self.items_listed = False
         self.seed_loaded = False
         self.lock_assists = False
@@ -508,64 +531,152 @@ def owned_from_locations(ctx: ZexionContext) -> set[tuple[int, int]]:
 
 
 async def mission_tick(ctx: ZexionContext, step: session.Step) -> None:
-    """With the OS Install Disks goal, once the player has enough disks, have the helper offer
-    RETURN HOME WITH THE DISKS? (native/src/mission.h), whose YES starts the game's ending: once
-    per load of this seed's save, in play, until that save has reached the ending (flag 250)."""
+    """With the OS Install Disks goal, once the player has enough disks: the reminder to save at
+    the landing pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
+    own popups; then, after each save at the landing pod (the seed's start), RETURN HOME WITH
+    THE DISKS? (native/src/mission.h), whose YES starts the game's ending. Never once that save
+    has reached the ending (flag 250)."""
     hunt = ctx.discs
     helper = ctx.helper
+    home = ctx.return_home
     if (
         hunt is None
         or helper is None
-        or ctx.mission_asked
         or not step.seed_matches
         or step.state != game.IN_PLAY
         or step.ended
         or not ctx.items_listed
+        or not step.save_stamp
     ):
         return
-    if discs.owned(hunt, ctx.received()[0], own_found(ctx)) < hunt.required:
+    enough = discs.owned(hunt, ctx.received()[0], own_found(ctx)) >= hunt.required
+    home.see(step.save_stamp, step.at_start, enough, step.in_start_cell)
+    if not enough or not ctx.client_back_sent:
+        return
+    # After the found disks' count popups (followups_tick), so the reminder comes last.
+    done = popped(ctx)
+    if done is None or any(i in hunt.locations for i in ctx.save_collected - done):
+        return
+    if home.remind(enough):
+        note = [(discs.DATA_DISC, discs.POD_NOTE, True)]
+        reply = await asyncio.to_thread(helper.apply, native.batch_text([], note))
+        if helper is not ctx.helper or reply != "applied":
+            return
+        home.reminded = True
+        logger.info(
+            "Enough OS Install Disks: save at the landing pod (the seed's start) to be offered "
+            "RETURN HOME WITH THE DISKS?."
+        )
+    if not home.offer:
         return
     reply = await asyncio.to_thread(helper.request, "mission_prompt")
     if helper is not ctx.helper or reply != "queued":
         return
-    ctx.mission_asked = True
+    home.offer = False
     logger.info(
-        "Enough OS Install Disks: RETURN HOME WITH THE DISKS? is offered. YES starts the game's "
-        "ending, which sends the goal; NO plays on, and it is offered again on the next load."
+        "Saved at the landing pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "
+        "offered. YES starts the game's ending, which sends the goal; NO plays on, and it is "
+        "offered again after the next save there."
     )
 
 
-async def discs_found_tick(ctx: ZexionContext) -> None:
-    """Pop up the count after the game's own popup for each of this world's disks the player has
-    just found (not for those the save held when this connection first saw it)."""
+def popped(ctx: ZexionContext) -> set[int] | None:
+    """The location indices whose follow-up popup has been shown (the server's record and this
+    client's), or None until the server's record has been read."""
+    key = ctx.popped_key
+    if key is None or key not in ctx.stored_data:
+        return None
+    stored = ctx.stored_data.get(key)
+    out = set(ctx.popped_mine)
+    if isinstance(stored, dict):  # the key is open to any client in the room: only indices
+        out |= {int(k) for k in stored if isinstance(k, str) and k.isdigit() and int(k) < 154}
+    return out
+
+
+async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """Once a load: a randomizer save of another seed in play. The helper tells the player
+    nothing is sent or received, and gives the save its look if it knows the seed
+    (other_save; client/offline.py)."""
+    helper = ctx.helper
+    if not step.other_seed:
+        # Asked again for the next such save: the helper says it once a load, and again after
+        # a reconnect (Game::other_save).
+        ctx.other_save_sent = False
+        return
+    if helper is None or ctx.other_save_sent or step.state != game.IN_PLAY:
+        return
+    reply = await asyncio.to_thread(helper.request, "other_save")
+    if helper is ctx.helper and not reply.startswith("refused"):
+        ctx.other_save_sent = True
+        logger.info("Another seed's save is loaded: the game says nothing is sent or received.")
+
+
+async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """Once per attach, when this seed's save is first seen in play: if the helper dressed it
+    with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED. (client_back)."""
+    helper = ctx.helper
+    if helper is None or ctx.client_back_sent or not step.seed_matches:
+        return
+    if step.state != game.IN_PLAY:
+        return
+    reply = await asyncio.to_thread(helper.request, "client_back")
+    if helper is ctx.helper and not reply.startswith("refused"):
+        ctx.client_back_sent = True
+        if reply == "shown":
+            logger.info("This save was played without the client: told the client is back.")
+
+
+async def followups_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """The popup after the game's own for each of this world's finds that has one: an OS Install
+    Disk's count, an Intel Chip's (or Area Map's) hint. Shown once for each, for the loaded
+    save's collected locations, whenever it was found: in play, before this connection, or with
+    no client at all; the server keeps which were shown (popped_key), so none is skipped and
+    none shown twice."""
+    helper, plan = ctx.helper, ctx.plan
+    if helper is None or plan is None or not ctx.items_listed or not step.seed_matches:
+        return
+    if not ctx.client_back_sent:
+        return  # after the helper has been asked to say the client is back (client_back_tick)
+    done = popped(ctx)
+    if done is None:
+        return  # the server's record not read yet
+    waiting = sorted(ctx.save_collected - done)
+    if not waiting:
+        return
     hunt = ctx.discs
-    if hunt is None or not ctx.items_listed or not ctx.seed_loaded:
+    disks = [i for i in waiting if hunt is not None and i in hunt.locations]
+    maps = [i for i in waiting if plan.location_items[i] == hints.AREA_MAP and ctx.hint_targets]
+    used = hints_used(ctx) or {}
+    maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
+    if not disks and not maps:
         return
-    checked = own_found(ctx)
-    own = hunt.locations & set(checked)
-    if not ctx.discs_ready:
-        ctx.discs_announced = set(own)
-        ctx.discs_ready = True
-        return
-    new = own - ctx.discs_announced
-    if not new:
-        return
-    ctx.discs_announced |= new
-    if not ctx.seed_loaded or ctx.helper is None:
-        return
-    have = discs.owned(hunt, ctx.received()[0], checked)
-    first = have - len(new) + 1
-    popups = [
-        (discs.DATA_DISC, discs.note(first + k, hunt.required if ctx.discs_told else None), True)
-        for k in range(len(new))
-    ]
+    popups: list[tuple[int, str, bool]] = []
+    if disks:
+        have = discs.owned(hunt, ctx.received()[0], own_found(ctx))
+        # The ones shown now are the latest found: they count up to the count as it is.
+        first = have - len(disks) + 1
+        told = hunt.required if ctx.discs_told else None
+        popups += [(discs.DATA_DISC, discs.note(first + k, told), True) for k in range(len(disks))]
+    popups += [(hints.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
+    reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
+    if helper is not ctx.helper or reply != "applied":
+        return  # not shown: tried again
+    shown = set(disks) | set(maps)
+    ctx.popped_mine |= shown
     try:
-        reply = await asyncio.to_thread(ctx.helper.apply, native.batch_text([], popups))
-        if reply != "applied":
-            logger.info(f"The OS Install Disk's popup was not shown: {reply}")
-    except native.HelperError as exc:
-        logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-        ctx.drop_helper()
+        await ctx.send_msgs(
+            [
+                {
+                    "cmd": "Set",
+                    "key": ctx.popped_key,
+                    "default": {},
+                    "want_reply": False,
+                    "operations": [{"operation": "update", "value": {str(i): 1 for i in shown}}],
+                }
+            ]
+        )
+    except Exception as exc:  # a closing connection: this client's record holds them meanwhile
+        logger.warning(f"Recording the popups shown failed ({exc}).")
 
 
 def own_found(ctx: ZexionContext) -> list[int]:
@@ -604,8 +715,8 @@ async def store_found(ctx: ZexionContext, locations: set[int]) -> None:
 
 async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
     """Give each Area Map the player has and has not used yet the next item to hint
-    (hints.assign), create the Archipelago hints, store which entry each used, and pop up the
-    hint of an Area Map just found in this world (the game showed its own pickup popup)."""
+    (hints.assign), create the Archipelago hints, and store which entry each used. The hint of
+    one found in this world pops up from followups_tick."""
     if not ctx.hint_targets or ctx.plan is None or not ctx.items_listed:
         return  # no hints, or the server's item list not here yet (what the player owns)
     used = hints_used(ctx)
@@ -618,7 +729,6 @@ async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
         behind = ctx.hints_mine and any(k not in stored for k in ctx.hints_mine)
         if behind and time.monotonic() >= ctx.hints_sent_at + HINTS_RESEND_SECONDS:
             await store_hints(ctx)  # the server has not taken the last ones yet
-        ctx.hints_ready = True
         return
     by_player: dict[int, list[int]] = {}
     for player, location in new.values():
@@ -632,19 +742,6 @@ async def hints_tick(ctx: ZexionContext, codes: list[int]) -> None:
         return
     ctx.hints_mine = (ctx.hints_mine or {}) | new
     await store_hints(ctx)
-    # An Area Map just found in this world: its hint after the game's own pickup popup. Not
-    # for those found before this connection's first look (ctx.hints_ready).
-    found = [k for k in new if k.startswith("l")]
-    if ctx.hints_ready and ctx.seed_loaded and found and ctx.helper is not None:
-        popups = [(hints.AREA_MAP, hint_note(ctx, new[k]), True) for k in found]
-        try:
-            reply = await asyncio.to_thread(ctx.helper.apply, native.batch_text([], popups))
-            if reply != "applied":
-                logger.info(f"The Area Map's hint popup was not shown: {reply}")
-        except native.HelperError as exc:
-            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-            ctx.drop_helper()
-    ctx.hints_ready = True
 
 
 async def store_hints(ctx: ZexionContext) -> None:
@@ -706,10 +803,13 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
+    ctx.offline_sent = {}  # and the offline files sent again
+    ctx.client_back_sent = False  # and told the client is back, if the save was played offline
+    ctx.other_save_sent = False  # and of another seed's save
     ctx.intel_sent = None  # or the Area Map named INTEL CHIP
     ctx.discs_sent = None  # likewise its scanner line
     ctx.slots_sent = None  # and its file select
-    ctx.mission_asked = False  # and any prompt asked of the one before
+    ctx.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
     # Likewise it may hold an earlier client's labels: taken back unless this seed's save is
     # loaded, where this seed's are sent over them.
     ctx.labels_held = True
@@ -823,6 +923,106 @@ async def slots_tick(ctx: ZexionContext) -> None:
         ctx.slots_sent = want
 
 
+def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int] | None:
+    """The label of each map cell holding another player's item (or this player's own disk),
+    and how many are this player's own disks; None until the server has said what each holds."""
+    if ctx.session is None:
+        return None
+    infos = [ctx.locations_info.get(LOCATION_ID_BASE + i) for i in ctx.foreign]
+    if any(info is None for info in infos):
+        return None
+    labels: dict[tuple[int, int], str] = {}
+    own = 0
+    for i, info in zip(ctx.foreign, infos, strict=True):
+        player = ctx.player_names.get(info.player, "")
+        slot = ctx.slot_info.get(info.player)
+        code = info.item - ITEM_ID_BASE
+        if info.player == ctx.slot and 0 <= code <= 50:
+            text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
+            own += 1
+        elif slot is not None and slot.game == GAME and aplabels.zexion_look(code) is not None:
+            # Another Zexion player's own item, whatever that player's settings.
+            item, name = aplabels.zexion_look(code)
+            text = aplabels.zexion_label(item, player, name)
+        else:
+            text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
+        labels[tuple(ctx.session.cells[i])] = text
+    return labels, own
+
+
+def offline_files(ctx: ZexionContext) -> tuple[str | None, str | None]:
+    """What the helper needs to dress this seed's saves without the client (client/offline.py):
+    the config request for the attached game's build, and this seed's file; None for either
+    that is not known yet (no game attached; the items or the labels not listed yet)."""
+    config = None
+    g = ctx.game_conn
+    if g is not None:
+        try:
+            keys = [k for k in native.CONFIG_KEYS if k not in offline.NOT_CHECKED]
+            config = offline.config_text(
+                native.config_text(dict(g.rva)), g.code_checks(keys, offline.CHECK_BYTES)
+            )
+        except (native.HelperError, game.GameError):
+            config = None
+    seed = None
+    plan, sess = ctx.plan, ctx.session
+    if plan is not None and sess is not None and ctx.items_listed:
+        built = foreign_labels(ctx) if ctx.foreign else ({}, 0)
+        if built is not None:
+            labels = aplabels.labels_request(built[0]) if built[0] else None
+            hunt = ctx.discs
+            disc_info = None
+            if hunt is not None:
+                found = own_found(ctx)
+                have = discs.owned(hunt, ctx.received()[0], found)
+                unfound = offline.grid_cells(sess.cells, hunt.locations - set(found))
+                disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
+            seed = offline.seed_text(
+                plan.location_items,
+                plan.start,
+                ctx.intel_chip,
+                ctx.lock_assists,
+                disc_info,
+                labels,
+            )
+    return config, seed
+
+
+async def offline_tick(ctx: ZexionContext) -> None:
+    """Every few seconds, send the helper what it needs without the client (client/offline.py)
+    when it has changed: the addresses for this build, and this seed's file. The helper writes
+    them (``offline_put``), from inside the game, so they land where the game reads them."""
+    helper = ctx.helper
+    if helper is None or time.monotonic() < ctx.offline_at:
+        return
+    ctx.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
+    seed_name = ctx.server_seed_name or ctx.seed_name  # the server's (RoomInfo)
+    if not seed_name or not ctx.slot:
+        return
+    config, seed = offline_files(ctx)
+    name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
+    for kind, text, file in (("config", config, ""), ("seed", seed, name)):
+        if text is None or ctx.offline_sent.get(kind) == text:
+            continue
+        if len(text) > offline.MAX_FILE:
+            reply = f"error larger than {offline.MAX_FILE} bytes"
+        else:
+            try:
+                reply = await asyncio.to_thread(
+                    helper.request, offline.put_request(kind, text, file)
+                )
+            except native.HelperError as exc:
+                reply = f"error {exc}"
+            if helper is not ctx.helper:
+                return
+        if reply in ("stored", "unchanged"):
+            ctx.offline_sent[kind] = text
+            ctx.offline_failed = False
+        elif not ctx.offline_failed:
+            logger.warning(f"The helper did not keep the offline {kind} file: {reply}")
+            ctx.offline_failed = True
+
+
 async def labels_tick(ctx: ZexionContext) -> None:
     """Once the server has said what each location holding another player's item holds, send
     the helper a label per map cell (client/aplabels.py), while this seed's save is loaded. While
@@ -852,25 +1052,10 @@ async def labels_tick(ctx: ZexionContext) -> None:
         or time.monotonic() < ctx.labels_retry_at
     ):
         return
-    infos = [ctx.locations_info.get(LOCATION_ID_BASE + i) for i in ctx.foreign]
-    if any(info is None for info in infos):
+    built = foreign_labels(ctx)
+    if built is None:
         return  # the server has not answered yet
-    labels = {}
-    own = 0
-    for i, info in zip(ctx.foreign, infos, strict=True):
-        player = ctx.player_names.get(info.player, "")
-        slot = ctx.slot_info.get(info.player)
-        code = info.item - ITEM_ID_BASE
-        if info.player == ctx.slot and 0 <= code <= 50:
-            text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
-            own += 1
-        elif slot is not None and slot.game == GAME and aplabels.zexion_look(code) is not None:
-            # Another Zexion player's own item, whatever that player's settings.
-            item, name = aplabels.zexion_look(code)
-            text = aplabels.zexion_label(item, player, name)
-        else:
-            text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
-        labels[tuple(ctx.session.cells[i])] = text
+    labels, own = built
     connection = ctx.connection
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
     if connection != ctx.connection or helper is not ctx.helper:
@@ -913,6 +1098,8 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     helper = ctx.helper
     if helper is None or time.monotonic() < ctx.shield_retry_at:
         return
+    if ctx.session is not None and ctx.session.holding:
+        return  # the ending began in this load: on the next load, as other items (session.py)
     if reconcile.shields_owed(received, shields_given(ctx, key)) <= 0:
         return
     reply = await asyncio.to_thread(helper.request, "shield")
@@ -1162,6 +1349,12 @@ async def game_loop(ctx: ZexionContext) -> None:
                 ctx.drop_helper()
         if ctx.session is None or not ctx.slot:
             continue
+        try:
+            await offline_tick(ctx)  # the helper's files for this seed's saves without the client
+        except Exception as exc:  # never in the way of items and checks
+            if not ctx.offline_failed:
+                logger.warning(f"Writing the helper's offline files failed: {exc!r}")
+            ctx.offline_failed = True
         if ctx.game_conn is None:
             try:
                 ctx.game_conn = await asyncio.to_thread(game.Game.attach)
@@ -1218,11 +1411,13 @@ async def game_loop(ctx: ZexionContext) -> None:
             if step.seed_matches:
                 ctx.seed_loaded = True
                 ctx.discs_told = step.scanned
+                ctx.save_collected = set(step.checked)
                 if not step.ended:
                     ctx.ending_unseen = True  # this load is before the ending: one can begin
             elif step.left_seed:
                 ctx.seed_loaded = False
-                ctx.mission_asked = False  # offered again on the next load
+                ctx.save_collected = set()
+                ctx.return_home = discs.ReturnHome()  # reminded again on the next load
                 ctx.ending_unseen = False
         # A poll from before a reconnect says nothing of the new seed's lock or rename.
         if step.seed_matches and ctx.session is current:
@@ -1244,6 +1439,12 @@ async def game_loop(ctx: ZexionContext) -> None:
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
                 ctx.drop_helper()
+        if ctx.helper is not None and ctx.session is current:
+            try:
+                await other_save_tick(ctx, step)  # another seed's save: told so in the game
+            except native.HelperError as exc:
+                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+                ctx.drop_helper()
         if not step.seed_matches or ctx.session is not current:
             continue  # nothing to send, or the connection changed while the game was read
         shield_work = ctx.shield_pending is not None or ctx.shield_given is not None
@@ -1259,9 +1460,10 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.locations_checked |= new
             await ctx.check_locations(new)
             await store_found(ctx, new)
-        await discs_found_tick(ctx)
         if ctx.helper is not None:
             try:
+                await client_back_tick(ctx, step)  # first: CLIENT CONNECTED before the rest
+                await followups_tick(ctx, step)
                 await mission_tick(ctx, step)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); trying it again later.")

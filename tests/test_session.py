@@ -36,6 +36,7 @@ class FakeGame:
         self.reads = 0
         self.marker = 1
         self.flags = bytearray(0x9C4)
+        self.stamp = bytes(14)
 
     def state(self) -> str:
         self.reads += 1
@@ -60,6 +61,12 @@ class FakeGame:
 
     def flag(self, number: int) -> int:
         return self.flags[number]
+
+    def save_stamp(self) -> bytes:
+        return self.stamp
+
+    def player_cell(self) -> tuple[int, int]:
+        return (0, 0)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -150,6 +157,22 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
     assert step.checked == {5} and step.goal
 
 
+def test_items_received_once_the_ending_begins_wait_for_the_next_load(setup) -> None:
+    session, g = setup
+    assert not session.step(g, [], gap=0).goal
+    g.flags[ss.ENDING_FLAG] = 1  # the ending begins; some of its cutscenes read as play
+    assert session.step(g, [], gap=0).goal and session.holding
+    for _ in range(3):  # a release or collect on the goal sends items now
+        assert session.step(g, [17], gap=0).granted == {}
+    assert g.inv[17] == 0
+    g.state_value = game.NO_SAVE  # the ending ends at the title
+    session.step(g, [17], gap=0)
+    assert not session.holding
+    g.state_value = game.IN_PLAY  # the save loaded again, its ending reached before
+    give(session, g, [17])
+    assert g.inv[17] == 1
+
+
 def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     session, g = setup
     g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead
@@ -194,7 +217,9 @@ def test_another_seed_gets_nothing(setup) -> None:
     session, g = setup
     g.blob = blob_for(plan(start=(6, 1, 1)))
     g.collect(5)
-    assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
+    step = session.step(g, [17], gap=0)
+    # Another seed's save, said so (the helper tells the player: other_save_tick).
+    assert step.left_seed and step.other_seed and not step.seed_matches and not step.checked
     assert g.inv[17] == 0
 
 
