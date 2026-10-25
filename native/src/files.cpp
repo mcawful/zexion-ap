@@ -7,10 +7,12 @@
 
 namespace zap {
 
+// A 3-wide D and I, then the game's own S and 4-wide K (as its KEYS draws them, 0x81 and
+// 0x82), each letter one blank column from the next (the owner's pick, 2026-10-25).
 const char kDiskHeaderRows[2][8][9] = {
-    {"........", "........", "###..###", "#..#..#.", "#..#..#.", "#..#..#.", "###..###",
+    {"........", "........", "##..###.", "#.#..#..", "#.#..#..", "#.#..#..", "##..###.",
      "........"},
-    {"........", "........", "..##.#.#", ".#...#.#", "..#..##.", "...#.#.#", ".##..#.#",
+    {"........", "........", ".##.#..#", "#...#.#.", ".#..##..", "..#.#.#.", "##..#..#",
      "........"},
 };
 
@@ -151,9 +153,9 @@ std::string file_disk_digits(int value) {
 }
 
 void FileDisks::set(int count, int required, std::set<int> slots) {
-    count_ = count;
-    required_ = required;
-    slots_ = std::move(slots);
+    (void)required;  // the number needed is not shown (the owner's layout)
+    counts_.clear();
+    for (int slot : slots) counts_[slot] = count;
 }
 
 void* FileDisks::original(void* widget) const {
@@ -228,7 +230,10 @@ void FileDisks::update(BYTE* entry, Wrapped& w) {
 
 bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     int32_t slot = 0;
-    if (!read(entry, kChildSlot, slot) || slots_.count(slot) == 0) return false;
+    if (!read(entry, kChildSlot, slot)) return false;
+    auto listed = counts_.find(slot);
+    if (listed == counts_.end()) return false;
+    const int shown = listed->second;
     BYTE* block = nullptr;
     uint8_t empty = kEmptySlot;
     if (!read(entry, kChildBlock, block) || !read(block, kBlockEmpty, empty) ||
@@ -237,14 +242,14 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     }
     // What the block should read: DISK, then the count, then nothing; with no disk, nothing at
     // all, as a save with no key (the owner's ask).
-    std::string count = file_disk_digits(count_);
+    std::string count = file_disk_digits(shown);
     int32_t want[6] = {kDiskHeaderGlyphs[0],
                        kDiskHeaderGlyphs[1],
                        static_cast<unsigned char>(count[0]),
                        static_cast<unsigned char>(count[1]),
                        kBlank,
                        kBlank};
-    if (count_ <= 0) {
+    if (shown <= 0) {
         for (int32_t& f : want) f = kBlank;
     }
     if (w.written) {

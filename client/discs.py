@@ -123,3 +123,66 @@ def scan_line(required: int) -> str:
     """What the scanner says in place of ENERGY KEYS DETECTED! (docs/re/memory.md, "The
     scanner"): one line of the game's text, at most 31 characters."""
     return f"COLLECT {required} OS INSTALL DISK{'' if required == 1 else 'S'}!"
+
+
+# What the player is told once they have enough disks: RETURN HOME WITH THE DISKS? is offered
+# only after a save at the landing pod, the seed's start (the owner's design, 2026-10-25).
+POD_NOTE = "ALL OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
+
+# The randomizer section's start record (docs/re/save-format.md, "The continue point and the
+# seed's start"): the start-candidate index less 1, then the start's tile column and row.
+START_AT = 0x310
+# A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
+# which the continue point's row is at 6 and its column at 8.
+STAMP_ROW_AT, STAMP_COLUMN_AT = 4 + 6, 4 + 8
+
+
+def start_cell(blob: bytes) -> tuple[int, int]:
+    """The seed's start cell as the player state counts cells (game.Game.player_cell): the start
+    record's row (20 tiles a cell) along x, its column (14 a cell) along y. Derived from the
+    record's tile formula and the player update's (docs/re/save-format.md, memory.md)."""
+    if len(blob) < START_AT + 6:
+        return (-1, -1)
+    column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
+    row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
+    return (row // 20, column // 14)
+
+
+def saved_at_start(stamp: bytes, blob: bytes) -> bool:
+    """Whether the loaded save's continue point (its last save point) is the seed's start, the
+    landing pod."""
+    if len(stamp) < STAMP_COLUMN_AT + 2 or len(blob) < START_AT + 6:
+        return False
+    row = int.from_bytes(stamp[STAMP_ROW_AT : STAMP_ROW_AT + 2], "little")
+    column = int.from_bytes(stamp[STAMP_COLUMN_AT : STAMP_COLUMN_AT + 2], "little")
+    start_column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
+    start_row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
+    return (column, row) == (start_column, start_row)
+
+
+@dataclass
+class ReturnHome:
+    """For one load of this seed's save, in play: the reminder (POD_NOTE), once the player has
+    enough disks, and RETURN HOME WITH THE DISKS? after each save at the landing pod while they
+    do. A save shows as a new stamp (the game rewrites the slot's block, play time and all, on
+    every save); the first stamp of a load, or of another slot, is not one. The save must leave
+    the pod as the continue point with the player in the start cell (the game also saves during
+    the escape, keeping the last continue point), and the offer lapses once the player leaves
+    that cell."""
+
+    reminded: bool = False
+    stamp: bytes | None = None
+    offer: bool = False  # a save at the pod, the prompt not yet queued
+
+    def see(self, stamp: bytes, at_start: bool, enough: bool, in_start_cell: bool) -> None:
+        same_slot = self.stamp is not None and stamp[:4] == self.stamp[:4]
+        saved = same_slot and stamp != self.stamp
+        self.stamp = stamp
+        if saved:
+            self.offer = enough and at_start and in_start_cell
+        if not in_start_cell:
+            self.offer = False
+
+    def remind(self, enough: bool) -> bool:
+        """Whether to show the reminder now (then mark it shown with ``reminded = True``)."""
+        return enough and not self.reminded

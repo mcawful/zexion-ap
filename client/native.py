@@ -4,7 +4,7 @@ The helper runs inside Zexion: it gets a call from the game's main loop, on the 
 thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
 call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
 per message: ``hello``, ``ping``, ``config``, ``apply``, ``ap_newgame``, ``disarm``,
-``newgame_status`` and ``unload`` (native/README.md).
+``newgame_status``, ``offline_put``, ``unload`` and others (native/README.md).
 ``attach`` loads the helper if needed and configures it with the addresses the client resolved
 by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
 optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it
@@ -30,7 +30,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.20.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.23.1"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
 CONFIG_KEYS = (
     "inventory",
@@ -93,6 +93,13 @@ CONFIG_KEYS = (
     "file_entry_fn",
     "copy_entry_fn",
     "delete_entry_fn",
+    "map_grid",
+    "flags",
+    "slot_array",
+    "rando_slots",
+    "text_new_fn",
+    "text_link_fn",
+    "draw_layer",
 )
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
@@ -420,7 +427,8 @@ class Helper:
                 raise HelperError(f"the helper's pipe closed: {_last_error()}")
 
     def hello(self) -> dict[str, str]:
-        """The helper's hello as fields: version, build, hooked, configured, skip."""
+        """The helper's hello as fields: version, build, hooked, configured, skip, folder,
+        offline, active, reads and, after a failed read, read_error (native/README.md)."""
         words = self.request("hello").split()
         if len(words) < 2 or words[0] != "zexion-ap":
             raise HelperError(f"unexpected hello: {' '.join(words)!r}")

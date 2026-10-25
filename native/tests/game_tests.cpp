@@ -100,6 +100,12 @@ void test_configure() {
     auto missing = config;
     missing.erase("sound_fn");
     check(game.configure(self, missing) == "missing sound_fn", "every key is required");
+    auto older = config;  // an offline cache from before the title screen's lines
+    older.erase("text_new_fn");
+    older.erase("text_link_fn");
+    older.erase("draw_layer");
+    zap::Game older_game;
+    check(older_game.configure(self, older).empty(), "the title screen's keys may be missing");
     auto swapped = config;
     swapped["message_fn"] = config["inventory"];
     check(game.configure(self, swapped).find("not in code") != std::string::npos,

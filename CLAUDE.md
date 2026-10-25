@@ -110,7 +110,8 @@ as it starts (live-tested 2026-10-25). That is the player's own step, with the g
 our tools never write the game's folder. While a client is connected the helper also changes
 the game (grabbing Zexion offers the escape skip); when the client goes away it puts all of it
 back and does nothing until a client connects again (live-tested 2026-10-25 for the item
-records, ASSIST and the escape skip).
+records, ASSIST and the escape skip), except the offline look below for a save of a seed the
+client left a file for.
 For a seed with DeathLink on, the client sends the player's deaths and deals the ones it
 receives through the helper (the helper kills the player; live-tested 2026-10-23). For a
 seed that disallows assists (the world's default), the helper greys out the options menu's
@@ -130,10 +131,34 @@ out and the game's Data Disc, named OS Install Disk, is shuffled in: the client 
 scanner's message, adds the disk to the equipment screen and turns the pause screen's KEYS
 row into a disk count. The file select shows the count in place of the keys for the seed's
 saves (nothing with no disk), and the game's own again once the client disconnects
-(live-tested 2026-10-24 and 2026-10-25). Once the player has enough, the helper offers RETURN HOME WITH THE
-DISKS?, whose YES starts the game's ending, which sends the goal (YES and NO live-tested
-2026-10-24). This goal
+(live-tested 2026-10-24 and 2026-10-25), or, with the helper loaded with the game, each save's
+own count from the offline look below. Once the player has enough, the client pops up ALL OS
+INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME. (once per load), and after each
+save at the landing pod (the seed's start, seen in the slot's block the game rewrites on a
+save, with the player in the start cell) the helper offers RETURN HOME WITH THE DISKS?, whose YES starts the game's ending,
+which sends the goal (YES and NO live-tested 2026-10-24; the reminder and the offer after a
+save at the pod, not elsewhere, 2026-10-25). This goal
 needs the helper: without it nothing offers the ending.
+With the helper loaded with the game, an AP save keeps its look without the client: while
+connected, the client sends the helper a small file per seed and the addresses it resolved
+(`offline_put`, `client/offline.py`), which the helper writes into `%LOCALAPPDATA%\ZexionAP`
+(the helper, not the client: a client run from a packaged app, as from the Claude desktop app,
+has its AppData writes there unseen by the game, inferred to be the package's redirect).
+With no client, a save of
+such a seed gets its item labels, INTEL CHIP, the ASSIST lock, the escape skip and its disk
+counts (on the file select too, each save its own), with one notice that the client is not
+connected (and another when one connects while that save is played: live-tested 2026-10-25);
+received items, hints and the goal wait for the client, and what was picked up is sent when it
+connects (live-tested 2026-10-25, from a fresh start too). With the client connected for
+one seed, a randomizer save of another seed gets THE ARCHIPELAGO CLIENT IS FOR ANOTHER
+SEED. once a load and on a reconnect (`other_save`), and that seed's offline look if the
+helper has its file; the file select shows each known seed's saves their own counts
+(live-tested 2026-10-25).
+The popup after the game's own for each of this world's finds that has one (an OS Install
+Disk's count, an Intel Chip's hint) is shown once for each, whenever it was found, offline
+included: the server's data storage keeps which were shown (`zexion_popped_<team>_<slot>`),
+and on connecting the client shows the ones missing for the loaded save, after the
+connected notice (live-tested 2026-10-25).
 `--no-helper`, no helper to use (none loaded in the game, and neither a build nor a copy in the
 game's folder) or a helper that fails means items are written directly, with no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
 first), and the client loads it again within 30 seconds. Popups are not for items the slot
@@ -167,7 +192,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `aplabels.py` other players' items into labels for the helper (`ap_labels`),
   `deathlink.py` decides when a death goes out and when a received one is dealt (`die`), and
   `hints.py` which item each Area Map (Intel Chip) hints and the popup that names it, and `discs.py` the
-  OS Install Disks count, its popups and the helper's `discs` and `disk_slots` requests.
+  OS Install Disks count, its popups and the helper's `discs` and `disk_slots` requests, and
+  `offline.py` what it leaves the helper for AP saves without it (`offline_put`).
 - `native/`: the native helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame
   hook on the game's thread and a command pipe (`native/README.md`). `native/proxy/` is the
   proxy `version.dll` (built by the same CMake project into `native/build/proxy/Release/`) that
@@ -182,7 +208,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
   goal (`discs`, `mission_prompt`; working in game): the scanner's message (`scan.cpp`), the
   equipment screen (`equip.cpp`), the pause screen's disk row (`pause.cpp`), the RETURN
   HOME WITH THE DISKS? prompt (`mission.cpp`) and, with `disk_slots`, the file select's count
-  (`files.cpp`).
+  (`files.cpp`). Without a client it dresses AP saves from the client's files (`offline.cpp`;
+  working in game, the CLIENT CONNECTED. notice live-tested 2026-10-25). Once
+  configured, with a client or without, it adds ARCHIPELAGO MOD and its version, and
+  ©2026 MCAWFUL, under the title screen's copyright line, with START THE AP CLIENT TO
+  PLAY A SEED above them while no client is connected (`title.cpp`; the two lines
+  working in game 2026-10-25).
 - `tools/`: RE and save tooling. `tools/protected.py` defines the protected folders for both the
   tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).

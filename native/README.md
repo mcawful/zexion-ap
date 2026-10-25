@@ -5,7 +5,8 @@ on the game's own thread, between frames. Either the player puts it in the game'
 the proxy `version.dll`, which loads it as the game starts (below, "The proxy"), or the AP
 client loads it when it attaches to the game (`client/native.py`, unless started with
 `--no-helper`); the client sends received items through it. `tools/helper.py` loads and unloads
-it for tests. Without a client it does nothing: the game is the base game.
+it for tests. Without a client it does nothing, unless a save of a seed a client has played is
+loaded ("AP saves without the client", below): the game is otherwise the base game.
 
 **Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is **working in
 game** (build B1, 2026-10-22). The AP client loaded it into the running game (slot 7) and
@@ -48,8 +49,10 @@ back); `tests/game_tests.cpp` also the received shield and death, the ASSIST wat
 scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
 `tests/files_tests.cpp` the file select's disk count, `tests/intel_tests.cpp` the Intel Chip,
-`tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
-helper outside Zexion),
+`tests/title_tests.cpp` the title screen's lines, `tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
+helper outside Zexion), `tests/offline_tests.cpp` AP saves without the client (the seed file,
+its match and disk count, the folder, the cache check, `offline_put`, and a stand-in game dressed
+and undressed),
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
 through the real pipe and hook in a busy host.
 
@@ -79,7 +82,8 @@ through the real pipe and hook in a busy host.
   both should stay; an antivirus may flag an unsigned proxy (external). Working in game
   (2026-10-25, B1, helper 0.20.0): the game loaded the proxy and Windows' own `version.dll`
   beside it and the helper from its folder, hooked (`hello`: `folder=1`), with no client
-  inert (RANDOMIZER on an empty slot); the client used it ("loaded with the game") without
+  inert (RANDOMIZER on an empty slot; from 0.21, see "AP saves without the client"); the
+  client used it ("loaded with the game") without
   loading another; stopping the client put the AP save back to the base game in play (the
   stand-ins and the Area Map's records the game's, read back live; the disk's stand-in a plain
   Scrap Chunk and ASSIST normal, the owner's reading; event 3665 the game's, `else -1`, read
@@ -105,14 +109,34 @@ through the real pipe and hook in a busy host.
     user, and checks that the process serving it is the game.
   - Requests longer than 64 KB drop the connection.
   - Requests:
-    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1> folder=<0|1>`
-      (`folder`: loaded from the game's own folder, by the proxy)
+    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1> folder=<0|1> offline=<-|N[:FILE]> active=<0|1> title=<0|1|why> reads=<R/S>`
+      and ` read_error=<why>` after a failed read (`folder`: loaded from the game's own
+      folder, by the proxy; `offline`: the seeds read for AP saves without the client, and the
+      file of the one whose save is dressed; `active`: a client is there; `title`: the title screen's lines up (1), not (0), or
+      why they could not be made, spaces as underscores; `reads`: the reads a
+      frame has taken, and the seeds the last one found)
+    - `offline_put config` or `offline_put seed NAME`, then a newline and the file's text →
+      `stored`, `unchanged` or `error <why>`: one of the files for AP saves without the client
+      (below), checked as the reader checks it (the config with at least 8 function checks,
+      each on one of its keys; NAME in the client's `<seed>-<team>-<slot>` form, at most 48 KB)
+      and written by the helper, on the pipe's thread.
+    - `client_back` → `shown`, `none`, or `refused <why>`: from a client whose session sees its
+      seed's save in play; if that save (the same seed's section) was dressed with no client,
+      ARCHIPELAGO CLIENT CONNECTED. pops up, once.
+    - `other_save` → `told`, `already told`, or `refused <why>`: from a client whose
+      session sees a randomizer save of another seed in play. The helper pops up
+      THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. LOAD THAT SEED'S SAVE OR START A NEW GAME.
+      (silent) once a load and again after a client's `config` (a reconnect), and, if it
+      has that save's seed file, gives the save that seed's offline look until it goes
+      ("AP saves without the client", below).
     - `ping` → `pong frames=<calls since load>`
     - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
       inside the game's image, functions in its code and data outside it (writable, except the
       C runtime's `malloc` and `free` import slots, which are only read), or the whole
-      configuration is refused.
+      configuration is refused. Every name is required except the title screen's three
+      (`text_new_fn`, `text_link_fn`, `draw_layer`), so an offline cache from an older
+      helper still configures it, without the title screen's lines.
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
@@ -159,7 +183,7 @@ through the real pipe and hook in a busy host.
     - Anything else → `error unknown request`. Errors always start with `error `.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
   `intel`, `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
-  `disarm`, `newgame_status` and `hello`'s `configured` and `skip` are handed to the game's thread through a one-slot mailbox
+  `client_back`, `other_save`, `disarm`, `newgame_status` and `hello`'s `configured`, `skip`, `active` and `offline` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
@@ -202,7 +226,9 @@ through the real pipe and hook in a busy host.
     2026-10-24, up to five lines.
   - An `apply` may hold popups alone, with no `cas` lines: the client sends a notice that way
     for an Area Map (or Intel Chip) found in the world, after the game's own pickup popup
-    (its sound plays again; working in game 2026-10-25).
+    (its sound plays again; working in game 2026-10-25), and a found disk's count as a popup;
+    for a find made with no client, or one whose popup was not shown, later, once
+    (`followups_tick` in `client/zexion_client.py`; "AP saves without the client").
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
@@ -235,6 +261,8 @@ through the real pipe and hook in a busy host.
   `assists free`, an unload, or the
   menu closing puts it back (into a menu still open only; the widget it locked is found again by its pointer, so a label changed
   meanwhile still gets the game's callback back). The lock is dropped when any pipe client disconnects
+  (and set again by the offline look for a save of a seed the client left a file for: "AP
+  saves without the client")
   other than through `unload` (the AP client exited or crashed, or `tools/helper.py` was done:
   "A client going away"), and armed again if an unload is refused. An unload no frame comes for leaves it locked (and
   moved) until the options menu closes, harmlessly: nothing in it points into the helper. `locked` means armed:
@@ -329,7 +357,8 @@ through the real pipe and hook in a busy host.
   Maps Intel Chips: the world's Area Map Hints), each frame call checks the Area Map's item
   record (49) and, if it reads as the game loads it, names it INTEL CHIP and sets its pickup's
   area event (3551, which reveals the map around it) to none (`src/intel.cpp`); `intel off`,
-  the client going away and an unload put the name and event back, and an unload refuses
+  the client going away and an unload put the name and event back (the offline look names it
+  again for a save of a seed the client left a file for), and an unload refuses
   while the record is still renamed (`error an item record is still restyled`). Working in game (2026-10-25,
   B1; `docs/re/memory.md`, "Intel Chips").
 - **The OS Install Disks goal.** While the client has sent `discs` (this seed's save loaded,
@@ -349,17 +378,22 @@ through the real pipe and hook in a busy host.
     builds the row only once flag 39 is set made a `jmp`, then on the frame after the pause
     screen opens, the small Data Disc icon in the middle and the count (" 2 OF ? ",
     " 2 OF 15 " once told) on the label's line, the key slots and icons hidden;
-  - on `mission_prompt` (`src/mission.cpp`), once idle in play with no popup showing, sets the
+  - on `mission_prompt` (`src/mission.cpp`; the client sends it after each save at the
+    landing pod with enough disks), once idle in play with no popup showing, sets the
     game's transition routine to its own opener, which runs the game's YES/NO prompt builder,
     relabels the question RETURN HOME WITH THE DISKS? and points YES at the helper; YES calls
     the game's NO to close the prompt, then, once idle again, the helper starts the game's
     ending (routine 4). An opener another transition replaced is set again once idle.
-  While the client has sent `disk_slots` with slots (the client reads which save slots hold
-  the seed, a save loaded or not), it also shows the count on the file select, COPY FILE and
+  (Without a client, the offline look sets each save's own count: "AP saves without the
+  client".) While the client has sent `disk_slots` with slots (the client reads which save slots hold
+  the seed, a save loaded or not), and for the saves of the other seeds it has files for
+  (each its own count, from the offline look; the client's count wins for its seed's
+  slots), it also shows the count on the file select, COPY FILE and
   DELETE FILE in place of the keys (`src/files.cpp`): it points each entry's handler at its
   own, which calls the game's and rewrites the entry after it fills it, and checks the
-  entries each frame; for those slots, a squashed DISK (font glyphs 0xFC and 0xFD, painted
-  while on) over KEYS and the count below it, moved 5 pixels down, centered on the items
+  entries each frame; for those slots, DISK over KEYS in the KEYS row's size (font glyphs
+  0xFC and 0xFD, painted while on: a 3-wide D and I, then the game's own S and 4-wide K
+  from KEYS, one blank column apart) and the count below it, moved 5 pixels down, centered on the items
   bracket; nothing with no disk. When off and before an unload, the game's frames for the
   keys, the count's glyphs' place and the handlers go back, in menus still open; a refused
   unload turns the count on again.
@@ -368,6 +402,50 @@ through the real pipe and hook in a busy host.
   put-back on a disconnect and nothing for a save with no disk (2026-10-24 and 2026-10-25,
   B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission prompt", "The
   pause screen's KEYS row", "The file select").
+- **AP saves without the client** (`src/offline.cpp`). While connected, the client sends the
+  helper (`offline_put`, every few seconds when they change; `client/offline.py`) the
+  addresses it resolved for this build, with the first 16 bytes of each game function among
+  them, and a small file per seed: its item table and start, the Intel Chip and ASSIST
+  settings, the OS Install Disks (the count, the number needed, the scanner's line, and the map
+  cells of this player's own disks not counted yet) and the item labels. The helper writes them
+  into `%LOCALAPPDATA%\ZexionAP` (`config-<build>.txt`, `seeds\<seed>-<team>-<slot>.txt`),
+  never the game's folder, itself: a client run from a packaged Windows app (MSIX), as this
+  repo's tests run it from the Claude desktop app, has its own writes under AppData redirected
+  to a folder only it sees (inferred: the game, started by Steam, got error 3, path not found, opening a folder the client had just written and could read back; the redirect itself was not traced). It
+  reads them when it starts and each time a client goes away (on the pipe's thread, handed to
+  a frame). With no client yet, the cached addresses configure it if they are for its own
+  build and the game holds every checked function's bytes (at least 8), inactive. Then, with
+  no client, or with a client that said the loaded save is another seed's (`other_save`;
+  its own notice then stands for the not-connected one), every 16th frame call: a save of one of the seeds (a save loaded, the randomizer
+  marker 1, the loaded section's item table and start the seed's) is dressed once it is in
+  play, as the client would: the item labels, INTEL CHIP, the ASSIST lock, the escape skip,
+  the disk count (the file's, plus each of this player's own disks the map shows collected)
+  and the scanner's line, told by flag 39; and one silent notice, ARCHIPELAGO CLIENT NOT
+  CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS., once a load. Leaving the save undresses it. The
+  file select shows each save of a seed with the disks its own count, from its own map in the
+  game's copy of the slot. A client's `config` takes the offline look off (with the addresses
+  it was set with) before its own and withdraws the warning if it has not shown yet; the
+  client then asks `client_back`, and if that save was dressed it pops up ARCHIPELAGO CLIENT
+  CONNECTED. (silent), before the client's catch-up popups (a disk's count, an Intel Chip's
+  hint) for what was found offline. The folder is `LOCALAPPDATA`'s, and only an absolute one. What needs the server (received items, hints, the goal and
+  RETURN HOME WITH THE DISKS?) waits for the client; what was picked up meanwhile is on the
+  save's map, and the client sends those checks when it next connects with the save loaded.
+  Working in game (2026-10-25, B1, helpers 0.21.4 to 0.21.8, the `live25` seed: the look, a
+  disk counted offline, a fresh start with no client, and the two disks picked up offline
+  sent once the client connected; `docs/re/memory.md`, "AP saves without the client"). The
+  CLIENT CONNECTED. notice: live-tested 2026-10-25 (0.21.8), asked for by the client.
+- **The title screen's lines.** While configured (by a client, or with none from the
+  cached addresses) and no save is loaded, every 8th frame call looks through the
+  game's draw list for the
+  title's copyright line; when it is up without them, the helper adds ARCHIPELAGO MOD
+  and its version, and ©2026 MCAWFUL, centered under the copyright line, and above them,
+  only while no client is connected, START THE AP CLIENT TO PLAY A SEED (`src/title.cpp`). It
+  makes them with the game's own text functions, as the title makes its copyright
+  line, in that line's palette and style, and the game frees them when it leaves the
+  title; nothing is kept between looks. A client going away leaves them; an unload
+  hides them (stand-in tests only, not seen in game). Working in game (2026-10-25, helpers 0.22.0 and 0.22.1: with the client,
+  from the cache with none, and again on a later title; `docs/re/memory.md`, "The
+  title screen").
 - **A client going away.** When the pipe's client disconnects (the AP client exited or crashed,
   or `tools/helper.py` was done), the next frame call, before it serves any request, puts back
   everything the helper changed, as unload does (`put_back_all` in `src/dllmain.cpp`: the
@@ -375,14 +453,16 @@ through the real pipe and hook in a busy host.
   stand-in items and their looks, ARCHIPELAGO and the ASSIST lock; a change held by a menu no
   longer open is gone with it), drops the popups not shown yet, and goes inactive: nothing comes
   back until a client sends `config` again (the client resends every request after it
-  attaches). The helper stays loaded and hooked. Working in game (2026-10-25, above: what was
+  attaches), except the offline look for a save of a seed the client left a file for
+  (above). The helper stays loaded and hooked. Working in game (2026-10-25, above: what was
   seen is the stand-in and Area Map records, ASSIST and the escape skip put back; ARCHIPELAGO
   and the OS Install Disks goal's screens going back on a disconnect not looked at).
-- **The escape skip.** While a client is there (configured, not gone), every 30th frame call checks area event 3665 in the
+- **The escape skip.** While a client is there (configured, not gone), or with none (or a client of another seed) while a save is dressed offline ("AP saves without the client"), every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
   If every field of the record is as traced, the helper points its other branch at the offer
-  too, so grabbing Zexion offers the skip in any game while a client is there; a table the
+  too, so grabbing Zexion offers the skip in any game while a client is there (and in a save
+  dressed offline); a table the
   game loads again is patched again. Nothing is saved, and unloading puts the record back (if
   no frame comes to do it, the record stays pointed at the offer, a game event, until Zexion
   restarts). Once an unload begins, no frame patches it again.
@@ -394,7 +474,7 @@ through the real pipe and hook in a busy host.
   with the OS Install Disks goal's changes (the scanner's text, the pause screen's branch,
   EQUIPMENT's callback and the Energy Tank panel's handler, a prompt opener not yet run and a
   prompt's YES, pointed at NO, and the file screens' entry handlers) and the Area Map's
-  record (INTEL CHIP), and refuses (`error a menu
+  record (INTEL CHIP) and the offline look, hides the title screen's lines, and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
   ARCHIPELAGO off, or while an open menu's panel or entry, or the game's transition routine,
   may still hold one of the helper's functions, since the game would call into the unloaded

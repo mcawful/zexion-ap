@@ -14,7 +14,7 @@ add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
-            src/game_calls.cpp src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp src/files.cpp src/intel.cpp
+            src/game_calls.cpp src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp
             src/apitem.cpp src/looks.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
@@ -84,8 +84,16 @@ add_executable(zap_intel_tests tests/intel_tests.cpp)
 target_link_libraries(zap_intel_tests PRIVATE zap_core)
 add_test(NAME intel COMMAND zap_intel_tests)
 
+add_executable(zap_title_tests tests/title_tests.cpp)
+target_link_libraries(zap_title_tests PRIVATE zap_core)
+add_test(NAME title COMMAND zap_title_tests)
+
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
+
+add_executable(zap_offline_tests tests/offline_tests.cpp)
+target_link_libraries(zap_offline_tests PRIVATE zap_core)
+add_test(NAME offline COMMAND zap_offline_tests)

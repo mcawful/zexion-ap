@@ -50,9 +50,11 @@ std::string file_disk_digits(int value);
 
 class FileDisks {
 public:
-    // Game thread: what to show (an empty slot set turns it off).
+    // Game thread: what to show (an empty slot set turns it off): one count for the slots the
+    // client lists, or each slot's own (offline, saves of several seeds: offline.h).
     void set(int count, int required, std::set<int> slots);
-    bool on() const { return !slots_.empty(); }
+    void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
+    bool on() const { return !counts_.empty(); }
 
     // Game thread, each frame: wraps the entries' handlers on the open file screens (while
     // on, else puts them back), and rewrites entries still showing keys.
@@ -69,9 +71,8 @@ public:
     bool holds_hook() const { return !wrapped_.empty(); }
 
     // For a refused unload, which turns it back on as it was.
-    int count() const { return count_; }
-    int required() const { return required_; }
-    const std::set<int>& slots() const { return slots_; }
+    // Each listed slot's count (a refused unload sets them again).
+    const std::map<int, int>& counts() const { return counts_; }
 
 private:
     struct Wrapped {
@@ -87,8 +88,7 @@ private:
     bool rewrite(BYTE* entry, BYTE* (&glyphs)[145], Wrapped& w);
     void put_back(BYTE* (&glyphs)[145], Wrapped& w);
     std::map<BYTE*, Wrapped> wrapped_;  // entry -> its menu and the game's handler
-    int count_ = 0, required_ = 0;
-    std::set<int> slots_;
+    std::map<int, int> counts_;  // slot -> the count it shows
 };
 
 // A `disk_slots` request: "disk_slots" (off) or "disk_slots COUNT REQUIRED SLOTS", the slots a
