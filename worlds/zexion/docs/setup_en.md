@@ -8,7 +8,12 @@ yet in a full game, so treat any seed as a test.
 - Zexion on Steam (Windows), the build the client knows (it refuses others).
 - Archipelago 0.6.8 or newer, with this world installed.
 - The client's in-game helper, `zexion_ap.dll`. The client loads it into Zexion when it
-  attaches; without it, use `/prepare` (below).
+  attaches; without it, use `/prepare` (below). Or let the game load it as it starts: with
+  Zexion closed, copy `zexion_ap.dll` and `version.dll` from the same release into Zexion's
+  folder (Steam: Zexion, Manage, Browse local files). Without the client running, the game then
+  plays as it always does. To update, replace both files with the game closed; to remove them,
+  delete both (or, to turn them off for a while, create an empty file named
+  `zexion_ap.disabled` beside them).
 
 ## Starting a game
 
