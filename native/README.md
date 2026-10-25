@@ -1,9 +1,11 @@
 # The native helper
 
 `zexion_ap.dll` runs inside Zexion and gives the client what can't be done from outside: work
-on the game's own thread, between frames. The AP client loads it when it attaches to the game
-(`client/native.py`, unless started with `--no-helper`) and sends received items through it;
-`tools/helper.py` loads and unloads it for tests.
+on the game's own thread, between frames. Either the player puts it in the game's folder with
+the proxy `version.dll`, which loads it as the game starts (below, "The proxy"), or the AP
+client loads it when it attaches to the game (`client/native.py`, unless started with
+`--no-helper`); the client sends received items through it. `tools/helper.py` loads and unloads
+it for tests. Without a client it does nothing: the game is the base game.
 
 **Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is **working in
 game** (build B1, 2026-10-22). The AP client loaded it into the running game (slot 7) and
@@ -46,14 +48,42 @@ back); `tests/game_tests.cpp` also the received shield and death, the ASSIST wat
 scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
 `tests/files_tests.cpp` the file select's disk count, `tests/intel_tests.cpp` the Intel Chip,
+`tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
+helper outside Zexion),
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
 through the real pipe and hook in a busy host.
 
 ## How it works
 
 - **Getting in.** `client/native.py` loads it with `LoadLibraryW` from a remote thread, with a
-  timeout and under a named mutex, so two loaders can't race. Nothing is written to the
-  game's files.
+  timeout and under a named mutex (`Local\zexion-ap-load-<pid>`), so two loaders can't race,
+  unless one is loaded already: the proxy's (below), or an earlier client's, which it uses. One
+  of another version is unloaded and the built one loaded; a copy in the game's folder with no
+  build to replace it is refused (the player updates it there), and with no build the client
+  loads the game folder's copy (reading it only). The client never writes the game's files.
+- **The proxy** (`proxy/`, built as `build/proxy/Release/version.dll`). Zexion's `SDL2.dll`
+  imports `GetFileVersionInfoA`, `GetFileVersionInfoSizeA` and `VerQueryValueA` from
+  `VERSION.dll`, which is not a KnownDLL, so Windows takes a `version.dll` in the game's folder
+  first (measured on this machine, 2026-10-25). The proxy exports all 17 of Windows'
+  `version.dll` functions at the same ordinals, each passing the call to the real one in the
+  system folder (loaded once, by its full path; `VerLanguageNameA/W` forwarded to KERNEL32 as
+  Windows' own does). Its DllMain only starts a thread; once the process has started, that
+  thread loads the real one, then `zexion_ap.dll` from its own folder, if the host is
+  `Zexion.exe`, no `zexion_ap.disabled` file sits beside it, and none is loaded, under the
+  client's mutex, and never frees it (the helper's own unload is its one reference).
+  **Installing** is the player's step, never our tools': with Zexion closed, copy
+  `version.dll` and `zexion_ap.dll` of one release next to `Zexion.exe` (Steam, Zexion, Manage,
+  Browse local files). Updating: replace both with the game closed. Turning it off: create
+  `zexion_ap.disabled` there; removing: delete both. Steam's verify and its updates check only
+  the game's own files (external, third-party guides read 2026-10-25, not tested here), so
+  both should stay; an antivirus may flag an unsigned proxy (external). Working in game
+  (2026-10-25, B1, helper 0.20.0): the game loaded the proxy and Windows' own `version.dll`
+  beside it and the helper from its folder, hooked (`hello`: `folder=1`), with no client
+  inert (RANDOMIZER on an empty slot); the client used it ("loaded with the game") without
+  loading another; stopping the client put the AP save back to the base game in play (the
+  stand-ins and the Area Map's records the game's, read back live; the disk's stand-in a plain
+  Scrap Chunk and ASSIST normal, the owner's reading; event 3665 the game's, `else -1`, read
+  back live: the escape skip off).
 - **Which game.** It reads the game's PE header and hooks nothing unless the build is one it
   knows (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`).
 - **The frame call.** The game imports `SDL_GL_SwapWindow` by name and calls it only through
@@ -75,7 +105,8 @@ through the real pipe and hook in a busy host.
     user, and checks that the process serving it is the game.
   - Requests longer than 64 KB drop the connection.
   - Requests:
-    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1>`
+    - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1> folder=<0|1>`
+      (`folder`: loaded from the game's own folder, by the proxy)
     - `ping` → `pong frames=<calls since load>`
     - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
@@ -204,8 +235,8 @@ through the real pipe and hook in a busy host.
   `assists free`, an unload, or the
   menu closing puts it back (into a menu still open only; the widget it locked is found again by its pointer, so a label changed
   meanwhile still gets the game's callback back). The lock is dropped when any pipe client disconnects
-  other than through `unload` (the AP client exited or crashed, or `tools/helper.py` was done),
-  and armed again if an unload is refused. An unload no frame comes for leaves it locked (and
+  other than through `unload` (the AP client exited or crashed, or `tools/helper.py` was done:
+  "A client going away"), and armed again if an unload is refused. An unload no frame comes for leaves it locked (and
   moved) until the options menu closes, harmlessly: nothing in it points into the helper. `locked` means armed:
   whether an entry was found shows only in the game. The client locks it while a seed that
   disallows assists has its save loaded, until the slot receives Assist Unlock. The lock works in game (2026-10-23, B1; `docs/re/memory.md`,
@@ -337,11 +368,21 @@ through the real pipe and hook in a busy host.
   put-back on a disconnect and nothing for a save with no disk (2026-10-24 and 2026-10-25,
   B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission prompt", "The
   pause screen's KEYS row", "The file select").
-- **The escape skip.** Once configured, every 30th frame call checks area event 3665 in the
+- **A client going away.** When the pipe's client disconnects (the AP client exited or crashed,
+  or `tools/helper.py` was done), the next frame call, before it serves any request, puts back
+  everything the helper changed, as unload does (`put_back_all` in `src/dllmain.cpp`: the
+  new-game plan, the escape skip, the OS Install Disks goal's changes, the Area Map's name, the
+  stand-in items and their looks, ARCHIPELAGO and the ASSIST lock; a change held by a menu no
+  longer open is gone with it), drops the popups not shown yet, and goes inactive: nothing comes
+  back until a client sends `config` again (the client resends every request after it
+  attaches). The helper stays loaded and hooked. Working in game (2026-10-25, above: what was
+  seen is the stand-in and Area Map records, ASSIST and the escape skip put back; ARCHIPELAGO
+  and the OS Install Disks goal's screens going back on a disconnect not looked at).
+- **The escape skip.** While a client is there (configured, not gone), every 30th frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
   If every field of the record is as traced, the helper points its other branch at the offer
-  too, so grabbing Zexion offers the skip in any game while the helper is loaded; a table the
+  too, so grabbing Zexion offers the skip in any game while a client is there; a table the
   game loads again is patched again. Nothing is saved, and unloading puts the record back (if
   no frame comes to do it, the record stays pointed at the offer, a game event, until Zexion
   restarts). Once an unload begins, no frame patches it again.

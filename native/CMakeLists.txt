@@ -23,6 +23,15 @@ target_link_libraries(zap_core PUBLIC advapi32)
 add_library(zexion_ap SHARED src/dllmain.cpp)
 target_link_libraries(zexion_ap PRIVATE zap_core)
 
+# The proxy the player copies into the game's folder so the helper loads with the game
+# (native/README.md, "The proxy"): version.dll, built into a folder of its own so no program
+# of ours picks it up in place of Windows' own.
+add_library(version_proxy SHARED proxy/version.cpp proxy/version.def)
+set_target_properties(version_proxy PROPERTIES OUTPUT_NAME version
+                      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy
+                      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy
+                      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy)
+
 # The same helper hooking the loading program's GetTickCount, for the unload test.
 add_library(zexion_ap_hooktest SHARED src/dllmain.cpp)
 target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
@@ -74,3 +83,9 @@ add_test(NAME files COMMAND zap_files_tests)
 add_executable(zap_intel_tests tests/intel_tests.cpp)
 target_link_libraries(zap_intel_tests PRIVATE zap_core)
 add_test(NAME intel COMMAND zap_intel_tests)
+
+add_executable(zap_proxy_test tests/proxy_test.cpp)
+target_compile_definitions(zap_proxy_test PRIVATE
+                           ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
+add_dependencies(zap_proxy_test version_proxy)
+add_test(NAME proxy COMMAND zap_proxy_test)

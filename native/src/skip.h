@@ -1,4 +1,4 @@
-// The escape skip, offered in every game while the helper is loaded.
+// The escape skip, offered in every game while a client is connected (Game::active).
 //
 // After Zexion is grabbed, the game runs area event 3665: "if flag 250 is set, go to 3668",
 // and 3668 offers SKIP ESCAPE AND FINAL BATTLE? unless flag 289 (Abridged Finale) is set.

@@ -397,6 +397,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     halt_flag_ = found["halt_flag"];
     gl_ = load_gl();
     configured_ = true;
+    active_ = true;
     return "";
 }
 
@@ -943,7 +944,7 @@ void Game::start_archipelago(WidgetCallback callback) {
 }
 
 void Game::watch_skip() {
-    if (!configured_) return;
+    if (!configured_ || !active_) return;
     if (skip_frames_-- > 0) return;
     skip_frames_ = 30;
     skip_.apply(event_table_, event_count_);

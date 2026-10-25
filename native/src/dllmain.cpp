@@ -44,7 +44,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.19.0";
+constexpr char kVersion[] = "0.20.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -76,9 +76,13 @@ SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
 // Set by the pipe thread when its client goes away (the AP client exited or crashed): the next
-// frame unlocks ASSIST, before it serves any request, so a reconnected client's lock comes
-// after it. A lock is only for while the client says its seed's save is loaded.
-std::atomic<bool> g_unlock_assists{false};
+// frame puts back everything the helper changed and goes inactive, before it serves any
+// request, so a reconnected client's `config` and requests come after it. Without a client the
+// game is the base game (the helper may have been loaded with the game, by the proxy).
+std::atomic<bool> g_client_gone{false};
+// Whether the helper was loaded from the game's own folder (by the proxy, native/proxy/)
+// rather than injected by a client: `hello` reports it.
+bool g_from_game_folder = false;
 
 // ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
 // the frame call (so outside the trampoline's count). Unload therefore first takes it off the
@@ -184,6 +188,24 @@ void mission_yes(void* widget, int event) {
     g_in_callback.fetch_sub(1);
 }
 
+// Game thread: everything the helper changed in the game put back, as far as a frame can (a
+// change held by a menu no longer open is gone with it): the new-game plan, the escape skip,
+// the OS Install Disks goal's changes, the Area Map's name, the stand-in items, ARCHIPELAGO and
+// the ASSIST lock. Unload and a client going away both use it.
+void put_back_all() {
+    g_game.disarm_newgame();
+    g_game.restore_skip();
+    g_game.set_discs(0, 0, "");
+    g_game.restore_discs();
+    g_game.restore_mission();
+    g_game.restore_files();
+    g_game.restore_intel();
+    g_game.restore_ap_items();
+    g_game.restore_menu(&archipelago_chosen);
+    g_game.set_assists_locked(false);
+    g_game.restore_assists();
+}
+
 // Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
 bool set_unloading(bool unloading) {
     AcquireSRWLockExclusive(&g_menu_lock);
@@ -200,12 +222,12 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_game.note_play(GetTickCount64());
-            if (g_unlock_assists.exchange(false)) {
-                // The client went away: what it asked for that changes the game goes too.
-                g_game.set_assists_locked(false);
-                g_game.set_discs(0, 0, "");
-                g_game.set_disk_slots(0, 0, {});
-                g_game.set_intel(false);
+            if (g_client_gone.exchange(false)) {
+                // The client went away: everything it asked for goes, and nothing comes back
+                // (the escape skip included) until a client configures the helper again.
+                put_back_all();
+                g_game.clear_popups();
+                g_game.set_active(false);
             }
             g_mailbox.serve();
             g_game.watch_newgame();
@@ -288,7 +310,7 @@ std::string handle(const std::string& request, bool& stop) {
         bool skip = state.size() == 2 && state[1] == '1';
         return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
                " hooked=" + (g_slot ? "1" : "0") + " configured=" + (configured ? "1" : "0") +
-               " skip=" + (skip ? "1" : "0");
+               " skip=" + (skip ? "1" : "0") + " folder=" + (g_from_game_folder ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request == "shield") {
@@ -522,17 +544,7 @@ std::string undo_for_unload() {
                 file_required = g_game.files().required();
                 file_slots = g_game.files().slots();
                 intel = g_game.intel_on();
-                g_game.disarm_newgame();
-                g_game.restore_skip();
-                g_game.set_discs(0, 0, "");
-                g_game.restore_discs();
-                g_game.restore_mission();
-                g_game.restore_files();
-                g_game.restore_intel();
-                g_game.restore_ap_items();
-                g_game.restore_menu(&archipelago_chosen);
-                g_game.set_assists_locked(false);
-                g_game.restore_assists();
+                put_back_all();
                 g_menu_installed.store(g_game.menu_installed());
                 g_items_restyled.store(g_game.ap_items_restyled());
                 g_scan_written.store(g_game.scan_written());
@@ -569,11 +581,24 @@ std::string undo_for_unload() {
     return "";
 }
 
+// Whether this DLL sits in the game executable's own folder.
+bool in_game_folder() {
+    wchar_t self[MAX_PATH], exe[MAX_PATH];
+    DWORD a = GetModuleFileNameW(g_self, self, MAX_PATH);
+    DWORD b = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    if (a == 0 || a >= MAX_PATH || b == 0 || b >= MAX_PATH) return false;
+    std::wstring s(self, a), e(exe, b);
+    s.resize(s.find_last_of(L"\\/") + 1);
+    e.resize(e.find_last_of(L"\\/") + 1);
+    return CompareStringOrdinal(s.c_str(), -1, e.c_str(), -1, TRUE) == CSTR_EQUAL;
+}
+
 DWORD WINAPI helper_thread(void*) {
     try {
+        g_from_game_folder = in_game_folder();
         hook();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle,
-                             [] { g_unlock_assists.store(true); })) {
+                             [] { g_client_gone.store(true); })) {
             // No pipe (the name was taken, no descriptor, or it broke): nothing could ever
             // unload us, so put the game back as unload does and leave, retrying until a frame
             // comes to do it; if the hook was replaced, stay.
