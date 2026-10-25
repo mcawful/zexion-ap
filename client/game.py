@@ -39,6 +39,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+import process
 from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
 SLOTS = 30  # save slots
@@ -237,16 +238,9 @@ def parse_seed(blob: bytes) -> Seed:
 def game_running() -> bool:
     """Whether a Zexion process is running (without attaching to it)."""
     try:
-        import pymem
-        import pymem.exception
-    except ImportError as exc:  # pragma: no cover - only on machines without pymem
-        raise GameError("pymem is not installed (Windows only)") from exc
-    try:
-        pm = pymem.Pymem(PROCESS)
-    except pymem.exception.ProcessNotFound:
-        return False
-    pm.close_process()
-    return True
+        return process.find_pid(PROCESS) is not None
+    except process.ProcessError as exc:
+        raise GameError(str(exc)) from exc
 
 
 @dataclass
@@ -262,19 +256,16 @@ class Game:
     @classmethod
     def attach(cls) -> Game:
         try:
-            import pymem
-            import pymem.process
-        except ImportError as exc:  # pragma: no cover - only on machines without pymem
-            raise GameError("pymem is not installed (Windows only)") from exc
-        try:
-            pm = pymem.Pymem(PROCESS)
-        except Exception as exc:
+            pm = process.Process(PROCESS)
+        except process.ProcessNotFound as exc:
             raise GameNotRunning(f"{PROCESS} is not running") from exc
+        except process.ProcessError as exc:
+            raise GameError(f"opening {PROCESS} failed: {exc}") from exc
         try:
-            module = pymem.process.module_from_name(pm.process_handle, PROCESS)
-            if module is None:
+            module = pm.module()
+            if module is None or not module[0]:
                 raise GameError(f"{PROCESS} is running but its module was not found")
-            base = module.lpBaseOfDll
+            base = module[0]
             header = pm.read_bytes(base, 0x1000)
             build = identify_build(header)
             text_rva, text_size = code_section(header)
