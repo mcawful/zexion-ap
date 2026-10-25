@@ -29,6 +29,21 @@ def test_another_zexion_players_item_is_named_by_its_record() -> None:
     assert al.zexion_label(1, "Zexion2") == "@1\nFOR ZEXION2"
 
 
+def test_another_zexion_players_intel_chip_is_the_area_map_by_another_name() -> None:
+    assert al.zexion_label(49, "Zexion2", "Intel Chip") == "@49 INTEL CHIP\nFOR ZEXION2"
+
+
+def test_another_zexion_players_items_keep_their_names_whatever_the_settings() -> None:
+    # The Area Map by name, as this player's own seed may rename the record INTEL CHIP; the
+    # disk under its Archipelago name, not the game's DATA DISC; the Intel Chip as the Area Map.
+    assert al.zexion_look(49) == (49, "AREA MAP")
+    assert al.zexion_look(44) == (44, "OS INSTALL DISK")
+    assert al.zexion_look(101) == (49, "INTEL CHIP")
+    assert al.zexion_look(16) == (16, "")
+    assert al.zexion_look(100) is None
+    assert al.zexion_look(-1) is None
+
+
 def test_each_line_fits_the_popup() -> None:
     text = al.label(True, "P" * 60)
     assert lines(text) == ["@PROGRESSION ITEM", "FOR " + "P" * 20]

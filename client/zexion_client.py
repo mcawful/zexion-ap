@@ -31,10 +31,10 @@ Once connected:
   client also asks the server what each location holding one holds and sends the helper a
   label per map cell (client/aplabels.py): the item shows an Archipelago logo (with its up
   arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" (another
-  Zexion player's item: its own icon and name) over "FOR ALICE" (working in the game,
-  2026-10-23). The helper holds the labels only while this seed's save is loaded; while
-  another save (or none) is, and on disconnect, they are taken back, so Scrap Energy and Scrap
-  Chunk are the game's own there. A refusal (no frame yet) is retried.
+  Zexion player's item: its own icon and name, aplabels.zexion_look) over "FOR ALICE"
+  (working in the game, 2026-10-23). The helper holds the labels only while this seed's save
+  is loaded; while another save (or none) is, and on disconnect, they are taken back, so
+  Scrap Energy and Scrap Chunk are the game's own there. A refusal (no frame yet) is retried.
 - When it attaches to Zexion it loads the native helper (native/, client/native.py) into the
   game, unless started with ``--no-helper`` or the helper is not built. Items are then sent
   through it, to arrive between frames with the game's own popup and sound (for example
@@ -51,14 +51,17 @@ Once connected:
   the client has the helper grey out the options menu's ASSIST entry, put a padlock after it
   and keep it from opening while this seed's save is loaded, and unlocks it otherwise, or for
   good once the slot receives Assist Unlock (sent from the server console as an escape hatch).
-  The lock live-tested 2026-10-23; unlocking in another save not yet.
+  The lock live-tested 2026-10-23; unlocking in another save 2026-10-25.
 - For a seed with Area Map hints (slot data "hints", the world's default), each Area Map the
   player gets, received from another world or found in one of this world's locations, hints
   the next progression item of this player's that the player does not have (client/hints.py):
   the client creates the Archipelago hint and names it in a popup, the received Area Map's own
   or, for one found here, one after the game's pickup popup. Which item each Area Map hinted is
-  kept in the server's data storage. Received Area Maps live-tested 2026-10-24 (B1); one found
-  in the player's own world not yet.
+  kept in the server's data storage. Received Area Maps live-tested 2026-10-24 (B1), one found
+  in the player's own world 2026-10-25. Such a seed's Area Maps are Intel Chips (slot data
+  "intel_chip"): the client counts a received one as the game's Area Map, and while this
+  seed's save is loaded has the helper name the Area Map INTEL CHIP and turn off its map
+  reveal (`intel on`; live-tested 2026-10-25).
 - For a seed with the OS Install Disks goal (slot data "goal": "os_install_disks"), the client
   counts the disks (client/discs.py): received, and found in this world (what it reported
   from the game's map, kept in the server's data storage for every save of the seed, so a
@@ -252,6 +255,12 @@ class ZexionContext(CommonContext):
         self.assists_want = False
         self.assists_sent: bool | None = None
         self.assists_retry_at = 0.0
+        # Intel Chips (client/hints.py): whether the seed's Area Maps are, whether the helper
+        # should name the game's Area Map so now (this seed's save loaded), and what it was told.
+        self.intel_chip = False
+        self.intel_want = False
+        self.intel_sent: bool | None = None
+        self.intel_retry_at = 0.0
         # Counts connections and disconnects: a helper reply from an older one is dropped.
         self.connection = 0
         self.skip_check_at: float | None = None  # when to ask the helper about the skip
@@ -344,6 +353,8 @@ class ZexionContext(CommonContext):
                 self.deaths = deathlink.DeathLink()
             # A seed from before the option has no "allow_assists": nothing is locked.
             self.lock_assists = slot.get("allow_assists", True) is False
+            # A seed from before Intel Chips has no "intel_chip": its Area Maps are Area Maps.
+            self.intel_chip = slot.get("intel_chip", False) is True
             self.death_link_on = bool(slot.get("death_link", False))
             asyncio.create_task(self.update_death_link(self.death_link_on))
             if self.death_link_on:
@@ -396,6 +407,8 @@ class ZexionContext(CommonContext):
         self.seed_loaded = False
         self.lock_assists = False
         self.assists_want = False  # unlocked on the next helper tick
+        self.intel_chip = False
+        self.intel_want = False  # the Area Map the game's again on the next helper tick
         self.foreign = []
         self.discs = None
         self.labels_sent = False
@@ -446,6 +459,8 @@ class ZexionContext(CommonContext):
             code = item.item - ITEM_ID_BASE
             if code == ASSIST_UNLOCK:
                 continue  # not for the inventory: see assists_unlocked
+            if code == hints.INTEL_CHIP:
+                code = hints.AREA_MAP  # the game holds it as the Area Map
             if 0 <= code <= 50:
                 codes.append(code)
                 senders.append(
@@ -692,6 +707,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
     if ctx.session is not None:
         ctx.session.helper = ctx.helper
     ctx.assists_sent = None  # told again: a helper still loaded from before may hold a lock
+    ctx.intel_sent = None  # or the Area Map named INTEL CHIP
     ctx.discs_sent = None  # likewise its scanner line
     ctx.slots_sent = None  # and its file select
     ctx.mission_asked = False  # and any prompt asked of the one before
@@ -721,6 +737,25 @@ async def assists_tick(ctx: ZexionContext) -> None:
         )
     else:
         ctx.assists_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
+
+
+async def intel_tick(ctx: ZexionContext) -> None:
+    """Tell the helper to name the game's Area Map INTEL CHIP, its map reveal off, while this
+    seed's save is loaded and its Area Maps are Intel Chips, and to put it back otherwise
+    (docs/re/memory.md, "Intel Chips"). Sent when that changes, or to a new helper."""
+    helper = ctx.helper
+    want = ctx.intel_want
+    if helper is None or want == ctx.intel_sent or time.monotonic() < ctx.intel_retry_at:
+        return
+    reply = await asyncio.to_thread(helper.request, "intel on" if want else "intel off")
+    if helper is not ctx.helper:
+        return
+    if reply == ("intel on" if want else "intel off"):
+        ctx.intel_sent = want
+        if want:
+            logger.info("The Area Maps are Intel Chips for this seed.")
+    else:
+        ctx.intel_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
 
 
 async def discs_helper_tick(ctx: ZexionContext) -> None:
@@ -828,8 +863,10 @@ async def labels_tick(ctx: ZexionContext) -> None:
         if info.player == ctx.slot and 0 <= code <= 50:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
-        elif slot is not None and slot.game == GAME and 0 <= code <= 50:
-            text = aplabels.zexion_label(code, player)  # another Zexion player's own item
+        elif slot is not None and slot.game == GAME and aplabels.zexion_look(code) is not None:
+            # Another Zexion player's own item, whatever that player's settings.
+            item, name = aplabels.zexion_look(code)
+            text = aplabels.zexion_label(item, player, name)
         else:
             text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
         labels[tuple(ctx.session.cells[i])] = text
@@ -1116,6 +1153,7 @@ async def game_loop(ctx: ZexionContext) -> None:
                 await skip_tick(ctx)
                 await labels_tick(ctx)
                 await assists_tick(ctx)
+                await intel_tick(ctx)
                 await discs_helper_tick(ctx)
                 await slots_tick(ctx)
             except native.HelperError as exc:
@@ -1185,13 +1223,16 @@ async def game_loop(ctx: ZexionContext) -> None:
                 ctx.seed_loaded = False
                 ctx.mission_asked = False  # offered again on the next load
                 ctx.ending_unseen = False
-        if step.seed_matches:
+        # A poll from before a reconnect says nothing of the new seed's lock or rename.
+        if step.seed_matches and ctx.session is current:
             if ctx.lock_assists and ctx.assists_unlocked():
                 ctx.lock_assists = False
                 logger.info("Assist Unlock received: the assist menu is no longer locked.")
             ctx.assists_want = ctx.lock_assists
+            ctx.intel_want = ctx.intel_chip
         elif step.left_seed:
             ctx.assists_want = False
+            ctx.intel_want = False
         if ctx.session is current:  # a poll from before a reconnect says nothing of this seed
             ctx.labels_want = aplabels.labels_wanted(
                 step.seed_matches, step.left_seed, ctx.labels_want

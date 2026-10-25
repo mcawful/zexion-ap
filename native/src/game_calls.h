@@ -21,6 +21,7 @@
 #include "mission.h"
 #include "pause.h"
 #include "files.h"
+#include "intel.h"
 #include "scan.h"
 #include "skip.h"
 
@@ -271,6 +272,13 @@ public:
     const FileDisks& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
     void restore_files();
+
+    // Game thread: the Area Map named INTEL CHIP, its map reveal off, while on (`intel`,
+    // intel.h), and put back.
+    void set_intel(bool on) { intel_.set(on); }
+    bool intel_on() const { return intel_.on(); }
+    void watch_intel();
+    void restore_intel();
     void watch_mission();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
@@ -300,7 +308,7 @@ public:
 
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
-               looks_.dressed();
+               looks_.dressed() || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
     void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
@@ -374,6 +382,7 @@ private:
     PauseDiskRow pause_row_;
     FileAddresses files_at_;
     FileDisks files_;
+    IntelChip intel_;
     void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;
