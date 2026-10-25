@@ -39,6 +39,7 @@ import logging
 import time
 from dataclasses import astuple, dataclass, field
 
+import discs
 import game
 import native
 import reconcile
@@ -73,6 +74,8 @@ class Snapshot:
     ended: int = 0
     finale: int = 0
     scanned: int = 0
+    stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
+    cell: tuple[int, int] = (-1, -1)  # game.Game.player_cell
 
 
 def read_once(g: game.Game) -> Snapshot:
@@ -89,7 +92,20 @@ def read_once(g: game.Game) -> Snapshot:
         g.flag(ENDING_FLAG),
         g.flag(FINALE_FLAG),
         g.flag(SCANNED_FLAG),
+        save_stamp(g),
+        g.player_cell(),
     )
+
+
+def save_stamp(g: game.Game) -> bytes:
+    """The loaded slot's save stamp, or b"" if the slot number reads out of range (only the
+    landing pod's RETURN HOME then waits)."""
+    try:
+        return g.save_stamp()
+    except game.GameNotRunning:
+        raise
+    except game.GameError:
+        return b""
 
 
 def read_settled(g: game.Game, gap: float = SETTLE_SECONDS) -> Snapshot | None:
@@ -112,6 +128,13 @@ class Step:
     state: str = ""  # the settled game.state() of this seed's save; "" when not read
     scanned: bool = False  # this seed's save has had the scanner's message (flag 39)
     ended: bool = False  # this seed's save has reached the game's ending (flag 250)
+    # A randomizer save of another seed is loaded (left_seed too), in play (state).
+    other_seed: bool = False
+    # This seed's save: its slot's save stamp (new after each save), and whether its last save
+    # point is the seed's start, the landing pod (discs.saved_at_start).
+    save_stamp: bytes = b""
+    at_start: bool = False
+    in_start_cell: bool = False  # the player is in the seed's start cell now
 
 
 class Session:
@@ -127,6 +150,11 @@ class Session:
         # what the slot held when it connected (mark_announced, from the packet right after
         # Connected): that is not announced.
         self._announced: int | None = None
+        # The ending: the goal as the previous poll of this load read it (None: not read yet),
+        # and whether received items wait because the ending began during this load (its
+        # cutscenes read as play). Both cleared when no save of this seed is loaded.
+        self._goal_before: bool | None = None
+        self.holding = False
 
     def mark_announced(self, count: int) -> None:
         """Received items up to ``count`` need no popup (the backlog at connection)."""
@@ -154,6 +182,7 @@ class Session:
         if snap is None:
             return Step()
         if snap.state == game.NO_SAVE:
+            self._leave()
             return Step(left_seed=True)
         try:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
@@ -162,7 +191,10 @@ class Session:
         if seed is None or list(seed.locations) != self.cells:
             self.say_once("no seed", "The loaded save is not a randomizer save of this seed.")
             self._due = None
-            return Step(left_seed=True)
+            self._leave()
+            if seed is None:
+                return Step(left_seed=True)  # a normal save: nothing to say in the game
+            return Step(left_seed=True, other_seed=True, state=snap.state)
         if not save_patch.section_matches(snap.blob, self.plan):
             self.say_once(
                 "other seed",
@@ -170,7 +202,8 @@ class Session:
                 "Load the slot you prepared for this one.",
             )
             self._due = None
-            return Step(left_seed=True)
+            self._leave()
+            return Step(left_seed=True, other_seed=True, state=snap.state)
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
         if self.plan.options.get(ABRIDGED_FINALE):
@@ -185,10 +218,24 @@ class Session:
             state=snap.state,
             scanned=snap.scanned != 0,
             ended=snap.ended != 0,
+            save_stamp=snap.stamp,
+            at_start=discs.saved_at_start(snap.stamp, snap.blob),
+            in_start_cell=snap.cell == discs.start_cell(snap.blob),
         )
-        if snap.state == game.IN_PLAY:
+        # The ending beginning in this load: what is received from now (as a release or collect
+        # on the goal) waits for the next load, not popping up over the ending's cutscenes.
+        if self._goal_before is False and goal:
+            self.holding = True
+            self._due = None
+        self._goal_before = goal
+        if snap.state == game.IN_PLAY and not self.holding:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)
         return step
+
+    def _leave(self) -> None:
+        """No save of this seed loaded: the next load starts afresh."""
+        self._goal_before = None
+        self.holding = False
 
     def give(
         self,

@@ -136,6 +136,10 @@ inline void file_panel_fn() { g_equip_calls += 9; }
 inline void file_entry_fn() { g_equip_calls += 10; }
 inline void copy_entry_fn() { g_equip_calls += 11; }
 inline void delete_entry_fn() { g_equip_calls += 12; }
+// The title screen's (title.h): never called here, as no draw list is set.
+inline void* text_new_fn() { g_equip_calls += 13; return nullptr; }
+inline void text_link_fn(void*) { g_equip_calls += 14; }
+inline BYTE* g_draw_layer = nullptr;
 inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
@@ -239,6 +243,13 @@ inline void death_fn(void* player, char kind) {
     std::memcpy(&g_death_energy, static_cast<BYTE*>(player) + 0xCEA, sizeof(g_death_energy));
 }
 
+// Offline (offline.h): the map grid, the flags, the save slots' first blocks and their copies
+// of the randomizer section.
+inline BYTE g_map_grid[54 * 54] = {};
+inline BYTE g_flags[0x9C4] = {};
+inline BYTE g_slot_array[30 * 0x9408] = {};
+inline BYTE g_rando_slots[30 * 0x908] = {};
+
 inline std::map<std::string, uint64_t> stand_in_config() {
     return {
         {"inventory", rva(g_inventory)},
@@ -288,6 +299,13 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
         {"copy_entry_fn", rva(reinterpret_cast<void*>(&copy_entry_fn))},
         {"delete_entry_fn", rva(reinterpret_cast<void*>(&delete_entry_fn))},
+        {"map_grid", rva(g_map_grid)},
+        {"flags", rva(g_flags)},
+        {"slot_array", rva(g_slot_array)},
+        {"rando_slots", rva(g_rando_slots)},
+        {"text_new_fn", rva(reinterpret_cast<void*>(&text_new_fn))},
+        {"text_link_fn", rva(reinterpret_cast<void*>(&text_link_fn))},
+        {"draw_layer", rva(&g_draw_layer)},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},

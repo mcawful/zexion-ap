@@ -1262,6 +1262,116 @@ TARGETS = (
         ),
     ),
     Target(
+        "text_new_fn",
+        "(characters, length, 32): makes a text object and its glyphs, from the game's heap",
+        0x92300,
+        (
+            # from the call at RVA 0x93864 on B1 (the title's copyright)
+            Pattern(
+                ("E8 ?? ?? ?? ?? BA 58 00 00 00 41 B8 78 00 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x182f52 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 89 87 D8 01 00 00 F2 0F 11 B3 48 01 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0xaa7d0 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? EB 03 49 8B C5 48 89 83 F0 01 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the function's start on B1
+            Pattern(
+                ("40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 28 4C 8B E1"),
+                0,
+                "at",
+                0,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "text_link_fn",
+        "(text): puts a text object's glyphs in its draw list, right after it",
+        0xA8620,
+        (
+            # from the call at RVA 0x28822 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 89 83 98 01 00 00 66 89 B3 A0 01 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x114f1 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? 8B 86 D8 01 00 00 8B D5 89 86 EC 01 00 00"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+            # from the call at RVA 0x2a3d6 on B1
+            Pattern(
+                ("E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 44 89 B3 80 00 00 00 4C 89 73 78"),
+                1,
+                "rip",
+                5,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
+        "draw_layer",
+        "holds the draw list new screen objects join (head +0x18, tail +0x20)",
+        0xCE0F78,
+        (
+            # from the instruction at RVA 0x182b93 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8B 48 20 48 85 C9 74 06 48 89 59 10 EB 04 48 89 58 "
+                    "18 48 89 4B 18 48 89 53 10 48 89 58 20 48 89 03 41 8D 46 FF"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x188f51 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8B 48 20 48 85 C9 74 06 48 89 59 10 EB 04 48 89 58 "
+                    "18 48 89 4B 18 48 C7 43 10 00 00 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x187f05 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 8B 48 18 48 8B 41 18 48 8B 11 48 85 C0 74 04 4C 89 "
+                    "70 10 48 8B 41 18 48 89 44 2F 18"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "file_panel_fn",
         "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)",
         0xB6920,

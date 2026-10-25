@@ -23,6 +23,8 @@ const char* const kConfigKeys[] = {
     "malloc_slot",   "free_slot",     "widget_new_fn", "sprite_sheet_fn", "panel_link_fn",
     "text_set_fn",   "routine_table", "keys_branch",
     "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
+    "map_grid",      "flags",         "slot_array",    "rando_slots",
+    "text_new_fn",   "text_link_fn",  "draw_layer",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -40,6 +42,25 @@ constexpr ptrdiff_t kX = 0x1100, kY = 0x1108;
 constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kNoSaveLoaded = 0xFF;
+// Offline (offline.h): how often a frame looks, the save slots (docs/re/memory.md, "The file
+// select": the slot array's blocks, each slot's copy of its randomizer section), flag 39 (the
+// scanner has said how many disks), and what the player is told on loading an AP save.
+constexpr int kOfflineFrames = 15;
+constexpr int kSaveSlots = 30;
+constexpr ptrdiff_t kSlotStride = 0x9408, kSlotEmpty = 0x935E, kSlotRandoMarker = 0x9400;
+constexpr ptrdiff_t kSlotCopySize = 0x908;
+// A slot block's map grid: the save's file offset 0x877F, less the block's 2 (as +0x935E is
+// the file's 0x9360).
+constexpr ptrdiff_t kSlotMap = 0x877F - 2;
+constexpr uint8_t kEmptySlotMark = 0xFF;
+constexpr int kScannerFlag = 39;
+constexpr uint64_t kFlagCount = 0x9C4;  // the loaded game's flags (client/game.py, FLAGS)
+constexpr char kOfflineWarning[] = "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
+// And once a client connects while a save was dressed offline.
+constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
+// And once a load, from a client whose seed the loaded randomizer save is not.
+constexpr char kOtherSeedNotice[] =
+    "THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. LOAD THAT SEED'S SAVE OR START A NEW GAME.";
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
@@ -120,11 +141,18 @@ bool is_function(const std::string& key) {
         "equipment_fn", "equip_panel_fn", "widget_move_fn", "text_place_fn",
         "widget_new_fn", "sprite_sheet_fn", "panel_link_fn", "text_set_fn", "keys_branch",
         "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
+        "text_new_fn", "text_link_fn",
     };
     for (const char* f : functions) {
         if (key == f) return true;
     }
     return false;
+}
+
+// Keys a config may lack (an offline cache written by a helper before 0.22.0): the title
+// screen's lines (title.h) are then not made.
+bool is_optional(const std::string& key) {
+    return key == "text_new_fn" || key == "text_link_fn" || key == "draw_layer";
 }
 
 }  // namespace
@@ -261,7 +289,8 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
     return "";
 }
 
-std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas) {
+std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
+                            bool active) {
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
         reinterpret_cast<const BYTE*>(image) +
         reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
@@ -270,7 +299,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         std::string key = kConfigKeys[i];
         auto it = rvas.find(key);
-        if (it == rvas.end()) return "missing " + key;
+        if (it == rvas.end()) {
+            // The title screen's lines are left off without theirs (an older helper's cache).
+            if (is_optional(key)) continue;
+            return "missing " + key;
+        }
         uint64_t rva = it->second;
         if (rva == 0 || rva + 16 > image_size) return key + " is outside the game";
         const IMAGE_SECTION_HEADER* section = section_of(image, rva);
@@ -288,6 +321,18 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
             uint64_t end = section->VirtualAddress +
                            (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
             if (rva + kSectionSize > end) return key + " leaves no room for the section";
+        }
+        // What the offline look reads whole (offline.h): the map grid, the flags, the save slots
+        // and their copies of the randomizer section.
+        uint64_t whole = key == "map_grid"      ? kMapCells
+                         : key == "flags"       ? kFlagCount
+                         : key == "slot_array"  ? kSaveSlots * kSlotStride
+                         : key == "rando_slots" ? kSaveSlots * kSlotCopySize
+                                                : 0;
+        if (whole != 0) {
+            uint64_t end = section->VirtualAddress +
+                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+            if (rva + whole > end) return key + " leaves no room for what is read there";
         }
         if (key == "randomizer_menu") {
             uint64_t end = section->VirtualAddress +
@@ -312,6 +357,14 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         found[key] = reinterpret_cast<BYTE*>(image) + rva;
     }
     base_ = reinterpret_cast<BYTE*>(image);
+    // A client's config: the offline look put back first, with the addresses it was set with.
+
+    if (configured_ && active) {
+        leave_offline();
+        drop_offline_warning();
+        other_save_ = false;  // the new client says again, and is told again
+        other_warned_ = false;
+    }
     inventory_ = found["inventory"];
     save_loaded_ = found["save_loaded"];
     menu_state_ = found["menu_state"];
@@ -328,6 +381,10 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     suit_color_fn_ = found["suit_color_fn"];
     rando_blob_ = found["rando_blob"];
     rando_marker_ = found["rando_marker"];
+    map_grid_ = found["map_grid"];
+    flags_ = found["flags"];
+    slot_array_ = found["slot_array"];
+    rando_slots_ = found["rando_slots"];
     transition_fn_ = found["transition_fn"];
     transition_timer_ = found["transition_timer"];
     current_slot_ = found["current_slot"];
@@ -375,6 +432,10 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     pause_at_.sprite_templates = found["sprite_templates"];
     pause_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
     pause_at_.keys_branch = found["keys_branch"];
+    title_at_.draw_layer = found["draw_layer"];
+    title_at_.text_new_fn = found["text_new_fn"];
+    title_at_.text_place_fn = found["text_place_fn"];
+    title_at_.text_link_fn = found["text_link_fn"];
     files_at_.current_menu = found["current_menu"];
     files_at_.file_panel_fn = found["file_panel_fn"];
     files_at_.entry_fns[0] = found["file_entry_fn"];
@@ -397,7 +458,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     halt_flag_ = found["halt_flag"];
     gl_ = load_gl();
     configured_ = true;
-    active_ = true;
+    active_ = active;
     return "";
 }
 
@@ -643,7 +704,7 @@ void Game::pump_popups() {
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     BYTE* p = player();
     auto sound = at<int16_t>(rec, kRecordSound);
-    if (sound >= 0) {
+    if (!popup.silent && sound >= 0) {
         reinterpret_cast<SoundFn>(sound_fn_)(
             sound_system_, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, kRecordVolume), -1.0f, 0, 8);
@@ -944,7 +1005,7 @@ void Game::start_archipelago(WidgetCallback callback) {
 }
 
 void Game::watch_skip() {
-    if (!configured_ || !active_) return;
+    if (!configured_ || (!active_ && !offline_skip_)) return;
     if (skip_frames_-- > 0) return;
     skip_frames_ = 30;
     skip_.apply(event_table_, event_count_);
@@ -1068,9 +1129,197 @@ void Game::file_event(void* widget, intptr_t event) {
 
 void Game::restore_files() {
     if (!configured_) return;
+    client_file_counts_.clear();
+    offline_file_counts_.clear();
     files_.set(0, 0, {});
     files_.restore(files_at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_);
+}
+
+void Game::set_offline(std::vector<OfflineSeed> seeds) {
+    leave_offline();
+    offline_seeds_ = std::move(seeds);
+}
+
+void Game::drop_offline_warning() {
+    for (auto it = popups_.begin(); it != popups_.end();) {
+        it = it->silent && it->suffix == kOfflineWarning ? popups_.erase(it) : std::next(it);
+    }
+}
+
+void Game::leave_offline_seed() {
+    drop_offline_warning();
+    if (offline_index_ < 0) return;
+    offline_index_ = -1;
+    offline_count_ = -1;
+    offline_told_ = -1;
+    restore_ap_items();
+    set_intel(false);
+    restore_intel();
+    set_assists_locked(false);
+    restore_assists();
+    set_discs(0, 0, "");
+    restore_discs();
+    offline_skip_ = false;
+    restore_skip();
+}
+
+void Game::leave_offline() {
+    leave_offline_seed();
+    if (!offline_file_counts_.empty()) {
+        offline_file_counts_.clear();
+        apply_file_counts();
+    }
+}
+
+void Game::apply_file_counts() {
+    // The client's counts for its seed's saves, the offline ones for the other known seeds'.
+    std::map<int, int> merged = offline_file_counts_;
+    for (const auto& [slot, count] : client_file_counts_) merged[slot] = count;
+    if (merged != files_.counts()) files_.set_counts(std::move(merged));
+}
+
+bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
+    return offline_matches(seed, section + kOfflineTableAt, section + kOfflineStartAt);
+}
+
+void Game::watch_offline() {
+    if (!configured_) return;
+    if (*save_loaded_ == kNoSaveLoaded) {
+        // No save: each notice comes again with the next load.
+        offline_warned_ = false;
+        other_warned_ = false;
+        offline_played_ = -1;
+        other_save_ = false;
+    }
+    if (offline_seeds_.empty()) {
+        leave_offline();
+        return;
+    }
+    if (offline_frames_-- > 0) return;
+    offline_frames_ = kOfflineFrames;
+    // A save is dressed with no client, or with a client that said the loaded save is not its
+    // seed's (other_save); undressed when that stops.
+    const bool other = active_ && other_save_;
+    const bool dress = !active_ || other;
+    // This seed's save loaded: the randomizer section as the game loaded it (it is the
+    // previous one after a normal save, hence the marker).
+    int seed = -1;
+    if (dress && *save_loaded_ != kNoSaveLoaded && at<uint16_t>(rando_marker_, 0) == 1) {
+        for (size_t i = 0; i < offline_seeds_.size() && seed < 0; ++i) {
+            if (section_is(offline_seeds_[i], rando_blob_)) seed = static_cast<int>(i);
+        }
+    }
+    // A save is dressed once it is in play (not while it loads, when the marker and section may
+    // still be another save's), and undressed at once.
+    if (seed != offline_index_ && (seed < 0 || in_play())) {
+        leave_offline_seed();
+        offline_index_ = seed;
+        if (seed >= 0) {
+            const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(seed)];
+            std::map<int, Label> labels;
+            if (!sd.labels.empty() && parse_labels(sd.labels, labels).empty()) {
+                set_labels(std::move(labels));
+            }
+            set_intel(sd.intel);
+            set_assists_locked(sd.lock_assists);
+            offline_skip_ = true;
+            // Once a load: the player is told why received items and hints wait (with a
+            // client of another seed, its own notice said so: other_save).
+            if (!offline_warned_ && !other) {
+                popups_.push_back(Popup{kAreaMapItem, kOfflineWarning, true, true});
+                offline_warned_ = true;
+            }
+            if (!other) offline_played_ = seed;
+        }
+    } else if (seed != offline_index_ && offline_index_ >= 0) {
+        leave_offline_seed();  // another seed's save, not in play yet: dressed once it is
+    }
+    if (offline_index_ >= 0) {
+        const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(offline_index_)];
+        if (sd.discs) {
+            int count = offline_disk_count(sd, map_grid_);
+            int told = flags_[kScannerFlag] != 0 ? 1 : 0;
+            if (count != offline_count_ || told != offline_told_) {
+                offline_count_ = count;
+                offline_told_ = told;
+                set_discs(count, sd.required, sd.scan_line, told != 0);
+            }
+        }
+    }
+    // The file select: each save of a known seed with the disks, by its own copy of the section
+    // (valid for a randomizer save in use: client/discs.py, seed_slots), with or without a
+    // client (whose own counts win for its seed's saves: apply_file_counts).
+    std::map<int, int> counts;
+    for (int n = 1; n <= kSaveSlots; ++n) {
+        const BYTE* block = slot_array_ + static_cast<ptrdiff_t>(n - 1) * kSlotStride;
+        if (block[kSlotEmpty] == kEmptySlotMark || at<uint16_t>(const_cast<BYTE*>(block),
+                                                               kSlotRandoMarker) != 1) {
+            continue;
+        }
+        const BYTE* copy = rando_slots_ + static_cast<ptrdiff_t>(n - 1) * kSlotCopySize;
+        for (const OfflineSeed& sd : offline_seeds_) {
+            if (sd.discs && section_is(sd, copy)) {
+                // This save's own count: its map, in its block (docs/re/save-format.md).
+                counts[n] = offline_disk_count(sd, block + kSlotMap);
+                break;
+            }
+        }
+    }
+    if (counts != offline_file_counts_) {
+        offline_file_counts_ = std::move(counts);
+        apply_file_counts();
+    }
+}
+
+bool Game::other_save() {
+    // A client whose session sees a randomizer save in play that is not its seed's: the player
+    // is told once a load, and the save gets its offline look if it is a known seed's.
+    if (!configured_ || *save_loaded_ == kNoSaveLoaded) return false;
+    bool told = other_warned_;
+    other_save_ = true;
+    if (!other_warned_) {
+        drop_offline_warning();
+        popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true, true});
+        other_warned_ = true;
+    }
+    return !told;
+}
+
+bool Game::client_back() {
+    // The save played offline still loaded (the same seed's section), and the client that asks
+    // has seen it is its seed's: the player is told the client is back, once.
+    bool shown = configured_ && offline_played_ >= 0 && *save_loaded_ != kNoSaveLoaded &&
+                 static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
+                 at<uint16_t>(rando_marker_, 0) == 1 &&
+                 section_is(offline_seeds_[static_cast<size_t>(offline_played_)], rando_blob_);
+    offline_played_ = -1;
+    if (shown) popups_.push_back(Popup{kAreaMapItem, kOnlineNotice, true, true});
+    return shown;
+}
+
+std::string Game::offline_state() const {
+    if (offline_seeds_.empty()) return "-";
+    std::string out = std::to_string(offline_seeds_.size());
+    if (offline_index_ >= 0) out += ":" + offline_seeds_[static_cast<size_t>(offline_index_)].name;
+    return out;
+}
+
+void Game::watch_title() {
+    // Only with no save loaded (the title, the file select): in play the draw list is long.
+    if (!configured_ || *save_loaded_ != kNoSaveLoaded) return;
+    std::string why = title_.watch(title_at_, active_);
+    if (!why.empty()) title_error_ = why;
+    if (title_.shown()) title_error_.clear();
+}
+
+void Game::hide_title() {
+    if (configured_) title_.hide(title_at_);
+}
+
+std::string Game::title_state() const {
+    if (!title_error_.empty()) return title_error_;
+    return title_.shown() ? "1" : "0";
 }
 
 void Game::watch_intel() {
