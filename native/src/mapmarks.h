@@ -29,11 +29,11 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended);
 // it for a major item; any other value unchanged. `obscure_majors`: setting 29.
 uint8_t important_value(uint8_t value, bool obscure_majors, bool ended);
 
-// A label (apitem.h: the popup's text, a glyph and up to two lines) as the map cursor's name: the
-// font's characters only, on one line, cut at kMapNameMax ("OS INSTALL DISK",
-// "PROGRESSION ITEM").
+// A label (apitem.h: the popup's text, a glyph and up to two lines of `width` characters) as the
+// map cursor's name: its first line only, what the item is and not whom it is for ("OS INSTALL
+// DISK", "PROGRESSION ITEM"), the font's characters only, cut at kMapNameMax.
 constexpr size_t kMapNameMax = 17;  // the cursor's name text: 17 glyphs, cut (0xA61C0)
-std::string map_name(const std::string& label);
+std::string map_name(const std::string& label, int width);
 
 // Whether the cursor's 17 name glyphs (their frames) spell a stand-in's game name, SCRAP
 // ENERGY or SCRAP CHUNK, then blanks: what the map's handler writes for a square of item 47 or
@@ -51,7 +51,8 @@ public:
     void watch(const GameAddresses& a, bool on);
     // The game's handler for `child`, if this wrapped it.
     void* original(void* child) const { return child == child_ ? original_ : nullptr; }
-    void after(const GameAddresses& a, const std::map<int, std::string>& labels);
+    void after(const GameAddresses& a, const std::map<int, std::string>& labels,
+               const std::map<int, int>& widths);
     void restore(const GameAddresses& a);
     bool holds_hook() const { return child_ != nullptr; }
 

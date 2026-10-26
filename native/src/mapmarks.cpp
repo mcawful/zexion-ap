@@ -101,9 +101,10 @@ int cursor_cell(BYTE* panel) {
 
 }  // namespace
 
-std::string map_name(const std::string& label) {
+std::string map_name(const std::string& label, int width) {
+    const size_t first = width > 0 ? static_cast<size_t>(width) : label.size();
     std::string flat;
-    for (unsigned char ch : label) {
+    for (unsigned char ch : label.substr(0, first)) {
         const bool font = ch >= 0x20 && ch < 0x60;
         const char put = font ? static_cast<char>(ch) : ' ';
         if (put == ' ' && (flat.empty() || flat.back() == ' ')) continue;
@@ -162,7 +163,8 @@ bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
     return false;
 }
 
-void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels) {
+void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels,
+                           const std::map<int, int>& widths) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
     if (!map_menu(a.current_menu, a.hooks.map, menu, panel, child)) return;
@@ -181,7 +183,8 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     }
     // Another text (the player's room, a marker, unknown) is left alone.
     if (!cursor_shows_stand_in(frames)) return;
-    const std::string name = map_name(it->second);
+    const auto width = widths.find(it->first);
+    const std::string name = map_name(it->second, width == widths.end() ? 0 : width->second);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
 }

@@ -702,7 +702,7 @@ void Game::watch_map_names() {
 }
 
 void Game::map_after() {
-    if (configured_) map_names_.after(at_, ap_items_.labels());
+    if (configured_) map_names_.after(at_, ap_items_.labels(), label_widths_);
 }
 
 void* Game::map_original(void* child) const {

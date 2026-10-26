@@ -230,7 +230,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             !parse_hex(hex, raw)) {
             return "bad line " + line;
         }
-        // Up to two lines, each kept to the font's characters
+        // Up to two lines (the item, then whom it is for), each kept to the font's characters
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
         // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
         // it this name instead of the record's (this player's own OS Install Disk).

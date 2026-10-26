@@ -283,17 +283,17 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
 
 - **Labels:** `ap_labels` names map cells (this repo's (x, y); the game shows X = y, Y = x) for
   the **stand-ins**, Scrap Energy (47) and Scrap Chunk (48), which the world puts at every
-  location holding another player's item (48 for progression). HEX is up to two lines joined
-  by a newline. The client sends one: PROGRESSION ITEM or AP ITEM for another game's item; `@N`
-  for another Zexion player's item N, named from its record; or `@N NAME` (item N under that
-  name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or Intel
-  Chip). A label never says whose the item is. See `client/aplabels.py`.
+  location holding another player's item (48 for progression). HEX is the item and whom it is
+  for, joined by a newline; or `@N` and whom it is for (another Zexion player's item N, named
+  from its record); or `@N NAME` (item N under that name: this player's own OS Install Disk, or
+  another Zexion player's disk, Area Map or Intel Chip). See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of
   its kind within 96 pixels of the player (chosen, not measured), else the player's cell's, else
   the nearest loaded one's (or AP ITEM). The game's pickup popup then shows the logo glyph, then
-  the label (PROGRESSION ITEM, AP ITEM or the Zexion item's name).
+  PROGRESSION ITEM (or AP ITEM) over FOR ALICE. The map cursor shows the label's first line
+  only: what the item is, not whom it is for.
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.

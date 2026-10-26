@@ -82,10 +82,12 @@ void test_a_cell_off_the_map_is_skipped() {
 }
 
 void test_map_names() {
-    check(zap::map_name("\xFB" "OS INSTALL DISK") == "OS INSTALL DISK", "own disk");
-    check(zap::map_name("\xEE" "PROGRESSION ITEM") == "PROGRESSION ITEM", "another game's");
-    check(zap::map_name("\xEE" "SLIDE MOD\n  TWO  ") == "SLIDE MOD TWO", "lines joined");
-    check(zap::map_name("AN ITEM NAME THAT IS FAR TOO LONG") == "AN ITEM NAME THAT", "cut");
+    check(zap::map_name("\xFB" "OS INSTALL DISK", 16) == "OS INSTALL DISK", "own disk");
+    // Two lines of 17: the first only, never whom the item is for.
+    check(zap::map_name("\xEE" "PROGRESSION ITEM    FOR ALICE", 17) == "PROGRESSION ITEM",
+          "another game's item: the first line");
+    check(zap::map_name("\xEE" "SLIDE MOD  FOR BOB", 10) == "SLIDE MOD", "a Zexion item's name");
+    check(zap::map_name("AN ITEM NAME THAT IS FAR TOO LONG", 0) == "AN ITEM NAME THAT", "cut");
 }
 
 void test_the_stand_in_names() {
@@ -209,6 +211,7 @@ void fake_text_set(void* text, const char* s, int first, int count) {
 // The cursor's square, as the name the helper writes for it: row 17, column 13 labeled.
 void test_the_cursor_square() {
     const std::map<int, std::string> labels = {{17 * 54 + 13, "\xFB" "OS INSTALL DISK"}};
+    const std::map<int, int> widths = {{17 * 54 + 13, 16}};
     for (double scale : {40.0, 20.0}) {
         MapMenu m(scale);
         zap::GameAddresses a = m.addresses();
@@ -220,11 +223,11 @@ void test_the_cursor_square() {
         const bool fine = scale == 40.0;
         m.at(fine ? 165 : 380, fine ? 100 : 220);
         m.show("SCRAP CHUNK");
-        names.after(a, labels);
+        names.after(a, labels, widths);
         check(m.shown() == "OS INSTALL DISK", fine ? "zoomed in" : "zoomed out");
         m.at(fine ? 175 : 403, fine ? 100 : 220);  // row 18
         m.show("SCRAP CHUNK");
-        names.after(a, labels);
+        names.after(a, labels, widths);
         check(m.shown() == "SCRAP CHUNK", fine ? "zoomed in: row 18" : "zoomed out: row 18");
         names.restore(a);
         g_set_target = nullptr;
@@ -304,23 +307,24 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     check(names.original(m.panel.data()) == nullptr, "only for the map's child");
     const std::map<int, std::string> labels = {
         {17 * 54 + 13, "\xFB" "OS INSTALL DISK"},
-        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM"}};
+        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM    FOR ALICE"}};
+    const std::map<int, int> widths = {{17 * 54 + 13, 16}, {17 * 54 + 14, 17}};
     g_set_target = &m;
     m.at(165, 100);
     m.show("SCRAP CHUNK");  // the game's handler wrote the record's name
-    names.after(a, labels);
+    names.after(a, labels, widths);
     check(m.shown() == "OS INSTALL DISK", "rewritten in the same frame");
     m.at(165, 108);  // (108 + 4) / 8 = 14
     m.show("SCRAP CHUNK");
-    names.after(a, labels);
-    check(m.shown() == "PROGRESSION ITEM", "another player's");
+    names.after(a, labels, widths);
+    check(m.shown() == "PROGRESSION ITEM", "another player's: what it is, not whose");
     m.show("CURRENT LOCATION");
     g_sets = 0;
-    names.after(a, labels);
+    names.after(a, labels, widths);
     check(g_sets == 0 && m.shown() == "CURRENT LOCATION", "another text left alone");
     m.at(165, 116);  // no label
     m.show("SCRAP CHUNK");
-    names.after(a, labels);
+    names.after(a, labels, widths);
     check(m.shown() == "SCRAP CHUNK", "no label: the game's");
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off again: put back");

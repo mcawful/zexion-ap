@@ -75,8 +75,8 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out);
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
 // (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &), and of each of its two
-// lines only the first line it wraps to: the first at 23 characters (after the logo glyph),
-// the second at 24.
+// lines only the first line it wraps to: the item's at 23 characters (after the logo glyph),
+// whom it is for at 24.
 std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 
 // Hex digits (either case), two to a byte, appended to `out`: false for none, an odd count or

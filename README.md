@@ -20,7 +20,7 @@ your version isn't supported.
 ## Features
 
 - Start a seed from the game's own menu: pick an empty save slot and choose ARCHIPELAGO.
-- Other players' items show the Archipelago logo; picking one up says what kind of item it is.
+- Other players' items show the Archipelago logo, and picking one up says whose it is.
 - Items sent to you pop up in the game with the sender's name.
 - Two goals: reach the core and grab Zexion, or hunt for OS Install Disks.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
