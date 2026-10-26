@@ -48,7 +48,9 @@ jobs:
         with:
           python-version: "3.13"
           activate-environment: true
+      # That test needs only pytest (and the standard library), at requirements-dev.txt's pin.
       - name: Install
-        run: uv pip install -r requirements-dev.txt
+        shell: bash
+        run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
       - name: Load test
         run: python -m pytest tests/test_native.py -v
