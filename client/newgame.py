@@ -19,7 +19,7 @@ Anything else (filler, other key sets, more than 9 containers or Mega Bombs) can
 expressed: ``NewGameError``. The world refuses such starting items in generation
 (worlds/zexion/starting.py), so the client meeting one is a bug to report.
 
-With the slot data's menu setup (a mode with one start), the request also carries ``menu``
+For the ARCHIPELAGO choice (a mode with one start), the request also carries ``menu``
 lines: the randomizer menu's state (``+0xDF7340``) as the seed's mode, which the helper's
 ARCHIPELAGO choice sets before it runs the game's placement and puts back afterwards
 (docs/re/memory.md, "The game-mode panel"): the seed text, the two 27-entry arrays, the
@@ -92,7 +92,7 @@ def start_with(start_items: dict[int, int]) -> tuple[bytes, dict[int, int]]:
 
 def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = True) -> str:
     """The helper's ``ap_newgame`` request for this seed, in the game build whose exe has the
-    SHA-256 ``build_sha256``. With ``offer_choice`` and a menu setup it carries the
+    SHA-256 ``build_sha256``. With ``offer_choice`` it carries the
     ARCHIPELAGO choice's lines too; without, the seed is started from RANDOMIZER."""
     if len(plan.location_items) != ids.LOCATIONS:
         raise NewGameError(f"the seed lists {len(plan.location_items)} locations")
@@ -120,7 +120,7 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
         )
     for bit, t in enumerate(START_KEY_OPTIONS):
         lines.append(f"write {section(sp.OPTIONS + t):#x} {(start['keys'] >> bit) & 1:02x}")
-    if plan.menu is not None and offer_choice:
+    if offer_choice:
         lines += menu_lines(plan, table)
     return "\n".join(lines)
 
@@ -129,7 +129,7 @@ def start_table(plan: sp.SeedPlan, build_sha256: str) -> tuple[tuple[int, int, i
     """The menu setup's start table, if it has one measured on this build; checked for shape,
     and for the seed's second start being the room the table lists at its index."""
     menu = plan.menu
-    if menu is None or not menu.start_table:
+    if not menu.start_table:
         return None
     if not menu.table_build or not build_sha256.lower().startswith(menu.table_build.lower()):
         return None  # measured on another build: the game's own may differ
@@ -158,7 +158,6 @@ def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None
     (``plan_text`` writes the second start and its flag), which the helper fills in if the
     menu never built it."""
     menu = plan.menu
-    assert menu is not None
     if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
         raise NewGameError(f"the seed text {menu.seed_text!r} is not 16 hex digits")
     if any(len(a) != len(START_WITH_ORDER) or set(a) - {0, 1} for a in (menu.start, menu.pool)):

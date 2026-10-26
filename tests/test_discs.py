@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 from client import discs, ids
 
 SLOT = {
@@ -17,7 +19,15 @@ SLOT = {
 
 def test_the_core_goal_has_no_hunt() -> None:
     assert discs.from_slot_data({"goal": "core"}) is None
-    assert discs.from_slot_data({}) is None  # a world from before the option
+
+
+def test_a_goal_the_client_does_not_know_is_refused() -> None:
+    with pytest.raises(KeyError):
+        discs.from_slot_data({})
+    with pytest.raises(ValueError, match="'boss'"):
+        discs.from_slot_data({"goal": "boss"})
+    with pytest.raises(KeyError):
+        discs.from_slot_data({k: v for k, v in SLOT.items() if k != "disc_locations"})
 
 
 def test_the_hunt_comes_from_slot_data() -> None:
@@ -64,6 +74,7 @@ def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
         second_start=None,
         amounts=None,
         options={},
+        menu=None,
     )
     ours = bytearray(ids.SECTION_SIZE)
     ours[0x26C : 0x26C + 154] = bytes(plan.location_items)

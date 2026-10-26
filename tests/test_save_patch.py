@@ -29,6 +29,21 @@ def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
     return save
 
 
+def menu_setup(**changes) -> sp.MenuSetup:
+    """A menu setup of plan()'s mode: a mode with one start."""
+    settings = bytearray(64)
+    settings[42 - 10], settings[72 - 10] = 2, 1  # as plan()'s options
+    fields = dict(
+        seed_text="0123456789ABCDEF",
+        start=bytes([0] * 4 + [1] + [0] * 22),
+        pool=bytes([1] * 4 + [0] + [1] * 22),
+        settings=bytes(settings),
+        second_target=(0, 20, 509),
+    )
+    fields.update(changes)
+    return sp.MenuSetup(**fields)
+
+
 def plan(**changes) -> sp.SeedPlan:
     fields = dict(
         location_items=tuple(i % 46 for i in range(sp.LOCATIONS)),
@@ -37,6 +52,7 @@ def plan(**changes) -> sp.SeedPlan:
         second_start=None,
         amounts=AMOUNTS,
         options={42: 2, 72: 1},
+        menu=menu_setup(),
     )
     fields.update(changes)
     return sp.SeedPlan(**fields)
@@ -140,13 +156,26 @@ def test_plan_from_slot_data() -> None:
         "second_start": {"index": 3, "column": 151, "row": 464},
         "amounts": list(AMOUNTS),
         "options": {"42": 2},
+        "menu": {
+            "seed_text": "00000000DEADBEEF",
+            "start": [0] * 27,
+            "pool": [1] * 27,
+            "settings": [0] * 64,
+            "second_target": None,
+            "start_table": [[1, 25, 1]],
+            "table_build": "6d8a94bd4d64",
+        },
     }
     p = sp.plan_from_slot_data(slot)
     assert p.start_items == {0: 3, 3: 1}
     assert p.start == (5, 326, 449)
     assert p.second_start == (3, 151, 464)
     assert p.options == {42: 2}
+    assert p.menu.start_table == ((1, 25, 1),) and p.menu.table_build == "6d8a94bd4d64"
     assert sp.plan_from_slot_data({**slot, "second_start": None}).second_start is None
+    for key in ("second_start", "menu"):
+        with pytest.raises(KeyError):
+            sp.plan_from_slot_data({k: v for k, v in slot.items() if k != key})
 
 
 def test_key_markers_follow_the_seed() -> None:

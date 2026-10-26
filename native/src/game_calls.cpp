@@ -50,31 +50,24 @@ using DeathFn = void (*)(void* player, char kind);
 // checks a function's first 16 bytes: offline.h), a function in executable code and anything
 // else in writable data, except the C runtime's import slots, which are only read, in the
 // read-only data they live in. Some must also leave room in their section for what is read or
-// written there. The optional ones may be missing from an older helper's offline cache: the
-// title screen's lines (title.h, keys from 0.22.0) and the map cursor's names (mapmarks.h,
-// map_handler from 0.24.1) are then left off.
+// written there. Every key is required: an offline cache written for an older helper that
+// lacks one is refused (offline.h), and the client's next `config` rewrites it.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 struct ConfigKey {
     const char* name;
     Held held;
-    bool optional;
     uint64_t room;         // bytes from the address that must lie in its section, if not 0
     const char* room_for;  // what they hold, for the error
     uint64_t before;       // and bytes before it
 };
-constexpr ConfigKey code(const char* name, bool optional = false) {
-    return {name, Held::kCode, optional, 0, nullptr, 0};
-}
+constexpr ConfigKey code(const char* name) { return {name, Held::kCode, 0, nullptr, 0}; }
 constexpr ConfigKey data(const char* name, uint64_t room = 0, const char* room_for = nullptr,
                          uint64_t before = 0) {
-    return {name, Held::kData, false, room, room_for, before};
-}
-constexpr ConfigKey optional_data(const char* name) {
-    return {name, Held::kData, true, 0, nullptr, 0};
+    return {name, Held::kData, room, room_for, before};
 }
 constexpr ConfigKey import_slot(const char* name) {
-    return {name, Held::kImportSlot, false, 0, nullptr, 0};
+    return {name, Held::kImportSlot, 0, nullptr, 0};
 }
 // transition_fn is data: it holds the address of the routine the game runs next.
 constexpr ConfigKey kConfigKeys[] = {
@@ -106,8 +99,7 @@ constexpr ConfigKey kConfigKeys[] = {
     data("flags", kFlagCount, "what is read there"),
     data("slot_array", slot::kCount * slot::kStride, "what is read there"),
     data("rando_slots", slot::kCount * kSectionSize, "what is read there"),
-    code("text_new_fn", true), code("text_link_fn", true), optional_data("draw_layer"),
-    optional_data("map_handler"),
+    code("text_new_fn"), code("text_link_fn"), data("draw_layer"), data("map_handler"),
 };
 
 // The RVA just past a section, as loaded.
@@ -168,13 +160,10 @@ void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
     }
 }
 
-// The addresses configure checked, by key; null for an optional key left out.
+// The addresses configure checked, by key (every one of kConfigKeys).
 struct Found {
     const std::map<std::string, BYTE*>& keys;
-    BYTE* operator()(const char* key) const {
-        auto it = keys.find(key);
-        return it == keys.end() ? nullptr : it->second;
-    }
+    BYTE* operator()(const char* key) const { return keys.at(key); }
 };
 
 MenuAddresses menu_addresses(const Found& f, const Hooks& h) {
@@ -275,10 +264,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     std::map<std::string, BYTE*> found;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
-        if (it == rvas.end()) {
-            if (key.optional) continue;  // its part left off
-            return std::string("missing ") + key.name;
-        }
+        if (it == rvas.end()) return std::string("missing ") + key.name;
         std::string why = check_key(image, image_size, key, it->second);
         if (!why.empty()) return why;
         found[key.name] = reinterpret_cast<BYTE*>(image) + it->second;
@@ -852,10 +838,9 @@ void Game::map_after() {
 
 void* Game::map_original(void* child) const {
     void* handler = map_names_.original(child);
-    // An object the helper did not wrap: the map's own handler, as the game holds it.
-    if (handler == nullptr && map_at_.map_handler != nullptr) {
-        safe_read(map_at_.map_handler, &handler, sizeof(handler));
-    }
+    // An object the helper did not wrap: the map's own handler, as the game holds it (none
+    // read before configure).
+    if (handler == nullptr) safe_read(map_at_.map_handler, &handler, sizeof(handler));
     return handler;
 }
 

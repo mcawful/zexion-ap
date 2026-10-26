@@ -40,17 +40,17 @@ def test_the_helper_knows_the_builds_the_client_knows() -> None:
 
 
 def config_keys() -> dict[str, str]:
-    """The helper's kConfigKeys: each key's kind (code, data, optional_data, import_slot)."""
+    """The helper's kConfigKeys: each key's kind (code, data, import_slot)."""
     table = braced(source("game_calls.cpp"), "constexpr ConfigKey kConfigKeys[] = {")
     table = re.sub(r"//[^\n]*", "", table)
-    entries = re.findall(r'\b(code|data|optional_data|import_slot)\(\s*"(\w+)"', table)
+    entries = re.findall(r'\b(code|data|import_slot)\(\s*"(\w+)"', table)
     # Every quoted name in the table is some entry's first argument: none was missed.
     first_args = re.findall(r'\(\s*"(\w+)"', table)
     assert [name for _, name in entries] == first_args
     out = {}
     for kind, name in entries:
         assert name not in out, f"{name} is listed twice"
-        out[name] = "data" if kind == "optional_data" else kind
+        out[name] = kind
     return out
 
 

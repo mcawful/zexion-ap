@@ -83,12 +83,12 @@ class SeedPlan:
     second_start: tuple[int, int, int] | None
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value
-    menu: MenuSetup | None = None
+    menu: MenuSetup
 
 
 def plan_from_slot_data(slot: dict) -> SeedPlan:
-    second = slot.get("second_start")
-    menu = slot.get("menu")
+    second = slot["second_start"]
+    menu = slot["menu"]
     return SeedPlan(
         location_items=tuple(slot["location_items"]),
         start_items={int(k): v for k, v in slot["start_items"].items()},
@@ -96,14 +96,13 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
         second_start=None if second is None else (second["index"], second["column"], second["row"]),
         amounts=tuple(slot["amounts"]),
         options={int(k): v for k, v in slot["options"].items()},
-        menu=None
-        if menu is None
-        else MenuSetup(
+        menu=MenuSetup(
             seed_text=menu["seed_text"],
             start=bytes(menu["start"]),
             pool=bytes(menu["pool"]),
             settings=bytes(menu["settings"]),
             second_target=None if menu["second_target"] is None else tuple(menu["second_target"]),
+            # Sent only for a mode with a second teleport target.
             start_table=tuple(tuple(room) for room in menu.get("start_table", ())),
             table_build=menu.get("table_build", ""),
         ),

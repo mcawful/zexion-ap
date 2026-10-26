@@ -67,8 +67,7 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   the goal go on.
 - **New games from the seed** (helper phase 3). With the helper, the client arms it with the
   seed, and again once each new game holding it is in play, so one seed can start several
-  saves. For a seed whose slot data carries the menu setup (from the world on `apworld`),
-  picking an empty slot then offers ARCHIPELAGO in place of RANDOMIZER, which starts a new game
+  saves. Picking an empty slot then offers ARCHIPELAGO in place of RANDOMIZER, which starts a new game
   holding the seed (run in game for all three modes, first on a Standard
   seed; for OHKO the helper also fills in the menu's start table; two saves of one seed from
   one connection run in game 2026-10-24, B1; the helper also fits the hover border round

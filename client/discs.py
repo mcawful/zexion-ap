@@ -38,16 +38,21 @@ class DiscHunt:
     locations: frozenset[int]  # this world's location indices holding its own discs
 
 
+GOALS = ("core", "os_install_disks")  # the Goal option's keys (worlds/zexion/options.py)
+
+
 def from_slot_data(slot: Mapping[str, object]) -> DiscHunt | None:
-    """The hunt a seed's slot data sets up, or None for the core goal (or a world from before
-    the option)."""
-    if slot.get("goal") != "os_install_disks":
+    """The hunt a seed's slot data sets up, or None for the core goal."""
+    goal = slot["goal"]
+    if goal not in GOALS:
+        raise ValueError(f"the goal {goal!r} is not one the client knows")
+    if goal != "os_install_disks":
         return None
     return DiscHunt(
         required=int(slot["discs_required"]),
         placed=int(slot["discs_placed"]),
-        start=int(slot.get("discs_start", 0)),
-        locations=frozenset(int(i) for i in slot.get("disc_locations", [])),
+        start=int(slot["discs_start"]),
+        locations=frozenset(int(i) for i in slot["disc_locations"]),
     )
 
 

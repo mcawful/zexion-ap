@@ -150,10 +150,10 @@ client had set armed again). `tests/pipe_client.h` is the pipe client the
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
       inside the game's image, functions in its code and data outside it (writable, except the
       C runtime's `malloc` and `free` import slots, which are only read), or the whole
-      configuration is refused. Every name is required except four, the title screen's three
-      (`text_new_fn`, `text_link_fn`, `draw_layer`) and `map_handler`, so an offline cache from
-      an older helper still configures it, without the title screen's lines or the map
-      cursor's names (the map's markers need only `map_grid`).
+      configuration is refused. Every name is required, in an offline cache too: one written
+      for an older helper that lacks a name is refused (`read_error=cache:_missing_NAME`), and
+      the helper stays without the offline look until a client's `config` and `offline_put`
+      rewrite it.
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;

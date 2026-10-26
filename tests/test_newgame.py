@@ -5,26 +5,12 @@ from __future__ import annotations
 import struct
 
 import pytest
-from test_save_patch import fresh, plan
+from test_save_patch import fresh, menu_setup, plan
 
 from client import newgame as ng
 from client import save_patch as sp
 
 MENU_SIZE = 0x114  # the randomizer menu's state (native/src/game_calls.h, kMenuSize)
-
-
-def menu_setup(**changes) -> sp.MenuSetup:
-    settings = bytearray(64)
-    settings[42 - 10], settings[72 - 10] = 2, 1  # as test_save_patch.plan's options
-    fields = dict(
-        seed_text="0123456789ABCDEF",
-        start=bytes([0] * 4 + [1] + [0] * 22),
-        pool=bytes([1] * 4 + [0] + [1] * 22),
-        settings=bytes(settings),
-        second_target=(0, 20, 509),
-    )
-    fields.update(changes)
-    return sp.MenuSetup(**fields)
 
 
 def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> list[str]:
@@ -56,7 +42,7 @@ def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> lis
 def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
     p = plan(second_start=(9, 151, 464))
     save = fresh()
-    assert apply_text(ng.plan_text(p), save) == []
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
     patched = sp.patch(bytes(fresh()), p)
     for start, size in ((sp.ITEM_TABLE, sp.LOCATIONS), (sp.START_RECORD, 6), (sp.SECOND_START, 6)):
         assert save[start : start + size] == patched[start : start + size]
@@ -70,7 +56,9 @@ def test_starting_items_become_the_array_amounts_and_keys() -> None:
 
 def test_the_amounts_and_key_bits_are_written() -> None:
     save = fresh()
-    apply_text(ng.plan_text(plan(start_items={0: 5, 1: 3, 27: 1, 28: 1, 29: 1})), save)
+    apply_text(
+        ng.plan_text(plan(start_items={0: 5, 1: 3, 27: 1, 28: 1, 29: 1}), offer_choice=False), save
+    )
     assert struct.unpack_from("<6h", save, sp.AMOUNTS)[0::2] == (5, 3, 0)
     assert list(save[sp.OPTIONS + 34 : sp.OPTIONS + 37]) == [1, 1, 0]
 
@@ -80,7 +68,7 @@ def test_another_mode_fails_the_expectations() -> None:
     struct.pack_into("<h", save, sp.AMOUNTS + 2, 35)  # another pool of Energy
     save[sp.OPTIONS + 72] = 2
     before = bytes(save)
-    assert apply_text(ng.plan_text(plan()), save) != []
+    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) != []
     assert bytes(save) == before, "nothing written"
 
 
@@ -167,10 +155,6 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
         ng.plan_text(p, build)
 
 
-def test_without_a_menu_setup_there_are_no_menu_lines() -> None:
-    assert not any(line.startswith("menu") for line in ng.plan_text(plan()).splitlines())
-
-
 @pytest.mark.parametrize(
     "changes, why",
     [
@@ -216,5 +200,3 @@ def test_the_slot_datas_menu_setup_is_read() -> None:
     assert p.menu == sp.MenuSetup(
         "00000000DEADBEEF", bytes(27), bytes([1] * 27), bytes(64), (0, 20, 509)
     )
-    del slot["menu"]
-    assert sp.plan_from_slot_data(slot).menu is None

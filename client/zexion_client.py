@@ -173,7 +173,12 @@ class ZexionContext(CommonContext):
             self.connected(args["slot_data"])
 
     def connected(self, slot: dict) -> None:
-        conn = state.Connection.from_slot_data(slot, self.team, self.slot)
+        try:
+            conn = state.Connection.from_slot_data(slot, self.team, self.slot)
+        except state.UnsupportedSeed as exc:
+            logger.error(f"Cannot play this seed: {exc}. Disconnecting.")
+            Utils.async_start(self.disconnect(), name="disconnect")
+            return
         conn.session.helper = self.helper
         old = self.conn  # a dropped connection's, on reconnecting
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
@@ -213,7 +218,7 @@ class ZexionContext(CommonContext):
             )
         if conn.hunt is not None:
             detail(f"The goal is {conn.hunt.required} of {conn.hunt.placed} OS Install Disks.")
-        detail(f"Seed for Zexion's {slot['mode']} mode.")
+        detail(f"Seed for Zexion's {conn.mode} mode.")
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         conn = self.conn
@@ -1088,7 +1093,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             return  # refused a moment ago
         plan = conn.plan
         build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
-        choice = plan.menu is not None and not ctx.keep_randomizer and not conn.choice_refused
+        choice = not ctx.keep_randomizer and not conn.choice_refused
         for offer in (True, False) if choice else (False,):  # ARCHIPELAGO, else RANDOMIZER
             try:
                 text = newgame.plan_text(plan, build, offer)

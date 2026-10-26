@@ -92,12 +92,14 @@ void test_configure() {
     auto missing = config;
     missing.erase("sound_fn");
     check(game.configure(self, missing) == "missing sound_fn", "every key is required");
-    auto older = config;  // an offline cache from before the title screen's lines
-    older.erase("text_new_fn");
-    older.erase("text_link_fn");
-    older.erase("draw_layer");
-    zap::Game older_game;
-    check(older_game.configure(self, older).empty(), "the title screen's keys may be missing");
+    for (const char* key : {"text_new_fn", "text_link_fn", "draw_layer", "map_handler"}) {
+        auto older = config;  // an offline cache from before these keys
+        older.erase(key);
+        zap::Game older_game;
+        check(older_game.configure(self, older) == std::string("missing ") + key &&
+                  !older_game.configured(),
+              "the title screen's and the map's keys are required too");
+    }
     auto swapped = config;
     swapped["message_fn"] = config["inventory"];
     check(game.configure(self, swapped).find("not in code") != std::string::npos,
