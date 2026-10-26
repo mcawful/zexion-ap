@@ -259,14 +259,8 @@ bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& w
 
 // The texture behind the sprite data's holder, or 0.
 unsigned sprite_texture(BYTE* holder) {
-    BYTE* sprites = nullptr;
-    BYTE* object = nullptr;
     unsigned texture = 0;
-    if (!safe_read(holder, &sprites, sizeof(sprites)) ||
-        !safe_read(sprites + kSpritesTexture, &object, sizeof(object)) ||
-        !safe_read(object, &texture, sizeof(texture))) {
-        return 0;
-    }
+    read(pointer_at(pointer_at(holder), kSpritesTexture), 0, texture);
     return texture;
 }
 
