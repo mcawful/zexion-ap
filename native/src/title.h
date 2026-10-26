@@ -26,21 +26,15 @@
 
 namespace zap {
 
-// The version and the credit (the credit's first character becomes the © glyph, as the game's
-// own line's).
-std::string title_mod_line(const std::string& version);
+// After ARCHIPELAGO MOD and the version, the credit (its first character becomes the © glyph,
+// as the game's own line's), and, while no client is connected, what to do to play.
 extern const char kTitleCredit[];
-// And, while no client is connected, what to do to play.
 extern const char kTitleHint[];
-// Where they go: centered on the 320-pixel screen, 8 pixels a character, in the band below the
-// planet, 12 pixels apart: the hint, then the version, then the credit.
-constexpr int kTitleHintY = 190, kTitleModY = 202, kTitleCreditY = 214;
-int title_line_x(size_t length);
 
 class TitleLines {
 public:
     // The helper's version, for the first line (until set, no lines are made).
-    void set_version(const std::string& version) { mod_line_ = title_mod_line(version); }
+    void set_version(const std::string& version) { mod_line_ = "ARCHIPELAGO MOD " + version; }
 
     // Game thread, every frame call (looks every 9th): adds the lines when the copyright line
     // is up without them, and shows them as the game shows its line's ©. Returns "" or why the

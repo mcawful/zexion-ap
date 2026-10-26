@@ -14,7 +14,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 
 #include "build.h"
@@ -259,21 +258,7 @@ uintptr_t frame(void* argument) {
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 // Once an unload has begun, no watch runs (nothing is put back in).
-                if (!g_unloading) {
-                    g_game.watch_menu(&archipelago_chosen);
-                    g_game.watch_assists();
-                    g_game.watch_skip();
-                    g_game.watch_discs();
-                    g_game.watch_equipment();
-                    g_game.watch_mission();
-                    g_game.watch_files();
-                    g_game.watch_intel();
-                    g_game.watch_title();
-                    g_game.watch_offline();
-                    g_game.watch_map_names();
-                    g_game.watch_ap_items();
-                    g_game.watch_map_marks();
-                }
+                if (!g_unloading) g_game.watch_all(&archipelago_chosen);
                 publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
@@ -397,14 +382,13 @@ struct Request {
 std::string disk_slots(const std::string& request) {
     // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count for the
     // slots holding the seed (files.h); REQUIRED is checked but not shown (requests.h).
-    int count = 0;
-    std::set<int> slots;
-    std::string error = zap::parse_disk_slots(request, count, slots);
+    std::map<int, int> counts;
+    std::string error = zap::parse_disk_slots(request, counts);
     if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
-            bool on = !slots.empty();
-            g_game.set_disk_slots(count, std::move(slots));
+            bool on = !counts.empty();
+            g_game.set_disk_slots(std::move(counts));
             return std::string(on ? "disk_slots on" : "disk_slots off");
         },
         true);

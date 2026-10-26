@@ -260,17 +260,16 @@ void test_anything_else_is_left_alone() {
 }
 
 void test_the_request() {
-    int count = -1;
-    std::set<int> slots;
-    check(zap::parse_disk_slots("disk_slots", count, slots).empty() && slots.empty(), "off");
-    check(zap::parse_disk_slots("disk_slots 3 15 4,5", count, slots).empty() && count == 3 &&
-              slots == std::set<int>{4, 5},
+    std::map<int, int> counts{{1, 1}};
+    check(zap::parse_disk_slots("disk_slots", counts).empty() && counts.empty(), "off");
+    check(zap::parse_disk_slots("disk_slots 3 15 4,5", counts).empty() &&
+              counts == std::map<int, int>{{4, 3}, {5, 3}},
           "a count, the number needed and the slots");
-    check(zap::parse_disk_slots("disk_slots 3 15 -", count, slots).empty() && slots.empty(),
+    check(zap::parse_disk_slots("disk_slots 3 15 -", counts).empty() && counts.empty(),
           "no slot of this seed");
-    check(!zap::parse_disk_slots("disk_slots 3 15 31", count, slots).empty(), "slots 1 to 30");
-    check(!zap::parse_disk_slots("disk_slots 3 15 4,x", count, slots).empty(), "numbers only");
-    check(!zap::parse_disk_slots("disk_slots 3 0 4", count, slots).empty() && count == 0,
+    check(!zap::parse_disk_slots("disk_slots 3 15 31", counts).empty(), "slots 1 to 30");
+    check(!zap::parse_disk_slots("disk_slots 3 15 4,x", counts).empty(), "numbers only");
+    check(!zap::parse_disk_slots("disk_slots 3 0 4", counts).empty() && counts.empty(),
           "the number needed is still checked");
     check(zap::file_disk_digits(3) == "03" && zap::file_disk_digits(15) == "15" &&
               zap::file_disk_digits(120) == "99",

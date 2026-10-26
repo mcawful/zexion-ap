@@ -38,15 +38,8 @@ void Game::leave_offline_seed() {
     offline_index_ = -1;
     offline_count_ = -1;
     offline_told_ = -1;
-    restore_ap_items();
-    set_intel(false);
-    restore_intel();
-    set_assists_locked(false);
-    restore_assists();
-    set_discs(0, 0, "");
-    restore_discs();
     offline_skip_ = false;
-    restore_skip();
+    drop_save_look();
 }
 
 void Game::leave_offline() {
@@ -90,7 +83,7 @@ void Game::watch_offline() {
     // Which known seed's save is loaded: the marker first, as after a normal save the section is
     // still the last randomizer game's.
     int seed = -1;
-    if (dress && *at_.save_loaded != kNoSaveLoaded && at<uint16_t>(at_.rando_marker, 0) == 1) {
+    if (dress && rando_save_loaded()) {
         for (size_t i = 0; i < offline_seeds_.size() && seed < 0; ++i) {
             if (section_is(offline_seeds_[i], at_.rando_blob)) seed = static_cast<int>(i);
         }
@@ -171,9 +164,8 @@ bool Game::other_save() {
 }
 
 bool Game::client_back() {
-    bool shown = configured_ && offline_played_ >= 0 && *at_.save_loaded != kNoSaveLoaded &&
+    bool shown = configured_ && offline_played_ >= 0 && rando_save_loaded() &&
                  static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
-                 at<uint16_t>(at_.rando_marker, 0) == 1 &&
                  section_is(offline_seeds_[static_cast<size_t>(offline_played_)], at_.rando_blob);
     offline_played_ = -1;
     if (shown) popups_.push_back(Popup{kAreaMapItem, kOnlineNotice, true, true});

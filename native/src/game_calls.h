@@ -10,7 +10,6 @@
 #include <deque>
 #include <map>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -106,12 +105,14 @@ public:
     // `expect` bytes (another mode) is left as the game made it, and the plan is dropped.
     void watch_newgame();
 
+    // Game thread, each frame call (dllmain.cpp, until an unload begins), if configured: every
+    // part's watch, in a fixed order. `callback`: ARCHIPELAGO's (watch_menu).
+    void watch_all(WidgetCallback callback);
+
     // Game thread, every frame: while a plan with menu lines is armed, offers ARCHIPELAGO in
     // place of RANDOMIZER on the game-mode panel, its callback `callback`; otherwise puts
-    // RANDOMIZER back.
+    // RANDOMIZER back (also in put_back_all).
     void watch_menu(WidgetCallback callback);
-    // Game thread: puts RANDOMIZER back now (before an unload).
-    void restore_menu(WidgetCallback callback);
     // Whether the game may still hold one of the helper's functions, which unload must take
     // back first: ARCHIPELAGO's callback or the game-mode panel's handler, EQUIPMENT's callback
     // or the Energy Tank panel's handler, the mission prompt's opener or YES, a file entry's
@@ -165,7 +166,6 @@ public:
     // EQUIPMENT wrapped while discs are on (equip.h); the wrapper calls the game's, then
     // equipment_built.
     void* equipment_fn() const { return at_.equipment_fn; }
-    void watch_equipment();
     void equipment_built();
     // The Energy Tank panel's handler while it shows the disk (equip.h): the helper's wrapper
     // calls the game's (equip_panel_fn), then equipment_event.
@@ -173,21 +173,15 @@ public:
     void equipment_event(void* widget, intptr_t event);
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
     // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
-    // restore_mission puts back what it holds (before an unload).
+    // put_back_all puts back what it holds (before an unload).
     void request_mission() { mission_.request(); }
-    // The file select's disk count (files.h): the `disk_slots` request sets what to show; the
-    // watch runs every frame; the helper's wrapper of the save entries' handler calls the
-    // game's (file_entry_original) and then file_event.
-    void set_disk_slots(int count, std::set<int> slots) {
-        client_file_counts_.clear();
-        for (int slot : slots) client_file_counts_[slot] = count;
-        apply_file_counts();
-    }
-    void set_disk_slot_counts(std::map<int, int> counts) {
+    // The file select's disk count (files.h): the `disk_slots` request sets what to show, a
+    // count by slot; the watch runs every frame; the helper's wrapper of the save entries'
+    // handler calls the game's (file_entry_original) and then file_event.
+    void set_disk_slots(std::map<int, int> counts) {
         client_file_counts_ = std::move(counts);
         apply_file_counts();
     }
-    void watch_files();
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileDisks& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
@@ -215,29 +209,20 @@ public:
     // Whether it did.
     bool client_back();
     bool intel_on() const { return intel_.on(); }
-    void watch_intel();
     // Game thread: the title screen's mod lines (title.h): the version they name, the watch
     // (configured, client or not), and hidden before an unload. `title_state` for `hello`:
     // "1" up, "0" not, else why they could not be made.
     void set_title_version(const std::string& version) { title_.set_version(version); }
-    void watch_title();
-    // Game thread, every 16th frame call: item 48's map squares drawn as important in the
-    // labels' seed's save (mapmarks.h).
-    void watch_map_marks();
     // Game thread: the map cursor's name for the stand-ins' squares (mapmarks.h): the open map's
     // handler wrapped while this save's labels are known (each frame), the name rewritten after
     // the game's handler (`map_after`, from the wrapper), and the handler put back.
-    void watch_map_names();
     void map_after();
     void* map_original(void* child) const;
-    void restore_map_names();
     void hide_title();
     std::string title_state() const;
     void restore_intel();
-    void watch_mission();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
-    void restore_mission();
     std::string mission_status() const { return mission_.status(); }
     std::string equipment_status() const { return equip_status_; }
 
@@ -279,6 +264,25 @@ public:
     }
 
 private:
+    // The watches only watch_all calls (it checks the configuration): the equipment screen and
+    // the pause screen's row, the mission prompt, the file select, the Intel Chip, the title
+    // lines, the map's names, and every 16th frame call item 48's map squares drawn as
+    // important in the labels' seed's save (mapmarks.h).
+    void watch_equipment();
+    void watch_mission();
+    void watch_files();
+    void watch_intel();
+    void watch_title();
+    void watch_map_names();
+    void watch_map_marks();
+    // A font glyph painted while wanted, cleared once not (if it was painted).
+    void show_glyph(FontGlyph& glyph, bool wanted);
+    // The look a save gets from a client or the offline look put back: the stand-ins, INTEL
+    // CHIP, the ASSIST lock, the disks (`discs` off: a prompt asked for dropped) and the escape
+    // skip.
+    void drop_save_look();
+    // A randomizer save loaded (its marker set): the loaded section is its own.
+    bool rando_save_loaded() const;
     bool in_play() const;
     BYTE* player() const;
     BYTE* record(uint8_t item) const;

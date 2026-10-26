@@ -247,25 +247,23 @@ std::string Game::apply(const Batch& batch) {
     for (const Cas& c : batch.cas) inv[c.item] = c.value;
     BYTE* p = player();
     if (!batch.cas.empty() || batch.refresh) {
-        // As the pickup routine does (docs/re/memory.md, "Granting each kind of item").
-        auto missiles = static_cast<int16_t>(inv[kMissileContainer] + 10 * inv[kMissileBox]);
-        if (missiles != at<int16_t>(p, kMissilesMax)) {
-            at<int16_t>(p, kMissiles) +=
-                static_cast<int16_t>(missiles - at<int16_t>(p, kMissilesMax));
-            at<int16_t>(p, kMissilesMax) = missiles;
-        }
-        auto bombs = static_cast<int16_t>(inv[kMegaBomb] + 10 * inv[kBombPack]);
-        if (bombs != at<int16_t>(p, kBombsMax)) {
-            at<int16_t>(p, kBombs) += static_cast<int16_t>(bombs - at<int16_t>(p, kBombsMax));
-            at<int16_t>(p, kBombsMax) = bombs;
-        }
+        // As the pickup routine does (docs/re/memory.md, "Granting each kind of item"): each
+        // maximum from its items, the count moved with it.
+        auto sync = [p](int want, ptrdiff_t count, ptrdiff_t max) {
+            const auto now = at<int16_t>(p, max);
+            if (want == now) return;
+            at<int16_t>(p, count) += static_cast<int16_t>(want - now);
+            at<int16_t>(p, max) = static_cast<int16_t>(want);
+        };
+        sync(inv[kMissileContainer] + 10 * inv[kMissileBox], kMissiles, kMissilesMax);
+        sync(inv[kMegaBomb] + 10 * inv[kBombPack], kBombs, kBombsMax);
         auto energy = static_cast<int16_t>(inv[kEnergyTank] * 16);
         if (energy > at<int16_t>(p, kEnergyMax)) {
             at<int16_t>(p, kEnergyMax) = energy;
             at<int16_t>(p, kEnergy) = energy;
         }
+        refresh_hud();
     }
-    if (!batch.cas.empty() || batch.refresh) refresh_hud();
     if (!had_armor && inv[kMagnusArmor] != 0) {
         auto palette = static_cast<short>((~(at<uint32_t>(p, kSuitBits) >> 18)) & 1);
         reinterpret_cast<SuitColorFn>(at_.suit_color_fn)(0, palette);
@@ -444,19 +442,39 @@ void Game::watch_menu(WidgetCallback callback) {
     }
 }
 
-void Game::restore_menu(WidgetCallback callback) {
-    if (configured_) choice_.restore(at_, callback);
+void Game::watch_all(WidgetCallback callback) {
+    if (!configured_) return;
+    watch_menu(callback);
+    watch_assists();
+    watch_skip();
+    watch_discs();
+    watch_equipment();
+    watch_mission();
+    watch_files();
+    watch_intel();
+    watch_title();
+    watch_offline();
+    watch_map_names();
+    watch_ap_items();
+    watch_map_marks();
+}
+
+void Game::show_glyph(FontGlyph& glyph, bool wanted) {
+    if (wanted) {
+        glyph.paint(at_.sprite_texture, gl_, texture_check_);
+    } else if (glyph.painted()) {
+        glyph.clear(at_.sprite_texture, gl_, texture_check_);
+    }
 }
 
 void Game::watch_assists() {
     if (!configured_) return;
+    show_glyph(lock_glyph_, assists_locked_);
     if (assists_locked_) {
-        lock_glyph_.paint(at_.sprite_texture, gl_, texture_check_);
         assists_.install(at_);
-        return;
+    } else if (assists_.installed()) {
+        assists_.restore(at_);
     }
-    if (assists_.installed()) assists_.restore(at_);
-    if (lock_glyph_.painted()) lock_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
 void Game::restore_assists() {
@@ -621,14 +639,12 @@ void Game::restore_discs() {
 }
 
 void Game::watch_equipment() {
-    if (!configured_) return;
     equip_screen_.tidy(at_);
     pause_row_.watch(at_);
+    show_glyph(disk_glyph_, !scan_line_.empty());
     if (!scan_line_.empty()) {
-        disk_glyph_.paint(at_.sprite_texture, gl_, texture_check_);
         equip_.install(at_);
     } else {
-        if (disk_glyph_.painted()) disk_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
         if (equip_.installed()) equip_.restore(at_);
         if (equip_screen_.holds_hook()) equip_screen_.restore(at_);
     }
@@ -641,7 +657,6 @@ void Game::equipment_built() {
 }
 
 void Game::watch_mission() {
-    if (!configured_) return;
     // A save loaded or closed (save_loaded flips between 0 and 0xFF): a prompt asked for drops.
     int save = *at_.save_loaded;
     if (save != mission_save_) {
@@ -655,15 +670,8 @@ void Game::watch_mission() {
 }
 
 void Game::watch_files() {
-    if (!configured_) return;
     files_.watch(at_);
-    for (FontGlyph& glyph : disk_header_) {
-        if (files_.on()) {
-            glyph.paint(at_.sprite_texture, gl_, texture_check_);
-        } else if (glyph.painted()) {
-            glyph.clear(at_.sprite_texture, gl_, texture_check_);
-        }
-    }
+    for (FontGlyph& glyph : disk_header_) show_glyph(glyph, files_.on());
 }
 
 void Game::file_event(void* widget, intptr_t event) {
@@ -679,17 +687,18 @@ void Game::restore_files() {
     for (FontGlyph& glyph : disk_header_) glyph.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
+bool Game::rando_save_loaded() const {
+    return *at_.save_loaded != kNoSaveLoaded && at<uint16_t>(at_.rando_marker, 0) == 1;
+}
+
 bool Game::labels_seed_loaded(bool in_play_only) const {
-    if (!labels_seed_ || *at_.save_loaded == kNoSaveLoaded || (in_play_only && !in_play()) ||
-        at<uint16_t>(at_.rando_marker, 0) != 1) {
-        return false;
-    }
-    return section_is(*labels_seed_, at_.rando_blob);
+    return labels_seed_ && rando_save_loaded() && (!in_play_only || in_play()) &&
+           section_is(*labels_seed_, at_.rando_blob);
 }
 
 void Game::watch_map_names() {
     // The map is a menu: the save loaded, in play or not.
-    if (configured_) map_names_.watch(at_, ap_items_.active() && labels_seed_loaded(false));
+    map_names_.watch(at_, ap_items_.active() && labels_seed_loaded(false));
 }
 
 void Game::map_after() {
@@ -704,13 +713,9 @@ void* Game::map_original(void* child) const {
     return handler;
 }
 
-void Game::restore_map_names() {
-    if (configured_) map_names_.restore(at_);
-}
-
 void Game::watch_map_marks() {
     constexpr int kMapFrames = 15;
-    if (!configured_ || !ap_items_.active()) return;
+    if (!ap_items_.active()) return;
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // Only in the labels' seed's save: a plain randomizer game has the game's own Scrap Chunks.
@@ -720,7 +725,7 @@ void Game::watch_map_marks() {
 
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
-    if (!configured_ || *at_.save_loaded != kNoSaveLoaded) return;
+    if (*at_.save_loaded != kNoSaveLoaded) return;
     std::string why = title_.watch(at_, active_);
     if (!why.empty()) title_error_ = why;
     if (title_.shown()) title_error_.clear();
@@ -735,9 +740,7 @@ std::string Game::title_state() const {
     return title_.shown() ? "1" : "0";
 }
 
-void Game::watch_intel() {
-    if (configured_) intel_.watch(at_.item_records);
-}
+void Game::watch_intel() { intel_.watch(at_.item_records); }
 
 void Game::restore_intel() {
     if (!configured_) return;
@@ -749,20 +752,13 @@ void Game::mission_open() {
     if (configured_) mission_.open(at_);
 }
 
-void Game::restore_mission() {
-    if (configured_) mission_.restore(at_);
-}
-
 void Game::equipment_event(void* widget, intptr_t event) {
     if (configured_) equip_screen_.on_event(at_, widget, event);
 }
 
 void Game::set_labels(std::map<int, Label> labels) {
     labels_seed_.reset();
-    if (!labels.empty() && *at_.save_loaded != kNoSaveLoaded &&
-        at<uint16_t>(at_.rando_marker, 0) == 1) {
-        labels_seed_ = offline_seed_of(at_.rando_blob);
-    }
+    if (!labels.empty() && rando_save_loaded()) labels_seed_ = offline_seed_of(at_.rando_blob);
     if (labels.empty()) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;
@@ -947,19 +943,25 @@ void Game::restore_ap_items() {
     labels_.clear();
 }
 
-void Game::put_back_all(WidgetCallback callback) {
-    disarm_newgame();
-    restore_skip();
-    set_discs(0, 0, "");
-    restore_discs();
-    restore_mission();
-    restore_files();
-    restore_intel();
-    restore_map_names();
+void Game::drop_save_look() {
     restore_ap_items();
-    restore_menu(callback);
+    restore_intel();
     set_assists_locked(false);
     restore_assists();
+    set_discs(0, 0, "");
+    restore_discs();
+    restore_skip();
+}
+
+void Game::put_back_all(WidgetCallback callback) {
+    disarm_newgame();
+    drop_save_look();  // `discs` off first: the prompt's request dropped before it is put back
+    if (configured_) {
+        mission_.restore(at_);
+        map_names_.restore(at_);
+        choice_.restore(at_, callback);
+    }
+    restore_files();
     leave_offline();
 }
 
@@ -991,7 +993,7 @@ void Game::rearm(ClientState s) {
     if (!s.scan_line.empty()) {
         set_discs(s.disc_count, s.discs_required, std::move(s.scan_line), s.discs_told);
     }
-    set_disk_slot_counts(std::move(s.file_counts));
+    set_disk_slots(std::move(s.file_counts));
     if (!s.labels.empty()) {
         set_labels(std::move(s.labels));
         labels_seed_ = std::move(s.labels_seed);  // the seed they were set for

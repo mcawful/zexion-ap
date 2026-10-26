@@ -300,12 +300,12 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     // The file select with a client: its counts for its saves, the offline ones for others'.
     g_save_loaded = 0xFF;
-    other.set_disk_slots(7, {4});
+    other.set_disk_slots({{4, 7}});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     auto merged = other.files().counts();
     check(merged.size() == 2 && merged.at(4) == 7 && merged.at(3) == 4,
           "the client's slot 4 and the known seed's slot 3, together");
-    other.set_disk_slots(0, {});
+    other.set_disk_slots({});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
           "the client's taken back: the offline one stays");
 }
