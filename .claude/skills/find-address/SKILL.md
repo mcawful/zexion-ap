@@ -60,7 +60,8 @@ See `docs/re/memory.md`.
 
 `tools/make_pattern.py EXE RVA [--size N]` does the steps below on a copy of the exe and prints
 the best candidates; add the chosen ones to `client/patterns.py` (two per target, from
-different code) and check them with `tools/check_patterns.py EXE` and then `--live`. For a
+different code, with the RVA the target has on each known build in its `rvas`) and check them
+with `tools/check_patterns.py EXE` and then `--live`. For a
 function, it finds call sites (kind `rip`: the `call rel32` field leads to the function) and the
 function's own start (kind `at`: the match itself is the address); use call sites from at least
 two functions, plus the start pattern. By hand:
