@@ -362,10 +362,13 @@ class Helper:
             raise HelperError(f"unexpected reply to apply: {reply!r}")
         return reply
 
-    def popups_pending(self) -> int:
+    def popups_pending(self) -> int | None:
         """How many popups of ``apply`` batches the helper holds that it has not shown yet
-        (``popups``, replying ``pending N``); HelperError for any other reply."""
+        (``popups``, replying ``pending N``); None when no frame took the request (a load, a
+        stall: asked again later); HelperError for any other reply."""
         reply = self.request("popups")
+        if reply.startswith("refused "):
+            return None
         words = reply.split()
         if len(words) != 2 or words[0] != "pending" or not words[1].isdigit():
             raise HelperError(f"unexpected reply to popups: {reply!r}")

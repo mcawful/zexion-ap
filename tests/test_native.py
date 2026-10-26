@@ -250,6 +250,7 @@ def test_the_popups_waiting_are_read_from_the_helpers_reply(monkeypatch) -> None
     monkeypatch.setattr(helper, "request", lambda text, *args: next(replies), raising=False)
     assert helper.popups_pending() == 3
     assert helper.popups_pending() == 0
-    for _ in range(3):
+    for _ in range(2):
         with pytest.raises(native.HelperError, match="unexpected reply to popups"):
             helper.popups_pending()
+    assert helper.popups_pending() is None  # no frame took it: asked again later

@@ -502,7 +502,8 @@ async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) ->
         shown = queued  # nothing waits in a helper: direct writes show no popups
     elif state.popups_unstored(queued, raw, conn.announced_sent):
         pending = await asyncio.to_thread(helper.popups_pending)
-        shown = state.popups_shown(queued, pending, shown)
+        if pending is not None:  # else no frame took it: the count known stays
+            shown = state.popups_shown(queued, pending, shown)
     conn.announced_shown = shown
     count = state.announced_to_store(shown, raw, conn.announced_sent)
     if count is None:
@@ -1298,13 +1299,15 @@ async def poll(ctx: ZexionContext) -> None:
         logger.error(f"Reading Zexion failed: {exc}")
         await asyncio.sleep(2)
         return
-    # The popups the step handed the helper, or the items it wrote directly.
-    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
     if ctx.helper is not None and current.helper is None:
-        ctx.drop_helper()  # the session gave up on it; try again later
+        # The session gave up on it (try again later): dropped before the count below, so the
+        # popups it had not shown are not counted as shown.
+        ctx.drop_helper()
     elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
+    # The popups the step handed the helper, or the items it wrote directly.
+    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
     load = ctx.load
     if step.left_seed:
         ctx.shields.left()
