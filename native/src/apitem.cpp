@@ -330,23 +330,21 @@ void TextureCheck::read(const GlFunctions& gl) {
     good_ = true;
 }
 
-int FontGlyph::y() const { return 976 + (code_ / 16) * 8; }
-
 bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const {
-    // The slot blank in the game's art, or already this glyph.
-    return check.place_ok(texture, gl, x(), y(), 8, 8,
-                          [&](int px, int py) { return rows_[py][px] == '#'; });
+    // The place blank in the game's art, or already this image.
+    return check.place_ok(texture, gl, x_, y_, w_, h_,
+                          [&](int px, int py) { return opaque(px, py); });
 }
 
 void FontGlyph::upload_pixels(const GlFunctions& gl, bool clear) const {
-    uint8_t glyph[8][8][4] = {};
-    for (int py = 0; py < 8 && !clear; ++py) {
-        for (int px = 0; px < 8; ++px) {
-            if (rows_[py][px] != '#') continue;
-            glyph[py][px][0] = glyph[py][px][1] = glyph[py][px][2] = glyph[py][px][3] = 0xFF;
+    std::vector<uint8_t> rgba(static_cast<size_t>(w_) * h_ * 4, 0);
+    for (int py = 0; py < h_ && !clear; ++py) {
+        for (int px = 0; px < w_; ++px) {
+            if (!opaque(px, py)) continue;
+            std::memset(&rgba[(static_cast<size_t>(py) * w_ + px) * 4], 0xFF, 4);
         }
     }
-    gl.TexSubImage2D(kTexture2D, 0, x(), y(), 8, 8, kRgba, kUnsignedByte, glyph);
+    gl.TexSubImage2D(kTexture2D, 0, x_, y_, w_, h_, kRgba, kUnsignedByte, rgba.data());
 }
 
 bool FontGlyph::upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear) {

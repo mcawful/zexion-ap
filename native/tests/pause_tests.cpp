@@ -22,6 +22,19 @@ unsigned char* const g_branch = stand_in::g_keys_branch;
 unsigned char branch() { return code_byte(g_branch, 0); }
 
 BYTE g_frames[1024 * 0x38];
+BYTE* const g_disc_frame = g_frames + 829 * 0x38;  // the game's small Data Disc
+const double kCorners[8] = {-8, -8, 8, -8, 8, 8, -8, 8};  // the key icons' quad, as read live
+
+// Frame 829's entry as read live on B1: its texture rectangle (464, 816)-(480, 832) over 2048,
+// then the rest.
+void fill_frames() {
+    const float rect[4] = {464 / 2048.0f, 816 / 2048.0f, 480 / 2048.0f, 832 / 2048.0f};
+    std::memcpy(g_disc_frame, rect, sizeof(rect));
+    at<uint16_t>(g_disc_frame, 0x20) = 0x033D;
+    at<uint16_t>(g_disc_frame, 0x22) = 0x033D;
+    at<uint16_t>(g_disc_frame, 0x2E) = 0xFFFF;
+    g_disc_frame[0x30] = 1;
+}
 
 struct Pause {
     BYTE menu[0x80] = {};
@@ -44,6 +57,7 @@ struct Pause {
     BYTE* current = nullptr;
 
     Pause() {
+        fill_frames();
         at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
         at<int32_t>(menu, 8) = 2;
         panels[0] = entries_panel;
@@ -79,6 +93,8 @@ struct Pause {
             at<int32_t>(sprite[k], 0x1BC) = k < 4 ? 390 : 912;
             at<BYTE*>(sprite[k], 0x1A8) = g_frames;
             at<int32_t>(sprite[k], 0x1C4) = k < 4 ? 167 : 380 + k;
+            at<BYTE*>(sprite[k], 0x30) = font;  // a template, as the game's keep theirs
+            for (int c = 0; c < 8; ++c) at<double>(sprite[k], 0x98 + 8 * c) = kCorners[c];
             at<float>(sprite[k], 0x68) = 0.26f;
             at<double>(sprite[k], 0x148) = -8;
             at<double>(sprite[k], 0x150) = -8;
@@ -111,7 +127,7 @@ void test_the_row_shows_the_disks() {
     zap::PauseDiskRow row;
     zap::GameAddresses a = p.addresses();
     row.set(zap::pause_row_text(2, 0));
-    row.watch(a);
+    row.watch(a, false);
     check(branch() == 0xEB && row.patched(), "the panel always built (jne to jmp)");
     // " 2 OF ? " on the eight cells: sprites 0, 1, the label's four glyphs, sprites 2, 3.
     const char* text = " 2 OF ? ";
@@ -134,11 +150,11 @@ void test_the_row_shows_the_disks() {
           "the other key icons hidden");
     // Turned once: a second look changes nothing.
     at<int32_t>(p.sprite[0], 0x1C4) = 'X';
-    row.watch(a);
+    row.watch(a, false);
     check(p.frame(p.sprite[0]) == 'X', "turned once");
 
     row.set("");
-    row.watch(a);
+    row.watch(a, false);
     check(branch() == 0x75 && !row.patched(), "off: the jne back");
 }
 
@@ -149,17 +165,104 @@ void test_prepared_before_the_count() {
     zap::PauseDiskRow row;
     zap::GameAddresses a = p.addresses();
     row.prepare(zap::pause_row_text(3, 0));
-    row.watch(a);
+    row.watch(a, false);
     check(branch() == 0xEB && row.patched(), "prepared: the panel built");
     check(p.frame(p.sprite[4]) == 829 && p.frame(p.sprite[1]) == '3',
           "the file's count shown at once");
     row.set(zap::pause_row_text(4, 0));
-    row.watch(a);
+    row.watch(a, false);
     check(p.frame(p.sprite[1]) == '3', "an open screen's row turned once");
     row.set("");
     row.prepare("");
-    row.watch(a);
+    row.watch(a, false);
     check(branch() == 0x75 && !row.patched(), "neither: the jne back");
+}
+
+// The helper's 24 x 24 disc, once painted: sprite 4 pointed at the helper's one entry, a copy of
+// frame 829's with the disc's place in the texture, drawn 24 x 24 about the icon's place.
+void test_the_helpers_disc() {
+    Pause p;
+    zap::PauseDiskRow row;
+    zap::GameAddresses a = p.addresses();
+    row.set(zap::pause_row_text(2, 15));
+    row.watch(a, true);
+    BYTE* s = p.sprite[4];
+    const BYTE* entry = row.disc_entry();
+    check(entry != nullptr && at<const BYTE*>(s, 0x1A8) == entry &&
+              at<const BYTE*>(s, 0x1B0) == entry && at<int32_t>(s, 0x1BC) == 1 &&
+              p.frame(s) == 0,
+          "the sprite drawn from the helper's entry, its only frame");
+    const float rect[4] = {128 / 2048.0f, 1008 / 2048.0f, 152 / 2048.0f, 1032 / 2048.0f};
+    check(entry != nullptr && std::memcmp(entry, rect, sizeof(rect)) == 0,
+          "the disc's place in the texture");
+    check(entry != nullptr && std::memcmp(entry + 16, g_disc_frame + 16, 0x38 - 16) == 0,
+          "the rest of the entry frame 829's");
+    const double corners[8] = {-12, -12, 12, -12, 12, 12, -12, 12};
+    check(std::memcmp(s + 0x98, corners, sizeof(corners)) == 0 && at<double>(s, 0x148) == -12 &&
+              at<double>(s, 0x160) == 12,
+          "a 24 x 24 quad about its place");
+    check(at<double>(s, 0x40) == 160 && at<double>(s, 0x48) == 184 &&
+              at<double>(s, 0x128) == 148 && at<double>(s, 0x130) == 172 &&
+              at<double>(s, 0x138) == 172 && at<double>(s, 0x140) == 196 && s[0x120] == 1 &&
+              at<float>(s, 0x68) == 1.0f && at<BYTE*>(s, 0x30) == p.font,
+          "in the middle, above the text, white, its template kept");
+    check(p.sprite[5][0x120] == 0 && p.sprite[8][0x120] == 0, "the other icons hidden");
+    // Turned once: a second look changes nothing.
+    at<int32_t>(p.sprite[0], 0x1C4) = 'X';
+    row.watch(a, true);
+    check(p.frame(p.sprite[0]) == 'X', "turned once");
+
+    // The image not painted any more (a new texture it could not paint into): the entry shows
+    // the game's disc.
+    row.watch(a, false);
+    check(std::memcmp(entry, g_disc_frame, 16) == 0, "unpainted: frame 829's rectangle");
+    row.watch(a, true);
+    check(std::memcmp(entry, rect, sizeof(rect)) == 0, "painted again: the disc's");
+    // Off (and before an unload): the entry kept, showing frame 829's rectangle.
+    row.set("");
+    row.watch(a, false);
+    check(branch() == 0x75 && !row.patched(), "off: the jne back");
+    check(at<const BYTE*>(s, 0x1B0) == entry && std::memcmp(entry, g_disc_frame, 16) == 0,
+          "the entry kept, never freed, showing the game's disc");
+
+    // The next pause screen reuses the one entry.
+    Pause q;
+    row.set(zap::pause_row_text(3, 15));
+    row.watch(q.addresses(), true);
+    check(row.disc_entry() == entry && at<const BYTE*>(q.sprite[4], 0x1B0) == entry,
+          "one entry for every pause screen");
+    row.set("");
+    row.watch(q.addresses(), false);
+}
+
+// The disc not painted, or a sprite without its template (whose list the game would free): the
+// game's frame 829, 16 x 16, as before.
+void test_the_games_disc_otherwise() {
+    zap::PauseDiskRow row;
+    {
+        Pause p;
+        row.set(zap::pause_row_text(2, 15));
+        row.watch(p.addresses(), false);
+        BYTE* s = p.sprite[4];
+        check(p.frame(s) == 829 && at<BYTE*>(s, 0x1B0) == g_disc_frame &&
+                  at<BYTE*>(s, 0x1A8) == g_frames && at<int32_t>(s, 0x1BC) == 912 &&
+                  at<double>(s, 0x148) == -8 && at<double>(s, 0x98) == -8 &&
+                  row.disc_entry() == nullptr,
+              "not painted: frame 829, its own size, no entry made");
+        row.watch(p.addresses(), true);
+        check(p.frame(s) == 829, "a row turned with 829 stays so");
+    }
+    {
+        Pause p;
+        at<BYTE*>(p.sprite[4], 0x30) = nullptr;
+        row.watch(p.addresses(), true);
+        check(p.frame(p.sprite[4]) == 829 && at<BYTE*>(p.sprite[4], 0x1A8) == g_frames &&
+                  row.disc_entry() == nullptr,
+              "no template: frame 829, the game's list kept");
+    }
+    row.set("");
+    Pause p;
+    row.watch(p.addresses(), false);
 }
 
 void test_anything_else_is_left_alone() {
@@ -185,15 +288,15 @@ void test_anything_else_is_left_alone() {
         row.set(zap::pause_row_text(2, 15));
         c.spoil(p, row);
         const int glyph = p.frame(p.glyph[0]);
-        row.watch(p.addresses());
+        row.watch(p.addresses(), false);
         check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == glyph, c.what);
     }
     row.set("");
     Pause p;
-    row.watch(p.addresses());
+    row.watch(p.addresses(), false);
     set_code_byte(g_branch, 0, 0x74);  // not the game's jne: never written
     row.set(zap::pause_row_text(2, 15));
-    row.watch(p.addresses());
+    row.watch(p.addresses(), false);
     check(branch() == 0x74 && !row.patched(), "another instruction left alone");
     set_code_byte(g_branch, 0, 0x75);
     row.restore(p.addresses());
@@ -210,6 +313,8 @@ void test_the_text() {
 int main() {
     test_the_row_shows_the_disks();
     test_prepared_before_the_count();
+    test_the_helpers_disc();
+    test_the_games_disc_otherwise();
     test_anything_else_is_left_alone();
     test_the_text();
     return report("pause tests");

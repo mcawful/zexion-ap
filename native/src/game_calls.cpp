@@ -634,15 +634,17 @@ void Game::restore_discs() {
     scan_.restore(at_.text_table);
     equip_.restore(at_);
     equip_screen_.restore(at_);
-    pause_row_.restore(at_);
+    pause_row_.restore(at_);  // its disc's entry off the image before the image is cleared
     disk_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
+    pause_disc_.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
 void Game::watch_equipment() {
     equip_screen_.tidy(at_);
     // Every frame, before the row: a pause screen opened on a load's first frame still has it.
     pause_row_.prepare(known_disk_row());
-    pause_row_.watch(at_);
+    show_glyph(pause_disc_, pause_row_.on());
+    pause_row_.watch(at_, pause_disc_.painted());
     show_glyph(disk_glyph_, !scan_line_.empty());
     if (!scan_line_.empty()) {
         equip_.install(at_);
