@@ -350,10 +350,18 @@ the helper:
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
   frees it with the menu;
 - makes the pause screen's KEYS row the disk row (`src/pause.cpp`): the `jne` that builds the
-  row only once flag 39 is set made a `jmp`, then the small Data Disc icon and the count, the
-  key slots and icons hidden. As soon as a save of a known disk seed (one the client left a
-  file for) is loaded, in play or not, the row shows the count from that file until the
-  client's arrives, so a pause screen opened at once shows the disks, not KEYS;
+  row only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons
+  hidden. As soon as a save of a known disk seed (one the client left a file for) is loaded, in
+  play or not, the row shows the count from that file until the client's arrives, so a pause
+  screen opened at once shows the disks, not KEYS;
+- while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
+  1008) in the sprite texture (blank there in the game's art, checked as the glyphs are), and
+  points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
+  Disc's (frame 829) with the image's place, drawn 24 x 24. The entry is allocated once and
+  kept for good, never freed, so a pause screen still holding it after an unload points at live
+  memory; whenever the image is not painted (the row off, before an unload, a texture it could
+  not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
+  screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
   play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
   (`src/mission.cpp`), whose YES closes the prompt through the game's NO and then starts the
@@ -485,8 +493,8 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
   again, the received shield and death, the ASSIST watch and the scanner's text.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
-- `apitem`: the stand-in records restyled and named, the logo painted through a fake OpenGL,
-  the label parser.
+- `apitem`: the stand-in records restyled and named, the logo, the font glyphs and the pause
+  row's disc painted through a fake OpenGL, the label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`offline`: the seed file, its match and disk count, the folder, the cache check,
   `offline_put`, a stand-in game dressed and undressed).

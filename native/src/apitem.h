@@ -120,28 +120,33 @@ private:
 };
 
 // One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
-// game's art (the AP logo glyph, the padlock, the disk glyphs). Painted while wanted, again now
-// and then and whenever the texture changes, and cleared when no longer wanted.
+// game's art (the AP logo glyph, the padlock, the disk glyphs), or any one-color image of its own
+// placed in the texture check's kept rectangle (the pause row's disc, pause.h). Painted while
+// wanted, again now and then and whenever the texture changes, and cleared when no longer wanted.
 class FontGlyph {
 public:
     // `rows`: 8 strings of 8, '#' for an opaque white pixel.
-    FontGlyph(uint8_t code, const char (*rows)[9]) : code_(code), rows_(rows) {}
+    FontGlyph(uint8_t code, const char (*rows)[9])
+        : x_((code % 16) * 8), y_(976 + (code / 16) * 8), w_(8), h_(8), rows_(rows[0]) {}
+    // An image of H rows of W - 1 at (x, y) in the sprite texture, '#' for an opaque white pixel.
+    template <size_t H, size_t W>
+    FontGlyph(int x, int y, const char (&rows)[H][W])
+        : x_(x), y_(y), w_(static_cast<int>(W - 1)), h_(static_cast<int>(H)), rows_(rows[0]) {}
     // Game thread (the GL context current). `texture_holder` holds the pointer to the sprite
     // data.
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     bool painted() const { return painted_ != 0; }
 
-    // Inside on_texture: whether its slot may be painted, and the slot painted (or cleared).
+    // Inside on_texture: whether its place may be painted, and the place painted (or cleared).
     bool fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const;
     void upload_pixels(const GlFunctions& gl, bool clear) const;
 
 private:
     bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear);
-    int x() const { return (code_ % 16) * 8; }
-    int y() const;
-    uint8_t code_;
-    const char (*rows_)[9];
+    bool opaque(int px, int py) const { return rows_[py * (w_ + 1) + px] == '#'; }
+    int x_, y_, w_, h_;
+    const char* rows_;  // h_ NUL-terminated strings of w_, back to back
     unsigned painted_ = 0;
     unsigned failed_ = 0;  // a texture it could not paint into: tried again only now and then
     int frames_to_paint_ = 0;

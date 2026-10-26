@@ -13,6 +13,7 @@
 #include "check.h"
 #include "apitem.h"
 #include "game_calls.h"
+#include "pause.h"  // the pause row's disc
 #include "stand_in.h"  // the item records and the sprite data
 
 namespace {
@@ -65,6 +66,7 @@ unsigned WINAPI fake_get_error() { return 0; }
 // The readback: the known art apitem.cpp checks (Scrap Energy's frame 134 at (6, 0), glyph 0xC0
 // at (2, 1)) opaque unless g_known_art is off; the logo places blank unless g_frame95_used.
 bool g_frame95_used = false;
+bool g_disc_place_used = false;  // a pixel of the pause disc's place, where its art is clear
 bool g_known_art = true;
 int g_readbacks = 0;
 void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) {
@@ -76,6 +78,7 @@ void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) 
     opaque(128 + (134 % 8) * 16 + 6, 640 + (134 / 8) * 16);
     opaque((0xC0 % 16) * 8 + 2, 976 + (0xC0 / 16) * 8 + 1);
     if (g_frame95_used) opaque(128 + (95 % 8) * 16, 640 + (95 / 8) * 16);  // where the logo is not
+    if (g_disc_place_used) opaque(128, 1008);  // the disc's top left, transparent in its rows
 }
 unsigned char WINAPI fake_is_texture(unsigned texture) { return texture != 0; }
 
@@ -102,6 +105,7 @@ void reset_gl() {
     g_binds.clear();
     g_known_art = true;
     g_frame95_used = false;
+    g_disc_place_used = false;
     g_readbacks = 0;
 }
 
@@ -377,6 +381,41 @@ void test_font_glyph() {
     check(g_readbacks == reads, "and not read back again every frame");
 }
 
+// An image of the helper's own at a place of its own: the pause row's 24 x 24 disc.
+void test_an_image_of_its_own() {
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::FontGlyph disc(zap::kDiscX, zap::kDiscY, zap::kDiscRows);
+    zap::TextureCheck check_disc;
+    disc.paint(sprites(), gl, check_disc);
+    check(disc.painted() && g_uploads.size() == 1 && g_uploads[0].x == 128 &&
+              g_uploads[0].y == 1008 && g_uploads[0].w == 24 && g_uploads[0].h == 24,
+          "the disc goes to (128, 1008), 24 x 24");
+    auto pixel = [&](int px, int py) {
+        const uint8_t* p = &g_uploads[0].pixels[(py * 24 + px) * 4];
+        return p[0] == 0xFF && p[1] == 0xFF && p[2] == 0xFF && p[3] == 0xFF ? '#'
+               : p[3] == 0                                                ? '.'
+                                                                          : '?';
+    };
+    bool same = true;
+    for (int py = 0; py < 24; ++py) {
+        for (int px = 0; px < 24; ++px) same = same && pixel(px, py) == zap::kDiscRows[py][px];
+    }
+    check(same, "white where its rows have '#', transparent elsewhere");
+    disc.clear(sprites(), gl, check_disc);
+    check(!disc.painted() && g_uploads.size() == 2 && g_uploads[1].w == 24 &&
+              all_blank({g_uploads.back()}),
+          "cleared");
+
+    // Its place not blank in the texture: not painted.
+    reset_gl();
+    g_disc_place_used = true;
+    zap::FontGlyph blocked(zap::kDiscX, zap::kDiscY, zap::kDiscRows);
+    zap::TextureCheck taken;
+    blocked.paint(sprites(), gl, taken);
+    check(!blocked.painted() && g_uploads.empty(), "a place not blank is left alone");
+}
+
 // Everything painted into the sprite texture shares one read of it (16 MB), until the game
 // makes the texture again.
 void test_one_readback_for_every_painter() {
@@ -414,6 +453,7 @@ void test_one_readback_for_every_painter() {
 
 int main() {
     test_font_glyph();
+    test_an_image_of_its_own();
     test_one_readback_for_every_painter();
     test_restyle_and_names();
     test_one_record_not_as_expected_leaves_the_other_restyled();

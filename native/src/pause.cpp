@@ -6,6 +6,34 @@
 
 namespace zap {
 
+// The disc, as the owner approved it (2026-10-26).
+const char kDiscRows[kDiscSize][kDiscSize + 1] = {
+    "..........####..........",
+    ".......##########.......",
+    ".....#######.#..###.....",
+    "....#########...#.##....",
+    "...#########...#..###...",
+    "..##########..#..#####..",
+    "..##########.#..###..#..",
+    ".########......###..###.",
+    ".#######..####..#..#..#.",
+    ".######..######...#...#.",
+    "#######.###..###.#...###",
+    "#######.##....##....#.##",
+    "##.#....##....##.#######",
+    "###...#.###..###.#######",
+    ".#...#...######..######.",
+    ".#..#..#..####..#######.",
+    ".###..###......########.",
+    "..#..###..#.##########..",
+    "..#####..#..##########..",
+    "...###..#...#########...",
+    "....##.#...#########....",
+    ".....###..#.#######.....",
+    ".......##########.......",
+    "..........####..........",
+};
+
 namespace {
 
 constexpr uint8_t kJne = 0x75, kJmp = 0xEB, kSkip = 0x2E;
@@ -19,6 +47,17 @@ constexpr int kKeyIconFirst = 384, kDiskIcon = 829;
 constexpr ptrdiff_t kWorld = 0x128, kLocal = 0x148;
 // Where things go (read live on B1, 2026-10-24): the label's line, and the middle.
 constexpr double kRowY = 208.0, kLabelX = 144.0, kIconX = 160.0, kIconY = 184.0;
+// The helper's disc about its place, as the quad's corners (top left, top right, bottom right,
+// bottom left) and as the rectangle: 24 x 24, centered as the game's 16 x 16 icon is.
+constexpr double kHalf = kDiscSize / 2.0;
+constexpr double kDiscCorners[8] = {-kHalf, -kHalf, kHalf, -kHalf, kHalf, kHalf, -kHalf, kHalf};
+constexpr double kDiscLocal[4] = {-kHalf, -kHalf, kHalf, kHalf};
+// A frame-list entry starts with its texture rectangle (u0, v0, u1, v1), over the texture's size
+// (docs/re/memory.md, "The pause screen's KEYS row").
+constexpr float kTextureSize = 2048.0f;
+constexpr float kDiscRect[4] = {kDiscX / kTextureSize, kDiscY / kTextureSize,
+                                (kDiscX + kDiscSize) / kTextureSize,
+                                (kDiscY + kDiscSize) / kTextureSize};
 
 void place(BYTE* s, double x, double y, const double (&local)[4]) {
     put(s, sprite::kX, x);
@@ -51,18 +90,20 @@ bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
     return patch_code(a.keys_branch, &to, 1);
 }
 
-void PauseDiskRow::watch(const GameAddresses& a) {
+void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
     const std::string& text = text_.empty() ? prepared_ : text_;
     if (text.empty()) {
         restore(a);
         return;
     }
+    entry_shows(disc);
     if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
-    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text);
+    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text, disc);
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
     prepared_.clear();  // prepared again by the next look (Game::watch_offline)
+    entry_shows(false);  // the image is cleared next: a sprite still on the entry shows 829's
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
     BYTE now = 0;
@@ -70,7 +111,44 @@ void PauseDiskRow::restore(const GameAddresses& a) {
     if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
 }
 
-void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& text) {
+void PauseDiskRow::entry_shows(bool disc) {
+    if (entry_ == nullptr) return;
+    std::memcpy(entry_, disc ? kDiscRect : game_rect_, sizeof(kDiscRect));
+}
+
+bool PauseDiskRow::show_disc(BYTE* s) {
+    // Only a sprite that keeps its template: the game frees the frame list of one that does not
+    // (0x745C0), and must never free the helper's entry.
+    BYTE* list = nullptr;
+    void* sprite_template = nullptr;
+    int32_t frames = 0;
+    if (!read(s, sprite::kTemplate, sprite_template) || sprite_template == nullptr ||
+        !read(s, sprite::kFrameCount, frames) || frames <= kDiskIcon ||
+        !read(s, sprite::kFrameList, list) || list == nullptr) {
+        return false;
+    }
+    if (entry_ == nullptr) {
+        // Made once, from frame 829's entry, and never freed (pause.h).
+        BYTE copy[sprite::kFrameSize];
+        if (!safe_read(list + kDiskIcon * sprite::kFrameSize, copy, sizeof(copy))) return false;
+        auto* page = static_cast<BYTE*>(
+            VirtualAlloc(nullptr, sprite::kFrameSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        if (page == nullptr) return false;
+        std::memcpy(page, copy, sizeof(copy));
+        std::memcpy(game_rect_, copy, sizeof(game_rect_));
+        entry_ = page;
+    }
+    entry_shows(true);
+    put(s, sprite::kFrameList, entry_);
+    put(s, sprite::kFrameShown, entry_);
+    put<int32_t>(s, sprite::kFrameCount, 1);
+    put<int32_t>(s, sprite::kFrameIndex, 0);
+    std::memcpy(s + sprite::kCorners, kDiscCorners, sizeof(kDiscCorners));
+    std::memcpy(s + kLocal, kDiscLocal, sizeof(kDiscLocal));
+    return true;
+}
+
+void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& text, bool disc) {
     // The text fills the row's cells (pause_row_text), read by index below.
     if (text.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
@@ -114,8 +192,10 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     }
     // Turned already (each frame, as the screen stays up): nothing more to check.
     int32_t icon = -1;
+    BYTE* shown = nullptr;
     read(sprite[4], sprite::kFrameIndex, icon);
-    if (icon == kDiskIcon) return;
+    read(sprite[4], sprite::kFrameShown, shown);
+    if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) return;
     for (BYTE* s : sprite) {
         if (!writable(s, sprite::kSize)) return;
     }
@@ -157,10 +237,13 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         look_like(s, glyph[0]);
         *(s + sprite::kVisible) = 1;
     }
-    // The disk in the middle, white as the text; the other key icons and Zexion's hidden.
+    // The disc in the middle, white as the text: the helper's if painted, else the game's small
+    // Data Disc. The other key icons and Zexion's hidden.
     double icon_local[4] = {};
     safe_read(sprite[4] + kLocal, icon_local, sizeof(icon_local));
-    if (set_frame(sprite[4], kDiskIcon)) {
+    const bool own_disc = disc && show_disc(sprite[4]);
+    if (own_disc) std::memcpy(icon_local, kDiscLocal, sizeof(icon_local));
+    if (own_disc || set_frame(sprite[4], kDiskIcon)) {
         place(sprite[4], kIconX, kIconY, icon_local);
         std::memcpy(sprite[4] + sprite::kTint, glyph[0] + sprite::kTint, sprite::kTintSize);
         *(sprite[4] + sprite::kVisible) = 1;

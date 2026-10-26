@@ -327,6 +327,7 @@ private:
     bool assists_locked_ = false;
     FontGlyph lock_glyph_{kLockGlyph, kLockRows};
     FontGlyph disk_glyph_{kDiskGlyph, kDiskRows};  // the disk's popup icon (equip.h)
+    FontGlyph pause_disc_{kDiscX, kDiscY, kDiscRows};  // the pause row's disc (pause.h)
     FontGlyph disk_header_[2] = {{kDiskHeaderGlyphs[0], kDiskHeaderRows[0]},
                                  {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
     bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied

@@ -89,9 +89,11 @@ constexpr ptrdiff_t kGlyphs = 0x228;
 // whether shown, palette, frame list and the frame shown (docs/re/memory.md, "The game-mode
 // panel", "Live item objects").
 namespace sprite {
+constexpr ptrdiff_t kTemplate = 0x30;  // the definition's template, null for none
 constexpr ptrdiff_t kX = 0x40, kY = 0x48;  // doubles, pixels
 constexpr ptrdiff_t kTint = 0x68;
 constexpr size_t kTintSize = 0x20;
+constexpr ptrdiff_t kCorners = 0x98;  // 8 doubles: the drawn quad's corners about the place
 constexpr ptrdiff_t kVisible = 0x120;  // byte
 constexpr ptrdiff_t kPalette = 0x198, kPaletteNumber = 0x1A0;  // the object, its 16-bit number
 constexpr ptrdiff_t kFrameList = 0x1A8, kFrameShown = 0x1B0;   // pointers
