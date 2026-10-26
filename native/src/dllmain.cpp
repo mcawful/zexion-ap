@@ -387,41 +387,50 @@ void wait_until_no_call_inside() {
 constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
 std::string undo_for_unload();
 
+// `hello`'s fields from the game's thread: configured, the escape skip offered, a client there,
+// the offline seeds (offline.h) and the title screen's lines (title.h).
+struct HelloState {
+    bool configured = false;
+    bool skip = false;
+    bool active = false;
+    std::string offline = "-";
+    std::string title = "0";
+};
+
+// A hello field kept to one word: spaces (a seed file's name, a reason) as underscores.
+std::string one_word(std::string text) {
+    for (char& c : text) c = c == ' ' ? '_' : c;
+    return text;
+}
+
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") {
-        // Configured, whether the escape skip is offered, then the offline seeds (offline.h).
-        std::string state;
+        // Read on the game's thread; the defaults stand if no frame comes.
+        HelloState state;
         if (g_slot != nullptr) {
+            std::string ignored;
             g_mailbox.call(
-                [] {
-                    return std::string(g_game.configured() ? "1" : "0") +
-                           (g_game.skip_offered() ? "1" : "0") + (g_game.active() ? "1" : "0") +
-                           g_game.offline_state() + "\n" + g_game.title_state();
+                [&state] {
+                    state.configured = g_game.configured();
+                    state.skip = g_game.skip_offered();
+                    state.active = g_game.active();
+                    state.offline = g_game.offline_state();
+                    state.title = g_game.title_state();
+                    return std::string();
                 },
-                kFrameWaitMs, state);
+                kFrameWaitMs, ignored);
         }
-        // The title screen's lines after the newline (title.h).
-        std::string title = "0";
-        size_t newline = state.find('\n');
-        if (newline != std::string::npos) {
-            title = state.substr(newline + 1);
-            state.resize(newline);
-        }
-        for (char& c : title) c = c == ' ' ? '_' : c;
-        bool configured = state.size() >= 3 && state[0] == '1';
-        bool skip = state.size() >= 3 && state[1] == '1';
-        bool active = state.size() >= 3 && state[2] == '1';
-        std::string offline = state.size() > 3 ? state.substr(3) : "-";
         AcquireSRWLockShared(&g_offline_lock);
         std::string error = g_offline_error;
         ReleaseSRWLockShared(&g_offline_lock);
-        for (char& c : error) c = c == ' ' ? '_' : c;
         return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
-               " hooked=" + (g_slot ? "1" : "0") + " configured=" + (configured ? "1" : "0") +
-               " skip=" + (skip ? "1" : "0") + " folder=" + (g_from_game_folder ? "1" : "0") +
-               " offline=" + offline + " active=" + (active ? "1" : "0") + " title=" + title +
+               " hooked=" + (g_slot ? "1" : "0") +
+               " configured=" + (state.configured ? "1" : "0") + " skip=" + (state.skip ? "1" : "0") +
+               " folder=" + (g_from_game_folder ? "1" : "0") + " offline=" + one_word(state.offline) +
+               " active=" + (state.active ? "1" : "0") + " title=" + one_word(state.title) +
                " reads=" + std::to_string(g_offline_reads.load()) + "/" +
-               std::to_string(g_offline_found.load()) + (error.empty() ? "" : " read_error=" + error);
+               std::to_string(g_offline_found.load()) +
+               (error.empty() ? "" : " read_error=" + one_word(error));
     }
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request == "shield") {
