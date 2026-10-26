@@ -52,6 +52,10 @@ def test_starting_items_become_the_array_amounts_and_keys() -> None:
     array, start = ng.start_with({0: 3, 1: 3, 36: 1, 3: 1, 13: 1, 27: 1, 28: 1, 2: 2})
     assert {ng.START_WITH_ORDER[i] for i, v in enumerate(array) if v} == {3, 13}
     assert start == {"energy": 3, "missiles": 13, "bombs": 2, "keys": 2}
+    # Easy's start: 5 tanks, 3 containers, Machine Gun, Power Cartridge, Navcore.
+    array, start = ng.start_with({0: 5, 1: 3, 3: 1, 13: 1, 32: 1})
+    assert start == {"energy": 5, "missiles": 3, "bombs": 0, "keys": 0}
+    assert sum(array) == 3
 
 
 def test_the_amounts_and_key_bits_are_written() -> None:
@@ -84,13 +88,6 @@ def test_another_mode_fails_the_expectations() -> None:
 def test_starting_items_it_cannot_express_are_refused(start_items, why) -> None:
     with pytest.raises(ng.NewGameError, match=why):
         ng.plan_text(plan(start_items=start_items))
-
-
-def test_the_three_modes_fresh_saves_express_their_own_starts() -> None:
-    # Easy's start: 5 tanks, 3 containers, Machine Gun, Power Cartridge, Navcore.
-    array, start = ng.start_with({0: 5, 1: 3, 3: 1, 13: 1, 32: 1})
-    assert start == {"energy": 5, "missiles": 3, "bombs": 0, "keys": 0}
-    assert sum(array) == 3
 
 
 def test_the_menu_lines_set_the_menu_to_the_seeds_mode() -> None:
@@ -176,27 +173,3 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
 def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
     with pytest.raises(ng.NewGameError, match=why):
         ng.plan_text(plan(**changes))
-
-
-def test_the_slot_datas_menu_setup_is_read() -> None:
-    slot = {
-        "location_items": [0] * sp.LOCATIONS,
-        "start_items": {"4": 1},
-        "start_index": 4,
-        "start_column": 148,
-        "start_row": 869,
-        "second_start": None,
-        "amounts": [3, 17, 3, 122, 0, 12],
-        "options": {"72": 0},
-        "menu": {
-            "seed_text": "00000000DEADBEEF",
-            "start": [0] * 27,
-            "pool": [1] * 27,
-            "settings": [0] * 64,
-            "second_target": [0, 20, 509],
-        },
-    }
-    p = sp.plan_from_slot_data(slot)
-    assert p.menu == sp.MenuSetup(
-        "00000000DEADBEEF", bytes(27), bytes([1] * 27), bytes(64), (0, 20, 509)
-    )

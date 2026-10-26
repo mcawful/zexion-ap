@@ -66,8 +66,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
         return
-    ctx.said.clear("helper")
-    ctx.said.clear("helper detail")
+    ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.
@@ -196,9 +195,9 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         if info.player == ctx.slot and code in ids.GAME_ITEMS:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
-        elif slot is not None and slot.game == ctx.game and aplabels.zexion_look(code) is not None:
+        elif slot is not None and slot.game == ctx.game and (look := aplabels.zexion_look(code)):
             # Another Zexion player's own item, whatever that player's settings.
-            item, name = aplabels.zexion_look(code)
+            item, name = look
             text = aplabels.zexion_label(item, player, name)
         else:
             text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
@@ -234,27 +233,27 @@ async def offline_config(ctx: ZexionContext) -> str | None:
 def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
     """This seed's file for the helper to dress its saves without the client (client/
     offline.py), or None while it is not known yet (the items or the labels not listed yet)."""
-    seed = None
     conn = ctx.conn
-    if conn is not None and conn.items_listed:
-        built = foreign_labels(ctx) if conn.foreign else ({}, 0)
-        if built is not None:
-            labels = aplabels.labels_request(built[0]) if built[0] else None
-            hunt = conn.hunt
-            disc_info = None
-            if hunt is not None:
-                have = discs.owned(hunt, p.codes, p.found)
-                unfound = offline.grid_cells(conn.session.cells, hunt.locations - set(p.found))
-                disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
-            seed = offline.seed_text(
-                conn.plan.location_items,
-                conn.plan.start,
-                conn.intel_chip,
-                conn.lock_assists,
-                disc_info,
-                labels,
-            )
-    return seed
+    if conn is None or not conn.items_listed:
+        return None
+    built = foreign_labels(ctx) if conn.foreign else ({}, 0)
+    if built is None:
+        return None
+    labels = aplabels.labels_request(built[0]) if built[0] else None
+    hunt = conn.hunt
+    disc_info = None
+    if hunt is not None:
+        have = discs.owned(hunt, p.codes, p.found)
+        unfound = offline.grid_cells(conn.session.cells, hunt.locations - set(p.found))
+        disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
+    return offline.seed_text(
+        conn.plan.location_items,
+        conn.plan.start,
+        conn.intel_chip,
+        conn.lock_assists,
+        disc_info,
+        labels,
+    )
 
 
 async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -284,11 +283,10 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
                 reply = f"error {exc}"
         if reply in ("stored", "unchanged"):
             told.offline_sent[kind] = text
-            ctx.offline_failed = False
-        elif not ctx.offline_failed:
+            ctx.said.clear("offline")
+        elif ctx.said("offline", "failed"):  # said once until a file is kept again
             logger.warning(OFFLINE_FAILED)
             log.warning(f"The helper did not keep the offline {kind} file: {reply}")
-            ctx.offline_failed = True
 
 
 async def labels_tick(ctx: ZexionContext) -> None:
@@ -350,7 +348,9 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     if conn is None or conn.shield_key not in ctx.stored_data or game_conn is None:
         return  # no game, or the count not read from the server yet
     key = conn.shield_key
-    if sh.resend_due(key, ctx.stored_data.get(key) or 0, time.monotonic()):
+    # The server's count, read afresh after each wait: the key is open to any client in the
+    # room, so anything but a count reads as none (state.stored_count).
+    if sh.resend_due(key, state.stored_count(ctx.stored_data.get(key)) or 0, time.monotonic()):
         await send_shield_count(ctx)
     pending = sh.current(key)
     if pending is not None:
@@ -361,7 +361,7 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         return
     if conn.session.holding:
         return  # the ending began in this load: on the next load, as other items (session.py)
-    given = sh.given_count(key, ctx.stored_data.get(key) or 0)
+    given = sh.given_count(key, state.stored_count(ctx.stored_data.get(key)) or 0)
     if reconcile.shields_owed(received, given) <= 0:
         return
     reply = await asyncio.to_thread(helper.request, "shield")
@@ -396,7 +396,7 @@ async def confirm_shield(
             logger.warning("Can't tell whether a received Energy Shield is up; trying again.")
             log.warning(f"Reading the player's Energy Shield failed ({failed}).")
         sh.said = said
-    stored = ctx.stored_data.get(key) or 0
+    stored = state.stored_count(ctx.stored_data.get(key)) or 0
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
     if outcome == shields.BACKOFF:
         logger.warning(
@@ -444,14 +444,13 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
     if reply == "died":
         deaths.dealt(time.monotonic())
-        seed.death_said = ""
+        ctx.said.clear("death")
         more = f" ({deaths.owed} more queued)" if deaths.owed else ""
         detail(f"DeathLink: the received death was dealt{more}.")
         return
     deaths.refused()
-    if reply != seed.death_said and reply != "refused not settled":
+    if ctx.said("death", reply) and reply != "refused not settled":
         detail(f"DeathLink: the received death is waiting: {reply}")
-    seed.death_said = reply
     seed.death_retry_at = time.monotonic() + DEATH_RETRY_SECONDS
 
 
@@ -676,7 +675,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     done = popped(ctx)
     if done is None or any(i in hunt.locations for i in ctx.load.save_collected - done):
         return
-    if home.remind(enough):
+    if not home.reminded:
         note = [(ids.DATA_DISC, discs.POD_NOTE, True)]
         reply = await asyncio.to_thread(helper.apply, native.batch_text([], note))
         if reply != "applied":

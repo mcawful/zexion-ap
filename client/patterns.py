@@ -918,7 +918,6 @@ TARGETS = (
 )
 # fmt: on
 
-BY_NAME = {t.name: t for t in TARGETS}
 # Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
 # locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
 TOOL_TARGETS = frozenset({"pickup_counter"})

@@ -140,25 +140,15 @@ class Session:
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
-        # Received items already handed over (helper popup or direct write); None until the
-        # server's count is read.
-        self._announced: int | None = None
+        # How many received items have been handed over, to the helper for their popup or
+        # written directly; None until the server's count of those shown is read (or the count
+        # again after a lost helper).
+        self.announced: int | None = None
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded.
         self._goal_before: bool | None = None
         self.holding = False
-
-    @property
-    def announced(self) -> int | None:
-        """How many received items have been handed to the helper or written directly (None:
-        not known yet)."""
-        return self._announced
-
-    def mark_announced(self, count: int) -> None:
-        """Received items up to ``count`` have had their popup, or are queued for it (the
-        server's count of those shown, or the count again after a lost helper)."""
-        self._announced = count
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
@@ -249,7 +239,7 @@ class Session:
         due, self._due = self._due, result.inventory
         if result.inventory != due:
             return {}  # owed for the first time: wait for the next poll to agree
-        if self.helper is not None and self._announced is None:
+        if self.helper is not None and self.announced is None:
             return {}  # which items have had their popup is not known yet
         if self.helper is not None:
             try:
@@ -258,8 +248,8 @@ class Session:
                 logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
                 self.helper.close()
                 self.helper = None
-        if self._announced is not None:
-            self._announced = len(received)  # direct writes show no popups
+        if self.announced is not None:
+            self.announced = len(received)  # direct writes show no popups
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():
@@ -294,7 +284,7 @@ class Session:
         notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
-        start = self._announced if self._announced is not None else len(received)
+        start = self.announced if self.announced is not None else len(received)
         # A progressive weapon received while its weapon is owned arrives as the upgrade, so
         # its popup names the upgrade.
         weapons = {w for w in ids.PROGRESSIVE if snap.inventory[w]}
@@ -321,6 +311,6 @@ class Session:
         if reply != "applied":
             logger.info(f"Not given this time: {reply}")
             return {}
-        if self._announced is not None:
-            self._announced = len(received)
+        if self.announced is not None:
+            self.announced = len(received)
         return dict(owed)
