@@ -1322,6 +1322,49 @@ void test_refused_unload_rearms() {
     g_rando_marker = 0;
 }
 
+// A refused unload after ARCHIPELAGO was pressed, its new game queued: set again as started, so
+// the next frame applies the plan without the mode check (the AP seed's own amounts now differ
+// from the mode's) and ARCHIPELAGO is not offered again meanwhile.
+void test_refused_unload_keeps_a_start() {
+    zap::Game game;
+    g_choice_game = &game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    reset_game();
+    std::memset(g_section, 0, sizeof(g_section));
+    std::memset(g_randomizer_menu, 0, sizeof(g_randomizer_menu));
+    g_steps.clear();
+    g_transition_fn = nullptr;
+    g_rando_marker = 0;
+    g_slot_taken = false;
+    g_current_slot = 2;
+    stand_in::ModePanel panel(reinterpret_cast<void*>(&panel_handler_fn),
+                              reinterpret_cast<void*>(&widget_handler_fn),
+                              reinterpret_cast<void*>(&rando_menu_fn));
+    g_current_menu = panel.menu;
+    zap::NewGamePlan plan;
+    zap::parse_newgame(
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nmenu 0x88 0300\nwrite 0x6C0 0500",
+        plan);
+    game.arm_newgame(plan);
+    game.watch_menu(&chosen);
+    reinterpret_cast<zap::WidgetCallback>(panel.callback())(panel.child, 6);
+    check(g_steps == "placement queue ", "ARCHIPELAGO pressed: the new game queued");
+
+    zap::ClientState saved = game.snapshot();
+    check(saved.newgame_armed && saved.starting, "the snapshot holds the start");
+    game.put_back_all(&chosen);
+    check(game.newgame_status() == "idle", "put_back_all drops it");
+    game.rearm(saved);
+    game.watch_menu(&chosen);
+    check(!game.menu_installed(), "set again as started: ARCHIPELAGO not offered again");
+    game.watch_newgame();
+    check(game.newgame_status() == "applied slot 3" && g_section[0x6C0] == 5,
+          "the queued new game gets the plan, the mode check skipped as before");
+    g_current_menu = nullptr;
+    g_transition_fn = nullptr;
+    g_rando_marker = 0;
+}
+
 // The `popups` request's count: the client's popups still queued, not the helper's own notices.
 void test_pending_popups() {
     zap::Game game;
@@ -1347,6 +1390,7 @@ void test_pending_popups() {
 int main() {
     test_parsers();
     test_refused_unload_rearms();
+    test_refused_unload_keeps_a_start();
     test_pending_popups();
     test_configure();
     test_apply();

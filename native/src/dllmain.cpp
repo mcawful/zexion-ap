@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 
@@ -86,6 +87,10 @@ std::atomic<int> g_in_callback{0};
 // request, so a reconnected client's `config` and requests come after it. Without a client the
 // game is the base game (the helper may have been loaded with the game, by the proxy).
 std::atomic<bool> g_client_gone{false};
+// What clients had set, from a refused unload (undo_for_unload): the next frame sets it again
+// before anything else, so before any request after the refusal. The pipe thread publishes it,
+// the frame takes it; neither waits.
+std::atomic<zap::ClientState*> g_rearm{nullptr};
 // Whether the helper was loaded from the game's own folder (by the proxy, native/proxy/, or by
 // a client with no build of its own) rather than from elsewhere: `hello` reports it.
 bool g_from_game_folder = false;
@@ -265,6 +270,10 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_game.note_play(GetTickCount64());
+            if (zap::ClientState* state = g_rearm.exchange(nullptr)) {
+                std::unique_ptr<zap::ClientState> owned(state);
+                g_game.rearm(std::move(*owned));
+            }
             if (g_client_gone.exchange(false)) {
                 // The client went away: everything it asked for goes, and nothing comes back
                 // (the escape skip included) until a client configures the helper again.
@@ -628,11 +637,10 @@ std::string undo_for_unload() {
     }
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        if (saved) {
-            std::string ignored;
-            g_mailbox.call([&] { g_game.rearm(std::move(state)); return std::string(); },
-                           kFrameWaitMs, ignored);
-        }
+        // Set again by the next frame, however long it takes to come (a call through the mailbox
+        // could be withdrawn for want of one, and the client would never resend it). One left
+        // from an earlier refusal was taken already: a frame ran the snapshot after it.
+        if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };
     if (set_unloading(true)) {
@@ -646,6 +654,7 @@ std::string undo_for_unload() {
         return refuse("the pause screen's branch is still the helper's (no frame came)");
     }
     if (!unhook()) return refuse(kHookReplaced);
+    delete g_rearm.exchange(nullptr);  // one no frame took: unloading anyway
     return "";
 }
 
