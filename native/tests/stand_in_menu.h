@@ -1,11 +1,12 @@
-// A stand-in game-mode panel for the native tests, laid out as traced on B1 (menu.h): the most
-// recent menu, its panel list, the panel, four children, RANDOMIZER's label and its 11 glyphs,
-// each with a frame table.
+// Stand-in menus for the native tests, laid out as traced on B1: the game-mode panel (menu.h:
+// the most recent menu, its panel list, the panel, four children, RANDOMIZER's label and its 11
+// glyphs, each with a frame table), the pause menu's options, and the pause screen (pause.h).
 #pragma once
 
 #include <windows.h>
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -197,6 +198,103 @@ struct OptionsMenu {
         }
         return s;
     }
+};
+
+// The pause screen (pause.h), laid out as read live on B1: two panels, the first holding
+// EQUIPMENT, the second the KEYS row (a 4-glyph label and nine sprites), drawn from a frame list
+// whose frame 829 is the game's small Data Disc.
+inline BYTE g_pause_frames[1024 * 0x38];
+inline BYTE* const g_disc_frame = g_pause_frames + 829 * 0x38;  // the game's small Data Disc
+// The key icons' quad, as read live.
+inline const double kKeyCorners[8] = {-8, -8, 8, -8, 8, 8, -8, 8};
+
+// Frame 829's entry as read live on B1: its texture rectangle (464, 816)-(480, 832) over 2048,
+// then the rest.
+inline void fill_pause_frames() {
+    const float rect[4] = {464 / 2048.0f, 816 / 2048.0f, 480 / 2048.0f, 832 / 2048.0f};
+    std::memcpy(g_disc_frame, rect, sizeof(rect));
+    at<uint16_t>(g_disc_frame, 0x20) = 0x033D;
+    at<uint16_t>(g_disc_frame, 0x22) = 0x033D;
+    at<uint16_t>(g_disc_frame, 0x2E) = 0xFFFF;
+    g_disc_frame[0x30] = 1;
+}
+
+struct PauseScreen {
+    BYTE menu[0x80] = {};
+    BYTE* panels[2] = {};
+    BYTE entries_panel[0x300] = {};
+    BYTE* entries[2] = {};
+    BYTE entry[2][0x2D0] = {};
+    BYTE row[0x300] = {};
+    BYTE* row_children[1] = {};
+    BYTE keys[0x2D0] = {};
+    BYTE label[0x268] = {};
+    BYTE* glyphs[4] = {};
+    BYTE glyph[4][0x1D8] = {};
+    BYTE* sprites[9] = {};
+    BYTE sprite[9][0x1D8] = {};
+    BYTE font[0x1D8] = {};
+    BYTE* templates[40] = {};
+    BYTE* templates_holder = nullptr;
+    BYTE palette0[8] = {};
+    BYTE* current = nullptr;
+
+    // `equipment`: the EQUIPMENT entry's callback; `other`: the first entry's; `widget_handler`:
+    // the KEYS row's handler.
+    PauseScreen(void* equipment, void* other, void* widget_handler) {
+        fill_pause_frames();
+        at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
+        at<int32_t>(menu, 8) = 2;
+        panels[0] = entries_panel;
+        panels[1] = row;
+        at<BYTE**>(entries_panel, 0x1E0) = entries;
+        at<int32_t>(entries_panel, 0x1E8) = 2;
+        entries[0] = entry[0];
+        entries[1] = entry[1];
+        at<void*>(entry[0], 0x2C0) = other;
+        at<void*>(entry[1], 0x2C0) = equipment;
+        at<int32_t>(row, 0x1E8) = 1;
+        at<BYTE**>(row, 0x1E0) = row_children;
+        at<int32_t>(row, 0x1F8) = 9;
+        at<BYTE**>(row, 0x1F0) = sprites;
+        row_children[0] = keys;
+        at<void*>(keys, 0x2C8) = widget_handler;
+        at<BYTE*>(keys, 0x1F0) = label;
+        at<int32_t>(label, 0x1D8) = 4;
+        at<BYTE**>(label, 0x228) = glyphs;
+        const char* text = "KEYS";
+        for (int i = 0; i < 4; ++i) {
+            glyphs[i] = glyph[i];
+            at<int32_t>(glyph[i], 0x1BC) = 256;
+            at<BYTE*>(glyph[i], 0x1A8) = g_pause_frames;
+            at<int32_t>(glyph[i], 0x1C4) = text[i];
+            at<BYTE*>(glyph[i], 0x198) = palette0;
+            at<int32_t>(glyph[i], 0x1D0) = 0x15;
+            at<float>(glyph[i], 0x68) = 1.0f;
+            glyph[i][0x120] = 1;
+        }
+        for (int k = 0; k < 9; ++k) {
+            sprites[k] = sprite[k];
+            at<int32_t>(sprite[k], 0x1BC) = k < 4 ? 390 : 912;
+            at<BYTE*>(sprite[k], 0x1A8) = g_pause_frames;
+            at<int32_t>(sprite[k], 0x1C4) = k < 4 ? 167 : 380 + k;
+            at<BYTE*>(sprite[k], 0x30) = font;  // a template, as the game's keep theirs
+            for (int c = 0; c < 8; ++c) at<double>(sprite[k], 0x98 + 8 * c) = kKeyCorners[c];
+            at<float>(sprite[k], 0x68) = 0.26f;
+            at<double>(sprite[k], 0x148) = -8;
+            at<double>(sprite[k], 0x150) = -8;
+            at<double>(sprite[k], 0x158) = 8;
+            at<double>(sprite[k], 0x160) = 8;
+            sprite[k][0x120] = k == 8 ? 0 : 1;
+        }
+        at<int32_t>(font, 0x1BC) = 256;
+        at<BYTE*>(font, 0x1A8) = g_pause_frames;
+        templates[1] = font;
+        templates_holder = reinterpret_cast<BYTE*>(templates);
+        current = menu;
+    }
+
+    int frame(BYTE* s) { return at<int32_t>(s, 0x1C4); }
 };
 
 }  // namespace stand_in
