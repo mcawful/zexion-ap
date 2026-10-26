@@ -7,6 +7,7 @@ import json
 
 import numpy as np
 import pytest
+from fakes import FakeProcess, scripted_sleep
 
 import memscan
 
@@ -43,38 +44,15 @@ def test_groups_parse_from_label_and_snapshots() -> None:
 
 
 def test_spans_merge_close_addresses() -> None:
-    assert memscan.spans([0x100, 0x102, 0x101, 0x900], gap=256) == [(0x100, 3), (0x900, 1)]
-    assert memscan.spans([0x100, 0x300], gap=0x300) == [(0x100, 0x201)]
+    assert memscan.spans([0x100, 0x102, 0x101, 0x900], gap=256) == [
+        (0x100, 3, [0x100, 0x101, 0x102]),
+        (0x900, 1, [0x900]),
+    ]
+    assert memscan.spans([0x100, 0x300], gap=0x300) == [(0x100, 0x201, [0x100, 0x300])]
 
 
 def test_changes_between_lists_each_changed_byte() -> None:
     assert memscan.changes_between({1: 0, 2: 5}, {1: 0, 2: 6}) == [(2, 5, 6)]
-
-
-def write_snapshot(lab, name: str, module_base: int, regions: list[tuple[int, bytes]]) -> None:
-    folder = lab / "mem" / name
-    folder.mkdir(parents=True)
-    index, offset, blob = [], 0, b""
-    for base, data in regions:
-        index.append({"base": base, "size": len(data), "type": "image", "offset": offset})
-        blob += data
-        offset += len(data)
-    (folder / "memory.bin").write_bytes(blob)
-    meta = {"module_base": module_base, "module_size": 0x10000, "regions": index, "note": ""}
-    (folder / "index.json").write_text(json.dumps(meta))
-
-
-def test_classify_command_aligns_snapshots_by_rva_across_restarts(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
-    # Two runs of the game with different module bases: the data region is at RVA 0x2000.
-    write_snapshot(tmp_path, "p1", 0x10000, [(0x12000, bytes([1, 0, 7]))])
-    write_snapshot(tmp_path, "p2", 0x50000, [(0x52000, bytes([1, 0, 8]))])
-    write_snapshot(tmp_path, "t1", 0x10000, [(0x12000, bytes([3, 0, 9]))])
-    write_snapshot(tmp_path, "t2", 0x50000, [(0x52000, bytes([3, 0, 9]))])
-    assert memscan.main(["classify", "play=p1,p2", "title=t1,t2", "--out", "cand"]) == 0
-    saved = json.loads((tmp_path / "mem" / "cand.json").read_text())
-    assert saved["target"] == "play"
-    assert saved["candidates"] == [{"rva": 0x2000, "values": {"play": 1, "title": 3}}]
 
 
 def test_the_region_query_struct_matches_windows_x64() -> None:
@@ -86,102 +64,105 @@ def test_the_region_query_struct_matches_windows_x64() -> None:
 B1 = {"timestamp": 1, "size_of_image": 2}
 
 
-def snapshot(lab, name, module_base, regions, build=B1) -> None:
-    write_snapshot(lab, name, module_base, regions)
-    if build is not None:
-        index = lab / "mem" / name / "index.json"
-        meta = json.loads(index.read_text())
-        meta["build"] = build
-        index.write_text(json.dumps(meta))
-
-
-def test_classify_lines_up_regions_split_differently(tmp_path, monkeypatch, capsys) -> None:
+@pytest.fixture
+def lab(tmp_path, monkeypatch):
     monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
+    return tmp_path
+
+
+def snapshot(lab, name, module_base, regions: list[tuple[int, bytes]], build=B1) -> None:
+    """A snapshot as ``snap`` writes one; ``build=None`` for one that records no build."""
+    folder = lab / "mem" / name
+    folder.mkdir(parents=True)
+    index, offset, blob = [], 0, b""
+    for base, data in regions:
+        index.append({"base": base, "size": len(data), "type": "image", "offset": offset})
+        blob += data
+        offset += len(data)
+    (folder / "memory.bin").write_bytes(blob)
+    meta = {"module_base": module_base, "module_size": 0x10000, "regions": index, "note": ""}
+    (folder / "index.json").write_text(json.dumps(meta | ({"build": build} if build else {})))
+
+
+def candidate_rvas(lab, name: str) -> list[int]:
+    return [c["rva"] for c in json.loads((lab / "mem" / f"{name}.json").read_text())["candidates"]]
+
+
+def test_classify_command_aligns_snapshots_by_rva_across_restarts(lab) -> None:
+    # Two runs of the game with different module bases: the data region is at RVA 0x2000.
+    snapshot(lab, "p1", 0x10000, [(0x12000, bytes([1, 0, 7]))], build=None)
+    snapshot(lab, "p2", 0x50000, [(0x52000, bytes([1, 0, 8]))], build=None)
+    snapshot(lab, "t1", 0x10000, [(0x12000, bytes([3, 0, 9]))], build=None)
+    snapshot(lab, "t2", 0x50000, [(0x52000, bytes([3, 0, 9]))], build=None)
+    assert memscan.main(["classify", "play=p1,p2", "title=t1,t2", "--out", "cand"]) == 0
+    saved = json.loads((lab / "mem" / "cand.json").read_text())
+    assert saved["target"] == "play"
+    assert saved["candidates"] == [{"rva": 0x2000, "values": {"play": 1, "title": 3}}]
+
+
+def test_classify_lines_up_regions_split_differently(lab, capsys) -> None:
     base = 0x10000
-    snapshot(tmp_path, "p1", base, [(base + 0x2000, bytes([1, 0, 0, 5]))])
-    snapshot(tmp_path, "p2", base, [(base + 0x2000, bytes([1, 0])), (base + 0x2002, bytes([0, 5]))])
-    snapshot(tmp_path, "t1", base, [(base + 0x2000, bytes([2, 0, 0, 6]))])
-    snapshot(tmp_path, "t2", base, [(base + 0x2000, bytes([2, 0])), (base + 0x2002, bytes([0, 6]))])
+    snapshot(lab, "p1", base, [(base + 0x2000, bytes([1, 0, 0, 5]))])
+    snapshot(lab, "p2", base, [(base + 0x2000, bytes([1, 0])), (base + 0x2002, bytes([0, 5]))])
+    snapshot(lab, "t1", base, [(base + 0x2000, bytes([2, 0, 0, 6]))])
+    snapshot(lab, "t2", base, [(base + 0x2000, bytes([2, 0])), (base + 0x2002, bytes([0, 6]))])
     assert memscan.main(["classify", "play=p1,p2", "title=t1,t2", "--out", "c"]) == 0
-    rvas = [c["rva"] for c in json.loads((tmp_path / "mem" / "c.json").read_text())["candidates"]]
-    assert rvas == [0x2000, 0x2003]
+    assert candidate_rvas(lab, "c") == [0x2000, 0x2003]
     assert "compared 4 bytes" in capsys.readouterr().out
 
 
-def test_bytes_missing_from_one_snapshot_are_not_candidates(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
+def test_bytes_missing_from_one_snapshot_are_not_candidates(lab) -> None:
     base = 0x10000
-    snapshot(tmp_path, "p1", base, [(base + 0x2000, bytes([1, 7]))])
-    snapshot(tmp_path, "p2", base, [(base + 0x2000, bytes([1]))])  # 0x2001 not held
-    snapshot(tmp_path, "t1", base, [(base + 0x2000, bytes([2, 9]))])
-    snapshot(tmp_path, "t2", base, [(base + 0x2000, bytes([2, 9]))])
+    snapshot(lab, "p1", base, [(base + 0x2000, bytes([1, 7]))])
+    snapshot(lab, "p2", base, [(base + 0x2000, bytes([1]))])  # 0x2001 not held
+    snapshot(lab, "t1", base, [(base + 0x2000, bytes([2, 9]))])
+    snapshot(lab, "t2", base, [(base + 0x2000, bytes([2, 9]))])
     assert memscan.main(["classify", "play=p1,p2", "title=t1,t2", "--out", "c"]) == 0
-    rvas = [c["rva"] for c in json.loads((tmp_path / "mem" / "c.json").read_text())["candidates"]]
-    assert rvas == [0x2000]
+    assert candidate_rvas(lab, "c") == [0x2000]
 
 
-def test_classify_refuses_mixed_builds_and_repeated_labels(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
+def test_classify_refuses_mixed_builds_and_repeated_labels(lab) -> None:
     base = 0x10000
-    snapshot(tmp_path, "p1", base, [(base + 0x2000, bytes([1]))])
-    snapshot(tmp_path, "p2", base, [(base + 0x2000, bytes([1]))], build={"timestamp": 9})
-    snapshot(tmp_path, "t1", base, [(base + 0x2000, bytes([2]))])
+    snapshot(lab, "p1", base, [(base + 0x2000, bytes([1]))])
+    snapshot(lab, "p2", base, [(base + 0x2000, bytes([1]))], build={"timestamp": 9})
+    snapshot(lab, "t1", base, [(base + 0x2000, bytes([2]))])
     assert memscan.main(["classify", "play=p1,p2", "title=t1"]) == 1
     assert memscan.main(["classify", "play=p1", "play=t1"]) == 1
     assert memscan.main(["classify", "play=p1", "title=t1", "--target", "menu"]) == 1
 
 
-class FakePM:
-    def __init__(self, memory: bytearray, fail_after: int | None = None):
-        self.memory, self.reads, self.fail_after = memory, 0, fail_after
-
+class GoneProcess(FakeProcess):
     def read_bytes(self, address: int, size: int) -> bytes:
-        self.reads += 1
-        if self.fail_after is not None and self.reads > self.fail_after:
-            raise OSError("process gone")
-        return bytes(self.memory[address : address + size])
+        raise OSError("process gone")
 
 
-def run_record(tmp_path, monkeypatch, pm, sleeps, build=B1) -> tuple[int, list[str]]:
-    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
+def run_record(lab, monkeypatch, pm, *steps) -> tuple[int, list[str]]:
     monkeypatch.setattr(memscan, "attach", lambda: (pm, 0, 0x1000))
-    monkeypatch.setattr(memscan, "build_of", lambda pm, base: build)
-    steps = iter(sleeps)
-
-    def sleep(_):
-        step = next(steps)
-        if step is KeyboardInterrupt:
-            raise KeyboardInterrupt
-        step()
-
-    monkeypatch.setattr(memscan.time, "sleep", sleep)
+    monkeypatch.setattr(memscan, "build_of", lambda pm, base: B1)
+    monkeypatch.setattr(memscan.time, "sleep", scripted_sleep(*steps))
     code = memscan.main(["record", "r", "--rva", "0x10,0x20"])
-    return code, (tmp_path / "mem" / "r.log").read_text().splitlines()
+    return code, (lab / "mem" / "r.log").read_text().splitlines()
 
 
-def test_record_logs_changes_and_an_end_line_on_ctrl_c(tmp_path, monkeypatch) -> None:
-    pm = FakePM(bytearray(0x100))
-    code, lines = run_record(
-        tmp_path, monkeypatch, pm, [lambda: pm.memory.__setitem__(0x20, 3), KeyboardInterrupt]
-    )
+def test_record_logs_changes_and_an_end_line_on_ctrl_c(lab, monkeypatch) -> None:
+    pm = FakeProcess(0x100)
+    code, lines = run_record(lab, monkeypatch, pm, lambda: pm.memory.__setitem__(0x20, 3))
     assert code == 0
     assert any(line.endswith("+0x20: 0 -> 3") for line in lines)
     assert "end: stopped; 1 poll(s)" in lines[-1]
 
 
-def test_record_logs_an_end_line_when_the_first_read_fails(tmp_path, monkeypatch) -> None:
-    pm = FakePM(bytearray(0x100), fail_after=0)
-    code, lines = run_record(tmp_path, monkeypatch, pm, [])
+def test_record_logs_an_end_line_when_the_first_read_fails(lab, monkeypatch) -> None:
+    code, lines = run_record(lab, monkeypatch, GoneProcess(0x100))
     assert code == 1
     assert "  start: " in lines[0]
     assert "end: read failed" in lines[-1]
 
 
-def test_record_refuses_candidates_from_another_build(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path))
-    (tmp_path / "mem").mkdir()
+def test_record_refuses_candidates_from_another_build(lab, monkeypatch) -> None:
+    (lab / "mem").mkdir()
     cands = {"target": "play", "groups": {}, "build": B1, "candidates": [{"rva": 16, "values": {}}]}
-    (tmp_path / "mem" / "c.json").write_text(json.dumps(cands))
-    monkeypatch.setattr(memscan, "attach", lambda: (FakePM(bytearray(0x100)), 0, 0x1000))
+    (lab / "mem" / "c.json").write_text(json.dumps(cands))
+    monkeypatch.setattr(memscan, "attach", lambda: (FakeProcess(0x100), 0, 0x1000))
     monkeypatch.setattr(memscan, "build_of", lambda pm, base: {"timestamp": 9})
     assert memscan.main(["record", "r", "--candidates", "c"]) == 1

@@ -122,14 +122,17 @@ def cmd_find(args: argparse.Namespace) -> int:
     return 0
 
 
-def snap_dir(name: str) -> Path:
-    return lab_dir() / "mem" / name
+def mem_path(name: str) -> Path:
+    """lab/mem/NAME (a snapshot, candidates, a log), checked writable, lab/mem made."""
+    path = assert_writable(lab_dir() / "mem" / name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def cmd_snap(args: argparse.Namespace) -> int:
     pm, mod_base, mod_size = attach()
-    dest = assert_writable(snap_dir(args.name))
-    dest.mkdir(parents=True, exist_ok=False)
+    dest = mem_path(args.name)
+    dest.mkdir(exist_ok=False)
     index, offset = [], 0
     with (dest / "memory.bin").open("wb") as f:
         for base, size, kind in regions(pm):
@@ -154,7 +157,7 @@ def cmd_snap(args: argparse.Namespace) -> int:
 
 
 def _load(name: str) -> tuple[dict, np.memmap]:
-    folder = snap_dir(name)
+    folder = mem_path(name)
     meta = json.loads((folder / "index.json").read_text(encoding="utf-8"))
     return meta, np.memmap(folder / "memory.bin", dtype=np.uint8, mode="r")
 
@@ -323,8 +326,7 @@ def cmd_classify(args: argparse.Namespace) -> int:
         shown = "  ".join(f"{label}={v}" for label, v in vals.items())
         print(f"  Zexion.exe+0x{rva:x}  {shown}")
     if args.out:
-        out = assert_writable(lab_dir() / "mem" / f"{args.out}.json")
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = mem_path(f"{args.out}.json")
         kept = [{"rva": rva, "values": vals} for rva, vals in found[: args.keep]]
         meta = {"target": target, "groups": groups_named, "build": build, "candidates": kept}
         out.write_text(json.dumps(meta, indent=1), encoding="utf-8")
@@ -332,15 +334,16 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return 0
 
 
-def spans(rvas: list[int], gap: int = 256) -> list[tuple[int, int]]:
-    """(start, length) ranges covering ``rvas``, merging neighbors closer than ``gap``."""
-    out: list[list[int]] = []
+def spans(rvas: list[int], gap: int = 256) -> list[tuple[int, int, list[int]]]:
+    """(start, length, the RVAs in it) ranges covering ``rvas``, merging neighbors less than
+    ``gap`` bytes apart."""
+    groups: list[list[int]] = []
     for rva in sorted(set(rvas)):
-        if out and rva - (out[-1][0] + out[-1][1]) < gap:
-            out[-1][1] = rva - out[-1][0] + 1
+        if groups and rva - groups[-1][-1] <= gap:
+            groups[-1].append(rva)
         else:
-            out.append([rva, 1])
-    return [(start, length) for start, length in out]
+            groups.append([rva])
+    return [(g[0], g[-1] - g[0] + 1, g) for g in groups]
 
 
 def changes_between(old: dict[int, int], new: dict[int, int]) -> list[tuple[int, int, int]]:
@@ -351,7 +354,7 @@ def changes_between(old: dict[int, int], new: dict[int, int]) -> list[tuple[int,
 def cmd_record(args: argparse.Namespace) -> int:
     expected_build = None
     if args.candidates:
-        meta = json.loads((lab_dir() / "mem" / f"{args.candidates}.json").read_text("utf-8"))
+        meta = json.loads(mem_path(f"{args.candidates}.json").read_text("utf-8"))
         rvas = [c["rva"] for c in meta["candidates"]]
         expected_build = meta.get("build")
     else:
@@ -364,11 +367,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     if expected_build is not None and build != expected_build:
         print(f"REFUSED: the running build {build} is not the candidates' {expected_build}")
         return 1
-    # Each range once, with the offsets of its RVAs inside it.
-    plan = []
-    for start, length in spans(rvas):
-        inside = [rva for rva in sorted(set(rvas)) if start <= rva < start + length]
-        plan.append((start, length, inside))
+    plan = spans(rvas)  # each range read once, with the RVAs inside it
 
     def sample() -> dict[int, int]:
         values = {}
@@ -378,8 +377,7 @@ def cmd_record(args: argparse.Namespace) -> int:
                 values[rva] = data[rva - start]
         return values
 
-    path = assert_writable(lab_dir() / "mem" / f"{args.name}.log")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = mem_path(f"{args.name}.log")
     t0 = time.monotonic()
     deadline = t0 + args.seconds if args.seconds else None
     reason, polls, longest, last = "deadline", 0, 0.0, None
