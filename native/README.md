@@ -43,8 +43,9 @@ RANDOMIZER when the client disconnected ("New games", below).
 The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/tests.cpp` (the `parts` test) covers what needs no stand-in game: the
-import-table hook and the trampoline, the build check and the pipe (`src/pipe.cpp`);
-`tests/game_tests.cpp` the request parsers (the `discs` and `@N NAME` ones too), configuring,
+import-table hook and the trampoline, the build check and the pipe (`src/pipe.cpp`), and
+`tests/requests_tests.cpp` (`requests`) the request parsers, the popup text's layout and the
+mailbox; `tests/game_tests.cpp` the `discs` and `@N NAME` parsers, configuring,
 applying, the popup queue, the new-game watch, a whole ARCHIPELAGO press, the escape skip's
 patch, what a refused unload sets again, the received shield and death, the ASSIST watch and
 the scanner's text; `tests/menu_tests.cpp` the
@@ -555,7 +556,7 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
-tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
+tests (`parts`, `game`, `requests`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
 the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, `apitem`, the stand-in item's
 restyle and painting against a fake GL, and `equip`, `mission`, `pause`, `files`, `intel`,
 `title`, `mapmarks`, `proxy` and `offline`; the test programs share `tests/check.h`), and

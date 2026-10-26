@@ -42,14 +42,22 @@ target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
 target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
 
 enable_testing()
-add_executable(zap_tests tests/tests.cpp)
-target_link_libraries(zap_tests PRIVATE zap_core)
-add_test(NAME parts COMMAND zap_tests)
+# The tests that need only zap_core, one program each. NAME=SOURCE: the test NAME runs
+# zap_SOURCE, built from tests/SOURCE.cpp.
+set(ZAP_TESTS
+    parts=tests game=game_tests requests=requests_tests menu=menu_tests apitem=apitem_tests
+    equip=equip_tests mission=mission_tests pause=pause_tests files=files_tests
+    intel=intel_tests title=title_tests mapmarks=mapmarks_tests offline=offline_tests)
+foreach(entry IN LISTS ZAP_TESTS)
+  string(REPLACE "=" ";" pair ${entry})
+  list(GET pair 0 name)
+  list(GET pair 1 source)
+  add_executable(zap_${source} tests/${source}.cpp)
+  target_link_libraries(zap_${source} PRIVATE zap_core)
+  add_test(NAME ${name} COMMAND zap_${source})
+endforeach()
 
-add_executable(zap_game_tests tests/game_tests.cpp)
-target_link_libraries(zap_game_tests PRIVATE zap_core)
-add_test(NAME game COMMAND zap_game_tests)
-
+# The whole helper loaded and unloaded under load, and grants applied in its frame calls.
 add_executable(zap_unload_test tests/unload_test.cpp)
 target_link_libraries(zap_unload_test PRIVATE zap_core)
 add_dependencies(zap_unload_test zexion_ap_hooktest)
@@ -60,48 +68,8 @@ target_link_libraries(zap_apply_test PRIVATE zap_core)
 add_dependencies(zap_apply_test zexion_ap_hooktest)
 add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hooktest>)
 
-add_executable(zap_menu_tests tests/menu_tests.cpp)
-target_link_libraries(zap_menu_tests PRIVATE zap_core)
-add_test(NAME menu COMMAND zap_menu_tests)
-
-add_executable(zap_apitem_tests tests/apitem_tests.cpp)
-target_link_libraries(zap_apitem_tests PRIVATE zap_core)
-add_test(NAME apitem COMMAND zap_apitem_tests)
-
-add_executable(zap_equip_tests tests/equip_tests.cpp)
-target_link_libraries(zap_equip_tests PRIVATE zap_core)
-add_test(NAME equip COMMAND zap_equip_tests)
-
-add_executable(zap_mission_tests tests/mission_tests.cpp)
-target_link_libraries(zap_mission_tests PRIVATE zap_core)
-add_test(NAME mission COMMAND zap_mission_tests)
-
-add_executable(zap_pause_tests tests/pause_tests.cpp)
-target_link_libraries(zap_pause_tests PRIVATE zap_core)
-add_test(NAME pause COMMAND zap_pause_tests)
-
-add_executable(zap_files_tests tests/files_tests.cpp)
-target_link_libraries(zap_files_tests PRIVATE zap_core)
-add_test(NAME files COMMAND zap_files_tests)
-
-add_executable(zap_intel_tests tests/intel_tests.cpp)
-target_link_libraries(zap_intel_tests PRIVATE zap_core)
-add_test(NAME intel COMMAND zap_intel_tests)
-
-add_executable(zap_title_tests tests/title_tests.cpp)
-target_link_libraries(zap_title_tests PRIVATE zap_core)
-add_test(NAME title COMMAND zap_title_tests)
-
-add_executable(zap_mapmarks_tests tests/mapmarks_tests.cpp)
-target_link_libraries(zap_mapmarks_tests PRIVATE zap_core)
-add_test(NAME mapmarks COMMAND zap_mapmarks_tests)
-
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
-
-add_executable(zap_offline_tests tests/offline_tests.cpp)
-target_link_libraries(zap_offline_tests PRIVATE zap_core)
-add_test(NAME offline COMMAND zap_offline_tests)
