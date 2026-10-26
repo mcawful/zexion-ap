@@ -4,8 +4,8 @@
 #include <cstring>
 #include <sstream>
 
-#include "game_calls.h"  // parse_config
-#include "menu.h"        // safe_read
+#include "game_mem.h"
+#include "requests.h"  // parse_config
 
 namespace zap {
 
@@ -194,6 +194,13 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
 bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start) {
     return std::memcmp(seed.table, table, sizeof(seed.table)) == 0 &&
            std::memcmp(seed.start, start, sizeof(seed.start)) == 0;
+}
+
+OfflineSeed offline_seed_of(const uint8_t* section) {
+    OfflineSeed seed;
+    std::memcpy(seed.table, section + kOfflineTableAt, sizeof(seed.table));
+    std::memcpy(seed.start, section + kOfflineStartAt, sizeof(seed.start));
+    return seed;
 }
 
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid) {

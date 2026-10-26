@@ -1,5 +1,11 @@
-// What the helper does in the game, on the game's thread: grants as one batch, the HUD refresh
-// the game itself runs after loading a save, and the game's own pickup popup and sound.
+// Game: what the helper does in the game, on the game's thread. It keeps the addresses the
+// client resolved (configure) and runs each part from the frame call: grants as one batch, with
+// the HUD refresh the game runs after loading a save and the game's own pickup popup and sound;
+// the AP new game and ARCHIPELAGO (menu.h); the escape skip (skip.h); other players' items
+// (apitem.h, looks.h, mapmarks.h); the ASSIST lock (menu.h); Intel Chips (intel.h); the OS
+// Install Disks goal (scan.h, equip.h, pause.h, files.h, mission.h); the title screen's lines
+// (title.h); and AP saves without the client (offline.h, game_offline.cpp). The pipe's requests
+// are parsed in requests.h, and the popups' text laid out in text.h.
 //
 // The client finds every address by byte pattern (client/patterns.py) and sends them as RVAs;
 // nothing here is a fixed address. The functions' arguments are as traced in
@@ -11,9 +17,11 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "game_mem.h"
 #include "menu.h"
 #include "apitem.h"
 #include "looks.h"
@@ -23,133 +31,49 @@
 #include "files.h"
 #include "intel.h"
 #include "offline.h"
+#include "requests.h"
 #include "scan.h"
 #include "mapmarks.h"
 #include "title.h"
 #include "skip.h"
+#include "text.h"
 
 namespace zap {
 
-// The client's names for what it sends (client/patterns.py target names).
-extern const char* const kConfigKeys[];
-extern const size_t kConfigKeyCount;
-
-struct Cas {
-    uint8_t item;  // inventory byte 0..49
-    uint8_t expected;
-    uint8_t value;
+// What clients set that Game::put_back_all drops, for a refused unload to set again
+// (Game::snapshot and Game::rearm). The offline look's own settings are left out: once the
+// unload is refused, watch_offline dresses the save again by itself.
+struct ClientState {
+    bool assists_locked = false;
+    bool intel = false;
+    int disc_count = 0, discs_required = 0;
+    bool discs_told = true;
+    std::string scan_line;
+    std::map<int, int> file_counts;  // the client's disk_slots
+    std::map<int, Label> labels;
+    std::optional<OfflineSeed> labels_seed;
+    bool newgame_armed = false;
+    bool starting = false;
+    NewGamePlan newgame;
+    std::string newgame_status;
+    bool mission_asked = false;   // RETURN HOME WITH THE DISKS? on its way
+    bool mission_ending = false;  // its YES pressed, the ending not started yet
 };
 
-struct Popup {
-    uint8_t item;
-    std::string suffix;  // already filtered to the font (see parse_batch)
-    bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
-    bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
+// The helper's own functions the game is pointed at while a part is on (dllmain.cpp), each in
+// place of the game's: the game-mode panel's handler (menu.h), EQUIPMENT's callback and the
+// Energy Tank panel's handler (equip.h), the mission prompt's opener and YES (mission.h), the
+// save entries' handler (files.h) and the map's handler (mapmarks.h). Given before configure,
+// which hands each part its own.
+struct Hooks {
+    void* panel = nullptr;
+    void* equipment = nullptr;
+    void* equipment_panel = nullptr;
+    void* mission_open = nullptr;
+    void* mission_yes = nullptr;
+    void* file_entry = nullptr;
+    void* map = nullptr;
 };
-
-struct Batch {
-    std::vector<Cas> cas;
-    bool refresh = false;
-    std::vector<Popup> popups;
-};
-
-// Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).
-struct SectionBytes {
-    uint16_t offset;
-    std::vector<uint8_t> bytes;
-};
-
-// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
-// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
-// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
-// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
-// plan.
-// One room of the randomizer menu's start table: its map cell and flag (object 25 there).
-struct StartRoom {
-    int16_t x;
-    int16_t y;
-    uint8_t flag;
-};
-
-struct NewGamePlan {
-    std::vector<SectionBytes> expect;
-    std::vector<SectionBytes> write;
-    std::vector<SectionBytes> menu;
-    // The menu's start table as it builds it when it opens; for a mode with Double Teleport,
-    // whose placement reads it. Filled in before the placement if the menu has not built it.
-    std::vector<StartRoom> start_table;
-};
-
-constexpr size_t kStartTableMax = 64;  // the rooms the menu's builder allows
-
-constexpr size_t kSectionSize = 0x908;
-constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
-
-// "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
-// "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
-// digits; every range must lie inside its block. Also "start_table HEX": 5 bytes per room
-// (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
-std::string parse_newgame(const std::string& request, NewGamePlan& out);
-
-// A label for another player's item: the stand-in's name as laid out, and the popup's line
-// width that name is laid out for (its widest line).
-struct Label {
-    std::string name;
-    int width = 0;
-    // For another Zexion player's item: the item's record, whose icon and name the first line
-    // is made of once the records are loaded (until then the name says AP ITEM), and the
-    // second line.
-    int item = -1;
-    std::string who;
-    // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
-    // the game's record calls DATA DISC).
-    std::string item_name;
-};
-
-// A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in
-// the longer, which is the width.
-Label layout_label(const std::string& first, const std::string& who);
-
-// Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
-std::vector<std::string> wrap_words(const std::string& text, size_t width);
-// `lines` as one popup text: with more than one line, each centered in per_line characters and
-// padded to the end of its line; one line as it is.
-std::string center_lines(const std::vector<std::string>& lines, int per_line);
-// A received item's popup text: `head` (the icon and the game's name), then `suffix` ("FROM
-// ALICE") from the next line, its words wrapped at per_line characters, every line centered in
-// the widest line, whose width goes to `*width` (the popup's line width: the game sizes a box
-// to it).
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
-                       int* width = nullptr);
-// A notice's popup text: `text` alone, left-aligned, its words wrapped whole at per_line
-// characters (a word longer than a line split with a hyphen at the line's end), the box as
-// wide as the widest line (`*width`). The frame call keeps it within the game's 256-byte
-// message slot.
-std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width);
-std::string notice_text(const std::string& text, int per_line, int* width = nullptr);
-// Game thread, right after the game made a notice's message from `text`: fits the box to the
-// notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
-void fit_notice_box(BYTE* message, const std::string& text, int per_line);
-
-// "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
-// item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
-// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
-// Returns "" or an error.
-std::string parse_labels(const std::string& request, std::map<int, Label>& out);
-
-// "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
-std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
-
-// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
-// "notice ITEM TEXT". Returns "" or an error. A popup's suffix keeps only letters (made
-// upper-case), digits, space and . , ' ! ? -, at most 40 characters; a notice's text keeps the
-// same and :, at most 200, and is shown alone, with no icon or name (notice_text).
-std::string parse_batch(const std::string& request, Batch& out);
-
-// A `discs` request: "discs" (off: count 0, required 0, line "") or "discs COUNT REQUIRED HEX",
-// the scanner's line in hex (scan.h). Returns "" or what is wrong.
-std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
-                        bool& told);
 
 class Game {
 public:
@@ -166,6 +90,19 @@ public:
     void set_active(bool active) { active_ = active; }
     // Popups not shown yet dropped (the client that sent them went away).
     void clear_popups() { popups_.clear(); }
+    // Before configure: the helper's stand-ins the game is pointed at (Hooks).
+    void set_hooks(const Hooks& hooks) { hooks_ = hooks; }
+
+    // Game thread: everything the helper changed in the game put back, as far as a frame can (a
+    // change held by a menu no longer open is gone with it): the new-game plan, the escape skip,
+    // the OS Install Disks goal's changes, the Area Map's name, the stand-in items and their
+    // looks, the map's handler, ARCHIPELAGO (`callback` its callback), the ASSIST lock and the
+    // offline look. Unload and a client going away both use it.
+    void put_back_all(WidgetCallback callback);
+    // Game thread: what clients set, before put_back_all drops it, and set again after it (an
+    // unload refused).
+    ClientState snapshot() const;
+    void rearm(ClientState state);
 
     // Game thread. In play (a save loaded, no menu, energy above 0) or refused; then every
     // compare-and-set or none; then (after writes, or for "refresh") missiles, bombs and energy
@@ -198,17 +135,15 @@ public:
     void watch_menu(WidgetCallback callback);
     // Game thread: puts RANDOMIZER back now (before an unload).
     void restore_menu(WidgetCallback callback);
-    // Whether a menu holds the helper's callback (ARCHIPELAGO). The locked ASSIST holds none.
-    // ARCHIPELAGO on the menu, or the helper's handler possibly still on its panel.
-    // ARCHIPELAGO on the menu, the helper's handler possibly still on its panel, or EQUIPMENT
-    // pointed at the helper's callback.
+    // Whether the game may still hold one of the helper's functions, which unload must take
+    // back first: ARCHIPELAGO's callback or the game-mode panel's handler, EQUIPMENT's callback
+    // or the Energy Tank panel's handler, the mission prompt's opener or YES, a file entry's
+    // handler or the map's. The locked ASSIST holds none.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
                equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
                map_names_.holds_hook();
     }
-    // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
-    void set_panel_hook(void* hook) { panel_hook_ = hook; }
     // The game's own handler for the game-mode panel, for the stand-in to call; null before
     // configure.
     void* panel_handler() const { return menu_.panel_handler; }
@@ -224,7 +159,6 @@ public:
     bool assists_locked() const { return assists_locked_; }
     void watch_assists();
     void restore_assists();
-    bool assist_lock_installed() const { return assists_.installed(); }
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
     // mode, writes the plan (for the AP start), runs the game's placement, checks the section
@@ -240,8 +174,8 @@ public:
     void restore_skip();
     bool skip_offered() const { return skip_.patched(); }
 
-    // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show and
-    // the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
+    // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show
+    // and the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
     // rewording the scanner's message while a line is set and putting it back otherwise;
     // restore_discs puts it back now (before an unload).
     void set_discs(int count, int required, std::string scan_line, bool told = true);
@@ -253,32 +187,24 @@ public:
     bool keys_branch_patched() const { return pause_row_.patched(); }
     int discs_required() const { return discs_required_; }
     const std::string& scan_line() const { return scan_line_; }
-    // The count on the equipment screen (equip.h): before configure, the helper's stand-in for
-    // EQUIPMENT's callback; every frame, the watch points EQUIPMENT at it while the count is
-    // shown (and back otherwise); the stand-in calls the game's, then equipment_built.
-    void set_equipment_hook(void* hook) { equip_hook_ = hook; }
+    // The count on the equipment screen (equip.h): every frame, the watch points EQUIPMENT at
+    // the helper's stand-in (Hooks) while the count is shown (and back otherwise); the stand-in
+    // calls the game's, then equipment_built.
     void* equipment_fn() const { return equip_at_.equipment_fn; }
     void watch_equipment();
     void equipment_built();
-    // The Energy Tank panel's handler while it shows the disk (equip.h): before configure, the
-    // helper's stand-in; it calls the game's (equip_panel_fn), then equipment_event.
-    void set_equipment_panel_hook(void* hook) { equip_panel_hook_ = hook; }
+    // The Energy Tank panel's handler while it shows the disk (equip.h): the helper's stand-in
+    // calls the game's (equip_panel_fn), then equipment_event.
     void* equip_panel_fn() const { return equip_at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
-    // RETURN HOME WITH THE DISKS? (mission.h): before configure, the helper's opener and YES; the
-    // `mission_prompt` request asks for it; the watch runs every frame; the opener and YES call
-    // mission_open and mission_yes; restore_mission puts back what it holds (before an unload).
-    void set_mission_hooks(void* open, void* yes) {
-        mission_open_hook_ = open;
-        mission_yes_hook_ = yes;
-    }
+    // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
+    // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
+    // restore_mission puts back what it holds (before an unload).
     void request_mission() { mission_.request(); }
-    // The file select's disk count (files.h): before configure, the helper's stand-in for the
-    // save entries' handler; the `disk_slots` request sets what to show; the watch runs every
-    // frame; the stand-in calls the game's handler (file_entry_original) and then file_event.
-    void set_file_entry_hook(void* hook) { file_hook_ = hook; }
-    void set_disk_slots(int count, int required, std::set<int> slots) {
-        (void)required;  // not shown (the owner's layout)
+    // The file select's disk count (files.h): the `disk_slots` request sets what to show; the
+    // watch runs every frame; the helper's stand-in for the save entries' handler calls the
+    // game's (file_entry_original) and then file_event.
+    void set_disk_slots(int count, std::set<int> slots) {
         client_file_counts_.clear();
         for (int slot : slots) client_file_counts_[slot] = count;
         apply_file_counts();
@@ -307,11 +233,12 @@ public:
     std::string offline_state() const;
     // Game thread (`other_save`, from a client whose session sees a randomizer save in play
     // that is not its seed's): THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. once a load and
-    // again after a reconnect (whether shown now),
-    // and the save's offline look if the helper has its seed's file, until the save goes.
+    // again after a reconnect (whether it was queued now), and the save's offline look if the
+    // helper has its seed's file, until the save goes.
     bool other_save();
-    // Game thread (`client_back`, from a client whose session has seen its seed's save in play):
-    // if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once. Whether it did.
+    // Game thread (`client_back`, from a client whose session has seen its seed's save in
+    // play): if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once.
+    // Whether it did.
     bool client_back();
     bool intel_on() const { return intel_.on(); }
     void watch_intel();
@@ -326,7 +253,6 @@ public:
     // Game thread: the map cursor's name for the stand-ins' squares (mapmarks.h): the open map's
     // handler wrapped while this save's labels are known (each frame), the name rewritten after
     // the game's handler (`map_after`, from the stand-in), and the handler put back.
-    void set_map_hook(void* hook) { map_hook_ = hook; }
     void watch_map_names();
     void map_after();
     void* map_original(void* child) const;
@@ -344,12 +270,13 @@ public:
     // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
     // frame; restore_ap_items puts everything back (before an unload).
     void set_labels(std::map<int, Label> labels);
+    // The stand-ins' names by map cell, as last laid out (tests).
+    const std::map<int, std::string>& label_names() const { return ap_items_.labels(); }
     void watch_ap_items();
-    // The live stand-in objects in both pools, with their cells and positions (name_cells).
-    std::vector<StandInSeen> stand_ins_seen() const;
+    // The live stand-in objects in both pools, with their cells and positions (name_cells), from
+    // this frame's copy of the item pool (null: not read) and the item sprites' frame list.
+    std::vector<StandInSeen> stand_ins_seen(const BYTE* pool, BYTE* base) const;
     void restore_ap_items();
-    // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
-    // a frame to put them back.
     // Game thread, every frame: notes how long the player has been in play in one cell.
     void note_play(uint64_t now_ms);
     // Game thread (the `shield` request): spawns a received Energy Shield the way its pickup
@@ -361,12 +288,13 @@ public:
     // message is showing: "died", or "refused <why>".
     std::string kill(uint64_t now_ms);
 
+    // An item record restyled (the stand-ins, the Area Map), an object dressed, or the pickup
+    // popup's line width changed: unload must wait for a frame to put them back.
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
                looks_.dressed() || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
-    void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
 
 private:
     bool in_play() const;
@@ -429,7 +357,7 @@ private:
     std::string newgame_status_ = "idle";
 
     MenuAddresses menu_;
-    void* panel_hook_ = nullptr;
+    Hooks hooks_;
     ArchipelagoChoice choice_;
     AssistLock assists_;
     bool assists_locked_ = false;
@@ -468,32 +396,25 @@ private:
     int map_frames_ = 0;  // frames until the next map look
     // The loaded section's item table and start when the labels were set (the seed they
     // are for): the map is changed only in a save in play holding that seed.
-    std::vector<BYTE> labels_seed_;
+    std::optional<OfflineSeed> labels_seed_;
+    std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
     BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
     MapAddresses map_at_;
     MapCursorNames map_names_;
-    void* map_hook_ = nullptr;
-    void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;
-    void* mission_open_hook_ = nullptr;
     int mission_save_ = -1;  // the save slot loaded when last watched (-1: none yet)
-    void* mission_yes_hook_ = nullptr;
-    void* equip_hook_ = nullptr;
-    void* equip_panel_hook_ = nullptr;
     std::string equip_status_ = "not shown yet";
     std::string scan_line_;
     int disc_count_ = 0, discs_required_ = 0;
     int scan_frames_ = 0;  // frames until the next scanner check
     BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
-    // The pickup popup's line width: `mov edx, 24` in the game's pickup code, the path items
-    // with no icon take (the stand-ins do), changed to the width of the label a stand-in was
-    // named after: the one within reach, or the player's cell's (docs/re/memory.md, "Other
-    // players' items").
-    static constexpr int kGamePopupWidth = 24;
+    // The pickup popup's line width, kGamePopupWidth in the path items with no icon take (the
+    // stand-ins do), changed to the width of the label a stand-in was named after: the one
+    // within reach, or the player's cell's (docs/re/memory.md, "Other players' items").
     BYTE* popup_width_code_ = nullptr;
     BYTE* item_pool_ = nullptr;
     BYTE* object_pool_ = nullptr;  // the general objects (items in reversed-gravity rooms)
@@ -512,9 +433,13 @@ private:
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
     ItemLooks looks_;  // other Zexion players' items shown as themselves
     ItemLooks::Places looks_places() const;
+    // The item pool copied into pool_copy_, once a frame; null if it could not be read.
+    const BYTE* read_item_pool();
+    std::vector<BYTE> pool_copy_;
     void resolve_item_labels();
     void set_popup_width(int width);
     GlFunctions gl_;
+    TextureCheck texture_check_;  // for everything painted into the sprite texture
     int skip_frames_ = 0;  // frames until the next escape-skip check
 };
 

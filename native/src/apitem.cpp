@@ -1,27 +1,29 @@
 #include "apitem.h"
 
 #include <cstring>
-#include <functional>
 #include <vector>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
+// The popup icon: 8 x 8, white like the game's own icon glyphs: a ring of one-pixel dots, seven
+// pixels wide so that, like the font's letters, it leaves its last column empty and does not
+// touch the text after it.
+const char kApItemRows[8][9] = {
+    "...#....", ".#...#..", "........", "#.....#.",
+    "........", ".#...#..", "...#....", "........",
+};
+
 namespace {
 
-// Record fields (docs/re/memory.md, "Other players' items").
-constexpr ptrdiff_t kRecordSize = 100, kRecordCount = 51;
-constexpr ptrdiff_t kKind = 0x00, kFrame = 0x02, kTicks = 0x04, kFrames = 0x06, kIcon = 0x08;
-constexpr ptrdiff_t kPalette = 0x09, kName = 0x0A, kInventory = 0x3C, kEvent = 0x40;
-constexpr ptrdiff_t kRedirect = 0x54, kPickupClass = 0x58;
 // What Scrap Energy and Scrap Chunk share as the game loads them (B1).
 constexpr int16_t kOwnKind = 34, kOwnTicks = 6, kOwnFrames = 2;
 constexpr uint8_t kOwnPalette = 8;
 constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
-// What they become: one frame each, the same popup glyph, no area event at pickup.
+// What they become: one frame each and no area event at pickup; their names start with the logo
+// glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
-constexpr uint8_t kLogoGlyph = kApItemGlyph;
 constexpr char kDefaultName[] = "\xEE" "AP ITEM";
 static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
@@ -30,7 +32,6 @@ static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 constexpr int kTextureSize = 2048;
 constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
 constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
-constexpr int kGlyphX = (kLogoGlyph % 16) * 8, kGlyphY = 976 + (kLogoGlyph / 16) * 8;
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
 constexpr int kRepaintFrames = 300;
 // The progression arrow flashes: the helper repaints it in one color, then the other.
@@ -91,13 +92,6 @@ constexpr int8_t kLogoArrow[16][16] = {
     {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
     {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
 };
-// The popup icon: 8 x 8, white like the game's own icon glyphs: a ring of one-pixel dots, seven
-// pixels wide so that, like the font's letters, it leaves its last column empty and does not
-// touch the text after it.
-constexpr char kGlyph[8][9] = {
-    "...#....", ".#...#..", "........", "#.....#.",
-    "........", ".#...#..", "...#....", "........",
-};
 // The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
 // items. Both are filler the game counts as Scrap Metal, and both draw in palette 8.
 struct StandIn {
@@ -120,31 +114,19 @@ constexpr uint8_t kEntryRgb[19][3] = {
     {255, 255, 184}, {255, 255, 212}, {255, 255, 241}, {255, 255, 255},
 };
 
-template <typename T>
-T& at(BYTE* p, ptrdiff_t offset) {
-    return *reinterpret_cast<T*>(p + offset);
-}
-
 bool is_own(const BYTE* r, const StandIn& s) {
-    BYTE copy[kRecordSize];
-    std::memcpy(copy, r, sizeof(copy));
-    int16_t v;
-    auto word = [&](ptrdiff_t o) { std::memcpy(&v, copy + o, 2); return v; };
-    return word(kKind) == kOwnKind && word(kFrame) == s.own_frame && word(kTicks) == kOwnTicks &&
-           word(kFrames) == kOwnFrames && copy[kIcon] == 0 && copy[kPalette] == kOwnPalette &&
-           std::memcmp(copy + kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
-           word(kInventory) == kOwnInventory && word(kEvent) == s.own_event &&
-           word(kRedirect) == 0 && word(kPickupClass) == kOwnClass;
+    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.own_frame &&
+           word(r, record::kTicks) == kOwnTicks && word(r, record::kFrames) == kOwnFrames &&
+           r[record::kIcon] == 0 && r[record::kPalette] == kOwnPalette &&
+           std::memcmp(r + record::kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
+           word(r, record::kInventory) == kOwnInventory && word(r, record::kEvent) == s.own_event &&
+           word(r, record::kRedirect) == 0 && word(r, record::kPickupClass) == kOwnClass;
 }
 
 bool is_ours(const BYTE* r, const StandIn& s) {
-    int16_t frame, frames, event, kind;
-    std::memcpy(&kind, r + kKind, 2);
-    std::memcpy(&frame, r + kFrame, 2);
-    std::memcpy(&frames, r + kFrames, 2);
-    std::memcpy(&event, r + kEvent, 2);
-    return kind == kOwnKind && frame == s.frame && frames == kLogoFrames &&
-           (r[kIcon] == 0 || r[kIcon] == kLogoGlyph) && event == kNoEvent;
+    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.frame &&
+           word(r, record::kFrames) == kLogoFrames &&
+           r[record::kIcon] == 0 && word(r, record::kEvent) == kNoEvent;
 }
 
 }  // namespace
@@ -171,13 +153,12 @@ void ApItems::set_labels(std::map<int, std::string> labels) { labels_ = std::mov
 BYTE* ApItems::record(BYTE* holder, int item) const {
     BYTE* records = nullptr;
     if (!safe_read(holder, &records, sizeof(records)) || records == nullptr) return nullptr;
-    BYTE* r = records + item * kRecordSize;
-    BYTE probe[kRecordSize];
-    if (!safe_read(records, probe, 1) || !safe_read(r, probe, sizeof(probe)) ||
-        !writable(r, kRecordSize)) {
+    BYTE* r = records + item * record::kSize;
+    BYTE probe[record::kSize];
+    if (!safe_read(r, probe, sizeof(probe)) || !writable(r, record::kSize)) {
         return nullptr;
     }
-    static_assert(kStandInItem < kRecordCount && kStandInProgression < kRecordCount);
+    static_assert(kStandInItem < record::kCount && kStandInProgression < record::kCount);
     return r;
 }
 
@@ -228,13 +209,13 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
         if (r == nullptr) continue;
         if (!is_ours(r, s)) {
             if (!is_own(r, s)) continue;  // neither the game's own nor ours: leave it alone
-            at<int16_t>(r, kFrame) = s.frame;
-            at<int16_t>(r, kFrames) = kLogoFrames;
-            at<int16_t>(r, kEvent) = kNoEvent;
+            at<int16_t>(r, record::kFrame) = s.frame;
+            at<int16_t>(r, record::kFrames) = kLogoFrames;
+            at<int16_t>(r, record::kEvent) = kNoEvent;
         }
         records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)
-        if (std::memcmp(r + kName, want, sizeof(want)) != 0) {
-            std::memcpy(r + kName, want, sizeof(want));
+        if (std::memcmp(r + record::kName, want, sizeof(want)) != 0) {
+            std::memcpy(r + record::kName, want, sizeof(want));
         }
     }
 }
@@ -242,38 +223,24 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
 namespace {
 
 constexpr int kMaxErrors = 16;  // a lost context can report an error on every call
+// The texture check (TextureCheck): how often a texture not as expected is read, how far apart,
+// and the rectangle whose alpha is kept, the item frames (x 128 to 256) and the font (x 0 to
+// 128, from y 976) together.
+constexpr int kReadTries = 3;
+constexpr uint64_t kRetryMs = 5000;
+constexpr int kKeptX = 0, kKeptY = 640, kKeptWidth = 256, kKeptHeight = 512;
+static_assert(kKeptY + kKeptHeight >= 976 + 16 * 8 && frame_y(255) + 16 <= kKeptY + kKeptHeight);
 
 void drain(const GlFunctions& gl) {
     for (int i = 0; i < kMaxErrors && gl.GetError() != 0; ++i) {
     }
 }
 
-// The texture read back, or empty on an error.
-std::vector<uint8_t> read_texture(const GlFunctions& gl) {
-    std::vector<uint8_t> image(static_cast<size_t>(kTextureSize) * kTextureSize * 4);
-    gl.GetTexImage(kTexture2D, 0, kRgba, kUnsignedByte, image.data());
-    if (gl.GetError() != 0) image.clear();
-    return image;
-}
-
-uint8_t alpha_at(const std::vector<uint8_t>& image, int x, int y) {
-    return image[(static_cast<size_t>(y) * kTextureSize + x) * 4 + 3];
-}
-
-// Known art, from Sprites.png: Scrap Energy's frame 134 is opaque at (6, 0), and the font's
-// glyph 0xC0 at (2, 1); a flipped or other image would not be.
-bool known_art(const std::vector<uint8_t>& image) {
-    constexpr int kScrapX = 128 + (134 % 8) * 16, kScrapY = 640 + (134 / 8) * 16;
-    constexpr int kIconX = (0xC0 % 16) * 8, kIconY = 976 + (0xC0 / 16) * 8;
-    return !image.empty() && alpha_at(image, kScrapX + 6, kScrapY) == 0xFF &&
-           alpha_at(image, kIconX + 2, kIconY + 1) == 0xFF;
-}
-
-// Binds `texture` with plain pixel stores, checks it once per texture (`verified`) with
-// `check`, runs `work`, and puts the game's GL state back. False if the texture was not the
-// sprites' as expected, or if pixels would go through a buffer.
-bool on_texture(unsigned texture, const GlFunctions& gl, unsigned& verified,
-                const std::function<bool()>& check, const std::function<void()>& work) {
+// Binds `texture` with plain pixel stores, runs `work` if `check` passes there, and puts the
+// game's GL state back. False if the texture was not the sprites' as expected, or if pixels
+// would go through a buffer.
+template <typename Check, typename Work>
+bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& work) {
     drain(gl);  // the game's own pending errors are not ours to read
     if (!gl.IsTexture(texture)) return false;
     int unpack_buffer = 0, pack_buffer = 0;
@@ -295,10 +262,7 @@ bool on_texture(unsigned texture, const GlFunctions& gl, unsigned& verified,
         for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, 0);
         for (int i = 0; i < 3; ++i) gl.PixelStorei(kPackRowLength + i, 0);
         gl.PixelStorei(kPackAlignment, 4);
-        if (texture != verified) {
-            ok = check();
-            if (ok) verified = texture;
-        }
+        ok = check();
     }
     if (ok) work();
     for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, unpack[i]);
@@ -321,121 +285,152 @@ unsigned sprite_texture(BYTE* holder) {
     return texture;
 }
 
-// The texture as the PNG was read, the right way up, with the places to paint blank (or already
-// the logos): read back once per texture.
-bool texture_as_expected(const GlFunctions& gl) {
-    std::vector<uint8_t> image = read_texture(gl);
-    if (!known_art(image)) return false;
-    auto alpha = [&](int x, int y) { return alpha_at(image, x, y); };
-    for (const StandIn& s : kStandIns) {
-        for (int y = 0; y < 16; ++y) {
-            for (int x = 0; x < 16; ++x) {
-                uint8_t a = alpha(frame_x(s.frame) + x, frame_y(s.frame) + y);
-                if (a != 0 && a != (s.logo[y][x] < 0 ? 0 : 0xFF)) return false;
-            }
+// A logo's frame, `rgba` 16 x 16 (blank when clearing).
+void logo_pixels(const StandIn& s, int arrow_phase, bool clear, uint8_t (&rgba)[16][16][4]) {
+    std::memset(rgba, 0, sizeof(rgba));
+    for (int y = 0; y < 16 && !clear; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            int8_t entry = s.logo[y][x];
+            if (entry < 0) continue;
+            if (entry == kArrow) entry = kArrowColors[arrow_phase];
+            const uint8_t* rgb = kEntryRgb[entry];
+            rgba[y][x][0] = rgb[0];
+            rgba[y][x][1] = rgb[1];
+            rgba[y][x][2] = rgb[2];
+            rgba[y][x][3] = 0xFF;
         }
     }
-    for (int y = 0; y < 8; ++y) {
-        for (int x = 0; x < 8; ++x) {
-            uint8_t a = alpha(kGlyphX + x, kGlyphY + y);
-            if (a != 0 && a != (kGlyph[y][x] == '#' ? 0xFF : 0)) return false;
-        }
-    }
-    return true;
 }
 
 }  // namespace
 
-bool ApItems::upload(unsigned texture, const GlFunctions& gl, bool clear, bool arrow_only) {
-    return on_texture(texture, gl, verified_, [&] { return texture_as_expected(gl); }, [&] {
-        for (const StandIn& s : kStandIns) {
-            if (arrow_only && s.item != kStandInProgression) continue;
-            uint8_t frame[16][16][4] = {};
-            for (int y = 0; y < 16 && !clear; ++y) {
-                for (int x = 0; x < 16; ++x) {
-                    int8_t entry = s.logo[y][x];
-                    if (entry < 0) continue;
-                    if (entry == kArrow) entry = kArrowColors[arrow_phase_];
-                    const uint8_t* rgb = kEntryRgb[entry];
-                    frame[y][x][0] = rgb[0];
-                    frame[y][x][1] = rgb[1];
-                    frame[y][x][2] = rgb[2];
-                    frame[y][x][3] = 0xFF;
-                }
-            }
-            gl.TexSubImage2D(kTexture2D, 0, frame_x(s.frame), frame_y(s.frame), 16, 16, kRgba,
-                             kUnsignedByte, frame);
-        }
-        uint8_t glyph[8][8][4] = {};
-        if (!clear && !arrow_only) {
-            for (int y = 0; y < 8; ++y) {
-                for (int x = 0; x < 8; ++x) {
-                    if (kGlyph[y][x] != '#') continue;
-                    glyph[y][x][0] = glyph[y][x][1] = glyph[y][x][2] = glyph[y][x][3] = 0xFF;
-                }
-            }
-        }
-        if (!arrow_only) {
-            gl.TexSubImage2D(kTexture2D, 0, kGlyphX, kGlyphY, 8, 8, kRgba, kUnsignedByte, glyph);
-        }
-    });
+bool TextureCheck::kept(int x, int y, int w, int h) {
+    return x >= kKeptX && y >= kKeptY && x + w <= kKeptX + kKeptWidth &&
+           y + h <= kKeptY + kKeptHeight;
 }
 
-bool FontGlyph::upload(unsigned texture, const GlFunctions& gl, bool clear) {
-    const int gx = (code_ % 16) * 8, gy = 976 + (code_ / 16) * 8;
-    auto check = [&] {
-        // The slot blank in the game's art, or already this glyph.
-        std::vector<uint8_t> image = read_texture(gl);
-        if (!known_art(image)) return false;
-        for (int y = 0; y < 8; ++y) {
-            for (int x = 0; x < 8; ++x) {
-                uint8_t a = alpha_at(image, gx + x, gy + y);
-                if (a != 0 && a != (rows_[y][x] == '#' ? 0xFF : 0)) return false;
-            }
-        }
-        return true;
+uint8_t TextureCheck::alpha(int x, int y) const {
+    return alpha_[static_cast<size_t>(y - kKeptY) * kKeptWidth + (x - kKeptX)];
+}
+
+bool TextureCheck::ready(unsigned texture, const GlFunctions& gl) {
+    if (texture != texture_) {
+        texture_ = texture;
+        tries_ = 0;
+        read(gl);
+    } else if (!good_ && tries_ < kReadTries && GetTickCount64() - tried_ms_ >= kRetryMs) {
+        read(gl);
+    }
+    return good_;
+}
+
+void TextureCheck::read(const GlFunctions& gl) {
+    ++tries_;
+    tried_ms_ = GetTickCount64();
+    good_ = false;
+    alpha_.clear();
+    std::vector<uint8_t> image(static_cast<size_t>(kTextureSize) * kTextureSize * 4);
+    gl.GetTexImage(kTexture2D, 0, kRgba, kUnsignedByte, image.data());
+    if (gl.GetError() != 0) return;
+    auto alpha_at = [&](int x, int y) {
+        return image[(static_cast<size_t>(y) * kTextureSize + x) * 4 + 3];
     };
-    return on_texture(texture, gl, verified_, check, [&] {
-        uint8_t glyph[8][8][4] = {};
-        for (int y = 0; y < 8 && !clear; ++y) {
-            for (int x = 0; x < 8; ++x) {
-                if (rows_[y][x] != '#') continue;
-                glyph[y][x][0] = glyph[y][x][1] = glyph[y][x][2] = glyph[y][x][3] = 0xFF;
-            }
+    // Known art, from Sprites.png: Scrap Energy's frame 134 is opaque at (6, 0), and the font's
+    // glyph 0xC0 at (2, 1); a flipped or other image would not be.
+    constexpr int kIconX = (0xC0 % 16) * 8, kIconY = 976 + (0xC0 / 16) * 8;
+    if (alpha_at(frame_x(134) + 6, frame_y(134)) != 0xFF ||
+        alpha_at(kIconX + 2, kIconY + 1) != 0xFF) {
+        return;
+    }
+    alpha_.resize(static_cast<size_t>(kKeptWidth) * kKeptHeight);
+    for (int y = 0; y < kKeptHeight; ++y) {
+        for (int x = 0; x < kKeptWidth; ++x) {
+            alpha_[static_cast<size_t>(y) * kKeptWidth + x] = alpha_at(kKeptX + x, kKeptY + y);
         }
-        gl.TexSubImage2D(kTexture2D, 0, gx, gy, 8, 8, kRgba, kUnsignedByte, glyph);
-    });
+    }
+    good_ = true;
 }
 
-void FontGlyph::paint(BYTE* holder, const GlFunctions& gl) {
+int FontGlyph::y() const { return 976 + (code_ / 16) * 8; }
+
+bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const {
+    // The slot blank in the game's art, or already this glyph.
+    return check.place_ok(texture, gl, x(), y(), 8, 8,
+                          [&](int px, int py) { return rows_[py][px] == '#'; });
+}
+
+void FontGlyph::upload_pixels(const GlFunctions& gl, bool clear) const {
+    uint8_t glyph[8][8][4] = {};
+    for (int py = 0; py < 8 && !clear; ++py) {
+        for (int px = 0; px < 8; ++px) {
+            if (rows_[py][px] != '#') continue;
+            glyph[py][px][0] = glyph[py][px][1] = glyph[py][px][2] = glyph[py][px][3] = 0xFF;
+        }
+    }
+    gl.TexSubImage2D(kTexture2D, 0, x(), y(), 8, 8, kRgba, kUnsignedByte, glyph);
+}
+
+bool FontGlyph::upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear) {
+    return on_texture(
+        texture, gl, [&] { return fits(check, texture, gl); },
+        [&] { upload_pixels(gl, clear); });
+}
+
+void FontGlyph::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check) {
     if (!gl.loaded()) return;
     unsigned texture = sprite_texture(holder);
     if (texture == 0) return;
-    // Painted (or found not as expected, which costs a read of the whole texture) at most
-    // once every kRepaintFrames frames for the same texture.
+    // Painted (or found not as expected) at most once every kRepaintFrames frames for the same
+    // texture.
     if ((texture == painted_ || texture == failed_) && frames_to_paint_-- > 0) return;
     frames_to_paint_ = kRepaintFrames;
-    bool ok = upload(texture, gl, false);
+    bool ok = upload(texture, gl, check, false);
     painted_ = ok ? texture : 0;
     failed_ = ok ? 0 : texture;
 }
 
-void FontGlyph::clear(BYTE* holder, const GlFunctions& gl) {
+void FontGlyph::clear(BYTE* holder, const GlFunctions& gl, TextureCheck& check) {
     if (painted_ != 0 && gl.loaded() && sprite_texture(holder) == painted_) {
-        upload(painted_, gl, true);
+        upload(painted_, gl, check, true);
     }
     painted_ = 0;
     failed_ = 0;
     frames_to_paint_ = 0;
 }
 
-void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms, bool world) {
+bool ApItems::upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear,
+                     bool arrow_only) {
+    auto fits = [&] {
+        for (const StandIn& s : kStandIns) {
+            if (!check.place_ok(texture, gl, frame_x(s.frame), frame_y(s.frame), 16, 16,
+                                [&](int px, int py) { return s.logo[py][px] >= 0; })) {
+                return false;
+            }
+        }
+        return glyph_.fits(check, texture, gl);
+    };
+    return on_texture(texture, gl, fits, [&] {
+        for (const StandIn& s : kStandIns) {
+            if (arrow_only && s.item != kStandInProgression) continue;
+            uint8_t frame[16][16][4];
+            logo_pixels(s, arrow_phase_, clear, frame);
+            gl.TexSubImage2D(kTexture2D, 0, frame_x(s.frame), frame_y(s.frame), 16, 16, kRgba,
+                             kUnsignedByte, frame);
+        }
+        if (!arrow_only) glyph_.upload_pixels(gl, clear);
+    });
+}
+
+void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, uint64_t now_ms,
+                    bool world) {
     if (!active() || !gl.loaded()) return;
     if (!world) {
         // Menus draw item frames too (the equipment screen draws frame 95, empty in the game's
         // art, by the missile count): the logos come off while one is open, and go back on the
         // first frame after.
-        if (painted_ != 0 && texture_of(holder) == painted_) upload(painted_, gl, true, false);
+        if (painted_ != 0 && sprite_texture(holder) == painted_) {
+            upload(painted_, gl, check, true, false);
+        }
         painted_ = 0;
         frames_to_paint_ = 0;
         return;
@@ -444,23 +439,22 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms, bool w
     if (frames_to_paint_-- <= 0) {
         frames_to_paint_ = kRepaintFrames;
         arrow_phase_ = phase;
-        unsigned texture = texture_of(holder);
-        if (texture != 0 && upload(texture, gl, false, false)) painted_ = texture;
+        unsigned texture = sprite_texture(holder);
+        if (texture != 0 && upload(texture, gl, check, false, false)) painted_ = texture;
         return;
     }
     // Between full paints, only the arrow, when its color changes, into a texture already
     // checked and painted.
-    if (phase == arrow_phase_ || painted_ == 0 || texture_of(holder) != painted_) return;
+    if (phase == arrow_phase_ || painted_ == 0 || sprite_texture(holder) != painted_) return;
     arrow_phase_ = phase;
-    upload(painted_, gl, false, true);
+    upload(painted_, gl, check, false, true);
 }
 
-unsigned ApItems::texture_of(BYTE* holder) const { return sprite_texture(holder); }
-
-void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl) {
+void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,
+                      TextureCheck& check) {
     release(records_holder);
-    if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
-        upload(painted_, gl, true, false);
+    if (painted_ != 0 && gl.loaded() && sprite_texture(texture_holder) == painted_) {
+        upload(painted_, gl, check, true, false);
     }
     painted_ = 0;
     labels_.clear();
@@ -468,19 +462,16 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
 
 void ApItems::release(BYTE* records_holder) {
     // The records back to the game's own values, whether this helper restyled them or an earlier
-    // one left them so.
+    // one left them so: what watch changes, the frames, the area event and the name.
     for (int i = 0; i < kStandInCount; ++i) {
         const StandIn& s = kStandIns[i];
         BYTE* r = record(records_holder, s.item);
         if (r != nullptr && is_ours(r, s)) {
-            at<int16_t>(r, kFrame) = s.own_frame;
-            at<int16_t>(r, kTicks) = kOwnTicks;
-            at<int16_t>(r, kFrames) = kOwnFrames;
-            r[kIcon] = 0;
-            r[kPalette] = kOwnPalette;
-            std::memset(r + kName, 0, kItemNameMax + 1);
-            std::memcpy(r + kName, s.own_name, std::strlen(s.own_name));
-            at<int16_t>(r, kEvent) = s.own_event;
+            at<int16_t>(r, record::kFrame) = s.own_frame;
+            at<int16_t>(r, record::kFrames) = kOwnFrames;
+            std::memset(r + record::kName, 0, kItemNameMax + 1);
+            std::memcpy(r + record::kName, s.own_name, std::strlen(s.own_name));
+            at<int16_t>(r, record::kEvent) = s.own_event;
         }
         records_[i] = nullptr;
     }

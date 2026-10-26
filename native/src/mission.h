@@ -3,14 +3,15 @@
 //
 // In the OS Install Disks goal the disks are found in play, and the goal is the game's ending
 // reached with enough of them; once the player has enough, the client asks the helper to offer
-// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds such a prompt for the escape skip: routine 15 of its
-// transition-routine table (0x1668A0), run when the transition timer ends, as area event 3666
-// sets it. The helper sets the same two fields, but to its own opener, which calls the game's
-// builder and, before the prompt's first frame, relabels the question (the game's text routine)
-// and points YES at the helper. YES then closes the prompt as NO does (the game's own NO
-// callback) and asks for the ending: once the game is idle again, the helper sets routine 4
-// (0x94A30), as the ship's ending event 2567 does, with no menu open (0x94A30 skips recording
-// the ending while one is). NO is the game's own: the prompt closes and play goes on.
+// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds
+// such a prompt for the escape skip: routine 15 of its transition-routine table (0x1668A0), run
+// when the transition timer ends, as area event 3666 sets it. The helper sets the same two
+// fields, but to its own opener, which calls the game's builder and, before the prompt's first
+// frame, relabels the question (the game's text routine) and points YES at the helper. YES
+// then closes the prompt as NO does (the game's own NO callback) and asks for the ending: once
+// the game is idle again, the helper sets routine 4 (0x94A30), as the ship's ending event 2567
+// does, with no menu open (0x94A30 skips recording the ending while one is). NO is the game's
+// own: the prompt closes and play goes on.
 //
 // The helper only sets the transition while the game is idle in play: no transition pending
 // (timer 0), the routine the idle one (table entry 2, the pause), no menu, a save loaded and the
@@ -67,6 +68,11 @@ public:
 
     // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.
     bool holds_hook() const { return armed_ || yes_child_ != nullptr; }
+    // For a refused unload: a prompt on its way (asked for, opening or shown), the ending after
+    // YES; `resume` asks for them again after restore.
+    bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
+    bool ending() const { return ending_; }
+    void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 
 private:

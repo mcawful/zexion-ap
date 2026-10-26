@@ -1,5 +1,6 @@
 // The title screen's mod lines: ARCHIPELAGO MOD <version> and ©2026 MCAWFUL, centered in the
-// black band at the bottom, while the helper is loaded (the owner's mock-up, 2026-10-25).
+// black band at the bottom, while the helper is loaded, and above them, while no client is
+// connected, START THE AP CLIENT TO PLAY A SEED (the owner's mock-ups, 2026-10-25).
 //
 // The game's title routine (0x93680, from disassembly; docs/re/memory.md, "The title screen")
 // makes the copyright line once the title animation ends: a text object from 0x92300
@@ -30,7 +31,8 @@ struct TitleAddresses {
     void* text_link_fn = nullptr;    // (text): its glyphs into its list
 };
 
-// The two lines (the credit's first character becomes the © glyph, as the game's own line's).
+// The version and the credit (the credit's first character becomes the © glyph, as the game's
+// own line's).
 std::string title_mod_line(const std::string& version);
 extern const char kTitleCredit[];
 // And, while no client is connected, what to do to play (the owner's pick, 2026-10-25).

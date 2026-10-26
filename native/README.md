@@ -42,7 +42,8 @@ RANDOMIZER when the client disconnected ("New games", below).
 The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
-queue, the new-game watch, a whole ARCHIPELAGO press and the escape skip's patch; `tests/menu_tests.cpp` the
+queue, the new-game watch, a whole ARCHIPELAGO press, the escape skip's patch and what a
+refused unload sets again; `tests/menu_tests.cpp` the
 game-mode panel and the options menu (`tests/stand_in_menu.h`): relabeling, putting it back,
 closed menus and released widgets, and the ASSIST lock (its look, the cursor order, putting it
 back); `tests/game_tests.cpp` also the received shield and death, the ASSIST watch, the
@@ -112,9 +113,10 @@ through the real pipe and hook in a busy host.
     - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1> folder=<0|1> offline=<-|N[:FILE]> active=<0|1> title=<0|1|why> reads=<R/S>`
       and ` read_error=<why>` after a failed read (`folder`: loaded from the game's own
       folder, by the proxy; `offline`: the seeds read for AP saves without the client, and the
-      file of the one whose save is dressed; `active`: a client is there; `title`: the title screen's lines up (1), not (0), or
-      why they could not be made, spaces as underscores; `reads`: the reads a
-      frame has taken, and the seeds the last one found)
+      file of the one whose save is dressed; `active`: a client is there; `title`: the title
+      screen's lines up (1), not (0), or why they could not be made; `reads`: the reads a
+      frame has taken, and the seeds the last one found; each field one word, the spaces in
+      `offline`, `title` and `read_error` written as underscores)
     - `offline_put config` or `offline_put seed NAME`, then a newline and the file's text →
       `stored`, `unchanged` or `error <why>`: one of the files for AP saves without the client
       (below), checked as the reader checks it (the config with at least 8 function checks,
@@ -208,7 +210,7 @@ through the real pipe and hook in a busy host.
     digits, spaces and `.,'!?-` are kept. The game lays a popup out a given number of
     characters a line and cuts wherever a line ends, so the suffix starts a line of its own,
     its words wrapped at 24, each line is centered in the longest with spaces before it and
-    padded with spaces after (`popup_text` and `center_lines` in `src/game_calls.cpp`), and
+    padded with spaces after (`popup_text` and `center_lines` in `src/text.cpp`), and
     the line width passed is the longest line's, which is how wide the game draws the box.
   - A `notice` is its text alone, up to 200 characters, keeping `:` too (an Area Map's hint,
     "HINT: SLIDE MOD IS AT GUARDIA 22,7", `client/hints.py`): left-aligned, words wrapped
@@ -331,9 +333,12 @@ through the real pipe and hook in a busy host.
   Archipelago's logo (with its up arrow, flashing, for progression) into those frames and
   its ring of dots into the glyph of the sprite texture through OpenGL (the game's context
   is current in the swap hook), after checking the texture is the 2048 x 2048 sprite sheet
-  and, once per texture, reading it back to find the game's art where `Sprites.png` has it
-  and the places to paint blank; it leaves the game's texture binding, pixel-store state
-  and GL errors as it found them, and paints nothing while a pixel buffer is bound.
+  and, once per texture for everything the helper paints there (the font glyphs below too),
+  reading it back to find the game's art where `Sprites.png` has it and the places to paint
+  blank (or already the helper's); a texture not as expected is read again at most twice,
+  five seconds apart, then left alone until the game makes another, and a place not blank
+  stops only what paints there. It leaves the game's texture binding, pixel-store state and
+  GL errors as it found them, and paints nothing while a pixel buffer is bound.
   `ap_labels` with no lines takes the labels back. Unload restores the records (and any an
   earlier helper left restyled) and clears the pixels; it refuses (`error an item record
   is still restyled (no frame came); not unloading`) if no frame came to do it. Working in
@@ -403,7 +408,8 @@ through the real pipe and hook in a busy host.
   put-back on a disconnect and nothing for a save with no disk (2026-10-24 and 2026-10-25,
   B1; `docs/re/memory.md`, "The scanner", "The equipment screen", "The mission prompt", "The
   pause screen's KEYS row", "The file select").
-- **AP saves without the client** (`src/offline.cpp`). While connected, the client sends the
+- **AP saves without the client** (`src/offline.cpp`, `src/game_offline.cpp`). While
+  connected, the client sends the
   helper (`offline_put`, every few seconds when they change; `client/offline.py`) the
   addresses it resolved for this build, with the first 16 bytes of each game function among
   them, and a small file per seed: its item table and start, the Intel Chip and ASSIST
@@ -459,7 +465,7 @@ through the real pipe and hook in a busy host.
   title screen").
 - **A client going away.** When the pipe's client disconnects (the AP client exited or crashed,
   or `tools/helper.py` was done), the next frame call, before it serves any request, puts back
-  everything the helper changed, as unload does (`put_back_all` in `src/dllmain.cpp`: the
+  everything the helper changed, as unload does (`Game::put_back_all` in `src/game_calls.cpp`: the
   new-game plan, the escape skip, the OS Install Disks goal's changes, the Area Map's name, the
   stand-in items and their looks, ARCHIPELAGO and the ASSIST lock; a change held by a menu no
   longer open is gone with it), drops the popups not shown yet, and goes inactive: nothing comes
@@ -491,7 +497,12 @@ through the real pipe and hook in a busy host.
   may still hold one of the helper's functions, since the game would call into the unloaded
   DLL; likewise while the scanner's text or the pause screen's branch is still the helper's
   (the locked ASSIST holds
-  no callback of the helper's, so it cannot). Then it
+  no callback of the helper's, so it cannot). A refused unload sets again, in a frame call,
+  everything clients had set, which a client would not know to resend: the new-game plan
+  (and so ARCHIPELAGO), the item labels (and so the stand-ins' looks and the map's names),
+  ASSIST's lock, INTEL CHIP, the disk counts and scanner line, the file select's counts and
+  a RETURN HOME WITH THE DISKS? prompt on its way (the offline look dresses its save again by
+  itself). Then it
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
@@ -518,9 +529,16 @@ ctest --test-dir native/build -C Release --output-on-failure
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
 tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
-the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, and `apitem`, the stand-in item's restyle and
-painting against a fake GL), and runs
-`tests/test_native.py` against the build on Windows.
+the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, `apitem`, the stand-in item's
+restyle and painting against a fake GL, and `equip`, `mission`, `pause`, `files`, `intel`,
+`title`, `mapmarks`, `proxy` and `offline`; the test programs share `tests/check.h`), and
+runs `tests/test_native.py` against the build on Windows.
+
+The sources: `src/dllmain.cpp` (the hook, the pipe's requests, the stand-ins the game calls),
+`src/game_calls.cpp` (Game: configure, grants, popups and each part's watch),
+`src/game_offline.cpp` (Game's offline look), `src/requests.cpp` (the requests' parsers),
+`src/text.cpp` (the popups' text layout), `src/game_mem.cpp` and `src/game_layout.h` (fault-safe
+memory access and the layouts several parts share), and one file per part, as named above.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.

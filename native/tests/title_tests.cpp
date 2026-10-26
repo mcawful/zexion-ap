@@ -10,30 +10,10 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "title.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-template <typename T>
-T get(const BYTE* b, ptrdiff_t o) {
-    T v;
-    std::memcpy(&v, b + o, sizeof(v));
-    return v;
-}
-
-template <typename T>
-void set(BYTE* b, ptrdiff_t o, T v) {
-    std::memcpy(b + o, &v, sizeof(v));
-}
 
 constexpr int kFrames = 256;
 std::vector<std::unique_ptr<BYTE[]>> g_blocks;
@@ -51,33 +31,33 @@ BYTE* block(size_t size) {
 }
 
 void frame(BYTE* g, int32_t f) {
-    set<int32_t>(g, 0x1C4, f);
-    set<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
+    put<int32_t>(g, 0x1C4, f);
+    put<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
 }
 
 BYTE* text_new(const char* chars, int length, int columns) {
     ++g_made;
     BYTE* t = block(0x268);
-    set<int32_t>(t, 0x1D8, length);
-    set<int32_t>(t, 0x1DC, columns);
-    set<int32_t>(t, 0x1EC, length);
+    put<int32_t>(t, 0x1D8, length);
+    put<int32_t>(t, 0x1DC, columns);
+    put<int32_t>(t, 0x1EC, length);
     auto** glyphs = reinterpret_cast<BYTE**>(block(sizeof(BYTE*) * length));
     for (int i = 0; i < length; ++i) {
         BYTE* g = block(0x1D8);
-        set<BYTE*>(g, 0x1A8, g_frames);
-        set<int32_t>(g, 0x1BC, kFrames);
-        set<int32_t>(g, 0x1D0, 0x15);
+        put<BYTE*>(g, 0x1A8, g_frames);
+        put<int32_t>(g, 0x1BC, kFrames);
+        put<int32_t>(g, 0x1D0, 0x15);
         frame(g, static_cast<uint8_t>(chars[i]));
         glyphs[i] = g;
     }
-    set<BYTE**>(t, 0x228, glyphs);
+    put<BYTE**>(t, 0x228, glyphs);
     return t;
 }
 
 void text_place(void* text, int x, int y) {
     auto* t = static_cast<BYTE*>(text);
-    set<double>(t, 0x40, x);
-    set<double>(t, 0x48, y);
+    put<double>(t, 0x40, x);
+    put<double>(t, 0x48, y);
 }
 
 // As 0xA8620: each glyph not in a list right after the text.
@@ -89,26 +69,26 @@ void text_link(void* text) {
         BYTE* g = glyphs[i];
         if (get<BYTE*>(g, 0) != nullptr) continue;
         BYTE* next = get<BYTE*>(t, 0x10);
-        if (next != nullptr) set<BYTE*>(next, 0x18, g);
-        set<BYTE*>(g, 0x10, next);
-        set<BYTE*>(t, 0x10, g);
-        set<BYTE*>(g, 0x18, t);
-        if (next == nullptr) set<BYTE*>(list, 0x20, g);
-        set<BYTE*>(g, 0, list);
+        if (next != nullptr) put<BYTE*>(next, 0x18, g);
+        put<BYTE*>(g, 0x10, next);
+        put<BYTE*>(t, 0x10, g);
+        put<BYTE*>(g, 0x18, t);
+        if (next == nullptr) put<BYTE*>(list, 0x20, g);
+        put<BYTE*>(g, 0, list);
     }
 }
 
 void append(BYTE* t) {
     BYTE* tail = get<BYTE*>(g_list, 0x20);
     if (tail != nullptr) {
-        set<BYTE*>(tail, 0x10, t);
+        put<BYTE*>(tail, 0x10, t);
     } else {
-        set<BYTE*>(g_list, 0x18, t);
+        put<BYTE*>(g_list, 0x18, t);
     }
-    set<BYTE*>(t, 0x18, tail);
-    set<BYTE*>(t, 0x10, nullptr);
-    set<BYTE*>(g_list, 0x20, t);
-    set<BYTE*>(t, 0, g_list);
+    put<BYTE*>(t, 0x18, tail);
+    put<BYTE*>(t, 0x10, nullptr);
+    put<BYTE*>(g_list, 0x20, t);
+    put<BYTE*>(t, 0, g_list);
 }
 
 BYTE* glyph(BYTE* t, int i) { return get<BYTE**>(t, 0x228)[i]; }
@@ -126,12 +106,12 @@ BYTE* reset_title() {
     for (int i = 0; i < 18; ++i) {
         BYTE* g = glyph(line, i);
         g[0x120] = 1;
-        set<BYTE*>(g, 0x198, g_palette);
-        set<int16_t>(g, 0x1A0, 0x1A);
+        put<BYTE*>(g, 0x198, g_palette);
+        put<int16_t>(g, 0x1A0, 0x1A);
     }
     frame(glyph(line, 0), 0xA9);
-    set<BYTE*>(line, 0x178, g_tag);
-    set<int16_t>(line, 0x180, 0x79);
+    put<BYTE*>(line, 0x178, g_tag);
+    put<int16_t>(line, 0x180, 0x79);
     g_made = 0;
     return line;
 }

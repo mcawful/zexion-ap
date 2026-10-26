@@ -31,13 +31,6 @@
 
 namespace zap {
 
-// Copies `size` bytes from `from` into `to`, or returns false if they are not committed,
-// readable memory (or reading them faults).
-bool safe_read(const void* from, void* to, size_t size);
-
-// Whether `size` bytes at `at` are committed memory the game may write (no guard page).
-bool writable(const void* at, size_t size);
-
 struct MenuAddresses {
     BYTE* current_menu = nullptr;  // holds a pointer to the top open menu
     void* panel_handler = nullptr;
@@ -117,9 +110,8 @@ private:
 // Unlocking puts all of it back. As for the ARCHIPELAGO choice, it
 // writes only into a widget whose menu is still open and that is not released, and checks
 // every value first: the menu's panel list and count, each panel's children and capacity, the
-// widget's handler and callback, and a label of 12 glyphs reading ASSIST and six blanks.
-// ASSIST's label has 12 glyphs (the widget constructor's width at 0x16285A): ASSIST, then six
-// blanks (character 0), as read live.
+// widget's handler and callback, and a label of 12 glyphs (the widget constructor's width at
+// 0x16285A) reading ASSIST and six blanks (character 0), as read live.
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
 // helper paints it, apitem.h FontGlyph), with a blank before it.
@@ -155,7 +147,6 @@ private:
     int32_t moved_from_ = -1;  // ASSIST's place before move_out; -1 if not moved
     int32_t selectable_ = 0;   // the panel's selectable count before move_out
     int32_t frames_[kAssistLength] = {};  // ASSIST's glyphs as they were
-    BYTE* frame_ptrs_[kAssistLength] = {};
     int32_t styles_[kAssistLength] = {};
     void* palettes_[kAssistLength] = {};
     int16_t palette_numbers_[kAssistLength] = {};

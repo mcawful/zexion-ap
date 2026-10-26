@@ -3,25 +3,18 @@
 #include <algorithm>
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
 namespace {
 
 constexpr int kLocations = 154;
-constexpr int kMapSide = 54;
 constexpr ptrdiff_t kItemTable = 0x26C;
 constexpr ptrdiff_t kSettings = 0x87B;  // +0xCDDF4B less the section's +0xCDD6D0
 constexpr int kObscureMajors = 29;
 constexpr uint8_t kClassLimit = 0x24;  // values below hold an item's class in value % 12
 constexpr uint8_t kMinorShown = 1, kMajorShown = 2, kMinorObscured = 7, kMajorObscured = 9;
-
-uint16_t word(const BYTE* p) {
-    uint16_t v;
-    std::memcpy(&v, p, sizeof(v));
-    return v;
-}
 
 }  // namespace
 
@@ -46,7 +39,7 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
     int changed = 0;
     for (int i = 0; i < kLocations; ++i) {
         if (section[kItemTable + i] != kProgressionStandIn) continue;
-        uint16_t x = word(section + 4 * i), y = word(section + 4 * i + 2);
+        auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
         uint8_t raised = important_value(cell, obscure_majors, ended);
@@ -60,22 +53,14 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
 
 namespace {
 
-template <typename T>
-bool read(const BYTE* base, ptrdiff_t offset, T& out) {
-    return base != nullptr && safe_read(base + offset, &out, sizeof(T));
-}
-
-constexpr ptrdiff_t kPanels = 0x0, kPanelChildren = 0x1E0;
 // The map child's two handler slots: the game's per-frame loop calls +0x168 (0x7ABF3, the child
 // its argument), and 0x46B4F calls +0x178; the map's builder puts its handler in both (0x16E951),
 // read live holding 0x169E50 in both, 2026-10-25.
 constexpr ptrdiff_t kChildHandlers[2] = {0x168, 0x178};
-constexpr ptrdiff_t kMenuBelow = 0x78;
-constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8, kScaleLabel = 0x1F0;
-constexpr ptrdiff_t kScale = 0x158;
+constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8;
+constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabel)
 constexpr ptrdiff_t kCursorChild = 0x18, kCursorX = 0x1E6, kCursorY = 0x1E4;
-constexpr ptrdiff_t kNameChild = 0x18, kLabel = 0x1F0;
-constexpr ptrdiff_t kTextLength = 0x1D8, kTextGlyphs = 0x228, kFrameIndex = 0x1C4;
+constexpr ptrdiff_t kNameChild = 0x18;
 constexpr double kFineScale = 40.0;
 const char* const kStandInNames[2] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 
@@ -84,8 +69,8 @@ const char* const kStandInNames[2] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 bool map_menu(BYTE* current_menu, void* handler, BYTE*& menu, BYTE*& panel, BYTE*& child) {
     BYTE *panels = nullptr, *children = nullptr;
     void* slot = nullptr;
-    return handler != nullptr && read(current_menu, 0, menu) && read(menu, kPanels, panels) &&
-           read(panels, 0, panel) && read(panel, kPanelChildren, children) &&
+    return handler != nullptr && read(current_menu, 0, menu) && read(menu, menu::kPanels, panels) &&
+           read(panels, 0, panel) && read(panel, panel::kChildren, children) &&
            read(children, 0, child) &&
            ((read(child, kChildHandlers[0], slot) && slot == handler) ||
             (read(child, kChildHandlers[1], slot) && slot == handler));
@@ -99,38 +84,38 @@ BYTE* info_panel(BYTE* panel) {
     return c;
 }
 
-bool is_open(BYTE* current_menu, const BYTE* wanted) {
-    BYTE* menu = nullptr;
-    if (!read(current_menu, 0, menu)) return false;
-    for (int i = 0; i < 64 && menu != nullptr; ++i) {
-        if (menu == wanted) return true;
-        if (!read(menu, kMenuBelow, menu)) return false;
+}  // namespace
+
+namespace {
+
+// The cursor's cell on the open map whose first panel is `panel`, or -1.
+int cursor_cell(BYTE* panel) {
+    BYTE *children = nullptr, *cursor = nullptr;
+    int16_t cx = 0, cy = 0;
+    if (!read(panel, panel::kChildren, children) || !read(children, kCursorChild, cursor) ||
+        !read(cursor, kCursorX, cx) || !read(cursor, kCursorY, cy)) {
+        return -1;
     }
-    return false;
+    // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158 (read live 40.0 zoomed in, 2026-10-25).
+    BYTE* info = info_panel(panel);
+    BYTE *d = nullptr, *e = nullptr;
+    double scale = 0;
+    const bool fine = read(info, widget::kLabel, d) && read(d, 0, e) && read(e, kScale, scale) &&
+                      scale == kFineScale;
+    const int row = fine ? (cx + 5) / 10 : (cx + 11) / 23;   // the cell's y
+    const int column = fine ? (cy + 4) / 8 : (cy + 8) / 17;  // the cell's x
+    if (row < 0 || row >= kMapSide || column < 0 || column >= kMapSide) return -1;
+    return row * kMapSide + column;
 }
 
 }  // namespace
 
 MapCursor map_cursor(BYTE* current_menu, void* map_handler) {
     MapCursor out;
-    BYTE *menu = nullptr, *panel = nullptr, *first = nullptr, *children = nullptr;
-    BYTE* cursor = nullptr;
+    BYTE *menu = nullptr, *panel = nullptr, *first = nullptr;
     if (!map_menu(current_menu, map_handler, menu, panel, first)) return out;
     out.open = true;
-    int16_t cx = 0, cy = 0;
-    if (!read(panel, kPanelChildren, children) || !read(children, kCursorChild, cursor) ||
-        !read(cursor, kCursorX, cx) || !read(cursor, kCursorY, cy)) {
-        return out;
-    }
-    // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158 (read live 40.0 zoomed in, 2026-10-25).
-    BYTE* info = info_panel(panel);
-    BYTE *d = nullptr, *e = nullptr;
-    double scale = 0;
-    const bool fine = read(info, kScaleLabel, d) && read(d, 0, e) && read(e, kScale, scale) &&
-                      scale == kFineScale;
-    const int row = fine ? (cx + 5) / 10 : (cx + 11) / 23;   // the cell's y
-    const int column = fine ? (cy + 4) / 8 : (cy + 8) / 17;  // the cell's x
-    if (row >= 0 && row < 54 && column >= 0 && column < 54) out.cell = row * 54 + column;
+    out.cell = cursor_cell(panel);
     return out;
 }
 
@@ -150,7 +135,7 @@ std::string map_name(const std::string& label) {
     return part;
 }
 
-bool shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
+bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
     std::string text;
     for (int32_t f : frames) text += f > 0 && f < 0x80 ? static_cast<char>(f) : ' ';
     while (!text.empty() && text.back() == ' ') text.pop_back();
@@ -169,8 +154,9 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
     }
     if (on && child_ == nullptr) {
         BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
+        constexpr size_t kBothSlots = kChildHandlers[1] - kChildHandlers[0] + sizeof(void*);
         if (map_menu(a.current_menu, handler, menu, panel, child) &&
-            writable(child + kChildHandlers[0], kChildHandlers[1] - kChildHandlers[0] + sizeof(void*))) {
+            writable(child + kChildHandlers[0], kBothSlots)) {
             for (ptrdiff_t at : kChildHandlers) {
                 void* slot = nullptr;
                 if (read(child, at, slot) && slot == handler) {
@@ -189,8 +175,8 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
 bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
     if (!is_open(a.current_menu, menu_)) return false;
     BYTE *panels = nullptr, *panel = nullptr, *children = nullptr, *first = nullptr;
-    if (!read(menu_, kPanels, panels) || !read(panels, 0, panel) ||
-        !read(panel, kPanelChildren, children) || !read(children, 0, first) || first != child_) {
+    if (!read(menu_, menu::kPanels, panels) || !read(panels, 0, panel) ||
+        !read(panel, panel::kChildren, children) || !read(children, 0, first) || first != child_) {
         return false;
     }
     for (ptrdiff_t at : kChildHandlers) {
@@ -202,29 +188,29 @@ bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
 
 void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::string>& labels) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
-    MapCursor cursor = map_cursor(a.current_menu, a.hook);
-    auto it = cursor.open ? labels.find(cursor.cell) : labels.end();
-    if (it == labels.end()) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
     if (!map_menu(a.current_menu, a.hook, menu, panel, child)) return;
+    auto it = labels.find(cursor_cell(panel));
+    if (it == labels.end()) return;
     BYTE* info = info_panel(panel);
     BYTE *children = nullptr, *widget = nullptr, *text = nullptr;
     BYTE** glyphs = nullptr;
     int32_t length = 0;
-    if (!read(info, kPanelChildren, children) || !read(children, kNameChild, widget) ||
-        !read(widget, kLabel, text) || !read(text, kTextLength, length) ||
-        length < static_cast<int32_t>(kMapNameMax) || !read(text, kTextGlyphs, glyphs)) {
+    if (!read(info, panel::kChildren, children) || !read(children, kNameChild, widget) ||
+        !read(widget, widget::kLabel, text) || !read(text, label::kLength, length) ||
+        length < static_cast<int32_t>(kMapNameMax) || !read(text, label::kGlyphs, glyphs)) {
         return;
     }
     int32_t frames[kMapNameMax] = {};
     for (size_t i = 0; i < kMapNameMax; ++i) {
         BYTE* g = nullptr;
         if (!read(reinterpret_cast<BYTE*>(glyphs), static_cast<ptrdiff_t>(i * sizeof(BYTE*)), g) ||
-            !read(g, kFrameIndex, frames[i])) {
+            !read(g, sprite::kFrameIndex, frames[i])) {
             return;
         }
     }
-    if (!shows_stand_in(frames)) return;  // another text (the player's room, a marker, unknown)
+    // Another text (the player's room, a marker, unknown) is left alone.
+    if (!cursor_shows_stand_in(frames)) return;
     const std::string name = map_name(it->second);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));

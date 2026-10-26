@@ -6,14 +6,15 @@
 // and \config-<build>.txt), never the game's. The helper writes them itself, from inside the
 // game: run from a packaged app (an MSIX package, the Claude desktop app in this repo's tests),
 // the client's own writes there were not found by the game (2026-10-25: error 3, path not
-// found), inferred to be the package's AppData redirect. The helper reads them when it starts and each time a client goes away. With no client, it
-// configures itself from the cache (only for the build it was made on), and while a save of
-// one of those seeds is loaded it gives the save the same look: the item labels (AP ITEM,
-// PROGRESSION ITEM, this player's own disks), the Intel Chip's name, the ASSIST lock, the
-// OS Install Disks goal's screens and the escape skip; and the file select shows those
-// saves' disk counts. What needs the server (received items, hints, the goal) waits for the
-// client. A seed file is matched to a save by the randomizer section's item table and start
-// record, as the client matches it (client/save_patch.py, section_matches).
+// found), inferred to be the package's AppData redirect. The helper reads them when it starts
+// and each time a client goes away. With no client, it configures itself from the cache (only
+// for the build it was made on), and while a save of one of those seeds is loaded it gives the
+// save the same look: the item labels (AP ITEM, PROGRESSION ITEM, this player's own disks), the
+// Intel Chip's name, the ASSIST lock, the OS Install Disks goal's screens and the escape skip;
+// and the file select shows those saves' disk counts. What needs the server (received items,
+// hints, the goal) waits for the client. A seed file is matched to a save by the randomizer
+// section's item table and start record, as the client matches it (client/save_patch.py,
+// section_matches).
 //
 // A seed file, one line each, then the labels:
 //   zexion-ap offline 1
@@ -35,12 +36,13 @@
 #include <string>
 #include <vector>
 
+#include "game_layout.h"  // kMapCells
+
 namespace zap {
 
 constexpr int kOfflineLocations = 154;
 constexpr int kOfflineStartSize = 6;
 constexpr ptrdiff_t kOfflineTableAt = 0x26C, kOfflineStartAt = 0x310;  // in the section
-constexpr int kMapCells = 54 * 54;
 constexpr uint8_t kCollectedCell = 0x1B;
 
 struct OfflineSeed {
@@ -61,6 +63,9 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out);
 
 // Whether `table` (154 bytes) and `start` (6 bytes) are this seed's.
 bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start);
+// A seed made of a randomizer section's item table and start (nothing else set), to match
+// another section against.
+OfflineSeed offline_seed_of(const uint8_t* section);
 
 // The disk count with the map `grid` (54 * 54 cells) as it is.
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid);
@@ -75,7 +80,8 @@ struct OfflineFiles {
     std::string error;  // the last file that could not be read, and why
 };
 
-// The per-user folder (%LOCALAPPDATA%\ZexionAP), or `folder` if given (tests).
+// The per-user folder (%LOCALAPPDATA%\ZexionAP), or "" if LOCALAPPDATA is not an absolute
+// path. The functions below take the folder, so tests give their own.
 std::wstring offline_folder();
 // Reads the folder's config for `build` (the client's `config` request, parse_config, then
 // its check lines) and its seeds, the newest first; a file that does not parse is skipped.

@@ -35,7 +35,7 @@ namespace zap {
 struct FileAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu
     void* file_panel_fn = nullptr;  // the entries' panel handler
-    void* entry_fns[3] = {};        // the file select's, COPY FILE's and DELETE FILE's entry handlers
+    void* entry_fns[3] = {};        // the entry handlers: the file select's, COPY's and DELETE's
     void* hook = nullptr;           // the helper's stand-in for an entry's handler
 };
 
@@ -52,7 +52,7 @@ class FileDisks {
 public:
     // Game thread: what to show (an empty slot set turns it off): one count for the slots the
     // client lists, or each slot's own (offline, saves of several seeds: offline.h).
-    void set(int count, int required, std::set<int> slots);
+    void set(int count, std::set<int> slots);
     void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
     bool on() const { return !counts_.empty(); }
 
@@ -70,8 +70,7 @@ public:
     void restore(const FileAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
-    // For a refused unload, which turns it back on as it was.
-    // Each listed slot's count (a refused unload sets them again).
+    // Each listed slot's count.
     const std::map<int, int>& counts() const { return counts_; }
 
 private:

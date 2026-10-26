@@ -36,7 +36,8 @@ FARPROC real_function(const char* name) {
     return g_real != nullptr ? GetProcAddress(g_real, name) : nullptr;
 }
 
-// The directory this DLL was loaded from, with a trailing backslash; empty if unknown.
+// The directory this DLL was loaded from, with a trailing backslash, into `dir`; false if it
+// cannot be found.
 bool own_folder(wchar_t (&dir)[MAX_PATH]) {
     DWORD n = GetModuleFileNameW(g_self, dir, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return false;

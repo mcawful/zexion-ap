@@ -53,7 +53,7 @@ std::string map_name(const std::string& label);
 // Whether the cursor's 17 name glyphs (their frames) spell a stand-in's game name, SCRAP
 // ENERGY or SCRAP CHUNK, then blanks: what the map's handler writes for a square of item 47 or
 // 48 shown or collected (`0xA61C0(text, record name, 0, 17)`).
-bool shows_stand_in(const int32_t (&frames)[kMapNameMax]);
+bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]);
 
 struct MapAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu

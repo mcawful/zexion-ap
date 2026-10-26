@@ -8,23 +8,10 @@
 #include <cstring>
 #include <string>
 
+#include "check.h"
 #include "pause.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-template <typename T>
-T& at(BYTE* p, ptrdiff_t offset) {
-    return *reinterpret_cast<T*>(p + offset);
-}
 
 int g_calls = 0;
 void widget_handler() { g_calls += 1; }
@@ -192,6 +179,12 @@ void test_anything_else_is_left_alone() {
         at<int32_t>(p.row, 0x1F8) = 8;
         row.watch(p.addresses());
         check(p.frame(p.sprite[4]) == 384, "another sprite count");
+    }
+    {
+        Pause p;
+        row.set("2 OF 15");  // not the row's eight cells
+        row.watch(p.addresses());
+        check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == 'K', "a text of another length");
     }
     row.set("");
     Pause p;

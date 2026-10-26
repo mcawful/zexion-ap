@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 
+#include "check.h"
 #include "game_calls.h"
 #include "offline.h"
 #include "stand_in.h"
@@ -15,15 +16,6 @@
 using namespace stand_in;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 std::string hex(const uint8_t* b, size_t n) {
     static const char* d = "0123456789ABCDEF";
@@ -294,12 +286,12 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     // The file select with a client: its counts for its saves, the offline ones for others'.
     g_save_loaded = 0xFF;
-    other.set_disk_slots(7, 15, {4});
+    other.set_disk_slots(7, {4});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     auto merged = other.files().counts();
     check(merged.size() == 2 && merged.at(4) == 7 && merged.at(3) == 4,
           "the client's slot 4 and the known seed's slot 3, together");
-    other.set_disk_slots(0, 0, {});
+    other.set_disk_slots(0, {});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
           "the client's taken back: the offline one stays");
 }

@@ -4,7 +4,7 @@
 #include <cctype>
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
@@ -22,7 +22,7 @@ bool reads(const BYTE (&entry)[kTextEntrySize], const std::string& text) {
     return std::memcmp(entry, want, sizeof(want)) == 0;
 }
 
-void put(BYTE* entry, const std::string& text) {
+void put_text(BYTE* entry, const std::string& text) {
     BYTE bytes[kTextEntrySize];
     padded(text, bytes);
     std::memcpy(entry, bytes, sizeof(bytes));
@@ -63,7 +63,7 @@ bool ScanText::apply(BYTE* table_holder, const std::string& line) {
         line_.clear();
         return false;
     }
-    put(entry, line);
+    put_text(entry, line);
     table_ = table;
     entry_ = entry;
     line_ = line;
@@ -77,7 +77,7 @@ void ScanText::restore(BYTE* table_holder) {
     if (safe_read(table_holder, &table, sizeof(table)) && table == table_ &&
         safe_read(entry_, copy, sizeof(copy)) && reads(copy, line_) &&
         writable(entry_, sizeof(copy))) {
-        put(entry_, kScanTextOriginal);
+        put_text(entry_, kScanTextOriginal);
     }
     table_ = nullptr;
     entry_ = nullptr;

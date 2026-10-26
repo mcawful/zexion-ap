@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
@@ -13,12 +13,6 @@ constexpr int16_t kFlag = 250;
 constexpr int16_t kNone = -1;
 constexpr ptrdiff_t kType = 0, kTypeHigh = 1, kTestFlag = 2, kThen = 4, kElse = 6, kNext = 8;
 constexpr ptrdiff_t kSelf = 0x24;
-
-int16_t word(const BYTE* record, ptrdiff_t at) {
-    int16_t v;
-    std::memcpy(&v, record + at, sizeof(v));
-    return v;
-}
 
 // The record as the game loads it (else = none), or as patched (else = the offer).
 bool expected(const BYTE* r, int16_t else_branch) {
