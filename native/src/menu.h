@@ -1,4 +1,4 @@
-// The ARCHIPELAGO choice on the file screen's game-mode panel (helper phase 3, step B).
+// The ARCHIPELAGO choice on the file screen's game-mode panel.
 //
 // After the player picks an empty slot, the game shows NORMAL / RANDOMIZER. While armed, the
 // helper finds that panel, rewrites RANDOMIZER's label to ARCHIPELAGO (same length, so its 11

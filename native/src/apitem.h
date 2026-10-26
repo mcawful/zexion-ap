@@ -1,4 +1,4 @@
-// How other players' items look in the game (helper phase 4).
+// How other players' items look in the game.
 //
 // A location holding another player's item is given item 47 (Scrap Energy) by the world, or 48
 // (Scrap Chunk) for a progression item. While the client has sent the helper its labels, the

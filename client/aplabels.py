@@ -1,4 +1,4 @@
-"""Names for other players' items in the game (helper phase 4).
+"""Names for other players' items in the game.
 
 The world fills a location holding another player's item with a stand-in: item 47 (Scrap
 Energy), or 48 (Scrap Chunk) for a progression item, which the helper draws with Archipelago's up

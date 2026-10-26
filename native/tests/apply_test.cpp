@@ -1,4 +1,4 @@
-// Helper phase 2 end to end, through the real pipe and hook: the hook-test build of the helper
+// Grants and popups end to end, through the real pipe and hook: the hook-test build of the helper
 // (argv[1]) is loaded into this program, which plays the game. Two busy threads call the
 // hooked GetTickCount like the game's frames; the helper is configured with this program's
 // stand-in game (stand_in.h) and applies a batch inside those calls, and `popups` counts its
