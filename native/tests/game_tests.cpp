@@ -12,6 +12,7 @@
 #include <string>
 #include <thread>
 
+#include "check.h"
 #include "game_calls.h"
 #include "mailbox.h"
 #include "stand_in.h"
@@ -20,15 +21,6 @@
 namespace {
 
 using namespace stand_in;
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 std::string apply(zap::Game& game, const std::string& request) {
     zap::Batch batch;
@@ -744,19 +736,6 @@ void set_code_byte(unsigned char value) {
     VirtualProtect(g_popup_width_code, 1, PAGE_EXECUTE_READWRITE, &old);
     *static_cast<volatile unsigned char*>(g_popup_width_code) = value;
     VirtualProtect(g_popup_width_code, 1, old, &old);
-}
-
-void own_stand_in(BYTE* r, int16_t frame, const char* name, int16_t event) {
-    std::memset(r, 0, 100);
-    *reinterpret_cast<int16_t*>(r + 0x00) = 34;
-    *reinterpret_cast<int16_t*>(r + 0x02) = frame;
-    *reinterpret_cast<int16_t*>(r + 0x04) = 6;
-    *reinterpret_cast<int16_t*>(r + 0x06) = 2;
-    r[0x09] = 8;
-    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
-    *reinterpret_cast<int16_t*>(r + 0x3C) = 46;
-    *reinterpret_cast<int16_t*>(r + 0x40) = event;
-    *reinterpret_cast<int16_t*>(r + 0x58) = 1;
 }
 
 void test_pickup_popup_width() {

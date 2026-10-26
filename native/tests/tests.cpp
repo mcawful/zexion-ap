@@ -10,21 +10,13 @@
 #include <string>
 #include <thread>
 
+#include "check.h"
 #include "build.h"
 #include "iat.h"
 #include "pipe.h"
 #include "pipe_client.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 DWORD WINAPI fake_tick_count() { return 42; }
 

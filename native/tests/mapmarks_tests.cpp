@@ -9,18 +9,10 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "mapmarks.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 struct Save {
     std::vector<BYTE> section = std::vector<BYTE>(0x908);

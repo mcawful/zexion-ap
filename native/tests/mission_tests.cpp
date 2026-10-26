@@ -8,23 +8,10 @@
 #include <map>
 #include <string>
 
+#include "check.h"
 #include "mission.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-template <typename T>
-T& at(BYTE* p, ptrdiff_t offset) {
-    return *reinterpret_cast<T*>(p + offset);
-}
 
 int g_calls = 0;
 // Bodies of their own: the linker folds identical functions into one address.

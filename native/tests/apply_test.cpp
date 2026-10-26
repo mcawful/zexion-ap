@@ -12,6 +12,7 @@
 #include <string>
 #include <thread>
 
+#include "check.h"
 #include "pipe.h"
 #include "pipe_client.h"
 #include "stand_in.h"
@@ -24,14 +25,6 @@ void busy() {
     while (!g_stop.load()) {
         volatile DWORD t = GetTickCount();
         (void)t;
-    }
-}
-
-int g_failures = 0;
-void check(bool ok, const char* what, const std::string& detail = "") {
-    if (!ok) {
-        std::printf("FAIL: %s %s\n", what, detail.c_str());
-        ++g_failures;
     }
 }
 

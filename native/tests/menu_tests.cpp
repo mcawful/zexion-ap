@@ -8,20 +8,13 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "menu.h"
 #include "stand_in_menu.h"
 
 namespace {
 
-int g_failures = 0;
 using stand_in::kFrames;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 int g_calls = 0;
 // Bodies of their own: the linker folds identical functions into one address.

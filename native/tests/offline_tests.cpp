@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 
+#include "check.h"
 #include "game_calls.h"
 #include "offline.h"
 #include "stand_in.h"
@@ -15,15 +16,6 @@
 using namespace stand_in;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 std::string hex(const uint8_t* b, size_t n) {
     static const char* d = "0123456789ABCDEF";

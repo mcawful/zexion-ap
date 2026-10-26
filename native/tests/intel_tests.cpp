@@ -7,18 +7,10 @@
 #include <cstring>
 #include <vector>
 
+#include "check.h"
 #include "intel.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 struct Records {
     std::vector<BYTE> table = std::vector<BYTE>(51 * 100);

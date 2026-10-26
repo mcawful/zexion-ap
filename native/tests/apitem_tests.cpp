@@ -10,19 +10,11 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "apitem.h"
 #include "game_calls.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
 
 // --- a stand-in item table: 51 records of 100 bytes, records 47 and 48 as the game loads them
 
@@ -31,33 +23,11 @@ BYTE* g_records_ptr = g_records;
 BYTE* const g_scrap = g_records + 47 * 100;
 BYTE* const g_chunk = g_records + 48 * 100;
 
-void put16(BYTE* p, ptrdiff_t o, int16_t v) { std::memcpy(p + o, &v, 2); }
-int16_t get16(const BYTE* p, ptrdiff_t o) {
-    int16_t v;
-    std::memcpy(&v, p + o, 2);
-    return v;
-}
-
-void own_record(BYTE* r, int16_t frame, const char* name, int16_t event) {
-    put16(r, 0x00, 34);
-    put16(r, 0x02, frame);
-    put16(r, 0x04, 6);
-    put16(r, 0x06, 2);
-    r[0x08] = 0;
-    r[0x09] = 8;
-    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
-    put16(r, 0x3C, 46);
-    put16(r, 0x3E, 45);
-    put16(r, 0x40, event);
-    put16(r, 0x58, 1);
-    put16(r, 0x5A, 13);
-    put16(r, 0x60, 244);
-}
 
 void reset_records() {
     std::memset(g_records, 0, sizeof(g_records));
-    own_record(g_scrap, 134, "SCRAP ENERGY", 3549);
-    own_record(g_chunk, 142, "SCRAP CHUNK", 3550);
+    own_stand_in(g_scrap, 134, "SCRAP ENERGY", 3549);
+    own_stand_in(g_chunk, 142, "SCRAP CHUNK", 3550);
 }
 
 std::string name(const BYTE* r = g_scrap) {
@@ -163,14 +133,14 @@ void test_restyle_and_names() {
     items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
     items.watch(holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
-    check(get16(g_scrap, 0x02) == 63 && get16(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0,
+    check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0,
           "the logo frame, one frame, no icon of its own (the name starts with the glyph)");
-    check(get16(g_scrap, 0x40) == -1, "no refill drop at pickup");
+    check(get<int16_t>(g_scrap, 0x40) == -1, "no refill drop at pickup");
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
-    check(get16(g_scrap, 0x60) == 244 && get16(g_scrap, 0x3C) == 46, "the rest left alone");
+    check(get<int16_t>(g_scrap, 0x60) == 244 && get<int16_t>(g_scrap, 0x3C) == 46, "the rest left alone");
     check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
-    check(get16(g_chunk, 0x02) == 95 && get16(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0 &&
-              get16(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
+    check(get<int16_t>(g_chunk, 0x02) == 95 && get<int16_t>(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0 &&
+              get<int16_t>(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     items.watch(holder(), 7);
     check(name() == "\xEE" "AP ITEM", "elsewhere, the glyph and the general name");
@@ -188,13 +158,13 @@ void test_restyle_and_names() {
 
 void test_one_record_not_as_expected_leaves_the_other_restyled() {
     reset_records();
-    put16(g_chunk, 0x40, 3551);  // not as traced
+    put<int16_t>(g_chunk, 0x40, 3551);  // not as traced
     BYTE before_chunk[100];
     std::memcpy(before_chunk, g_chunk, 100);
     zap::ApItems items;
     items.set_labels({{1, "X"}});
     items.watch(holder(), 1);
-    check(items.restyled() && get16(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
+    check(items.restyled() && get<int16_t>(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
     items.restore(holder(), sprites(), zap::GlFunctions{});
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and restore leaves it alone too");
@@ -202,8 +172,8 @@ void test_one_record_not_as_expected_leaves_the_other_restyled() {
 
 void test_records_not_as_expected_are_left_alone() {
     reset_records();
-    put16(g_scrap, 0x40, 3550);  // another build's event, say
-    put16(g_chunk, 0x40, 3551);
+    put<int16_t>(g_scrap, 0x40, 3550);  // another build's event, say
+    put<int16_t>(g_chunk, 0x40, 3551);
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems items;
@@ -241,7 +211,7 @@ void test_a_reload_is_restyled_again() {
     items.watch(holder(), 1);
     reset_records();  // the game reloaded its records
     items.watch(holder(), 1);
-    check(get16(g_scrap, 0x02) == 63 && name() == "X", "restyled again after a reload");
+    check(get<int16_t>(g_scrap, 0x02) == 63 && name() == "X", "restyled again after a reload");
 }
 
 void test_painting() {
