@@ -31,7 +31,15 @@ STEAM_APP_ID = 3392510
 _PROTECTED = [
     re.compile(r"steamapps/common/zexion(?![\w-])"),
     re.compile(r"gallant leaf/zexion(?![\w-])"),
-    re.compile(rf"/userdata/\d+/{STEAM_APP_ID}(?![\w-])"),
+    re.compile(rf"(?<![\w-])userdata/\d+/{STEAM_APP_ID}(?![\w-])"),
+]
+# The same folders as path components, for ``word_may_name_protected``. ``_DIGITS`` stands for
+# the Steam account id.
+_DIGITS = object()
+_PROTECTED_PARTS: list[tuple] = [
+    ("steamapps", "common", "zexion"),
+    ("gallant leaf", "zexion"),
+    ("userdata", _DIGITS, str(STEAM_APP_ID)),
 ]
 
 # Environment variables that commonly prefix a path to the saves or the Steam library.
@@ -66,9 +74,104 @@ def normalize(text: str) -> str:
 
 
 def mentions_protected(text: str) -> bool:
-    """True when free text (a shell command, say) names a protected folder anywhere in it."""
+    """True when free text (a shell command, say) names a protected folder anywhere in it.
+
+    It also reads the text with quotes and backticks removed, ``/./`` collapsed, and dots and
+    spaces dropped from the end of each folder name (Windows ignores them: ``Gallant Leaf.``),
+    so none of those hide the folder.
+    """
     norm = normalize(text)
-    return any(p.search(norm) for p in _PROTECTED)
+    plain = re.sub(r"[\"'`]", "", norm)
+    while "/./" in plain:
+        plain = plain.replace("/./", "/")
+    plain = re.sub(r"(?<=[^/.\s])[. ]+(?=/)", "", plain)
+    return any(p.search(t) for t in (norm, plain) for p in _PROTECTED)
+
+
+def word_may_name_protected(word: str) -> bool:
+    """True when one shell word, read as a path, could name a protected folder or a file in it.
+
+    Unlike ``mentions_protected`` it reads the path component by component: ``.`` and ``..``
+    are resolved, trailing dots and spaces are dropped, a wildcard (``*``, ``?``, ``[...]``, and
+    a ``{...}`` brace read as ``*``) may stand for any part of a folder name, and an 8.3 short
+    name (``GALLAN~1``) for a long one. It errs toward True: ``Zex*`` counts, though it could
+    also match another folder.
+    """
+    norm = re.sub(r"(?<!\$)\{[^{}/]*\}", "*", normalize(word))
+    parts: list[str] = []
+    for part in norm.split("/"):
+        if part not in (".", ".."):
+            part = part.rstrip(". ")
+        if part == ".." and parts and parts[-1] != "..":
+            parts.pop()
+        elif part not in (".", ""):
+            parts.append(part)
+    for names in _PROTECTED_PARTS:
+        last = len(names) - 1
+        for start in range(len(parts) - last):
+            if all(
+                _part_matches(parts[start + k], name, first=k == 0, last=k == last)
+                for k, name in enumerate(names)
+            ):
+                return True
+    return False
+
+
+_ANY = "?"  # one wildcard character; "*" is a run of them; anything else is itself
+
+
+def _wildcard_tokens(part: str) -> list[str]:
+    tokens, i = [], 0
+    while i < len(part):
+        if part[i] == "[" and "]" in part[i + 2 :]:
+            i = part.index("]", i + 2)  # a character class: read as any one character
+            tokens.append(_ANY)
+        else:
+            tokens.append(part[i])
+        i += 1
+    return tokens
+
+
+def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
+    """Whether path component ``part`` (maybe holding wildcards) could be the folder ``name``.
+
+    ``first``: anything may come before ``name`` in ``part``, as the pattern search allows.
+    ``last``: ``part`` may go on after ``name`` with a character that ends a name, like ``.``.
+    """
+    tokens = _wildcard_tokens(part)
+    if name is _DIGITS:
+        return bool(tokens) and all(t in "*?" or t.isdigit() for t in tokens)
+    assert isinstance(name, str)
+    short = re.fullmatch(r"([^~*?\[]{1,6})~\d+", part)
+    if short:
+        return name.replace(" ", "").startswith(short.group(1))
+    n = len(name)
+    before, after = -1, n + 1  # states: still before ``name``, and past its end
+    states = {before, 0} if first else {0}
+    for tok in tokens:
+        new: set[int] = set()
+        for s in states:
+            if s == after:
+                new.add(after)
+            elif tok == "*":
+                new.update(range(max(s, 0), n + 1))
+                if s == before:
+                    new.add(before)
+                if s == n and last:
+                    new.add(after)
+            elif s == before:
+                new.add(before)
+                if tok in (_ANY, name[0]):
+                    new.add(1)
+            elif s < n:
+                if tok in (_ANY, name[s]):
+                    new.add(s + 1)
+            elif last and (tok == _ANY or not re.fullmatch(r"[\w-]", tok)):
+                new.add(after)
+        states = new
+        if not states:
+            return False
+    return n in states or after in states
 
 
 def is_protected_path(path: str | os.PathLike[str]) -> bool:
@@ -77,7 +180,7 @@ def is_protected_path(path: str | os.PathLike[str]) -> bool:
     candidates = [raw]
     with contextlib.suppress(OSError, ValueError):
         candidates.append(os.path.realpath(_expand(raw)))
-    return any(mentions_protected(c + "/") for c in candidates)
+    return any(mentions_protected(c + "/") or word_may_name_protected(c) for c in candidates)
 
 
 def assert_writable(path: str | os.PathLike[str]) -> Path:
