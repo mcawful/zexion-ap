@@ -29,8 +29,9 @@ For players: the world's [game page](worlds/zexion/docs/en_Zexion.md) and
 
 ## How it fits together
 
-- **The world** (`worlds/zexion/`) places items at the game's 154 locations, using the game's
-  own randomizer map and rules ([`docs/re/locations.md`](docs/re/locations.md)).
+- **The world** (`worlds/zexion/`, on `apworld`) places items at the game's 154 locations (in
+  OHKO, the 150 it can reach), using the game's own randomizer map and rules
+  ([`docs/re/locations.md`](docs/re/locations.md), on `apworld`).
 - **The client** (`client/`) attaches to the running game. While this seed's save is loaded it
   sends the locations the map marks as collected, gives the items other worlds send, and sends
   the goal when the ending begins. Items given and then lost to a death or a reload are given
@@ -47,7 +48,8 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
 - **Received items with the game's popup** (helper phase 2): the item's popup, sound and an
   immediate HUD refresh, live-tested on one seed (2026-10-22). Without a helper to use
   (`--no-helper`, none loaded in the game and neither a build nor a copy in the game's folder,
-  or a helper that fails) items are written directly, with no popup; the client loads the
+  or a helper that fails) items are written directly, with no popup, all but Energy Shields,
+  which only the helper can give; the client loads the
   helper again within 30 seconds (`/unload_helper` unloads it as if it had failed, to test
   that). Each received item's popup is shown once: the server's data storage keeps how many
   have been shown (`zexion_announced_<team>_<slot>`), so an item received while no client ran
@@ -72,12 +74,17 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   game since 2026-10-23). In an Archipelago save the map shows the progression stand-in's
   squares (this player's disks, other players' progression) as important items and names them
   under the cursor (working in game 2026-10-25).
-- **The escape skip**: while a client is connected, grabbing Zexion offers the game's SKIP
-  ESCAPE AND FINAL BATTLE? (live-tested 2026-10-23).
+- **Received Energy Shields**: an Energy Shield is no inventory byte, so the helper spawns a
+  received one on the player as its pickup does, and the client counts it in the server's data
+  storage once it sees the shield up (working in game 2026-10-23; `native/README.md`,
+  "Received Energy Shields").
+- **The escape skip**: while a client is connected, and in a save dressed offline (below),
+  grabbing Zexion offers the game's SKIP ESCAPE AND FINAL BATTLE? (live-tested 2026-10-23 with
+  the client).
 - **DeathLink**: for a seed with DeathLink on, the client sends the player's deaths and deals
   the ones it receives through the helper, which kills the player (live-tested 2026-10-23).
 - **The ASSIST lock**: for a seed that disallows assists (the world's default), the helper
-  greys out the options menu's ASSIST entry, puts a padlock after it, has the cursor skip it
+  grays out the options menu's ASSIST entry, puts a padlock after it, has the cursor skip it
   and keeps it from opening while that seed's save is loaded (the lock live-tested 2026-10-23;
   unlocking in another save 2026-10-25). Sending the slot the Assist Unlock item (server
   console: `/send NAME Assist Unlock`) lifts the lock for good, as an escape hatch
@@ -118,7 +125,8 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   except the offline look below. Once configured, with a client or without, the helper adds
   ARCHIPELAGO MOD and its version, and ©2026 MCAWFUL, under the title screen's copyright line,
   with START THE AP CLIENT TO PLAY A SEED above them while no client is connected (the two
-  lines working in game 2026-10-25).
+  lines under the copyright working in game 2026-10-25; the third reported up by the helper's
+  `hello` with no client, 2026-10-25, its final layout not checked on screen).
 - **AP saves without the client**: with the helper loaded with the game, an AP save keeps its
   look without the client. While connected, the client sends the helper a small file per seed
   and the addresses it resolved (`offline_put`, `client/offline.py`), which the helper writes

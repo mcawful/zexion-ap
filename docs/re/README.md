@@ -11,8 +11,9 @@ relies on a fact cites the page and heading it comes from.
 - [`save-format.md`](save-format.md): the `.sav` files.
 - [`memory.md`](memory.md): where the running game keeps its state.
 - [`randocells.md`](randocells.md): the randomizer's logic file.
-- [`locations.md`](locations.md): how the APWorld's locations and rules are derived from it, and
-  what backs them; the `logic-reviewer` subagent checks the APWorld against it.
+- [`locations.md`](locations.md) (on `apworld`): how the APWorld's locations and rules are
+  derived from it, and what backs them; the `logic-reviewer` subagent checks the APWorld
+  against it.
 
 Planned, and created when its first fact is recorded: `items.md` (item IDs and what they
 grant).

@@ -59,8 +59,9 @@ See `docs/re/memory.md`.
 ## 4. Turn it into a pattern
 
 `tools/make_pattern.py EXE RVA [--size N]` does the steps below on a copy of the exe and prints
-the best candidates; add the chosen ones to `client/patterns.py` (two per target, from
-different code, with the RVA the target has on each known build in its `rvas`) and check them
+the best candidates; add the chosen ones to `client/patterns.py` (two or more per target, from
+different code, with the RVA the target has on each known build in its `rvas`), regenerate
+`tests/patterns_frozen.json` (`.venv/Scripts/python tests/test_patterns.py`), and check them
 with `tools/check_patterns.py EXE` and then `--live`. For a
 function, it finds call sites (kind `rip`: the `call rel32` field leads to the function) and the
 function's own start (kind `at`: the match itself is the address); use call sites from at least

@@ -31,7 +31,7 @@ python -m uv pip install --python .venv -r requirements-dev.txt
 ```
 
 Checks. CI's Python jobs run the first three; `/preflight` runs them too, and AP's world tests
-(the last, from the pinned checkout `tools/ap_checkout.py` links the world into):
+(the last, on `apworld`, from the pinned checkout `tools/ap_checkout.py` links the world into):
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -43,7 +43,8 @@ cd .ap/Archipelago && AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest
 The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job
 builds it and runs these on Windows (the tests include grants applied in the frame calls of a
 stand-in game, and 300 loads and unloads of a test build while the function it hooks is called
-nonstop), then `tests/test_native.py` loads it into a stand-in process (it skips without a build):
+nonstop), then `tests/test_native.py` loads it into a stand-in process (that one test skips
+without a build):
 
 ```sh
 cmake -S native -B native/build -A x64
@@ -60,7 +61,7 @@ save folders:
 .venv/Scripts/python tools/memscan.py find HEX  # search the running game; see /find-address
 .venv/Scripts/python tools/game_data.py RandoCells MapData Text --exe   # copy game data into lab/data/<build>/
 .venv/Scripts/python tools/randocells.py SAVE --fresh   # reachable locations of a new seed
-.venv/Scripts/python tools/gen_world_data.py           # regenerate worlds/zexion/data.py
+.venv/Scripts/python tools/gen_world_data.py           # regenerate worlds/zexion/data.py (on apworld)
 .venv/Scripts/python tools/make_pattern.py EXE RVA      # candidate byte patterns for data or a function
 .venv/Scripts/python tools/check_patterns.py EXE        # client/patterns.py against an exe copy
 .venv/Scripts/python tools/check_patterns.py --live     # ...or against the running game (reads only)
@@ -91,12 +92,16 @@ INTEL CHIP and so on), which live tests of the client read in its log.
 .venv/Scripts/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281
 ```
 
-- **The helper.** On attaching, the client loads the one built from `native/`
-  (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`) unless one is in the game already:
-  the player may put `zexion_ap.dll` and the proxy `version.dll` (`native/build/proxy/Release/`)
-  in the game's folder, which loads it as the game starts. That is the player's own step, with
-  the game closed: our tools never write the game's folder. Ask before a run that loads it into
-  the game, as for `helper.py load`. `--no-helper` writes items directly, with no popup;
+- **The helper.** On attaching, the client uses a helper of its own version already in the
+  game: the player may put `zexion_ap.dll` and the proxy `version.dll`
+  (`native/build/proxy/Release/`) in the game's folder, which loads it as the game starts. That
+  is the player's own step, with the game closed: our tools never write the game's folder.
+  Otherwise it loads the one built from `native/` (`native/build/Release/zexion_ap.dll`, or
+  `ZEXION_DLL`), unloading a helper of another version first; with no build it loads the game
+  folder's copy, and with no build and that copy of another version it cannot use one
+  (`native/README.md`, "Getting in"). Ask before a run that loads it into the game, as for
+  `helper.py load`. `--no-helper` writes items directly, with no popup (received Energy
+  Shields wait for a helper);
   `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
   client loads it again within 30 seconds. `--keep-randomizer`: README.md, "Features".
 - **`/prepare SLOT`**, once connected, writes the seed into a slot holding a new randomizer
@@ -113,7 +118,8 @@ A release for Archipelago's own Launcher (on `apworld`, where the world is):
 and `version.dll`. The apworld is `worlds/zexion` (without its tests) with the `client` package
 in `zexion/client/` (`worlds.zexion.client`, which the world's Zexion Client entry runs), and
 its `archipelago.json` is the world's plus Archipelago's container keys (`version`,
-`compatible_version`). The build refuses a helper whose version is not the client's, and a DLL
+`compatible_version`). The build refuses a manifest that does not name the game Zexion, a
+missing DLL, a helper whose version is not the client's, and a DLL
 older than its sources (`native/src`, `native/proxy` and `native/CMakeLists.txt`; after a
 checkout that touched them, too: rebuild `native/` first). The packaged client has no helper
 build of its own, so it uses the helper the player copied into the game's folder.
@@ -125,13 +131,16 @@ Nothing in `tests/` needs the game, and CI never runs it.
 
 ## Layout
 
-- `worlds/zexion/`: the APWorld. `__init__.py` also registers the **Zexion Client** launcher
-  entry (and `archipelago://` links for Zexion), which runs the client (`run_client`; from
-  source, this repo's `client`). `logic.py` holds the game's rules (shared with
-  `tools/randocells.py`); `starting.py` the starting items the client can give (generation
-  refuses the rest); `data.py` is generated by `tools/gen_world_data.py` from the game's
-  `RandoCells` and must not be edited by hand (how, and what backs it: `docs/re/locations.md`).
-  `test/test_client_agrees.py` checks the client's codes and slot data readers against it.
+- `worlds/zexion/` (on `apworld`): the APWorld, `world.py` (the `World`), `items.py`,
+  `locations.py`, `options.py`, `rules.py`, `web_world.py`, the player docs in `docs/`,
+  `archipelago.json` (the manifest) and `test/`. `__init__.py` also registers the **Zexion
+  Client** launcher entry (and `archipelago://` links for Zexion), which runs the client
+  (`run_client`; from source, this repo's `client`). `logic.py` holds the game's rules (shared
+  with `tools/randocells.py`); `starting.py` the starting items the client can give
+  (generation refuses the rest); `data.py` is generated by `tools/gen_world_data.py` from the
+  game's `RandoCells` and must not be edited by hand (how, and what backs it:
+  `docs/re/locations.md`). `test/test_client_agrees.py` checks the client's codes and slot
+  data readers against it.
 - `client/`: the AP client, a package (relative imports). `zexion_client.py` (`CommonClient`
   wiring, `/prepare`), `state.py` (its state, by how long each part lasts), `session.py` (one
   poll: checks, the goal, grants), `reconcile.py` (what to give: what the player should own
@@ -139,8 +148,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   and location codes, the game's sizes), `save_patch.py` and `prepare.py` (a seed into a fresh
   save), `patterns.py` (each target's byte patterns, one `rip()` or `at()` line each, and in
   `Target.rvas` its RVA on each build, for checks only; `tests/patterns_frozen.json` is a copy
-  that running `tests/test_patterns.py` rewrites), `game.py` (attach, locate by pattern, read
-  and write with checks, `state()`: in play, menu, dead or no save loaded), `process.py` (the
+  that `tests/test_patterns.py` compares with under pytest and rewrites when run as a script),
+  `game.py` (attach, locate by pattern, read and write with checks, `state()`: in play, menu,
+  dead or no save loaded), `process.py` (the
   game's memory through the Windows API, as Archipelago's release bundles no such library;
   `tools/memscan.py` and the tests use it too), `pe.py` (the PE header fields the client and the
   tools read). `native.py` loads the helper and talks to it; its requests come from `newgame.py`
@@ -162,6 +172,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
 - `tests/`: pytest, host-only. `test_cross_checks.py` reads `native/src` for what the client and
   the helper must agree on (the helper's version, the builds, the `config` keys).
+  `test_build_apworld.py` and `test_gen_world_data.py` test tools that are on `apworld` only.
 - `lab/` (gitignored): save backups, working copies, memory snapshots. `private/` (gitignored):
   notes that must not be public, such as the draft to the developer. `.ap/` (gitignored): the
   pinned Archipelago checkout.
@@ -208,12 +219,13 @@ Committed under `.claude/`, so they apply to anyone working here:
     in `tests/test_guard_hook.py`.
   - `deny` rules for Edit and Write on the same three folders back it up. The game-install rule
     refused a live Write to a decoy `steamapps/common/Zexion` folder on 2026-10-20; rule changes
-    made mid-session did not take effect, so the other two are untested until a new session.
+    made mid-session did not take effect, so the other two are untested.
   - `ruff_on_edit.py` (after Write, Edit and MultiEdit) runs `ruff format` and
     `ruff check --fix` on an edited `.py` file in this repo and reports what ruff could not fix.
     It uses `.venv`'s ruff or one on `PATH`; with neither, it does nothing.
-  - An allowlist for read-only commands run constantly: git status/diff/log/show/branch, ruff
-    check, pytest, `build_id.py`, and `save_lab.py slots` and `diff`.
+  - An allowlist for read-only commands run constantly: git status/diff/log/show/branch (in
+    Bash and PowerShell), `ruff check`, `ruff format --check`, pytest, `build_id.py`, and
+    `save_lab.py slots` and `diff`.
 - `/preflight`: ruff, pytest, and (once the world exists) AP's world tests against `.ap/`.
   Reports the first failure. Without the toolchain, the change is unverified.
 - `/save-lab`: pausing Steam Cloud, then backing up, copying, diffing, patching, installing and

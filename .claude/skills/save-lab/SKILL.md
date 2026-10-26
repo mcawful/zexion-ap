@@ -39,8 +39,9 @@ see `docs/re/save-format.md`) or **IN USE**. Never assume a slot number is free;
 ```
 
 Copies the whole folder to `lab/backups/<time>/` with a SHA-256 manifest, and checks every copy
-against its original. `install` refuses to run without a backup from the last 12 hours that
-holds the target slot exactly as it is now, so take one at the start of each session.
+against its original. `install` refuses to run unless the newest backup is from the last 12
+hours and holds the target slot exactly as it is now (an older backup does not count), so take
+one at the start of each session and again after the game has saved.
 
 ## 4. Work on copies
 

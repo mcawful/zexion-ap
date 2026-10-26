@@ -16,18 +16,27 @@ or from the changed ones: a rule is only as good as the path to it.
 
 ## What you check against
 
-`docs/re/locations.md` is the evidence. Each location there names its region, what reaching it
-and collecting it takes, and how that was established: a playthrough note (who, when, build, what
-was tried with and without the item), or a decode of `Files/RandoCells` (see
-`docs/re/randocells.md`). Item meanings come from `docs/re/items.md`.
+`docs/re/locations.md` is the evidence. The world's rules are not written per location: on
+`apworld`, `tools/gen_world_data.py` derives every location, region, entrance and requirement
+list at once from the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
+`worlds/zexion/logic.py` checks those lists the way the game does. `locations.md` records how
+that derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
+playthroughs it was checked against), section by section, including the world's deliberate
+exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come from
+`docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in
+the game); the item pool and its classifications are `worlds/zexion/items.py` and each mode's
+pool in `data.py`.
 
 If `worlds/zexion/` exists but `docs/re/locations.md` does not, every rule is unbacked; say so
 once and stop.
 
 ## Findings to report
 
-1. **Unbacked rule.** A location, entrance or event in the world with no matching entry in
-   `docs/re/locations.md`, or whose entry is status **assumed** with no reason given.
+1. **Unbacked rule.** A rule is backed when it comes from the generated `data.py` and
+   `logic.py` as one of `locations.md`'s derivation sections describes. Flag a hand-written
+   rule, location, entrance or event (in `world.py`, `rules.py` or elsewhere), or an exception
+   to the generated data, that `locations.md` does not record, or whose entry is status
+   **assumed** with no reason given.
 2. **Rule looser than the observation.** The world lets the player reach something with fewer
    items than the evidence says it takes (the world says Wall Jump Boots; the note says Wall
    Jump Boots *and* Marine Jets). This makes unbeatable seeds. A rule stricter than the
@@ -47,7 +56,8 @@ once and stop.
    all be placed or reached (too few of an item in the pool, a required location excluded).
 5. **Pool problems.** Total items not equal to total locations, a progression item classified
    as filler or useful (or the reverse when its classification changes logic), or item counts
-   that differ from `docs/re/items.md`.
+   that differ from the mode's pool in `data.py` (as a fresh save of that mode had it:
+   `locations.md`, "Not yet decided") less what the world takes out as `locations.md` records.
 
 ## Method
 
