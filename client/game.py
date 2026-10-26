@@ -256,14 +256,6 @@ def parse_seed(blob: bytes) -> Seed:
 # --- the running game ---------------------------------------------------------------------
 
 
-def game_running() -> bool:
-    """Whether a Zexion process is running (without attaching to it)."""
-    try:
-        return process.find_pid(PROCESS) is not None
-    except process.ProcessError as exc:
-        raise GameError(str(exc)) from exc
-
-
 @dataclass
 class Game:
     """An attached Zexion process with the targets it was attached with located (the

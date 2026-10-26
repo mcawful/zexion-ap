@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import struct
 
+import fakes
+import pytest
+
 from client import discs, ids
 
 SLOT = {
@@ -17,7 +20,15 @@ SLOT = {
 
 def test_the_core_goal_has_no_hunt() -> None:
     assert discs.from_slot_data({"goal": "core"}) is None
-    assert discs.from_slot_data({}) is None  # a world from before the option
+
+
+def test_a_goal_the_client_does_not_know_is_refused() -> None:
+    with pytest.raises(KeyError):
+        discs.from_slot_data({})
+    with pytest.raises(ValueError, match="'boss'"):
+        discs.from_slot_data({"goal": "boss"})
+    with pytest.raises(KeyError):
+        discs.from_slot_data({k: v for k, v in SLOT.items() if k != "disc_locations"})
 
 
 def test_the_hunt_comes_from_slot_data() -> None:
@@ -55,16 +66,7 @@ def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
 
 
 def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
-    from client import save_patch
-
-    plan = save_patch.SeedPlan(
-        location_items=[46] * 154,
-        start_items={},
-        start=(6, 191, 329),
-        second_start=None,
-        amounts=None,
-        options={},
-    )
+    plan = fakes.plan(location_items=(46,) * 154, start_items={}, start=(6, 191, 329))
     ours = bytearray(ids.SECTION_SIZE)
     ours[0x26C : 0x26C + 154] = bytes(plan.location_items)
     ours[0x310:0x316] = bytes.fromhex("0600bf004901")

@@ -1,19 +1,18 @@
-"""Write an Archipelago seed into a fresh Zexion randomizer save.
+"""A seed's plan from the slot data, the randomizer save's layout, and an Archipelago seed
+written into a fresh Zexion randomizer save.
 
-The player starts a new randomizer game in the mode the seed uses and saves at once; this
-module checks that save and rewrites it to hold the seed: the item at each location, the start
-room (and the second teleport target in OHKO), the continue point, the revealed map cell (if the
-game revealed one), the four keys' map markers, and the starting items with their current
-energy and missiles. Everything else stays as the game wrote it. Offsets and their evidence
-are in docs/re/save-format.md; the item table, the start (record, continue point and revealed
-cell, changed together) and the second teleport target were each loaded in game, and a whole
-Standard save patched by this module loaded with its seed, start and starting items
-(docs/re/memory.md, "The client in a live game"). Its current energy and missiles were the
-fresh save's own values, so writing different ones has not been loaded, nor have OHKO and Easy
-saves patched this way, nor the key markers.
+``SeedPlan`` is what the client works from (``plan_from_slot_data``), and ``section_matches``
+tells whether a loaded randomizer section holds the seed. ``patch`` rewrites a fresh save to
+hold the seed: the item at each location, the start room (and the second teleport target in
+OHKO), the continue point, the revealed map cell (if the game revealed one), the four keys'
+map markers, and the starting items with their current energy and missiles. The client writes
+no saves: ``patch`` is the reference the tests hold the new game's edits
+(client/newgame.py) to, and ``check_fresh`` is tools/gen_world_data.py's check of its saves.
+Offsets and their evidence are in docs/re/save-format.md; a whole Standard save patched by
+this module loaded with its seed, start and starting items (docs/re/memory.md, "The client in
+a live game").
 
-Pure functions over bytes: the client reads and writes the file (after a backup), and the
-tests run here without the game.
+Pure functions over bytes, so the tests run here without the game.
 """
 
 from __future__ import annotations
@@ -84,12 +83,12 @@ class SeedPlan:
     second_start: tuple[int, int, int] | None
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value
-    menu: MenuSetup | None = None
+    menu: MenuSetup
 
 
 def plan_from_slot_data(slot: dict) -> SeedPlan:
-    second = slot.get("second_start")
-    menu = slot.get("menu")
+    second = slot["second_start"]
+    menu = slot["menu"]
     return SeedPlan(
         location_items=tuple(slot["location_items"]),
         start_items={int(k): v for k, v in slot["start_items"].items()},
@@ -97,14 +96,13 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
         second_start=None if second is None else (second["index"], second["column"], second["row"]),
         amounts=tuple(slot["amounts"]),
         options={int(k): v for k, v in slot["options"].items()},
-        menu=None
-        if menu is None
-        else MenuSetup(
+        menu=MenuSetup(
             seed_text=menu["seed_text"],
             start=bytes(menu["start"]),
             pool=bytes(menu["pool"]),
             settings=bytes(menu["settings"]),
             second_target=None if menu["second_target"] is None else tuple(menu["second_target"]),
+            # Sent only for a mode with a second teleport target.
             start_table=tuple(tuple(room) for room in menu.get("start_table", ())),
             table_build=menu.get("table_build", ""),
         ),

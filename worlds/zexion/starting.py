@@ -2,11 +2,9 @@
 
 The client gives the starting items (slot data "start_items": the mode's own and any
 start_inventory) through a new game, ARCHIPELAGO or RANDOMIZER (``start_with`` in
-client/newgame.py), or by writing them into a fresh save (``patch`` in client/save_patch.py,
-for ``/prepare``); the server does not send it the start inventory (the client asks only for
-other worlds' items). Either refuses what it cannot write, but only at play time, so the world
-refuses those items in generation (``problems``, from generate_early), with the limits of the
-two:
+client/newgame.py); the server does not send it the start inventory (the client asks only for
+other worlds' items). The client refuses what it cannot write, but only at play time, so the
+world refuses those items in generation (``problems``, from generate_early), with its limits:
 
 - an upgrade, the Navcore or another item of the new game's start-with array: one at most (the
   array holds 1 for "start with it"), and a progressive weapon twice at most (the weapon and its
@@ -14,8 +12,8 @@ two:
 - Missile Containers: 9 at most, the mode's own included (the new game takes one missile amount,
   containers plus 10 per Missile Box, and the game splits it back into tens and containers);
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
-- no Mega Bombs or Bomb Boxes (where a save keeps current bombs is not known, so ``/prepare``
-  cannot write them);
+- no Mega Bombs or Bomb Boxes (kept from when the client also wrote seeds into saves, where
+  current bombs' place is not known);
 - no Scrap, Area Map or Energy Shield (no way into a new game; the shield is a pickup's spawn);
 - no Intel Chip or Assist Unlock: the client acts on them only as received (a hint, the assist
   lock lifted), and a starting one is never received (the Allow Assists option lifts the lock);

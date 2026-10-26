@@ -13,7 +13,7 @@ and shows the count in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scann
 how many are needed). This world's own are stand-ins in the save's item table, listed by
 location in the slot data, so the game hands out none. "Found" is what the client has reported
 from the game's map, kept in the server's data storage so every save of the seed counts it
-(zexion_client.own_found), not what the server has as checked, which after a release is every
+(storage.own_found), not what the server has as checked, which after a release is every
 location; the real disc the game gives for beating its secret boss does not count.
 
 Pure functions; the client does the networking and talks to the helper.
@@ -38,16 +38,21 @@ class DiscHunt:
     locations: frozenset[int]  # this world's location indices holding its own discs
 
 
+GOALS = ("core", "os_install_disks")  # the Goal option's keys (worlds/zexion/options.py)
+
+
 def from_slot_data(slot: Mapping[str, object]) -> DiscHunt | None:
-    """The hunt a seed's slot data sets up, or None for the core goal (or a world from before
-    the option)."""
-    if slot.get("goal") != "os_install_disks":
+    """The hunt a seed's slot data sets up, or None for the core goal."""
+    goal = slot["goal"]
+    if goal not in GOALS:
+        raise ValueError(f"the goal {goal!r} is not one the client knows")
+    if goal != "os_install_disks":
         return None
     return DiscHunt(
         required=int(slot["discs_required"]),
         placed=int(slot["discs_placed"]),
-        start=int(slot.get("discs_start", 0)),
-        locations=frozenset(int(i) for i in slot.get("disc_locations", [])),
+        start=int(slot["discs_start"]),
+        locations=frozenset(int(i) for i in slot["disc_locations"]),
     )
 
 

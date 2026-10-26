@@ -1,8 +1,7 @@
 # Save format
 
 The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except through
-`tools/save_lab.py` (see `/save-lab`) and the client's `/prepare` (`client/prepare.py`, which
-backs up the slot first and works only while Zexion is closed).
+`tools/save_lab.py` (see `/save-lab`); the client never writes it.
 
 ## Steam Cloud syncs the save folder
 

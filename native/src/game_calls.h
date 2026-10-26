@@ -78,8 +78,7 @@ struct Hooks {
 
 class Game {
 public:
-    // Checks every required key is present (the title screen's three and map_handler may be
-    // missing) and each given one lies inside `image` (functions in executable code, data
+    // Checks every key is present and lies inside `image` (functions in executable code, data
     // in writable data, with room for the whole player state around the inventory), then keeps
     // the addresses. Game thread. Returns "" or an error.
     // `active`: a client sent it (false: the offline cache, offline.h).

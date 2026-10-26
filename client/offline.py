@@ -20,7 +20,7 @@ not found), inferred to be the package's AppData redirect.
 
 The helper reads them when it starts and each time a client goes away, and gives a save of
 one of those seeds the same look the client would (docs/re/memory.md, "AP saves without the
-client"). Pure functions here; the client sends them (zexion_client.py, offline_tick).
+client"). Pure functions here; the client sends them (ticks.py, offline_tick).
 """
 
 from __future__ import annotations

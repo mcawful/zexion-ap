@@ -179,11 +179,7 @@ std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const st
 }  // namespace
 
 std::string TitleLines::watch(const TitleAddresses& a, bool client) {
-    if (mod_line_.empty() || a.draw_layer == nullptr || a.text_new_fn == nullptr ||
-        a.text_place_fn == nullptr || a.text_link_fn == nullptr) {
-        return "";
-    }
-    if (frames_-- > 0) return "";
+    if (mod_line_.empty() || frames_-- > 0) return "";
     frames_ = kLookFrames;
     Look l = look(a.draw_layer, mod_line_);
     if (l.game_line == nullptr) {
@@ -217,7 +213,6 @@ std::string TitleLines::watch(const TitleAddresses& a, bool client) {
 }
 
 void TitleLines::hide(const TitleAddresses& a) {
-    if (a.draw_layer == nullptr) return;
     Look l = look(a.draw_layer, mod_line_);
     if (l.mod_line != nullptr) show(l.mod_line, mod_line_.size(), false);
     if (l.credit != nullptr) show(l.credit, sizeof(kTitleCredit) - 1, false);

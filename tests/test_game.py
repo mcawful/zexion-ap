@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 
 import pytest
+from fakes import FakeGame, FakeProcess
 
 from client import game
 from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
@@ -148,27 +149,6 @@ def test_a_malformed_seed_is_refused(broken) -> None:
 
 
 # --- reads and writes through a fake process ------------------------------------------------
-
-
-class FakeProcess:
-    def __init__(self, size: int = 0x100):
-        self.memory = bytearray(size)
-        self.fail_write = False
-
-    def read_bytes(self, address: int, size: int) -> bytes:
-        return bytes(self.memory[address : address + size])
-
-    def write_bytes(self, address: int, data: bytes) -> None:
-        if self.fail_write:
-            raise OSError("access denied")
-        self.memory[address : address + len(data)] = data
-
-
-class FakeGame(game.Game):
-    alive = True
-
-    def _alive(self) -> bool:
-        return self.alive
 
 
 def fake_game() -> FakeGame:

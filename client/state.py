@@ -24,12 +24,16 @@ from dataclasses import dataclass, field
 from . import aplabels, deathlink, discs, save_patch, session
 
 
+class UnsupportedSeed(ValueError):
+    """The slot data is not what this client reads: a seed from another version of the world."""
+
+
 class NewGame(enum.Enum):
     """The AP new game (client/newgame.py): armed in the helper, or what became of it."""
 
     ARMED = "armed"
     DONE = "done"  # a new game holds the seed; armed again once its save is in play
-    UNAVAILABLE = "unavailable"  # the seed's starting items cannot make one: /prepare
+    UNAVAILABLE = "unavailable"  # the seed's starting items cannot make one
 
 
 @dataclass
@@ -38,6 +42,7 @@ class Connection:
 
     team: int
     slot: int
+    mode: str  # the seed's mode, as the world names it
     plan: save_patch.SeedPlan
     session: session.Session
     kept: frozenset[int]  # the location indices the world created
@@ -77,25 +82,34 @@ class Connection:
 
     @classmethod
     def from_slot_data(cls, slot_data: Mapping, team: int, slot: int) -> Connection:
+        """The connection for a seed's slot data; UnsupportedSeed if this client cannot read it
+        (a key missing or of another form: a world of another version)."""
+        try:
+            return cls._from_slot_data(slot_data, team, slot)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UnsupportedSeed(
+                f"this seed's slot data is not what this client reads ({exc!r}): the seed is "
+                "from a version of the Zexion world this client does not support"
+            ) from exc
+
+    @classmethod
+    def _from_slot_data(cls, slot_data: Mapping, team: int, slot: int) -> Connection:
         plan = save_patch.plan_from_slot_data(slot_data)
         kept = frozenset(slot_data["kept_locations"])
         return cls(
             team=team,
             slot=slot,
+            mode=str(slot_data["mode"]),
             plan=plan,
             session=session.Session(plan, slot_data["locations"]),
             kept=kept,
-            # Only a world that says it gives other players' items the stand-in has them.
             foreign=aplabels.foreign_locations(
                 slot_data["location_items"], kept, aplabels.stand_ins(slot_data)
             ),
-            # A world from before Area Map hints sends no "hints": Area Maps are filler.
-            hint_targets=[list(t) for t in slot_data.get("hints", [])],
-            # A seed from before the option has no "allow_assists": nothing is locked.
-            lock_assists=slot_data.get("allow_assists", True) is False,
-            # A seed from before Intel Chips has no "intel_chip": its Area Maps are Area Maps.
-            intel_chip=slot_data.get("intel_chip", False) is True,
-            death_link_on=bool(slot_data.get("death_link", False)),
+            hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
+            lock_assists=not slot_data["allow_assists"],
+            intel_chip=bool(slot_data["intel_chip"]),
+            death_link_on=bool(slot_data["death_link"]),
             hunt=discs.from_slot_data(slot_data),
         )
 

@@ -116,12 +116,10 @@ def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
 
 
 def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:
-    """The stand-in items the world says it uses (none for a world from before them)."""
-    codes = set()
-    if slot_data.get("stand_in") == STAND_IN:
-        codes.add(STAND_IN)
-        if slot_data.get("stand_in_progression") == STAND_IN_PROGRESSION:
-            codes.add(STAND_IN_PROGRESSION)
+    """The stand-in items the world says it uses; ValueError if they are not the client's."""
+    codes = (slot_data["stand_in"], slot_data["stand_in_progression"])
+    if codes != (STAND_IN, STAND_IN_PROGRESSION):
+        raise ValueError(f"the world's stand-in items {codes} are not the client's")
     return frozenset(codes)
 
 

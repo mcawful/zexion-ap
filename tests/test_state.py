@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from test_save_patch import AMOUNTS
-from test_session import CELLS
+import pytest
+from fakes import AMOUNTS, CELLS
 
 from client import discs, state
 from client import save_patch as sp
@@ -25,6 +25,24 @@ def slot_data(**changes) -> dict:
         "locations": [list(c) for c in CELLS],
         "kept_locations": [i for i in range(sp.LOCATIONS) if i != 9],
         "mode": "Standard",
+        "menu": {
+            "seed_text": "0123456789ABCDEF",
+            "start": [0] * 27,
+            "pool": [1] * 27,
+            "settings": [0] * 64,
+            "second_target": [0, 20, 509],
+        },
+        "stand_in": 47,
+        "stand_in_progression": 48,
+        "hints": [],
+        "allow_assists": True,
+        "intel_chip": False,
+        "death_link": False,
+        "goal": "core",
+        "discs_required": 0,
+        "discs_placed": 0,
+        "discs_start": 0,
+        "disc_locations": [],
     }
     slot.update(changes)
     return slot
@@ -33,8 +51,6 @@ def slot_data(**changes) -> dict:
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
     conn = state.Connection.from_slot_data(
         slot_data(
-            stand_in=47,
-            stand_in_progression=48,
             hints=[[1, 3392510_520, 16]],
             allow_assists=False,
             intel_chip=True,
@@ -47,7 +63,7 @@ def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
         team=0,
         slot=2,
     )
-    assert conn.plan.start == (5, 326, 449)
+    assert conn.mode == "Standard" and conn.plan.start == (5, 326, 449)
     assert conn.session.plan is conn.plan
     assert conn.foreign == [3], "location 9 is not kept"
     assert conn.hint_targets == [[1, 3392510_520, 16]]
@@ -57,12 +73,21 @@ def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
     assert conn.newgame is None and not conn.goal_sent and not conn.labels_want
 
 
-def test_a_world_from_before_the_options_sets_none_of_them() -> None:
+def test_the_options_off_set_none_of_them() -> None:
     conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    assert conn.foreign == [], "no stand_in in the slot data: no labels"
     assert conn.hint_targets == []
     assert not conn.lock_assists and not conn.intel_chip and not conn.death_link_on
     assert conn.hunt is None
+
+
+@pytest.mark.parametrize("key", ["hints", "intel_chip", "stand_in", "menu", "goal", "mode"])
+def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
+    slot = slot_data()
+    del slot[key]
+    with pytest.raises(state.UnsupportedSeed, match="version of the Zexion world"):
+        state.Connection.from_slot_data(slot, team=0, slot=1)
+    with pytest.raises(state.UnsupportedSeed):
+        state.Connection.from_slot_data(slot_data(goal="boss"), team=0, slot=1)
 
 
 def test_the_data_storage_keys_are_per_team_and_slot() -> None:

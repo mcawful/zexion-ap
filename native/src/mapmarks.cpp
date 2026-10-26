@@ -133,7 +133,7 @@ bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
 
 void MapCursorNames::watch(const MapAddresses& a, bool on) {
     void* handler = nullptr;
-    if (a.map_handler == nullptr || !safe_read(a.map_handler, &handler, sizeof(handler))) return;
+    if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;
     if (child_ != nullptr && !still_wrapped(a)) {
         // The map closed (its menu and child went with it), another menu took its address, or
         // the game put a handler of its own in both slots (the navigation room's reveal, then

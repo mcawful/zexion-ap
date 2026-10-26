@@ -32,7 +32,7 @@ from pathlib import Path
 from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.27.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.28.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)

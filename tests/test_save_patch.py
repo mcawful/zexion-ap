@@ -5,41 +5,10 @@ from __future__ import annotations
 import struct
 
 import pytest
+from fakes import AMOUNTS, fresh, plan
 
 from client import ids
 from client import save_patch as sp
-
-AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
-
-
-def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
-    """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
-    settings, one revealed start cell, a nonzero item table and inventory."""
-    save = bytearray(sp.SAVE_SIZE)
-    save[sp.RANDO_MARKER] = 1
-    struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
-    save[sp.OPTIONS + 42] = 2  # Safety Normal
-    save[sp.OPTIONS + 72] = 1  # Gates Vanilla
-    save[sp.ITEM_TABLE : sp.ITEM_TABLE + sp.LOCATIONS] = bytes([7] * sp.LOCATIONS)
-    save[sp.INVENTORY + 0] = 3
-    save[sp.INVENTORY + 50] = 9  # item 50 is left alone
-    if start_cell is not None:
-        x, y = start_cell
-        save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
-    return save
-
-
-def plan(**changes) -> sp.SeedPlan:
-    fields = dict(
-        location_items=tuple(i % 46 for i in range(sp.LOCATIONS)),
-        start_items={0: 2, 1: 3, 36: 1, 3: 1},
-        start=(5, 23 * 14 + 4, 22 * 20 + 9),
-        second_start=None,
-        amounts=AMOUNTS,
-        options={42: 2, 72: 1},
-    )
-    fields.update(changes)
-    return sp.SeedPlan(**fields)
 
 
 def u16(save: bytes, offset: int) -> int:
@@ -140,13 +109,26 @@ def test_plan_from_slot_data() -> None:
         "second_start": {"index": 3, "column": 151, "row": 464},
         "amounts": list(AMOUNTS),
         "options": {"42": 2},
+        "menu": {
+            "seed_text": "00000000DEADBEEF",
+            "start": [0] * 27,
+            "pool": [1] * 27,
+            "settings": [0] * 64,
+            "second_target": None,
+            "start_table": [[1, 25, 1]],
+            "table_build": "6d8a94bd4d64",
+        },
     }
     p = sp.plan_from_slot_data(slot)
     assert p.start_items == {0: 3, 3: 1}
     assert p.start == (5, 326, 449)
     assert p.second_start == (3, 151, 464)
     assert p.options == {42: 2}
+    assert p.menu.start_table == ((1, 25, 1),) and p.menu.table_build == "6d8a94bd4d64"
     assert sp.plan_from_slot_data({**slot, "second_start": None}).second_start is None
+    for key in ("second_start", "menu"):
+        with pytest.raises(KeyError):
+            sp.plan_from_slot_data({k: v for k, v in slot.items() if k != key})
 
 
 def test_key_markers_follow_the_seed() -> None:

@@ -101,16 +101,9 @@ INTEL CHIP and so on), which live tests of the client read in its log.
   folder's copy, and with no build and that copy of another version it cannot use one
   (`native/README.md`, "Getting in"). A build that loads as another version (out of date) is
   refused until the file changes: rebuild `native/`. Ask before a run that loads it into the game, as for
-  `helper.py load`. `--no-helper` writes items directly, with no popup (received Energy
-  Shields wait for a helper);
-  `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
+  `helper.py load`. Without a helper to use, items are written directly, with no popup
+  (received Energy Shields wait for a helper); `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
   client loads it again within 30 seconds. `--keep-randomizer`: README.md, "Features".
-- **`/prepare SLOT`**, once connected, writes the seed into a slot holding a new randomizer
-  game of the seed's mode, saved at once (a slot that already holds the seed is left alone). It
-  replaces the slot file after a verified backup, which goes to `zexion_backups/` in
-  Archipelago's user folder (not `lab/backups/`), and only while Zexion is closed. On the real
-  save folder, pause Steam Cloud first and ask before each one, as for `save_lab.py install`.
-  With `ZEXION_SAVE_DIR` pointing at a copy it touches nothing real.
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`
   (unused from the Launcher).
 
@@ -145,12 +138,13 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `docs/re/locations.md`). `test/test_client_agrees.py` checks the client's codes and slot
   data readers against it.
 - `client/`: the AP client, a package (relative imports). `zexion_client.py` (`CommonClient`
-  wiring, `/prepare`), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
+  wiring, the commands, the game loop), `ticks.py` (its side tasks with the helper),
+  `storage.py` (its records in the server's data storage, the Area Map hints), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
   popup count to store, the found record, warnings said once), `session.py` (one
   poll: checks, the goal, grants), `reconcile.py` (what to give: what the player should own
   minus what the inventory holds), `shields.py` (received Energy Shields), `ids.py` (the item
-  and location codes, the game's sizes), `save_patch.py` and `prepare.py` (a seed into a fresh
-  save), `patterns.py` (each target's byte patterns, one `rip()` or `at()` line each, and in
+  and location codes, the game's sizes), `save_patch.py` (the seed's plan from the slot
+  data, the save's layout), `patterns.py` (each target's byte patterns, one `rip()` or `at()` line each, and in
   `Target.rvas` its RVA on each build, for checks only; `tests/patterns_frozen.json` is a copy
   that `tests/test_patterns.py` compares with under pytest and rewrites when run as a script),
   `game.py` (attach, locate by pattern, read and write with checks, `state()`: in play, menu,
@@ -175,7 +169,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - `tools/`: RE and save tooling, and `build_apworld.py`, the release builder (on `apworld`).
   `tools/protected.py` defines the protected folders for the tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
-- `tests/`: pytest, host-only. `test_cross_checks.py` reads `native/src` for what the client and
+- `tests/`: pytest, host-only. `fakes.py` holds the stand-ins they share (a fake process and
+  game, a seed's plan and a fresh save). `test_cross_checks.py` reads `native/src` for what the client and
   the helper must agree on (the helper's version, the builds, the `config` keys).
   `test_build_apworld.py` and `test_gen_world_data.py` test tools that are on `apworld` only.
 - `lab/` (gitignored): save backups, working copies, memory snapshots. `private/` (gitignored):
@@ -196,8 +191,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes.
   Save experiments go through `tools/save_lab.py`, which works on copies in `lab/`. Its
   `install` fills only an empty slot, and only after a verified backup; its `restore` backs up
-  the present state before putting a backup back. Ask before either one, every time. The
-  client's `/prepare` is the one other writer (see Commands).
+  the present state before putting a backup back. Ask before either one, every time. Nothing
+  else writes the save folder: the client never does.
 - **Documentation describes the repo as it is.** A change that makes a doc line false fixes it in
   the same change, and new behavior gets described where its subject already lives. Skill and
   agent files count as documentation.

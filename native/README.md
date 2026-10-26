@@ -3,8 +3,8 @@
 `zexion_ap.dll` runs inside Zexion and gives the client what can't be done from outside: work
 on the game's own thread, between frames. Either the player puts it in the game's folder with
 the proxy `version.dll`, which loads it as the game starts (below, "The proxy"), or the AP
-client loads it when it attaches to the game (`client/native.py`, unless started with
-`--no-helper`); the client sends received items through it. `tools/helper.py` loads and unloads
+client loads it when it attaches to the game (`client/native.py`); the client sends received
+items through it. `tools/helper.py` loads and unloads
 it for tests. Without a client it changes nothing in play, except the offline look for a save
 of a seed a client has played ("AP saves without the client", below), and it adds its lines to
 the title screen ("The title screen's lines"); the game is otherwise the base game.
@@ -43,8 +43,9 @@ RANDOMIZER when the client disconnected ("New games", below).
 The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
 game. `tests/tests.cpp` (the `parts` test) covers what needs no stand-in game: the
-import-table hook and the trampoline, the build check and the pipe (`src/pipe.cpp`);
-`tests/game_tests.cpp` the request parsers (the `discs` and `@N NAME` ones too), configuring,
+import-table hook and the trampoline, the build check and the pipe (`src/pipe.cpp`), and
+`tests/requests_tests.cpp` (`requests`) the request parsers, the popup text's layout and the
+mailbox; `tests/game_tests.cpp` the `discs` and `@N NAME` parsers, configuring,
 applying, the popup queue, the new-game watch, a whole ARCHIPELAGO press, the escape skip's
 patch, what a refused unload sets again, the received shield and death, the ASSIST watch and
 the scanner's text; `tests/menu_tests.cpp` the
@@ -150,10 +151,10 @@ client had set armed again). `tests/pipe_client.h` is the pipe client the
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
       inside the game's image, functions in its code and data outside it (writable, except the
       C runtime's `malloc` and `free` import slots, which are only read), or the whole
-      configuration is refused. Every name is required except four, the title screen's three
-      (`text_new_fn`, `text_link_fn`, `draw_layer`) and `map_handler`, so an offline cache from
-      an older helper still configures it, without the title screen's lines or the map
-      cursor's names (the map's markers need only `map_grid`).
+      configuration is refused. Every name is required, in an offline cache too: one written
+      for an older helper that lacks a name is refused (`read_error=cache:_missing_NAME`), and
+      the helper stays without the offline look until a client's `config` and `offline_put`
+      rewrite it.
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
@@ -254,7 +255,7 @@ client had set armed again). `tests/pipe_client.h` is the pipe client the
     for an Area Map (or Intel Chip) found in the world, after the game's own pickup popup
     (its sound plays again; working in game 2026-10-25), and a found disk's count as a popup;
     for a find made with no client, or one whose popup was not shown, later, once
-    (`followups_tick` in `client/zexion_client.py`; "AP saves without the client").
+    (`followups_tick` in `client/ticks.py`; "AP saves without the client").
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
@@ -555,7 +556,7 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The DLL lands in `native/build/Release/zexion_ap.dll` (gitignored). The C runtime is linked
 statically, so it needs nothing the game doesn't already load. CI builds it, runs the ctest
-tests (`parts`, `game`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
+tests (`parts`, `game`, `requests`, `unload_under_load` with 300 rounds, `apply_in_frames`, `menu`,
 the ARCHIPELAGO choice and the ASSIST lock on stand-in menus, `apitem`, the stand-in item's
 restyle and painting against a fake GL, and `equip`, `mission`, `pause`, `files`, `intel`,
 `title`, `mapmarks`, `proxy` and `offline`; the test programs share `tests/check.h`), and
