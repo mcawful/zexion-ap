@@ -49,7 +49,9 @@ way, as in "Guardia 22,7", so you can find them on the in-game map.
 With the client's in-game helper running, a location holding another player's item shows
 Archipelago's logo, with its flashing up arrow if the item is a progression item, and picking it
 up pops up PROGRESSION ITEM or AP ITEM and whom it is for ("FOR ALICE"), or, for another Zexion
-player's item, that item's own icon and name; the client then sends it to its owner. With the
+player's item, that item's own icon and name; the client then sends it to its owner. On the
+map, progression items and your OS Install Disks show as important items, and the cursor
+names them (OS INSTALL DISK, or the item and FOR ALICE). With the
 OS Install Disks goal, your own disks in your world look and pop up as OS Install Disks (as a
 Scrap Chunk without the helper) and are counted, not put in the game's inventory. Items for you arrive while you play, with the
 game's own popup and the sender's name. Without the helper, another player's item looks like
