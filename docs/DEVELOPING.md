@@ -80,8 +80,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
   storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
-  helper, which keeps its queue when the client goes away; not seen in game yet, nor popups
-  held while another save is in play. A game closed with popups queued loses them.
+  helper, which keeps its queue when the client goes away (Disconnect then Connect, the
+  client closed, the save quit to the title: 2026-10-26). A game closed, or the helper
+  unloaded, with popups queued loses them (2026-10-26).
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
@@ -102,7 +103,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   file select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO):
   2026-10-24; offered at the landing pod only: 2026-10-25. The reminder (ENOUGH OS INSTALL
   DISKS FOUND...) after the received disks' popups, and the pause row on a pause right after
-  loading: 2026-10-26.
+  loading: 2026-10-26. Starting disks counted, and the goal sent by a client opened after the
+  ending began: 2026-10-26.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
@@ -111,7 +113,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
   screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
 - AP saves without the client, from a fresh start too, and another seed's save told so:
-  2026-10-25; its notice as now worded: 2026-10-26. Not seen in game: a plain (not Archipelago)
+  2026-10-25; its notice as now worded, and its look kept when a client of another seed
+  attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)
   randomizer game left alone with a client connected (no notice, no look).
 
 ## Setup

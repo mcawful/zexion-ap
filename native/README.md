@@ -140,7 +140,7 @@ request after it attaches). The client's popups not shown yet stay queued and st
 ("Popups"): their items are already given. The offline look then applies
 again (AP saves without the client). The helper stays loaded and hooked.
 
-Not seen in game: the client's popups staying queued (0.30.0).
+The client's popups staying queued, and showing: working in game 2026-10-26 (0.30.0).
 
 Working in game: 2026-10-25, the client stopped with helper 0.20.0 loaded by the proxy
 ("The escape skip", "Other players' items"). Not looked at: ARCHIPELAGO and the OS Install
@@ -214,7 +214,8 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
   save, is in play it waits (not keeping RETURN HOME WITH THE DISKS? waiting), and the next one
   for this save, or a helper notice, shows instead. A client of another seed does not drop them:
   they wait for their own save.
-  Stand-in tests only (`tests/game_tests.cpp`), not yet seen in game.
+  Working in game 2026-10-26: popups waiting through a normal save, shown in their own save.
+  A client of another seed leaving them queued: stand-in tests only (`tests/game_tests.cpp`).
 - **Text:** a `popup` is the item's icon and name, then the client's suffix (≤ 40 characters);
   a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character width
   (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls").
@@ -420,7 +421,7 @@ pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
-  save's (stand-in tests, `tests/offline_tests.cpp`; not yet seen in game).
+  save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
   The file select shows each such save's count, from its map in the game's copy of the slot.
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
