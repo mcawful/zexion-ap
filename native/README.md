@@ -29,7 +29,8 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
 - A file that loads as another version is not loaded again until it changes; the client says to
   rebuild `native/` or copy this release's DLLs.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
-  the helper.
+  the game folder's helper (a build of the client's own, `native/build` or `ZEXION_DLL`, still
+  loads).
 
 ### The proxy
 

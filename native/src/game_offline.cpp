@@ -16,8 +16,8 @@ constexpr char kOfflineWarning[] =
 constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
 // And once a load, from a client whose seed the loaded randomizer save is not.
 constexpr char kOtherSeedNotice[] =
-    "THIS SAVE IS NOT FROM THE SEED THE ARCHIPELAGO CLIENT IS CONNECTED TO. NOTHING IS SENT OR "
-    "RECEIVED.";
+    "THIS SAVE IS FROM ANOTHER SEED. NOTHING IS SENT FROM IT, AND YOUR ITEMS WAIT FOR YOUR "
+    "SEED'S SAVE.";
 
 }  // namespace
 

@@ -97,10 +97,11 @@ Nothing in `tests/` needs the game, and CI never runs it.
   RANDOMIZER on the menu instead of offering ARCHIPELAGO.
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. `/unload_helper` unloads it as if it had
-  failed; the client loads it again within 30 seconds.
+  directly with no popup and no seed can be started. `/unload_helper` (hidden from `/help`)
+  unloads it as if it had failed; the client loads it again within 30 seconds.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
-  the helper, and the client says so.
+  the game folder's helper, and the client says so (its own build, `native/build` or
+  `ZEXION_DLL`, still loads).
 
 ### Tools
 

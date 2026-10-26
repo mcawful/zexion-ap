@@ -49,8 +49,8 @@ same seed the same way; they all count.
 - Locations you check are sent at once.
 - Items for you arrive while you play (not in menus).
 - If you die or reload, items received since your last save are given again.
-- The client says when your seed's save is loaded. In a save of another seed, nothing is sent
-  or received.
+- The client says when your seed's save is loaded. In a save of another seed, nothing is sent,
+  and items sent to you wait until you load your seed's save.
 
 Goals, options and what's changed in the game: see the game page.
 
