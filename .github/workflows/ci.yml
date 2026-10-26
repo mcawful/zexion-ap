@@ -18,7 +18,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      # Python 3.13: Archipelago 0.6.8 refuses 3.14. The venv is activated for later steps.
+      # 3.13, as the dev venv (Archipelago 0.6.8 refuses 3.14). The venv is activated for later steps.
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
@@ -43,7 +43,7 @@ jobs:
           cmake --build native/build --config Release
       - name: Native tests
         run: ctest --test-dir native/build -C Release --output-on-failure
-      # The helper loaded into a stand-in process: tests/test_native.py skips this without a build.
+      # tests/test_native.py loads the build into a sleeping Python process (it skips without one).
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
