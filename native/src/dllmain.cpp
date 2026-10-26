@@ -50,7 +50,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.26.0";
+constexpr char kVersion[] = "0.27.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -561,6 +561,12 @@ const Request kRequests[] = {
      }},
     {"newgame_status", Match::kName,
      [](const std::string&) { return on_game([] { return g_game.newgame_status(); }, false); }},
+    // The client's popups not shown yet (from `apply`; the helper's own notices left out).
+    {"popups", Match::kName,
+     [](const std::string&) {
+         return on_game([] { return "pending " + std::to_string(g_game.pending_popups()); },
+                        false);
+     }},
     {"config", Match::kPrefix, &config},
     {"apply", Match::kPrefix, &apply},
 };

@@ -155,6 +155,9 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
       - `refresh`;
       - `popup ITEM SUFFIX`;
       - `notice ITEM TEXT`, a popup of the text alone (an Area Map's hint).
+    - `popups` → `pending N`, configured or not: how many of the popups `apply` queued are not
+      shown yet (below). A popup leaves the count once shown, dropped for want of an item record,
+      or dropped with the client that sent it; the helper's own notices are not counted.
     - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`,
       `refused not configured` or `refused no frame`, or `error <why>` for a bad line or for
       none to write (`error nothing to write`):
@@ -201,7 +204,7 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
       `error not hooked, so nothing runs on the game's thread`.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
   `intel`, `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
-  `client_back`, `other_save`, `disarm`, `newgame_status` and `hello`'s `configured`, `skip`,
+  `client_back`, `other_save`, `disarm`, `newgame_status`, `popups` and `hello`'s `configured`, `skip`,
   `active`, `offline` and `title` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -252,6 +255,8 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
     popup whose item has no record (the records not loaded yet) is dropped.
+  - `applied` means queued, not shown: `popups` says how many of a client's are still queued,
+    so the client can count a popup as shown only once it has left the queue.
 - **Received Energy Shields.** `shield` → `spawned` or `refused <why>`: runs the Energy
   Shield's pickup event the way its pickup does, from the player's cell, once the player has
   been in play in one cell for a second (`spawn_shield`; checked against B1 first). The client

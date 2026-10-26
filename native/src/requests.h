@@ -22,6 +22,9 @@ struct Popup {
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
     bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
+    // A client's (from `apply`), which the client counts as shown once it has left the queue:
+    // the `popups` request counts those still queued. The helper's own notices are not.
+    bool counted = false;
 };
 
 struct Batch {

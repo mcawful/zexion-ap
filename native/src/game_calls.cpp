@@ -420,6 +420,11 @@ std::string Game::apply(const Batch& batch) {
     return "applied";
 }
 
+size_t Game::pending_popups() const {
+    return static_cast<size_t>(
+        std::count_if(popups_.begin(), popups_.end(), [](const Popup& p) { return p.counted; }));
+}
+
 bool Game::popup_busy() const {
     BYTE* last = at<BYTE*>(last_message_, 0);
     if (last == nullptr) return false;

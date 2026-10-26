@@ -118,6 +118,9 @@ public:
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
+    // The client's popups still queued (Popup::counted), for the `popups` request: one leaves
+    // the queue when shown, dropped for want of a record, or dropped with the client.
+    size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to
     // build (its new-game routine queued, the randomizer marker set) gets `plan`, once.

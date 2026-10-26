@@ -55,6 +55,8 @@ int wmain(int argc, wchar_t** argv) {
     check(hello.find("hooked=1 configured=0") != std::string::npos, "hello before config", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
+    reply = zap_test::ask(pipe, "popups");
+    check(reply == "pending 0", "popups before config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
@@ -68,6 +70,8 @@ int wmain(int argc, wchar_t** argv) {
     check(stand_in::g_messages == 1 &&
               stand_in::g_text == "\xC5MISSILE BOX FROM ALICE" && stand_in::g_message_args[0] == 12,
           "the popup was shown from a frame call, the sender on its own line", stand_in::g_text);
+    reply = zap_test::ask(pipe, "popups");
+    check(reply == "pending 0", "shown: none pending", reply);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused item 36 holds 1", "a stale expectation is refused", reply);

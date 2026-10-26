@@ -1322,9 +1322,32 @@ void test_refused_unload_rearms() {
     g_rando_marker = 0;
 }
 
+// The `popups` request's count: the client's popups still queued, not the helper's own notices.
+void test_pending_popups() {
+    zap::Game game;
+    check(game.pending_popups() == 0, "none before a config");
+    game.configure(GetModuleHandleW(nullptr), stand_in_config());
+    reset_game();
+    apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB\nnotice 36 HINT: X");
+    check(game.pending_popups() == 3, "three from the client");
+    game.pump_popups();
+    check(g_messages == 1 && game.pending_popups() == 2, "one shown: two pending");
+    g_rando_marker = 1;
+    check(game.other_save() && game.queued_popups() == 3, "the helper's own notice queued");
+    check(game.pending_popups() == 2, "and not counted");
+    game.clear_popups();
+    check(game.pending_popups() == 0, "dropped with the client: none pending");
+    g_rando_marker = 0;
+    zap::Batch batch;
+    zap::parse_batch("apply\npopup 36 X\nnotice 36 Y", batch);
+    check(batch.popups.size() == 2 && batch.popups[0].counted && batch.popups[1].counted,
+          "a batch's popups are counted");
+}
+
 int main() {
     test_parsers();
     test_refused_unload_rearms();
+    test_pending_popups();
     test_configure();
     test_apply();
     test_popups();
