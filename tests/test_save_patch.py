@@ -6,6 +6,7 @@ import struct
 
 import pytest
 
+import ids
 import save_patch as sp
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
@@ -24,7 +25,7 @@ def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
     save[sp.INVENTORY + 50] = 9  # item 50 is left alone
     if start_cell is not None:
         x, y = start_cell
-        save[sp.MAP_GRID + y * sp.MAP_W + x] = sp.SAVE_ROOM
+        save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
     return save
 
 
@@ -55,9 +56,9 @@ def test_patch_writes_the_seed() -> None:
 
 def test_only_the_start_cell_is_revealed() -> None:
     out = sp.patch(bytes(fresh((13, 16))), plan())
-    grid = out[sp.MAP_GRID : sp.MAP_GRID + sp.MAP_W * sp.MAP_W]
-    assert [i for i, v in enumerate(grid) if v] == [22 * sp.MAP_W + 23]
-    assert grid[22 * sp.MAP_W + 23] == sp.SAVE_ROOM
+    grid = out[sp.MAP_GRID : sp.MAP_GRID + ids.MAP_SIZE * ids.MAP_SIZE]
+    assert [i for i, v in enumerate(grid) if v] == [22 * ids.MAP_SIZE + 23]
+    assert grid[22 * ids.MAP_SIZE + 23] == sp.SAVE_ROOM
 
 
 def test_inventory_is_the_start_items_and_nothing_else() -> None:
@@ -117,7 +118,7 @@ def test_a_bad_plan_is_refused() -> None:
 
 def test_a_save_without_a_revealed_cell_keeps_none() -> None:
     out = sp.patch(bytes(fresh(None)), plan())
-    assert not any(out[sp.MAP_GRID : sp.MAP_GRID + sp.MAP_W * sp.MAP_W])
+    assert not any(out[sp.MAP_GRID : sp.MAP_GRID + ids.MAP_SIZE * ids.MAP_SIZE])
 
 
 def test_section_matches_the_patched_seed_only() -> None:

@@ -29,7 +29,8 @@ import re
 import struct
 from collections.abc import Iterable, Sequence
 
-MAP_W = 54  # the map grid's row length (client/reconcile.py)
+from ids import MAP_SIZE
+
 CHECK_BYTES = 16  # of each function, for the helper's check (native/src/offline.cpp)
 MAX_FILE = 48 * 1024  # the helper's kMaxFile: the pipe takes no message much over 64 KB
 # Code the helper itself patches while it runs: its bytes are not the game's to check.
@@ -51,7 +52,7 @@ def config_text(config: str, checks: dict[str, bytes]) -> str:
 
 def grid_cells(cells: Sequence[tuple[int, int]], indices: Iterable[int]) -> list[int]:
     """The map grid's index (y * 54 + x) of each location index, in order."""
-    return sorted(cells[i][1] * MAP_W + cells[i][0] for i in indices)
+    return sorted(cells[i][1] * MAP_SIZE + cells[i][0] for i in indices)
 
 
 def seed_text(

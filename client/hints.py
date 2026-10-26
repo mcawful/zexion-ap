@@ -23,12 +23,12 @@ from __future__ import annotations
 import string
 from collections.abc import Iterable, Mapping, Sequence
 
-AREA_MAP = 49
-# With the world's Area Map Hints on, the Area Maps are Intel Chips (worlds/zexion/items.py), an
-# item that is not the game's: the client counts a received one as the Area Map the game holds
-# (ZexionContext.received), and the helper names the Area Map's record so (`intel on`).
-INTEL_CHIP = 101
+from ids import AREA_MAP
 
+# With the world's Area Map Hints on, the Area Maps are Intel Chips (ids.INTEL_CHIP), an item
+# that is not the game's: the client counts a received one as the Area Map the game holds
+# (ids.DRAWN_AS, ZexionContext.received), and the helper names the Area Map's record so
+# (`intel on`).
 NONE_LEFT = (-1, -1)  # an Area Map that found no item left to hint
 POPUP_MAX = 200  # the helper's longest notice (native/src/game_calls.cpp, kNoticeMax)
 NO_HINT_NOTE = "HINT: NO HINTS LEFT"

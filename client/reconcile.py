@@ -27,35 +27,31 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-MAP_W = 54
-COLLECTED = 0x1B  # a location cell whose item was collected (docs/re/memory.md)
-ITEMS = 51  # inventory bytes 0 to 50
+import ids
+from ids import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER, PROGRESSIVE
 
-# Progressive weapon -> its upgrade (worlds/zexion/items.py).
-PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 # Items whose byte cannot be written: Zexion (the goal).
-NOT_GRANTABLE = {31}
+NOT_GRANTABLE = {ids.ZEXION}
 # Items never put in the inventory: the Data Disc, which the client counts instead
 # (client/discs.py), as holding one changes the game's endings.
-NOT_IN_INVENTORY = {44}
+NOT_IN_INVENTORY = {ids.DATA_DISC}
 # Items the game counts in Scrap Metal's byte: every record from 46 to 50 names inventory byte
 # 46 as the one its pickup increments (docs/re/memory.md, "Other players' items"), and a
 # collected Scrap Energy or Area Map left its own byte at 0 while Scrap Metal's count rose
 # (docs/re/save-format.md, "Inventory"). So each counts as one Scrap Metal, collected (other
 # players' items are Scrap Energy in this world's locations) or received.
-SCRAP_METAL = 46
-COUNTED_AS_SCRAP = {47, 48, 49, 50}
+SCRAP_METAL = ids.SCRAP_METAL
+COUNTED_AS_SCRAP = {ids.STAND_IN, ids.STAND_IN_PROGRESSION, ids.AREA_MAP, ids.ENERGY_SHIELD}
 # The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
 # "Received Energy Shields"), which the helper does for a received one.
-ENERGY_SHIELD = 50
+ENERGY_SHIELD = ids.ENERGY_SHIELD
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
     """Indices of the locations whose map cell reads collected."""
-    return {i for i, (x, y) in enumerate(cells) if grid[y * MAP_W + x] == COLLECTED}
+    return {i for i, (x, y) in enumerate(cells) if grid[y * ids.MAP_SIZE + x] == ids.COLLECTED}
 
 
 def should_own(
@@ -115,7 +111,7 @@ def shields_owed(received: Iterable[int], spawned: int) -> int:
 def owned(inventory: bytes) -> Counter[int]:
     """What the inventory holds, progressive weapons under the weapon."""
     have: Counter[int] = Counter()
-    for item in range(min(len(inventory), ITEMS)):
+    for item in range(min(len(inventory), len(ids.GAME_ITEMS))):
         if not inventory[item]:
             continue
         if item in PROGRESSIVE or item in UPGRADE_OF:

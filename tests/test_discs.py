@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 
 import discs
+import ids
 
 SLOT = {
     "goal": "os_install_disks",
@@ -65,11 +66,11 @@ def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
         amounts=None,
         options={},
     )
-    ours = bytearray(discs.SLOT_COPY)
+    ours = bytearray(ids.SECTION_SIZE)
     ours[0x26C : 0x26C + 154] = bytes(plan.location_items)
     ours[0x310:0x316] = bytes.fromhex("0600bf004901")
-    other = bytearray(discs.SLOT_COPY)
-    copies = bytes(ours) + bytes(ours) + bytes(ours) + bytes(other) + bytes(discs.SLOT_COPY) * 26
+    other = bytearray(ids.SECTION_SIZE)
+    copies = bytes(ours) + bytes(ours) + bytes(ours) + bytes(other) + bytes(ids.SECTION_SIZE) * 26
     markers = [(1, True), (0, True), (1, False), (1, True)] + [(0, False)] * 26
     # Slot 1 ours; 2 a normal save over a stale copy; 3 empty; 4 another seed.
     assert discs.seed_slots(markers, copies, plan) == [1]

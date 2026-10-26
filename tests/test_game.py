@@ -192,6 +192,16 @@ def test_a_flag_is_one_byte_of_the_flags_array() -> None:
             g.flag(outside)
 
 
+def test_a_run_of_flags_is_read_at_once() -> None:
+    g = FakeGame(pm=FakeProcess(0x1000), base=0, rva={"flags": 0x10}, pid=1, build=None)
+    g.pm.memory[0x10 + 39] = 1
+    g.pm.memory[0x10 + 250] = 2
+    run = g.flag_bytes(39, 212)
+    assert len(run) == 212 and run[0] == g.flag(39) == 1 and run[-1] == g.flag(250) == 2
+    with pytest.raises(ValueError, match="outside"):
+        g.flag_bytes(game.FLAGS - 1, 2)
+
+
 def test_a_failed_write_says_its_state_is_unknown() -> None:
     g = fake_game()
     g.pm.fail_write = True
@@ -231,7 +241,22 @@ def test_supplies_reads_the_six_numbers_in_order() -> None:
     assert g.supplies() == (30, 48, 2, 3, 0, 0)
 
 
+def test_the_player_state_read_at_once_agrees_with_each_read() -> None:
+    g = player_game()
+    put_supplies(g, (30, 48, 2, 3, 1, 4))
+    g.pm.memory[0x1100 + 17] = 1
+    g.pm.memory[0x1100 + 50] = 2
+    at = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + game.PLAYER_CELL
+    g.pm.memory[at : at + 2] = bytes([12, 34])
+    player = g.player_state()
+    assert player.inventory == g.inventory()
+    assert player.supplies == g.supplies()
+    assert player.energy == g.energy() == 30
+    assert player.cell == g.player_cell() == (12, 34)
+
+
 def test_set_supplies_is_compare_and_set_and_writes_only_changes() -> None:
+
     g = player_game()
     put_supplies(g, (30, 48, 2, 3, 0, 0))
     writes = []

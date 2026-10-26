@@ -6,12 +6,15 @@ third-party library for this, so the client does it itself; the RE tools may sti
 
 ``Process`` keeps the names the client used from pymem (``read_bytes``, ``write_bytes``,
 ``process_handle``, ``process_id``, ``close_process``), so ``game.Game`` and its tests' fakes
-are unchanged.
+are unchanged, and adds ``alive``, which ``game.Game`` checks before every read and write
+(``alive``, for a bare handle, is the native helper's loader's too).
+
 """
 
 from __future__ import annotations
 
 import ctypes
+import functools
 import sys
 from ctypes import wintypes
 
@@ -31,6 +34,7 @@ ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES = 24, 18
 SNAPSHOT_TRIES = 10  # a module snapshot can fail while the process's loader is busy
 MAX_PATH = 260
 MAX_MODULE_NAME32 = 255
+STILL_ACTIVE = 259  # GetExitCodeProcess's code for a process that has not exited
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -63,10 +67,13 @@ class MODULEENTRY32W(ctypes.Structure):
     ]
 
 
+@functools.cache
 def _kernel32():
     if sys.platform != "win32":  # pragma: no cover - the client runs on Windows only
         raise ProcessError("reading another process needs Windows")
     k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k.GetExitCodeProcess.restype = wintypes.BOOL
     k.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
     k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     k.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
@@ -103,6 +110,13 @@ def _kernel32():
 def _error(what: str) -> ProcessError:
     code = ctypes.get_last_error()
     return ProcessError(f"{what} failed: {ctypes.FormatError(code).strip()} (error {code})")
+
+
+def alive(process_handle: int) -> bool:
+    """Whether the process behind an open handle is still running."""
+    code = wintypes.DWORD()
+    ok = _kernel32().GetExitCodeProcess(process_handle, ctypes.byref(code))
+    return bool(ok) and code.value == STILL_ACTIVE
 
 
 def find_pid(name: str) -> int | None:
@@ -171,6 +185,10 @@ class Process:
     def module(self, name: str | None = None) -> tuple[int, int] | None:
         """Where a module is loaded (the executable's own by default), and its size."""
         return module_base(self.process_id, name or self.name)
+
+    def alive(self) -> bool:
+        """Whether the process is still running (False once the handle is closed)."""
+        return self.process_handle is not None and alive(self.process_handle)
 
     def read_bytes(self, address: int, size: int) -> bytes:
         buffer = ctypes.create_string_buffer(size)

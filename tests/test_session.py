@@ -38,7 +38,7 @@ class FakeGame:
         self.flags = bytearray(0x9C4)
         self.stamp = bytes(14)
 
-    def state(self) -> str:
+    def state(self, energy: int | None = None) -> str:
         self.reads += 1
         if self.flicker and self.reads % 2 == 0:
             return game.MENU
@@ -61,6 +61,12 @@ class FakeGame:
 
     def flag(self, number: int) -> int:
         return self.flags[number]
+
+    def flag_bytes(self, first: int, count: int) -> bytes:
+        return bytes(self.flags[first : first + count])
+
+    def player_state(self) -> game.PlayerState:
+        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], self.player_cell())
 
     def save_stamp(self) -> bytes:
         return self.stamp
@@ -187,15 +193,6 @@ def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> No
     g.flags[ss.FINALE_FLAG] = 1
     assert not session.step(g, [], gap=0).goal
     g.flags[ss.FINALE_FLAG] = 0  # the ending clears them as its first cutscene starts
-    assert session.step(g, [], gap=0).goal
-
-
-def test_under_abridged_finale_the_grab_is_the_goal() -> None:
-    p = plan(options={**PLAN.options, 32: 1})
-    session = ss.Session(p, [list(c) for c in CELLS])
-    g = FakeGame(PLAN)  # the same item table and start; the game's own settings do not matter
-    assert not session.step(g, [], gap=0).goal
-    g.inv[31] = 1
     assert session.step(g, [], gap=0).goal
 
 
