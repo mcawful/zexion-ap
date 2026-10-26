@@ -471,6 +471,15 @@ class ZexionContext(CommonContext):
         self.newgame_state = None
         await super().disconnect(allow_autoreconnect)
 
+    def reset_server_state(self) -> None:
+        # A dropped connection comes here (connection_closed), not through disconnect: the
+        # received items are gone until the next connection lists them again, so what counts
+        # them waits. What the helper holds for the seed (labels, the ASSIST lock, the armed
+        # new game) stays for the reconnect.
+        super().reset_server_state()
+        self.items_listed = False
+        self.awaiting_backlog = False
+
     def on_deathlink(self, data: dict) -> None:
         super().on_deathlink(data)
         if not self.death_link_on:
@@ -943,7 +952,9 @@ async def discs_helper_tick(ctx: ZexionContext) -> None:
     if helper is None or time.monotonic() < ctx.discs_retry_at:
         return
     hunt = ctx.discs
-    if hunt is not None and ctx.seed_loaded and ctx.items_listed:
+    if hunt is not None and ctx.seed_loaded and not ctx.items_listed:
+        return  # the items not listed yet, or a dropped connection: the count waits for them
+    if hunt is not None and ctx.seed_loaded:
         have = discs.owned(hunt, ctx.received()[0], own_found(ctx))
         want = discs.request(have, hunt.required, ctx.discs_told)
     else:
@@ -980,7 +991,9 @@ async def slots_tick(ctx: ZexionContext) -> None:
     ctx.slots_read_at = time.monotonic() + SLOTS_READ_SECONDS
     hunt, plan, g = ctx.discs, ctx.plan, ctx.game_conn
     want = discs.SLOTS_OFF
-    if hunt is not None and plan is not None and g is not None and ctx.items_listed:
+    if hunt is not None and plan is not None and not ctx.items_listed:
+        return  # the items not listed yet, or a dropped connection: the count waits for them
+    if hunt is not None and plan is not None and g is not None:
         try:
             markers = await asyncio.to_thread(g.slot_markers)
             copies = await asyncio.to_thread(g.rando_slot_copies)
