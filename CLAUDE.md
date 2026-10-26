@@ -99,7 +99,8 @@ INTEL CHIP and so on), which live tests of the client read in its log.
   Otherwise it loads the one built from `native/` (`native/build/Release/zexion_ap.dll`, or
   `ZEXION_DLL`), unloading a helper of another version first; with no build it loads the game
   folder's copy, and with no build and that copy of another version it cannot use one
-  (`native/README.md`, "Getting in"). Ask before a run that loads it into the game, as for
+  (`native/README.md`, "Getting in"). A build that loads as another version (out of date) is
+  refused until the file changes: rebuild `native/`. Ask before a run that loads it into the game, as for
   `helper.py load`. `--no-helper` writes items directly, with no popup (received Energy
   Shields wait for a helper);
   `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
@@ -118,7 +119,9 @@ A release for Archipelago's own Launcher (on `apworld`, where the world is):
 and `version.dll`. The apworld is `worlds/zexion` (without its tests) with the `client` package
 in `zexion/client/` (`worlds.zexion.client`, which the world's Zexion Client entry runs), and
 its `archipelago.json` is the world's plus Archipelago's container keys (`version`,
-`compatible_version`). The build refuses a manifest that does not name the game Zexion, a
+`compatible_version`). It packs only files git tracks, and writes nowhere in the game's or
+the saves' folder (`tools/protected.py`). The build refuses an untracked file in
+`worlds/zexion` or `client`, a manifest that does not name the game Zexion, a
 missing DLL, a helper whose version is not the client's, and a DLL
 older than its sources (`native/src`, `native/proxy` and `native/CMakeLists.txt`; after a
 checkout that touched them, too: rebuild `native/` first). The packaged client has no helper
@@ -142,7 +145,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `docs/re/locations.md`). `test/test_client_agrees.py` checks the client's codes and slot
   data readers against it.
 - `client/`: the AP client, a package (relative imports). `zexion_client.py` (`CommonClient`
-  wiring, `/prepare`), `state.py` (its state, by how long each part lasts), `session.py` (one
+  wiring, `/prepare`), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
+  popup count to store, the found record, warnings said once), `session.py` (one
   poll: checks, the goal, grants), `reconcile.py` (what to give: what the player should own
   minus what the inventory holds), `shields.py` (received Energy Shields), `ids.py` (the item
   and location codes, the game's sizes), `save_patch.py` and `prepare.py` (a seed into a fresh
@@ -150,7 +154,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `Target.rvas` its RVA on each build, for checks only; `tests/patterns_frozen.json` is a copy
   that `tests/test_patterns.py` compares with under pytest and rewrites when run as a script),
   `game.py` (attach, locate by pattern, read and write with checks, `state()`: in play, menu,
-  dead or no save loaded), `process.py` (the
+  dead or no save loaded; the client attaches with `patterns.CLIENT_TARGETS`, the tools with
+  every target, the pickup counter included), `process.py` (the
   game's memory through the Windows API, as Archipelago's release bundles no such library;
   `tools/memscan.py` and the tests use it too), `pe.py` (the PE header fields the client and the
   tools read). `native.py` loads the helper and talks to it; its requests come from `newgame.py`

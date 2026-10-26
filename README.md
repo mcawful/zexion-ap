@@ -52,11 +52,12 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   which only the helper can give; the client loads the
   helper again within 30 seconds (`/unload_helper` unloads it as if it had failed, to test
   that). Each received item's popup is shown once: the server's data storage keeps how many
-  have been shown (`zexion_announced_<team>_<slot>`), so an item received while no client ran
-  pops up when it is given, and a reconnect replays none (stand-in tests; not yet seen live;
-  it replaced a rule, live-tested, that took the items the slot held at connecting as shown,
-  which still applies to a slot with no count stored yet, so an older slot gets no flood of
-  popups).
+  have been shown (`zexion_announced_<team>_<slot>`), counted as each popup leaves the
+  helper's queue (its `popups` reply), so an item received while no client ran pops up when it
+  is given, a reconnect replays none, and popups still queued when the client or the game
+  closes come again next time. A slot with no count stored yet counts the items it holds as
+  shown and stores that at once, so an older slot gets no flood of popups (stand-in tests,
+  helper and client 0.27.0; not yet seen live).
 - **New games from the seed** (helper phase 3). With the helper, the client arms it with the
   seed, and again once each new game holding it is in play, so one seed can start several
   saves. For a seed whose slot data carries the menu setup (from the world on `apworld`),

@@ -137,7 +137,7 @@ STAMP_ROW_AT, STAMP_COLUMN_AT = 4 + 6, 4 + 8
 
 
 def start_cell(blob: bytes) -> tuple[int, int]:
-    """The seed's start cell as the player state counts cells (game.Game.player_cell): the
+    """The seed's start cell as the player state counts cells (game.PLAYER_CELL): the
     game's (X, Y), which is this repo's map cell (save_patch.cell_of) as (y, x)
     (docs/re/randocells.md, "Grid order"; save-format.md and memory.md for the formulas)."""
     if len(blob) < START_AT + 6:
