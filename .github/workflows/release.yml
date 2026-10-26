@@ -1,0 +1,58 @@
+name: Release
+
+# A merge into main (only develop's pull requests, which CI's release gate checked) publishes
+# the release: the helper and proxy built here, the apworld and the player guides, under the tag
+# v<VERSION>. A version already released is skipped. The job runs in the "release" environment,
+# which waits for the owner's approval in GitHub before anything is built or published.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build and publish
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the helper and proxy
+        run: |
+          cmake -S native -B native/build -A x64
+          cmake --build native/build --config Release
+      - name: Native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Version
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(python tools/release_check.py)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "v$version is already released: nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build the release
+        if: steps.version.outputs.skip != 'true'
+        run: python tools/build_apworld.py --out dist
+      - name: Publish
+        if: steps.version.outputs.skip != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Zexion $VERSION" --generate-notes

@@ -9,7 +9,7 @@ The apworld is the world package (``worlds/zexion``, without its tests) with the
 (``worlds/zexion/__init__.py``, ``run_client``). Archipelago's launcher installs the apworld;
 the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
 which only the player does: no tool here writes there. The player guides go beside them as
-plain files (GUIDES), since they are not online: ``zexion-setup-guide.md`` and
+plain files (GUIDES), so a player has them with the download: ``zexion-setup-guide.md`` and
 ``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``.
 
 The DLLs are the CMake Release builds (``native/build``). The build refuses a missing DLL, a

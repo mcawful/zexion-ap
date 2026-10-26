@@ -8,9 +8,10 @@ as a test.
 - Zexion on Steam (Windows). Each release works with certain versions of the game; the client
   tells you if yours isn't supported.
 - Archipelago 0.6.8 or newer.
-- A release of this world: `zexion.apworld`, `zexion_ap.dll` and `version.dll`, all three from
-  the same release. Each release also has this guide (`zexion-setup-guide.md`) and the game
-  page (`zexion-game-page.md`). There is no public release yet.
+- The latest release of this world, from the
+  [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld`,
+  `zexion_ap.dll` and `version.dll`, all three from the same release. Each release also has
+  this guide (`zexion-setup-guide.md`) and the game page (`zexion-game-page.md`).
 
 The two files `zexion_ap.dll` and `version.dll` are **the mod**. It is required: without it,
 the game can't start a seed.
@@ -83,9 +84,9 @@ offers SKIP ESCAPE AND FINAL BATTLE? after you grab Zexion.
 - Finish your seed first, or keep the old release until it ends: a seed made with an older
   release may not play with a newer one (the client says so). Every Zexion player in a game
   uses the same release.
-- To update: close Zexion, then replace all three files with the new release's. Install the
-  new `zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's
-  folder.
+- To update: download the new release from the Releases page, close Zexion, then replace all
+  three files with the new release's. Install the new `zexion.apworld`, and copy the new
+  `zexion_ap.dll` and `version.dll` into Zexion's folder.
 
 ## When Steam updates Zexion
 

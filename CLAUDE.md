@@ -5,8 +5,9 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** pre-release, played in game on build B1 (the version: "Releases and versions"). The
-APWorld lives on the local branch `apworld` (never pushed: Rules).
+**Status:** in development, played in game on build B1. Releases (the version: "Releases and
+versions") are published from `main` on GitHub's
+[Releases page](https://github.com/mcawful/zexion-ap/releases).
 
 Where things are:
 
@@ -35,10 +36,14 @@ Where things are:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
   the helper, the client's `/unload_helper`, and `save_lab.py install` and `restore`. Grants and
   memory writes go only into a lab slot; grants only while the player stands still in play.
-- **Branches.** `main` plus short-lived topic branches, deleted once merged. `apworld`, and
-  every branch cut from it (any branch holding `worlds/`), stays local until the owner
-  publishes the world: never push one. Locally, `.git/hooks/pre-push` (not committed) refuses a
-  push of any commit that holds `worlds/`.
+- **Branches and releases.** `main` holds released code only; `develop` holds code ready for
+  the next release. Work on a short-lived topic branch cut from `develop`, merged into
+  `develop` by pull request, then deleted. `develop` and `main` take changes only through pull
+  requests with every CI check passing. **Only the owner merges `develop` into `main`; Claude
+  never merges into `main`.** That merge starts the release, which waits for the owner's
+  approval in GitHub before anything is built, tagged or published. Before opening the pull
+  request into `main`, raise the version ("Releases and versions"). The flow:
+  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Branches and releases".
 - **This repo is public.** Never commit game files, exe or memory dumps, saves (real or
   patched), Steam account ids, or anything from `lab/` or `private/`. Facts go in `docs/re/`;
   the bytes they came from stay local.
@@ -61,8 +66,9 @@ python -m uv pip install --python .venv -r requirements-dev.txt
 
 ## Checks
 
-CI runs the first three. The fourth, AP's world tests, needs the world (`apworld`) and `.ap/`.
-`/preflight` runs all four.
+CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
+on Windows and Ubuntu), and the native build below. `/preflight` runs the four locally; the
+fourth needs `.ap/`.
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -90,7 +96,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
 .venv/Scripts/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281
 ```
 
-- From source it needs `.ap/` with the world linked in (`ap_checkout.py`, on `apworld`): AP's
+- From source it needs `.ap/` with the world linked in (`ap_checkout.py`): AP's
   client looks up its game's data at startup. From the Launcher it uses the Launcher's AP.
   `ZEXION_AP_DIR` points it at another AP folder.
 - `--verbose` also logs what it sets up in the game for the seed. `--keep-randomizer` leaves
@@ -123,8 +129,9 @@ game or save folders.
 | `game_data.py NAMES --exe` | copy game data into `lab/data/<exe-hash-12>/` | no |
 | `make_pattern.py EXE RVA` | candidate byte patterns | no |
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
-| `gen_world_data.py` (on `apworld`) | regenerate `worlds/zexion/data.py` | no |
-| `build_apworld.py` (on `apworld`) | a release into `dist/` | no |
+| `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
+| `build_apworld.py` | a release into `dist/` | no |
+| `release_check.py [--above TAG]` | the release version; fails unless above `TAG` | no |
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or `save_lab.py
@@ -132,23 +139,27 @@ The tools find the game through Steam's library list and the saves through `%APP
 
 ## Releases and versions
 
-`tools/build_apworld.py` (on `apworld`) writes into `dist/`: `zexion.apworld` (the world without
-its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the
-player guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
+`tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests,
+with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player
+guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
 `worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names). It
 packs only git-tracked files and refuses missing, stale or mismatched DLLs and a mismatched
 `world_version` (its docstring): rebuild `native/` first. The packaged client has no build of
-its own, so it uses the helper in the game's folder.
+its own, so it uses the helper in the game's folder. On GitHub,
+`.github/workflows/release.yml` builds the release and publishes it once the owner approves
+(`docs/DEVELOPING.md`, "Branches and releases").
 
 - **The release version** is one number in three places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
-  `worlds/zexion/archipelago.json` (on `apworld`). Bump all three: `tests/test_cross_checks.py`
-  compares them (the world's where it exists); the helper shows it on the title screen.
+  `worlds/zexion/archipelago.json`. Raise all three together before a release:
+  `tests/test_cross_checks.py` and `build_apworld.py` check they match, and CI's release gate
+  (`tools/release_check.py`) that it is above the last release. The helper shows it on the
+  title screen.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout
 
-- `worlds/zexion/` (on `apworld`): the APWorld. `world.py` (the `World`), `items.py`,
+- `worlds/zexion/`: the APWorld. `world.py` (the `World`), `items.py`,
   `locations.py`, `options.py`, `rules.py`, `web_world.py`, the player docs in `docs/`,
   `archipelago.json`, `test/`. `__init__.py` registers the Zexion Client launcher entry and
   `archipelago://` links. `logic.py` holds the game's rules (shared with
@@ -188,9 +199,9 @@ its own, so it uses the helper in the game's folder.
 - `docs/re/`: the reverse-engineering record.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys), and the world's `world_version` where the
-  world is. `test_build_apworld.py` and
-  `test_gen_world_data.py` test tools that exist only on `apworld`.
+  must agree on (version, builds, `config` keys), and the world's `world_version`.
+  `test_build_apworld.py`, `test_gen_world_data.py` and `test_release_check.py` test the
+  release builder, the data generator and the release gate.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).
 

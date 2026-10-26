@@ -1,9 +1,12 @@
 name: CI
 
+# Every push to develop or main, and every pull request into them. Branch protection requires
+# these checks before anything merges (docs/DEVELOPING.md, "Branches and releases").
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -54,3 +57,51 @@ jobs:
         run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
       - name: Load test
         run: python -m pytest tests/test_native.py -v
+
+  world:
+    name: Archipelago world tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      # pip too: Archipelago's ModuleUpdate installs its requirements with it.
+      - name: Install
+        run: uv pip install -r requirements-dev.txt pip
+      - name: Archipelago at AP_VERSION, the world linked in
+        run: python tools/ap_checkout.py
+      - name: World tests
+        working-directory: .ap/Archipelago
+        env:
+          AP_TEST_WORLDS: zexion
+        run: python -m pytest test/general worlds/zexion/test
+
+  release-gate:
+    name: release gate
+    # Only a pull request into main is a release: it must come from this repo's develop and
+    # raise the version above the last release.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: From develop
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" != develop ] || [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::error::Pull requests into main come from this repo's develop branch."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+      - name: Version above the last release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
+          uv run --no-project python tools/release_check.py --above "$latest"

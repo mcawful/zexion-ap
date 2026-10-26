@@ -42,7 +42,7 @@ the same heading with the new build, beside the old one, never in its place.
 7. **Re-check the save format** ([`save-format.md`](save-format.md)) if saves of the new build
    differ: `client/save_patch.py` and `client/ids.py` take their offsets from it (`/save-lab`,
    diffing a fresh save of each mode).
-8. **Regenerate the world's data** (on `apworld`). `tools/gen_world_data.py` pins what it
+8. **Regenerate the world's data.** `tools/gen_world_data.py` pins what it
    reads by build:
    - the hashes of `MapData` and `Text` (`MAP_DATA_SHA256`, `TEXT_SHA256`), whose cell and area
      offsets it uses;
@@ -51,7 +51,7 @@ the same heading with the new build, beside the old one, never in its place.
    Re-measure what changed, then run it to regenerate `worlds/zexion/data.py`. `DATA_BUILD` and
    the start table follow the exe it read; `client/newgame.py` uses that table only on the
    build it was measured on. If `RandoCells` changed, compare the logic (`randocells.md`,
-   `locations.md` on `apworld`) and have the `logic-reviewer` subagent check the world.
+   `locations.md`) and have the `logic-reviewer` subagent check the world.
 9. **The proxy.** If `SDL2.dll` changed, check that it still imports from `VERSION.dll` by
    name with no delay-load (`memory.md`, "Loading with the game").
 10. **Run every check:** ruff, pytest and AP's world tests (`/preflight`), and the native

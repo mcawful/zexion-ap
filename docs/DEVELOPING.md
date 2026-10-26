@@ -9,10 +9,7 @@ evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-Pre-release. The APWorld (`worlds/zexion/`) is on the local branch `apworld` and not
-published: the logic it derives from the game's data stays local until the owner decides to
-publish it, so `main` has no `worlds/`. Every in-game run was on game build B1. A release
-build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1:
+In development. Every in-game run was on game build B1. A release build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1:
 [`docs/re/memory.md`](re/memory.md), "The client in a live game").
 
 ## How it fits together
@@ -25,12 +22,11 @@ Archipelago server ⇄ (websocket) ⇄ client/  (Python, outside the game)
                                      └─ named pipe \\.\pipe\zexion-ap-<pid>
                                           ⇄ zexion_ap.dll, the helper (inside Zexion.exe)
 version.dll, the proxy (in the game's folder) → loads the helper as the game starts
-worlds/zexion/ (on apworld) → generation → slot data → client
+worlds/zexion/ → generation → slot data → client
 ```
 
 - **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
-  other 4), using the game's own randomizer map and rules (`docs/re/locations.md`, on
-  `apworld`).
+  other 4), using the game's own randomizer map and rules (`docs/re/locations.md`).
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
   other worlds send, and sends the goal when the ending begins. It never counts its own grants:
@@ -124,8 +120,9 @@ later.
 
 ## Checks
 
-CI runs the first three, and the native build and tests on Windows. The fourth needs the world
-(on `apworld`) and `.ap/`. The Claude Code skill `/preflight` runs all four.
+CI runs all of these (ruff and pytest on Windows and Ubuntu; the native build, its tests and
+`tests/test_native.py` on Windows; AP's world tests after `tools/ap_checkout.py`). The Claude
+Code skill `/preflight` runs the first block (AP's world tests need `.ap/`).
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -161,24 +158,48 @@ helper into the game: the one already there if it is this version, else
   30 seconds.
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
-## Releases
+## Branches and releases
 
-On `apworld`, `.venv/Scripts/python tools/build_apworld.py` writes `dist/`: `zexion.apworld`
-(the world without its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll`,
-`version.dll`, and the player guides as `zexion-setup-guide.md` and `zexion-game-page.md`
-(from `worlds/zexion/docs/`; they are not online). It packs only files git tracks and refuses a
-release that would not match (its docstring): rebuild `native/` first after a checkout that
-touched it.
+`main` holds released code only (GitHub shows its README); `develop` holds code ready for the
+next release. Work happens on short-lived topic branches cut from `develop`, merged into
+`develop` by pull request, then deleted. `develop` and `main` take changes only through pull
+requests with every CI check passing (branch protection).
+
+CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
+`develop` or `main`. A pull request into `main` also runs the release gate: it must come from
+this repo's `develop` and raise the version above the last release's tag
+(`tools/release_check.py`).
 
 A release has one version number, in three places: `VERSION` in `client/native.py`,
 `kVersion` in `native/src/dllmain.cpp` and `world_version` in
 `worlds/zexion/archipelago.json`. `tests/test_cross_checks.py` compares them, and the builder
 refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
 
+To release:
+
+1. On a topic branch, raise the version in all three places; merge it into `develop`.
+2. Open a pull request from `develop` into `main`. Only the owner merges it: Claude never
+   merges into `main`.
+3. The merge starts `.github/workflows/release.yml`. Its job runs in the GitHub environment
+   `release`, so it waits on the Actions page until the owner approves it; nothing is built,
+   tagged or published before that. It then builds the helper and proxy, runs the native
+   tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
+   GitHub Release of the files below, with generated notes. A version already released is
+   skipped.
+
+`tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
+`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as
+`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`). It packs only
+files git tracks and refuses a release that would not match (its docstring): run locally,
+rebuild `native/` first after a checkout that touched it.
+
+Players download the latest release from the
+[Releases page](https://github.com/mcawful/zexion-ap/releases).
+
 ## Where things are
 
 - `client/`: the client. `native/`: the helper and the proxy. `tools/`: reverse-engineering
   and save tools, and the release builder. `tests/`: pytest, host-only. `docs/re/`: the
-  reverse-engineering record. `worlds/zexion/` (on `apworld`): the APWorld and the player
-  docs. Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
+  reverse-engineering record. `worlds/zexion/`: the APWorld and the player docs.
+  Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
 - When the game is patched: [`docs/re/new-build.md`](re/new-build.md).

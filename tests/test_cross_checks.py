@@ -3,8 +3,7 @@
 Each value has one home on either side and a copy on the other: the helper's version (the
 client refuses another), the game builds both identify, the addresses the client sends in
 ``config``, and the proxy's off switch. These read the C++ as text, so they run without a
-native build. Also the world's ``world_version``, the same release number, where the world is
-(on ``apworld``).
+native build. Also the world's ``world_version``, the same release number.
 """
 
 from __future__ import annotations
@@ -37,7 +36,7 @@ def test_the_helper_is_the_version_the_client_asks_for() -> None:
     assert versions == [native.VERSION]
 
 
-@pytest.mark.skipif(not MANIFEST.is_file(), reason="the world is on apworld only")
+@pytest.mark.skipif(not MANIFEST.is_file(), reason="worlds/zexion is missing")
 def test_the_world_has_the_release_number_of_the_client() -> None:
     world = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert world["world_version"] == native.VERSION

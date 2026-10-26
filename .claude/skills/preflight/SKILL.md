@@ -1,6 +1,6 @@
 ---
 name: preflight
-description: Run the checks CI runs (ruff format, ruff check, pytest) and, on the apworld branch (where worlds/zexion is), Archipelago's own world tests against the pinned checkout in .ap/. Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
+description: Run the checks CI runs (ruff format, ruff check, pytest, and Archipelago's own world tests against the pinned checkout in .ap/). Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
 ---
 
 # Pre-flight
@@ -13,9 +13,9 @@ Run these in order and stop at the first failure.
 .venv/Scripts/python -m pytest
 ```
 
-`.github/workflows/ci.yml` runs these three on Windows and Ubuntu, plus a Windows `native` job
-(the CMake build of `native/`, its ctest tests, and `tests/test_native.py` against the built DLL)
-that preflight does not run. Locally, `tests/test_native.py` skips its load test unless
+`.github/workflows/ci.yml` runs these three on Windows and Ubuntu, a `world` job with
+Archipelago's world tests (below), and a Windows `native` job (the CMake build of `native/`, its
+ctest tests, and `tests/test_native.py` against the built DLL) that preflight does not run. Locally, `tests/test_native.py` skips its load test unless
 `native/build/Release/zexion_ap.dll` exists (or `ZEXION_DLL` names a build); build it as
 `CLAUDE.md` ("Checks") shows when `native/` or `client/native.py` changed.
 
@@ -27,9 +27,6 @@ the setup commands from `CLAUDE.md`. An unverified change is a normal outcome to
 something to paper over.
 
 ## Archipelago's world tests
-
-On `apworld` and branches cut from it, where `worlds/zexion/` is. On `main` (no world), say
-they were not run because there is no world.
 
 1. `.ap/Archipelago` must exist at the tag in `AP_VERSION`. If not, run
    `.venv/Scripts/python tools/ap_checkout.py`, which also links `worlds/zexion/` into it.

@@ -10,18 +10,17 @@ logic problems.
 
 ## Get the diff
 
-Diff against the branch this one was cut from. If `git merge-base --is-ancestor apworld HEAD`
-succeeds (a branch cut from `apworld`, which holds the world), use `git diff apworld...HEAD`;
-otherwise `git diff main...HEAD`. On `main` or `apworld` itself, or when the base is unclear, ask
-for the range rather than review a whole branch's history. Use `git diff HEAD` when uncommitted. If
-a target was named, review that. When the diff touches rules, also read the regions and rules it did
-not touch that lead to or from the changed ones: a rule is only as good as the path to it.
+Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use
+`git diff develop...HEAD`; on `develop` itself, `git diff main...develop`. On `main`, or when
+the base is unclear, ask for the range rather than review a whole branch's history. Use
+`git diff HEAD` when uncommitted. If a target was named, review that. When the diff touches
+rules, also read the regions and rules it did not touch that lead to or from the changed ones: a
+rule is only as good as the path to it.
 
 ## What you check against
 
-`docs/re/locations.md` is the evidence. The world's rules are not written per location: on
-`apworld`, `tools/gen_world_data.py` derives every location, region, entrance and requirement
-list at once from the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
+`docs/re/locations.md` is the evidence. The world's rules are not written per location:
+`tools/gen_world_data.py` derives every location, region, entrance and requirement list at once from the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
 `worlds/zexion/logic.py` checks those lists the way the game does. `locations.md` records how
 that derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
 playthroughs it was checked against), section by section, including the world's deliberate

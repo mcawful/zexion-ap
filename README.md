@@ -8,11 +8,14 @@ find may be yours.
 This is an unofficial fan project, not affiliated with Gallant Leaf. It contains no game files;
 you need your own copy of Zexion.
 
-## Status
+## Download
 
-**Not released yet.** Seeds have been played start to finish in testing, but there is no
-download yet. Each release will work with certain versions of Zexion; if Steam updates the
-game, the client tells you when your version isn't supported.
+Get the latest release from the [Releases page](https://github.com/mcawful/zexion-ap/releases).
+It has `zexion.apworld`, `zexion_ap.dll`, `version.dll` and the two player guides.
+
+This is still in development: seeds have been played start to finish in testing. Each release
+works with certain versions of Zexion; if Steam updates the game, the client tells you when
+your version isn't supported.
 
 ## Features
 
@@ -27,7 +30,8 @@ game, the client tells you when your version isn't supported.
 
 ## Quickstart
 
-1. Install [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.8 or newer.
+1. Install [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.8 or newer,
+   and download the latest release of this project (above).
 2. In the Archipelago Launcher, choose Install APWorld and pick `zexion.apworld`.
 3. Install the mod: with Zexion closed, copy `zexion_ap.dll` and `version.dll` into Zexion's
    folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required.
