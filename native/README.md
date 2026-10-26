@@ -467,7 +467,8 @@ pipe and unloading. That test skips without a build.
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
-(`apply_test.cpp` and `unload_test.cpp` for the last two below). They share `tests/check.h`;
+(`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
+`unload_under_load` and `proxy`). They share `tests/check.h`;
 `tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
 `unload_under_load`, and the last two's busy threads and wait for an unload.
 
