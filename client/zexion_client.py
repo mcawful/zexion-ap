@@ -127,7 +127,6 @@ class ZexionContext(CommonContext):
 
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
-        self.use_helper = True
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
         # The state, by how long each part lasts (client/state.py).
         self.conn: state.Connection | None = None
@@ -211,11 +210,6 @@ class ZexionContext(CommonContext):
                     [{"cmd": "LocationScouts", "locations": scouts, "create_as_hint": 0}]
                 ),
                 name="scout labels",
-            )
-        if conn.hunt is not None and not self.use_helper:
-            logger.warning(
-                "This seed's goal is the OS Install Disks, which needs the in-game helper "
-                "(started without it): nothing will offer the ending."
             )
         if conn.hunt is not None:
             detail(f"The goal is {conn.hunt.required} of {conn.hunt.placed} OS Install Disks.")
@@ -657,8 +651,6 @@ def hint_notes(ctx: ZexionContext, codes: list[int]) -> dict[int, str]:
 
 async def attach_helper(ctx: ZexionContext) -> None:
     """Load and configure the native helper in the attached game, or carry on without it."""
-    if not ctx.use_helper:
-        return
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
@@ -1266,7 +1258,7 @@ async def poll(ctx: ZexionContext) -> None:
         # The session gave up on it (try again later): dropped before the count below, so the
         # popups it had not shown are not counted as shown.
         ctx.drop_helper()
-    elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
+    elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
     # The popups the step handed the helper, or the items it wrote directly.
@@ -1359,7 +1351,6 @@ def launch(*args: str) -> None:
     async def main(parsed) -> None:
         ctx = ZexionContext(parsed.connect, parsed.password)
         ctx.auth = parsed.name
-        ctx.use_helper = not parsed.no_helper
         ctx.keep_randomizer = parsed.keep_randomizer
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
@@ -1374,11 +1365,6 @@ def launch(*args: str) -> None:
 
     parser = get_base_parser(description="Zexion Archipelago client.")
     parser.add_argument("--name", default=None, help="Slot name to connect as.")
-    parser.add_argument(
-        "--no-helper",
-        action="store_true",
-        help="Do not load the native helper into the game: items arrive with no popup.",
-    )
     parser.add_argument(
         "--keep-randomizer",
         action="store_true",

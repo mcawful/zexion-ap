@@ -47,8 +47,8 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
 
 - **Received items with the game's popup** (helper phase 2): the item's popup, sound and an
   immediate HUD refresh, live-tested on one seed (2026-10-22). Without a helper to use
-  (`--no-helper`, none loaded in the game and neither a build nor a copy in the game's folder,
-  or a helper that fails) items are written directly, with no popup, all but Energy Shields,
+  (none loaded in the game and neither a build nor a copy in the game's folder, or a helper
+  that fails) items are written directly, with no popup, all but Energy Shields,
   which only the helper can give; the client loads the
   helper again within 30 seconds (`/unload_helper` unloads it as if it had failed, to test
   that). Each received item's popup is shown once: the server's data storage keeps how many

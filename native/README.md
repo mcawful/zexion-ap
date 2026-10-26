@@ -3,8 +3,8 @@
 `zexion_ap.dll` runs inside Zexion and gives the client what can't be done from outside: work
 on the game's own thread, between frames. Either the player puts it in the game's folder with
 the proxy `version.dll`, which loads it as the game starts (below, "The proxy"), or the AP
-client loads it when it attaches to the game (`client/native.py`, unless started with
-`--no-helper`); the client sends received items through it. `tools/helper.py` loads and unloads
+client loads it when it attaches to the game (`client/native.py`); the client sends received
+items through it. `tools/helper.py` loads and unloads
 it for tests. Without a client it changes nothing in play, except the offline look for a save
 of a seed a client has played ("AP saves without the client", below), and it adds its lines to
 the title screen ("The title screen's lines"); the game is otherwise the base game.

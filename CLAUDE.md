@@ -101,9 +101,8 @@ INTEL CHIP and so on), which live tests of the client read in its log.
   folder's copy, and with no build and that copy of another version it cannot use one
   (`native/README.md`, "Getting in"). A build that loads as another version (out of date) is
   refused until the file changes: rebuild `native/`. Ask before a run that loads it into the game, as for
-  `helper.py load`. `--no-helper` writes items directly, with no popup (received Energy
-  Shields wait for a helper);
-  `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
+  `helper.py load`. Without a helper to use, items are written directly, with no popup
+  (received Energy Shields wait for a helper); `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
   client loads it again within 30 seconds. `--keep-randomizer`: README.md, "Features".
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`
   (unused from the Launcher).
