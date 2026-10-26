@@ -8,7 +8,7 @@ requires-python = ">=3.11,<3.14"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = [".ap", "lab", "private"]
+extend-exclude = [".ap", "lab", "private", ".claude/worktrees"]
 src = ["tools", "client", ".claude/hooks"]
 
 [tool.ruff.lint]

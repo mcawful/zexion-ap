@@ -29,8 +29,9 @@ MapData
 AreaEvents
 Objects
 
-# Claude Code per-machine settings
+# Claude Code per-machine settings and its agents' worktrees
 .claude/settings.local.json
+.claude/worktrees/
 
 # Build output
 *.apworld
