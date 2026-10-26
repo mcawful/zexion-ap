@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from client import native
+from client import native, process
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
@@ -112,44 +112,25 @@ def test_a_dead_game_is_not_taken_for_an_unloaded_helper(stand_in) -> None:
         native.is_loaded(handle)
 
 
-class _OldHelper:
-    """A helper of another version, loaded from the game's folder."""
+def test_a_listing_that_keeps_failing_is_an_error_unless_the_game_died(monkeypatch) -> None:
+    def failing(handle: int) -> dict:
+        raise process.ProcessError("listing the process's modules failed (error 299)")
 
-    requests: list[str] = []
-
-    def __init__(self, pid: int) -> None:
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        pass
-
-    def hello(self) -> dict[str, str]:
-        return {"version": "0.0.1", "folder": "1"}
-
-    def request(self, text: str, *args: object) -> str:
-        _OldHelper.requests.append(text)
-        return "bye"
-
-
-def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) -> None:
-    # The client from an apworld has no build: the game folder's copy is all there is, so a
-    # copy of another version must be refused, not unloaded and loaded again.
-    folder_copy = tmp_path / "zexion_ap.dll"
-    folder_copy.write_bytes(b"")
-    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
-    monkeypatch.setattr(native, "is_loaded", lambda handle: True)
-    monkeypatch.setattr(native, "Helper", _OldHelper)
-    _OldHelper.requests = []
-    with pytest.raises(native.HelperError, match="copy this release's"):
-        native.attach(_Game(), tmp_path / "no-build.dll")
-    assert "unload" not in _OldHelper.requests
+    running = True
+    monkeypatch.setattr(process, "alive", lambda handle: running)
+    monkeypatch.setattr(process, "modules", lambda handle: {"zexion_ap.dll": (1, 2)})
+    assert native.is_loaded(1)
+    monkeypatch.setattr(process, "modules", failing)
+    with pytest.raises(native.HelperError, match="cannot list the game's modules"):
+        native.is_loaded(1)  # not read as no helper
+    running = False
+    with pytest.raises(native.GameExited):
+        native.is_loaded(1)
 
 
 class _Game:
-    """A stand-in game for attach: which helper version is loaded, and the built file's."""
+    """A stand-in game for attach: which helper version is loaded, the built file's, and
+    whether the helper loaded is the game folder's copy (its hello's ``folder``)."""
 
     pid = 1
 
@@ -159,6 +140,7 @@ class _Game:
     def __init__(self) -> None:
         self.loaded: str | None = None  # the version loaded, None for none
         self.file_version = "0.0.1"  # what the built file loads as
+        self.folder = "0"
         self.loads = 0
         self.unloads = 0
         self.rva: dict[str, int] = {}
@@ -179,7 +161,7 @@ def stand_in_attach(monkeypatch, game: _Game) -> None:
             pass
 
         def hello(self) -> dict[str, str]:
-            return {"version": game.loaded or "", "folder": "0", "hooked": "1"}
+            return {"version": game.loaded or "", "folder": game.folder, "hooked": "1"}
 
         def request(self, text: str, *args: object) -> str:
             assert text == "unload"
@@ -200,6 +182,20 @@ def stand_in_attach(monkeypatch, game: _Game) -> None:
     monkeypatch.setattr(native, "load", load)
     monkeypatch.setattr(native, "wait_unloaded", lambda handle: True)
     monkeypatch.setattr(native, "_STALE", {})
+
+
+def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) -> None:
+    # The client from an apworld has no build: the game folder's copy is all there is, so a
+    # copy of another version must be refused, not unloaded (FakeHelper takes nothing else)
+    # and loaded again.
+    (tmp_path / "zexion_ap.dll").write_bytes(b"")
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
+    game = _Game()
+    game.loaded, game.folder = "0.0.1", "1"
+    stand_in_attach(monkeypatch, game)
+    with pytest.raises(native.HelperError, match="copy this release's"):
+        native.attach(game, tmp_path / "no-build.dll")
+    assert game.unloads == game.loads == 0
 
 
 def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkeypatch) -> None:

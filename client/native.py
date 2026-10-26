@@ -12,7 +12,6 @@ that took the name first is refused.
 from __future__ import annotations
 
 import ctypes
-import functools
 import os
 import time
 from ctypes import wintypes
@@ -33,6 +32,7 @@ APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take 
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
+UNLOAD_SECONDS = CONNECT_SECONDS = 3.0
 
 
 class HelperError(RuntimeError):
@@ -114,67 +114,17 @@ PAGE_READWRITE = 0x04
 _kernel32 = process.kernel32  # the one binding (client/process.py), made on first use
 
 
-@functools.cache
-def _psapi():
-    k = ctypes.WinDLL("psapi", use_last_error=True)
-    h, d = wintypes.HANDLE, wintypes.DWORD
-    k.EnumProcessModulesEx.restype = wintypes.BOOL
-    k.EnumProcessModulesEx.argtypes = [h, ctypes.POINTER(wintypes.HMODULE), d, ctypes.POINTER(d), d]
-    k.GetModuleBaseNameW.restype = d
-    k.GetModuleBaseNameW.argtypes = [h, wintypes.HMODULE, wintypes.LPWSTR, d]
-    k.GetModuleFileNameExW.restype = d
-    k.GetModuleFileNameExW.argtypes = [h, wintypes.HMODULE, wintypes.LPWSTR, d]
-    return k
-
-
-LIST_MODULES_ALL = 3
-
-
 def _last_error() -> str:
     return ctypes.FormatError(ctypes.get_last_error()).strip()
-
-
-alive = process.alive
-
-
-def module_names(process_handle: int, attempts: int = 5) -> list[str]:
-    """The game's loaded modules, lower-cased. Listing them can fail for a moment while the
-    game loads or unloads one; a listing that keeps failing raises rather than reading as
-    empty, and a dead game raises GameExited."""
-    for _ in range(attempts):
-        if not alive(process_handle):
-            raise GameExited("the game has exited")
-        handles = (wintypes.HMODULE * 1024)()
-        needed = wintypes.DWORD()
-        if _psapi().EnumProcessModulesEx(
-            process_handle, handles, ctypes.sizeof(handles), ctypes.byref(needed), LIST_MODULES_ALL
-        ):
-            count = min(needed.value // ctypes.sizeof(wintypes.HMODULE), len(handles))
-            names = []
-            name = ctypes.create_unicode_buffer(260)
-            for module in handles[:count]:
-                if _psapi().GetModuleBaseNameW(process_handle, module, name, len(name)):
-                    names.append(name.value.lower())
-            return names
-        time.sleep(0.02)
-    raise HelperError(f"cannot list the game's modules: {_last_error()}")
 
 
 def game_folder(process_handle: int) -> Path | None:
     """The folder of the game's executable, where the player puts the mod. Only read: the
     client never writes the game's folder."""
     path = ctypes.create_unicode_buffer(1024)
-    if not _psapi().GetModuleFileNameExW(process_handle, None, path, len(path)):
+    if not _kernel32().K32GetModuleFileNameExW(process_handle, None, path, len(path)):
         return None
     return Path(path.value).parent
-
-
-def game_folder_dll(process_handle: int) -> Path | None:
-    """The helper beside the game's executable (where the player put it with the proxy), if
-    there is one there."""
-    folder = game_folder(process_handle)
-    dll = folder / DLL_NAME if folder is not None else None
-    return dll if dll is not None and dll.is_file() else None
 
 
 def mod_disabled(process_handle: int) -> bool:
@@ -184,8 +134,16 @@ def mod_disabled(process_handle: int) -> bool:
 
 
 def is_loaded(process_handle: int) -> bool:
-    """Whether the helper is in the game's module list (GameExited for a dead game)."""
-    return DLL_NAME in module_names(process_handle)
+    """Whether the helper is in the game's module list (process.modules). A dead game raises
+    GameExited, and a listing that keeps failing HelperError, rather than reading as no
+    helper."""
+    if process.alive(process_handle):
+        try:
+            return DLL_NAME in process.modules(process_handle)
+        except process.ProcessError as exc:
+            if process.alive(process_handle):
+                raise HelperError(f"cannot list the game's modules: {exc}") from exc
+    raise GameExited("the game has exited")
 
 
 LATE_LOAD_SECONDS = 60.0
@@ -235,13 +193,7 @@ def _load_library(process_handle: int, path: Path, seconds: float) -> None:
             _kernel32().VirtualFreeEx(process_handle, remote, 0, MEM_RELEASE)
 
 
-def load(
-    process_handle: int,
-    pid: int,
-    dll: Path,
-    seconds: float = LOAD_SECONDS,
-    if_absent: bool = False,
-) -> bool:
+def load(process_handle: int, pid: int, dll: Path, if_absent: bool = False) -> bool:
     """Load the helper into the process: True once loaded. A helper already loaded is refused,
     or with ``if_absent`` left as it is (False): the proxy may have loaded it meanwhile."""
     if not dll.is_file():
@@ -257,7 +209,7 @@ def load(
                 if if_absent:
                     return False
                 raise HelperError("a helper is already loaded; unload it first")
-            _load_library(process_handle, dll.resolve(), seconds)
+            _load_library(process_handle, dll.resolve(), LOAD_SECONDS)
             if not is_loaded(process_handle):
                 raise HelperError(f"loading {dll.name} into the game failed")
             return True
@@ -267,9 +219,9 @@ def load(
         _kernel32().CloseHandle(mutex)
 
 
-def wait_unloaded(process_handle: int, seconds: float = 3.0) -> bool:
+def wait_unloaded(process_handle: int) -> bool:
     """True once the helper has left the module list; GameExited if the game died instead."""
-    deadline = time.monotonic() + seconds
+    deadline = time.monotonic() + UNLOAD_SECONDS
     while time.monotonic() < deadline:
         if not is_loaded(process_handle):
             return True
@@ -280,9 +232,9 @@ def wait_unloaded(process_handle: int, seconds: float = 3.0) -> bool:
 class Helper:
     """A connection to the helper's pipe in process ``pid``. Any error closes it for good."""
 
-    def __init__(self, pid: int, connect_seconds: float = 3.0):
+    def __init__(self, pid: int):
         name = pipe_name(pid)
-        deadline = time.monotonic() + connect_seconds
+        deadline = time.monotonic() + CONNECT_SECONDS
         while True:
             handle = _kernel32().CreateFileW(
                 name,
@@ -440,8 +392,11 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     # client's own (native/build, ZEXION_DLL) still loads, and a helper already loaded is used.
     disabled = not own_build and mod_disabled(handle)
     if not built and not disabled:
-        # No build: the game folder's copy, as the proxy loads it (after an unload, say).
-        dll = game_folder_dll(handle) or dll
+        # No build: the game folder's copy, as the proxy loads it (after an unload, say), if
+        # the player put one there.
+        folder = game_folder(handle)
+        if folder is not None and (folder / DLL_NAME).is_file():
+            dll = folder / DLL_NAME
         built = dll.is_file()
     stale = _STALE.get(str(dll))
     if stale is not None and stale[0] != _modified(dll):
