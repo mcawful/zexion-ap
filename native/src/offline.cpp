@@ -196,6 +196,13 @@ bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_
            std::memcmp(seed.start, start, sizeof(seed.start)) == 0;
 }
 
+OfflineSeed offline_seed_of(const uint8_t* section) {
+    OfflineSeed seed;
+    std::memcpy(seed.table, section + kOfflineTableAt, sizeof(seed.table));
+    std::memcpy(seed.start, section + kOfflineStartAt, sizeof(seed.start));
+    return seed;
+}
+
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid) {
     int count = seed.count;
     for (int cell : seed.unfound) {

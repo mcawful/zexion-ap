@@ -9,28 +9,6 @@ namespace zap {
 
 namespace {
 
-// The client's names for what it sends (client/patterns.py target names).
-const char* const kConfigKeys[] = {
-    "inventory",     "save_loaded",   "menu_state",    "item_records",   "last_message",
-    "weapon_strip_gate", "sound_system", "message_fn", "sound_fn",       "hud_number_fn",
-    "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn",
-    "rando_blob",    "rando_marker",  "transition_fn", "transition_timer", "current_slot",
-    "newgame_fn",
-    "current_menu",  "randomizer_menu", "widget_handler_fn", "panel_handler_fn", "rando_menu_fn",
-    "placement_fn",  "rando_newgame_fn", "event_table", "event_count",
-    "start_count",   "start_cells",     "start_flags",     "sprite_texture",
-    "popup_width_code", "item_pool",   "palette_table",   "frame_clock",     "sprite_templates",
-    "event_handlers", "death_fn",      "halt_flag",       "assist_menu_fn",
-    "object_pool",   "text_table",
-    "equipment_fn",  "equip_panel_fn", "widget_move_fn", "text_place_fn",
-    "malloc_slot",   "free_slot",     "widget_new_fn", "sprite_sheet_fn", "panel_link_fn",
-    "text_set_fn",   "routine_table", "keys_branch",
-    "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
-    "map_grid",      "flags",         "slot_array",    "rando_slots",
-    "text_new_fn",   "text_link_fn",  "draw_layer",   "map_handler",
-};
-const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
-
 // Player state, from the inventory (docs/re/memory.md, "Granting each kind of item").
 constexpr ptrdiff_t kInventoryInPlayer = 0x108E;
 constexpr ptrdiff_t kEnergy = 0xCEA, kEnergyMax = 0xCEC;
@@ -49,7 +27,6 @@ constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr int kOfflineFrames = 15;
 constexpr int kSaveSlots = 30;
 constexpr ptrdiff_t kSlotStride = 0x9408, kSlotEmpty = 0x935E, kSlotRandoMarker = 0x9400;
-constexpr ptrdiff_t kSlotCopySize = 0x908;
 // A slot block's map grid: the save's file offset 0x877F, less the block's 2 (as +0x935E is
 // the file's 0x9360).
 constexpr ptrdiff_t kSlotMap = 0x877F - 2;
@@ -65,9 +42,10 @@ constexpr char kOtherSeedNotice[] =
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
-// A message's sequence number and frames left, and the popup's line length, place and time.
+// A message's sequence number and frames left, and the popup's place and time (its line
+// length kGamePopupWidth).
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
-constexpr int kPopupPerLine = 0x18, kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
+constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 constexpr int kPopupGapFrames = 20;
 constexpr size_t kSuffixMax = 40;
 // A notice's text as sent, and its laid-out text (padding included): the game copies a
@@ -98,11 +76,81 @@ constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before
 // damage code calls it once energy is 0 or below.
 using DeathFn = void (*)(void* player, char kind);
 
+// The addresses the client sends (`config`, client/patterns.py target names), checked in this
+// order: each must lie in the game's image, with at least kKeyBytes there (the offline cache
+// checks a function's first 16 bytes: offline.h), a function in executable code and anything
+// else in writable data, except the C runtime's import slots, which are only read, in the
+// read-only data they live in. Some must also leave room in their section for what is read or
+// written there. The optional ones may be missing from an older helper's offline cache: the
+// title screen's lines (title.h, keys from 0.22.0) and the map cursor's names (mapmarks.h,
+// map_handler from 0.24.1) are then left off.
+constexpr uint64_t kKeyBytes = 16;
+enum class Held { kCode, kData, kImportSlot };
+struct ConfigKey {
+    const char* name;
+    Held held;
+    bool optional;
+    uint64_t room;         // bytes from the address that must lie in its section, if not 0
+    const char* room_for;  // what they hold, for the error
+    uint64_t before;       // and bytes before it
+};
+constexpr ConfigKey code(const char* name, bool optional = false) {
+    return {name, Held::kCode, optional, 0, nullptr, 0};
+}
+constexpr ConfigKey data(const char* name, uint64_t room = 0, const char* room_for = nullptr,
+                         uint64_t before = 0) {
+    return {name, Held::kData, false, room, room_for, before};
+}
+constexpr ConfigKey optional_data(const char* name) {
+    return {name, Held::kData, true, 0, nullptr, 0};
+}
+constexpr ConfigKey import_slot(const char* name) {
+    return {name, Held::kImportSlot, false, 0, nullptr, 0};
+}
+// transition_fn is data: it holds the address of the routine the game runs next.
+constexpr ConfigKey kConfigKeys[] = {
+    // The player state the helper touches, all in the inventory's section.
+    data("inventory", kPlayerStateSize - kInventoryInPlayer, "the player state",
+         kInventoryInPlayer),
+    data("save_loaded"), data("menu_state"), data("item_records"), data("last_message"),
+    data("weapon_strip_gate"), data("sound_system"), code("message_fn"), code("sound_fn"),
+    code("hud_number_fn"), code("hud_layout_fn"), code("energy_hud_fn"), code("weapon_strip_fn"),
+    code("suit_color_fn"), data("rando_blob", kSectionSize, "the section"),
+    data("rando_marker"), data("transition_fn"), data("transition_timer"), data("current_slot"),
+    code("newgame_fn"), data("current_menu"),
+    data("randomizer_menu", kMenuSize, "the menu's state"), code("widget_handler_fn"),
+    code("panel_handler_fn"), code("rando_menu_fn"), code("placement_fn"),
+    code("rando_newgame_fn"), data("event_table"), data("event_count"), data("start_count"),
+    data("start_cells", 4 * kStartTableMax, "64 rooms"),
+    data("start_flags", kStartTableMax, "64 rooms"), data("sprite_texture"),
+    code("popup_width_code"), data("item_pool"), data("palette_table"), data("frame_clock"),
+    data("sprite_templates"), data("event_handlers"), code("death_fn"), data("halt_flag"),
+    code("assist_menu_fn"), data("object_pool"), data("text_table"), code("equipment_fn"),
+    code("equip_panel_fn"), code("widget_move_fn"), code("text_place_fn"),
+    import_slot("malloc_slot"), import_slot("free_slot"), code("widget_new_fn"),
+    code("sprite_sheet_fn"), code("panel_link_fn"), code("text_set_fn"), data("routine_table"),
+    code("keys_branch"), code("file_panel_fn"), code("file_entry_fn"), code("copy_entry_fn"),
+    code("delete_entry_fn"),
+    // What the offline look reads whole (offline.h): the map grid, the flags, the save slots
+    // and their copies of the randomizer section.
+    data("map_grid", kMapCells, "what is read there"),
+    data("flags", kFlagCount, "what is read there"),
+    data("slot_array", kSaveSlots * kSlotStride, "what is read there"),
+    data("rando_slots", kSaveSlots * kSectionSize, "what is read there"),
+    code("text_new_fn", true), code("text_link_fn", true), optional_data("draw_layer"),
+    optional_data("map_handler"),
+};
+
 bool parse_number(const std::string& text, uint64_t& out) {
     if (text.empty()) return false;
     char* end = nullptr;
     out = std::strtoull(text.c_str(), &end, text.rfind("0x", 0) == 0 ? 16 : 10);
     return end != nullptr && *end == '\0';
+}
+
+// The RVA just past a section, as loaded.
+uint64_t section_end(const IMAGE_SECTION_HEADER* section) {
+    return section->VirtualAddress + (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
 }
 
 // The section of `module` holding `rva`, or nullptr.
@@ -112,39 +160,62 @@ const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva) {
         base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
     auto* section = IMAGE_FIRST_SECTION(nt);
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
-        uint64_t size = (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-        if (rva >= section->VirtualAddress && rva < section->VirtualAddress + size) {
-            return section;
-        }
+        if (rva >= section->VirtualAddress && rva < section_end(section)) return section;
     }
     return nullptr;
 }
 
-// The keys that name game functions (in code); every other key names data. transition_fn is
-// data: it holds the address of the routine the game runs next.
-bool is_function(const std::string& key) {
-    static const char* const functions[] = {
-        "message_fn",    "sound_fn",        "hud_number_fn", "hud_layout_fn",
-        "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "newgame_fn",
-        "widget_handler_fn", "panel_handler_fn", "rando_menu_fn", "placement_fn",
-        "rando_newgame_fn", "popup_width_code", "death_fn", "assist_menu_fn",
-        "equipment_fn", "equip_panel_fn", "widget_move_fn", "text_place_fn",
-        "widget_new_fn", "sprite_sheet_fn", "panel_link_fn", "text_set_fn", "keys_branch",
-        "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
-        "text_new_fn", "text_link_fn",
-    };
-    for (const char* f : functions) {
-        if (key == f) return true;
+// "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
+std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, uint64_t rva) {
+    const std::string name = key.name;
+    if (rva == 0 || rva + kKeyBytes > image_size) return name + " is outside the game";
+    const IMAGE_SECTION_HEADER* section = section_of(image, rva);
+    if (section == nullptr) return name + " is in no section";
+    bool code = (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
+    if (code != (key.held == Held::kCode)) {
+        return name + (code ? " is in code, not data" : " is not in code");
     }
-    return false;
+    if (key.held == Held::kData && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
+        return name + " is in read-only data";
+    }
+    if (key.room != 0 &&
+        (rva < section->VirtualAddress + key.before || rva + key.room > section_end(section))) {
+        return name + " leaves no room for " + key.room_for;
+    }
+    return "";
 }
 
-// Keys a config may lack (an offline cache written by an older helper): the title screen's
-// lines (title.h, keys from 0.22.0) and the map cursor's names (mapmarks.h, map_handler from
-// 0.24.1) are then left off.
-bool is_optional(const std::string& key) {
-    return key == "text_new_fn" || key == "text_link_fn" || key == "draw_layer" ||
-           key == "map_handler";
+// Adds `c` to `out` if the game's font draws it: a letter (made upper-case), a digit, or one of
+// `kept`.
+void keep_font_char(std::string& out, unsigned char c, const char* kept) {
+    if (std::isalpha(c)) {
+        out += static_cast<char>(std::toupper(c));
+    } else if (std::isdigit(c) || (c != 0 && std::strchr(kept, c) != nullptr)) {
+        out += static_cast<char>(c);
+    }
+}
+// What a label keeps besides letters and digits (parse_labels).
+constexpr char kLabelChars[] = " .,'!?-:()/&";
+
+// A section offset as a reply names it: "0x6CC".
+std::string hex_offset(unsigned offset) {
+    char text[16];
+    std::snprintf(text, sizeof(text), "0x%X", offset);
+    return text;
+}
+
+// The offset of the first of `edits` that `block` does not hold, or -1.
+int first_difference(const BYTE* block, const std::vector<SectionBytes>& edits) {
+    for (const SectionBytes& e : edits) {
+        if (std::memcmp(block + e.offset, e.bytes.data(), e.bytes.size()) != 0) return e.offset;
+    }
+    return -1;
+}
+
+void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
+    for (const SectionBytes& e : edits) {
+        std::memcpy(block + e.offset, e.bytes.data(), e.bytes.size());
+    }
 }
 
 }  // namespace
@@ -195,12 +266,7 @@ std::string parse_batch(const std::string& request, Batch& out) {
             std::getline(words >> std::ws, rest);
             std::string suffix;
             for (char c : rest) {
-                auto u = static_cast<unsigned char>(c);
-                if (std::isalpha(u)) {
-                    suffix += static_cast<char>(std::toupper(u));
-                } else if (std::isdigit(u) || (c != 0 && std::strchr(kept, c) != nullptr)) {
-                    suffix += c;
-                }
+                keep_font_char(suffix, static_cast<unsigned char>(c), kept);
                 if (suffix.size() >= most) break;
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
@@ -258,7 +324,8 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
                 std::memcpy(&room.x, raw.data() + i, 2);
                 std::memcpy(&room.y, raw.data() + i + 2, 2);
                 room.flag = raw[i + 4];
-                if (room.x < 0 || room.x >= 54 || room.y < 0 || room.y >= 54 || room.flag > 1) {
+                if (room.x < 0 || room.x >= kMapSide || room.y < 0 || room.y >= kMapSide ||
+                    room.flag > 1) {
                     return "bad line " + line;
                 }
                 out.start_table.push_back(room);
@@ -288,66 +355,15 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     std::map<std::string, BYTE*> found;
-    for (size_t i = 0; i < kConfigKeyCount; ++i) {
-        std::string key = kConfigKeys[i];
-        auto it = rvas.find(key);
+    for (const ConfigKey& key : kConfigKeys) {
+        auto it = rvas.find(key.name);
         if (it == rvas.end()) {
-            // An older helper's cache: the title screen's lines and the map cursor's names are
-            // left off without their keys (is_optional).
-            if (is_optional(key)) continue;
-            return "missing " + key;
+            if (key.optional) continue;  // its part left off
+            return std::string("missing ") + key.name;
         }
-        uint64_t rva = it->second;
-        if (rva == 0 || rva + 16 > image_size) return key + " is outside the game";
-        const IMAGE_SECTION_HEADER* section = section_of(image, rva);
-        if (section == nullptr) return key + " is in no section";
-        bool code = (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
-        if (code != is_function(key)) {
-            return key + (code ? " is in code, not data" : " is not in code");
-        }
-        // The C runtime's import slots are only read, in the read-only data they live in.
-        bool import_slot = key == "malloc_slot" || key == "free_slot";
-        if (!code && !import_slot && (section->Characteristics & IMAGE_SCN_MEM_WRITE) == 0) {
-            return key + " is in read-only data";
-        }
-        if (key == "rando_blob") {
-            uint64_t end = section->VirtualAddress +
-                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-            if (rva + kSectionSize > end) return key + " leaves no room for the section";
-        }
-        // What the offline look reads whole (offline.h): the map grid, the flags, the save slots
-        // and their copies of the randomizer section.
-        uint64_t whole = key == "map_grid"      ? kMapCells
-                         : key == "flags"       ? kFlagCount
-                         : key == "slot_array"  ? kSaveSlots * kSlotStride
-                         : key == "rando_slots" ? kSaveSlots * kSlotCopySize
-                                                : 0;
-        if (whole != 0) {
-            uint64_t end = section->VirtualAddress +
-                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-            if (rva + whole > end) return key + " leaves no room for what is read there";
-        }
-        if (key == "randomizer_menu") {
-            uint64_t end = section->VirtualAddress +
-                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-            if (rva + kMenuSize > end) return key + " leaves no room for the menu's state";
-        }
-        if (key == "start_cells" || key == "start_flags") {
-            uint64_t end = section->VirtualAddress +
-                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-            uint64_t size = key == "start_cells" ? 4 * kStartTableMax : kStartTableMax;
-            if (rva + size > end) return key + " leaves no room for 64 rooms";
-        }
-        if (key == "inventory") {
-            // The whole player state the helper touches must lie in the same section.
-            uint64_t end = section->VirtualAddress +
-                           (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-            if (rva < section->VirtualAddress + static_cast<uint64_t>(kInventoryInPlayer) ||
-                rva - kInventoryInPlayer + kPlayerStateSize > end) {
-                return key + " leaves no room for the player state";
-            }
-        }
-        found[key] = reinterpret_cast<BYTE*>(image) + rva;
+        std::string why = check_key(image, image_size, key, it->second);
+        if (!why.empty()) return why;
+        found[key.name] = reinterpret_cast<BYTE*>(image) + it->second;
     }
     base_ = reinterpret_cast<BYTE*>(image);
     // A client's config: the offline look put back first, with the addresses it was set with.
@@ -685,16 +701,16 @@ void Game::pump_popups() {
         popups_.pop_front();
         return;
     }
-    int per_line = kPopupPerLine;
+    int per_line = kGamePopupWidth;
     std::string text;
     if (popup.bare) {
-        text = notice_text(popup.suffix, kPopupPerLine, &per_line);
+        text = notice_text(popup.suffix, kGamePopupWidth, &per_line);
     } else {
         std::string head;
         if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
         const char* name = reinterpret_cast<const char*>(rec + record::kName);
         head.append(name, strnlen(name, record::kNameSize));
-        text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
+        text = popup_text(head, popup.suffix, kGamePopupWidth, &per_line);
     }
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
@@ -798,7 +814,7 @@ std::string Game::run_item_event(uint8_t item) {
     }
     BYTE* p = player();
     uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
-    if (row >= 54 || column >= 54) return "off the map";  // the raw cell can be -1
+    if (row >= kMapSide || column >= kMapSide) return "off the map";  // the raw cell can be -1
     reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
     return "";
 }
@@ -823,22 +839,17 @@ void Game::watch_newgame() {
     if (at<void*>(transition_fn_, 0) != newgame_fn_) return;  // no new game queued
     if (at<int32_t>(transition_timer_, 0) <= 1) return;       // too close to being built
     if (at<uint16_t>(rando_marker_, 0) != 1) return;          // a normal new game: not ours
-    // After ARCHIPELAGO (starting_), the section was checked before the plan went in, and the
-    // plan's own writes (the starting amounts) now differ from the mode's.
-    for (const SectionBytes& e : newgame_.expect) {
-        if (starting_) break;
-        if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
-            char where[16];
-            std::snprintf(where, sizeof(where), "0x%X", e.offset);
-            newgame_status_ = std::string("refused the new game is not the seed's mode (section +") +
-                              where + " differs)";
-            disarm_newgame();
-            return;
-        }
+    // The section the seed's mode, unless ARCHIPELAGO started it (starting_): that section was
+    // checked before the plan went in, and the plan's own writes (the starting amounts) now
+    // differ from the mode's.
+    int differs = starting_ ? -1 : first_difference(rando_blob_, newgame_.expect);
+    if (differs >= 0) {
+        newgame_status_ = "refused the new game is not the seed's mode (section +" +
+                          hex_offset(differs) + " differs)";
+        disarm_newgame();
+        return;
     }
-    for (const SectionBytes& e : newgame_.write) {
-        std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
-    }
+    write_edits(rando_blob_, newgame_.write);
     newgame_status_ = "applied slot " + std::to_string(at<int32_t>(current_slot_, 0) + 1);
     disarm_newgame();
 }
@@ -938,59 +949,41 @@ void Game::start_archipelago(WidgetCallback callback) {
     if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
     if (at<void*>(transition_fn_, 0) == newgame_fn_) return;
     starting_ = true;
+    // Refused: RANDOMIZER back, the plan dropped, nothing queued.
+    auto refuse = [&](const std::string& why) {
+        newgame_status_ = "refused " + why;
+        choice_.restore(menu_, callback);
+        disarm_newgame();
+    };
     try {
         std::string table = ensure_start_table();
-        if (!table.empty()) {
-            newgame_status_ = "refused " + table;
-            choice_.restore(menu_, callback);
-            disarm_newgame();
-            return;
-        }
+        if (!table.empty()) return refuse(table);
         int differs = -1;
         {
             // The menu's state is the player's own (the game keeps it in its preferences): set
             // to the seed's mode for the placement, then put back.
             MenuStateGuard guard(randomizer_menu_);
-            for (const SectionBytes& e : newgame_.menu) {
-                std::memcpy(randomizer_menu_ + e.offset, e.bytes.data(), e.bytes.size());
-            }
+            write_edits(randomizer_menu_, newgame_.menu);
             // START GAME's first step would pick a start; the placement reads the AP seed's
             // instead, so the plan goes in first. Then the placement, which builds the rest of
             // the section from the menu (the location list, the settings, the map tables).
             // START GAME's winnability check is skipped: the AP generator made the seed
             // beatable.
-            for (const SectionBytes& e : newgame_.write) {
-                std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
-            }
+            write_edits(rando_blob_, newgame_.write);
             reinterpret_cast<void (*)()>(placement_fn_)();
-            for (const SectionBytes& e : newgame_.expect) {
-                if (std::memcmp(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size()) != 0) {
-                    differs = e.offset;
-                    break;
-                }
-            }
+            differs = first_difference(rando_blob_, newgame_.expect);
         }
         if (differs >= 0) {
-            char where[16];
-            std::snprintf(where, sizeof(where), "0x%X", static_cast<unsigned>(differs));
-            newgame_status_ = std::string("refused the placement is not the seed's mode (section +") +
-                              where + " differs)";
-            choice_.restore(menu_, callback);
-            disarm_newgame();
-            return;
+            return refuse("the placement is not the seed's mode (section +" +
+                          hex_offset(differs) + " differs)");
         }
         // The AP seed over the placement now, so the game is the seed's even if the plan is
         // dropped before the next frame; then the new game in the chosen slot, as the
         // play-anyway path queues it. watch_newgame reports it in the next frame.
-        for (const SectionBytes& e : newgame_.write) {
-            std::memcpy(rando_blob_ + e.offset, e.bytes.data(), e.bytes.size());
-        }
+        write_edits(rando_blob_, newgame_.write);
         reinterpret_cast<void (*)()>(rando_newgame_fn_)();
         if (at<void*>(transition_fn_, 0) != newgame_fn_) {
-            newgame_status_ = "refused the game did not queue a new game (is the slot empty?)";
-            choice_.restore(menu_, callback);
-            disarm_newgame();
-            return;
+            return refuse("the game did not queue a new game (is the slot empty?)");
         }
         // The game is leaving the file screen: ARCHIPELAGO stays on the label through the fade,
         // and only RANDOMIZER's callback goes back, so the closing menu holds nothing of ours.
@@ -1253,7 +1246,7 @@ void Game::watch_offline() {
                                                                kSlotRandoMarker) != 1) {
             continue;
         }
-        const BYTE* copy = rando_slots_ + static_cast<ptrdiff_t>(n - 1) * kSlotCopySize;
+        const BYTE* copy = rando_slots_ + static_cast<ptrdiff_t>(n - 1) * kSectionSize;
         for (const OfflineSeed& sd : offline_seeds_) {
             if (sd.discs && section_is(sd, copy)) {
                 // This save's own count: its map, in its block (docs/re/save-format.md).
@@ -1302,18 +1295,18 @@ std::string Game::offline_state() const {
 }
 
 bool Game::labels_seed_loaded(bool in_play_only) const {
-    if (labels_seed_.size() != 160 || *save_loaded_ == kNoSaveLoaded ||
-        (in_play_only && !in_play()) || at<uint16_t>(rando_marker_, 0) != 1) {
+    if (!labels_seed_ || *save_loaded_ == kNoSaveLoaded || (in_play_only && !in_play()) ||
+        at<uint16_t>(rando_marker_, 0) != 1) {
         return false;
     }
-    return std::memcmp(labels_seed_.data(), rando_blob_ + kOfflineTableAt, 154) == 0 &&
-           std::memcmp(labels_seed_.data() + 154, rando_blob_ + kOfflineStartAt, 6) == 0;
+    return section_is(*labels_seed_, rando_blob_);
 }
 
 void Game::watch_map_names() {
     // The map cursor's name for the stand-ins' squares (mapmarks.h): the map's handler wrapped
     // while this save's labels are known.
-    if (configured_) map_names_.watch(map_at_, ap_items_.active() && labels_seed_loaded(false));  // the map is a menu
+    // The map is a menu: the save loaded, in play or not.
+    if (configured_) map_names_.watch(map_at_, ap_items_.active() && labels_seed_loaded(false));
 }
 
 void Game::map_after() {
@@ -1323,7 +1316,9 @@ void Game::map_after() {
 void* Game::map_original(void* child) const {
     void* handler = map_names_.original(child);
     // An object the helper did not wrap: the map's own handler, as the game holds it.
-    if (handler == nullptr && map_handler_ != nullptr) safe_read(map_handler_, &handler, sizeof(handler));
+    if (handler == nullptr && map_handler_ != nullptr) {
+        safe_read(map_handler_, &handler, sizeof(handler));
+    }
     return handler;
 }
 
@@ -1388,7 +1383,7 @@ Label layout_label(const std::string& first, const std::string& who) {
     size_t widest = 0;
     for (const std::string& part : shown) widest = (std::max)(widest, part.size());
     Label label;
-    label.width = (std::min)(static_cast<int>(widest), kPopupPerLine);
+    label.width = (std::min)(static_cast<int>(widest), kGamePopupWidth);
     label.name = center_lines(shown, label.width);
     if (label.name.size() > kItemNameMax) label.name.resize(kItemNameMax);
     while (!label.name.empty() && label.name.back() == ' ') label.name.pop_back();
@@ -1405,7 +1400,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         unsigned x = 0, y = 0;
         if (!(words >> op)) continue;
         std::vector<uint8_t> raw;
-        if (op != "label" || !(words >> x >> y >> hex) || x >= 54 || y >= 54 ||
+        if (op != "label" || !(words >> x >> y >> hex) || x >= kMapSide || y >= kMapSide ||
             !parse_hex(hex, raw)) {
             return "bad line " + line;
         }
@@ -1415,7 +1410,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         // it this name instead of the record's (this player's own OS Install Disk).
         std::vector<std::string> parts{std::string()};
         int item = -1;
-        size_t at = 0;
+        size_t from = 0;
         std::string item_name;
         if (!raw.empty() && raw[0] == '@') {
             int n = 0;
@@ -1424,47 +1419,34 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             size_t end = i;
             if (i > 1 && i < raw.size() && raw[i] == ' ') {
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    uint8_t c = raw[end];
-                    if (std::isalpha(c)) {
-                        item_name += static_cast<char>(std::toupper(c));
-                    } else if (std::isdigit(c) || (c != 0 && std::strchr(" .,'!?-:()/&",
-                                                                          static_cast<char>(c)))) {
-                        item_name += static_cast<char>(c);
-                    }
+                    keep_font_char(item_name, raw[end], kLabelChars);
                 }
             }
-            if (i > 1 && n < 51 && (end == raw.size() || raw[end] == '\n')) {
+            if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
                 item = n;
-                at = end;
+                from = end;
             } else {
                 item_name.clear();
             }
         }
-        for (size_t k = at; k < raw.size(); ++k) {
-            uint8_t c = raw[k];
-            if (c == '\n') {
+        for (size_t k = from; k < raw.size(); ++k) {
+            if (raw[k] == '\n') {
                 if (parts.size() == 2) break;
                 parts.emplace_back();
                 continue;
             }
-            std::string& part = parts.back();
-            if (std::isalpha(c)) {
-                part += static_cast<char>(std::toupper(c));
-            } else if (std::isdigit(c) ||
-                       (c != 0 && std::strchr(" .,'!?-:()/&", static_cast<char>(c)) != nullptr)) {
-                part += static_cast<char>(c);
-            }
+            keep_font_char(parts.back(), raw[k], kLabelChars);
         }
         std::string first, who;
         {
             std::vector<std::string> wrapped =
-                wrap_words(parts[0], static_cast<size_t>(kPopupPerLine) - 1);
+                wrap_words(parts[0], static_cast<size_t>(kGamePopupWidth) - 1);
             first = wrapped.empty() ? std::string(kApItemName) : wrapped.front();
             first.insert(first.begin(), static_cast<char>(kApItemGlyph));
         }
         if (parts.size() > 1) {
             std::vector<std::string> wrapped =
-                wrap_words(parts[1], static_cast<size_t>(kPopupPerLine));
+                wrap_words(parts[1], static_cast<size_t>(kGamePopupWidth));
             if (!wrapped.empty()) who = wrapped.front();
         }
         Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
@@ -1474,18 +1456,16 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         label.item = item;
         label.who = who;
         label.item_name = item_name;
-        out[static_cast<int>(y * 54 + x)] = label;
+        out[static_cast<int>(y * kMapSide + x)] = label;
     }
     return "";
 }
 
 void Game::set_labels(std::map<int, Label> labels) {
-    labels_seed_.clear();
+    labels_seed_.reset();
     if (!labels.empty() && *save_loaded_ != kNoSaveLoaded &&
         at<uint16_t>(rando_marker_, 0) == 1) {
-        labels_seed_.assign(rando_blob_ + kOfflineTableAt, rando_blob_ + kOfflineTableAt + 154);
-        labels_seed_.insert(labels_seed_.end(), rando_blob_ + kOfflineStartAt,
-                            rando_blob_ + kOfflineStartAt + 6);
+        labels_seed_ = offline_seed_of(rando_blob_);
     }
     if (labels.empty()) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
@@ -1532,7 +1512,7 @@ void Game::resolve_item_labels() {
                 name += static_cast<char>(record[record::kName + i]);
             }
         }
-        if (name.size() > static_cast<size_t>(kPopupPerLine) - 1) name.resize(kPopupPerLine - 1);
+        if (name.size() > static_cast<size_t>(kGamePopupWidth) - 1) name.resize(kGamePopupWidth - 1);
         if (name.empty()) name = kApItemName;  // a record with no name
         uint8_t icon = record[record::kIcon] != 0 ? record[record::kIcon]
                        : pending.item == kDiskItem ? kDiskGlyph  // the helper's (equip.h)
@@ -1581,7 +1561,7 @@ void Game::watch_ap_items() {
     // grid's index row * 54 + column (docs/re/memory.md, "Other players' items").
     uint8_t row = at<uint8_t>(player(), kPlayerCellRow);
     uint8_t column = at<uint8_t>(player(), kPlayerCellColumn);
-    int cell = row < 54 && column < 54 ? row * 54 + column : -1;
+    int cell = row < kMapSide && column < kMapSide ? row * kMapSide + column : -1;
     // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
     // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
     bool world = *save_loaded_ != kNoSaveLoaded && *menu_state_ == 0;
@@ -1620,17 +1600,18 @@ std::vector<StandInSeen> Game::stand_ins_seen() const {
     // Item objects keep their position in their sprite fields (pixels, as the player's), and the
     // general objects are assumed to; each pool keeps its cell (obj::) (docs/re/memory.md, "Live
     // item objects"). A position off the map is not used.
-    constexpr double kMapWidth = 54 * 320.0, kMapHeight = 54 * 224.0 + 8;
+    constexpr double kMapWidth = kMapSide * 320.0, kMapHeight = kMapSide * 224.0 + 8;
     std::vector<StandInSeen> out;
     BYTE* base = ItemLooks::item_frame_base(looks_places());
     auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {
         double x = 0, y = 0;
         std::memcpy(&x, o + sprite::kX, sizeof(x));
         std::memcpy(&y, o + sprite::kY, sizeof(y));
-        if (row >= 54 || column >= 54 || !(x >= 0 && x < kMapWidth) || !(y >= 0 && y < kMapHeight)) {
+        if (row >= kMapSide || column >= kMapSide || !(x >= 0 && x < kMapWidth) ||
+            !(y >= 0 && y < kMapHeight)) {
             return;
         }
-        out.push_back({item, row * 54 + column, x, y});
+        out.push_back({item, row * kMapSide + column, x, y});
     };
     if (item_pool_ != nullptr) {
         static BYTE pool[obj::kItemSize * ItemLooks::kSlots];  // the game thread's only

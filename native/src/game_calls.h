@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,11 @@ constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game
 // (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
+// The game's popup line width, 24 characters: `mov edx, 24` in its pickup code
+// (docs/re/memory.md, "Other players' items"), and the width the helper lays its own popups and
+// the stand-ins' names out in.
+constexpr int kGamePopupWidth = 24;
+
 // A label for another player's item: the stand-in's name as laid out, and the popup's line
 // width that name is laid out for (its widest line).
 struct Label {
@@ -120,7 +126,7 @@ struct ClientState {
     std::string scan_line;
     std::map<int, int> file_counts;  // the client's disk_slots
     std::map<int, Label> labels;
-    std::vector<BYTE> labels_seed;
+    std::optional<OfflineSeed> labels_seed;
     bool newgame_armed = false;
     bool starting = false;
     NewGamePlan newgame;
@@ -502,7 +508,7 @@ private:
     int map_frames_ = 0;  // frames until the next map look
     // The loaded section's item table and start when the labels were set (the seed they
     // are for): the map is changed only in a save in play holding that seed.
-    std::vector<BYTE> labels_seed_;
+    std::optional<OfflineSeed> labels_seed_;
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
@@ -524,11 +530,9 @@ private:
     int scan_frames_ = 0;  // frames until the next scanner check
     BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
-    // The pickup popup's line width: `mov edx, 24` in the game's pickup code, the path items
-    // with no icon take (the stand-ins do), changed to the width of the label a stand-in was
-    // named after: the one within reach, or the player's cell's (docs/re/memory.md, "Other
-    // players' items").
-    static constexpr int kGamePopupWidth = 24;
+    // The pickup popup's line width, kGamePopupWidth in the path items with no icon take (the
+    // stand-ins do), changed to the width of the label a stand-in was named after: the one
+    // within reach, or the player's cell's (docs/re/memory.md, "Other players' items").
     BYTE* popup_width_code_ = nullptr;
     BYTE* item_pool_ = nullptr;
     BYTE* object_pool_ = nullptr;  // the general objects (items in reversed-gravity rooms)

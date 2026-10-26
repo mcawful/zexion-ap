@@ -62,6 +62,9 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out);
 
 // Whether `table` (154 bytes) and `start` (6 bytes) are this seed's.
 bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start);
+// A seed made of a randomizer section's item table and start (nothing else set), to match
+// another section against.
+OfflineSeed offline_seed_of(const uint8_t* section);
 
 // The disk count with the map `grid` (54 * 54 cells) as it is.
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid);
