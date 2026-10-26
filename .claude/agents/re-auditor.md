@@ -25,16 +25,22 @@ live in the path around the change.
    or restarted (a stale handle, a new base address); a pattern that matched zero or several
    times; a null or out-of-range pointer in a chain; the game being on a build not in
    `docs/re/builds.md`. The safe behavior is to stop and say why, not to guess.
-3. **Writes without read-back.** Granting an item by writing memory and assuming it took. The
-   client must read the value back and treat a mismatch as not delivered.
+3. **Grants that are not compare-and-set, or assumed to have taken.** With the helper, grants go
+   as one batch its `apply` makes in the frame call (`client/native.py`, `native/README.md`):
+   it checks again that the game is in play and every byte holds what the poll read, and
+   writes all or none; anything but `applied` is not delivered. The direct-write fallback
+   (`Game.set_item`, no helper) must compare-and-set, read the byte back and treat a mismatch
+   as not delivered. Either way, nothing counts a grant as kept: the next poll gives again
+   whatever the inventory still lacks (`client/reconcile.py`).
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
    on the title screen, dead, or in a cutscene. Writes must be gated on
    `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)
    makes `state()` read in play before the inventory is copied back (`docs/re/memory.md`,
-   "Telling play from menus, the title screen and death"). The write still needs a read-back
-   and a later check that it stuck. Cutscenes and
-   endings are not covered by it yet. The game may overwrite the write, or save it to the
-   wrong slot.
+   "Telling play from menus, the title screen and death"). The ending's cutscenes read as play
+   at times, so received items are held from the moment the goal is reached in a load until no
+   save of the seed is loaded, and given on the next load (`client/session.py`, `holding`;
+   `docs/re/memory.md`, "The ending: flag 250"). Other cutscenes are not told apart from play
+   (not measured). The game may overwrite the write, or save it to the wrong slot.
 5. **Double delivery.** Trace the received-items index: where it is stored (in the save, in
    game memory, in a file), when it advances relative to the write, and what happens on a
    reconnect, a client restart, a game restart, and a reload of an older save. An item must be
