@@ -10,9 +10,12 @@ logic problems.
 
 ## Get the diff
 
-Use `git diff main...HEAD`, or `git diff HEAD` when uncommitted. If a target was named, review
-that. When the diff touches rules, also read the regions and rules it did not touch that lead to
-or from the changed ones: a rule is only as good as the path to it.
+Diff against the branch this one was cut from. If `git merge-base --is-ancestor apworld HEAD`
+succeeds (a branch cut from `apworld`, which holds the world), use `git diff apworld...HEAD`;
+otherwise `git diff main...HEAD`. On `main` or `apworld` itself, or when the base is unclear, ask
+for the range rather than review a whole branch's history. Use `git diff HEAD` when uncommitted. If
+a target was named, review that. When the diff touches rules, also read the regions and rules it did
+not touch that lead to or from the changed ones: a rule is only as good as the path to it.
 
 ## What you check against
 
