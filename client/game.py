@@ -30,7 +30,7 @@ SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
 # The loaded slot's block from +0x9354: a stamp that changes with each save (play time,
 # assumed), then the continue point's row and column (docs/re/save-format.md).
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
-PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
+PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo's y, then x)
 
 PROCESS = "Zexion.exe"
 FLAGS = 0x9C4  # the loaded game's flags, one byte each

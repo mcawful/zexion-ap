@@ -40,6 +40,8 @@ Statuses:
 - **assumed**: believed for a stated reason, not yet measured. Fine to build on, but anything that
   depends on it says so.
 - **measured**: observed directly, by the stated method, on the stated build.
+- **superseded**: replaced by a later finding, kept for its evidence; says what replaced it.
+- **open**: not yet tried or answered.
 - **working in game**: something built on the fact has run in the real game and done the right
   thing. Give the date, the build, and what was seen. A test on synthetic data does not count.
   Elsewhere (`native/README.md`, `docs/DEVELOPING.md`) "working in game (date, B1)" means this,

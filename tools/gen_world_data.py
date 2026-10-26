@@ -242,10 +242,11 @@ def shared(starts: list[dict], key: str) -> list | None:
 
 
 # The area of each map cell, as the pause screen shows it (docs/re/locations.md, "Location
-# names"; B1): a cell's record in MapData is 0x9A bytes from MAP_CELLS, indexed X * 54 + Y as
-# the game displays the cell (this repo's cell (a, b) is X = b, Y = a), its first 16 bits the
-# area; the area's region is the second byte of its 2-byte entry at MAP_AREAS, an index into
-# Text (32-byte entries after a 6-byte header).
+# names"; B1): MapData's cell records are 0x9A bytes each, indexed X * 54 + Y as the game
+# displays the cell (this repo's cell (a, b) is X = b, Y = a); MAP_CELLS is record 0's 16-bit
+# area field, 0x48 into the record (the records start at 0x3E5701). The area's region is the
+# second byte of its 2-byte entry at MAP_AREAS, an index into Text (32-byte entries after a
+# 6-byte header).
 MAP_DATA_SHA256 = "79a0510f4dbbee0f"
 TEXT_SHA256 = "3bf8cd5e07ede18f"
 MAP_CELLS, MAP_CELL_SIZE, MAP_AREAS = 0x3E5749, 0x9A, 0x45F94D
