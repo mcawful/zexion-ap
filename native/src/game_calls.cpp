@@ -829,7 +829,7 @@ void Game::restore_files() {
     if (!configured_) return;
     client_file_counts_.clear();
     offline_file_counts_.clear();
-    files_.set(0, {});
+    files_.set_counts({});
     files_.restore(files_at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_, texture_check_);
 }

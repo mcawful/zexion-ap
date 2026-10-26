@@ -437,10 +437,10 @@ std::string set_intel(bool on) {
 
 std::string disk_slots(const std::string& request) {
     // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count for the
-    // slots holding the seed (files.h).
-    int count = 0, required = 0;
+    // slots holding the seed (files.h); REQUIRED is checked but not shown (requests.h).
+    int count = 0;
     std::set<int> slots;
-    std::string error = zap::parse_disk_slots(request, count, required, slots);
+    std::string error = zap::parse_disk_slots(request, count, slots);
     if (!error.empty()) return "error " + error;
     return on_game(
         [&] {

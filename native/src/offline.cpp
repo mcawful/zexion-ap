@@ -5,7 +5,7 @@
 #include <sstream>
 
 #include "game_mem.h"
-#include "requests.h"  // parse_config
+#include "requests.h"  // parse_config, parse_hex
 
 namespace zap {
 
@@ -17,28 +17,18 @@ constexpr size_t kMaxFile = 48 * 1024;
 constexpr size_t kMaxSeeds = 256;  // the newest kept
 constexpr size_t kCheckBytes = 16;
 
+// Exactly `size` bytes, as hex (parse_hex).
 bool hex_bytes(const std::string& hex, uint8_t* out, size_t size) {
-    if (hex.size() != size * 2) return false;
-    for (size_t i = 0; i < size; ++i) {
-        unsigned v = 0;
-        for (int k = 0; k < 2; ++k) {
-            char c = hex[i * 2 + k];
-            unsigned d = c >= '0' && c <= '9'   ? static_cast<unsigned>(c - '0')
-                         : c >= 'a' && c <= 'f' ? static_cast<unsigned>(c - 'a' + 10)
-                         : c >= 'A' && c <= 'F' ? static_cast<unsigned>(c - 'A' + 10)
-                                                : 16u;
-            if (d > 15) return false;
-            v = v * 16 + d;
-        }
-        out[i] = static_cast<uint8_t>(v);
-    }
+    std::vector<uint8_t> raw;
+    if (hex.size() != size * 2 || !parse_hex(hex, raw)) return false;
+    std::memcpy(out, raw.data(), size);
     return true;
 }
 
+// Text as hex, at most one line of the game's text.
 bool hex_text(const std::string& hex, std::string& out) {
-    if (hex.size() % 2 != 0 || hex.size() > 62) return false;  // one line of the game's text
-    std::vector<uint8_t> raw(hex.size() / 2);
-    if (!hex_bytes(hex, raw.data(), raw.size())) return false;
+    std::vector<uint8_t> raw;
+    if (hex.size() > 62 || !parse_hex(hex, raw)) return false;
     out.assign(raw.begin(), raw.end());
     return true;
 }

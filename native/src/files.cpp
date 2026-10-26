@@ -1,7 +1,6 @@
 #include "files.h"
 
 #include <cstring>
-#include <sstream>
 
 #include "game_mem.h"
 
@@ -103,11 +102,6 @@ std::string file_disk_digits(int value) {
     if (value > 99) value = 99;
     return std::string(1, static_cast<char>('0' + value / 10)) +
            static_cast<char>('0' + value % 10);
-}
-
-void FileDisks::set(int count, std::set<int> slots) {
-    counts_.clear();
-    for (int slot : slots) counts_[slot] = count;
 }
 
 void* FileDisks::original(void* widget) const {
@@ -286,38 +280,6 @@ void FileDisks::restore(const FileAddresses& a) {
         }
         it = wrapped_.erase(it);
     }
-}
-
-std::string parse_disk_slots(const std::string& request, int& count, int& required,
-                             std::set<int>& slots) {
-    count = required = 0;
-    slots.clear();
-    if (request == "disk_slots") return "";
-    if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
-    std::istringstream words(request.substr(11));
-    std::string list, extra;
-    if (!(words >> count >> required >> list) || (words >> extra) || count < 0 || count > 255 ||
-        required < 1 || required > 255) {
-        count = required = 0;
-        return "bad disk_slots request";
-    }
-    if (list == "-") return "";
-    std::istringstream items(list);
-    std::string item;
-    while (std::getline(items, item, ',')) {
-        if (item.empty() || item.size() > 2 ||
-            item.find_first_not_of("0123456789") != std::string::npos) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        int n = std::stoi(item);
-        if (n < 1 || n > slot::kCount) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        slots.insert(n);
-    }
-    return "";
 }
 
 }  // namespace zap

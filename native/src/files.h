@@ -27,7 +27,6 @@
 
 #include <cstdint>
 #include <map>
-#include <set>
 #include <string>
 
 namespace zap {
@@ -50,9 +49,8 @@ std::string file_disk_digits(int value);
 
 class FileDisks {
 public:
-    // Game thread: what to show (an empty slot set turns it off): one count for the slots the
-    // client lists, or each slot's own (offline, saves of several seeds: offline.h).
-    void set(int count, std::set<int> slots);
+    // Game thread: what to show, a count by slot (none turns it off): the client's for the slots
+    // holding its seed, and each known seed's save its own (offline.h).
     void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
     bool on() const { return !counts_.empty(); }
 
@@ -89,10 +87,5 @@ private:
     std::map<BYTE*, Wrapped> wrapped_;  // entry -> its menu and the game's handler
     std::map<int, int> counts_;  // slot -> the count it shows
 };
-
-// A `disk_slots` request: "disk_slots" (off) or "disk_slots COUNT REQUIRED SLOTS", the slots a
-// comma list or "-". Returns "" or what is wrong.
-std::string parse_disk_slots(const std::string& request, int& count, int& required,
-                             std::set<int>& slots);
 
 }  // namespace zap
