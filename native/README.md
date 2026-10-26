@@ -220,7 +220,8 @@ each part against a stand-in game.
   then shows the logo glyph, then "PROGRESSION ITEM" (or "AP ITEM") over "FOR ALICE", laid out
   as the popups above, and while a stand-in is named the helper sets the popup width the
   pickup code passes (an immediate 24) to the label's longest line, putting 24 back elsewhere
-  and on unload. It paints Archipelago's logo (with its flashing up arrow for progression) into
+  and on unload (it first checks the instruction is `BA` with a width from 1 to 24, and
+  adopts a width an earlier helper left there). It paints Archipelago's logo (with its flashing up arrow for progression) into
   those frames and its ring of dots into a glyph, through OpenGL in the swap hook, after
   checking the texture is the 2048 x 2048 sprite sheet and reading it back once per texture to
   find the game's art and the places to paint blank (a texture not as expected is read again
@@ -312,7 +313,8 @@ each part against a stand-in game.
   (2026-10-25: the look, a disk counted offline, a fresh start with no client, the offline
   finds sent on connecting, the CLIENT CONNECTED. notice, and another seed's save with a
   client; `docs/re/memory.md`, "AP saves without the client").
-- **The map.** In an AP save (labels known), every 16th frame call raises the map squares of
+- **The map.** In an AP save in play holding the seed the labels were set for (a plain
+  randomizer save is never touched), every 16th frame call raises the map squares of
   item 48 (this player's OS Install Disks and other players' progression items) from the
   game's basic marker to its important one (`src/mapmarks.cpp`), and while the map is open the
   helper wraps the map's per-frame handler (both of its menu child's slots, `+0x168` and

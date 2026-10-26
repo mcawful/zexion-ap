@@ -27,7 +27,8 @@ seed as a test.
 
 To update, replace all three with the game closed. If the helper in the game's folder is not
 the version the client needs, the client says so and cannot use it: items still arrive, with
-no popups, the game acts as if no client were connected, and no new game can start the seed.
+no popups, the game acts as if no client were connected, and no new game can start the seed
+(a save that already holds it still plays).
 Copying this release's two DLLs there, with the game closed, fixes it. To remove the helper,
 delete both DLLs (or, to turn it off for a while, create an empty file named
 `zexion_ap.disabled` beside them). A save that is not from a seed you have played with the
