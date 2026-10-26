@@ -340,6 +340,20 @@ async def labels_tick(ctx: ZexionContext) -> None:
         told.labels_refused = True  # not asked again until a helper is attached again
 
 
+def stored_shields(ctx: ZexionContext, key: str) -> int | None:
+    """The server's count of Energy Shields given (0 when none is stored), read afresh: None
+    when the key holds something other than a count. It is open to any client in the room,
+    and a bad value must not read as 0, which would give every received shield again."""
+    raw = ctx.stored_data.get(key)
+    count = state.stored_count(raw)
+    if count is None and raw is not None:
+        if ctx.said("shields", "bad count"):
+            logger.warning("The server's Energy Shield count is not a number: shields wait.")
+        return None
+    ctx.said.clear("shields")
+    return count or 0
+
+
 async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     """Spawn received Energy Shields not given yet, one at a time, through the helper, and
     count each in the server's data storage once the game shows it up in play (client/
@@ -348,9 +362,10 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     if conn is None or conn.shield_key not in ctx.stored_data or game_conn is None:
         return  # no game, or the count not read from the server yet
     key = conn.shield_key
-    # The server's count, read afresh after each wait: the key is open to any client in the
-    # room, so anything but a count reads as none (state.stored_count).
-    if sh.resend_due(key, state.stored_count(ctx.stored_data.get(key)) or 0, time.monotonic()):
+    stored = stored_shields(ctx, key)
+    if stored is None:
+        return
+    if sh.resend_due(key, stored, time.monotonic()):
         await send_shield_count(ctx)
     pending = sh.current(key)
     if pending is not None:
@@ -361,7 +376,10 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         return
     if conn.session.holding:
         return  # the ending began in this load: on the next load, as other items (session.py)
-    given = sh.given_count(key, state.stored_count(ctx.stored_data.get(key)) or 0)
+    stored = stored_shields(ctx, key)  # read again: the server may have answered meanwhile
+    if stored is None:
+        return
+    given = sh.given_count(key, stored)
     if reconcile.shields_owed(received, given) <= 0:
         return
     reply = await asyncio.to_thread(helper.request, "shield")
@@ -396,7 +414,9 @@ async def confirm_shield(
             logger.warning("Can't tell whether a received Energy Shield is up; trying again.")
             log.warning(f"Reading the player's Energy Shield failed ({failed}).")
         sh.said = said
-    stored = state.stored_count(ctx.stored_data.get(key)) or 0
+    stored = stored_shields(ctx, key)
+    if stored is None:
+        return  # looked at again once the count is a number
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
     if outcome == shields.BACKOFF:
         logger.warning(
