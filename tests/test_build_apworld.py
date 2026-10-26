@@ -54,6 +54,32 @@ def test_the_apworld_carries_archipelagos_manifest_keys(
     assert (out / "version.dll").is_file()
 
 
+def test_the_player_guides_go_beside_the_apworld(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+    out = tmp_path / "dist"
+    bap.build(out)
+    docs = bap.WORLD / "docs"
+    for source, name in (
+        ("setup_en.md", "zexion-setup-guide.md"),
+        ("en_Zexion.md", "zexion-game-page.md"),
+    ):
+        assert (out / name).read_bytes() == (docs / source).read_bytes()
+    # The setup guide sends the player to the game page by its shipped name.
+    assert "zexion-game-page.md" in (docs / "setup_en.md").read_text(encoding="utf-8")
+
+
+def test_a_world_version_that_is_not_the_clients_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_dlls(tmp_path, monkeypatch, "9.9.9")
+    monkeypatch.setattr(bap, "client_version", lambda: "9.9.9")
+    with pytest.raises(SystemExit, match="one number"):
+        bap.build(tmp_path / "dist")
+    assert not (tmp_path / "dist").exists()
+
+
 def test_a_helper_of_another_version_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

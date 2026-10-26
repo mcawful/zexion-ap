@@ -57,20 +57,17 @@ async def attach_helper(ctx: ZexionContext) -> None:
     notes: list[str] = []
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
-    except native.ModDisabled as exc:
-        if ctx.said("helper", str(exc)):  # tried every 30 s: said again only when it changes
-            logger.warning(str(exc))
-        ctx.drop_helper()
-        return
     except native.HelperError as exc:
-        if ctx.said("helper", str(exc)):
-            logger.warning(
-                f"The Zexion mod isn't working: {exc}. Until it is, new games of this seed "
-                "can't be started, and items arrive without popups."
-            )
+        # Tried every 30 s: each line said again only when it changes.
+        line = state.helper_failed(exc)
+        if line is not None and ctx.said("helper", line):
+            logger.warning(line)
+        if ctx.said("helper detail", str(exc)):
+            log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
         return
     ctx.said.clear("helper")
+    ctx.said.clear("helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.

@@ -73,6 +73,11 @@ class GameNotRunning(GameError):
     """The attached process has exited (or was never found)."""
 
 
+class AccessDenied(GameError):
+    """Windows refused to open the game (error 5): Zexion runs as administrator and the client
+    does not."""
+
+
 class PatternError(GameError):
     """A pattern matched zero or several times, or a target's patterns disagreed."""
 
@@ -252,6 +257,8 @@ class Game:
             pm = process.Process(PROCESS)
         except process.ProcessNotFound as exc:
             raise GameNotRunning(f"{PROCESS} is not running") from exc
+        except process.ProcessAccessDenied as exc:
+            raise AccessDenied(f"opening {PROCESS} failed: {exc}") from exc
         except process.ProcessError as exc:
             raise GameError(f"opening {PROCESS} failed: {exc}") from exc
         try:

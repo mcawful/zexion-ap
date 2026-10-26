@@ -55,3 +55,10 @@ def test_a_running_process_is_alive_until_its_handle_is_closed() -> None:
     finally:
         p.close_process()
     assert not p.alive()
+
+
+def test_access_denied_is_its_own_error() -> None:
+    ctypes.set_last_error(process.ERROR_ACCESS_DENIED)  # a game run as administrator
+    assert isinstance(process._error("opening Zexion.exe"), process.ProcessAccessDenied)
+    ctypes.set_last_error(87)
+    assert type(process._error("opening Zexion.exe")) is process.ProcessError

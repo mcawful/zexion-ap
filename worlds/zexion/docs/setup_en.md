@@ -9,7 +9,8 @@ as a test.
   tells you if yours isn't supported.
 - Archipelago 0.6.8 or newer.
 - A release of this world: `zexion.apworld`, `zexion_ap.dll` and `version.dll`, all three from
-  the same release. There is no public release yet.
+  the same release. Each release also has this guide (`zexion-setup-guide.md`) and the game
+  page (`zexion-game-page.md`). There is no public release yet.
 
 The two files `zexion_ap.dll` and `version.dll` are **the mod**. It is required: without it,
 the game can't start a seed.
@@ -21,23 +22,32 @@ the game can't start a seed.
 2. Close Zexion. Copy `zexion_ap.dll` and `version.dll` into Zexion's folder (in Steam:
    right-click Zexion, Manage, Browse local files).
 
-After you connect the client for the first time, the title screen shows ARCHIPELAGO MOD and
-its version.
+Right after installing, the title screen looks as it always did. Once the client has connected
+while Zexion runs (Start playing, below), the title screen shows ARCHIPELAGO MOD and its
+version: the mod is in.
 
-## Make your YAML and generate
+## Make your YAML
 
 1. In the Launcher, choose **Generate Template Options**. It writes `Zexion.yaml` into
    `Players/Templates` in your Archipelago folder.
-2. Copy it into `Players`, then set your `name` and the options (see the game page).
-3. Choose **Generate** in the Launcher. The game lands in `output`: host it with **Host** in
-   the Launcher, or upload the `.zip` to archipelago.gg.
+2. Copy it into `Players`, then set your `name` (your player name) and the options (see the
+   game page, `zexion-game-page.md`).
+
+## Generate and host
+
+- **Your own game:** choose **Generate** in the Launcher. The game lands in `output`: host it
+  with **Host** in the Launcher, or upload the `.zip` to archipelago.gg.
+- **Someone else's game:** send them your YAML. To generate the game, they need
+  `zexion.apworld` from the same release as yours installed in their Archipelago.
+  archipelago.gg can host the generated game, but can't generate it: Zexion isn't one of its
+  games.
 
 ## Start playing
 
 1. Start Zexion.
 2. In the Launcher, open **Zexion Client**. Type the server address (for example
-   `archipelago.gg:38281`), press **Connect**, then enter your slot name (the `name` from your
-   YAML).
+   `archipelago.gg:38281`), press **Connect**, then enter your player name (the `name` from
+   your YAML).
 3. In Zexion, pick an empty save slot. Where the game offers NORMAL and RANDOMIZER, it now
    offers NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room
    (your landing pod) with its starting items, and the game saves at once.
@@ -48,16 +58,18 @@ same seed the same way; they all count.
 - Keep the client open while you play.
 - Locations you check are sent at once.
 - Items for you arrive while you play (not in menus).
-- If you die or reload, items received since your last save are given again.
-- The client says when your seed's save is loaded. In a save of another seed, nothing is sent,
-  and items sent to you wait until you load your seed's save.
+- If you die or reload, you don't lose the items sent to you: they're given back.
+- The client says when your seed's save is loaded. When you leave it, or play a save of
+  another seed, nothing is sent, and items sent to you wait until you load your seed's save
+  again.
 
-Goals, options and what's changed in the game: see the game page.
+Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
 
 ## Playing without the client
 
-You can play your seed's save with the client closed, once you have connected to that seed at
-least once. The game shows ARCHIPELAGO CLIENT NOT CONNECTED.
+You can keep playing your seed's save with the client closed: what you find is sent the next
+time you connect. This works once you have connected to that seed at least once; the game then
+shows ARCHIPELAGO CLIENT NOT CONNECTED.
 
 - Locations you check are sent the next time you connect with that save loaded, and so is
   your goal if you reached the core goal's ending meanwhile.
@@ -68,25 +80,50 @@ offers SKIP ESCAPE AND FINAL BATTLE? after you grab Zexion.
 
 ## Updating
 
-Close Zexion, then replace all three files with the new release's: install the new
-`zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's folder.
+- Finish your seed first, or keep the old release until it ends: a seed made with an older
+  release may not play with a newer one (the client says so). Every Zexion player in a game
+  uses the same release.
+- To update: close Zexion, then replace all three files with the new release's. Install the
+  new `zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's
+  folder.
+
+## When Steam updates Zexion
+
+The client may then say your version of Zexion isn't supported: wait for a new release of this
+world. Meanwhile Zexion plays as normal, and your saves of a seed are safe: the client and the
+mod leave a version of the game they don't know alone.
 
 ## Turning the mod off or removing it
 
-- **Turn it off for a while:** create an empty file named `zexion_ap.disabled` next to the two
-  mod files. While it is there, neither the game nor the client loads the mod (the client says
-  so), so you can't play a seed. Delete it to turn the mod back on.
+You don't need to turn the mod off to play normally: with the client closed, your other saves
+play as normal.
+
+- **Turn it off for a while:** close Zexion, then create an empty file named
+  `zexion_ap.disabled` next to the two mod files. Windows may hide the end of file names, so check it isn't called
+  `zexion_ap.disabled.txt` (in File Explorer: View, then turn on File name extensions). While
+  it is there, neither Zexion nor the client loads the mod (the client says so). Your saves of
+  a seed still play with the client, but items arrive without popups, and you can't start a
+  new game of a seed. Delete the file to turn the mod back on.
 - **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder.
+  Your saves of a seed still load, as plain randomizer games (other players' items and OS
+  Install Disks look like Scrap). To play a seed again, install the mod again.
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | The client says your version of Zexion isn't supported. | Steam probably updated the game. Wait for a new release of this world. |
-| The client says the mod is the wrong version, or isn't loaded. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
-| There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty slot. If the client says the mod isn't working, see the row above. |
-| `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so some antivirus tools flag it. Allow it, then copy it back. |
+| The client says Zexion is running as administrator. | Start Zexion normally, or run the Archipelago Launcher as administrator too. |
+| The client says the mod is the wrong version, or isn't installed. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
+| The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the row above. |
+| The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
+| There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. |
+| The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, pick your seed's mode (Easy, Standard or OHKO, as in your YAML), change no other options, and choose START GAME. |
+| `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
 | Nothing is sent or received. | Check that the client is connected and the loaded save is from this seed. |
 
-Found a bug? Report it at
-[github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues).
+## Reporting a bug
+
+Report it at [github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues),
+and attach the client's log: in your Archipelago folder, the `logs` folder has one file per
+client run, named `ZexionClient_` and the date and time it started.

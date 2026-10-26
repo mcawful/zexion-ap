@@ -7,7 +7,8 @@ up, but lets Archipelago decide what is at each of the game's 154 item locations
 OHKO). Items found in Zexion can belong to other players, and their games can send items to
 you.
 
-You need the Zexion Archipelago mod and the Zexion Client: see the setup guide.
+You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
+(`zexion-setup-guide.md` in the release).
 
 ## What is the goal?
 
@@ -21,11 +22,11 @@ Set with the Goal option.
 - **OS Install Disks**: find enough OS Install Disks (the options set how many are placed and
   how many you need). The four keys are not in the seed.
   - Your count shows on each disk's popup, on the pause screen and on the file select.
-  - The room that shows where the keys are in the normal game tells you how many you need.
-    Until you have been there, the pause screen shows "OF ?".
+  - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
+    you how many you need. Until you have been there, the pause screen shows "OF ?".
   - Once you have enough, save at the start room (your landing pod) and answer YES to RETURN
-    HOME WITH THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
-    back the next time you save there.
+    HOME WITH THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the
+    question comes back the next time you save there.
 
 ## Which modes are there?
 
@@ -35,9 +36,10 @@ to; the 4 locations it can't reach are left out.
 
 ## Where does the game start?
 
-In one of the game's own start rooms, chosen with the Start Room option. Easy and Standard can
-start in 9 of them, OHKO in all 34. If your mode can't use the room you pick, a random one it
-can use is chosen. The spoiler log names the start room (and OHKO's second room).
+In one of the game's own start rooms, chosen with the Start Room option: by default
+`kresezoa_16_13`. Easy and Standard can start in 9 of them, OHKO in all 34. If your mode can't
+use the room you pick, a random one it can use is chosen. The spoiler log names the start room
+(and OHKO's second room).
 
 Rooms are named by their area and their X and Y as the pause screen shows them, as in
 `kresezoa_16_13`. Locations are named the same way, as in "Guardia 22,7", so you can find them
@@ -83,8 +85,9 @@ Not by default. ASSIST (pause, OPTIONS) is locked in your seed's saves. Turn on 
 Assists option to allow it.
 
 If a seed turns out to need the assists, the host can unlock them for good by sending you the
-Assist Unlock item from the server console (on archipelago.gg, the room page's command box):
-`/send YOURNAME Assist Unlock`.
+Assist Unlock item from the server console, with your player name:
+`/send YOURNAME Assist Unlock`. On archipelago.gg, the console is the command box on the room
+page, which only whoever created the room sees.
 
 ## Does Zexion support DeathLink?
 

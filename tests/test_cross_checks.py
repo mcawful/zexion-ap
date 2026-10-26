@@ -3,17 +3,23 @@
 Each value has one home on either side and a copy on the other: the helper's version (the
 client refuses another), the game builds both identify, the addresses the client sends in
 ``config``, and the proxy's off switch. These read the C++ as text, so they run without a
-native build.
+native build. Also the world's ``world_version``, the same release number, where the world is
+(on ``apworld``).
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
+import pytest
+
 from client import native, offline, patterns
 
-SRC = Path(__file__).resolve().parent.parent / "native" / "src"
+ROOT = Path(__file__).resolve().parent.parent
+SRC = ROOT / "native" / "src"
+MANIFEST = ROOT / "worlds" / "zexion" / "archipelago.json"
 
 
 def source(name: str) -> str:
@@ -29,6 +35,12 @@ def braced(text: str, opening: str) -> str:
 def test_the_helper_is_the_version_the_client_asks_for() -> None:
     versions = re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', source("dllmain.cpp"))
     assert versions == [native.VERSION]
+
+
+@pytest.mark.skipif(not MANIFEST.is_file(), reason="the world is on apworld only")
+def test_the_world_has_the_release_number_of_the_client() -> None:
+    world = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    assert world["world_version"] == native.VERSION
 
 
 def test_the_proxy_and_the_client_have_the_same_off_switch() -> None:

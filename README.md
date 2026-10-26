@@ -31,16 +31,18 @@ game, the client tells you when your version isn't supported.
 2. In the Archipelago Launcher, choose Install APWorld and pick `zexion.apworld`.
 3. Install the mod: with Zexion closed, copy `zexion_ap.dll` and `version.dll` into Zexion's
    folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required.
-4. Make your YAML, then generate and host the game, or join one someone else hosts.
-5. Start Zexion. In the Launcher, open **Zexion Client** and connect to the server.
+4. Make your YAML, then generate and host the game. To join someone else's game, send them
+   your YAML: they need `zexion.apworld` from the same release to generate it.
+5. Start Zexion. In the Launcher, open **Zexion Client**, connect to the server and enter your
+   player name.
 6. In Zexion, pick an empty save slot and choose **ARCHIPELAGO**.
 
-The full player guide (setup, options, goals and troubleshooting) comes with each release,
-inside the APWorld. It is not online yet.
+Each release comes with the full player guides: `zexion-setup-guide.md` (setup, updating,
+troubleshooting) and `zexion-game-page.md` (goals, options, what changes in the game).
 
 ## Help
 
-Something wrong? Check the troubleshooting section of the player guide, then
+Something wrong? Check the troubleshooting section of `zexion-setup-guide.md`, then
 [open an issue](https://github.com/mcawful/zexion-ap/issues).
 
 ## Contributing

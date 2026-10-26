@@ -296,13 +296,23 @@ class Poll:
         self.found = own_found(ctx)
 
 
+def game_alive(ctx: ZexionContext) -> bool:
+    """Whether the attached game is still running: a helper lost with its game is no news for
+    the player, as the next read says the game closed."""
+    try:
+        return ctx.game_conn is not None and ctx.game_conn.pm.alive()
+    except Exception:
+        return False
+
+
 @contextlib.contextmanager
 def helper_failure(ctx: ZexionContext) -> Iterator[None]:
     """Around requests to the helper: one that fails drops it, to be tried again later."""
     try:
         yield
     except native.HelperError as exc:
-        logger.warning(HELPER_LOST)
+        if game_alive(ctx):
+            logger.warning(HELPER_LOST)
         log.warning(f"The in-game helper failed ({exc}); trying it again later.")
         ctx.drop_helper()
 
@@ -329,13 +339,15 @@ async def game_loop(ctx: ZexionContext) -> None:
         try:
             await poll(ctx)
         except Exception as exc:  # never the end of the loop: what failed is tried on the next poll
-            if ctx.said("loop", repr(exc)):
+            if ctx.said("loop", repr(exc)):  # said again after a poll that went through
                 logger.error(
                     "Something went wrong in the client (details in the log); trying again. "
                     f"Please report it at {state.REPORT}."
                 )
                 log.exception("The Zexion game loop failed; trying again.")
             await asyncio.sleep(2)
+        else:
+            ctx.said.clear("loop")
 
 
 async def poll(ctx: ZexionContext) -> None:
@@ -418,6 +430,7 @@ async def poll(ctx: ZexionContext) -> None:
             ctx.game_conn.pm.close_process()  # the exited game's handle
         ctx.game_conn = None
         ctx.drop_helper()
+        ctx.said.clear("read", "read detail")  # the next game's failures are news
         return
     except game.GameError as exc:
         if ctx.said("read", "failing"):  # said again only after a read that worked
@@ -426,12 +439,12 @@ async def poll(ctx: ZexionContext) -> None:
             log.warning(f"Reading Zexion failed: {exc}")
         await asyncio.sleep(2)
         return
-    ctx.said.clear("read")
-    ctx.said.clear("read detail")
+    ctx.said.clear("read", "read detail")
     if ctx.helper is not None and current.helper is None:
         # The session gave up on it (try again later): dropped before the count below, so the
         # popups it had not shown are not counted as shown.
-        logger.warning(HELPER_LOST)
+        if game_alive(ctx):
+            logger.warning(HELPER_LOST)
         ctx.drop_helper()
     elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS

@@ -195,6 +195,9 @@ def test_a_message_is_said_once_until_it_changes() -> None:
     assert said("helper", "b") and said("helper", "a")
     said.clear("helper")
     assert said("helper", "a")
+    assert said("read", "x") and said("read detail", "y")
+    said.clear("read", "read detail")  # a read that worked, or the game closed
+    assert said("read", "x") and said("read detail", "y")
 
 
 def test_the_save_loaded_line_names_the_games_slot() -> None:
@@ -212,6 +215,21 @@ def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
     assert "isn't supported yet" in unknown and "0x" not in unknown
     assert state.REPORT in state.attach_failed(game.PatternError("pattern matched 2 times"))
     assert "0x" not in state.attach_failed(game.GameError("read at 0x1000 failed"))
+    denied = state.attach_failed(game.AccessDenied("opening Zexion.exe failed: (error 5)"))
+    assert "administrator" in denied and "error 5" not in denied
+
+
+def test_the_mod_failing_is_said_plainly_unless_the_player_can_fix_it() -> None:
+    from client import native
+
+    fixable = state.helper_failed(native.ModFixable("it isn't installed; copy the two files"))
+    assert "it isn't installed; copy the two files" in fixable
+    off = native.ModDisabled("The mod is turned off.")
+    assert state.helper_failed(off) == "The mod is turned off."
+    internal = state.helper_failed(native.HelperError("no reply within 2.0 s"))
+    assert "no reply" not in internal and "didn't start" in internal
+    assert "zexion_ap.dll and version.dll" in internal
+    assert state.helper_failed(native.GameExited("the game has exited")) is None
 
 
 def test_leaving_this_seeds_save_says_items_wait() -> None:
