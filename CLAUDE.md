@@ -5,8 +5,8 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** pre-release. Client and helper 0.28.0, played in game on build B1. The APWorld lives
-on the local branch `apworld` (never pushed: Rules).
+**Status:** pre-release, played in game on build B1 (the version: "Releases and versions"). The
+APWorld lives on the local branch `apworld` (never pushed: Rules).
 
 Where things are:
 
@@ -132,16 +132,18 @@ The tools find the game through Steam's library list and the saves through `%APP
 
 ## Releases and versions
 
-`tools/build_apworld.py` (on `apworld`) writes `dist/zexion.apworld` (the world without its
-tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll` and `version.dll`. It packs only
-git-tracked files and refuses missing, stale or mismatched DLLs (its docstring): rebuild
-`native/` first. The packaged client has no build of its own, so it uses the helper in the
-game's folder.
+`tools/build_apworld.py` (on `apworld`) writes into `dist/`: `zexion.apworld` (the world without
+its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the
+player guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
+`worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names). It
+packs only git-tracked files and refuses missing, stale or mismatched DLLs and a mismatched
+`world_version` (its docstring): rebuild `native/` first. The packaged client has no build of
+its own, so it uses the helper in the game's folder.
 
-- **The release version** is `VERSION` in `client/native.py` and `kVersion` in
-  `native/src/dllmain.cpp`: bump both (`tests/test_cross_checks.py` compares them; the helper
-  shows it on the title screen).
-- `world_version` in `worlds/zexion/archipelago.json` is the world's version for AP.
+- **The release version** is one number in three places: `VERSION` in `client/native.py`,
+  `kVersion` in `native/src/dllmain.cpp` and `world_version` in
+  `worlds/zexion/archipelago.json` (on `apworld`). Bump all three: `tests/test_cross_checks.py`
+  compares them (the world's where it exists); the helper shows it on the title screen.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout
@@ -186,7 +188,8 @@ game's folder.
 - `docs/re/`: the reverse-engineering record.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys). `test_build_apworld.py` and
+  must agree on (version, builds, `config` keys), and the world's `world_version` where the
+  world is. `test_build_apworld.py` and
   `test_gen_world_data.py` test tools that exist only on `apworld`.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).

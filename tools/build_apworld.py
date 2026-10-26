@@ -1,4 +1,5 @@
-"""Build a release: the world and its client in ``zexion.apworld``, beside the two helper DLLs.
+"""Build a release: the world and its client in ``zexion.apworld``, beside the two helper DLLs
+and the player guides.
 
     .venv/Scripts/python tools/build_apworld.py [--out dist]
 
@@ -7,14 +8,17 @@ The apworld is the world package (``worlds/zexion``, without its tests) with the
 ``worlds.zexion.client``; the world's launcher entry, Zexion Client, starts it from there
 (``worlds/zexion/__init__.py``, ``run_client``). Archipelago's launcher installs the apworld;
 the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
-which only the player does: no tool here writes there.
+which only the player does: no tool here writes there. The player guides go beside them as
+plain files (GUIDES), since they are not online: ``zexion-setup-guide.md`` and
+``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``.
 
 The DLLs are the CMake Release builds (``native/build``). The build refuses a missing DLL, a
 helper whose version is not the client's (``client/native.py``, ``VERSION``, which it also
 refuses to be without), so the three always match, and a DLL older than its sources
 (``native/src`` or ``native/proxy``, and ``native/CMakeLists.txt``). It also refuses a
-manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion, and two
-files that would share a name in the apworld.
+manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion or whose
+``world_version`` is not ``VERSION`` (a release has one number), and two files that would
+share a name in the apworld.
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
 builder adds (CONTAINER_KEYS): without them, AP 0.6.8 logs the manifest as invalid and ignores
@@ -46,6 +50,12 @@ CMAKE = ROOT / "native" / "CMakeLists.txt"
 HELPER_SOURCES = (ROOT / "native" / "src", CMAKE)
 PROXY_SOURCES = (ROOT / "native" / "proxy", CMAKE)
 SKIP_DIRS = {"__pycache__", "test"}
+# The player guides, copied beside the apworld under these names (setup_en.md names the game
+# page's file, and en_Zexion.md the setup guide's).
+GUIDES = {
+    WORLD / "docs" / "setup_en.md": "zexion-setup-guide.md",
+    WORLD / "docs" / "en_Zexion.md": "zexion-game-page.md",
+}
 MANIFEST = "zexion/archipelago.json"
 # The keys APWorldContainer.get_manifest() gives in AP 0.6.8 (worlds/Files.py: container_version
 # 7, and an APWorldContainer's compatible_version 7) besides "game", which the world's has,
@@ -127,6 +137,11 @@ def client_files() -> list[tuple[Path, str]]:
 def build(out: Path) -> Path:
     info = manifest()
     version = client_version()
+    if info.get("world_version") != version:
+        raise SystemExit(
+            f"worlds/zexion/archipelago.json has world_version {info.get('world_version')!r}, "
+            f"and the client is {version}: a release has one number (set both)"
+        )
     for dll in (HELPER, PROXY):
         if not dll.is_file():
             raise SystemExit(f"{dll} is missing: build native/ first (CLAUDE.md)")
@@ -136,7 +151,7 @@ def build(out: Path) -> Path:
         if newest_mtime(sources) > dll.stat().st_mtime:
             listed = " or ".join(str(s) for s in sources)
             raise SystemExit(f"{dll.name} is older than {listed}: rebuild native/")
-    files = world_files() + client_files()
+    files = world_files() + client_files()  # the guides among them: tracked
     names = [name for _, name in files] + [MANIFEST]
     if len(names) != len(set(names)):
         raise SystemExit("two files would share a name in the apworld")
@@ -149,6 +164,8 @@ def build(out: Path) -> Path:
         zf.writestr(MANIFEST, json.dumps(info, indent=4))
     for dll in (HELPER, PROXY):
         shutil.copy2(dll, out / dll.name)
+    for guide, name in GUIDES.items():
+        shutil.copyfile(guide, out / name)
     return apworld
 
 
@@ -157,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "dist", help="output folder")
     args = parser.parse_args(argv)
     apworld = build(args.out)
-    print(f"{apworld} (client and helper {client_version()}), with zexion_ap.dll and version.dll")
+    print(f"{apworld} ({client_version()}), with zexion_ap.dll, version.dll and the player guides")
     return 0
 
 

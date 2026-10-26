@@ -162,11 +162,16 @@ helper into the game: the one already there if it is this version, else
 ## Releases
 
 On `apworld`, `.venv/Scripts/python tools/build_apworld.py` writes `dist/`: `zexion.apworld`
-(the world without its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll` and
-`version.dll`. It packs only files git tracks and refuses a release that would not match (its
-docstring): rebuild `native/` first after a checkout that touched it. The release version is
-`VERSION` in `client/native.py` and `kVersion` in `native/src/dllmain.cpp`; a cross-check test
-compares them.
+(the world without its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll`,
+`version.dll`, and the player guides as `zexion-setup-guide.md` and `zexion-game-page.md`
+(from `worlds/zexion/docs/`; they are not online). It packs only files git tracks and refuses a
+release that would not match (its docstring): rebuild `native/` first after a checkout that
+touched it.
+
+A release has one version number, in three places: `VERSION` in `client/native.py`,
+`kVersion` in `native/src/dllmain.cpp` and `world_version` in
+`worlds/zexion/archipelago.json`. `tests/test_cross_checks.py` compares them, and the builder
+refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
 
 ## Where things are
 
