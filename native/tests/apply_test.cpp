@@ -1,10 +1,8 @@
-// Grants and popups end to end, through the real pipe and hook: the hook-test build of the helper
-// (argv[1]) is loaded into this program, which plays the game. Two busy threads call the
-// hooked GetTickCount like the game's frames; the helper is configured with this program's
-// stand-in game (stand_in.h) and applies a batch inside those calls, and `popups` counts its
-// popup until a frame shows it. With the calls stopped, a batch is refused for want of a frame
-// and is never applied afterwards. With something hooked over the helper, an unload is refused
-// and what the client had set is set again.
+// Grants and popups end to end through the real pipe and hook: the hook-test helper (argv[1])
+// hooks this program's GetTickCount, which two busy threads call as the game's frames, and is
+// configured with the stand-in game (stand_in.h). Covers a batch and its popup, a batch no
+// frame takes, and an unload refused with something hooked over the helper (what the client
+// set is armed again).
 
 #include <windows.h>
 

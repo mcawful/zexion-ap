@@ -1,5 +1,5 @@
-// Host tests for other players' items (apitem.h): the stand-in records restyled and named by
-// cell, the logo painted through a fake OpenGL, and everything put back; and the label parser.
+// Host tests for apitem.h: the stand-in records restyled and named by cell, the logos and font
+// glyphs painted through a fake OpenGL (one readback shared), all put back; and the label parser.
 
 #include <windows.h>
 
@@ -65,9 +65,8 @@ void WINAPI fake_sub_image(unsigned, int, int x, int y, int w, int h, unsigned, 
     g_uploads.push_back({x, y, w, h, std::vector<uint8_t>(p, p + w * h * 4)});
 }
 unsigned WINAPI fake_get_error() { return 0; }
-// The texture as read back: Sprites.png's known art (Scrap Energy's frame at (6, 0), glyph 0xC0
-// at (2, 1)) opaque, unless a test turns it off; the logos' places blank, unless a test puts
-// something in frame 95.
+// The readback: the known art apitem.cpp checks (Scrap Energy's frame 134 at (6, 0), glyph 0xC0
+// at (2, 1)) opaque unless g_known_art is off; the logo places blank unless g_frame95_used.
 bool g_frame95_used = false;
 bool g_known_art = true;
 int g_readbacks = 0;

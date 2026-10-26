@@ -221,7 +221,8 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(game.queued_popups() == 0, "the warning not shown yet withdrawn");
     g_rando_marker = 1;
 
-    // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty.
+    // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty (its section
+    // still the seed's).
     auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
     for (int n : {3, 4, 5}) {
         *reinterpret_cast<uint16_t*>(block(n) + 0x9400) = 1;

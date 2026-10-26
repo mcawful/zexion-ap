@@ -1,7 +1,6 @@
-// Host tests for the OS Install Disk count on the equipment screen (equip.h): a stand-in pause
-// menu and equipment screen laid out as read live on B1, and stand-ins for the game's functions
-// the helper calls (moving a widget, placing and setting a text, making a widget, giving it a
-// sprite sheet, linking a panel, malloc and free).
+// Host tests for equip.h: the EQUIPMENT hook and the disk widget, on a stand-in pause menu and
+// equipment screen laid out as read live on B1, with stand-ins for the game functions the
+// helper calls.
 
 #include <windows.h>
 

@@ -1,6 +1,6 @@
 // Host tests for the helper's parts that do not need the game: the import-table hook and the
 // trampoline (on this test program's own import of GetTickCount), the build check and the
-// pipe. unload_test.cpp loads and unloads the whole helper under load.
+// pipe.
 
 #include <windows.h>
 

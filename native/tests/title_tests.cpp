@@ -125,7 +125,7 @@ zap::TitleAddresses addresses() {
     return a;
 }
 
-// Runs the watch past its frame count, so it looks once.
+// Nine frame calls: one look (title.cpp looks every 9th).
 std::string look(zap::TitleLines& lines) {
     std::string why;
     for (int i = 0; i < 9; ++i) {
@@ -259,8 +259,6 @@ void test_a_new_title_gets_new_lines() {
     check(g_made == 3 && find("ARCHIPELAGO MOD 0.22.0", false) != nullptr, "made for the new title");
 }
 
-}  // namespace
-
 void test_the_hint_only_without_a_client() {
     reset_title();
     zap::TitleLines lines;
@@ -275,6 +273,8 @@ void test_the_hint_only_without_a_client() {
     look(lines);
     check(hint != nullptr && all_visible(hint, true), "the client gone: the hint shown");
 }
+
+}  // namespace
 
 int main() {
     test_the_hint_only_without_a_client();
