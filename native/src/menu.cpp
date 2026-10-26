@@ -133,26 +133,16 @@ bool live_run(BYTE** children, int32_t from, int32_t to, BYTE* (&run)[kMaxChildr
 }  // namespace
 
 BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const GameAddresses& a, void* expected_callback) {
-    BYTE* panel = panel_of(menu);
+    BYTE* panel = panel_at(menu, kPanelIndex);
     void* handler = nullptr;
     int32_t capacity = 0;
-    BYTE** children = nullptr;
-    BYTE* child = nullptr;
-    int32_t released = 1;
-    void* callback = nullptr;
-    void* child_handler = nullptr;
     if (!read(panel, panel::kHandler, handler) ||
         (handler != a.panel_handler_fn && (a.hooks.panel == nullptr || handler != a.hooks.panel)) ||
-        !read(panel, panel::kCapacity, capacity) || capacity != 4 ||
-        !read(panel, panel::kChildren, children) ||
-        !read(reinterpret_cast<BYTE*>(children), 8, child) ||
-        !read(child, sprite::kReleased, released) ||
-        released != 0 || !read(child, widget::kCallback, callback) ||
-        callback != expected_callback || !read(child, widget::kHandler, child_handler) ||
-        child_handler != a.widget_handler_fn) {
+        !read(panel, panel::kCapacity, capacity) || capacity != 4) {
         return nullptr;
     }
-    return child;
+    BYTE* child = child_at(panel, 1);
+    return live_widget(child, a.widget_handler_fn, expected_callback) ? child : nullptr;
 }
 
 bool ArchipelagoChoice::menu_open(const GameAddresses& a) const {
@@ -177,16 +167,6 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     return true;
 }
 
-BYTE* ArchipelagoChoice::panel_of(BYTE* menu) {
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
-    if (!read(menu, menu::kPanels, panels) ||
-        !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel)) {
-        return nullptr;
-    }
-    return panel;
-}
-
 void ArchipelagoChoice::put_handler_back(const GameAddresses& a) {
     if (hook_panel_ == nullptr) return;
     if (!is_open(a.current_menu, hook_menu_)) {
@@ -197,7 +177,10 @@ void ArchipelagoChoice::put_handler_back(const GameAddresses& a) {
     // Only on the panel still in the menu's place: one the menu no longer lists is not known
     // to be alive, so it stays remembered (and the helper loaded) until the menu closes.
     void* handler = nullptr;
-    if (panel_of(hook_menu_) != hook_panel_ || !read(hook_panel_, panel::kHandler, handler)) return;
+    if (panel_at(hook_menu_, kPanelIndex) != hook_panel_ ||
+        !read(hook_panel_, panel::kHandler, handler)) {
+        return;
+    }
     if (handler == a.hooks.panel) {
         at<void*>(hook_panel_, panel::kHandler) = a.panel_handler_fn;
     }
@@ -205,8 +188,7 @@ void ArchipelagoChoice::put_handler_back(const GameAddresses& a) {
 }
 
 bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback) {
-    BYTE* top = nullptr;
-    if (!read(a.current_menu, 0, top)) top = nullptr;
+    BYTE* top = pointer_at(a.current_menu);
     if (child_ != nullptr) {
         if (top == menu_ && choice_in(top, a, reinterpret_cast<void*>(callback)) == child_) {
             return false;  // still installed on the menu that is up
@@ -238,15 +220,12 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
             frames_[i] = at<int32_t>(g, sprite::kFrameIndex);
             frame_ptrs_[i] = at<BYTE*>(g, sprite::kFrameShown);
         }
-        int32_t c = static_cast<unsigned char>(kLabel[i]);
-        at<int32_t>(g, sprite::kFrameIndex) = c;
-        at<BYTE*>(g, sprite::kFrameShown) =
-            at<BYTE*>(g, sprite::kFrameList) + c * sprite::kFrameSize;
+        set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
     }
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).
-    BYTE* panel = panel_of(top);
+    BYTE* panel = panel_at(top, kPanelIndex);
     void* handler = nullptr;
     if (panel != nullptr && a.hooks.panel != nullptr && read(panel, panel::kHandler, handler) &&
         handler == a.panel_handler_fn) {
@@ -261,15 +240,11 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
 
 bool ArchipelagoChoice::fit_border(const GameAddresses& a) {
     if (child_ == nullptr || !menu_open(a)) return false;
-    BYTE* panel = panel_of(menu_);
-    BYTE** children = nullptr;
-    BYTE* child = nullptr;
+    BYTE* panel = panel_at(menu_, kPanelIndex);
     int32_t selected = -1, width = 0;
     BYTE* label = nullptr;
     double label_x = 0;
-    if (!read(panel, panel::kChildren, children) ||
-        !read(reinterpret_cast<BYTE*>(children), 8, child) || child != child_ ||
-        !read(panel, kPanelSelected, selected) || selected != 1 ||
+    if (child_at(panel, 1) != child_ || !read(panel, kPanelSelected, selected) || selected != 1 ||
         !read(panel, kPanelBorderWidth, width) || width != kGameBorderWidth ||
         !read(child_, widget::kLabel, label) || !read(label, sprite::kX, label_x)) {
         return false;
@@ -326,14 +301,7 @@ BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_c
     if (expected_callback == nullptr) return nullptr;
     BYTE* found = nullptr;
     for_each_child(menu, [&](BYTE* panel, int32_t index, BYTE* child) {
-        int32_t released = 1;
-        void* callback = nullptr;
-        void* handler = nullptr;
-        if (!read(child, sprite::kReleased, released) || released != 0 ||
-            !read(child, widget::kCallback, callback) || callback != expected_callback ||
-            !read(child, widget::kHandler, handler) || handler != a.widget_handler_fn) {
-            return false;
-        }
+        if (!live_widget(child, a.widget_handler_fn, expected_callback)) return false;
         BYTE* glyphs[kAssistLength] = {};
         if (!glyphs_of(child, glyphs)) return false;
         for (int i = 0; i < kAssistLength; ++i) {
@@ -356,12 +324,7 @@ bool AssistLock::still_locked(const GameAddresses& a) const {
     bool locked = false;
     for_each_child(menu_, [&](BYTE*, int32_t, BYTE* child) {
         if (child != child_) return false;
-        int32_t released = 1;
-        void* held = a.assist_menu_fn;
-        void* handler = nullptr;
-        locked = read(child, sprite::kReleased, released) && released == 0 &&
-                 read(child, widget::kCallback, held) && held == nullptr &&
-                 read(child, widget::kHandler, handler) && handler == a.widget_handler_fn;
+        locked = live_widget(child, a.widget_handler_fn, nullptr);  // its callback cleared
         return true;  // found: the first holding it decides
     });
     return locked;
@@ -372,11 +335,9 @@ namespace {
 // The locked look: every glyph in the locked style under the locked palette (when the palette
 // table gives it), the padlock in the eighth.
 void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
-    BYTE* palette = nullptr;
+    BYTE* palette = pointer_at(a.palette_table, kLockedPalette * 8);
     BYTE probe = 0;
-    if (!read(a.palette_table, kLockedPalette * 8, palette) || !read(palette, 0, probe)) {
-        palette = nullptr;  // no palette object readable there: the menu's own is kept
-    }
+    if (!read(palette, 0, probe)) palette = nullptr;  // none readable there: the menu's own kept
     for (BYTE* g : glyphs) {
         at<int32_t>(g, sprite::kStyle) = kLockedStyle;
         for (int t = 0; t < 6; ++t) at<float>(g, kGlyphTint[t]) = kLockedTint[t];
@@ -387,18 +348,13 @@ void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
     }
     // The padlock only if the glyph has that many frames, as the game's own text routine
     // checks a character against +0x1BC.
-    BYTE* lock = glyphs[kLockAt];
-    if (at<int32_t>(lock, sprite::kFrameCount) <= kLockGlyph) return;
-    at<int32_t>(lock, sprite::kFrameIndex) = kLockGlyph;
-    at<BYTE*>(lock, sprite::kFrameShown) =
-        at<BYTE*>(lock, sprite::kFrameList) + kLockGlyph * sprite::kFrameSize;
+    set_frame(glyphs[kLockAt], kLockGlyph);
 }
 
 }  // namespace
 
 bool AssistLock::install(const GameAddresses& a) {
-    BYTE* top = nullptr;
-    if (!read(a.current_menu, 0, top)) top = nullptr;
+    BYTE* top = pointer_at(a.current_menu);
     if (child_ != nullptr) {
         if (is_open(a.current_menu, menu_) && still_locked(a)) {
             // Still locked, with its menu open (on top or under another). The options menu takes
@@ -502,17 +458,13 @@ bool AssistLock::restore(const GameAddresses& a) {
                 BYTE* g = glyphs[i];
                 // Frames and palettes derived afresh from what the glyph holds now and the
                 // palette table, not the pointers saved at install.
-                at<int32_t>(g, sprite::kFrameIndex) = frames_[i];
-                at<BYTE*>(g, sprite::kFrameShown) =
-                    at<BYTE*>(g, sprite::kFrameList) + frames_[i] * sprite::kFrameSize;
+                set_frame(g, frames_[i]);
                 at<int32_t>(g, sprite::kStyle) = styles_[i];
-                BYTE* palette = nullptr;
+                BYTE* palette = palette_numbers_[i] < 0
+                                    ? nullptr
+                                    : pointer_at(a.palette_table, palette_numbers_[i] * 8);
                 BYTE probe = 0;
-                if (palette_numbers_[i] < 0 ||
-                    !read(a.palette_table, palette_numbers_[i] * 8, palette) ||
-                    !read(palette, 0, probe)) {
-                    palette = static_cast<BYTE*>(palettes_[i]);
-                }
+                if (!read(palette, 0, probe)) palette = static_cast<BYTE*>(palettes_[i]);
                 at<void*>(g, sprite::kPalette) = palette;
                 at<int16_t>(g, sprite::kPaletteNumber) = palette_numbers_[i];
                 for (int t = 0; t < 6; ++t) {

@@ -78,7 +78,8 @@ struct Look {
 Look look(BYTE* draw_layer, const std::string& mod_line) {
     Look l;
     BYTE* object = nullptr;
-    if (!read(draw_layer, 0, l.list) || l.list == nullptr || !read(l.list, kListHead, object)) {
+    l.list = pointer_at(draw_layer);
+    if (l.list == nullptr || !read(l.list, kListHead, object)) {
         return l;
     }
     for (int i = 0; i < kMaxObjects && object != nullptr; ++i) {

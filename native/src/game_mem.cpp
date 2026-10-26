@@ -56,6 +56,18 @@ bool writable(const void* at, size_t size) {
     return true;
 }
 
+bool live_widget(const BYTE* w, const void* handler) {
+    int32_t released = 1;
+    void* h = nullptr;
+    return read(w, sprite::kReleased, released) && released == 0 &&
+           read(w, widget::kHandler, h) && h == handler;
+}
+
+bool live_widget(const BYTE* w, const void* handler, const void* callback) {
+    void* cb = nullptr;
+    return live_widget(w, handler) && read(w, widget::kCallback, cb) && cb == callback;
+}
+
 bool is_open(const BYTE* current_menu, const BYTE* wanted) {
     BYTE* menu = nullptr;
     if (!read(current_menu, 0, menu)) return false;
@@ -81,6 +93,32 @@ bool set_frame(BYTE* s, int32_t frame) {
     }
     put<int32_t>(s, sprite::kFrameIndex, frame);
     put(s, sprite::kFrameShown, list + frame * sprite::kFrameSize);
+    return true;
+}
+
+void look_like(BYTE* s, const BYTE* like) {
+    if (s == like) return;
+    std::memcpy(s + sprite::kPalette, like + sprite::kPalette, sizeof(void*));
+    std::memcpy(s + sprite::kPaletteNumber, like + sprite::kPaletteNumber, sizeof(int16_t));
+    std::memcpy(s + sprite::kStyle, like + sprite::kStyle, sizeof(int32_t));
+    std::memcpy(s + sprite::kTint, like + sprite::kTint, sprite::kTintSize);
+}
+
+const IMAGE_NT_HEADERS64* nt_headers(HMODULE module) {
+    auto* base = reinterpret_cast<const BYTE*>(module);
+    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    if (dos == nullptr || dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+    return nt->Signature == IMAGE_NT_SIGNATURE ? nt : nullptr;
+}
+
+bool patch_code(BYTE* at, const void* bytes, size_t size) {
+    DWORD old = 0;
+    if (!VirtualProtect(at, size, PAGE_EXECUTE_READWRITE, &old)) return false;
+    std::memcpy(at, bytes, size);
+    DWORD unused = 0;
+    VirtualProtect(at, size, old, &unused);
+    FlushInstructionCache(GetCurrentProcess(), at, size);
     return true;
 }
 

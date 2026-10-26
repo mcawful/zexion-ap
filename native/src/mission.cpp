@@ -15,11 +15,7 @@ namespace {
 constexpr int32_t kPromptChildren = 3;
 constexpr int kMinQuestionGlyphs = static_cast<int>(sizeof(kMissionQuestion) - 1);
 
-void* routine(const GameAddresses& a, int index) {
-    void* fn = nullptr;
-    read(a.routine_table, index * 8, fn);
-    return fn;
-}
+void* routine(const GameAddresses& a, int index) { return pointer_at(a.routine_table, index * 8); }
 
 bool writable_fields(const GameAddresses& a) {
     return writable(a.transition_fn, sizeof(void*)) &&
@@ -90,15 +86,12 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     if (builder == nullptr) return status_ = "no prompt builder";
     builder();
     // The prompt the game just built: the top menu, its panel's three children.
-    BYTE* menu = nullptr;
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
+    BYTE* menu = pointer_at(a.current_menu);
+    BYTE* panel = panel_at(menu, 0);
     BYTE** children = nullptr;
     int32_t capacity = 0;
     BYTE* child[kPromptChildren] = {};
-    if (!read(a.current_menu, 0, menu) || !read(menu, 0, panels) ||
-        !read(reinterpret_cast<BYTE*>(panels), 0, panel) ||
-        !read(panel, panel::kCapacity, capacity) || capacity != kPromptChildren ||
+    if (!read(panel, panel::kCapacity, capacity) || capacity != kPromptChildren ||
         !read(panel, panel::kChildren, children) ||
         !safe_read(children, child, sizeof(child))) {
         return status_ = "not the prompt as traced";
@@ -110,22 +103,13 @@ std::string MissionPrompt::open(const GameAddresses& a) {
         writable(child[0] + widget::kCallback, sizeof(void*))) {
         put(child[0], widget::kCallback, first_no);
     }
-    void* callbacks[kPromptChildren] = {};
-    callbacks[0] = first_no;  // YES, now NO's
-    for (int i = 1; i < kPromptChildren; ++i) {
-        int32_t released = 1;
-        void* handler = nullptr;
-        if (!read(child[i], sprite::kReleased, released) || released != 0 ||
-            !read(child[i], widget::kHandler, handler) || handler != a.widget_handler_fn ||
-            !read(child[i], widget::kCallback, callbacks[i])) {
+    // Each child live with the widget handler; the callbacks of NO and the question.
+    void* callbacks[kPromptChildren] = {first_no};  // YES, now NO's
+    for (int i = 0; i < kPromptChildren; ++i) {
+        if (!live_widget(child[i], a.widget_handler_fn) ||
+            (i > 0 && !read(child[i], widget::kCallback, callbacks[i]))) {
             return status_ = "not the prompt as traced";
         }
-    }
-    int32_t yes_released = 1;
-    void* yes_handler = nullptr;
-    if (!read(child[0], sprite::kReleased, yes_released) || yes_released != 0 ||
-        !read(child[0], widget::kHandler, yes_handler) || yes_handler != a.widget_handler_fn) {
-        return status_ = "not the prompt as traced";
     }
     BYTE* question = nullptr;
     int32_t glyphs = 0;

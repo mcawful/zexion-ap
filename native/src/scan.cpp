@@ -42,11 +42,8 @@ bool scan_line_ok(const std::string& line) {
 }
 
 bool ScanText::apply(BYTE* table_holder, const std::string& line) {
-    BYTE* table = nullptr;
-    if (!scan_line_ok(line) || !safe_read(table_holder, &table, sizeof(table)) ||
-        table == nullptr) {
-        return false;
-    }
+    BYTE* table = pointer_at(table_holder);
+    if (!scan_line_ok(line) || table == nullptr) return false;
     BYTE* entry = table + kScanTextEntry * kTextEntrySize;
     BYTE copy[kTextEntrySize];
     if (!safe_read(entry, copy, sizeof(copy))) return false;
@@ -72,10 +69,9 @@ bool ScanText::apply(BYTE* table_holder, const std::string& line) {
 
 void ScanText::restore(BYTE* table_holder) {
     if (entry_ == nullptr) return;
-    BYTE* table = nullptr;
     BYTE copy[kTextEntrySize];
-    if (safe_read(table_holder, &table, sizeof(table)) && table == table_ &&
-        safe_read(entry_, copy, sizeof(copy)) && reads(copy, line_) &&
+    if (pointer_at(table_holder) == table_ && safe_read(entry_, copy, sizeof(copy)) &&
+        reads(copy, line_) &&
         writable(entry_, sizeof(copy))) {
         put_text(entry_, kScanTextOriginal);
     }

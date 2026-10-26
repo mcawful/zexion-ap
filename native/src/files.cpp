@@ -70,6 +70,14 @@ bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
 
 int32_t block_frame(BYTE* (&g)[kEntryGlyphs], int k) { return frame_of(g[kBlock[k]]); }
 
+// Whether the keys' block still shows what the helper wrote (no fill since).
+bool still_written(BYTE* (&g)[kEntryGlyphs], const int32_t (&shown)[6]) {
+    for (int k = 0; k < 6; ++k) {
+        if (block_frame(g, k) != shown[k]) return false;
+    }
+    return true;
+}
+
 // Moves the count's glyphs between their row (where the game's layout puts them) and kCountDrop
 // below it: down while `dropped`, else back up. Their row is found from the glyphs above and
 // below them (85 and 143), which the helper never moves; a glyph at neither place is left alone.
@@ -124,17 +132,14 @@ void FileDisks::watch(const GameAddresses& a) {
         restore(a);
         return;
     }
-    BYTE* menu = nullptr;
-    if (!read(a.current_menu, 0, menu)) return;
+    BYTE* menu = pointer_at(a.current_menu);
     for (int m = 0; m < kMaxMenus && menu != nullptr; ++m) {
-        BYTE** panels = nullptr;
-        BYTE* panel = nullptr;
+        BYTE* panel = panel_at(menu, 0);
         void* handler = nullptr;
         int32_t capacity = 0;
         BYTE** children = nullptr;
         BYTE* entries[kEntries] = {};
-        if (read(menu, 0, panels) && read(reinterpret_cast<BYTE*>(panels), 0, panel) &&
-            read(panel, panel::kHandler, handler) && handler == a.file_panel_fn &&
+        if (read(panel, panel::kHandler, handler) && handler == a.file_panel_fn &&
             read(panel, panel::kCapacity, capacity) && capacity >= kEntries &&
             read(panel, panel::kChildren, children) &&
             safe_read(children, entries, sizeof(entries))) {
@@ -165,11 +170,7 @@ void FileDisks::update(BYTE* entry, Wrapped& w) {
     BYTE* g[kEntryGlyphs] = {};
     if (!entry_glyphs(entry, g)) return;
     // A fill since the helper wrote the entry: the game's frames again.
-    if (w.written) {
-        for (int k = 0; k < 6; ++k) {
-            if (block_frame(g, k) != w.shown[k]) w.written = false;
-        }
-    }
+    w.written = w.written && still_written(g, w.shown);
     if (!rewrite(entry, g, w)) put_back(g, w);  // not one to show: the game's frames
     place_count(g, w.written && shows_disk(g));
 }
@@ -212,27 +213,15 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     for (int i : kBlock) {
         if (!writable(g[i], sprite::kSize)) return false;
     }
-    // Drawn as the game draws the KEYS header (glyph 85): its palette, style and tint.
-    BYTE* like = g[kKeysHeader[0]];
-    BYTE look[sprite::kTintSize];
-    void* palette = nullptr;
-    int16_t number = 0;
-    int32_t style = 0;
-    if (!read(like, sprite::kPalette, palette) || !read(like, sprite::kPaletteNumber, number) ||
-        !read(like, sprite::kStyle, style) ||
-        !safe_read(like + sprite::kTint, look, sizeof(look))) {
-        return false;
-    }
     if (!w.written) {
         for (int k = 0; k < 6; ++k) w.game[k] = block_frame(g, k);
     }
+    // Drawn as the game draws the KEYS header (glyph 85, one of the block, checked writable).
+    const BYTE* like = g[kKeysHeader[0]];
     for (int k = 0; k < 6; ++k) {
         BYTE* cell = g[kBlock[k]];
         set_frame(cell, want[k]);
-        put(cell, sprite::kPalette, palette);
-        put(cell, sprite::kPaletteNumber, number);
-        put(cell, sprite::kStyle, style);
-        std::memcpy(cell + sprite::kTint, look, sizeof(look));
+        look_like(cell, like);
         w.shown[k] = block_frame(g, k);
     }
     w.written = true;
@@ -261,11 +250,7 @@ void FileDisks::restore(const GameAddresses& a) {
         // The keys' block and the count's glyphs as the game left them.
         BYTE* g[kEntryGlyphs] = {};
         if (entry_glyphs(entry, g)) {
-            if (w.written) {
-                for (int k = 0; k < 6; ++k) {
-                    if (block_frame(g, k) != w.shown[k]) w.written = false;
-                }
-            }
+            w.written = w.written && still_written(g, w.shown);
             put_back(g, w);
             place_count(g, false);
         }

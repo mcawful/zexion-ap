@@ -128,9 +128,8 @@ uint64_t section_end(const IMAGE_SECTION_HEADER* section) {
 
 // The section of `module` holding `rva`, or nullptr.
 const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva) {
-    auto* base = reinterpret_cast<const BYTE*>(module);
-    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
-        base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    const IMAGE_NT_HEADERS64* nt = nt_headers(module);
+    if (nt == nullptr) return nullptr;
     auto* section = IMAGE_FIRST_SECTION(nt);
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
         if (rva >= section->VirtualAddress && rva < section_end(section)) return section;
@@ -183,9 +182,8 @@ void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
 
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                             bool active) {
-    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
-        reinterpret_cast<const BYTE*>(image) +
-        reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
+    const IMAGE_NT_HEADERS64* nt = nt_headers(image);
+    if (nt == nullptr) return "the game is not an image";
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
@@ -372,10 +370,9 @@ std::string Game::run_item_event(uint8_t item) {
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
     int16_t event = at<int16_t>(rec, record::kEvent);
-    BYTE* table = nullptr;
+    BYTE* table = pointer_at(at_.event_table);
     int16_t events = 0;
-    if (event < 0 || !safe_read(at_.event_table, &table, sizeof(table)) || table == nullptr ||
-        !safe_read(at_.event_count, &events, sizeof(events)) || event >= events) {
+    if (event < 0 || table == nullptr || !read(at_.event_count, 0, events) || event >= events) {
         return "no event";
     }
     BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
@@ -386,11 +383,8 @@ std::string Game::run_item_event(uint8_t item) {
         word(copy, event::kSelf) != event) {
         return "event not as traced";
     }
-    void* handler = nullptr;
-    if (!safe_read(at_.event_handlers + kSpawnEventType * sizeof(void*), &handler, sizeof(handler)) ||
-        handler == nullptr) {
-        return "no handler";
-    }
+    BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
+    if (handler == nullptr) return "no handler";
     // The handler must be code in the game's own image.
     auto address = reinterpret_cast<uintptr_t>(handler);
     auto image = reinterpret_cast<uintptr_t>(base_);
@@ -706,7 +700,7 @@ void* Game::map_original(void* child) const {
     void* handler = map_names_.original(child);
     // An object the helper did not wrap: the map's own handler, as the game holds it (none
     // read before configure).
-    if (handler == nullptr) safe_read(at_.map_handler, &handler, sizeof(handler));
+    if (handler == nullptr) handler = pointer_at(at_.map_handler);
     return handler;
 }
 
@@ -795,8 +789,8 @@ void Game::resolve_item_labels() {
     // Another Zexion player's item: its own icon and the game's name for it, from the item's
     // record, once the records are loaded.
     if (item_labels_.empty() || !configured_) return;
-    BYTE* records = nullptr;
-    if (!safe_read(at_.item_records, &records, sizeof(records)) || records == nullptr) return;
+    BYTE* records = pointer_at(at_.item_records);
+    if (records == nullptr) return;
     std::map<int, std::string> names = ap_items_.labels();
     for (auto it = item_labels_.begin(); it != item_labels_.end();) {
         const Label& pending = it->second;
@@ -835,26 +829,19 @@ void Game::set_popup_width(int width) {
     // `mov edx, imm32`: B1's instruction, holding 24 or a width a helper wrote (this one, or
     // one that left without putting 24 back). Anything else is not the code traced: it is
     // left alone, and not counted as ours to put back.
-    BYTE now[5] = {};
+    uint8_t opcode = 0;
     int32_t imm = 0;
-    if (safe_read(at_.popup_width_code, now, sizeof(now))) std::memcpy(&imm, now + 1, sizeof(imm));
-    if (now[0] != 0xBA || imm < 1 || imm > kGamePopupWidth) {
+    if (!read(at_.popup_width_code, 0, opcode) || !read(at_.popup_width_code, 1, imm) ||
+        opcode != 0xBA || imm < 1 || imm > kGamePopupWidth) {
         popup_width_ = kGamePopupWidth;
         at_.popup_width_code = nullptr;
         return;
     }
     popup_width_ = imm;
     if (imm == width) return;
-    DWORD old = 0;
-    if (!VirtualProtect(at_.popup_width_code + 1, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &old)) {
-        return;  // not written: popup_width_ says what the game still holds
-    }
-    int32_t value = width;
-    std::memcpy(at_.popup_width_code + 1, &value, sizeof(value));
-    DWORD unused = 0;
-    VirtualProtect(at_.popup_width_code + 1, sizeof(int32_t), old, &unused);
-    FlushInstructionCache(GetCurrentProcess(), at_.popup_width_code, sizeof(now));
-    popup_width_ = width;
+    const int32_t value = width;
+    // Not written: popup_width_ says what the game still holds.
+    if (patch_code(at_.popup_width_code + 1, &value, sizeof(value))) popup_width_ = width;
 }
 
 void Game::watch_ap_items() {

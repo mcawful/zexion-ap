@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "files.h"  // file_disk_digits
 #include "game_mem.h"
 
 namespace zap {
@@ -41,53 +42,30 @@ constexpr int16_t kTwoColumns = 2;   // as the missile panel with both icons
 constexpr size_t kWidgetSize = 0x2D0;
 constexpr intptr_t kHovered = 0, kSelected = 3;
 
-BYTE* panel_at(BYTE* menu, int index) {
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
-    if (!read(menu, 0, panels) || !read(reinterpret_cast<BYTE*>(panels), index * 8, panel)) {
-        return nullptr;
-    }
-    return panel;
-}
-
 }  // namespace
 
-std::string disk_count_text(int count) {
-    std::string digits = std::to_string(count);
-    if (digits.size() < 2) digits.insert(0, 2 - digits.size(), '0');
-    return " " + digits;
-}
+std::string disk_count_text(int count) { return " " + file_disk_digits(count); }
 
 BYTE* EquipmentHook::entry_in(BYTE* menu, const GameAddresses& a, void* callback) {
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
+    BYTE* panel = panel_at(menu, 0);
     int32_t count = 0, capacity = 0;
     BYTE** children = nullptr;
-    if (!read(menu, 0, panels) || !read(menu, menu::kPanelCount, count) || count < 1 ||
-        !read(reinterpret_cast<BYTE*>(panels), 0, panel) ||
-        !read(panel, panel::kCapacity, capacity) ||
-        capacity < 1 || capacity > kMaxEntries || !read(panel, panel::kChildren, children)) {
+    if (!read(menu, menu::kPanelCount, count) || count < 1 ||
+        !read(panel, panel::kCapacity, capacity) || capacity < 1 || capacity > kMaxEntries ||
+        !read(panel, panel::kChildren, children)) {
         return nullptr;
     }
     BYTE* list[kMaxEntries] = {};
     if (!safe_read(children, list, capacity * sizeof(BYTE*))) return nullptr;
     for (int i = 0; i < capacity; ++i) {
-        int32_t released = 1;
-        void* cb = nullptr;
-        void* handler = nullptr;
-        if (read(list[i], sprite::kReleased, released) && released == 0 &&
-            read(list[i], widget::kCallback, cb) && cb == callback &&
-            read(list[i], widget::kHandler, handler) && handler == a.widget_handler_fn) {
-            return list[i];
-        }
+        if (live_widget(list[i], a.widget_handler_fn, callback)) return list[i];
     }
     return nullptr;
 }
 
 bool EquipmentHook::install(const GameAddresses& a) {
     if (a.hooks.equipment == nullptr) return false;
-    BYTE* top = nullptr;
-    if (!read(a.current_menu, 0, top)) top = nullptr;
+    BYTE* top = pointer_at(a.current_menu);
     if (child_ != nullptr) {
         // Still hooked:
         if (top == menu_ && entry_in(top, a, a.hooks.equipment) == child_) return false;
@@ -117,28 +95,23 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     if (count > 99) return "the count is too long";
     restore(a);  // an earlier screen's, if still open
     // The equipment screen on top, its Energy Tank panel as the builder leaves it.
-    BYTE* menu = nullptr;
-    BYTE* panel = nullptr;
-    int32_t panel_count = 0, index = -1, capacity = 0, selectable = 0, released = 1, glyphs = 0;
+    BYTE* menu = pointer_at(a.current_menu);
+    BYTE* panel = panel_at(menu, kEnergyPanel);
+    BYTE* energy = child_at(panel, 0);
+    int32_t panel_count = 0, index = -1, capacity = 0, selectable = 0, glyphs = 0;
     void* handler = nullptr;
-    void* child_handler = nullptr;
     BYTE** children = nullptr;
-    BYTE* energy = nullptr;
     BYTE* record = nullptr;
-    BYTE* records = nullptr;
+    BYTE* records = pointer_at(a.item_records);
     BYTE* label = nullptr;
-    if (!read(a.current_menu, 0, menu) || !read(menu, menu::kPanelCount, panel_count) ||
-        panel_count != kEquipmentPanels || (panel = panel_at(menu, kEnergyPanel)) == nullptr ||
-        panel_at(menu, kTextPanel) == nullptr || !read(panel, kPanelIndex, index) ||
-        index != kEnergyPanel || !read(panel, panel::kHandler, handler) ||
-        handler != a.equip_panel_fn || !read(panel, panel::kCapacity, capacity) || capacity != 1 ||
+    if (!read(menu, menu::kPanelCount, panel_count) || panel_count != kEquipmentPanels ||
+        panel == nullptr || panel_at(menu, kTextPanel) == nullptr ||
+        !read(panel, kPanelIndex, index) || index != kEnergyPanel ||
+        !read(panel, panel::kHandler, handler) || handler != a.equip_panel_fn ||
+        !read(panel, panel::kCapacity, capacity) || capacity != 1 ||
         !read(panel, panel::kSelectable, selectable) || selectable != 1 ||
-        !read(panel, panel::kChildren, children) ||
-        !read(reinterpret_cast<BYTE*>(children), 0, energy) ||
-        !read(energy, sprite::kReleased, released) ||
-        released != 0 || !read(energy, widget::kHandler, child_handler) ||
-        child_handler != a.widget_handler_fn || !read(energy, kChildRecord, record) ||
-        !read(a.item_records, 0, records) || records == nullptr || record != records ||
+        !read(panel, panel::kChildren, children) || !live_widget(energy, a.widget_handler_fn) ||
+        !read(energy, kChildRecord, record) || records == nullptr || record != records ||
         !read(energy, widget::kLabel, label) || !read(label, label::kLength, glyphs) ||
         glyphs != kEnergyGlyphs || !writable(panel, 0x300)) {
         return "not the equipment screen as traced";
@@ -188,14 +161,7 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     put<int32_t>(disk, sprite::kStyle, -1);  // as the Energy Tank's widget
     put<int32_t>(disk, kChildColor, kDiskColor);
     reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(disk, item_template);
-    int32_t frames = 0;
-    BYTE* base = nullptr;
-    if (read(disk, sprite::kFrameCount, frames) && disk_frame < frames &&
-        read(disk, sprite::kFrameList, base) &&
-        base != nullptr) {
-        put<int32_t>(disk, sprite::kFrameIndex, disk_frame);
-        put(disk, sprite::kFrameShown, base + disk_frame * sprite::kFrameSize);
-    }
+    set_frame(disk, disk_frame);
     put(disk, sprite::kPalette, palette);
     put(disk, sprite::kPaletteNumber, palette_number);
     *(disk + sprite::kVisible) = 1;
@@ -246,19 +212,14 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
 
 void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t event) {
     if (disk_ == nullptr || widget != disk_ || (event != kHovered && event != kSelected)) return;
-    BYTE* menu = nullptr;
-    if (!read(a.current_menu, 0, menu) || menu != menu_) return;
-    BYTE* box = panel_at(menu, kTextPanel);
-    BYTE** children = nullptr;
-    BYTE* description = nullptr;
-    BYTE* name = nullptr;
+    if (pointer_at(a.current_menu) != menu_) return;  // menu_: set with disk_
+    BYTE* box = panel_at(menu_, kTextPanel);
+    BYTE* description = child_at(box, 0);
+    BYTE* name = child_at(box, 1);
     BYTE* description_label = nullptr;
     BYTE* name_label = nullptr;
     int32_t description_glyphs = 0, name_glyphs = 0;
-    if (!read(box, panel::kChildren, children) ||
-        !read(reinterpret_cast<BYTE*>(children), 0, description) ||
-        !read(reinterpret_cast<BYTE*>(children), 8, name) ||
-        !read(description, widget::kLabel, description_label) ||
+    if (!read(description, widget::kLabel, description_label) ||
         !read(description_label, label::kLength, description_glyphs) ||
         description_glyphs < kDescriptionGlyphs || !read(name, widget::kLabel, name_label) ||
         !read(name_label, label::kLength, name_glyphs) || name_glyphs < 1 + kNameGlyphs) {
@@ -270,16 +231,8 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     set(name_label, kDiskName, 1, kNameGlyphs);
     // Its icon before the name, as the game puts each record's own (the disk's record has none):
     // the glyph the helper paints (kDiskGlyph), set as the game's text code sets a character.
-    BYTE** glyphs = nullptr;
-    BYTE* icon = nullptr;
-    int32_t frames = 0;
-    BYTE* base = nullptr;
-    if (read(name_label, label::kGlyphs, glyphs) &&
-        read(reinterpret_cast<BYTE*>(glyphs), 0, icon) && read(icon, sprite::kFrameCount, frames) &&
-        kDiskGlyph < frames && read(icon, sprite::kFrameList, base) && base != nullptr &&
-        writable(icon, sprite::kVisible + 1)) {
-        put<int32_t>(icon, sprite::kFrameIndex, kDiskGlyph);
-        put(icon, sprite::kFrameShown, base + kDiskGlyph * sprite::kFrameSize);
+    BYTE* icon = pointer_at(pointer_at(name_label, label::kGlyphs));
+    if (icon != nullptr && writable(icon, sprite::kVisible + 1) && set_frame(icon, kDiskGlyph)) {
         *(icon + sprite::kVisible) = 1;
     }
 }

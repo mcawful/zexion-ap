@@ -58,7 +58,6 @@ private:
     // The game-mode panel's choice 1 in `menu`, if it holds `expected_callback`.
     static BYTE* choice_in(BYTE* menu, const GameAddresses& addresses, void* expected_callback);
     bool menu_open(const GameAddresses& addresses) const;
-    static BYTE* panel_of(BYTE* menu);  // the game-mode panel (panel 3) of a menu, unchecked
     // Puts the game's handler back on the panel given the hook, whatever became of the
     // choice, or forgets the panel once its menu is closed (freed with it).
     void put_handler_back(const GameAddresses& addresses);
