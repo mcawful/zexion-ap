@@ -13,7 +13,7 @@ and shows the count in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scann
 how many are needed). This world's own are stand-ins in the save's item table, listed by
 location in the slot data, so the game hands out none. "Found" is what the client has reported
 from the game's map, kept in the server's data storage so every save of the seed counts it
-(zexion_client.own_found), not what the server has as checked, which after a release is every
+(storage.own_found), not what the server has as checked, which after a release is every
 location; the real disc the game gives for beating its secret boss does not count.
 
 Pure functions; the client does the networking and talks to the helper.

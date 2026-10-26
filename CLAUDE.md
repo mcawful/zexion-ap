@@ -138,7 +138,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `docs/re/locations.md`). `test/test_client_agrees.py` checks the client's codes and slot
   data readers against it.
 - `client/`: the AP client, a package (relative imports). `zexion_client.py` (`CommonClient`
-  wiring, the commands), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
+  wiring, the commands, the game loop), `ticks.py` (its side tasks with the helper),
+  `storage.py` (its records in the server's data storage, the Area Map hints), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
   popup count to store, the found record, warnings said once), `session.py` (one
   poll: checks, the goal, grants), `reconcile.py` (what to give: what the player should own
   minus what the inventory holds), `shields.py` (received Energy Shields), `ids.py` (the item

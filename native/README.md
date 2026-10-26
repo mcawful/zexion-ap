@@ -254,7 +254,7 @@ client had set armed again). `tests/pipe_client.h` is the pipe client the
     for an Area Map (or Intel Chip) found in the world, after the game's own pickup popup
     (its sound plays again; working in game 2026-10-25), and a found disk's count as a popup;
     for a find made with no client, or one whose popup was not shown, later, once
-    (`followups_tick` in `client/zexion_client.py`; "AP saves without the client").
+    (`followups_tick` in `client/ticks.py`; "AP saves without the client").
   - Each popup plays the item's own pickup sound at the player.
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
