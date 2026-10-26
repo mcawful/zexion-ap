@@ -269,15 +269,11 @@ std::string Game::apply(const Batch& batch) {
         reinterpret_cast<SuitColorFn>(at_.suit_color_fn)(0, palette);
     }
     // Each for this save: one the player leaves with popups still queued keeps them for its
-    // next load, not showing them in another save (pump_popups).
+    // next load, not showing them in another save (pump_popups). Held ones of another seed
+    // stay too: the client counts them handed over and never sends them again.
     std::shared_ptr<const OfflineSeed> origin;
     if (rando_save_loaded()) {
         origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
-        // A client's popups still held for another seed are an earlier connection's (this one
-        // applies only in its own seed's save): dropped, not held for good.
-        popups_.erase(std::remove_if(popups_.begin(), popups_.end(),
-                                     [this](const Popup& p) { return p.counted && !showable(p); }),
-                      popups_.end());
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
@@ -1002,6 +998,11 @@ void Game::put_back_all(WidgetCallback callback) {
     }
     restore_files();
     leave_offline();
+}
+
+void Game::client_gone(WidgetCallback callback) {
+    put_back_all(callback);
+    active_ = false;
 }
 
 ClientState Game::snapshot() const {

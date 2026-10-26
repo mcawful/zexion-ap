@@ -10,7 +10,7 @@ each, or None).
   when no save of the seed is loaded, or when the game closes.
 
 Also the decisions the game loop makes from that state, as pure functions: the count of
-received items' popups shown, kept on the server (``announced_start`` and the rest), the
+received items' popups handed over, kept on the server (``announced_start``), the
 server's count of Energy Shields given (``shield_count``), the locations found to record there
 (``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
 lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``). No
@@ -59,11 +59,11 @@ class Connection:
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # Received items' popups (announced_tick): the count last stored, the last count known
-    # shown, and how many the previous connection handed this same helper.
+    # Received items' popups (announced_tick): the count last stored, and the session of
+    # the connection before (same seed and slot), read for how many it handed over once
+    # its last poll has finished.
     announced_sent: int | None = None
-    announced_shown: int | None = None
-    queued_before: int | None = None
+    before: session.Session | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
     # Whether this seed's save has had the scanner's message (the disks needed are known).
@@ -125,35 +125,24 @@ class Connection:
         self.announced_key = self.key("announced")
         self.hints_key = self.key("hints")
 
-    def helper_lost(self) -> None:
-        """The helper is gone, and the popups it had not shown with it: received items past
-        the last count known shown are queued again on the next helper, if the next attach
-        brings one (else they are given up: ``replay_given_up``), with those of items written
-        directly meanwhile. The count known shown is a lower bound (client/state.py,
-        popups_shown), so one shown just before the loss may show again."""
-        queued = self.session.announced
-        if queued is not None and self.announced_shown is not None:
-            self.session.announced = min(queued, self.announced_shown)
-            self.session.replaying = True
-        self.queued_before = None
 
-    def replay_given_up(self) -> None:
-        """No helper came back: direct writes count every item as handed over again, so a
-        helper that comes much later does not pop up all that was received meanwhile."""
-        self.session.replaying = False
+def left_connection(conn: Connection | None, left: Connection | None) -> Connection | None:
+    """The connection to keep for the next one (carry_over) when the client disconnects: the
+    one just ended, or, with none (Archipelago's connect disconnects first, after a Disconnect
+    already ended it), the one kept before."""
+    return conn if conn is not None else left
 
 
-def carry_over(
-    conn: Connection, old: Connection | None, same_seed: bool, helper: native.Helper | None
-) -> None:
+def carry_over(conn: Connection, old: Connection | None, same_seed: bool) -> None:
     """A new connection to the same seed and slot as ``old`` (one that dropped, or one a
-    disconnect ended): the ending's hold carries over (Session.keep_ending), and, with the same
-    helper attached, how many popups ``old`` handed it, which it still holds (queued_before)."""
+    disconnect ended): the ending's hold carries over (Session.keep_ending), and ``old``'s
+    session (``before``), for how many popups it handed over in case its last count never
+    reached the server. Read at the first count (announced_tick), not now: a poll of ``old``
+    may still be handing some over."""
     if old is None or not same_seed:
         return
     conn.session.keep_ending(old.session)
-    if helper is not None and old.session.helper is helper:
-        conn.queued_before = old.session.announced
+    conn.before = old.session
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:
@@ -168,9 +157,12 @@ def goal_reached(ended: bool, required: int | None, have: int) -> bool:
 def stored_count(raw: object) -> int | None:
     """A count read from data storage, or None when absent (or not a count).
 
-    For received items' popups the server keeps how many were shown (announced_key), so items
-    received offline still pop up and a reconnect replays none. Shown = queued
-    (Session.announced) minus the helper's pending popups. The key is open to any client in
+    For received items' popups the server keeps how many have been handed over
+    (announced_key: Session.announced), so items received offline still pop up and a reconnect
+    or a restart replays none. The helper shows what it was handed even if the client goes
+    away; a game closed or the helper unloaded with popups still queued loses those popups (the
+    items are given), and so does a client closed between handing some over and storing the
+    count (the next one hands them over again: shown twice). The key is open to any client in
     the room: anything but a count reads as absent."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
@@ -187,41 +179,28 @@ def shield_count(raw: object) -> int | None:
     return stored_count(raw)
 
 
-def announced_start(raw: object, held: int, queued_before: int | None = None) -> tuple[int, int]:
-    """Where a connection's session starts counting received items' popups, as (queued, shown):
-    shown, the server's count (at most the ``held`` items), or, with none stored (or its data
-    lost), every item held: no flood of old popups. Queued, the
-    same, but never below what the connection before handed the same helper
-    (``queued_before``), which the helper still holds."""
+def announced_start(raw: object, held: int, handed_before: int | None = None) -> int:
+    """How many received items a connection's session counts as handed over at its start: the
+    server's count (at most the ``held`` items), or, with none stored (or its data lost),
+    every item held: no flood of old popups. Never below what the connection before handed
+    over (``handed_before``), whose count may not have reached the server."""
     stored = stored_count(raw)
-    shown = held if stored is None else min(stored, held)
-    queued = shown if queued_before is None else max(shown, min(queued_before, held))
-    return queued, shown
+    start = held if stored is None else min(stored, held)
+    if handed_before is not None:
+        start = max(start, min(handed_before, held))
+    return start
 
 
-def popups_unstored(queued: int, raw: object, sent: int | None) -> bool:
-    """Whether more popups have been queued than the server holds as shown: only then is the
-    helper asked how many are still waiting."""
-    return queued > max(stored_count(raw) or 0, sent or 0)
-
-
-def popups_shown(queued: int, pending: int, before: int) -> int:
-    """The received items whose popup has been shown: those queued less the helper's popups
-    still waiting, never below the count known before. A lower bound, as the helper's count
-    takes in the popups of every ``apply`` (the follow-ups too), not only received items'."""
-    return min(queued, max(before, queued - pending))
-
-
-def announced_to_store(shown: int, raw: object, sent: int | None) -> int | None:
-    """The count to store on the server now (as a maximum), or None: ``shown`` when it is above
+def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:
+    """The count to store on the server now (as a maximum), or None: ``handed`` when it is above
     both the server's count and what this client last stored; and, while the server has none
-    and this client has stored none, ``shown`` as it is, so the key exists. A store that fails
+    and this client has stored none, ``handed`` as it is, so the key exists. A store that fails
     leaves ``sent`` as it was, so it is sent again on the next poll."""
     stored = stored_count(raw)
     if stored is None and sent is None:
-        return shown
-    if shown > max(stored or 0, sent or 0):
-        return shown
+        return handed
+    if handed > max(stored or 0, sent or 0):
+        return handed
     return None
 
 

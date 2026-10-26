@@ -65,8 +65,6 @@ async def attach_helper(ctx: ZexionContext) -> None:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
-        if ctx.conn is not None:
-            ctx.conn.replay_given_up()  # no helper to show a lost one's popups
         return
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's

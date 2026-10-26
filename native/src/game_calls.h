@@ -65,8 +65,6 @@ public:
     // skip (also on while the offline look dresses a save: offline_skip_).
     bool active() const { return active_; }
     void set_active(bool active) { active_ = active; }
-    // Popups not shown yet dropped (the client that sent them went away).
-    void clear_popups() { popups_.clear(); }
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
 
@@ -74,6 +72,10 @@ public:
     // change held by a menu no longer open is gone with it. `callback`: ARCHIPELAGO's, to
     // recognize it.
     void put_back_all(WidgetCallback callback);
+    // Game thread: the client went away. Puts back what it set (put_back_all) and goes
+    // inactive until a client configures again; its popups not shown yet stay queued, as their
+    // items are already given (the client counts popups handed over, not shown).
+    void client_gone(WidgetCallback callback);
     // Game thread: what clients set, before put_back_all drops it, and set again after it (an
     // unload refused).
     ClientState snapshot() const;
@@ -89,8 +91,8 @@ public:
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
-    // The client's popups still queued (Popup::counted), for the `popups` request: one leaves
-    // the queue when shown, dropped for want of a record, or dropped with the client.
+    // The client's popups still queued (Popup::counted), for the tests: one leaves the queue
+    // when shown, or dropped for want of a record.
     size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to

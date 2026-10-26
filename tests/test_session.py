@@ -353,23 +353,6 @@ def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
     assert helper.requests == []
 
 
-def test_a_lost_helpers_popups_show_on_the_next_one(with_helper) -> None:
-    session, g, helper, writes = with_helper
-    senders = ["Bob", "Bob", "Bob"]
-    give(session, g, [17, 22], senders=senders[:2])  # handed to the helper, then it is lost
-    session.helper, session.announced, session.replaying = None, 0, True  # helper_lost
-    give(session, g, [17, 22, 36], senders=senders)  # written directly meanwhile
-    assert writes and session.announced == 0, "direct writes leave the replay where it is"
-    session.helper = FakeHelper(g)  # the next attach
-    give(session, g, [17, 22, 36], senders=senders)
-    assert session.helper.popups() == [
-        "popup 17 FROM Bob",
-        "popup 22 FROM Bob",
-        "popup 36 FROM Bob",
-    ]
-    assert session.announced == 3 and not session.replaying
-
-
 def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
     session, g = setup
     session.announced = 0

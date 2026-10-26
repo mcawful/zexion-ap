@@ -34,7 +34,8 @@ worlds/zexion/ → generation → slot data → client
   Install Disks goal, with enough disks). It never counts its own grants:
   it gives what the player should own minus what the inventory holds, so an item lost to a
   death or a reload is given again. It keeps a few records in the server's data storage (the
-  popups shown, the Intel Chip hints made; both sent again until the server holds them). A
+  received items handed to the helper for their popup, the follow-up popups shown, the Intel
+  Chip hints made; sent again until the server holds them). A
   failing side task (labels, disk count, DeathLink, follow-up popups) is logged once while items,
   checks and the goal go on.
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
@@ -78,8 +79,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
-  storage): 2026-10-26. Not seen in game: a game closed with popups queued, popups held while
-  another save is in play, and the popups of a lost helper shown by the next one.
+  storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
+  helper, which keeps its queue when the client goes away; not seen in game yet, nor popups
+  held while another save is in play. A game closed with popups queued loses them.
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three

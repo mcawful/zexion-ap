@@ -164,10 +164,10 @@ class ZexionContext(CommonContext):
         old = self.conn or self.left_conn
         self.left_conn = None
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
-        state.carry_over(conn, old, identity == self.seed_state.identity, self.helper)
+        state.carry_over(conn, old, identity == self.seed_state.identity)
         self.conn = conn
-        # Kept by the server across clients: shields given, locations found, follow-ups and
-        # item popups shown.
+        # Kept by the server across clients: shields given, locations found, follow-ups shown
+        # and item popups handed over.
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
         if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
             self.seed_state = state.SeedState(identity)
@@ -200,7 +200,7 @@ class ZexionContext(CommonContext):
             self.disarm_pending = True
         # Nothing of the seed's is wanted now: the helper ticks, which run while a helper is
         # attached, take back the labels, the ASSIST lock and the INTEL CHIP name.
-        self.left_conn = conn
+        self.left_conn = state.left_connection(conn, self.left_conn)
         self.conn = None
         self.load.seed_loaded = False
         self.load.save_collected = set()
@@ -244,8 +244,8 @@ class ZexionContext(CommonContext):
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         if conn is not None:
+            # Its popups not shown yet still show if it stays loaded, and are lost if it is gone.
             conn.session.helper = None
-            conn.helper_lost()  # its popups not shown yet are queued again on the next one
             # A plan the lost helper held is armed again in the next one; a new game just made
             # waits until its save is in play (poll), and a seed that cannot make one
             # stays as it is.
@@ -430,8 +430,7 @@ async def poll(ctx: ZexionContext) -> None:
         return
     ctx.said.clear("read", "read detail")
     if ctx.helper is not None and current.helper is None:
-        # The session gave up on it (try again later): dropped before the count below, so the
-        # popups it had not shown are not counted as shown.
+        # The session gave up on it (try again later).
         ctx.lose_helper()
     elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS

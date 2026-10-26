@@ -9,7 +9,6 @@ what is read from one is checked for form. client/zexion_client.py's game loop c
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -103,33 +102,23 @@ def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
 
 
 async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) -> None:
-    """Received items' popups, kept across connections (client/state.py): the session starts
-    from the server's count of those shown, once it has been read (a slot with none stored
-    counts every item it holds as shown, and stores that at once, so the key exists); and the
-    count is stored again as the helper shows them (the larger one wins, for two clients of a
-    slot). The helper is asked how many are still waiting only while more have been queued than
-    the server holds as shown."""
+    """Received items' popups, kept across connections (client/state.py, stored_count): the
+    session starts from the server's count of those handed over, once it has been read (a
+    slot with none stored counts every item it holds, and stores that at once, so the key
+    exists); and the count is stored again as items are handed over (the larger one wins, for
+    two clients of a slot)."""
     if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
     raw = ctx.stored_data.get(conn.announced_key)
     current = conn.session
     if current.announced is None:
         # Counted as received() counts: Zexion items only.
-        queued, conn.announced_shown = state.announced_start(raw, len(p.codes), conn.queued_before)
-        current.announced = queued
-    queued, shown = current.announced, conn.announced_shown or 0
-    helper = current.helper  # None once the session gave up on it and wrote directly
-    if helper is None:
-        shown = queued  # nothing waits in a helper: direct writes show no popups
-    elif state.popups_unstored(queued, raw, conn.announced_sent):
-        pending = await asyncio.to_thread(helper.popups_pending)
-        if pending is not None:  # else no frame took it: the count known stays
-            shown = state.popups_shown(queued, pending, shown)
-    conn.announced_shown = shown
-    count = state.announced_to_store(shown, raw, conn.announced_sent)
+        before = None if conn.before is None else conn.before.announced
+        current.announced = state.announced_start(raw, len(p.codes), before)
+    count = state.announced_to_store(current.announced, raw, conn.announced_sent)
     if count is None:
         return
-    if await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups shown"):
+    if await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups"):
         conn.announced_sent = count  # else sent again on the next poll
 
 

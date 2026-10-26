@@ -141,17 +141,14 @@ class Session:
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
         # How many received items have been handed over, to the helper for their popup or
-        # written directly; None until the server's count of those shown is read (or the count
-        # again after a lost helper).
+        # written directly; None until the server's count is read (client/storage.py,
+        # announced_tick).
         self.announced: int | None = None
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded.
         self._goal_before: bool | None = None
         self.holding = False
-        # The popups a lost helper had not shown are queued again on the next one (Connection.
-        # helper_lost): until it comes, direct writes leave ``announced`` where it is.
-        self.replaying = False
 
     def keep_ending(self, before: Session) -> None:
         """A reconnect to the same seed and slot: the ending's hold carries over, as a new
@@ -260,7 +257,7 @@ class Session:
                 logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
                 self.helper.close()
                 self.helper = None
-        if self.announced is not None and not self.replaying:
+        if self.announced is not None:
             self.announced = len(received)  # direct writes show no popups
         granted: dict[int, int] = {}
         try:
@@ -325,5 +322,4 @@ class Session:
             return {}
         if self.announced is not None:
             self.announced = len(received)
-        self.replaying = False
         return dict(owed)
