@@ -12,9 +12,12 @@ delivery safety). Report only documentation problems.
 
 ## Get the diff
 
-Use `git diff main...HEAD`, or `git diff HEAD` when the work is uncommitted (add
-`git status --short` to catch new untracked files). If a target was named (a branch, a PR
-number, a path), review that instead.
+Diff against the branch this one was cut from. If `git merge-base --is-ancestor apworld HEAD`
+succeeds (a branch cut from `apworld`, which holds the world), use `git diff apworld...HEAD`;
+otherwise `git diff main...HEAD`. On `main` or `apworld` itself, or when the base is unclear, ask
+for the range rather than review a whole branch's history. Use `git diff HEAD` when the work is
+uncommitted (add `git status --short` to catch new untracked files). If a target was named (a
+branch, a PR number, a path), review that instead.
 
 ## The rules you are enforcing
 
@@ -47,8 +50,11 @@ For each behavior the diff changes, search for prose about it before deciding no
 Grep for the identifiers, subcommand and flag names, file names, numbers and user-visible
 strings involved, old value and new. Check:
 
-- `CLAUDE.md` (commands, layout, rules, the tooling list) and `README.md` (status, and each
-  feature with when it was working in game).
+- `CLAUDE.md` (rules, commands, the tools table, layout, the tooling list),
+  `docs/DEVELOPING.md` (how the pieces fit, each feature with when it was working in game),
+  `README.md` and the player docs in `worlds/zexion/docs/` (what a player sees and does).
+- `native/README.md`: the request table, and each part with its "working in game" line. It is
+  the page most likely to go stale.
 - Module docstrings in the files the diff touches **and in their callers**. `tools/save_lab.py`
   and `.claude/hooks/guard_protected.py` describe their own behavior at the top.
 - `docs/re/`, by fact: a code change that relies on a different offset or pattern than the page
