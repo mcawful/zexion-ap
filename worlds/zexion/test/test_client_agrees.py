@@ -120,6 +120,10 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         self.assertTrue(newgame.plan_text(plan, build_sha256).startswith("ap_newgame\n"))
         self.assertTrue(newgame.plan_text(plan, offer_choice=False).startswith("ap_newgame\n"))
         self.assertIsNotNone(newgame.start_table(plan, build_sha256) or plan.menu.second_target)
+        # The new game must have Abridged Finale (setting 32) off: the client's goal is the
+        # ending's flag with the finale's clear (client/session.py, ENDING_FLAG).
+        abridged = f"expect {newgame.section(save_patch.OPTIONS + 32):#x} 00"
+        self.assertIn(abridged, newgame.plan_text(plan, offer_choice=False).splitlines())
 
         self.assertEqual(aplabels.stand_ins(slot), {ids.STAND_IN, ids.STAND_IN_PROGRESSION})
         kept = frozenset(slot["kept_locations"])

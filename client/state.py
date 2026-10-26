@@ -59,15 +59,13 @@ class Connection:
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # The follow-up popups shown for this world's own finds, by location index, until the
-    # server's record has them.
-    popped_mine: set[int] = field(default_factory=set)
     # Received items' popups (announced_tick): the count last stored, the last count known
     # shown, and how many the previous connection handed this same helper.
     announced_sent: int | None = None
     announced_shown: int | None = None
     queued_before: int | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
+    hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
     # Whether this seed's save has had the scanner's message (the disks needed are known).
     discs_told: bool = False
     # Whether the helper should hold the labels: only while this seed's save is loaded
@@ -129,11 +127,42 @@ class Connection:
 
     def helper_lost(self) -> None:
         """The helper is gone, and the popups it had not shown with it: received items past
-        the last count known shown are queued again, on the next helper."""
+        the last count known shown are queued again on the next helper, if the next attach
+        brings one (else they are given up: ``replay_given_up``), with those of items written
+        directly meanwhile. The count known shown is a lower bound (client/state.py,
+        popups_shown), so one shown just before the loss may show again."""
         queued = self.session.announced
         if queued is not None and self.announced_shown is not None:
             self.session.announced = min(queued, self.announced_shown)
+            self.session.replaying = True
         self.queued_before = None
+
+    def replay_given_up(self) -> None:
+        """No helper came back: direct writes count every item as handed over again, so a
+        helper that comes much later does not pop up all that was received meanwhile."""
+        self.session.replaying = False
+
+
+def carry_over(
+    conn: Connection, old: Connection | None, same_seed: bool, helper: native.Helper | None
+) -> None:
+    """A new connection to the same seed and slot as ``old`` (one that dropped, or one a
+    disconnect ended): the ending's hold carries over (Session.keep_ending), and, with the same
+    helper attached, how many popups ``old`` handed it, which it still holds (queued_before)."""
+    if old is None or not same_seed:
+        return
+    conn.session.keep_ending(old.session)
+    if helper is not None and old.session.helper is helper:
+        conn.queued_before = old.session.announced
+
+
+def goal_reached(ended: bool, required: int | None, have: int) -> bool:
+    """Whether the loaded save of this seed holds the goal: its ending (``ended``: the
+    session's goal), and with the OS Install Disks goal (``required``) only with enough disks
+    (``have``). Whether or not the client saw that ending begin: one it missed (closed during
+    it, or the save played without it) would never come again, as a save past its ending is not
+    offered RETURN HOME again."""
+    return ended and (required is None or have >= required)
 
 
 def stored_count(raw: object) -> int | None:
@@ -260,6 +289,7 @@ class HelperState:
     labels_retry_at: float = 0.0
     client_back_sent: bool = False  # asked once (client_back_tick)
     other_save_sent: bool = False  # told of another seed's save, this load
+    other_save_seen: bool = False  # the poll before saw it too (other_save_tick)
     offline_sent: dict[str, str] = field(default_factory=dict)  # what it last kept, by kind
     offline_at: float = 0.0
     skip_check_at: float | None = None  # when to ask whether it offers the escape skip
@@ -274,6 +304,10 @@ class SeedState:
     # echoed back), and when it was last stored.
     hints_mine: dict[str, tuple[int, int]] | None = None
     hints_sent_at: float = 0.0
+    # The follow-up popups this client showed for this world's own finds, by location index
+    # (ahead of the server's record until it has them), and when they were last stored.
+    popped_mine: set[int] = field(default_factory=set)
+    popped_sent_at: float = 0.0
     deaths: deathlink.DeathLink = field(default_factory=deathlink.DeathLink)
     death_retry_at: float = 0.0
 
@@ -284,15 +318,12 @@ class LoadState:
 
     seed_loaded: bool = False  # the last poll found this seed's save loaded
     save_collected: set[int] = field(default_factory=set)  # its collected locations
-    # This load was seen before its ending (flag 250 clear): with the OS Install Disks goal,
-    # only an ending that begins in it is the goal, not one a save held.
-    ending_unseen: bool = False
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)
     # Whether the helper should lock ASSIST, and name the Area Map INTEL CHIP, now.
     assists_want: bool = False
     intel_want: bool = False
-    # An ending without enough OS Install Disks, said once a load.
+    # An ending without enough OS Install Disks (yet), said once a load.
     goal_withheld: bool = False
 
     def leave(self) -> None:

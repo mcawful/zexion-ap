@@ -72,7 +72,7 @@ def test_a_new_helper_is_told_everything_again() -> None:
 
 
 def test_leaving_the_seeds_save_starts_the_next_load_afresh() -> None:
-    load = state.LoadState(seed_loaded=True, save_collected={1, 2}, ending_unseen=True)
+    load = state.LoadState(seed_loaded=True, save_collected={1, 2}, goal_withheld=True)
     load.return_home.reminded = True
     load.assists_want = load.intel_want = True
     load.leave()
@@ -203,3 +203,40 @@ def test_leaving_this_seeds_save_says_items_wait() -> None:
     # The server still sends items: they are given once this seed's save is loaded again.
     for line in (state.SAVE_CLOSED, state.OTHER_SAVE):
         assert "wait until" in line and "received" not in line
+
+
+# --- reconnects, a lost helper, the goal ------------------------------------------------------
+
+
+def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_hold() -> None:
+    helper = object()
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.session.helper, old.session.announced, old.session.holding = helper, 7, True
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True, helper=helper)
+    assert new.queued_before == 7 and new.session.holding
+    other_helper = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(other_helper, old, same_seed=True, helper=object())
+    assert other_helper.queued_before is None, "another helper holds none of them"
+    assert other_helper.session.holding
+    other_seed = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(other_seed, old, same_seed=False, helper=helper)
+    assert other_seed.queued_before is None and not other_seed.session.holding
+    state.carry_over(other_seed, None, same_seed=True, helper=helper)
+    assert other_seed.queued_before is None
+
+
+def test_a_lost_helpers_popups_wait_for_the_next_attach() -> None:
+    conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    conn.session.announced, conn.announced_shown = 5, 3
+    conn.helper_lost()
+    assert conn.session.announced == 3 and conn.session.replaying
+    conn.replay_given_up()  # the next attach brought no helper
+    assert not conn.session.replaying
+
+
+def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
+    assert state.goal_reached(True, None, 0), "the core goal: the ending"
+    assert state.goal_reached(True, 3, 3)
+    assert not state.goal_reached(True, 3, 2), "too few disks"
+    assert not state.goal_reached(False, 3, 9), "no ending"

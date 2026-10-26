@@ -25,6 +25,7 @@ log = logging.getLogger("Zexion")  # the log only (client/ticks.py, log)
 
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
 FOUND_RESEND_SECONDS = 5.0  # likewise for the locations found (store_found)
+POPPED_RESEND_SECONDS = 5.0  # and the follow-up popups shown (store_popped)
 
 
 def server_open(ctx: ZexionContext) -> bool:
@@ -138,7 +139,21 @@ def popped(ctx: ZexionContext) -> set[int] | None:
     conn = ctx.conn
     if conn is None or conn.popped_key not in ctx.stored_data:
         return None
-    return conn.popped_mine | stored_indices(ctx, conn.popped_key)
+    return ctx.seed_state.popped_mine | stored_indices(ctx, conn.popped_key)
+
+
+async def store_popped(ctx: ZexionContext, conn: state.Connection, due_only: bool = False) -> None:
+    """Record the follow-up popups this client showed (popped) that the server's record lacks;
+    with ``due_only``, only when POPPED_RESEND_SECONDS have passed since the last store (one sent
+    may have been lost with a closing connection, and a new connection must not show it again)."""
+    seed = ctx.seed_state
+    missing = seed.popped_mine - stored_indices(ctx, conn.popped_key)
+    if not missing or (due_only and time.monotonic() < seed.popped_sent_at + POPPED_RESEND_SECONDS):
+        return
+    seed.popped_sent_at = time.monotonic()
+    value = {str(i): 1 for i in sorted(missing)}
+    if not await store(ctx, conn.popped_key, "update", value, {}, "Recording the popups shown"):
+        seed.popped_sent_at = 0.0  # sent again on the next poll
 
 
 def own_found(ctx: ZexionContext) -> list[int]:
@@ -182,6 +197,11 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
     used = hints_used(ctx)
     if used is None:
         return  # the server's not read yet
+    # Once a connection, every hint given so far is created again: one sent as a connection
+    # closed may never have reached the server (it keeps only new ones: nothing doubles).
+    recreate = not conn.hints_recreated and server_open(ctx)
+    if recreate and await create_hints(ctx, used.values()):
+        conn.hints_recreated = True
     keys = hints.area_maps(p.codes, conn.plan.location_items, p.found)
     # The (player, location) of each item the player has from a location: received from
     # another world, or found in one of this world's (own_found).
@@ -194,19 +214,27 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
         if behind and time.monotonic() >= seed.hints_sent_at + HINTS_RESEND_SECONDS:
             await store_hints(ctx, conn)  # the server has not taken the last ones yet
         return
+    if not await create_hints(ctx, new.values()):
+        return  # tried again once connected
+    seed.hints_mine = (seed.hints_mine or {}) | new
+    await store_hints(ctx, conn)
+
+
+async def create_hints(ctx: ZexionContext, entries) -> bool:
+    """The Archipelago hints for these entries (player, location), NO HINTS LEFT skipped;
+    False, warned, when the send failed (a closing connection)."""
     by_player: dict[int, list[int]] = {}
-    for player, location in new.values():
+    for player, location in entries:
         if (player, location) != hints.NONE_LEFT:
             by_player.setdefault(player, []).append(location)
     try:
         for player, locations in by_player.items():
             await ctx.send_msgs([{"cmd": "CreateHints", "player": player, "locations": locations}])
-    except Exception as exc:  # a closing connection: tried again once connected
+    except Exception as exc:
         logger.warning("Creating the Area Map hints failed (connection lost?); trying again.")
         log.warning(f"Creating the Area Map hints failed ({exc}).")
-        return
-    seed.hints_mine = (seed.hints_mine or {}) | new
-    await store_hints(ctx, conn)
+        return False
+    return True
 
 
 async def store_hints(ctx: ZexionContext, conn: state.Connection) -> None:

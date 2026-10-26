@@ -19,7 +19,7 @@ from BaseClasses import ItemClassification
 
 from . import aplabels, discs, game, ids, native, newgame, offline, reconcile, shields, state
 from .ids import ITEM_ID_BASE, LOCATION_ID_BASE
-from .storage import hint_note, hints_used, popped, store
+from .storage import hint_note, hints_used, popped, store, store_popped
 
 if TYPE_CHECKING:
     from . import session
@@ -65,6 +65,8 @@ async def attach_helper(ctx: ZexionContext) -> None:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
+        if ctx.conn is not None:
+            ctx.conn.replay_given_up()  # no helper to show a lost one's popups
         return
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
@@ -487,7 +489,7 @@ async def skip_tick(ctx: ZexionContext) -> None:
         goal = (
             "the goal is the OS Install Disks"
             if ctx.conn is not None and ctx.conn.hunt is not None
-            else "the goal is sent when the ending begins, either way"
+            else "the goal is sent once the save has reached the ending, either way"
         )
         detail(
             f"Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; {goal}."
@@ -599,9 +601,13 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
     if not step.other_seed:
         # Asked again for the next such save: the helper says it once a load, and again after
         # a reconnect (Game::other_save).
-        told.other_save_sent = False
+        told.other_save_sent = told.other_save_seen = False
         return
     if told.other_save_sent or step.state != game.IN_PLAY:
+        return
+    if not told.other_save_seen:
+        # Asked from the next poll's look: a load caught half way is not taken for another seed.
+        told.other_save_seen = True
         return
     reply = await asyncio.to_thread(helper.request, "other_save")
     if reply.startswith("refused"):
@@ -640,6 +646,7 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     done = popped(ctx)
     if done is None:
         return  # the server's record not read yet
+    await store_popped(ctx, conn, due_only=True)  # one lost with a closing connection, again
     waiting = sorted(ctx.load.save_collected - done)
     if not waiting:
         return
@@ -663,10 +670,9 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
     if reply != "applied":
         return  # not shown: tried again
-    shown = set(disks) | set(maps)
-    conn.popped_mine |= shown  # this client's record holds them until the server has them
-    value = {str(i): 1 for i in shown}
-    await store(ctx, conn.popped_key, "update", value, {}, "Recording the popups shown")
+    # This client's record holds them until the server has them.
+    ctx.seed_state.popped_mine |= set(disks) | set(maps)
+    await store_popped(ctx, conn)
 
 
 async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:

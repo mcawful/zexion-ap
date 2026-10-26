@@ -113,6 +113,8 @@ class ZexionContext(CommonContext):
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
         # The state, by how long each part lasts (client/state.py).
         self.conn: state.Connection | None = None
+        # The connection a disconnect ended, for the next one to the same seed (connected).
+        self.left_conn: state.Connection | None = None
         self.told: state.HelperState | None = None  # set with helper
         self.seed_state = state.SeedState()
         self.load = state.LoadState()
@@ -158,16 +160,11 @@ class ZexionContext(CommonContext):
             Utils.async_start(self.disconnect(), name="disconnect")
             return
         conn.session.helper = self.helper
-        old = self.conn  # a dropped connection's, on reconnecting
+        # The connection before: one that dropped (kept), or one a disconnect ended.
+        old = self.conn or self.left_conn
+        self.left_conn = None
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
-        if (
-            old is not None
-            and identity == self.seed_state.identity
-            and self.helper is not None
-            and old.session.helper is self.helper
-        ):
-            # The popups it handed this helper are still the helper's to show: not queued again.
-            conn.queued_before = old.session.announced
+        state.carry_over(conn, old, identity == self.seed_state.identity, self.helper)
         self.conn = conn
         # Kept by the server across clients: shields given, locations found, follow-ups and
         # item popups shown.
@@ -203,6 +200,7 @@ class ZexionContext(CommonContext):
             self.disarm_pending = True
         # Nothing of the seed's is wanted now: the helper ticks, which run while a helper is
         # attached, take back the labels, the ASSIST lock and the INTEL CHIP name.
+        self.left_conn = conn
         self.conn = None
         self.load.seed_loaded = False
         self.load.save_collected = set()
@@ -451,14 +449,13 @@ async def poll(ctx: ZexionContext) -> None:
         conn.newgame = None
         choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
         detail(f"{choice} is armed again: another empty slot can start this seed.")
+    looked_before = load.seed_loaded  # this load was seen by the poll before too
     if step.seed_matches:
         if not load.seed_loaded:
             logger.info(state.save_loaded(step.save_stamp))  # again after a reconnect
         load.seed_loaded = True
         conn.discs_told = step.scanned
         load.save_collected = set(step.checked)
-        if not step.ended:
-            load.ending_unseen = True  # this load is before the ending: one can begin
         if conn.lock_assists and ctx.assists_unlocked():
             conn.lock_assists = False
             logger.info("Assist Unlock received: the assist menu is no longer locked.")
@@ -478,6 +475,10 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, "other save's notice", lambda: other_save_tick(ctx, step))
     if not step.seed_matches or ctx.conn is not conn:
         return  # nothing to send, or the connection changed meanwhile
+    if not looked_before:
+        # A load's first look: sent from the next poll's, two reads apart, so a load caught half
+        # way (the section still the last save's, the map grid the new one's) sends nothing.
+        return
     shield_work = ctx.shields.pending is not None or ctx.shields.given is not None
     if ctx.helper is not None or shield_work:
         await side_tick(ctx, "Energy Shields", lambda: shields_tick(ctx, p.codes))
@@ -510,11 +511,8 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: this ending is not its goal
     if step.goal and not conn.goal_sent and not ctx.finished_game:
-        # The goal is the ending; with the OS Install Disks goal, only with enough disks.
-        have = None if hunt is None else discs.owned(hunt, p.codes, p.found)
-        if hunt is not None and not load.ending_unseen:
-            pass  # a save that had reached its ending before: not this ending
-        elif hunt is None or have >= hunt.required:
+        have = 0 if hunt is None else discs.owned(hunt, p.codes, p.found)
+        if state.goal_reached(step.goal, None if hunt is None else hunt.required, have):
             try:
                 await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
             except Exception as exc:  # a closing connection: sent on a later poll
@@ -524,14 +522,16 @@ async def poll(ctx: ZexionContext) -> None:
             conn.goal_sent = True
             ctx.finished_game = True
             logger.info(
-                "The ending began: goal sent."
+                "This save reached the ending: goal sent."
                 if hunt is None
-                else f"The ending began with {have} of {hunt.required} OS Install Disks: goal sent."
+                else f"This save reached the ending with {have} of {hunt.required} OS Install "
+                "Disks: goal sent."
             )
         elif not load.goal_withheld:
             load.goal_withheld = True  # said once a load
             logger.warning(
-                f"The ending began with {have} of {hunt.required} OS Install Disks: not the goal."
+                f"This save reached the ending with {have} of {hunt.required} OS Install Disks: "
+                "not the goal yet."
             )
 
 

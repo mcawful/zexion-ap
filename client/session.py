@@ -149,6 +149,14 @@ class Session:
         # cutscenes read as play). Both cleared when no save of this seed is loaded.
         self._goal_before: bool | None = None
         self.holding = False
+        # The popups a lost helper had not shown are queued again on the next one (Connection.
+        # helper_lost): until it comes, direct writes leave ``announced`` where it is.
+        self.replaying = False
+
+    def keep_ending(self, before: Session) -> None:
+        """A reconnect to the same seed and slot: the ending's hold carries over, as a new
+        session would read the goal as reached already and never hold."""
+        self._goal_before, self.holding = before._goal_before, before.holding
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
@@ -210,6 +218,8 @@ class Session:
         if self._goal_before is False and goal:
             self.holding = True
             self._due = None
+        elif not goal:
+            self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
         if snap.state == game.IN_PLAY and not self.holding:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)
@@ -250,7 +260,7 @@ class Session:
                 logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
                 self.helper.close()
                 self.helper = None
-        if self.announced is not None:
+        if self.announced is not None and not self.replaying:
             self.announced = len(received)  # direct writes show no popups
         granted: dict[int, int] = {}
         try:
@@ -315,4 +325,5 @@ class Session:
             return {}
         if self.announced is not None:
             self.announced = len(received)
+        self.replaying = False
         return dict(owed)

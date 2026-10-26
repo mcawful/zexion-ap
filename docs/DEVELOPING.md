@@ -30,11 +30,13 @@ worlds/zexion/ → generation → slot data → client
   other 4), using the game's own randomizer map and rules (`docs/re/locations.md`).
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
-  other worlds send, and sends the goal when the ending begins. It never counts its own grants:
+  other worlds send, and sends the goal once the save has reached the ending (with the OS
+  Install Disks goal, with enough disks). It never counts its own grants:
   it gives what the player should own minus what the inventory holds, so an item lost to a
   death or a reload is given again. It keeps a few records in the server's data storage (the
-  popups shown, the Intel Chip hints made). A failing side task (labels, disk count, DeathLink,
-  follow-up popups) is logged once while items, checks and the goal go on.
+  popups shown, the Intel Chip hints made; both sent again until the server holds them). A
+  failing side task (labels, disk count, DeathLink, follow-up popups) is logged once while items,
+  checks and the goal go on.
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -76,7 +78,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
-  storage): 2026-10-26. Not seen in game: a game closed with popups queued.
+  storage): 2026-10-26. Not seen in game: a game closed with popups queued, popups held while
+  another save is in play, and the popups of a lost helper shown by the next one.
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
