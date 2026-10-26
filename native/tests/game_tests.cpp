@@ -816,7 +816,8 @@ void test_flipped_items_show_as_themselves() {
     game.watch_ap_items();
     check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 41 * 0x38,
           "a reversed-gravity stand-in shown as the Missile Box's frame 41, its list untouched");
-    check(general_ptr(12, 0x198) == g_palette_table[1] && get<int16_t>(general_slot(12), 0x1A0) == 1,
+    check(general_ptr(12, 0x198) == g_palette_table[1] &&
+              get<int16_t>(general_slot(12), 0x1A0) == 1,
           "in its palette");
     check(general_ptr(13, 0x1A8) == g_frames && general_ptr(13, 0x198) == g_palette_table[8],
           "another game's item keeps the logo");

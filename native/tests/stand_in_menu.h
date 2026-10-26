@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "check.h"
 #include "menu.h"
 
 namespace stand_in {
@@ -33,11 +34,6 @@ struct ModePanel {
     std::vector<BYTE> table = std::vector<BYTE>(kFrames * 0x38);
     BYTE* current = nullptr;  // what current_menu holds
 
-    template <typename T>
-    static T& at(BYTE* base, ptrdiff_t offset) {
-        return *reinterpret_cast<T*>(base + offset);
-    }
-
     ModePanel(void* panel_handler, void* widget_handler, void* rando_menu)
         : panel_handler_ptr(panel_handler),
           widget_handler_ptr(widget_handler),
@@ -53,15 +49,12 @@ struct ModePanel {
         at<BYTE*>(child, 0x1F0) = label;
         at<int32_t>(label, 0x1D8) = zap::kLabelLength;
         at<BYTE**>(label, 0x228) = glyph_list;
-        const char text[] = "RANDOMIZER ";
         for (int i = 0; i < zap::kLabelLength; ++i) {
-            BYTE* g = glyphs[i];
-            glyph_list[i] = g;
-            at<BYTE*>(g, 0x1A8) = table.data();
-            at<int32_t>(g, 0x1BC) = kFrames;
-            at<int32_t>(g, 0x1C4) = text[i];
-            at<BYTE*>(g, 0x1B0) = table.data() + text[i] * 0x38;
+            glyph_list[i] = glyphs[i];
+            at<BYTE*>(glyphs[i], 0x1A8) = table.data();
+            at<int32_t>(glyphs[i], 0x1BC) = kFrames;
         }
+        reset_label();
         current = menu;
     }
 
@@ -114,11 +107,6 @@ struct OptionsMenu {
     BYTE glyphs[zap::kAssistLength][0x1E0] = {};
     std::vector<BYTE> table = std::vector<BYTE>(kFrames * 0x38);
     BYTE* current = nullptr;
-
-    template <typename T>
-    static T& at(BYTE* base, ptrdiff_t offset) {
-        return *reinterpret_cast<T*>(base + offset);
-    }
 
     OptionsMenu(void* widget_handler, void* assist_menu)
         : widget_handler_ptr(widget_handler), assist_menu_ptr(assist_menu) {
@@ -189,9 +177,8 @@ struct OptionsMenu {
     std::string text() {
         std::string s;
         for (int i = 0; i < 6; ++i) {
-            int32_t c = at<int32_t>(glyph_list[i], 0x1C4);
-            if (at<BYTE*>(glyph_list[i], 0x1B0) != table.data() + c * 0x38) return "frame mismatch";
-            s += static_cast<char>(c);
+            if (code(i) < 0) return "frame mismatch";
+            s += static_cast<char>(code(i));
         }
         return s;
     }

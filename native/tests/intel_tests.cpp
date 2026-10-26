@@ -3,7 +3,6 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -18,26 +17,23 @@ struct Records {
     Records() {
         holder_value = table.data();
         BYTE* r = area_map();
-        auto word = [&](ptrdiff_t o, int16_t v) { std::memcpy(r + o, &v, 2); };
-        word(0x00, 34);
-        word(0x02, 25);
-        word(0x04, 6);
-        word(0x06, 2);
+        put<int16_t>(r, 0x00, 34);
+        put<int16_t>(r, 0x02, 25);
+        put<int16_t>(r, 0x04, 6);
+        put<int16_t>(r, 0x06, 2);
         r[0x08] = 0;
         r[0x09] = 3;
         std::memcpy(r + 0x0A, "AREA MAP\0NK", 11);  // what follows the name, as in the file
-        word(0x3C, 46);
-        word(0x40, 3551);
-        word(0x58, 1);
+        put<int16_t>(r, 0x3C, 46);
+        put<int16_t>(r, 0x40, 3551);
+        put<int16_t>(r, 0x58, 1);
     }
     BYTE* holder() { return reinterpret_cast<BYTE*>(&holder_value); }
     BYTE* area_map() { return table.data() + 49 * 100; }
     const char* name() { return reinterpret_cast<const char*>(area_map() + 0x0A); }
-    int16_t event() {
-        int16_t v;
-        std::memcpy(&v, area_map() + 0x40, 2);
-        return v;
-    }
+    int16_t event() { return get<int16_t>(area_map(), 0x40); }
+    // As the game loads it: AREA MAP, its event the map reveal.
+    bool as_game() { return std::strcmp(name(), "AREA MAP") == 0 && event() == 3551; }
 };
 
 void test_on_renames_it_and_turns_off_the_reveal() {
@@ -53,8 +49,7 @@ void test_on_renames_it_and_turns_off_the_reveal() {
     check(std::strcmp(t.name(), "INTEL CHIP") == 0 && chip.restyled(), "and stays so");
     chip.set(false);
     chip.watch(t.holder());
-    check(std::strcmp(t.name(), "AREA MAP") == 0 && t.event() == 3551 && !chip.restyled(),
-          "off again: AREA MAP and event 3551 back");
+    check(t.as_game() && !chip.restyled(), "off again: AREA MAP and event 3551 back");
 }
 
 void test_restore_puts_it_back() {
@@ -63,8 +58,7 @@ void test_restore_puts_it_back() {
     chip.set(true);
     chip.watch(t.holder());
     chip.restore(t.holder());
-    check(std::strcmp(t.name(), "AREA MAP") == 0 && t.event() == 3551 && !chip.restyled(),
-          "restore: the game's");
+    check(t.as_game() && !chip.restyled(), "restore: the game's");
 }
 
 void test_a_record_not_as_traced_is_left_alone() {
@@ -73,8 +67,7 @@ void test_a_record_not_as_traced_is_left_alone() {
     zap::IntelChip chip;
     chip.set(true);
     chip.watch(t.holder());
-    check(std::strcmp(t.name(), "AREA MAP") == 0 && t.event() == 3551 && !chip.restyled(),
-          "another record: untouched");
+    check(t.as_game() && !chip.restyled(), "another record: untouched");
 
     Records u;
     std::memcpy(u.area_map() + 0x0A, "MAPA\0", 5);  // a translation's name, say
@@ -97,8 +90,7 @@ void test_an_earlier_helpers_rename_is_adopted_and_put_back() {
     check(chip.restyled(), "adopted");
     zap::IntelChip later;
     later.restore(t.holder());
-    check(std::strcmp(t.name(), "AREA MAP") == 0 && t.event() == 3551,
-          "put back by a helper that never renamed it");
+    check(t.as_game(), "put back by a helper that never renamed it");
 }
 
 }  // namespace

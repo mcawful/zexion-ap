@@ -469,7 +469,7 @@ laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_m
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp` and `unload_test.cpp` for the last two below). They share `tests/check.h`;
 `tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
-`unload_under_load`.
+`unload_under_load`, and the last two's busy threads and wait for an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), the build check and the pipe.

@@ -3,8 +3,8 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -16,16 +16,6 @@
 using namespace stand_in;
 
 namespace {
-
-std::string hex(const uint8_t* b, size_t n) {
-    static const char* d = "0123456789ABCDEF";
-    std::string out;
-    for (size_t i = 0; i < n; ++i) {
-        out += d[b[i] >> 4];
-        out += d[b[i] & 15];
-    }
-    return out;
-}
 
 uint8_t g_table[154];
 const uint8_t g_start[6] = {6, 0, 191, 0, 0x49, 1};
@@ -40,6 +30,24 @@ std::string seed_text(const std::string& discs = "discs 3 12 434F4C4C454354",
            discs + "\n" + unfound + "\n"
            "ap_labels\n"
            "label 23 14 4150204954454D0A464F5220414C494345\n";
+}
+
+// A cached config: `first` (the `config` request), keys k0 to k7, and a check line for each.
+std::string cached_config(const std::string& first) {
+    std::string text = first;
+    for (int i = 0; i < 8; ++i) text += " k" + std::to_string(i) + "=0x" + std::to_string(i + 1);
+    text += "\n";
+    for (int i = 0; i < 8; ++i) {
+        text += "check k" + std::to_string(i) + " " + std::string(32, '0') + "\n";
+    }
+    return text;
+}
+
+// A folder of the tests' own under %TEMP%, as a failed earlier run may have left it: removed.
+std::wstring temp_folder(const wchar_t* name) {
+    const std::filesystem::path folder = std::filesystem::temp_directory_path() / name;
+    std::filesystem::remove_all(folder);
+    return folder.wstring();
 }
 
 void test_the_file() {
@@ -81,17 +89,11 @@ void test_the_file() {
 }
 
 void test_the_folder() {
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    std::wstring folder = std::wstring(temp) + L"zap_offline_test";
-    CreateDirectoryW(folder.c_str(), nullptr);
-    CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
+    const std::wstring folder = temp_folder(L"zap_offline_test");
+    std::filesystem::create_directories(folder + L"\\seeds");
     {
-        std::ofstream config(folder + L"\\config-B1.txt");
-        config << "config inventory=0x10 flags=0x20";
-        for (int i = 0; i < 8; ++i) config << " k" << i << "=0x" << (i + 1);
-        config << "\n";
-        for (int i = 0; i < 8; ++i) config << "check k" << i << " " << std::string(32, '0') << "\n";
+        std::ofstream(folder + L"\\config-B1.txt")
+            << cached_config("config inventory=0x10 flags=0x20");
         std::ofstream(folder + L"\\seeds\\good.txt") << seed_text();
         std::ofstream(folder + L"\\seeds\\bad.txt") << "zexion-ap offline 1\ntable 00\n";
         std::ofstream(folder + L"\\seeds\\ignored.dat") << seed_text();
@@ -103,63 +105,50 @@ void test_the_folder() {
     zap::OfflineFiles other = zap::read_offline_files(folder, "B2");
     check(other.config.empty() && other.seeds.size() == 1, "no config for another build");
     check(zap::read_offline_files(folder + L"\\none", "B1").seeds.empty(), "no folder: nothing");
-    DeleteFileW((folder + L"\\config-B1.txt").c_str());
-    DeleteFileW((folder + L"\\seeds\\good.txt").c_str());
-    DeleteFileW((folder + L"\\seeds\\bad.txt").c_str());
-    DeleteFileW((folder + L"\\seeds\\ignored.dat").c_str());
-    RemoveDirectoryW((folder + L"\\seeds").c_str());
-    RemoveDirectoryW(folder.c_str());
+    std::filesystem::remove_all(folder);
 }
 
 void test_the_helper_writes_what_the_client_sends() {
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    std::wstring folder = std::wstring(temp) + L"zap_offline_put";
+    const std::wstring folder = temp_folder(L"zap_offline_put");
     const std::string seed_put = "offline_put seed AP_1-0-1\n" + seed_text();
-    std::string config = "offline_put config\nconfig";
-    for (int i = 0; i < 8; ++i) config += " k" + std::to_string(i) + "=0x" + std::to_string(i + 1);
-    config += "\n";
-    for (int i = 0; i < 8; ++i) config += "check k" + std::to_string(i) + " " + std::string(32, '0') + "\n";
     check(zap::put_offline_file(folder, "B1", seed_put) == "stored", "a seed stored");
     check(zap::put_offline_file(folder, "B1", seed_put) == "unchanged",
           "the same again: unchanged");
-    check(zap::put_offline_file(folder, "B1", config) == "stored", "the config stored");
-    check(zap::put_offline_file(folder, "B1", "offline_put config\nconfig flags=0x20\n")
-                  .rfind("error", 0) == 0,
-          "a config with too few checks refused");
-    check(zap::put_offline_file(folder, "B1", "offline_put seed COM1\n" + seed_text())
-                  .rfind("error", 0) == 0,
-          "a name not as the client makes it refused");
-    check(zap::put_offline_file(folder, "B1", "offline_put seed ../x\n" + seed_text())
-                  .rfind("error", 0) == 0,
-          "a name with a path refused");
-    check(zap::put_offline_file(folder, "B1", "offline_put seed y\nhello\n").rfind("error", 0) ==
-              0,
-          "a seed that does not parse refused");
-    check(zap::put_offline_file(folder, nullptr, "offline_put config\nconfig a=0x1\n")
-                  .rfind("error", 0) == 0,
-          "no build: no config");
+    check(zap::put_offline_file(folder, "B1", "offline_put config\n" + cached_config("config")) ==
+              "stored",
+          "the config stored");
+    struct Refused {
+        const char* build;
+        std::string request;
+        const char* what;
+    };
+    const Refused refused[] = {
+        {"B1", "offline_put config\nconfig flags=0x20\n", "a config with too few checks refused"},
+        {"B1", "offline_put seed COM1\n" + seed_text(),
+         "a name not as the client makes it refused"},
+        {"B1", "offline_put seed ../x\n" + seed_text(), "a name with a path refused"},
+        {"B1", "offline_put seed y\nhello\n", "a seed that does not parse refused"},
+        {nullptr, "offline_put config\nconfig a=0x1\n", "no build: no config"},
+    };
+    for (const Refused& r : refused) {
+        check(zap::put_offline_file(folder, r.build, r.request).rfind("error", 0) == 0, r.what);
+    }
     zap::OfflineFiles f = zap::read_offline_files(folder, "B1");
     check(f.seeds.size() == 1 && f.seeds[0].name == "AP_1-0-1.txt" && f.config.size() == 8 &&
               f.checks.size() == 8,
           "and read back");
-    DeleteFileW((folder + L"\\seeds\\AP_1-0-1.txt").c_str());
-    DeleteFileW((folder + L"\\config-B1.txt").c_str());
-    RemoveDirectoryW((folder + L"\\seeds").c_str());
-    RemoveDirectoryW(folder.c_str());
+    std::filesystem::remove_all(folder);
 }
 
 void test_the_cache_must_fit_the_game() {
     HMODULE self = GetModuleHandleW(nullptr);
-    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
-        reinterpret_cast<const BYTE*>(self) +
-        reinterpret_cast<const IMAGE_DOS_HEADER*>(self)->e_lfanew);
-    uint64_t entry = nt->OptionalHeader.AddressOfEntryPoint;  // code that is surely there
+    // Code that is surely there.
+    uint64_t entry = zap::nt_headers(self)->OptionalHeader.AddressOfEntryPoint;
     zap::OfflineFiles f;
     for (int i = 0; i < 8; ++i) {
         std::string key = "fn" + std::to_string(i);
         f.config[key] = entry + i;
-        f.checks[key] = hex(reinterpret_cast<const uint8_t*>(self) + entry + i, 16);
+        f.checks[key] = hex(reinterpret_cast<const BYTE*>(self) + entry + i, 16);
     }
     check(zap::check_offline_cache(self, f).empty(), "the bytes as cached: used");
     f.checks["fn3"][0] = f.checks["fn3"][0] == '0' ? '1' : '0';
@@ -178,9 +167,7 @@ void put_seed(BYTE* section) {
 void test_a_save_of_the_seed_dressed_offline() {
     reset_game();
     zap::Game game;
-    check(game.configure(GetModuleHandleW(nullptr), stand_in_config(), false).empty() &&
-              !game.active(),
-          "configured from the cache: inactive");
+    check(configure(game, false).empty() && !game.active(), "configured from the cache: inactive");
     zap::OfflineSeed s;
     zap::parse_offline_seed(seed_text(), s);
     game.set_offline({s});
@@ -225,7 +212,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     // still the seed's).
     auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
     for (int n : {3, 4, 5}) {
-        *reinterpret_cast<uint16_t*>(block(n) + 0x9400) = 1;
+        put<uint16_t>(block(n), 0x9400, 1);
         block(n)[0x935E] = 0;
     }
     block(5)[0x935E] = 0xFF;
@@ -241,14 +228,13 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(game.files().counts().at(3) == 4, "counted for that save on the file select");
 
     // A client configures: the offline look goes.
-    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty() && game.active(),
-          "a client's config");
+    check(configure(game).empty() && game.active(), "a client's config");
     check(game.files().counts().empty(), "the file select's counts left to the client");
     check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
 
     // Played offline, then a client connects: told so, and the not-connected warning withdrawn.
     zap::Game again;
-    again.configure(GetModuleHandleW(nullptr), stand_in_config(), false);
+    configure(again, false);
     again.set_offline({s});
     g_save_loaded = 3;
     g_menu = 0;
@@ -258,7 +244,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     // A client's short first connection (its version check) undresses it, as any client going
     // away does; the real one comes next.
     again.leave_offline();
-    again.configure(GetModuleHandleW(nullptr), stand_in_config());
+    configure(again);
     check(again.queued_popups() == 0 && !again.intel_on(), "a client: the warning withdrawn");
     check(again.client_back() && again.queued_popups() == 1,
           "its session sees the save: CLIENT CONNECTED, once");
@@ -266,7 +252,7 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     // A client of another seed: its session says the loaded save is not its seed's.
     zap::Game other;
-    other.configure(GetModuleHandleW(nullptr), stand_in_config());  // a client, active
+    configure(other);  // a client, active
     other.set_offline({s});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a client's own: no offline look by itself");
@@ -295,7 +281,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a new load: the client's again until it says otherwise");
     check(other.other_save() && other.queued_popups() == 2, "and told again for this load");
-    other.configure(GetModuleHandleW(nullptr), stand_in_config());  // a reconnect
+    configure(other);  // a reconnect
     check(other.other_save() && other.queued_popups() == 3, "and again on a reconnect");
 
     // The file select with a client: its counts for its saves, the offline ones for others'.

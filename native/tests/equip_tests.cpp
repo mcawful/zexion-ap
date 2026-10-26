@@ -75,11 +75,6 @@ BYTE* widget_new(const char* str, int glyphs, BYTE* panel, void* handler, void* 
 }
 
 BYTE g_frames[256 * 0x38];
-// The game's (object, template): the template's frames (0x74780).
-void sprite_sheet(void* o, void* t) {
-    at<int32_t>(static_cast<BYTE*>(o), 0x1BC) = at<int32_t>(static_cast<BYTE*>(t), 0x1BC);
-    at<BYTE*>(static_cast<BYTE*>(o), 0x1A8) = at<BYTE*>(static_cast<BYTE*>(t), 0x1A8);
-}
 
 std::vector<BYTE*> g_linked;
 void panel_link(void* panel) { g_linked.push_back(static_cast<BYTE*>(panel)); }

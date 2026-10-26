@@ -1,15 +1,15 @@
 // Host tests for the pause screen's disk row (pause.h): a stand-in pause screen laid out as read
-// live on B1 (its KEYS panel: a 4-glyph label and nine sprites), a stand-in `jne` in code, and
-// a stand-in for the game's sprite-sheet function.
+// live on B1 (its KEYS panel: a 4-glyph label and nine sprites), the stand-in game's `jne` in
+// code, and check.h's stand-in for the game's sprite-sheet function.
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
 #include <string>
 
 #include "check.h"
 #include "pause.h"
+#include "stand_in.h"  // g_keys_branch
 
 namespace {
 
@@ -18,26 +18,8 @@ void widget_handler() { g_calls += 1; }
 void equipment_fn(void*, int) { g_calls += 2; }
 void other_fn(void*, int) { g_calls += 3; }
 
-#pragma section(".zapcode", read, execute)
-__declspec(allocate(".zapcode")) unsigned char g_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
-
-// Read volatile so the compiler cannot fold it to its initial value.
-unsigned char branch() { return static_cast<volatile unsigned char*>(g_branch)[0]; }
-
-// Sets the branch's first byte, unprotecting the code page for the write.
-void set_branch(unsigned char b) {
-    DWORD old = 0;
-    VirtualProtect(g_branch, 1, PAGE_EXECUTE_READWRITE, &old);
-    static_cast<volatile unsigned char*>(g_branch)[0] = b;
-    VirtualProtect(g_branch, 1, old, &old);
-}
-
-// Stand-in for the game's sprite-sheet function (object, template): copies the template's frame
-// list and count.
-void sprite_sheet(void* o, void* t) {
-    at<int32_t>(static_cast<BYTE*>(o), 0x1BC) = at<int32_t>(static_cast<BYTE*>(t), 0x1BC);
-    at<BYTE*>(static_cast<BYTE*>(o), 0x1A8) = at<BYTE*>(static_cast<BYTE*>(t), 0x1A8);
-}
+unsigned char* const g_branch = stand_in::g_keys_branch;
+unsigned char branch() { return code_byte(g_branch, 0); }
 
 BYTE g_frames[1024 * 0x38];
 
@@ -162,39 +144,38 @@ void test_the_row_shows_the_disks() {
 
 void test_anything_else_is_left_alone() {
     zap::PauseDiskRow row;
-    {
+    struct Case {
+        const char* what;
+        void (*spoil)(Pause&, zap::PauseDiskRow&);
+    };
+    const Case cases[] = {
+        {"not the pause screen (no EQUIPMENT)",
+         [](Pause& p, zap::PauseDiskRow&) {
+             at<void*>(p.entry[1], 0x2C0) = reinterpret_cast<void*>(&other_fn);
+         }},
+        {"not the KEYS row",
+         [](Pause& p, zap::PauseDiskRow&) { at<int32_t>(p.glyph[0], 0x1C4) = 'Z'; }},
+        {"another sprite count",
+         [](Pause& p, zap::PauseDiskRow&) { at<int32_t>(p.row, 0x1F8) = 8; }},
+        {"a text of another length (not the row's eight cells)",
+         [](Pause&, zap::PauseDiskRow& r) { r.set("2 OF 15"); }},
+    };
+    for (const Case& c : cases) {
         Pause p;
-        at<void*>(p.entry[1], 0x2C0) = reinterpret_cast<void*>(&other_fn);  // no EQUIPMENT
         row.set(zap::pause_row_text(2, 15));
+        c.spoil(p, row);
+        const int glyph = p.frame(p.glyph[0]);
         row.watch(p.addresses());
-        check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == 'K', "not the pause screen");
-    }
-    {
-        Pause p;
-        at<int32_t>(p.glyph[0], 0x1C4) = 'Z';  // not KEYS
-        row.watch(p.addresses());
-        check(p.frame(p.sprite[4]) == 384, "not the KEYS row");
-    }
-    {
-        Pause p;
-        at<int32_t>(p.row, 0x1F8) = 8;
-        row.watch(p.addresses());
-        check(p.frame(p.sprite[4]) == 384, "another sprite count");
-    }
-    {
-        Pause p;
-        row.set("2 OF 15");  // not the row's eight cells
-        row.watch(p.addresses());
-        check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == 'K', "a text of another length");
+        check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == glyph, c.what);
     }
     row.set("");
     Pause p;
     row.watch(p.addresses());
-    set_branch(0x74);  // not the game's jne: never written
+    set_code_byte(g_branch, 0, 0x74);  // not the game's jne: never written
     row.set(zap::pause_row_text(2, 15));
     row.watch(p.addresses());
     check(branch() == 0x74 && !row.patched(), "another instruction left alone");
-    set_branch(0x75);
+    set_code_byte(g_branch, 0, 0x75);
     row.restore(p.addresses());
 }
 

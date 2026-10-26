@@ -3,25 +3,16 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "check.h"
 
-namespace {
-
-std::wstring widen(const char* s) {
-    std::wstring out;
-    for (; *s != '\0'; ++s) out += static_cast<wchar_t>(*s == '/' ? '\\' : *s);
-    return out;
-}
-
-}  // namespace
-
 int main() {
-    std::wstring proxy_path = widen(ZAP_PROXY_PATH);
+    // With backslashes, which LoadLibraryW needs (CMake gives forward slashes).
+    std::wstring proxy_path = std::filesystem::path(ZAP_PROXY_PATH).make_preferred().wstring();
     wchar_t sys[MAX_PATH];
     GetSystemDirectoryW(sys, MAX_PATH);
     std::wstring real_path = std::wstring(sys) + L"\\version.dll";
