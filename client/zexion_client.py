@@ -581,13 +581,13 @@ def own_found(ctx: ZexionContext) -> list[int]:
     return sorted(found | stored_indices(ctx, key))
 
 
-async def store_found(ctx: ZexionContext, locations: set[int]) -> None:
+async def store_found(ctx: ZexionContext, conn: state.Connection, locations: set[int]) -> None:
     """Record locations just found in game (ids) in the server's data storage (own_found)."""
-    if ctx.conn is None or not locations:
+    if not locations:
         return
     value = {str(loc - LOCATION_ID_BASE): 1 for loc in locations if loc >= LOCATION_ID_BASE}
     # Not sent again: the next connection reports them again.
-    await store(ctx, ctx.conn.found_key, "update", value, {}, "Recording the locations found")
+    await store(ctx, conn.found_key, "update", value, {}, "Recording the locations found")
 
 
 async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -946,10 +946,10 @@ async def labels_tick(ctx: ZexionContext) -> None:
         told.labels_refused = True  # not asked again until a helper is attached again
 
 
-async def shields_tick(ctx: ZexionContext, received: list[int], step: session.Step) -> None:
+async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     """Spawn received Energy Shields not given yet, one at a time, through the helper, and
     count each in the server's data storage once the game shows it up in play (client/
-    shields.py), as the poll's ``step`` read the game's state."""
+    shields.py)."""
     conn, game_conn, sh = ctx.conn, ctx.game_conn, ctx.shields
     if conn is None or conn.shield_key not in ctx.stored_data or game_conn is None:
         return  # no game, or the count not read from the server yet
@@ -958,7 +958,7 @@ async def shields_tick(ctx: ZexionContext, received: list[int], step: session.St
         await send_shield_count(ctx)
     pending = sh.current(key)
     if pending is not None:
-        await confirm_shield(ctx, game_conn, pending, key, step.state or game.CHANGING)
+        await confirm_shield(ctx, game_conn, pending, key)
         return
     helper = ctx.helper
     if helper is None or time.monotonic() < sh.retry_at:
@@ -978,19 +978,22 @@ async def shields_tick(ctx: ZexionContext, received: list[int], step: session.St
 
 
 async def confirm_shield(
-    ctx: ZexionContext,
-    game_conn: game.Game,
-    pending: shields.Pending,
-    key: str,
-    state_now: str,
+    ctx: ZexionContext, game_conn: game.Game, pending: shields.Pending, key: str
 ) -> None:
-    """One look at the game for a spawned shield, in the settled ``state_now`` the poll read:
-    count it, wait, or let it be spawned again."""
+    """One look at the game for a spawned shield: count it, wait, or let it be spawned again.
+    The state is settled again right before the shield is read (not the step's, which helper
+    requests since may have outlasted: a death or reload then would count a lost shield)."""
     sh = ctx.shields
+
+    def look() -> tuple[str, bool, str]:
+        state_now = game_conn.settled_state()
+        return (state_now, *shields.look(game_conn, state_now))
+
     try:
-        up, failed = await asyncio.to_thread(shields.look, game_conn, state_now)
-    except game.GameError:  # not read: look again; the loop sees a close
+        state_now, up, failed = await asyncio.to_thread(look)
+    except game.GameError:  # the state could not be read: look again; the loop sees a close
         state_now, up, failed = game.CHANGING, False, ""
+
     if failed:
         said = f"check failed: {failed}"
         if said != sh.said:
@@ -1208,6 +1211,7 @@ async def poll(ctx: ZexionContext) -> None:
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
     current = conn.session
+    p = Poll(ctx)  # again: the items may have come while the above waited
     await announced_tick(ctx, conn, p)
     try:
         notes: dict[int, str] = {}
@@ -1221,6 +1225,8 @@ async def poll(ctx: ZexionContext) -> None:
         hunt = conn.hunt
         if hunt is not None:  # a received disc pops up with the count
             notes |= discs.received_notes(hunt, p.codes, p.found, conn.discs_told)
+        if ctx.conn is not conn:
+            return  # another connection while the hints were stored: its items are not these
         step = await asyncio.to_thread(
             current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes
         )
@@ -1277,8 +1283,9 @@ async def poll(ctx: ZexionContext) -> None:
     shield_work = ctx.shields.pending is not None or ctx.shields.given is not None
     if ctx.helper is not None or shield_work:
         with helper_failure(ctx):
-            await shields_tick(ctx, p.codes, step)
-
+            await shields_tick(ctx, p.codes)
+    if ctx.conn is not conn:
+        return  # the connection changed meanwhile: these checks are not its
     locations = {LOCATION_ID_BASE + i for i in step.checked & conn.kept}
     new = locations - ctx.locations_checked
     if new:
@@ -1287,13 +1294,15 @@ async def poll(ctx: ZexionContext) -> None:
             await ctx.check_locations(new)
         except Exception as exc:  # a closing connection
             logger.warning(f"Sending the locations found failed ({exc}); sent on reconnecting.")
-        await store_found(ctx, new)
+        await store_found(ctx, conn, new)
         p.found = own_found(ctx)  # counted from now on, in this poll too
     if ctx.helper is not None:
         with helper_failure(ctx):
             await client_back_tick(ctx, step)  # first: CLIENT CONNECTED before the rest
             await followups_tick(ctx, p, step)
             await mission_tick(ctx, p, step)
+    if ctx.conn is not conn:
+        return  # the connection changed meanwhile: this ending is not its goal
     if step.goal and not conn.goal_sent and not ctx.finished_game:
         # The goal is the ending; with the OS Install Disks goal, only with enough disks.
         have = None if hunt is None else discs.owned(hunt, p.codes, p.found)
