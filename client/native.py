@@ -383,12 +383,41 @@ class Helper:
         self.close()
 
 
+# A helper file that turned out another version than VERSION once loaded, by its path: the
+# file's modification time then, and that version. Neither loaded again nor put in place of
+# the helper it loaded until the file changes, as each retry would give the same version.
+_STALE: dict[str, tuple[int, str]] = {}
+
+
+def _modified(dll: Path) -> int | None:
+    try:
+        return dll.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _wrong_version(dll: Path, version: str, own_build: bool) -> HelperError:
+    """What to do about a helper file of another version: rebuild it, or update the game's
+    folder."""
+    if own_build:
+        return HelperError(
+            f"the helper built at {dll} is version {version}, and this client needs {VERSION}: "
+            "rebuild native/ (native/README.md), or copy this release's zexion_ap.dll and "
+            "version.dll into Zexion's folder"
+        )
+    return HelperError(
+        f"the helper in the game's folder is version {version}, and this client needs "
+        f"{VERSION}: copy this release's zexion_ap.dll and version.dll there"
+    )
+
+
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     """The helper in game ``g``, loaded if it is not, and configured. ``g`` is an attached
     ``game.Game``. A helper already loaded (by the proxy in the game's folder, or by an earlier
     client) is used. One of another version is unloaded and the built ``dll`` loaded instead,
     if there is one; a copy in the game's folder that cannot be replaced so is refused, as the
-    player has to update it there. ``notes`` collects what the client should tell the player."""
+    player has to update it there, and so is a ``dll`` that loaded as another version, until
+    the file changes (_STALE). ``notes`` collects what the client should tell the player."""
     handle = g.pm.process_handle
     own_build = dll.is_file()  # this client's own build (not from the Launcher's apworld)
     built = own_build
@@ -396,6 +425,9 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
         # No build: the game folder's copy, as the proxy loads it (after an unload, say).
         dll = game_folder_dll(handle) or dll
         built = dll.is_file()
+    stale = _STALE.get(str(dll))
+    if stale is not None and stale[0] != _modified(dll):
+        stale = None  # rebuilt or replaced since: tried again
     if is_loaded(handle):
         with Helper(g.pid) as old:
             hello = old.hello()
@@ -405,10 +437,9 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                 # The game folder's copy can only be replaced by a build of this client's own:
                 # loading that same copy again would give the same version (each retry).
                 if in_folder and not own_build:
-                    raise HelperError(
-                        f"the helper in the game's folder is version {version}, and this client "
-                        f"needs {VERSION}: copy this release's zexion_ap.dll and version.dll there"
-                    )
+                    raise _wrong_version(dll, version, own_build=False)
+                if stale is not None:  # the same file again: refused, the helper left alone
+                    raise _wrong_version(dll, stale[1], own_build)
                 if old.request("unload") != "bye" or not wait_unloaded(handle):
                     raise HelperError("could not replace a helper of another version")
                 if in_folder and notes is not None:
@@ -426,16 +457,26 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     "zexion_ap.dll and version.dll into Zexion's folder"
                 )
             raise HelperError(f"none is loaded in the game, and there is no build at {dll}")
-        load(handle, g.pid, dll, if_absent=True)
+        if stale is not None:
+            raise _wrong_version(dll, stale[1], own_build)
+        loaded_here = load(handle, g.pid, dll, if_absent=True)
+    else:
+        loaded_here = False
     helper = Helper(g.pid)
     try:
         hello = helper.hello()
-        # The proxy may have loaded its copy after the version check above: checked again.
-        if hello.get("version") != VERSION:
-            raise HelperError(
-                f"the helper loaded is version {hello.get('version')}, not {VERSION}; "
-                "trying again replaces it"
-            )
+        version = hello.get("version", "")
+        if version != VERSION:
+            if loaded_here:  # this file is that version: not loaded again until it changes
+                _STALE[str(dll)] = (_modified(dll), version)
+                raise _wrong_version(dll, version, own_build)
+            # The proxy loaded its copy after the version check above.
+            if own_build:
+                raise HelperError(
+                    f"the proxy loaded the game folder's helper {version}, not {VERSION}, "
+                    "meanwhile; trying again puts the built one in its place"
+                )
+            raise _wrong_version(dll, version, own_build=False)
         if hello.get("hooked") != "1":
             raise HelperError(f"the helper did not hook the game: {hello}")
         helper.configure(dict(g.rva))
