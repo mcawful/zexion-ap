@@ -31,9 +31,10 @@ public:
     // Game thread: the text to show ("" turns it off, the branch then put back).
     void set(std::string text) { text_ = std::move(text); }
 
-    // Game thread: a save of a disk seed is loaded, its count not set yet: the branch is
-    // changed anyway, so a pause screen opened at once has the panel the count fills when set.
-    void prepare(bool on) { prepared_ = on; }
+    // Game thread: a save of a disk seed is loaded and `text` is its count from the seed's file
+    // ("" for none): shown until `set` gives the client's, so a pause screen opened at once has
+    // the row with no flash of the game's KEYS.
+    void prepare(std::string text) { prepared_ = std::move(text); }
 
     // Game thread, each frame: the branch while on (or put back while off), and the row turned
     // on a pause screen that has not been.
@@ -46,10 +47,10 @@ public:
 
 private:
     bool patch(const GameAddresses& addresses, uint8_t from, uint8_t to);
-    void turn(const GameAddresses& addresses, BYTE* menu);
+    void turn(const GameAddresses& addresses, BYTE* menu, const std::string& text);
 
     std::string text_;
-    bool prepared_ = false;
+    std::string prepared_;
     bool patched_ = false;
 };
 

@@ -52,17 +52,17 @@ bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
 }
 
 void PauseDiskRow::watch(const GameAddresses& a) {
-    if (text_.empty() && !prepared_) {
+    const std::string& text = text_.empty() ? prepared_ : text_;
+    if (text.empty()) {
         restore(a);
         return;
     }
     if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
-    if (text_.empty()) return;  // prepared: the panel built, the row waits for its count
-    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top);
+    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text);
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
-    prepared_ = false;  // prepared again by the next look (Game::watch_offline)
+    prepared_.clear();  // prepared again by the next look (Game::watch_offline)
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
     BYTE now = 0;
@@ -70,9 +70,9 @@ void PauseDiskRow::restore(const GameAddresses& a) {
     if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
 }
 
-void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu) {
+void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& text) {
     // The text fills the row's cells (pause_row_text), read by index below.
-    if (text_.size() != static_cast<size_t>(kRowCells)) return;
+    if (text.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
     int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0;
     BYTE* entries = panel_at(menu, 0);
@@ -139,21 +139,21 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu) {
         return;
     }
     // The label's glyphs: the middle four characters (they stay where the game put them).
-    const std::string& t = text_;
+    const std::string& t = text;
     for (int i = 0; i < kKeysGlyphs; ++i) {
         set_frame(glyph[i], static_cast<unsigned char>(t[2 + i]));
         *(glyph[i] + sprite::kVisible) = 1;
     }
     // The key slots, given the font: two characters each side of the label.
-    const double text_local[4] = {0, 0, 8, 8};
+    const double textlocal[4] = {0, 0, 8, 8};
     const int cells[4] = {0, 1, 6, 7};
     for (int k = 0; k < 4; ++k) {
         BYTE* s = sprite[k];
         reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(s, font);
         set_frame(s, static_cast<unsigned char>(t[cells[k]]));
-        std::memcpy(s + kLocal, text_local, sizeof(text_local));
+        std::memcpy(s + kLocal, textlocal, sizeof(textlocal));
         double x = kLabelX + 8.0 * (cells[k] - 2);
-        place(s, x, kRowY, text_local);
+        place(s, x, kRowY, textlocal);
         look_like(s, glyph[0]);
         *(s + sprite::kVisible) = 1;
     }

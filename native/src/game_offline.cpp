@@ -72,20 +72,25 @@ void Game::watch_offline() {
     }
     if (offline_seeds_.empty()) {
         leave_offline();
-        pause_row_.prepare(false);
+        pause_row_.prepare("");
         return;
     }
     if (offline_frames_-- > 0) return;
     offline_frames_ = kOfflineFrames;
-    // A save of a known seed with the disks, loaded in play or not: the pause screen's KEYS panel
-    // is built before its count is set (by the client or below), for a player who pauses at once.
-    bool disk_seed = false;
+    // A save of a known seed with the disks, loaded in play or not: the pause screen's row shows
+    // the count from the seed's file until the client's (or the offline look's, below) is set,
+    // for a player who pauses at once.
+    std::string prepared;
     if (rando_save_loaded()) {
         for (const OfflineSeed& sd : offline_seeds_) {
-            if (sd.discs && section_is(sd, at_.rando_blob)) disk_seed = true;
+            if (sd.discs && section_is(sd, at_.rando_blob)) {
+                const bool told = at_.flags[flag::kScannerTold] != 0;
+                prepared = pause_row_text(offline_disk_count(sd, at_.map_grid),
+                                          told ? sd.required : 0);
+            }
         }
     }
-    pause_row_.prepare(disk_seed);
+    pause_row_.prepare(prepared);
     // A save is dressed with no client, or with a client that said the loaded save is not its
     // seed's (other_save); undressed when that stops.
     const bool other = other_mode();
