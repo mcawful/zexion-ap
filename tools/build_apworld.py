@@ -18,7 +18,9 @@ The apworld's ``archipelago.json`` is the world's, with the container keys Archi
 builder adds (``APWorldContainer.get_manifest()`` in AP 0.6.8's ``worlds/Files.py``, merged as
 ``worlds/LauncherComponents.py``'s Build APWorlds does): without ``version`` and
 ``compatible_version``, AP 0.6.8 logs the manifest as invalid and ignores ``world_version``
-and ``minimum_ap_version``. Reads this repo and writes only into ``--out``.
+and ``minimum_ap_version``. Reads this repo and writes only into ``--out``, which may not be
+inside the game's or the saves' folder (``tools/protected.py``). Only files git tracks are
+packed: an untracked file in ``worlds/zexion`` or ``client`` stops the build.
 """
 
 from __future__ import annotations
@@ -27,9 +29,12 @@ import argparse
 import json
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+from protected import assert_writable
 
 ROOT = Path(__file__).resolve().parent.parent
 WORLD = ROOT / "worlds" / "zexion"
@@ -76,6 +81,31 @@ def manifest() -> dict:
     return {**out, **CONTAINER_KEYS}
 
 
+def tracked(folder: Path) -> set[Path]:
+    """The files git tracks under ``folder`` (the build packs only those)."""
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--", str(folder)],
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(
+            f"cannot list the files git tracks ({exc}): build from a checkout"
+        ) from exc
+    return {(ROOT / name).resolve() for name in listed.decode("utf-8").split("\0") if name}
+
+
+def only_tracked(files: list[tuple[Path, str]], folder: Path) -> list[tuple[Path, str]]:
+    known = tracked(folder)
+    untracked = [path for path, _ in files if path.resolve() not in known]
+    if untracked:
+        names = ", ".join(str(p.relative_to(ROOT)) for p in untracked)
+        raise SystemExit(f"not tracked by git, so not packed: {names} (commit or remove it)")
+    return files
+
+
 def world_files() -> list[tuple[Path, str]]:
     out = []
     for path in sorted(WORLD.rglob("*")):
@@ -85,11 +115,12 @@ def world_files() -> list[tuple[Path, str]]:
         if path.suffix in (".pyc", ".pyo") or rel.as_posix() == "archipelago.json":
             continue  # the manifest is written with its container keys (manifest)
         out.append((path, f"zexion/{rel.as_posix()}"))
-    return out
+    return only_tracked(out, WORLD)
 
 
 def client_files() -> list[tuple[Path, str]]:
-    return [(path, f"zexion/client/{path.name}") for path in sorted(CLIENT.glob("*.py"))]
+    files = [(path, f"zexion/client/{path.name}") for path in sorted(CLIENT.glob("*.py"))]
+    return only_tracked(files, CLIENT)
 
 
 def build(out: Path) -> Path:
@@ -104,12 +135,13 @@ def build(out: Path) -> Path:
         if newest_mtime(sources) > dll.stat().st_mtime:
             listed = " or ".join(str(s) for s in sources)
             raise SystemExit(f"{dll.name} is older than {listed}: rebuild native/")
-    out.mkdir(parents=True, exist_ok=True)
-    apworld = out / "zexion.apworld"
     files = world_files() + client_files()
     names = [name for _, name in files] + [MANIFEST]
     if len(names) != len(set(names)):
         raise SystemExit("two files would share a name in the apworld")
+    out = assert_writable(out)
+    out.mkdir(parents=True, exist_ok=True)
+    apworld = out / "zexion.apworld"
     with zipfile.ZipFile(apworld, "w", zipfile.ZIP_DEFLATED) as zf:
         for path, name in files:
             zf.write(path, name)

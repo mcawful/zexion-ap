@@ -137,7 +137,7 @@ def test_plan_from_slot_data() -> None:
         "start_index": 5,
         "start_column": 326,
         "start_row": 449,
-        "second_start": {"index": 3, "column": 151, "row": 464, "cell": [10, 23]},
+        "second_start": {"index": 3, "column": 151, "row": 464},
         "amounts": list(AMOUNTS),
         "options": {"42": 2},
     }

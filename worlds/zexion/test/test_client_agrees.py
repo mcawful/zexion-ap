@@ -14,7 +14,7 @@ import unittest
 
 from Fill import distribute_items_restrictive
 
-from .. import data, items, locations, logic
+from .. import data, items, locations, logic, starting
 from ..locations import location_name
 from ..world import FOREIGN, FOREIGN_PROGRESSION
 from .bases import ZexionTestBase
@@ -72,6 +72,19 @@ class TestClientCodes(unittest.TestCase):
 
     def test_the_locations(self) -> None:
         self.assertEqual(ids.LOCATIONS, len(data.LOCATIONS))
+
+    def test_the_starting_items_generation_accepts(self) -> None:
+        # starting.py copies what the client's new game can start with: they must agree, or
+        # generation would accept a seed the client then refuses.
+        upgrades = set(ids.PROGRESSIVE.values())
+        self.assertEqual(starting.START_WITH, set(newgame.START_WITH_ORDER) - upgrades)
+        most = starting.MAX_CONTAINERS
+        self.assertEqual(starting.MISSILE_CONTAINER, ids.MISSILE_CONTAINER)
+        newgame.start_with({ids.MISSILE_CONTAINER: most})
+        with self.assertRaises(newgame.NewGameError):
+            newgame.start_with({ids.MISSILE_CONTAINER: most + 1})
+        self.assertEqual(starting.problems({ids.MISSILE_CONTAINER: most}, False), [])
+        self.assertNotEqual(starting.problems({ids.MISSILE_CONTAINER: most + 1}, False), [])
 
 
 @unittest.skipIf(CLIENT is None, WHY)

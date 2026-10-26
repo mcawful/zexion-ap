@@ -5,10 +5,11 @@
 Reads (all copies in lab/, never the game folder):
 
 - RandoCells (``game_data.py RandoCells`` copies it to lab/data/<build>/);
-- for each mode, a randomizer save made right at the start of a seed in that mode, for its
-  item pool, starting inventory and settings (by default Easy: slot 28's and Standard:
-  slot 29's fresh saves, docs/re/randocells.md, "The randomizer's modes"); the location list
-  is the same in every seed;
+- for each of the three modes, a randomizer save made right at the start of a seed in that
+  mode, for its item pool, starting inventory and settings (by default Easy: slot 28's and
+  Standard: slot 29's fresh saves of a backup in lab/backups/, and OHKO:
+  lab/work/slot5-ohko-fresh.sav; docs/re/randocells.md, "The randomizer's modes"); ``--mode``
+  replaces one mode's save; the location list is the same in every seed;
 - the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md);
 - the game's exe (lab/data/<build>/Zexion.exe, ``game_data.py --exe``), for each mode's preset
   of the randomizer menu (docs/re/memory.md, "The game-mode panel"), which the client's
@@ -41,7 +42,8 @@ from protected import assert_writable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the client package
-from client import pe  # noqa: E402
+from client import newgame, pe  # noqa: E402
+from client import save_patch as sp  # noqa: E402
 
 OUT = ROOT / "worlds" / "zexion" / "data.py"
 MIN_SPHERE_ZERO = 3
@@ -112,15 +114,13 @@ def location_ok(grid, cell, have, settings, reached: set) -> bool:
     )
 
 
-AMOUNTS = 0x12ED4  # six 16-bit amounts (docs/re/save-format.md)
 # The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
 # Double Teleport, Safety (code 69's mode) and Gates. The client refuses a save whose
 # settings differ from the mode's here.
 CHECKED_OPTIONS = (30, 31, 32, 33, 37, 42, 43, 72, 73)
-PICKUP_COUNTER = 0x935A  # 16-bit; 0 before the first pickup (docs/re/save-format.md)
-START_WITH, POOL = 0x12E9D, 0x12EB8  # the section's 27-entry arrays (docs/re/save-format.md)
-SECOND_TARGET = 0x12EE0  # candidate index, tile column, tile row
 ARRAY = 27
+# The section's 27-entry arrays, the start-with array then the pool (docs/re/save-format.md).
+START_WITH, POOL = newgame.START_WITH, newgame.START_WITH + ARRAY
 # Each mode's menu preset in the exe's .rdata, per build: the start-with array, the pool
 # array, and settings 10 to 73, as the mode buttons (0x1458C0) copy them (docs/re/memory.md,
 # "The game-mode panel"). Checked against the fresh saves below, so a wrong address fails.
@@ -169,17 +169,14 @@ def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
 
 
 def check_fresh(data: bytes, name: str) -> None:
-    """Refuse a save that is not right at the start of its seed: its inventory would be taken
-    for the starting inventory."""
-    if len(data) <= rc.SAVE_ITEMS:
-        raise SystemExit(f"{name} is not a randomizer save")
+    """Refuse a save that is not right at the start of its seed (the client's check, the one
+    /prepare uses): its inventory would be taken for the starting inventory."""
+    try:
+        sp.check_fresh(data)
+    except sp.PatchError as exc:
+        raise SystemExit(f"{name}: {exc}") from exc
     if rc.start_from_save(data) is None:
         raise SystemExit(f"{name} has no start record")
-    revealed = sum(1 for v in data[rc.MAP_GRID : rc.MAP_GRID + rc.W * rc.H] if v)
-    if revealed > 1:
-        raise SystemExit(f"{name} has {revealed} rooms revealed: not a fresh save")
-    if struct.unpack_from("<H", data, PICKUP_COUNTER)[0] != 0:
-        raise SystemExit(f"{name} has picked something up: not a fresh save")
 
 
 def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
@@ -294,7 +291,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         for st in starts:
             union |= st["cells"]
         modes[name] = {
-            "amounts": struct.unpack_from("<6h", data, AMOUNTS),
+            "amounts": struct.unpack_from("<6h", data, sp.AMOUNTS),
             "checked_options": {t: data[rc.OPTIONS_IN_SAVE + t] for t in CHECKED_OPTIONS},
             "double_teleport": double,
             "settings": settings,
@@ -302,7 +299,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             "start_inventory": dict(sorted(start_inv.items())),
             "starts": starts,
             "menu": menu_preset(exe, cells_path.parent.name, name, data),
-            "second_target": None if double else struct.unpack_from("<3H", data, SECOND_TARGET),
+            "second_target": None if double else struct.unpack_from("<3H", data, sp.SECOND_START),
         }
 
     comp = components(union, grid)
@@ -477,7 +474,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--map-data", type=Path, help="default: MapData next to RandoCells")
     parser.add_argument("--text", type=Path, help="default: Text next to RandoCells")
     args = parser.parse_args(argv)
-    mode_saves = dict(args.mode) if args.mode else dict(DEFAULT_MODES)
+    unknown = sorted({name for name, _ in args.mode or []} - set(DEFAULT_MODES))
+    if unknown:
+        # data.py needs every mode the world's Mode option offers (generate_early reads it).
+        raise SystemExit(f"no such mode {unknown}: the modes are {sorted(DEFAULT_MODES)}")
+    mode_saves = {**DEFAULT_MODES, **dict(args.mode or [])}
     cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
     exe_path = args.exe or cells_path.parent / "Zexion.exe"

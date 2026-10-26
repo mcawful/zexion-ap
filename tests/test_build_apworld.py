@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import build_apworld as bap
+from protected import ProtectedPathError
 
 
 def stub_dlls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str) -> tuple[Path, Path]:
@@ -86,3 +87,23 @@ def test_a_dll_older_than_cmakelists_is_stale(
     monkeypatch.setattr(bap, "HELPER_SOURCES", (src, cmake))
     with pytest.raises(SystemExit, match="zexion_ap.dll is older than"):
         bap.build(tmp_path / "dist")
+
+
+def test_an_out_folder_in_the_game_install_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+    game = tmp_path / "steamapps" / "common" / "Zexion"
+    with pytest.raises(ProtectedPathError):
+        bap.build(game)
+    assert not game.exists()
+
+
+def test_an_untracked_file_stops_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+    real = bap.tracked
+    left_out = (bap.WORLD / "data.py").resolve()
+    monkeypatch.setattr(bap, "tracked", lambda folder: real(folder) - {left_out})
+    with pytest.raises(SystemExit, match=r"not tracked by git.*data\.py"):
+        bap.build(tmp_path / "dist")
+    assert not (tmp_path / "dist").exists()
