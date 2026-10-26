@@ -16,6 +16,10 @@ Where things are:
 - The in-game helper: [`native/README.md`](native/README.md).
 - What has been measured, and how: [`docs/re/README.md`](docs/re/README.md).
 - When the game is patched: [`docs/re/new-build.md`](docs/re/new-build.md).
+- The long ones (`docs/re/memory.md`, `save-format.md`, `randocells.md`, `locations.md` and
+  `native/README.md`) are read by section, not whole: search for `^##` to find the heading
+  (`native/README.md`'s sections are `###`; memory.md's "Lookup: targets" maps each target to
+  its heading), then read just that range. memory.md alone is tens of thousands of tokens.
 
 ## Rules
 
@@ -221,4 +225,5 @@ Committed under `.claude/`, so they apply to anyone working here:
 - Subagents: `docs-reviewer` (docs a change made wrong, behavior nothing describes),
   `logic-reviewer` (APWorld rules not backed by `docs/re/locations.md`; soft-locks),
   `re-auditor` (hard-coded addresses, unchecked reads, unsafe hooks, double or lost items in
-  client, tool and helper diffs).
+  client, tool and helper diffs). The first two run on Sonnet; `re-auditor` on the session's
+  model, since what it misses can lose or double an item.

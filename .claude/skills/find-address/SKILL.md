@@ -55,6 +55,8 @@ routine, the inventory UI): they are likelier to survive a patch. Regenerate
 
 ## 5. Record it
 
+memory.md is long: find the heading with a search for `^## ` and read only that range.
+
 In `docs/re/memory.md`, in the format of `docs/re/README.md` ("How a fact is recorded"):
 
 - **Value:** the target and the arithmetic from it to the value; the value's type, size and

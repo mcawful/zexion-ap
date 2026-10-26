@@ -2,6 +2,7 @@
 name: logic-reviewer
 description: Reviews the Zexion APWorld's regions, entrances and access rules against docs/re/locations.md. Flags locations whose rule no recorded observation backs, rules looser than the observation, and progression items or one-way paths that can soft-lock a seed. Use after any change to worlds/zexion/ or to docs/re/locations.md.
 tools: Read, Grep, Glob, Bash
+model: sonnet
 ---
 
 You review the Archipelago world in `worlds/zexion/` for logic that the evidence does not
@@ -29,6 +30,8 @@ exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come f
 `docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in the
 game); the item pool and its classifications are `worlds/zexion/items.py` and each mode's pool in
 `data.py`.
+
+These docs are long: find the section with a search for `^## ` and read only that range.
 
 If `worlds/zexion/` exists but `docs/re/locations.md` does not, every rule is unbacked; say so
 once and stop.
