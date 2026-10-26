@@ -40,7 +40,7 @@ import numpy as np
 from protected import assert_writable, lab_dir
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
-from client import pe  # noqa: E402
+from client import pe, process  # noqa: E402
 
 PROCESS = "Zexion.exe"
 MEM_COMMIT = 0x1000
@@ -62,12 +62,14 @@ class MBI(ctypes.Structure):
     ]
 
 
-def attach():
-    import pymem
-
-    pm = pymem.Pymem(PROCESS)
-    module = pymem.process.module_from_name(pm.process_handle, PROCESS)
-    return pm, module.lpBaseOfDll, module.SizeOfImage
+def attach() -> tuple[process.Process, int, int]:
+    """The running game (client/process.py), its module's base and its size."""
+    pm = process.Process(PROCESS)
+    module = pm.module()
+    if module is None or not module[0]:
+        pm.close_process()
+        raise RuntimeError(f"{PROCESS} is running but its module was not found")
+    return pm, module[0], module[1]
 
 
 def build_of(pm, mod_base: int) -> dict:

@@ -22,8 +22,8 @@ the build.
 
 With the game running and the user at the controls:
 
-1. Attach with `pymem` (`pymem.Pymem("Zexion.exe")`). Read the module base and size from
-   `pymem.process.module_from_name(pm.process_handle, "Zexion.exe")`.
+1. Attach with `client/process.py` (`Process("Zexion.exe")`, the Windows API through ctypes).
+   Read the module base and size from its `module()`.
 2. Snapshot the candidate memory (the module's writable sections first, then the heap regions
    from `VirtualQueryEx`), save the snapshot in `lab/` with the build and a note of the game
    state.

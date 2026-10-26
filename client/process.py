@@ -2,11 +2,12 @@
 
 What the client needs of a running Zexion: open it by its executable's name, find where its
 module is loaded, and read and write bytes. Archipelago's Windows release bundles no
-third-party library for this, so the client does it itself; the RE tools may still use pymem.
+third-party library for this, so the client does it itself, and the RE tools (tools/memscan.py)
+and the tests use it too.
 
-``Process`` keeps the names the client used from pymem (``read_bytes``, ``write_bytes``,
-``process_handle``, ``process_id``, ``close_process``), so ``game.Game`` and its tests' fakes
-are unchanged, and adds ``alive``, which ``game.Game`` checks before every read and write
+``Process`` has the names ``game.Game`` and its tests' fakes use (``read_bytes``,
+``write_bytes``, ``process_handle``, ``process_id``, ``close_process``; pymem's, which the client
+once used), and ``alive``, which ``game.Game`` checks before every read and write
 (``alive``, for a bare handle, is the native helper's loader's too).
 
 """
@@ -27,7 +28,7 @@ class ProcessNotFound(ProcessError):
     """No process of that name is running."""
 
 
-PROCESS_ALL_ACCESS = 0x1F0FFF  # as pymem opens it: the helper's loader needs threads too
+PROCESS_ALL_ACCESS = 0x1F0FFF  # the helper's loader needs threads too
 TH32CS_SNAPPROCESS, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32 = 0x2, 0x8, 0x10
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES = 24, 18

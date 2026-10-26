@@ -60,11 +60,10 @@ def test_a_pipe_served_by_another_process_is_refused() -> None:
 
 @pytest.fixture
 def stand_in():
-    import pymem
+    from client.process import Process
 
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    pm = pymem.Pymem()
-    pm.open_process_from_id(process.pid)
+    pm = Process(Path(sys.executable).name, pid=process.pid)
     yield process, pm.process_handle
     process.kill()
     process.wait()
