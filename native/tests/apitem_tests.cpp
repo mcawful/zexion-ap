@@ -446,6 +446,5 @@ int main() {
     test_a_reload_is_restyled_again();
     test_painting();
     test_label_parser();
-    if (g_failures == 0) std::printf("apitem tests: all passed%c", 10);
-    return g_failures == 0 ? 0 : 1;
+    return report("apitem tests");
 }

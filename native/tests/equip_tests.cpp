@@ -396,6 +396,5 @@ int main() {
     test_a_closed_screen_is_forgotten_unwritten();
     test_an_unexpected_screen_is_left_alone();
     test_the_count_text();
-    if (g_failures == 0) std::printf("equip tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("equip tests");
 }

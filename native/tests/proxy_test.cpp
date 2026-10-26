@@ -72,6 +72,5 @@ int main() {
     Sleep(200);  // time for the proxy's loader thread to run (and load nothing)
     check(GetModuleHandleW(L"zexion_ap.dll") == nullptr, "no helper outside the game");
 
-    if (g_failures == 0) std::printf("proxy test: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("proxy test");
 }

@@ -210,6 +210,5 @@ int main() {
     test_the_row_shows_the_disks();
     test_anything_else_is_left_alone();
     test_the_text();
-    if (g_failures == 0) std::printf("pause tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("pause tests");
 }

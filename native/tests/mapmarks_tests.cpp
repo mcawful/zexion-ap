@@ -361,6 +361,5 @@ int main() {
     test_only_the_stand_ins_squares();
     test_obscure_majors_from_the_settings();
     test_a_cell_off_the_map_is_skipped();
-    if (g_failures == 0) std::printf("mapmarks tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("mapmarks tests");
 }

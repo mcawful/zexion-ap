@@ -108,6 +108,5 @@ int main() {
     test_restore_puts_it_back();
     test_a_record_not_as_traced_is_left_alone();
     test_an_earlier_helpers_rename_is_adopted_and_put_back();
-    if (g_failures == 0) std::printf("intel tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("intel tests");
 }

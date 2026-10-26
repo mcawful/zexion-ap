@@ -466,9 +466,10 @@ pipe and unloading. That test skips without a build.
 
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
-configured by RVA like the real game. `native/CMakeLists.txt` maps each test name to its source.
-They share `tests/check.h`; `tests/pipe_client.h` is the pipe client of `parts`,
-`apply_in_frames` and `unload_under_load`.
+configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
+(`apply_test.cpp` and `unload_test.cpp` for the last two below). They share `tests/check.h`;
+`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
+`unload_under_load`.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), the build check and the pipe.

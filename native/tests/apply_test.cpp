@@ -115,6 +115,5 @@ int wmain(int argc, wchar_t** argv) {
     check(GetModuleHandleW(L"zexion_ap_hooktest.dll") == nullptr, "unloaded");
     g_stop = true;
     c.join();
-    if (g_failures == 0) std::printf("all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("apply_in_frames test");
 }

@@ -318,6 +318,5 @@ int main() {
     test_the_cache_must_fit_the_game();
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
-    if (g_failures == 0) std::printf("offline tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("offline tests");
 }

@@ -130,6 +130,5 @@ int main() {
     test_newgame_parser();
     test_popup_text_breaks_before_the_sender();
     test_mailbox();
-    if (g_failures == 0) std::printf("all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("requests tests");
 }

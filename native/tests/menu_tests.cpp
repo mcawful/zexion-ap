@@ -476,6 +476,5 @@ int main() {
     test_a_released_widget_is_left_alone();
     test_the_callback_goes_back_even_if_the_label_changed();
     test_mismatches_leave_the_menu_alone();
-    if (g_failures == 0) std::printf("menu tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("menu tests");
 }

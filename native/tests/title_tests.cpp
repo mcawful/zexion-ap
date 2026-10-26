@@ -282,6 +282,5 @@ int main() {
     test_nothing_without_the_copyright_line();
     test_hidden_and_shown_with_the_copyright();
     test_a_new_title_gets_new_lines();
-    if (g_failures == 0) std::printf("title tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("title tests");
 }

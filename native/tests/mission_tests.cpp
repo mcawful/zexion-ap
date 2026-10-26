@@ -218,6 +218,5 @@ int main() {
     test_another_transition_first_is_asked_again();
     test_unload_puts_back();
     test_an_unexpected_prompt_never_keeps_the_escape_skip();
-    if (g_failures == 0) std::printf("mission tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("mission tests");
 }

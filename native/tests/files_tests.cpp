@@ -292,6 +292,5 @@ int main() {
     test_no_disk_shows_nothing();
     test_anything_else_is_left_alone();
     test_the_request();
-    if (g_failures == 0) std::printf("files tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("files tests");
 }
