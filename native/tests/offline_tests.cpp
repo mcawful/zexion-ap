@@ -274,6 +274,19 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
           "the other seed's save dressed, with no not-connected warning");
+    {
+        // A refused unload meanwhile: the look is the offline one's, not set again with what
+        // the client set; the watch dresses the save again by itself.
+        zap::ClientState saved = other.snapshot();
+        check(!saved.intel && !saved.assists_locked && saved.labels.empty() &&
+                  saved.scan_line.empty(),
+              "a dressed save's look is left out of the snapshot");
+        other.put_back_all(nullptr);
+        other.rearm(saved);
+        check(!other.intel_on() && !other.assists_locked(), "so rearm does not set it");
+        for (int i = 0; i < 16; ++i) other.watch_offline();
+        check(other.intel_on() && other.assists_locked(), "the watch dresses it again");
+    }
     g_save_loaded = 0xFF;
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on() && !other.assists_locked(), "the save gone: undressed");

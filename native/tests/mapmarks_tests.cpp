@@ -92,12 +92,27 @@ void test_the_stand_in_names() {
     check(!zap::cursor_shows_stand_in(blank), "blank");
 }
 
+// A page of its own, so it can be made read-only.
+struct Page {
+    BYTE* p = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    Page() = default;
+    Page(const Page&) = delete;
+    ~Page() { VirtualFree(p, 0, MEM_RELEASE); }
+    BYTE* data() { return p; }
+    void read_only(bool on) {
+        DWORD old = 0;
+        VirtualProtect(p, 0x1000, on ? PAGE_READONLY : PAGE_READWRITE, &old);
+    }
+};
+
 // The map's menu as the helper walks it: the menu, its first panel, the panel's children (the
 // first holding the handler, the fourth the cursor), and the info panel ([[panel + 0x300]] + 8)
 // with the scale (+0x1F0, through one more pointer) and the name widget (its fourth child).
 // Built in place: it points into itself.
 struct MapMenu {
-    std::vector<BYTE> cursor = std::vector<BYTE>(0x200), first = std::vector<BYTE>(0x200);
+    std::vector<BYTE> cursor = std::vector<BYTE>(0x200);
+    Page first;  // the child holding the handler, in both slots
     std::vector<BYTE> panel = std::vector<BYTE>(0x400), scale = std::vector<BYTE>(0x200);
     std::vector<BYTE> info = std::vector<BYTE>(0x400), widget = std::vector<BYTE>(0x400);
     std::vector<BYTE> text = std::vector<BYTE>(0x268);
@@ -148,12 +163,15 @@ struct MapMenu {
         std::memcpy(cursor.data() + 0x1E4, &y, 2);
     }
     void* slot() {  // both slots' handler, or null if they differ
-        void* h = nullptr;
-        void* k = nullptr;
-        std::memcpy(&h, first.data() + 0x168, sizeof(h));
-        std::memcpy(&k, first.data() + 0x178, sizeof(k));
-        return h == k ? h : nullptr;
+        void* h = slot_at(0x168);
+        return h == slot_at(0x178) ? h : nullptr;
     }
+    void* slot_at(ptrdiff_t at) {
+        void* h = nullptr;
+        std::memcpy(&h, first.data() + at, sizeof(h));
+        return h;
+    }
+    void set_slot(ptrdiff_t at, void* h) { std::memcpy(first.data() + at, &h, sizeof(h)); }
     void show(const char* s) {  // as 0xA61C0 writes the 17 glyphs
         size_t n = std::strlen(s);
         for (size_t i = 0; i < 17; ++i) {
@@ -183,28 +201,109 @@ void fake_text_set(void* text, const char* s, int first, int count) {
 }
 int g_hook = 0;
 
-void test_the_cursor_square() {
-    MapMenu m(40.0);
-    m.at(165, 100);  // zoomed in: (165 + 5) / 10 = 17, (100 + 4) / 8 = 13
-    zap::MapCursor c = zap::map_cursor(m.current_menu(), &m.handler);
-    check(c.open && c.cell == 17 * 54 + 13, "zoomed in");
-    MapMenu coarse(20.0);
-    coarse.at(380, 220);  // (380 + 11) / 23 = 17, (220 + 8) / 17 = 13
-    c = zap::map_cursor(coarse.current_menu(), &coarse.handler);
-    check(c.open && c.cell == 17 * 54 + 13, "zoomed out");
-    int other = 0;
-    check(!zap::map_cursor(m.current_menu(), &other).open, "another menu");
-    check(!zap::map_cursor(m.current_menu(), nullptr).open, "no handler known");
-}
-
-void test_the_handler_wrapped_and_the_name_rewritten() {
-    MapMenu m(40.0);
-    void* handler_slot = &m.handler;  // what map_handler holds: the game's handler
+// The helper's addresses for `m`, the map's handler held at `handler_slot`.
+zap::MapAddresses addresses(MapMenu& m, void*& handler_slot) {
     zap::MapAddresses a;
     a.current_menu = m.current_menu();
     a.map_handler = reinterpret_cast<BYTE*>(&handler_slot);
     a.text_set_fn = reinterpret_cast<void*>(&fake_text_set);
     a.hook = &g_hook;
+    return a;
+}
+
+// The cursor's square, as the name the helper writes for it: row 17, column 13 labeled.
+void test_the_cursor_square() {
+    const std::map<int, std::string> labels = {{17 * 54 + 13, "\xFB" "OS INSTALL DISK"}};
+    for (double scale : {40.0, 20.0}) {
+        MapMenu m(scale);
+        void* handler_slot = &m.handler;
+        zap::MapAddresses a = addresses(m, handler_slot);
+        zap::MapCursorNames names;
+        names.watch(a, true);
+        g_set_target = &m;
+        // Zoomed in: (165 + 5) / 10 = 17, (100 + 4) / 8 = 13; out: (380 + 11) / 23 = 17,
+        // (220 + 8) / 17 = 13.
+        const bool fine = scale == 40.0;
+        m.at(fine ? 165 : 380, fine ? 100 : 220);
+        m.show("SCRAP CHUNK");
+        names.after(a, labels);
+        check(m.shown() == "OS INSTALL DISK", fine ? "zoomed in" : "zoomed out");
+        m.at(fine ? 175 : 403, fine ? 100 : 220);  // row 18
+        m.show("SCRAP CHUNK");
+        names.after(a, labels);
+        check(m.shown() == "SCRAP CHUNK", fine ? "zoomed in: row 18" : "zoomed out: row 18");
+        names.restore(a);
+        g_set_target = nullptr;
+    }
+    MapMenu m(40.0);
+    int other = 0;
+    void* handler_slot = &other;  // the top menu is not the map
+    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::MapCursorNames names;
+    names.watch(a, true);
+    check(!names.holds_hook() && m.slot() == &m.handler, "another menu");
+    a.map_handler = nullptr;
+    names.watch(a, true);
+    check(!names.holds_hook() && m.slot() == &m.handler, "no handler known");
+}
+
+// No stand-in given (no hooks before configure): nothing is wrapped, nothing written.
+void test_no_stand_in_wraps_nothing() {
+    MapMenu m(40.0);
+    void* handler_slot = &m.handler;
+    zap::MapAddresses a = addresses(m, handler_slot);
+    a.hook = nullptr;
+    zap::MapCursorNames names;
+    names.watch(a, true);
+    check(m.slot() == &m.handler && !names.holds_hook(), "no stand-in: the game's handler");
+    m.set_slot(0x178, nullptr);  // a null slot is not the stand-in either
+    names.watch(a, true);
+    check(m.slot_at(0x168) == &m.handler && m.slot_at(0x178) == nullptr && !names.holds_hook(),
+          "a null slot left alone");
+}
+
+// The game's own writes over one slot, and a child that cannot be written.
+void test_one_slot_and_a_read_only_child() {
+    MapMenu m(40.0);
+    void* handler_slot = &m.handler;
+    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::MapCursorNames names;
+    names.watch(a, true);
+    check(m.slot() == &g_hook, "both slots wrapped");
+    // The game's reveal writes +0x168 only: +0x178 still holds the stand-in, so it stays wrapped.
+    int reveal = 0;
+    m.set_slot(0x168, &reveal);
+    names.watch(a, true);
+    check(names.holds_hook() && m.slot_at(0x168) == &reveal && m.slot_at(0x178) == &g_hook,
+          "one slot the stand-in: still wrapped, the other left as the game wrote it");
+    names.restore(a);
+    check(!names.holds_hook() && m.slot_at(0x168) == &reveal && m.slot_at(0x178) == &m.handler,
+          "restored: only the slot holding the stand-in put back");
+    // Only +0x168 the stand-in now.
+    m.set_slot(0x168, &m.handler);
+    names.watch(a, true);
+    m.set_slot(0x178, &reveal);
+    names.watch(a, true);
+    check(names.holds_hook() && m.slot_at(0x168) == &g_hook, "+0x168 alone: still wrapped");
+    // Read-only: kept as the helper's (so an unload refuses), then put back once writable.
+    m.first.read_only(true);
+    names.restore(a);
+    check(names.holds_hook() && m.slot_at(0x168) == &g_hook, "a read-only child: kept");
+    m.first.read_only(false);
+    names.restore(a);
+    check(!names.holds_hook() && m.slot_at(0x168) == &m.handler && m.slot_at(0x178) == &reveal,
+          "writable again: put back");
+    // And not wrapped while it cannot be written.
+    m.first.read_only(true);
+    names.watch(a, true);
+    check(!names.holds_hook() && m.slot_at(0x168) == &m.handler, "a read-only child not wrapped");
+    m.first.read_only(false);
+}
+
+void test_the_handler_wrapped_and_the_name_rewritten() {
+    MapMenu m(40.0);
+    void* handler_slot = &m.handler;  // what map_handler holds: the game's handler
+    zap::MapAddresses a = addresses(m, handler_slot);
     zap::MapCursorNames names;
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off: the game's handler");
@@ -257,6 +356,8 @@ int main() {
     test_the_stand_in_names();
     test_the_cursor_square();
     test_the_handler_wrapped_and_the_name_rewritten();
+    test_no_stand_in_wraps_nothing();
+    test_one_slot_and_a_read_only_child();
     test_the_values();
     test_only_the_stand_ins_squares();
     test_obscure_majors_from_the_settings();

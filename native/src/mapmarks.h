@@ -32,18 +32,6 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended);
 // it for a major item; any other value unchanged. `obscure_majors`: setting 29.
 uint8_t important_value(uint8_t value, bool obscure_majors, bool ended);
 
-// The map screen (docs/re/memory.md, "Map markers"): the top menu is the map's when its first
-// panel's first child holds the map's per-frame handler (0x169E50, or the helper's stand-in for
-// it) at +0x178; the cursor's square is computed from the cursor widget (the panel's fourth
-// child, +0x1E6 and +0x1E4) at the map's scale (zoomed in when it reads 40.0), as the map's
-// handler does (read live: X 35 Y 28 on the map's readout from the cursor's (350, 223) zoomed
-// in, 2026-10-25).
-struct MapCursor {
-    bool open = false;
-    int cell = -1;  // y * 54 + x
-};
-MapCursor map_cursor(BYTE* current_menu, void* map_handler);
-
 // A label (apitem.h: the popup's text, a glyph and up to two lines) as the map cursor's name: the
 // font's characters only, on one line, at most kMapNameMax ("OS INSTALL DISK", "SLIDE MOD FOR
 // BOB"); a longer one keeps its "FOR ..." part ("FOR ALICE").
@@ -62,15 +50,20 @@ struct MapAddresses {
     void* hook = nullptr;          // the helper's stand-in for the map's handler
 };
 
-// The map cursor's name for the stand-ins' squares. The map's handler, which the game calls each
-// frame through the map menu's first child (+0x168, the child its only argument; the builder
-// puts it in +0x178 too, and the helper wraps both), writes the
-// name of the record of the item under the cursor into the cursor's 17-glyph text. While on (an
-// Archipelago save's labels known), the helper points that slot at its stand-in, which calls the
-// game's handler and then, where it wrote SCRAP ENERGY or SCRAP CHUNK for a labeled square,
-// writes the label's map name over it with the game's text routine, before the frame is drawn.
-// The records are not touched. Off, and before an unload, the game's handler goes back in a map
-// still open; the helper refuses to unload while an open map holds its stand-in.
+// The map cursor's name for the stand-ins' squares (docs/re/memory.md, "Map markers"). The top
+// menu is the map's when its first panel's first child holds the map's per-frame handler
+// (0x169E50, or the helper's stand-in for it) in either of its two slots: the game calls +0x168
+// each frame (the child its only argument), and the builder puts the handler in +0x178 too. The
+// handler computes the cursor's square from the cursor widget (the panel's fourth child, +0x1E6
+// and +0x1E4) at the map's scale (zoomed in when it reads 40.0) and writes the name of the
+// record of the item there into the cursor's 17-glyph text (read live: X 35 Y 28 on the map's
+// readout from the cursor's (350, 223) zoomed in, 2026-10-25). While on (an Archipelago save's
+// labels known), the helper points both slots, where they hold the game's handler, at its
+// stand-in, which calls the game's handler and then, where it wrote SCRAP ENERGY or SCRAP CHUNK
+// for a labeled square, writes the label's map name over it with the game's text routine, before
+// the frame is drawn. The records are not touched. Off, and before an unload, the game's handler
+// goes back in a map still open; the helper refuses to unload while an open map holds its
+// stand-in. With no stand-in (`hook` null) nothing is wrapped.
 class MapCursorNames {
 public:
     void watch(const MapAddresses& a, bool on);
@@ -81,7 +74,8 @@ public:
     bool holds_hook() const { return child_ != nullptr; }
 
 private:
-    // The wrapped child is still the open map menu's first child, a slot holding the stand-in.
+    // The wrapped child is still the open map menu's first child, a slot holding the stand-in
+    // (never true with no stand-in).
     bool still_wrapped(const MapAddresses& a) const;
     BYTE* child_ = nullptr;   // the map menu's first child, its handler the helper's
     BYTE* menu_ = nullptr;    // the map's menu

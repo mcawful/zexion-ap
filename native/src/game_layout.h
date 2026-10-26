@@ -24,6 +24,24 @@ constexpr int kMapCells = kMapSide * kMapSide;
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr uint64_t kFlagCount = 0x9C4;
 
+// The flags the helper reads, one byte each: 39, set once the scanner has said how many disks
+// there are (docs/re/memory.md, "The scanner"); 250, set only by the ending ("The ending: flag
+// 250").
+namespace flag {
+constexpr int kScannerTold = 39;
+constexpr int kEnding = 250;
+}  // namespace flag
+
+// An area event in the loaded table, [event_table] + event * 0x28 (docs/re/memory.md, "The
+// escape skip", "Received Energy Shields"): its type at +0 (the byte after it 0), 16-bit
+// arguments from +2 whose meaning depends on the type, and the event's own number at +0x24.
+namespace event {
+constexpr size_t kSize = 0x28;
+constexpr ptrdiff_t kType = 0, kTypeHigh = 1;
+constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;
+constexpr ptrdiff_t kSelf = 0x24;
+}  // namespace event
+
 // The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408 bytes in
 // the slot array, each 0xFF at +0x935E when empty (the file's 0x9360, as each block starts at
 // the file's offset 2), its randomizer marker at +0x9400 and its map grid at the file's 0x877F,

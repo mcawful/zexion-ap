@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,9 @@ struct Popup {
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
     bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
+    // A client's (from `apply`), which the client counts as shown once it has left the queue:
+    // the `popups` request counts those still queued. The helper's own notices are not.
+    bool counted = false;
 };
 
 struct Batch {
@@ -75,6 +79,10 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out);
 // whom it is for at 24.
 std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 
+// Hex digits (either case), two to a byte, appended to `out`: false for none, an odd count or
+// anything else.
+bool parse_hex(const std::string& text, std::vector<uint8_t>& out);
+
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
 
@@ -88,5 +96,10 @@ std::string parse_batch(const std::string& request, Batch& out);
 // [TOLD]", the scanner's line in hex (scan.h), TOLD 1 (the default) or 0.
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
+
+// A `disk_slots` request: "disk_slots" (off: count 0, no slot) or "disk_slots COUNT REQUIRED
+// SLOTS", SLOTS a comma list of slots 1 to 30, or "-". REQUIRED (1 to 255) is checked, as the
+// client sends it, but not kept: the file select shows the count alone (files.h).
+std::string parse_disk_slots(const std::string& request, int& count, std::set<int>& slots);
 
 }  // namespace zap

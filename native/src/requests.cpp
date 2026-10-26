@@ -38,6 +38,8 @@ void keep_font_char(std::string& out, unsigned char c, const char* kept) {
     }
 }
 
+}  // namespace
+
 bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
     if (text.empty() || text.size() % 2 != 0) return false;
     for (size_t i = 0; i < text.size(); i += 2) {
@@ -59,8 +61,6 @@ bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
     }
     return true;
 }
-
-}  // namespace
 
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out) {
     std::istringstream words(request);
@@ -113,7 +113,9 @@ std::string parse_batch(const std::string& request, Batch& out) {
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
             if (bare && suffix.empty()) return "bad line " + line;
-            out.popups.push_back({static_cast<uint8_t>(item), suffix, bare});
+            Popup popup{static_cast<uint8_t>(item), suffix, bare};
+            popup.counted = true;  // the client's
+            out.popups.push_back(std::move(popup));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }
@@ -191,6 +193,38 @@ std::string parse_discs(const std::string& request, int& count, int& required, s
         return "the scanner's line is not one line of the game's font";
     }
     line = std::move(text);
+    return "";
+}
+
+std::string parse_disk_slots(const std::string& request, int& count, std::set<int>& slots) {
+    count = 0;
+    slots.clear();
+    if (request == "disk_slots") return "";
+    if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
+    std::istringstream words(request.substr(11));
+    std::string list, extra;
+    int required = 0;  // checked only (requests.h)
+    if (!(words >> count >> required >> list) || (words >> extra) || count < 0 || count > 255 ||
+        required < 1 || required > 255) {
+        count = 0;
+        return "bad disk_slots request";
+    }
+    if (list == "-") return "";
+    std::istringstream items(list);
+    std::string item;
+    while (std::getline(items, item, ',')) {
+        if (item.empty() || item.size() > 2 ||
+            item.find_first_not_of("0123456789") != std::string::npos) {
+            slots.clear();
+            return "bad disk_slots request";
+        }
+        int n = std::stoi(item);
+        if (n < 1 || n > slot::kCount) {
+            slots.clear();
+            return "bad disk_slots request";
+        }
+        slots.insert(n);
+    }
     return "";
 }
 

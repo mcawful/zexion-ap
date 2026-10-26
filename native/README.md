@@ -59,7 +59,9 @@ helper outside Zexion), `tests/offline_tests.cpp` AP saves without the client (t
 its match and disk count, the folder, the cache check, `offline_put`, and a stand-in game dressed
 and undressed),
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
-through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe client the
+through the real pipe and hook in a busy host (a batch and its popup, `popups`, a batch no frame
+took, and an unload refused while something else is hooked over the helper, with what the
+client had set armed again). `tests/pipe_client.h` is the pipe client the
 `parts`, `apply_in_frames` and `unload_under_load` tests share.
 
 ## How it works
@@ -155,6 +157,9 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
       - `refresh`;
       - `popup ITEM SUFFIX`;
       - `notice ITEM TEXT`, a popup of the text alone (an Area Map's hint).
+    - `popups` → `pending N`, configured or not: how many of the popups `apply` queued are not
+      shown yet (below). A popup leaves the count once shown, dropped for want of an item record,
+      or dropped with the client that sent it; the helper's own notices are not counted.
     - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`,
       `refused not configured` or `refused no frame`, or `error <why>` for a bad line or for
       none to write (`error nothing to write`):
@@ -201,7 +206,7 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
       `error not hooked, so nothing runs on the game's thread`.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
   `intel`, `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
-  `client_back`, `other_save`, `disarm`, `newgame_status` and `hello`'s `configured`, `skip`,
+  `client_back`, `other_save`, `disarm`, `newgame_status`, `popups` and `hello`'s `configured`, `skip`,
   `active`, `offline` and `title` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
@@ -252,6 +257,8 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
   - A popup the game cannot take yet (all four message slots busy) stays queued.
   - Nothing is shown outside play: popups wait. At least 20 frames separate two popups. A
     popup whose item has no record (the records not loaded yet) is dropped.
+  - `applied` means queued, not shown: `popups` says how many of a client's are still queued,
+    so the client can count a popup as shown only once it has left the queue.
 - **Received Energy Shields.** `shield` → `spawned` or `refused <why>`: runs the Energy
   Shield's pickup event the way its pickup does, from the player's cell, once the player has
   been in play in one cell for a second (`spawn_shield`; checked against B1 first). The client
@@ -514,8 +521,9 @@ through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe
   may still hold one of the helper's functions, since the game would call into the unloaded
   DLL; likewise while the scanner's text or the pause screen's branch is still the helper's
   (the locked ASSIST holds
-  no callback of the helper's, so it cannot). A refused unload sets again, in a frame call,
-  everything clients had set, which a client would not know to resend: the new-game plan
+  no callback of the helper's, so it cannot). A refused unload sets again, in the next frame call
+  however long it takes to come and before any request that frame serves, everything clients
+  had set, which a client would not know to resend: the new-game plan
   (and so ARCHIPELAGO), the item labels (and so the stand-ins' looks and the map's names),
   ASSIST's lock, INTEL CHIP, the disk counts and scanner line, the file select's counts and
   a RETURN HOME WITH THE DISKS? prompt on its way (the offline look dresses its save again by

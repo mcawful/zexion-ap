@@ -1,8 +1,10 @@
 // Helper phase 2 end to end, through the real pipe and hook: the hook-test build of the helper
 // (argv[1]) is loaded into this program, which plays the game. Two busy threads call the
 // hooked GetTickCount like the game's frames; the helper is configured with this program's
-// stand-in game (stand_in.h) and applies a batch inside those calls. With the calls stopped, a
-// batch is refused for want of a frame and is never applied afterwards.
+// stand-in game (stand_in.h) and applies a batch inside those calls, and `popups` counts its
+// popup until a frame shows it. With the calls stopped, a batch is refused for want of a frame
+// and is never applied afterwards. With something hooked over the helper, an unload is refused
+// and what the client had set is set again.
 
 #include <windows.h>
 
@@ -13,6 +15,7 @@
 #include <thread>
 
 #include "check.h"
+#include "iat.h"
 #include "pipe.h"
 #include "pipe_client.h"
 #include "stand_in.h"
@@ -20,6 +23,11 @@
 namespace {
 
 std::atomic<bool> g_stop{false};
+
+// Something else hooked over the helper: it calls what the slot held before it, the helper's
+// trampoline.
+std::atomic<void*> g_next{nullptr};
+DWORD WINAPI chained_tick() { return reinterpret_cast<DWORD(WINAPI*)()>(g_next.load())(); }
 
 void busy() {
     while (!g_stop.load()) {
@@ -55,6 +63,8 @@ int wmain(int argc, wchar_t** argv) {
     check(hello.find("hooked=1 configured=0") != std::string::npos, "hello before config", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
+    reply = zap_test::ask(pipe, "popups");
+    check(reply == "pending 0", "popups before config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
@@ -68,6 +78,8 @@ int wmain(int argc, wchar_t** argv) {
     check(stand_in::g_messages == 1 &&
               stand_in::g_text == "\xC5MISSILE BOX FROM ALICE" && stand_in::g_message_args[0] == 12,
           "the popup was shown from a frame call, the sender on its own line", stand_in::g_text);
+    reply = zap_test::ask(pipe, "popups");
+    check(reply == "pending 0", "shown: none pending", reply);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused item 36 holds 1", "a stale expectation is refused", reply);
@@ -82,6 +94,22 @@ int wmain(int argc, wchar_t** argv) {
     std::thread c(busy);
     Sleep(200);
     check(stand_in::g_inventory[17] == 0, "a withdrawn batch is never applied");
+
+    // A refused unload: the new-game plan the client armed is armed again.
+    reply = zap_test::ask(pipe, "ap_newgame\nwrite 0x310 11");
+    check(reply == "armed", "a plan armed", reply);
+    void** slot = zap::find_import_slot(GetModuleHandleW(nullptr), "kernel32.dll", "GetTickCount");
+    void* other = reinterpret_cast<void*>(&chained_tick);
+    g_next = slot != nullptr ? *slot : nullptr;
+    check(slot != nullptr && zap::swap_slot(slot, g_next.load(), other),
+          "something else hooked over the helper");
+    reply = zap_test::ask(pipe, "unload");
+    check(reply == "error the frame hook was replaced by something else; not unloading",
+          "the unload refused", reply);
+    reply = zap_test::ask(pipe, "newgame_status");
+    check(reply == "armed", "the plan armed again", reply);
+    check(slot != nullptr && zap::swap_slot(slot, other, g_next.load()), "the other hook gone");
+    Sleep(50);  // no call left in chained_tick
 
     check(zap_test::ask(pipe, "unload") == "bye", "unload");
     CloseHandle(pipe);

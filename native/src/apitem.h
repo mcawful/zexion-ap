@@ -34,6 +34,8 @@ constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progress
 // The empty item frames their logos are painted into (frames 63 and 95 of the item sprites).
 constexpr int kStandInFrame = 63, kStandInProgressionFrame = 95;
 constexpr int kStandInCount = 2;
+// Their own names, as the game loads their records (47's, then 48's).
+constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 // The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
 // shows the name as written and it can be centered), and the name where no label is.

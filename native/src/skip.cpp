@@ -8,17 +8,18 @@ namespace zap {
 
 namespace {
 
-constexpr uint8_t kFlagTest = 14;  // event type: if the flag is set go to +4, else to +6
-constexpr int16_t kFlag = 250;
+constexpr uint8_t kFlagTest = 14;  // event type: if the flag at +2 is set go to +4, else to +6
 constexpr int16_t kNone = -1;
-constexpr ptrdiff_t kType = 0, kTypeHigh = 1, kTestFlag = 2, kThen = 4, kElse = 6, kNext = 8;
-constexpr ptrdiff_t kSelf = 0x24;
+// A flag test's arguments (game_layout.h, event::).
+constexpr ptrdiff_t kTestFlag = event::kArg0, kThen = event::kArg1, kElse = event::kArg2,
+                    kNext = event::kArg3;
 
 // The record as the game loads it (else = none), or as patched (else = the offer).
 bool expected(const BYTE* r, int16_t else_branch) {
-    return r[kType] == kFlagTest && r[kTypeHigh] == 0 && word(r, kTestFlag) == kFlag &&
-           word(r, kThen) == kSkipOfferEvent && word(r, kElse) == else_branch &&
-           word(r, kNext) == kNone && word(r, kSelf) == kSkipEvent;
+    return r[event::kType] == kFlagTest && r[event::kTypeHigh] == 0 &&
+           word(r, kTestFlag) == flag::kEnding && word(r, kThen) == kSkipOfferEvent &&
+           word(r, kElse) == else_branch && word(r, kNext) == kNone &&
+           word(r, event::kSelf) == kSkipEvent;
 }
 
 }  // namespace
@@ -30,8 +31,8 @@ bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
         !safe_read(count, &events, sizeof(events)) || events <= kSkipOfferEvent) {
         return patched();  // not loaded (yet): keep what is known
     }
-    BYTE* record = table + kSkipEvent * kEventSize;
-    BYTE copy[kEventSize];
+    BYTE* record = table + kSkipEvent * event::kSize;
+    BYTE copy[event::kSize];
     if (!safe_read(record, copy, sizeof(copy))) return false;
     if (expected(copy, kSkipOfferEvent)) {
         table_ = table;
@@ -53,7 +54,7 @@ bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
 void EscapeSkip::restore(BYTE* table_holder) {
     if (record_ == nullptr) return;
     BYTE* table = nullptr;
-    BYTE copy[kEventSize];
+    BYTE copy[event::kSize];
     if (safe_read(table_holder, &table, sizeof(table)) && table == table_ &&
         safe_read(record_, copy, sizeof(copy)) && expected(copy, kSkipOfferEvent) &&
         writable(record_ + kElse, sizeof(int16_t))) {

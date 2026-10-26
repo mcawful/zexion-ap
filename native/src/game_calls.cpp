@@ -25,6 +25,8 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 // frames between two of the helper's popups.
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
+// Frames between two looks at the escape skip's event and at the scanner's text.
+constexpr int kSkipFrames = 30, kScanFrames = 30;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -36,8 +38,7 @@ using SuitColorFn = void (*)(int slot, short palette);
 using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
 // A received Energy Shield runs its pickup's area event (Game::run_item_event).
 constexpr uint8_t kEnergyShield = 50;
-constexpr ptrdiff_t kEventRecordSize = 0x28;
-constexpr uint8_t kSpawnEventType = 11;
+constexpr uint8_t kSpawnEventType = 11;  // its arguments: the subtype, then the object
 constexpr int16_t kShieldObject = 2018;
 constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before a shield
 // The player's death (docs/re/memory.md, "DeathLink"): death_fn(player, 0), as the game's
@@ -167,10 +168,6 @@ void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
     }
 }
 
-}  // namespace
-
-namespace {
-
 // The addresses configure checked, by key; null for an optional key left out.
 struct Found {
     const std::map<std::string, BYTE*>& keys;
@@ -288,7 +285,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     }
     base_ = reinterpret_cast<BYTE*>(image);
     // A client's config: the offline look put back first, with the addresses it was set with.
-
     if (configured_ && active) {
         leave_offline();
         drop_offline_warning();
@@ -327,7 +323,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     event_table_ = f("event_table");
     event_count_ = f("event_count");
     text_table_ = f("text_table");
-    map_handler_ = f("map_handler");
     start_count_ = f("start_count");
     start_cells_ = f("start_cells");
     start_flags_ = f("start_flags");
@@ -418,6 +413,11 @@ std::string Game::apply(const Batch& batch) {
     }
     for (const Popup& popup : batch.popups) popups_.push_back(popup);
     return "applied";
+}
+
+size_t Game::pending_popups() const {
+    return static_cast<size_t>(
+        std::count_if(popups_.begin(), popups_.end(), [](const Popup& p) { return p.counted; }));
 }
 
 bool Game::popup_busy() const {
@@ -524,15 +524,12 @@ std::string Game::run_item_event(uint8_t item) {
         !safe_read(event_count_, &events, sizeof(events)) || event >= events) {
         return "no event";
     }
-    BYTE* ev = table + static_cast<ptrdiff_t>(event) * kEventRecordSize;
-    BYTE copy[kEventRecordSize];
+    BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
+    BYTE copy[event::kSize];
     if (!safe_read(ev, copy, sizeof(copy))) return "no event";
-    int16_t subtype, object, self;
-    std::memcpy(&subtype, copy + 2, 2);
-    std::memcpy(&object, copy + 4, 2);
-    std::memcpy(&self, copy + 0x24, 2);
-    if (copy[0] != kSpawnEventType || copy[1] != 0 || subtype != 1 || object != kShieldObject ||
-        self != event) {
+    if (copy[event::kType] != kSpawnEventType || copy[event::kTypeHigh] != 0 ||
+        word(copy, event::kArg0) != 1 || word(copy, event::kArg1) != kShieldObject ||
+        word(copy, event::kSelf) != event) {
         return "event not as traced";
     }
     void* handler = nullptr;
@@ -735,7 +732,7 @@ void Game::start_archipelago(WidgetCallback callback) {
 void Game::watch_skip() {
     if (!configured_ || (!active_ && !offline_skip_)) return;
     if (skip_frames_-- > 0) return;
-    skip_frames_ = 30;
+    skip_frames_ = kSkipFrames;
     skip_.apply(event_table_, event_count_);
 }
 
@@ -756,7 +753,7 @@ void Game::set_discs(int count, int required, std::string scan_line, bool told) 
 void Game::watch_discs() {
     if (!configured_) return;
     if (scan_frames_-- > 0) return;
-    scan_frames_ = 30;
+    scan_frames_ = kScanFrames;
     if (!scan_line_.empty()) {
         scan_.apply(text_table_, scan_line_);
     } else if (scan_.written()) {
@@ -829,7 +826,7 @@ void Game::restore_files() {
     if (!configured_) return;
     client_file_counts_.clear();
     offline_file_counts_.clear();
-    files_.set(0, {});
+    files_.set_counts({});
     files_.restore(files_at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_, texture_check_);
 }
@@ -856,8 +853,8 @@ void Game::map_after() {
 void* Game::map_original(void* child) const {
     void* handler = map_names_.original(child);
     // An object the helper did not wrap: the map's own handler, as the game holds it.
-    if (handler == nullptr && map_handler_ != nullptr) {
-        safe_read(map_handler_, &handler, sizeof(handler));
+    if (handler == nullptr && map_at_.map_handler != nullptr) {
+        safe_read(map_at_.map_handler, &handler, sizeof(handler));
     }
     return handler;
 }
@@ -868,14 +865,13 @@ void Game::restore_map_names() {
 
 void Game::watch_map_marks() {
     constexpr int kMapFrames = 15;
-    constexpr int kEndingFlag = 250;
     if (!configured_ || !ap_items_.active()) return;
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // An Archipelago save in use: a randomizer save loaded, as the labels are for (a plain
     // randomizer game may hold the game's own Scrap Chunk).
     if (!labels_seed_loaded(true)) return;
-    mark_important(rando_blob_, map_grid_, flags_[kEndingFlag] != 0);
+    mark_important(rando_blob_, map_grid_, flags_[flag::kEnding] != 0);
 }
 
 void Game::watch_title() {
@@ -961,7 +957,7 @@ void Game::resolve_item_labels() {
             name = pending.item_name;  // this player's own, named by the client
         } else if (pending.item == kStandInItem || pending.item == kStandInProgression) {
             // The stand-ins' records are restyled: their own names, as the game loads them.
-            name = pending.item == kStandInItem ? "SCRAP ENERGY" : "SCRAP CHUNK";
+            name = kStandInNames[pending.item == kStandInItem ? 0 : 1];
             record[record::kIcon] = 0;
         } else {
             for (size_t i = 0; i < record::kNameSize && record[record::kName + i] != 0; ++i) {

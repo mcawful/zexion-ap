@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "check.h"
 #include "equip.h"
 #include "files.h"
+#include "requests.h"
 
 namespace {
 
@@ -23,6 +25,13 @@ void file_entry() { g_calls += 2; }
 void copy_entry() { g_calls += 3; }
 void delete_entry() { g_calls += 4; }
 void hook() { g_calls += 5; }
+
+// One count for each of `slots`, as the client's disk_slots sets them.
+std::map<int, int> each(int count, const std::set<int>& slots) {
+    std::map<int, int> out;
+    for (int slot : slots) out[slot] = count;
+    return out;
+}
 
 BYTE g_frames[256 * 0x38];
 BYTE g_palette2[8];
@@ -120,7 +129,7 @@ void test_this_seeds_slots_show_the_disks() {
     s.e[1].fill(true);              // slot 5: this seed (with keys, say)
     s.e[2].fill(true);              // slot 6: another save, with keys
     zap::FileDisks f;
-    f.set(3, {4, 5});
+    f.set_counts(each(3, {4, 5}));
     f.watch(a);
     check(cells(s.e[0], {kDi, kSk, '0', '3', 0, 0}), "slot 4: DISK and 03");
     check(cells(s.e[1], {kDi, kSk, '0', '3', 0, 0}), "slot 5: DISK and 03, the keys gone");
@@ -151,11 +160,11 @@ void test_this_seeds_slots_show_the_disks() {
     check(s.e[0].y(114) == 53, "this seed's again: dropped");
 
     // A new count: the helper's own cells rewritten.
-    f.set(12, {4, 5});
+    f.set_counts(each(12, {4, 5}));
     f.watch(a);
     check(cells(s.e[1], {kDi, kSk, '1', '2', 0, 0}), "a new count: 12");
 
-    f.set(0, {});
+    f.set_counts({});
     f.watch(a);
     check(at<void*>(s.e[0].widget, 0x2C8) == reinterpret_cast<void*>(&file_entry) &&
               !f.holds_hook(),
@@ -172,7 +181,7 @@ void test_only_what_it_moved_goes_back() {
     s.e[0].fill(false);
     at<double>(s.e[0].g(114), 0x48) = 51;  // not where the game's layout puts it
     zap::FileDisks f;
-    f.set(3, {4});
+    f.set_counts(each(3, {4}));
     f.watch(a);
     check(s.e[0].y(114) == 51 && s.e[0].y(115) == 53, "a glyph out of place: left alone");
     // A fill the helper does not see (a copy, say): the game's frames, the helper's place.
@@ -180,7 +189,7 @@ void test_only_what_it_moved_goes_back() {
     f.watch(a);
     check(cells(s.e[0], {kDi, kSk, '0', '3', 0, 0}) && s.e[0].y(115) == 53,
           "a fill unseen: rewritten, its old frames forgotten");
-    f.set(0, {});
+    f.set_counts({});
     f.watch(a);
     check(cells(s.e[0], {0x81, 0x82, 0x84, 0x84, 0x84, 0x84}) && s.e[0].y(115) == 48,
           "off: the latest fill's frames back");
@@ -192,7 +201,7 @@ void test_an_entry_not_wrapped_is_not_written() {
     s.e[0].fill(false);
     at<void*>(s.e[0].widget, 0x2C8) = reinterpret_cast<void*>(&file_panel);  // another handler
     zap::FileDisks f;
-    f.set(3, {4});
+    f.set_counts(each(3, {4}));
     f.watch(a);
     check(cells(s.e[0], {0, 0, 0, 0, 0, 0}) && s.e[0].y(114) == 48, "not wrapped: untouched");
 }
@@ -201,11 +210,11 @@ void test_no_disk_shows_nothing() {
     Screen s;
     s.e[0].fill(true);  // the KEYS header (flag 39), no disk yet
     zap::FileDisks f;
-    f.set(0, {4});
+    f.set_counts(each(0, {4}));
     f.watch(s.addresses());
     check(cells(s.e[0], {0, 0, 0, 0, 0, 0}), "no disk: the block blank, as with no key");
     check(s.e[0].y(114) == 48, "and the count's row where the game put it");
-    f.set(1, {4});
+    f.set_counts(each(1, {4}));
     f.watch(s.addresses());
     check(cells(s.e[0], {kDi, kSk, '0', '1', 0, 0}) && s.e[0].y(114) == 53, "the first disk: shown");
     f.restore(s.addresses());
@@ -213,7 +222,7 @@ void test_no_disk_shows_nothing() {
 
 void test_anything_else_is_left_alone() {
     zap::FileDisks f;
-    f.set(3, {4, 5, 6});
+    f.set_counts(each(3, {4, 5, 6}));
     {
         Screen s;
         s.e[0].fill(false);
@@ -251,20 +260,18 @@ void test_anything_else_is_left_alone() {
 }
 
 void test_the_request() {
-    int count = -1, required = -1;
+    int count = -1;
     std::set<int> slots;
-    check(zap::parse_disk_slots("disk_slots", count, required, slots).empty() && slots.empty(),
-          "off");
-    check(zap::parse_disk_slots("disk_slots 3 15 4,5", count, required, slots).empty() &&
-              count == 3 && required == 15 && slots == std::set<int>{4, 5},
+    check(zap::parse_disk_slots("disk_slots", count, slots).empty() && slots.empty(), "off");
+    check(zap::parse_disk_slots("disk_slots 3 15 4,5", count, slots).empty() && count == 3 &&
+              slots == std::set<int>{4, 5},
           "a count, the number needed and the slots");
-    check(zap::parse_disk_slots("disk_slots 3 15 -", count, required, slots).empty() &&
-              slots.empty(),
+    check(zap::parse_disk_slots("disk_slots 3 15 -", count, slots).empty() && slots.empty(),
           "no slot of this seed");
-    check(!zap::parse_disk_slots("disk_slots 3 15 31", count, required, slots).empty(),
-          "slots 1 to 30");
-    check(!zap::parse_disk_slots("disk_slots 3 15 4,x", count, required, slots).empty(),
-          "numbers only");
+    check(!zap::parse_disk_slots("disk_slots 3 15 31", count, slots).empty(), "slots 1 to 30");
+    check(!zap::parse_disk_slots("disk_slots 3 15 4,x", count, slots).empty(), "numbers only");
+    check(!zap::parse_disk_slots("disk_slots 3 0 4", count, slots).empty() && count == 0,
+          "the number needed is still checked");
     check(zap::file_disk_digits(3) == "03" && zap::file_disk_digits(15) == "15" &&
               zap::file_disk_digits(120) == "99",
           "two digits");

@@ -18,6 +18,7 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -118,6 +119,9 @@ public:
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
+    // The client's popups still queued (Popup::counted), for the `popups` request: one leaves
+    // the queue when shown, dropped for want of a record, or dropped with the client.
+    size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to
     // build (its new-game routine queued, the randomizer marker set) gets `plan`, once.
@@ -402,7 +406,6 @@ private:
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
-    BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
     MapAddresses map_at_;
     MapCursorNames map_names_;
     bool discs_told_ = true;

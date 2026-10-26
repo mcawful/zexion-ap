@@ -3,14 +3,13 @@
 // counts, and the notices that tell the player.
 #include "game_calls.h"
 
-#include <cstring>
+#include <iterator>
 
 namespace zap {
 
 namespace {
 
 constexpr int kOfflineFrames = 15;  // frames between looks
-constexpr int kScannerFlag = 39;    // the scanner has said how many disks
 // What the player is told on loading an AP save with no client.
 constexpr char kOfflineWarning[] =
     "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
@@ -125,7 +124,7 @@ void Game::watch_offline() {
         const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(offline_index_)];
         if (sd.discs) {
             int count = offline_disk_count(sd, map_grid_);
-            int told = flags_[kScannerFlag] != 0 ? 1 : 0;
+            int told = flags_[flag::kScannerTold] != 0 ? 1 : 0;
             if (count != offline_count_ || told != offline_told_) {
                 offline_count_ = count;
                 offline_told_ = told;
