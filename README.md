@@ -6,7 +6,7 @@ shuffled with the items of other players' games: what you find may be theirs, an
 find may be yours.
 
 This is an unofficial fan project, not affiliated with Gallant Leaf. It contains no game files;
-you need your own copy of Zexion.
+you need your own copy of Zexion. The code is under the [MIT license](LICENSE).
 
 ## Download
 
