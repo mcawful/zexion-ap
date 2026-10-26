@@ -3,7 +3,8 @@
 The world lists where each of this player's progression items is, in any world, in a random
 order (slot data "hints": [player, location id, item code] each). Each Area Map the player
 gets uses the next entry whose item the player does not have yet: the client creates an
-Archipelago hint for it (``CreateHints``), which every player sees in the hint list, and a
+Archipelago hint for it (``CreateHints``), which this player and the player whose world holds
+the item see in their hint lists, and a
 notice in the game names it, worded as the hint: a popup of its text alone, left-aligned
 ("HINT: SLIDE MOD IS AT GUARDIA 22,7"). An Area Map comes either from another world,
 received from the server (the notice in place of the received item's popup), or from one of

@@ -59,10 +59,10 @@ StartRoom = _make_start_room()
 class AllowAssists(Toggle):
     """Lets the game's assist menu (pause, OPTIONS, ASSIST: save states, less damage, refills,
     longer invincibility and the like) be used. Off by default: the client's in-game helper
-    greys out ASSIST, puts a padlock after it, has the cursor skip it and keeps it from opening
+    grays out ASSIST, puts a padlock after it, has the cursor skip it and keeps it from opening
     while this seed's save is loaded, so the assists stay at their defaults. To lift the lock
-    later in a seed, send that player the Assist Unlock item from the server console
-    (/send PLAYER Assist Unlock)."""
+    later in a seed, send that player the Assist Unlock item from the server console, or on
+    archipelago.gg the room page's command box (/send PLAYER Assist Unlock)."""
 
     display_name = "Allow Assists"
 
@@ -71,8 +71,9 @@ class AreaMapHints(DefaultOnToggle):
     """Makes each Area Map a hint, named Intel Chip. Every Intel Chip this player gets, found
     in this world or sent by another player, reveals where one of this player's upgrades, keys
     or OS Install Disks not received yet is, in any world (supplies such as Missile Containers
-    are not hinted): the client creates an Archipelago hint for it, shown in every player's hint
-    list, and with the client's in-game helper a popup names it ("HINT: SLIDE MOD IS AT GUARDIA
+    are not hinted): the client creates an Archipelago hint for it, shown in the hint lists of
+    this player and of the player whose world holds the item, and with the client's in-game
+    helper a popup names it ("HINT: SLIDE MOD IS AT GUARDIA
     22,7", with "IN ALICE'S WORLD" after another world's location). In the game it looks like
     the Area Map, named INTEL CHIP, and does not reveal the map. Off, an Area Map is filler
     that counts as Scrap Metal."""
@@ -85,7 +86,9 @@ class Goal(Choice):
     game's own randomizer. OS Install Disks: find enough OS Install Disks, shuffled into the
     multiworld (OS Install Disks and OS Install Disks Required); the four keys are left out of
     the item pool, and the core is not needed. The disks are counted by the client, not put in
-    the game's inventory (they are the game's Data Disc, which changes its endings)."""
+    the game's inventory (they are the game's Data Disc, which changes its endings). This goal
+    needs the client and its in-game helper: with enough disks, save at the landing pod the
+    seed starts at, and answer YES to RETURN HOME WITH THE DISKS? to win."""
 
     display_name = "Goal"
     option_core = 0
