@@ -19,17 +19,16 @@ file is only read.
 from __future__ import annotations
 
 import argparse
-import re
 import struct
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from capstone import CS_ARCH_X86, CS_MODE_64, CS_OP_MEM, Cs
 from capstone.x86 import X86_REG_RIP
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
-from client import pe  # noqa: E402
+from client import game, pe  # noqa: E402
+from client.patterns import Pattern  # noqa: E402  (kind "rva" too: printed, refused by the client)
 
 IMAGE_BASE_MIN_RVA = 0x10000  # an absolute displacement this large is taken as an RVA
 
@@ -60,15 +59,6 @@ class Image:
         return list(self.md.disasm(self.code_at(rva, count * 15), rva))[:count]
 
 
-@dataclass(frozen=True)
-class Pattern:
-    text: str  # "48 8D 0D ?? ?? ?? ?? ..."
-    disp_at: int  # offset in the match of the 32-bit field that leads to the address
-    kind: str  # "rip": match + rip_end + disp; "rva": base + disp; "at": the match itself
-    rip_end: int  # offset of the end of the referring instruction (kind "rip")
-    addend: int  # added to what the field leads to, to reach the wanted address
-
-
 def _is_rip(ins) -> bool:
     return any(op.type == CS_OP_MEM and op.mem.base == X86_REG_RIP for op in ins.operands)
 
@@ -94,11 +84,6 @@ def _wildcards(ins) -> set[int]:
     if ins.imm_size == 4 and ins.imm_offset and ins.mnemonic.startswith(("call", "j")):
         out.update(range(ins.imm_offset, ins.imm_offset + 4))
     return out
-
-
-def _to_regex(raw: bytes, wild: set[int]) -> re.Pattern[bytes]:
-    parts = [b"." if i in wild else re.escape(raw[i : i + 1]) for i in range(len(raw))]
-    return re.compile(b"".join(parts), re.DOTALL)
 
 
 def _text(raw: bytes, wild: set[int]) -> str:
@@ -135,14 +120,11 @@ def fixed_bytes(p: Pattern) -> int:
     return len(p.text.split()) - p.text.split().count("??")
 
 
-def pattern_for(
-    img: Image, ref_rva: int, kind: str, want: int, max_bytes: int, min_fixed: int = 12
-) -> Pattern | None:
-    """The shortest unique window starting at the referring instruction."""
-    insns = img.instructions(ref_rva, 12)
-    if not insns:
-        return None
-    first = insns[0]
+def _unique_window(img: Image, rva: int, max_bytes: int, min_fixed: int):
+    """The shortest window of whole instructions from ``rva`` that matches once in .text, as
+    the client counts matches (overlapping ones too): (its first instruction, its pattern
+    text), or None."""
+    insns = img.instructions(rva, 12)
     raw, wild = b"", set()
     for ins in insns:
         start = len(raw)
@@ -152,39 +134,36 @@ def pattern_for(
             return None
         if len(raw) - len(wild) < min_fixed:
             continue  # too few fixed bytes to survive a patch, or to mean anything
-        if len(_to_regex(raw, wild).findall(img.text_bytes)) == 1:
-            call = _call_target(first)
-            if call is not None:
-                target, field = call, first.imm_offset
-            elif kind == "rip":
-                target, field = first.address + first.size + first.disp, first.disp_offset
-            else:
-                target, field = first.disp, first.disp_offset
-            return Pattern(
-                text=_text(raw, wild),
-                disp_at=field,
-                kind=kind,
-                rip_end=first.size,
-                addend=want - target,
-            )
+        text = _text(raw, wild)
+        if len(game.compile_pattern(text).findall(img.text_bytes)) == 1:
+            return insns[0], text
     return None
 
 
-def start_pattern(img: Image, rva: int, max_bytes: int, min_fixed: int = 12) -> Pattern | None:
+def pattern_for(
+    img: Image, ref_rva: int, kind: str, want: int, max_bytes: int, min_fixed: int
+) -> Pattern | None:
+    """The shortest unique window starting at the referring instruction."""
+    window = _unique_window(img, ref_rva, max_bytes, min_fixed)
+    if window is None:
+        return None
+    first, text = window
+    call = _call_target(first)
+    if call is not None:
+        target, field = call, first.imm_offset
+    elif kind == "rip":
+        target, field = first.address + first.size + first.disp, first.disp_offset
+    else:
+        target, field = first.disp, first.disp_offset
+    return Pattern(text=text, disp_at=field, kind=kind, rip_end=first.size, addend=want - target)
+
+
+def start_pattern(img: Image, rva: int, max_bytes: int, min_fixed: int) -> Pattern | None:
     """The shortest unique window of whole instructions from the start of a function."""
-    raw, wild = b"", set()
-    for ins in img.instructions(rva, 12):
-        start = len(raw)
-        raw += bytes(ins.bytes)
-        wild |= {start + w for w in _wildcards(ins)}
-        if len(raw) > max_bytes:
-            return None
-        if (
-            len(raw) - len(wild) >= min_fixed
-            and len(_to_regex(raw, wild).findall(img.text_bytes)) == 1
-        ):
-            return Pattern(text=_text(raw, wild), disp_at=0, kind="at", rip_end=0, addend=0)
-    return None
+    window = _unique_window(img, rva, max_bytes, min_fixed)
+    if window is None:
+        return None
+    return Pattern(text=window[1], disp_at=0, kind="at", rip_end=0, addend=0)
 
 
 def main(argv: list[str] | None = None) -> int:

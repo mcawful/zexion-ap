@@ -91,3 +91,20 @@ def plan(**changes) -> sp.SeedPlan:
     )
     fields.update(changes)
     return sp.SeedPlan(**fields)
+
+
+# --- a scripted time.sleep, for the tools' polling loops ---------------------------------------
+
+
+def scripted_sleep(*steps):
+    """A ``time.sleep`` that runs the next step at each call, then stops the loop as Ctrl+C
+    does (KeyboardInterrupt) once the steps run out."""
+    remaining = iter(steps)
+
+    def sleep(_seconds: float) -> None:
+        step = next(remaining, None)
+        if step is None:
+            raise KeyboardInterrupt
+        step()
+
+    return sleep

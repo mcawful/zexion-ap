@@ -27,10 +27,13 @@ def stub_dlls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str) -> 
     return helper, proxy
 
 
-def test_the_apworld_carries_archipelagos_manifest_keys(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+@pytest.fixture
+def dlls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """Stand-in DLLs of the client's version."""
+    return stub_dlls(tmp_path, monkeypatch, bap.client_version())
+
+
+def test_the_release_holds_the_apworld_the_dlls_and_the_guides(tmp_path: Path, dlls) -> None:
     out = tmp_path / "dist"
     apworld = bap.build(out)
     world = json.loads((bap.WORLD / "archipelago.json").read_text(encoding="utf-8"))
@@ -52,14 +55,7 @@ def test_the_apworld_carries_archipelagos_manifest_keys(
     assert sorted(names).count("zexion/archipelago.json") == 1
     assert (out / "zexion_ap.dll").is_file()
     assert (out / "version.dll").is_file()
-
-
-def test_the_player_guides_go_beside_the_apworld(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stub_dlls(tmp_path, monkeypatch, bap.client_version())
-    out = tmp_path / "dist"
-    bap.build(out)
+    # The player guides go beside the apworld.
     docs = bap.WORLD / "docs"
     for source, name in (
         ("setup_en.md", "zexion-setup-guide.md"),
@@ -97,10 +93,8 @@ def test_a_version_inside_a_longer_one_does_not_count(tmp_path: Path) -> None:
     assert bap.helper_has_version(dll, "0.25.3")
 
 
-def test_a_dll_older_than_cmakelists_is_stale(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    helper, _ = stub_dlls(tmp_path, monkeypatch, bap.client_version())
+def test_a_dll_older_than_cmakelists_is_stale(tmp_path: Path, monkeypatch, dlls) -> None:
+    helper, _ = dlls
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.cpp").write_text("", encoding="utf-8")
@@ -115,21 +109,17 @@ def test_a_dll_older_than_cmakelists_is_stale(
         bap.build(tmp_path / "dist")
 
 
-def test_an_out_folder_in_the_game_install_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+def test_an_out_folder_in_the_game_install_is_refused(tmp_path: Path, dlls) -> None:
     game = tmp_path / "steamapps" / "common" / "Zexion"
     with pytest.raises(ProtectedPathError):
         bap.build(game)
     assert not game.exists()
 
 
-def test_an_untracked_file_stops_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    stub_dlls(tmp_path, monkeypatch, bap.client_version())
+def test_an_untracked_file_stops_the_build(tmp_path: Path, monkeypatch, dlls) -> None:
     real = bap.tracked
     left_out = (bap.WORLD / "data.py").resolve()
-    monkeypatch.setattr(bap, "tracked", lambda folder: real(folder) - {left_out})
+    monkeypatch.setattr(bap, "tracked", lambda *folders: real(*folders) - {left_out})
     with pytest.raises(SystemExit, match=r"not tracked by git.*data\.py"):
         bap.build(tmp_path / "dist")
     assert not (tmp_path / "dist").exists()

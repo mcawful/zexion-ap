@@ -85,11 +85,11 @@ def _now() -> str:
 def cmd_slots(_: argparse.Namespace) -> int:
     template = empty_template_hash()
     for path in slot_files():
-        data = path.read_bytes()
-        state = "empty" if is_empty_slot(path, template) else "IN USE"
-        mtime = dt.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-        digest = hashlib.sha256(data).hexdigest()[:12]
-        print(f"{path.stem:<14} {len(data):>7} bytes  {mtime}  {digest}  {state}")
+        digest = sha256(path)
+        state = "empty" if digest == template else "IN USE"
+        stat = path.stat()
+        mtime = dt.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        print(f"{path.stem:<14} {stat.st_size:>7} bytes  {mtime}  {digest[:12]}  {state}")
     return 0
 
 

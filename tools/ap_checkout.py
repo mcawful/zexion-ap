@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from protected import repo_root
+from protected import ROOT
 
 AP_REPO = "https://github.com/ArchipelagoMW/Archipelago.git"
 
@@ -40,7 +40,7 @@ def ensure_checkout(dest: Path, tag: str) -> None:
 
 
 def link_world(checkout: Path) -> None:
-    world = repo_root() / "worlds" / "zexion"
+    world = ROOT / "worlds" / "zexion"
     link = checkout / "worlds" / "zexion"
     if not world.is_dir():
         print("worlds/zexion/ does not exist yet; nothing to link")
@@ -71,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-deps", action="store_true", help="skip installing AP's requirements")
     args = parser.parse_args(argv)
 
-    tag = (repo_root() / "AP_VERSION").read_text(encoding="utf-8").strip()
-    checkout = repo_root() / ".ap" / "Archipelago"
+    tag = (ROOT / "AP_VERSION").read_text(encoding="utf-8").strip()
+    checkout = ROOT / ".ap" / "Archipelago"
     ensure_checkout(checkout, tag)
     link_world(checkout)
     if not args.no_deps:

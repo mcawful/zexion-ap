@@ -90,6 +90,7 @@ BASH_BLOCKED = [
     f'ls "{SAVES}" && $(rm -rf "{SAVES}")',
     f'sed -i s/a/b/ "{GAME}/Files/Text"',
     'cp lab/a "$APPDATA/Gallant Leaf/Zexion/Save Game 30.sav"',
+    'cp lab/a "${APPDATA}/Gallant Leaf/Zexion/Save Game 30.sav"',
     "cp lab/a ~/AppData/Roaming/Gallant\\ Leaf/Zexion/x.sav",
     f'cp lab/a "{CLOUD}/x"',
     f'git -C "{GAME}" init',
@@ -111,29 +112,34 @@ PS_BLOCKED = [
     f'"x" > "{SAVES}/x"',
     f'[IO.File]::WriteAllBytes("{SAVES}/x", $b)',
     'Copy-Item lab/a "$env:APPDATA\\Gallant Leaf\\Zexion\\x.sav"',
+    'Copy-Item lab/a "${env:APPDATA}\\Gallant Leaf\\Zexion\\x.sav"',
     f'New-Item -ItemType File "{GAME}/x"',
     f'Invoke-Expression "rm {SAVES}/x"',
 ]
 
 
-@pytest.mark.parametrize("command", BASH_ALLOWED)
-def test_bash_read_only_allowed(command: str) -> None:
-    assert run("Bash", command=command) is None
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [("Bash", c) for c in BASH_ALLOWED] + [("PowerShell", c) for c in PS_ALLOWED],
+)
+def test_read_only_commands_allowed(tool: str, command: str) -> None:
+    assert run(tool, command=command) is None
 
 
-@pytest.mark.parametrize("command", BASH_BLOCKED)
-def test_bash_writes_blocked(command: str) -> None:
-    assert run("Bash", command=command)
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [("Bash", c) for c in BASH_BLOCKED] + [("PowerShell", c) for c in PS_BLOCKED],
+)
+def test_writing_commands_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command)
 
 
-@pytest.mark.parametrize("command", PS_ALLOWED)
-def test_powershell_read_only_allowed(command: str) -> None:
-    assert run("PowerShell", command=command) is None
-
-
-@pytest.mark.parametrize("command", PS_BLOCKED)
-def test_powershell_writes_blocked(command: str) -> None:
-    assert run("PowerShell", command=command)
+@pytest.mark.parametrize(
+    "spelling", ["%APPDATA%", "$APPDATA", "${APPDATA}", "$env:APPDATA", "${env:APPDATA}"]
+)
+def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> None:
+    monkeypatch.setenv("APPDATA", "C:/Users/someone/AppData/Roaming")
+    assert protected.normalize(f"{spelling}/x") == "c:/users/someone/appdata/roaming/x"
 
 
 def test_other_tools_pass() -> None:
@@ -151,26 +157,6 @@ def _hook(payload: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_hook_process_blocks_with_exit_2() -> None:
-    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": f"{SAVES}/x.sav"}})
-    result = _hook(payload)
-    assert result.returncode == 2
-    assert "guard_protected" in result.stderr
-
-
-def test_hook_process_allows_with_exit_0() -> None:
-    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": "lab/x.sav"}})
-    assert _hook(payload).returncode == 0
-
-
-def test_hook_fails_closed_on_garbage_that_mentions_saves() -> None:
-    assert _hook("not json, but Gallant Leaf").returncode == 2
-
-
-def test_hook_fails_open_on_garbage_elsewhere() -> None:
-    assert _hook("not json").returncode == 0
-
-
 def _crashing_payload(tool_input: dict) -> str:
     # An unhashable tool_name makes check() raise, which exercises the failure path.
     return json.dumps(
@@ -182,11 +168,20 @@ def _crashing_payload(tool_input: dict) -> str:
     )
 
 
-def test_guard_failure_does_not_block_unrelated_calls() -> None:
-    # The payload's transcript path (under AppData) must not make a guard failure block
-    # everything.
-    assert _hook(_crashing_payload({"file_path": "D:/code/zexion-ap/tools/x.py"})).returncode == 0
-
-
-def test_guard_failure_blocks_calls_naming_the_saves() -> None:
-    assert _hook(_crashing_payload({"file_path": f"{SAVES}/x.sav"})).returncode == 2
+@pytest.mark.parametrize(
+    ("payload", "code"),
+    [
+        (json.dumps({"tool_name": "Write", "tool_input": {"file_path": f"{SAVES}/x.sav"}}), 2),
+        (json.dumps({"tool_name": "Write", "tool_input": {"file_path": "lab/x.sav"}}), 0),
+        ("not json, but Gallant Leaf", 2),  # garbage near the saves: fails closed
+        ("not json", 0),  # garbage elsewhere: fails open
+        # The payload's transcript path (under AppData) must not make a guard failure block
+        # everything, only a failure on a call naming the saves.
+        (_crashing_payload({"file_path": "D:/code/zexion-ap/tools/x.py"}), 0),
+        (_crashing_payload({"file_path": f"{SAVES}/x.sav"}), 2),
+    ],
+)
+def test_the_hook_process_blocks_with_exit_2(payload: str, code: int) -> None:
+    result = _hook(payload)
+    assert result.returncode == code
+    assert code == 0 or "guard_protected" in result.stderr

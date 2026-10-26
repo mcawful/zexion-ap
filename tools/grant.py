@@ -33,12 +33,11 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))  # the client package
+from protected import ROOT, append_log, game_dir, lab_dir
 
+sys.path.insert(0, str(ROOT))  # the client package
 from client import game, ids  # noqa: E402
 from client.patterns import TARGETS  # noqa: E402
-from protected import append_log, game_dir, lab_dir  # noqa: E402
 
 ITEM_NAMES = Path("Files/Translations/English(HD)/ItemNames.txt")
 
