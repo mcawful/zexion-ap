@@ -31,6 +31,12 @@ def test_the_same_or_a_lower_version_fails(monkeypatch) -> None:
     assert rc.main(["--above", "v0.30.1"]) == 1
 
 
+def test_the_highest_release_counts_whatever_the_order(monkeypatch) -> None:
+    monkeypatch.setattr(rc, "client_version", lambda: "0.30.0")
+    assert rc.main(["--above", "v0.30.0", "v0.9.0"]) == 1
+    assert rc.main(["--above", "v0.9.0", "v0.29.0"]) == 0
+
+
 def test_the_first_release_has_nothing_to_be_above(monkeypatch) -> None:
     monkeypatch.setattr(rc, "client_version", lambda: "0.29.0")
     assert rc.main([]) == 0

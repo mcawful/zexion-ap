@@ -1,11 +1,12 @@
 """The release's version, and the check a pull request into main must pass: it raises it.
 
-    .venv/Scripts/python tools/release_check.py                 # print the version
-    .venv/Scripts/python tools/release_check.py --above v0.29.0 # fail unless it is higher
+    .venv/Scripts/python tools/release_check.py                         # print the version
+    .venv/Scripts/python tools/release_check.py --above v0.28.0 v0.29.0 # fail unless higher
 
 The version is the one number the client, the helper and the world share
 (``client/native.py`` ``VERSION``; ``tools/build_apworld.py`` refuses a release where they
-differ). CI passes the newest release tag as ``--above`` (none before the first release).
+differ). CI passes every release's tag as ``--above`` (none before the first release); the
+version must be above the highest.
 """
 
 from __future__ import annotations
@@ -27,12 +28,13 @@ def parse(text: str) -> tuple[int, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--above", default="", help="the newest release's tag, if any")
+    parser.add_argument("--above", nargs="*", default=[], help="the releases' tags, if any")
     args = parser.parse_args(argv)
     version = client_version()
-    if args.above and parse(version) <= parse(args.above):
+    last = max(args.above, key=parse, default="")
+    if last and parse(version) <= parse(last):
         print(
-            f"version {version} is not above the last release {args.above}: raise VERSION "
+            f"version {version} is not above the last release {last}: raise VERSION "
             "(client/native.py), kVersion (native/src/dllmain.cpp) and world_version "
             "(worlds/zexion/archipelago.json) together",
             file=sys.stderr,

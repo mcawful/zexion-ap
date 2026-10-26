@@ -36,13 +36,13 @@ Where things are:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
   the helper, the client's `/unload_helper`, and `save_lab.py install` and `restore`. Grants and
   memory writes go only into a lab slot; grants only while the player stands still in play.
-- **Branches and releases.** `main` holds released code only; `develop` holds code ready for
-  the next release. Work on a short-lived topic branch cut from `develop`, merged into
-  `develop` by pull request, then deleted. `develop` and `main` take changes only through pull
-  requests with every CI check passing. **Only the owner merges `develop` into `main`; Claude
-  never merges into `main`.** That merge starts the release, which waits for the owner's
-  approval in GitHub before anything is built, tagged or published. Before opening the pull
-  request into `main`, raise the version ("Releases and versions"). The flow:
+- **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
+  release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
+  request, then deleted. `develop` and `main` take changes only through pull requests with every CI
+  check passing. **Only the owner merges `develop` into `main` (with a merge commit, the only method
+  `main` allows); Claude never merges into `main`.** That merge starts the release, which waits for
+  the owner's approval in GitHub before anything is built, tagged or published. Before opening the
+  pull request into `main`, raise the version ("Releases and versions"). The flow:
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Branches and releases".
 - **This repo is public.** Never commit game files, exe or memory dumps, saves (real or
   patched), Steam account ids, or anything from `lab/` or `private/`. Facts go in `docs/re/`;
