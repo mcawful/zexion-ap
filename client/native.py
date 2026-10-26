@@ -32,6 +32,10 @@ from pathlib import Path
 from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
+# The player's off switch, beside the proxy in the game's folder (native/proxy/version.cpp
+# looks for it in its own folder): while it exists neither the proxy nor the client loads the
+# game folder's helper.
+DISABLED_NAME = "zexion_ap.disabled"
 VERSION = "0.28.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
@@ -48,6 +52,11 @@ class HelperError(RuntimeError):
 
 class GameExited(HelperError):
     """The game is no longer running."""
+
+
+class ModDisabled(HelperError):
+    """The player turned the mod off (DISABLED_NAME in the game's folder): the game folder's
+    helper is not loaded. The message is for the player as it is."""
 
 
 def config_text(rvas: dict[str, int]) -> str:
@@ -156,14 +165,27 @@ def module_names(process_handle: int, attempts: int = 5) -> list[str]:
     raise HelperError(f"cannot list the game's modules: {_last_error()}")
 
 
-def game_folder_dll(process_handle: int) -> Path | None:
-    """The helper beside the game's executable (where the player put it with the proxy), if
-    there is one there. Only read: the client never writes the game's folder."""
+def game_folder(process_handle: int) -> Path | None:
+    """The folder of the game's executable, where the player puts the mod. Only read: the
+    client never writes the game's folder."""
     path = ctypes.create_unicode_buffer(1024)
     if not _psapi().GetModuleFileNameExW(process_handle, None, path, len(path)):
         return None
-    dll = Path(path.value).parent / DLL_NAME
-    return dll if dll.is_file() else None
+    return Path(path.value).parent
+
+
+def game_folder_dll(process_handle: int) -> Path | None:
+    """The helper beside the game's executable (where the player put it with the proxy), if
+    there is one there."""
+    folder = game_folder(process_handle)
+    dll = folder / DLL_NAME if folder is not None else None
+    return dll if dll is not None and dll.is_file() else None
+
+
+def mod_disabled(process_handle: int) -> bool:
+    """Whether the player has turned the mod off: DISABLED_NAME in the game's folder."""
+    folder = game_folder(process_handle)
+    return folder is not None and (folder / DISABLED_NAME).exists()
 
 
 def is_loaded(process_handle: int) -> bool:
@@ -424,7 +446,10 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     handle = g.pm.process_handle
     own_build = dll.is_file()  # this client's own build (not from the Launcher's apworld)
     built = own_build
-    if not built:
+    # DISABLED_NAME turns off the game folder's copy only, as the proxy does: a build of this
+    # client's own (native/build, ZEXION_DLL) still loads, and a helper already loaded is used.
+    disabled = not own_build and mod_disabled(handle)
+    if not built and not disabled:
         # No build: the game folder's copy, as the proxy loads it (after an unload, say).
         dll = game_folder_dll(handle) or dll
         built = dll.is_file()
@@ -453,6 +478,12 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
+        if disabled:
+            raise ModDisabled(
+                f"The mod is turned off ({DISABLED_NAME} is in Zexion's folder): items arrive "
+                "without popups, and new games of this seed can't be started. Delete that file "
+                "to turn the mod back on."
+            )
         if not built:
             if not ROOT.is_dir():  # the client in an apworld: the player installs the helper
                 raise HelperError(

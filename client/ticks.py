@@ -51,8 +51,13 @@ async def attach_helper(ctx: ZexionContext) -> None:
     notes: list[str] = []
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
-    except native.HelperError as exc:
+    except native.ModDisabled as exc:
         if ctx.said("helper", str(exc)):  # tried every 30 s: said again only when it changes
+            logger.warning(str(exc))
+        ctx.drop_helper()
+        return
+    except native.HelperError as exc:
+        if ctx.said("helper", str(exc)):
             logger.warning(
                 f"The in-game helper could not be used ({exc}); items arrive with no popup."
             )
