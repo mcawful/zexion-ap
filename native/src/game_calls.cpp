@@ -719,12 +719,22 @@ void* Game::map_original(void* child) const {
 
 void Game::watch_map_marks() {
     constexpr int kMapFrames = 15;
-    if (!ap_items_.active()) return;
+    if (!ap_items_.active()) {
+        map_seed_passes_ = 0;
+        return;
+    }
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // Only in the labels' seed's save (a plain randomizer game has the game's own Scrap Chunks),
-    // in play or in a menu: a player who pauses at once and opens the map sees them raised.
-    if (!labels_seed_loaded(false)) return;
+    // in play or in a menu, once it has read so on two passes in a row: during a load the
+    // section may still be the last save's while the grid is the new one's (which the game then
+    // saves). A player who pauses at once and opens the map sees them raised within ~32 frames.
+    if (!labels_seed_loaded(false)) {
+        map_seed_passes_ = 0;
+        return;
+    }
+    if (map_seed_passes_ < 2) ++map_seed_passes_;
+    if (map_seed_passes_ < 2) return;
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
 }
 

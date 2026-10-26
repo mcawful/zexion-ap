@@ -1099,7 +1099,8 @@ void test_assist_watch() {
 }
 
 // The map's important squares are raised in the labels' seed's save with a menu open too (the
-// player may pause and open the map at once), and not in another seed's save.
+// player may pause and open the map at once), once two looks in a row (every 16th frame) have
+// read that seed loaded, and not in another seed's save.
 void test_map_marks_with_a_menu_open() {
     reset_game();
     g_rando_marker = 1;
@@ -1115,11 +1116,19 @@ void test_map_marks_with_a_menu_open() {
     game.set_labels(labels);
     g_menu = 1;  // paused
     game.watch_all(&chosen);
-    check(g_map_grid[4 * 54 + 3] == 0x1A, "raised with a menu open");
+    check(g_map_grid[4 * 54 + 3] == 0x19, "the first look: not yet (a load may not have settled)");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A, "the next: raised, with a menu open");
     g_map_grid[4 * 54 + 3] = 0x19;
+    const BYTE was = g_section[0x26D];
     g_section[0x26D] = 0x2F;  // another seed's save
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x19, "not in another seed's save");
+    g_section[0x26D] = was;  // the labels' seed's again: counted afresh
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x19, "a look of another seed starts the count again");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A, "then the second look raises them");
     game.put_back_all(&chosen);
     g_menu = 0;
     g_rando_marker = 0;

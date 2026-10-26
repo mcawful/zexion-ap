@@ -345,8 +345,9 @@ private:
     TitleLines title_;
     std::string title_error_;
     int map_frames_ = 0;  // frames until the next map look
+    int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The loaded section's item table and start when the labels were set (the seed they
-    // are for): the map is changed only in a save in play holding that seed.
+    // are for): the map is changed only in a save holding that seed.
     std::optional<OfflineSeed> labels_seed_;
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
