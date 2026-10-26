@@ -53,8 +53,9 @@ one at the start of each session and again after the game has saved.
 
 `diff` prints each changed run with its offset and both sides' first 16 bytes, plus a u8, u16,
 or u32 and f32 reading for runs of exactly 1, 2 or 4 bytes. It lists 200 runs unless
-`--max-runs` says otherwise; `--merge-gap N` joins runs separated by N or fewer unchanged bytes. When sizes differ it compares the common length and says so; inserted data
-shifts everything after it, so look for where the runs stop lining up.
+`--max-runs` says otherwise; `--merge-gap N` joins runs separated by N or fewer unchanged
+bytes. When sizes differ it compares the common length and says so; inserted data shifts
+everything after it, so look for where the runs stop lining up.
 
 A patch spec checks what it overwrites, so it can't land on the wrong save:
 
