@@ -320,7 +320,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     death_fn_ = f("death_fn");
     object_pool_ = f("object_pool");
     halt_flag_ = f("halt_flag");
-    // And each part's own, with the helper's stand-ins it points the game at.
+    // And each part's own, with the helper's wrappers it points the game at.
     menu_ = menu_addresses(f, hooks_);
     equip_at_ = equip_addresses(f, hooks_);
     mission_at_ = mission_addresses(f, hooks_);

@@ -23,7 +23,7 @@ struct MissionAddresses {
     void* widget_handler = nullptr;    // the generic widget handler, the prompt's
     void* text_set_fn = nullptr;       // (text, string, first glyph, glyphs)
     void* open_hook = nullptr;         // the helper's opener (no arguments)
-    void* yes_hook = nullptr;          // the helper's stand-in for YES's callback
+    void* yes_hook = nullptr;          // the helper's wrapper of YES's callback
 };
 
 constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;

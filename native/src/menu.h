@@ -22,7 +22,7 @@ namespace zap {
 struct MenuAddresses {
     BYTE* current_menu = nullptr;  // holds a pointer to the top open menu
     void* panel_handler = nullptr;
-    // The helper's stand-in for the game-mode panel's handler (dllmain.cpp): calls the game's,
+    // The helper's wrapper of the game-mode panel's handler (dllmain.cpp): calls the game's,
     // then fits ARCHIPELAGO's hover border at once (fit_border). Null: the handler is left as
     // the game's, and the border is fitted from the frame call only.
     void* panel_hook = nullptr;

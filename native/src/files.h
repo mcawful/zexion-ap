@@ -20,7 +20,7 @@ struct FileAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu
     void* file_panel_fn = nullptr;  // the entries' panel handler
     void* entry_fns[3] = {};        // the entry handlers: the file select's, COPY's and DELETE's
-    void* hook = nullptr;           // the helper's stand-in for an entry's handler
+    void* hook = nullptr;           // the helper's wrapper of an entry's handler
 };
 
 // The squashed DISK: "DI" and "SK", drawn as the game's KEYS (0x81 "KE", 0x82 "YS"), into font
