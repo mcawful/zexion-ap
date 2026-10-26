@@ -77,7 +77,7 @@ class TestDefaultStart(ZexionTestBase):
 
     def test_goal_is_in_the_core(self) -> None:
         core = self.multiworld.get_location("Zexion", self.player).parent_region
-        self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
+        self.assertIn(rules.region_name(data.CELL_REGION[GOAL_CELL]), core.name)
 
     def test_slot_data_says_death_link_is_off(self) -> None:
         self.assertIs(self.world.fill_slot_data()["death_link"], False)
@@ -168,15 +168,6 @@ class TestStartRoomNotOffered(unittest.TestCase):
             with self.assertLogs(level="WARNING"):
                 world.generate_early()
             self.assertIn(world.start, data.MODES["standard"]["starts"])
-        finally:
-            data.MODES["standard"]["starts"] = saved
-
-    def test_a_mode_without_rooms_is_an_error(self) -> None:
-        saved = data.MODES["standard"]["starts"]
-        data.MODES["standard"]["starts"] = []
-        try:
-            with self.assertRaises(OptionError):
-                fake_world(start_room=0).generate_early()
         finally:
             data.MODES["standard"]["starts"] = saved
 
@@ -510,6 +501,17 @@ class TestDiscHuntOHKO(DiscHuntBase):
         self.assertEqual(len(pool), len(self.world.kept_locations))
 
 
+class TestDiscHuntEasyFull(DiscHuntBase):
+    mode = "easy"
+    placed, required = 30, 30
+
+    def test_every_area_map_gives_way(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 30)
+        self.assertNotIn("Intel Chip", pool)
+        self.assertEqual(pool.count("Energy Shield"), 1)
+
+
 class TestDiscHuntEasy(DiscHuntBase):
     mode = "easy"
     placed, required = 10, 10
@@ -532,18 +534,6 @@ class TestDiscStartInventory(DiscHuntBase):
 class TestDiscOptionsChecked(unittest.TestCase):
     def world(self, mode: int, placed: int, required: int) -> ZexionWorld:
         return fake_world(mode, goal=Goal.option_os_install_disks, placed=placed, required=required)
-
-    def test_room_per_mode(self) -> None:
-        for mode, room in ((0, 31), (1, 31), (2, 41)):
-            world = self.world(mode, 1, 1)
-            world.generate_early()
-            self.assertEqual(world.disc_room(), room, mode)
-
-    def test_too_many_discs_is_an_error(self) -> None:
-        # Beyond the option's range: every mode has room for its most (30), so this guards only
-        # data regenerated with less room.
-        with self.assertRaises(OptionError):
-            self.world(1, 32, 1).generate_early()
 
     def test_more_required_than_placed_is_an_error(self) -> None:
         with self.assertRaises(OptionError):

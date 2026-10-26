@@ -32,7 +32,7 @@ def area_groups() -> dict[str, set[str]]:
     """One group of locations per area, as the pause screen names it (REGION:)."""
     groups: dict[str, set[str]] = {}
     for i, cell in enumerate(LOCATIONS):
-        groups.setdefault(CELL_AREAS[tuple(cell)], set()).add(location_name(i))
+        groups.setdefault(CELL_AREAS[cell], set()).add(location_name(i))
     return groups
 
 

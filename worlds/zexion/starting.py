@@ -36,11 +36,8 @@ MAX_CONTAINERS = 9
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
 START_WITH |= {32, 33, 34}
 NEVER = {
-    2: "starting bombs are not supported yet",
-    37: "starting bombs are not supported yet",
-    46: "a new game cannot start with Scrap",
-    47: "a new game cannot start with Scrap",
-    48: "a new game cannot start with Scrap",
+    **dict.fromkeys((2, 37), "starting bombs are not supported yet"),
+    **dict.fromkeys((46, 47, 48), "a new game cannot start with Scrap"),
     49: "a new game cannot start with an Area Map",
     50: "a new game cannot start with an Energy Shield",
     INTEL_CHIP: "a starting Intel Chip is never received, so it would hint nothing",
