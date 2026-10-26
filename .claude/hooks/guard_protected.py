@@ -162,8 +162,7 @@ def _segment_is_read_only(words: list[str], powershell: bool) -> bool:
     words = _strip_prefix(words, powershell)
     if not words:
         return True
-    verb = re.split(r"[\\/]", words[0])[-1].lower()
-    verb = verb.removesuffix(".exe")
+    verb = re.split(r"[\\/]", words[0])[-1].lower().removesuffix(".exe")
     if powershell:
         if verb.startswith("$") and len(words) == 1:
             return True  # a bare variable is just output
@@ -222,14 +221,14 @@ def main() -> int:
     # Judge a failure by the tool's own input only. The rest of the payload carries session
     # paths (the transcript lives under AppData) that would make every failure block everything.
     try:
-        subject = json.dumps(json.loads(raw).get("tool_input") or {})
+        data = json.loads(raw)
+        subject = json.dumps(data.get("tool_input") or {})
     except Exception:
-        subject = raw
+        data, subject = None, raw  # data None makes the check below fail
     try:
         sys.path.insert(0, str(_TOOLS_DIR))
         import protected
 
-        data = json.loads(raw)
         reason = check(data.get("tool_name", ""), data.get("tool_input") or {}, protected)
     except Exception as exc:  # fail closed, but only where it matters
         if _mentions_sensitive(subject):

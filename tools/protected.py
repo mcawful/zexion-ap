@@ -25,6 +25,7 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent  # the repo
 STEAM_APP_ID = 3392510
 
 _PROTECTED = [
@@ -48,14 +49,9 @@ def _expand(text: str) -> str:
         if not value:
             continue
         esc = re.escape(name)
-        for pattern in (
-            rf"%{esc}%",
-            rf"\$env:{esc}(?!\w)",
-            rf"\$\{{env:{esc}\}}",
-            rf"\$\{{{esc}\}}",
-            rf"\${esc}(?!\w)",
-        ):
-            text = re.sub(pattern, lambda _m, v=value: v, text, flags=re.IGNORECASE)
+        # %NAME%, $env:NAME, ${env:NAME}, ${NAME}, $NAME
+        spellings = rf"%{esc}%|\$env:{esc}(?!\w)|\$\{{env:{esc}\}}|\$\{{{esc}\}}|\${esc}(?!\w)"
+        text = re.sub(spellings, lambda _m, v=value: v, text, flags=re.IGNORECASE)
     home = os.path.expanduser("~")
     text = re.sub(r"(^|[\s\"'=])~(?=[/\\])", lambda m: m.group(1) + home, text)
     return text
@@ -154,12 +150,8 @@ def game_dir() -> Path:
     )
 
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
-
-
 def lab_dir() -> Path:
     """Where backups and working copies go. Gitignored. ``ZEXION_LAB_DIR`` overrides it."""
     override = os.environ.get("ZEXION_LAB_DIR")
-    path = Path(override) if override else repo_root() / "lab"
+    path = Path(override) if override else ROOT / "lab"
     return assert_writable(path)

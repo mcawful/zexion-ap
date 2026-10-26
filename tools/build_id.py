@@ -14,9 +14,9 @@ import re
 import sys
 from pathlib import Path
 
-from protected import STEAM_APP_ID, game_dir
+from protected import ROOT, STEAM_APP_ID, game_dir
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+sys.path.insert(0, str(ROOT))  # the client package
 from client import pe  # noqa: E402
 
 DATA_FILES = (
@@ -29,21 +29,9 @@ DATA_FILES = (
     "Text",
     "Bosses",
 )
-
-
+# The COFF machine type, and the DllCharacteristics bits of the optional header worth naming.
 MACHINES = {0x8664: "x64", 0x14C: "x86", 0xAA64: "ARM64"}
 DLL_FLAGS = {0x0020: "HighEntropyVA", 0x0040: "DynamicBase (ASLR)", 0x0100: "NX"}
-
-
-def pe_timestamp(exe: bytes) -> dt.datetime:
-    return dt.datetime.fromtimestamp(pe.parse(exe).timestamp, dt.UTC)
-
-
-def pe_machine_and_flags(exe: bytes) -> tuple[str, list[str]]:
-    """The COFF machine type and the named DllCharacteristics bits of the optional header."""
-    header = pe.parse(exe)
-    flags = [name for bit, name in DLL_FLAGS.items() if header.dll_characteristics & bit]
-    return MACHINES.get(header.machine, hex(header.machine)), flags
 
 
 def steam_build_id(install: Path) -> str | None:
@@ -58,12 +46,15 @@ def steam_build_id(install: Path) -> str | None:
 
 def fingerprint(install: Path) -> str:
     exe = (install / "Zexion.exe").read_bytes()
-    machine, flags = pe_machine_and_flags(exe)
+    header = pe.parse(exe)
+    stamp = dt.datetime.fromtimestamp(header.timestamp, dt.UTC)
+    machine = MACHINES.get(header.machine, hex(header.machine))
+    flags = [name for bit, name in DLL_FLAGS.items() if header.dll_characteristics & bit]
     dlls = sorted(p.name for p in install.glob("*.dll"))
     lines = [
         f"- Zexion.exe SHA-256: `{hashlib.sha256(exe).hexdigest()}`",
         f"- Size: {len(exe):,} bytes",
-        f"- PE timestamp: {pe_timestamp(exe):%Y-%m-%d %H:%M:%S} UTC",
+        f"- PE timestamp: {stamp:%Y-%m-%d %H:%M:%S} UTC",
         f"- Machine: {machine}; DllCharacteristics: {', '.join(flags) or 'none of interest'}",
         f"- DLLs beside the exe: {', '.join(dlls) or 'none'}",
         f"- Steam build id: {steam_build_id(install) or 'not found'}",

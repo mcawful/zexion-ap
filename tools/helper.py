@@ -16,16 +16,11 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from protected import ROOT, append_log, lab_dir
+
 sys.path.insert(0, str(ROOT))  # the client package
-
-from client import (  # noqa: E402
-    game,
-    native,
-)
-from protected import append_log, lab_dir  # noqa: E402
+from client import game, native  # noqa: E402
 
 
 def log(entry: dict) -> None:

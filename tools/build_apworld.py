@@ -38,9 +38,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-from protected import assert_writable
+from protected import ROOT, assert_writable
 
-ROOT = Path(__file__).resolve().parent.parent
 WORLD = ROOT / "worlds" / "zexion"
 CLIENT = ROOT / "client"
 HELPER = ROOT / "native" / "build" / "Release" / "zexion_ap.dll"

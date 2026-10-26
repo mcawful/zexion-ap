@@ -31,9 +31,9 @@ from pathlib import Path
 
 import numpy as np
 
-from protected import assert_writable, lab_dir
+from protected import ROOT, assert_writable, lab_dir
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+sys.path.insert(0, str(ROOT))  # the client package
 from client import pe, process  # noqa: E402
 
 PROCESS = "Zexion.exe"
