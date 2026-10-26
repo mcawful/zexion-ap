@@ -109,3 +109,46 @@ def test_a_dead_game_is_not_taken_for_an_unloaded_helper(stand_in) -> None:
     process.wait()
     with pytest.raises(native.GameExited):
         native.is_loaded(handle)
+
+
+class _OldHelper:
+    """A helper of another version, loaded from the game's folder."""
+
+    requests: list[str] = []
+
+    def __init__(self, pid: int) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        pass
+
+    def hello(self) -> dict[str, str]:
+        return {"version": "0.0.1", "folder": "1"}
+
+    def request(self, text: str, *args: object) -> str:
+        _OldHelper.requests.append(text)
+        return "bye"
+
+
+def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) -> None:
+    # The client from an apworld has no build: the game folder's copy is all there is, so a
+    # copy of another version must be refused, not unloaded and loaded again.
+    folder_copy = tmp_path / "zexion_ap.dll"
+    folder_copy.write_bytes(b"")
+    monkeypatch.setattr(native, "game_folder_dll", lambda handle: folder_copy)
+    monkeypatch.setattr(native, "is_loaded", lambda handle: True)
+    monkeypatch.setattr(native, "Helper", _OldHelper)
+    _OldHelper.requests = []
+
+    class Game:
+        pid = 1
+
+        class pm:
+            process_handle = 1
+
+    with pytest.raises(native.HelperError, match="copy this release's"):
+        native.attach(Game(), tmp_path / "no-build.dll")
+    assert "unload" not in _OldHelper.requests

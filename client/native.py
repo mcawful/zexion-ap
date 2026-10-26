@@ -32,7 +32,7 @@ from pathlib import Path
 from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.25.3"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.26.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target client/patterns.py locates but those only the
 # client reads (native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CLIENT_ONLY = frozenset({"pickup_counter"})
@@ -396,7 +396,8 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     if there is one; a copy in the game's folder that cannot be replaced so is refused, as the
     player has to update it there. ``notes`` collects what the client should tell the player."""
     handle = g.pm.process_handle
-    built = dll.is_file()
+    own_build = dll.is_file()  # this client's own build (not from the Launcher's apworld)
+    built = own_build
     if not built:
         # No build: the game folder's copy, as the proxy loads it (after an unload, say).
         dll = game_folder_dll(handle) or dll
@@ -407,7 +408,9 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
             version = hello.get("version", "")
             in_folder = hello.get("folder") == "1"
             if version != VERSION:
-                if in_folder and not built:
+                # The game folder's copy can only be replaced by a build of this client's own:
+                # loading that same copy again would give the same version (each retry).
+                if in_folder and not own_build:
                     raise HelperError(
                         f"the helper in the game's folder is version {version}, and this client "
                         f"needs {VERSION}: copy this release's zexion_ap.dll and version.dll there"
