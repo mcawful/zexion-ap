@@ -15,9 +15,9 @@ collected, gives the items other worlds send (client/session.py) and sends the g
 ending begins. With the in-game helper (client/native.py, native/) items arrive with the game's
 popup, and the helper also starts new games holding the seed, labels other players' items,
 offers the escape skip, locks ASSIST, names Intel Chips, shows the OS Install Disks, deals
-DeathLinks and keeps AP saves' look without the client. ``/prepare SLOT`` writes the seed into a
-fresh save instead (client/prepare.py). The client asks the server only for items from other
-worlds: this world's own are in the save's item table, and the game hands them out itself.
+DeathLinks and keeps AP saves' look without the client. The client asks the server only for
+items from other worlds: this world's own are in the save's item table, and the game hands them
+out itself.
 
 What each part does, and when it was tested in the game: README.md ("Features") and
 native/README.md; the docstrings of the ticks below and of the modules they use; the state the
@@ -70,7 +70,6 @@ from . import (  # noqa: E402
     native,
     newgame,
     offline,
-    prepare,
     reconcile,
     save_patch,
     session,
@@ -101,42 +100,9 @@ HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the ser
 FOUND_RESEND_SECONDS = 5.0  # likewise for the locations found (store_found)
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 
-BACKUPS = "zexion_backups"  # under Archipelago's user folder
-
 
 class ZexionCommandProcessor(ClientCommandProcessor):
     ctx: ZexionContext
-
-    def _cmd_prepare(self, slot: str = "") -> bool:
-        """Write this seed into a new game in a save slot (Zexion must be closed)."""
-        if self.ctx.plan is None:
-            self.output("Connect to the server first: the seed comes from it.")
-            return False
-        if not slot.isdigit():
-            self.output("Usage: /prepare SLOT, the slot number (1 to 30) of the new game.")
-            return False
-        if self.ctx.preparing:
-            self.output("A /prepare is still running.")
-            return False
-        self.ctx.preparing = True
-        Utils.async_start(self._prepare_slot(int(slot), self.ctx.plan), name="prepare")
-        return True
-
-    async def _prepare_slot(self, slot: int, plan: save_patch.SeedPlan) -> None:
-        """/prepare's work, in a thread: it reads, backs up and writes save files."""
-        try:
-            done = await asyncio.to_thread(
-                prepare.prepare, slot, plan, Path(Utils.user_path(BACKUPS)), game.game_running
-            )
-        except (prepare.PrepareError, game.GameError, OSError) as exc:
-            self.output(f"Not prepared: {exc}")
-            return
-        finally:
-            self.ctx.preparing = False
-        if done.changed:
-            self.output(f"Slot {done.slot} now holds this seed. Its backup: {done.backup}")
-        else:
-            self.output(f"Slot {done.slot} already holds this seed; nothing written.")
 
     def _cmd_unload_helper(self) -> bool:
         """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
@@ -177,7 +143,6 @@ class ZexionContext(CommonContext):
         self.unload_helper_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
         self.disarm_pending = False
-        self.preparing = False  # a /prepare is running (in a thread)
         # Warnings and failures that would repeat each poll or retry: each said once.
         self.said = state.SayOnce()
 
@@ -254,12 +219,7 @@ class ZexionContext(CommonContext):
             )
         if conn.hunt is not None:
             detail(f"The goal is {conn.hunt.required} of {conn.hunt.placed} OS Install Disks.")
-        # Without the helper, /prepare is the way in: said in the window.
-        (detail if self.use_helper else logger.info)(
-            f"Seed for Zexion's {slot['mode']} mode. If this slot's game is not prepared "
-            "yet: make a new randomizer game in that mode, save, close Zexion, and run "
-            "/prepare SLOT."
-        )
+        detail(f"Seed for Zexion's {slot['mode']} mode.")
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         conn = self.conn
@@ -1146,7 +1106,10 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                     logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
                     continue
                 conn.newgame = state.NewGame.UNAVAILABLE
-                logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
+                logger.warning(
+                    f"This seed cannot start as a new game ({exc}): please report it, with "
+                    "the seed's settings."
+                )
                 return
         reply = await asyncio.to_thread(helper.request, text)
         if reply != "armed":  # refused (no frame yet, say): asked again in a moment

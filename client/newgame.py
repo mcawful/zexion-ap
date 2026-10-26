@@ -16,7 +16,8 @@ The starting items have to be expressed the way the new-game routine reads them:
 - keys as a count, the first N keys from the Alpha Key on.
 
 Anything else (filler, other key sets, more than 9 containers or Mega Bombs) cannot be
-expressed: ``NewGameError``, and the player prepares a save with ``/prepare`` instead.
+expressed: ``NewGameError``. The world refuses such starting items in generation
+(worlds/zexion/starting.py), so the client meeting one is a bug to report.
 
 With the slot data's menu setup (a mode with one start), the request also carries ``menu``
 lines: the randomizer menu's state (``+0xDF7340``) as the seed's mode, which the helper's

@@ -29,7 +29,7 @@ To update, replace all three with the game closed. If the helper in the game's f
 the version the client needs, the client cannot use it and says so. Items still arrive, with
 no popups, but the old helper stays loaded and acts as if no client were connected (on an AP
 save the game says the client is not connected, and the title screen asks you to start the
-client), and a new game gets no ARCHIPELAGO choice (preparing a save, below, still works).
+client), and no new game can start the seed (a save that already holds it still plays).
 Copying this release's `zexion_ap.dll` and `version.dll` there, with the game closed, fixes it.
 To remove the helper, delete both DLLs (or, to turn it off for a
 while, create an empty file named `zexion_ap.disabled` beside them). A save that is not from a
@@ -76,21 +76,6 @@ with `--keep-randomizer`, from a command line in your Archipelago folder:
 options changed, and START GAME starts the seed the same way.
 
 When the client disconnects, the choice reads RANDOMIZER again.
-
-## Preparing a save instead
-
-Without the helper, or when the client says a new game cannot start the seed, the client
-writes the seed into a saved new game:
-
-1. Pause Steam Cloud for Zexion (Steam, Library, Zexion, Properties, General), so the cloud
-   keeps a copy of your saves as they were.
-2. In Zexion, start a new randomizer game in an empty slot, in the mode your seed uses (Easy,
-   Standard or OHKO, with no options changed), and save at once at the first save point.
-3. Close Zexion.
-4. Start the client, connect to the server, and type `/prepare` and the slot number, for
-   example `/prepare 7`. The client backs the slot up first (into `zexion_backups` in your
-   Archipelago folder) and refuses a slot that is not a new game of the seed's mode.
-5. Start Zexion and load that slot.
 
 ## Playing
 

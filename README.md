@@ -69,14 +69,11 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   seed, and again once each new game holding it is in play, so one seed can start several
   saves. For a seed whose slot data carries the menu setup (from the world on `apworld`),
   picking an empty slot then offers ARCHIPELAGO in place of RANDOMIZER, which starts a new game
-  holding the seed with no `/prepare` (run in game for all three modes, first on a Standard
+  holding the seed (run in game for all three modes, first on a Standard
   seed; for OHKO the helper also fills in the menu's start table; two saves of one seed from
   one connection run in game 2026-10-24, B1; the helper also fits the hover border round
   ARCHIPELAGO). With `--keep-randomizer`, RANDOMIZER stays: started in the seed's mode, the
   helper writes the seed in as the game starts (run in game for all three modes).
-- **`/prepare SLOT`**: writes the seed into a slot holding a new randomizer game of the
-  seed's mode, saved at once, for play without the helper (run in game for Standard only so
-  far). The rules for running it are in [`CLAUDE.md`](CLAUDE.md).
 - **Other players' items** (helper phase 4): an Archipelago logo and the item's owner's name
   at pickup (live-tested 2026-10-23), and another Zexion player's item shown as itself (in
   game since 2026-10-23). In an Archipelago save the map shows the progression stand-in's

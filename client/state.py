@@ -29,7 +29,7 @@ class NewGame(enum.Enum):
 
     ARMED = "armed"
     DONE = "done"  # a new game holds the seed; armed again once its save is in play
-    UNAVAILABLE = "unavailable"  # the seed's starting items cannot make one: /prepare
+    UNAVAILABLE = "unavailable"  # the seed's starting items cannot make one
 
 
 @dataclass

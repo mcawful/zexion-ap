@@ -103,7 +103,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   as permanent once received, so the client must give items again after a reload.
 - **The starting inventory and settings.** The world's logic assumes the chosen mode's
   starting inventory and settings (`worlds/zexion/data.py`, `MODES`, sent as `mode` in the slot
-  data). The save the client prepares must hold exactly those, or sphere 0 is wrong; in OHKO
+  data). The new game the client starts must hold exactly those, or sphere 0 is wrong; in OHKO
   also the second teleport target (`second_start`), and Scrap at every location the world left
   out (those not in `kept_locations`).
 - **What the slot data gives the client for that.** `location_items`: for each of the 154
@@ -116,7 +116,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` (a second copy of a progressive weapon as its upgrade). The world
-  refuses a `start_inventory` the client could not give through a new game or `/prepare`
+  refuses a `start_inventory` the client could not give through a new game
   (`worlds/zexion/starting.py`: no Scrap, Area Map, Intel Chip, Energy Shield, bombs or Assist
   Unlock; at most 9 Missile Containers with the mode's own, one of each upgrade, two of a
   progressive weapon, keys from the Alpha Key on; disks only with their goal). `amounts` and

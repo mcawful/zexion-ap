@@ -58,8 +58,8 @@ ENDING_FLAG, FINALE_FLAG = 250, 211
 SCANNED_FLAG = 39
 # The game's Abridged Finale (setting 32) would make the grab the game's victory, and whether
 # its end reaches flag 250 is not known; the world sends setting 32 as 0 in every mode
-# (worlds/zexion/data.py, checked_options), which /prepare and the new game require of the
-# game (save_patch.check_mode, newgame's expect lines), so the goal is always the ending.
+# (worlds/zexion/data.py, checked_options), which the new game requires of the game
+# (newgame's expect lines), so the goal is always the ending.
 
 
 @dataclass(frozen=True)
@@ -214,7 +214,7 @@ class Session:
             self.say_once(
                 "other seed",
                 "The loaded save holds a different seed: nothing is sent or given. "
-                "Load the slot you prepared for this one.",
+                "Load this seed's save.",
             )
             self._due = None
             self._leave()

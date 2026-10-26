@@ -169,8 +169,8 @@ def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
 
 
 def check_fresh(data: bytes, name: str) -> None:
-    """Refuse a save that is not right at the start of its seed (the client's check, the one
-    /prepare uses): its inventory would be taken for the starting inventory."""
+    """Refuse a save that is not right at the start of its seed (save_patch's check of a fresh
+    save): its inventory would be taken for the starting inventory."""
     try:
         sp.check_fresh(data)
     except sp.PatchError as exc:
