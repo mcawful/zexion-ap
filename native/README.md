@@ -90,7 +90,8 @@ through the real pipe and hook in a busy host.
   Scrap Chunk and ASSIST normal, the owner's reading; event 3665 the game's, `else -1`, read
   back live: the escape skip off).
 - **Which game.** It reads the game's PE header and hooks nothing unless the build is one it
-  knows (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`).
+  knows (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`;
+  `tests/test_cross_checks.py` checks it).
 - **The frame call.** The game imports `SDL_GL_SwapWindow` by name and calls it only through
   its import-table slot, from code its main loop runs, once per frame (166 calls a second on
   a 165 Hz monitor), on the game's main thread (inferred: the game starts no threads of its
