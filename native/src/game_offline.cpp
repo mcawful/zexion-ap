@@ -3,7 +3,7 @@
 // counts, and the notices that tell the player.
 #include "game_calls.h"
 
-#include <cstring>
+#include <iterator>
 
 namespace zap {
 

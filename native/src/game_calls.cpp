@@ -25,6 +25,8 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 // frames between two of the helper's popups.
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
+// Frames between two looks at the escape skip's event and at the scanner's text.
+constexpr int kSkipFrames = 30, kScanFrames = 30;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -166,10 +168,6 @@ void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
     }
 }
 
-}  // namespace
-
-namespace {
-
 // The addresses configure checked, by key; null for an optional key left out.
 struct Found {
     const std::map<std::string, BYTE*>& keys;
@@ -287,7 +285,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     }
     base_ = reinterpret_cast<BYTE*>(image);
     // A client's config: the offline look put back first, with the addresses it was set with.
-
     if (configured_ && active) {
         leave_offline();
         drop_offline_warning();
@@ -735,7 +732,7 @@ void Game::start_archipelago(WidgetCallback callback) {
 void Game::watch_skip() {
     if (!configured_ || (!active_ && !offline_skip_)) return;
     if (skip_frames_-- > 0) return;
-    skip_frames_ = 30;
+    skip_frames_ = kSkipFrames;
     skip_.apply(event_table_, event_count_);
 }
 
@@ -756,7 +753,7 @@ void Game::set_discs(int count, int required, std::string scan_line, bool told) 
 void Game::watch_discs() {
     if (!configured_) return;
     if (scan_frames_-- > 0) return;
-    scan_frames_ = 30;
+    scan_frames_ = kScanFrames;
     if (!scan_line_.empty()) {
         scan_.apply(text_table_, scan_line_);
     } else if (scan_.written()) {

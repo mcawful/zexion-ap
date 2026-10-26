@@ -65,7 +65,9 @@ void* g_original = nullptr;
 zap::Trampoline g_trampoline;
 std::atomic<uint64_t> g_frames{0};
 zap::Mailbox g_mailbox;
-zap::Game g_game;  // used on the game's thread only: frame() and archipelago_chosen()
+// Used on the game's thread only: by frame() and the mailbox work it runs, and by the helper's
+// functions the game calls (archipelago_chosen and the others below).
+zap::Game g_game;
 std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
 // Whether the game's menu holds a pointer to archipelago_chosen, for the pipe thread's unload.
 // The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
