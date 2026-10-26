@@ -11,47 +11,20 @@ const char kIntelName[] = "INTEL CHIP";
 namespace {
 
 // The Area Map's record (game_layout.h for its fields) as B1's Objects file holds it (read from
-// the file, 2026-10-25).
-constexpr int16_t kOwnKind = 34, kOwnFrame = 25, kOwnTicks = 6, kOwnFrames = 2;
-constexpr uint8_t kOwnIcon = 0, kOwnPalette = 3;
-constexpr int16_t kOwnInventory = 46, kOwnRedirect = 0, kOwnClass = 1;
-constexpr int16_t kOwnEvent = 3551, kNoEvent = -1;  // 3551: the map reveal
+// the file, 2026-10-25): the fields the helper never changes, then its name and event.
+constexpr RecordShape kAreaMap = {.kind = 34, .frame = 25, .ticks = 6, .frames = 2, .icon = 0,
+                                  .palette = 3, .inventory = 46, .redirect = 0, .pickup_class = 1};
 constexpr char kOwnName[] = "AREA MAP";
+constexpr int16_t kOwnEvent = 3551, kNoEvent = -1;  // 3551: the map reveal
 
-// The record's fields the helper never changes, as the game loads them.
-bool is_area_map(const BYTE* r) {
-    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == kOwnFrame &&
-           word(r, record::kTicks) == kOwnTicks && word(r, record::kFrames) == kOwnFrames &&
-           r[record::kIcon] == kOwnIcon &&
-           r[record::kPalette] == kOwnPalette && word(r, record::kInventory) == kOwnInventory &&
-           word(r, record::kRedirect) == kOwnRedirect && word(r, record::kPickupClass) == kOwnClass;
+bool is_own(const BYTE* r) {
+    return record_named(r, kOwnName) && word(r, record::kEvent) == kOwnEvent;
+}
+bool is_ours(const BYTE* r) {
+    return record_named(r, kIntelName) && word(r, record::kEvent) == kNoEvent;
 }
 
-bool named(const BYTE* r, const char* name) {
-    return std::memcmp(r + record::kName, name, std::strlen(name) + 1) == 0;
-}
-
-bool is_own(const BYTE* r) { return named(r, kOwnName) && word(r, record::kEvent) == kOwnEvent; }
-bool is_ours(const BYTE* r) { return named(r, kIntelName) && word(r, record::kEvent) == kNoEvent; }
-
-// A copy of record 49, checked readable and writable, and where it is; null if not.
-BYTE* area_map(BYTE* holder, BYTE (&copy)[record::kSize]) {
-    BYTE* records = nullptr;
-    if (holder == nullptr || !safe_read(holder, &records, sizeof(records)) || records == nullptr) {
-        return nullptr;
-    }
-    BYTE* r = records + kAreaMapItem * record::kSize;
-    if (!safe_read(r, copy, sizeof(copy)) || !writable(r, record::kSize)) return nullptr;
-    return r;
-}
-
-void set_name(BYTE* r, const char* name) {
-    char field[record::kNameSize] = {};
-    std::memcpy(field, name, std::strlen(name));
-    std::memcpy(r + record::kName, field, sizeof(field));
-}
-
-void set_event(BYTE* r, int16_t event) { std::memcpy(r + record::kEvent, &event, sizeof(event)); }
+void set_event(BYTE* r, int16_t event) { put(r, record::kEvent, event); }
 
 }  // namespace
 
@@ -61,13 +34,13 @@ void IntelChip::watch(BYTE* holder) {
         return;
     }
     BYTE copy[record::kSize];
-    BYTE* r = area_map(holder, copy);
-    if (r == nullptr || !is_area_map(copy)) {
+    BYTE* r = writable_record(holder, kAreaMapItem, copy);
+    if (r == nullptr || !matches(copy, kAreaMap)) {
         restyled_ = false;  // not the record as traced: left alone
         return;
     }
     if (is_own(copy)) {
-        set_name(r, kIntelName);
+        set_record_name(r, kIntelName);
         set_event(r, kNoEvent);
         restyled_ = true;
     } else {
@@ -77,10 +50,10 @@ void IntelChip::watch(BYTE* holder) {
 
 void IntelChip::restore(BYTE* holder) {
     BYTE copy[record::kSize];
-    BYTE* r = area_map(holder, copy);
+    BYTE* r = writable_record(holder, kAreaMapItem, copy);
     // Back to the game's, whether this helper renamed it or an earlier one left it so.
-    if (r != nullptr && is_area_map(copy) && is_ours(copy)) {
-        set_name(r, kOwnName);
+    if (r != nullptr && matches(copy, kAreaMap) && is_ours(copy)) {
+        set_record_name(r, kOwnName);
         set_event(r, kOwnEvent);
     }
     restyled_ = false;

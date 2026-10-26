@@ -61,45 +61,38 @@ constexpr ptrdiff_t kChildHandlers[2] = {0x168, 0x178};
 constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8;
 constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabel)
 // The cursor widget, the panel's fourth child: its 16-bit +0x1E6 gives the cell's row (y) and
-// +0x1E4 its column (x), as the map's handler computes them.
-constexpr ptrdiff_t kCursorChild = 0x18, kCursorRow = 0x1E6, kCursorColumn = 0x1E4;
-constexpr ptrdiff_t kNameChild = 0x18;
+// +0x1E4 its column (x), as the map's handler computes them. The cursor's name: the info
+// panel's fourth child.
+constexpr int kCursorChild = 3, kNameChild = 3;
+constexpr ptrdiff_t kCursorRow = 0x1E6, kCursorColumn = 0x1E4;
 constexpr double kFineScale = 40.0;
 
 // The map's menu, its first panel and that panel's first child, if the top menu is the map's
 // (its handler `handler`).
 bool map_menu(BYTE* current_menu, void* handler, BYTE*& menu, BYTE*& panel, BYTE*& child) {
-    BYTE *panels = nullptr, *children = nullptr;
+    menu = pointer_at(current_menu);
+    panel = panel_at(menu, 0);
+    child = child_at(panel, 0);
     void* slot = nullptr;
-    return handler != nullptr && read(current_menu, 0, menu) && read(menu, menu::kPanels, panels) &&
-           read(panels, 0, panel) && read(panel, panel::kChildren, children) &&
-           read(children, 0, child) &&
-           ((read(child, kChildHandlers[0], slot) && slot == handler) ||
-            (read(child, kChildHandlers[1], slot) && slot == handler));
+    return handler != nullptr && ((read(child, kChildHandlers[0], slot) && slot == handler) ||
+                                  (read(child, kChildHandlers[1], slot) && slot == handler));
 }
 
 // The panel holding the scale and the cursor's name: [[[panel + 0x300]] + 8], as 0x16B843 to
 // 0x16B85F and 0x169EF1 to 0x169F3B read it.
 BYTE* info_panel(BYTE* panel) {
-    BYTE *a = nullptr, *b = nullptr, *c = nullptr;
-    if (!read(panel, kInfoPanel, a) || !read(a, 0, b) || !read(b, kInfoChild, c)) return nullptr;
-    return c;
+    return pointer_at(pointer_at(pointer_at(panel, kInfoPanel)), kInfoChild);
 }
 
 // The cursor's cell on the open map whose first panel is `panel`, or -1.
 int cursor_cell(BYTE* panel) {
-    BYTE *children = nullptr, *cursor = nullptr;
+    BYTE* cursor = child_at(panel, kCursorChild);
     int16_t at_row = 0, at_column = 0;
-    if (!read(panel, panel::kChildren, children) || !read(children, kCursorChild, cursor) ||
-        !read(cursor, kCursorRow, at_row) || !read(cursor, kCursorColumn, at_column)) {
-        return -1;
-    }
+    if (!read(cursor, kCursorRow, at_row) || !read(cursor, kCursorColumn, at_column)) return -1;
     // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158.
-    BYTE* info = info_panel(panel);
-    BYTE *d = nullptr, *e = nullptr;
+    BYTE* label = pointer_at(pointer_at(info_panel(panel), widget::kLabel));
     double scale = 0;
-    const bool fine = read(info, widget::kLabel, d) && read(d, 0, e) && read(e, kScale, scale) &&
-                      scale == kFineScale;
+    const bool fine = read(label, kScale, scale) && scale == kFineScale;
     const int row = fine ? (at_row + 5) / 10 : (at_row + 11) / 23;
     const int column = fine ? (at_column + 4) / 8 : (at_column + 8) / 17;
     if (row < 0 || row >= kMapSide || column < 0 || column >= kMapSide) return -1;
@@ -131,7 +124,7 @@ bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
     return text == kStandInNames[0] || text == kStandInNames[1];
 }
 
-void MapCursorNames::watch(const MapAddresses& a, bool on) {
+void MapCursorNames::watch(const GameAddresses& a, bool on) {
     void* handler = nullptr;
     if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;
     if (child_ != nullptr && !still_wrapped(a)) {
@@ -141,7 +134,7 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
         child_ = nullptr;
         menu_ = nullptr;
     }
-    if (on && child_ == nullptr && a.hook != nullptr) {
+    if (on && child_ == nullptr && a.hooks.map != nullptr) {
         BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
         constexpr size_t kBothSlots = kChildHandlers[1] - kChildHandlers[0] + sizeof(void*);
         if (map_menu(a.current_menu, handler, menu, panel, child) &&
@@ -149,7 +142,7 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
             for (ptrdiff_t at : kChildHandlers) {
                 void* slot = nullptr;
                 if (read(child, at, slot) && slot == handler) {
-                    std::memcpy(child + at, &a.hook, sizeof(void*));
+                    std::memcpy(child + at, &a.hooks.map, sizeof(void*));
                 }
             }
             child_ = child;
@@ -161,42 +154,33 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
     }
 }
 
-bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
-    if (!is_open(a.current_menu, menu_)) return false;
-    BYTE *panels = nullptr, *panel = nullptr, *children = nullptr, *first = nullptr;
-    if (!read(menu_, menu::kPanels, panels) || !read(panels, 0, panel) ||
-        !read(panel, panel::kChildren, children) || !read(children, 0, first) || first != child_) {
+bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
+    if (!is_open(a.current_menu, menu_) || child_at(panel_at(menu_, 0), 0) != child_) {
         return false;
     }
     for (ptrdiff_t at : kChildHandlers) {
         void* slot = nullptr;
-        if (a.hook != nullptr && read(child_, at, slot) && slot == a.hook) return true;
+        if (a.hooks.map != nullptr && read(child_, at, slot) && slot == a.hooks.map) return true;
     }
     return false;
 }
 
-void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::string>& labels) {
+void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
-    if (!map_menu(a.current_menu, a.hook, menu, panel, child)) return;
+    if (!map_menu(a.current_menu, a.hooks.map, menu, panel, child)) return;
     auto it = labels.find(cursor_cell(panel));
     if (it == labels.end()) return;
-    BYTE* info = info_panel(panel);
-    BYTE *children = nullptr, *widget = nullptr, *text = nullptr;
-    BYTE** glyphs = nullptr;
+    BYTE* text = pointer_at(child_at(info_panel(panel), kNameChild), widget::kLabel);
+    BYTE* glyphs = pointer_at(text, label::kGlyphs);
     int32_t length = 0;
-    if (!read(info, panel::kChildren, children) || !read(children, kNameChild, widget) ||
-        !read(widget, widget::kLabel, text) || !read(text, label::kLength, length) ||
-        length < static_cast<int32_t>(kMapNameMax) || !read(text, label::kGlyphs, glyphs)) {
+    if (!read(text, label::kLength, length) || length < static_cast<int32_t>(kMapNameMax)) {
         return;
     }
     int32_t frames[kMapNameMax] = {};
     for (size_t i = 0; i < kMapNameMax; ++i) {
-        BYTE* g = nullptr;
-        if (!read(reinterpret_cast<BYTE*>(glyphs), static_cast<ptrdiff_t>(i * sizeof(BYTE*)), g) ||
-            !read(g, sprite::kFrameIndex, frames[i])) {
-            return;
-        }
+        BYTE* g = pointer_at(glyphs, static_cast<ptrdiff_t>(i * sizeof(BYTE*)));
+        if (!read(g, sprite::kFrameIndex, frames[i])) return;
     }
     // Another text (the player's room, a marker, unknown) is left alone.
     if (!cursor_shows_stand_in(frames)) return;
@@ -205,12 +189,12 @@ void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::strin
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
 }
 
-void MapCursorNames::restore(const MapAddresses& a) {
+void MapCursorNames::restore(const GameAddresses& a) {
     if (child_ == nullptr) return;
     if (still_wrapped(a)) {
         for (ptrdiff_t at : kChildHandlers) {
             void* slot = nullptr;
-            if (!read(child_, at, slot) || slot != a.hook) continue;
+            if (!read(child_, at, slot) || slot != a.hooks.map) continue;
             if (!writable(child_ + at, sizeof(void*))) {
                 return;  // could not put it back: kept, so the unload refuses
             }

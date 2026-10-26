@@ -3,7 +3,6 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
 #include <map>
 #include <string>
@@ -27,14 +26,22 @@ struct Save {
 };
 
 void test_the_values() {
-    // Shown minors become shown majors, in each base (0, 0xC, 0x18).
-    check(zap::important_value(0x01, false, false) == 0x02, "1 -> 2");
-    check(zap::important_value(0x0D, false, false) == 0x0E, "0xD -> 0xE");
-    check(zap::important_value(0x19, false, false) == 0x1A, "0x19 -> 0x1A");
-    // Obscured minors: obscured majors when majors are obscured, else shown majors.
-    check(zap::important_value(0x13, true, false) == 0x15, "0x13 -> 0x15, majors obscured");
-    check(zap::important_value(0x13, false, false) == 0x0E, "0x13 -> 0xE, majors shown");
-    check(zap::important_value(0x1F, true, true) == 0x1A, "finished game: shown");
+    // Shown minors become shown majors, in each base (0, 0xC, 0x18); obscured minors obscured
+    // majors when majors are obscured, else shown majors.
+    struct Row {
+        BYTE in;
+        bool obscured, finished;
+        BYTE out;
+        const char* what;
+    };
+    for (const Row& r : {Row{0x01, false, false, 0x02, "1 -> 2"},
+                         Row{0x0D, false, false, 0x0E, "0xD -> 0xE"},
+                         Row{0x19, false, false, 0x1A, "0x19 -> 0x1A"},
+                         Row{0x13, true, false, 0x15, "0x13 -> 0x15, majors obscured"},
+                         Row{0x13, false, false, 0x0E, "0x13 -> 0xE, majors shown"},
+                         Row{0x1F, true, true, 0x1A, "finished game: shown"}}) {
+        check(zap::important_value(r.in, r.obscured, r.finished) == r.out, r.what);
+    }
     // Majors, collected items, unrevealed squares and values above the classes stay.
     for (BYTE v : std::vector<BYTE>{0x00, 0x02, 0x09, 0x0E, 0x15, 0x1A, 0x1B, 0x22, 0x24, 0x30}) {
         check(zap::important_value(v, true, false) == v, "left alone");
@@ -106,8 +113,12 @@ struct Page {
     }
 };
 
+void fake_text_set(void* text, const char* s, int first, int count);
+int g_hook = 0;
+
 // The map menu as the helper walks it (mapmarks.cpp): first panel, its children (first holds
-// the handler, fourth the cursor), the info panel and its scale and name widget. Not copyable:
+// the handler, fourth the cursor), the info panel and its scale and name widget, and what the
+// helper's map_handler holds (the map's handler, unless a test says otherwise). Not copyable:
 // it points into itself.
 struct MapMenu {
     std::vector<BYTE> cursor = std::vector<BYTE>(0x200);
@@ -124,65 +135,61 @@ struct MapMenu {
     BYTE* holder = nullptr;  // what current_menu holds: the menu, whose +0 is its panel list
     BYTE *a = nullptr, *b[2] = {}, *e = nullptr;
     int handler = 0;
+    void* map_handler = &handler;
     explicit MapMenu(double s) {
         children[0] = first.data();
         children[3] = cursor.data();
-        void* h = &handler;
-        std::memcpy(first.data() + 0x168, &h, sizeof(h));  // both slots, as the builder sets them
-        std::memcpy(first.data() + 0x178, &h, sizeof(h));
-        BYTE* list = reinterpret_cast<BYTE*>(children);
-        std::memcpy(panel.data() + 0x1E0, &list, sizeof(list));
+        set_slot(0x168, &handler);  // both slots, as the builder sets them
+        set_slot(0x178, &handler);
+        put(panel.data(), 0x1E0, children);
         panels[0] = panel.data();
         top_panels = reinterpret_cast<BYTE*>(panels);
         holder = reinterpret_cast<BYTE*>(&top_panels);
         e = scale.data();
-        std::memcpy(scale.data() + 0x158, &s, sizeof(s));
-        BYTE* d = reinterpret_cast<BYTE*>(&e);
-        std::memcpy(info.data() + 0x1F0, &d, sizeof(d));
+        put(scale.data(), 0x158, s);
+        put(info.data(), 0x1F0, &e);
         b[1] = info.data();
         a = reinterpret_cast<BYTE*>(b);
-        BYTE* pa = reinterpret_cast<BYTE*>(&a);
-        std::memcpy(panel.data() + 0x300, &pa, sizeof(pa));
+        put(panel.data(), 0x300, &a);
         info_children[3] = widget.data();
-        BYTE* ilist = reinterpret_cast<BYTE*>(info_children);
-        std::memcpy(info.data() + 0x1E0, &ilist, sizeof(ilist));
-        BYTE* t = text.data();
-        std::memcpy(widget.data() + 0x1F0, &t, sizeof(t));
-        int32_t n = 17;
-        std::memcpy(text.data() + 0x1D8, &n, 4);
+        put(info.data(), 0x1E0, info_children);
+        put(widget.data(), 0x1F0, text.data());
+        put<int32_t>(text.data(), 0x1D8, 17);
         glyph_objects.resize(17, std::vector<BYTE>(0x1D8));
         for (int i = 0; i < 17; ++i) glyphs[i] = glyph_objects[i].data();
-        BYTE* g = reinterpret_cast<BYTE*>(glyphs);
-        std::memcpy(text.data() + 0x228, &g, sizeof(g));
+        put(text.data(), 0x228, glyphs);
     }
     MapMenu(const MapMenu&) = delete;
     BYTE* current_menu() { return reinterpret_cast<BYTE*>(&holder); }
+    // The helper's addresses for this map, the map's handler held at map_handler.
+    zap::GameAddresses addresses() {
+        zap::GameAddresses addresses;
+        addresses.current_menu = current_menu();
+        addresses.map_handler = reinterpret_cast<BYTE*>(&map_handler);
+        addresses.text_set_fn = reinterpret_cast<BYTE*>(&fake_text_set);
+        addresses.hooks.map = &g_hook;
+        return addresses;
+    }
     void at(int16_t row, int16_t column) {
-        std::memcpy(cursor.data() + 0x1E6, &row, 2);
-        std::memcpy(cursor.data() + 0x1E4, &column, 2);
+        put(cursor.data(), 0x1E6, row);
+        put(cursor.data(), 0x1E4, column);
     }
     void* slot() {  // both slots' handler, or null if they differ
         void* h = slot_at(0x168);
         return h == slot_at(0x178) ? h : nullptr;
     }
-    void* slot_at(ptrdiff_t at) {
-        void* h = nullptr;
-        std::memcpy(&h, first.data() + at, sizeof(h));
-        return h;
-    }
-    void set_slot(ptrdiff_t at, void* h) { std::memcpy(first.data() + at, &h, sizeof(h)); }
+    void* slot_at(ptrdiff_t offset) { return get<void*>(first.data(), offset); }
+    void set_slot(ptrdiff_t offset, void* h) { put(first.data(), offset, h); }
     void show(const char* s) {  // as 0xA61C0 writes the 17 glyphs
         size_t n = std::strlen(s);
         for (size_t i = 0; i < 17; ++i) {
-            int32_t f = i < n ? static_cast<uint8_t>(s[i]) : 0;
-            std::memcpy(glyphs[i] + 0x1C4, &f, 4);
+            put<int32_t>(glyphs[i], 0x1C4, i < n ? static_cast<uint8_t>(s[i]) : 0);
         }
     }
     std::string shown() {
         std::string out;
-        for (int i = 0; i < 17; ++i) {
-            int32_t f = 0;
-            std::memcpy(&f, glyphs[i] + 0x1C4, 4);
+        for (BYTE* g : glyphs) {
+            const auto f = get<int32_t>(g, 0x1C4);
             out += f ? static_cast<char>(f) : ' ';
         }
         while (!out.empty() && out.back() == ' ') out.pop_back();
@@ -198,25 +205,13 @@ void fake_text_set(void* text, const char* s, int first, int count) {
         g_set_target->show(s);
     }
 }
-int g_hook = 0;
-
-// The helper's addresses for `m`, the map's handler held at `handler_slot`.
-zap::MapAddresses addresses(MapMenu& m, void*& handler_slot) {
-    zap::MapAddresses a;
-    a.current_menu = m.current_menu();
-    a.map_handler = reinterpret_cast<BYTE*>(&handler_slot);
-    a.text_set_fn = reinterpret_cast<void*>(&fake_text_set);
-    a.hook = &g_hook;
-    return a;
-}
 
 // The cursor's square, as the name the helper writes for it: row 17, column 13 labeled.
 void test_the_cursor_square() {
     const std::map<int, std::string> labels = {{17 * 54 + 13, "\xFB" "OS INSTALL DISK"}};
     for (double scale : {40.0, 20.0}) {
         MapMenu m(scale);
-        void* handler_slot = &m.handler;
-        zap::MapAddresses a = addresses(m, handler_slot);
+        zap::GameAddresses a = m.addresses();
         zap::MapCursorNames names;
         names.watch(a, true);
         g_set_target = &m;
@@ -236,8 +231,8 @@ void test_the_cursor_square() {
     }
     MapMenu m(40.0);
     int other = 0;
-    void* handler_slot = &other;  // the top menu is not the map
-    zap::MapAddresses a = addresses(m, handler_slot);
+    m.map_handler = &other;  // the top menu is not the map
+    zap::GameAddresses a = m.addresses();
     zap::MapCursorNames names;
     names.watch(a, true);
     check(!names.holds_hook() && m.slot() == &m.handler, "another menu");
@@ -249,9 +244,8 @@ void test_the_cursor_square() {
 // No wrapper given (no hooks before configure): nothing is wrapped, nothing written.
 void test_no_stand_in_wraps_nothing() {
     MapMenu m(40.0);
-    void* handler_slot = &m.handler;
-    zap::MapAddresses a = addresses(m, handler_slot);
-    a.hook = nullptr;
+    zap::GameAddresses a = m.addresses();
+    a.hooks.map = nullptr;
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &m.handler && !names.holds_hook(), "no wrapper: the game's handler");
@@ -264,8 +258,7 @@ void test_no_stand_in_wraps_nothing() {
 // A write over one slot, and a child that cannot be written.
 void test_one_slot_and_a_read_only_child() {
     MapMenu m(40.0);
-    void* handler_slot = &m.handler;
-    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::GameAddresses a = m.addresses();
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &g_hook, "both slots wrapped");
@@ -301,8 +294,7 @@ void test_one_slot_and_a_read_only_child() {
 
 void test_the_handler_wrapped_and_the_name_rewritten() {
     MapMenu m(40.0);
-    void* handler_slot = &m.handler;  // what map_handler holds: the game's handler
-    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::GameAddresses a = m.addresses();  // map_handler holding the game's handler
     zap::MapCursorNames names;
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off: the game's handler");
@@ -337,9 +329,8 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     check(m.slot() == &m.handler && !names.holds_hook(), "restored before an unload");
     names.watch(a, true);
     // The navigation room's reveal puts the game's handlers back in both slots: wrapped again.
-    void* game_handler = &m.handler;
-    std::memcpy(m.first.data() + 0x168, &game_handler, sizeof(game_handler));
-    std::memcpy(m.first.data() + 0x178, &game_handler, sizeof(game_handler));
+    m.set_slot(0x168, &m.handler);
+    m.set_slot(0x178, &m.handler);
     names.watch(a, true);
     check(m.slot() == &g_hook && names.holds_hook(), "wrapped again after the game's own");
     m.holder = nullptr;  // the map closed: its menu gone
@@ -361,6 +352,5 @@ int main() {
     test_only_the_stand_ins_squares();
     test_obscure_majors_from_the_settings();
     test_a_cell_off_the_map_is_skipped();
-    if (g_failures == 0) std::printf("mapmarks tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("mapmarks tests");
 }

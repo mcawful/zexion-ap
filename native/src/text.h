@@ -11,6 +11,10 @@
 
 namespace zap {
 
+// What the game's 8 x 8 font draws besides capital letters and digits (the popups' sets are
+// its first 7 and 8: parse_batch).
+constexpr char kFontPunctuation[] = " .,'!?-:()/&";
+
 // The game's popup line width, 24 characters: `mov edx, 24` in its pickup code
 // (docs/re/memory.md, "Other players' items"), and the width the helper lays its own popups and
 // the stand-ins' names out in.

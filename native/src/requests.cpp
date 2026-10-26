@@ -1,6 +1,7 @@
 #include "requests.h"
 
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -18,8 +19,6 @@ constexpr size_t kSuffixMax = 40;
 // A notice's text as sent, at most; laid out, it is cut further to the game's message slot
 // (notice_text).
 constexpr size_t kNoticeMax = 200;
-// What a label keeps besides letters and digits (parse_labels).
-constexpr char kLabelChars[] = " .,'!?-:()/&";
 
 bool parse_number(const std::string& text, uint64_t& out) {
     if (text.empty()) return false;
@@ -43,21 +42,29 @@ void keep_font_char(std::string& out, unsigned char c, const char* kept) {
 bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
     if (text.empty() || text.size() % 2 != 0) return false;
     for (size_t i = 0; i < text.size(); i += 2) {
-        unsigned value = 0;
-        for (size_t j = i; j < i + 2; ++j) {
-            char c = text[j];
-            value <<= 4;
-            if (c >= '0' && c <= '9') {
-                value |= static_cast<unsigned>(c - '0');
-            } else if (c >= 'a' && c <= 'f') {
-                value |= static_cast<unsigned>(c - 'a' + 10);
-            } else if (c >= 'A' && c <= 'F') {
-                value |= static_cast<unsigned>(c - 'A' + 10);
-            } else {
-                return false;
-            }
+        // Both characters a hex digit: for an unsigned type from_chars takes no sign, no 0x and
+        // no space.
+        uint8_t value = 0;
+        const char* end = text.data() + i + 2;
+        auto [stop, error] = std::from_chars(text.data() + i, end, value, 16);
+        if (error != std::errc() || stop != end) return false;
+        out.push_back(value);
+    }
+    return true;
+}
+
+bool parse_number_list(const std::string& text, size_t max_digits, int lo, int hi,
+                       std::vector<int>& out) {
+    std::istringstream items(text);
+    std::string item;
+    while (std::getline(items, item, ',')) {
+        if (item.empty() || item.size() > max_digits ||
+            item.find_first_not_of("0123456789") != std::string::npos) {
+            return false;
         }
-        out.push_back(static_cast<uint8_t>(value));
+        int n = std::stoi(item);
+        if (n < lo || n > hi) return false;
+        out.push_back(n);
     }
     return true;
 }
@@ -173,58 +180,39 @@ std::string parse_discs(const std::string& request, int& count, int& required, s
     line.clear();
     if (request == "discs") return "";
     if (request.rfind("discs ", 0) != 0) return "not a discs request";
+    // Kept only once the whole request checks out.
     std::istringstream words(request.substr(6));
     std::string hex, extra;
-    int told_word = 1;
+    int n = 0, needed = 0, told_word = 1;
     std::vector<uint8_t> raw;
-    if (!(words >> count >> required >> hex) || count < 0 || count > 255 || required < 1 ||
-        required > 255 || !parse_hex(hex, raw)) {
-        count = required = 0;
+    if (!(words >> n >> needed >> hex) || n < 0 || n > 255 || needed < 1 || needed > 255 ||
+        !parse_hex(hex, raw) || (words >> told_word && (told_word < 0 || told_word > 1)) ||
+        (words >> extra)) {
         return "bad discs request";
     }
-    if ((words >> told_word && (told_word < 0 || told_word > 1)) || (words >> extra)) {
-        count = required = 0;
-        return "bad discs request";
-    }
-    told = told_word == 1;
     std::string text(raw.begin(), raw.end());
-    if (!scan_line_ok(text)) {
-        count = required = 0;
-        return "the scanner's line is not one line of the game's font";
-    }
+    if (!scan_line_ok(text)) return "the scanner's line is not one line of the game's font";
+    count = n;
+    required = needed;
+    told = told_word == 1;
     line = std::move(text);
     return "";
 }
 
-std::string parse_disk_slots(const std::string& request, int& count, std::set<int>& slots) {
-    count = 0;
-    slots.clear();
+std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts) {
+    counts.clear();
     if (request == "disk_slots") return "";
     if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
     std::istringstream words(request.substr(11));
     std::string list, extra;
-    int required = 0;  // checked only (requests.h)
+    int count = 0, required = 0;  // required: checked only (requests.h)
+    std::vector<int> slots;
     if (!(words >> count >> required >> list) || (words >> extra) || count < 0 || count > 255 ||
-        required < 1 || required > 255) {
-        count = 0;
+        required < 1 || required > 255 ||
+        (list != "-" && !parse_number_list(list, 2, 1, slot::kCount, slots))) {
         return "bad disk_slots request";
     }
-    if (list == "-") return "";
-    std::istringstream items(list);
-    std::string item;
-    while (std::getline(items, item, ',')) {
-        if (item.empty() || item.size() > 2 ||
-            item.find_first_not_of("0123456789") != std::string::npos) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        int n = std::stoi(item);
-        if (n < 1 || n > slot::kCount) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        slots.insert(n);
-    }
+    for (int slot : slots) counts[slot] = count;
     return "";
 }
 
@@ -257,7 +245,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             size_t end = i;
             if (i > 1 && i < raw.size() && raw[i] == ' ') {
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_font_char(item_name, raw[end], kLabelChars);
+                    keep_font_char(item_name, raw[end], kFontPunctuation);
                 }
             }
             if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
@@ -273,7 +261,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
                 parts.emplace_back();
                 continue;
             }
-            keep_font_char(parts.back(), raw[k], kLabelChars);
+            keep_font_char(parts.back(), raw[k], kFontPunctuation);
         }
         std::string first, who;
         {

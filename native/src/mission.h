@@ -13,18 +13,9 @@
 #include <cstdint>
 #include <string>
 
-namespace zap {
+#include "addresses.h"
 
-struct MissionAddresses {
-    BYTE* current_menu = nullptr;      // holds the top menu
-    BYTE* transition_fn = nullptr;     // the routine the game runs when its timer ends
-    BYTE* transition_timer = nullptr;  // 32-bit frames left
-    BYTE* routine_table = nullptr;     // the transition routines (0x3CF5F0)
-    void* widget_handler = nullptr;    // the generic widget handler, the prompt's
-    void* text_set_fn = nullptr;       // (text, string, first glyph, glyphs)
-    void* open_hook = nullptr;         // the helper's opener (no arguments)
-    void* yes_hook = nullptr;          // the helper's wrapper of YES's callback
-};
+namespace zap {
 
 constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;
 extern const char kMissionQuestion[];
@@ -37,12 +28,12 @@ public:
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
     // state, and no popup showing or queued. Sets the opener (or, after YES, the ending) once the
     // game is idle, and gives up on an opener another transition took the place of (asked again).
-    void watch(const MissionAddresses& addresses, bool idle_in_play);
+    void watch(const GameAddresses& addresses, bool idle_in_play);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
     // and wraps YES. Returns "" or what was not as traced; once the three children are read,
     // YES points at NO (if NO's callback reads) whatever else fails.
-    std::string open(const MissionAddresses& addresses);
+    std::string open(const GameAddresses& addresses);
 
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
     // ending asked for.
@@ -50,11 +41,11 @@ public:
 
     // Game thread: puts back what the helper holds (before an unload). An opener it could not
     // take off stays held (the helper then refuses to unload).
-    void restore(const MissionAddresses& addresses);
+    void restore(const GameAddresses& addresses);
 
     // Game thread: drops a prompt asked for or the ending after YES, and an opener not yet run
     // (a save loaded or closed, or `discs` turned off), so neither comes in another save.
-    void cancel(const MissionAddresses& addresses);
+    void cancel(const GameAddresses& addresses);
 
     // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.
     bool holds_hook() const { return armed_ || yes_child_ != nullptr; }

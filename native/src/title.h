@@ -22,38 +22,27 @@
 #include <cstdint>
 #include <string>
 
+#include "addresses.h"
+
 namespace zap {
 
-struct TitleAddresses {
-    BYTE* draw_layer = nullptr;      // holds the draw list new screen objects join
-    void* text_new_fn = nullptr;     // (characters, length, 32): a text object and its glyphs
-    void* text_place_fn = nullptr;   // (text, x, y)
-    void* text_link_fn = nullptr;    // (text): its glyphs into its list
-};
-
-// The version and the credit (the credit's first character becomes the © glyph, as the game's
-// own line's).
-std::string title_mod_line(const std::string& version);
+// After ARCHIPELAGO MOD and the version, the credit (its first character becomes the © glyph,
+// as the game's own line's), and, while no client is connected, what to do to play.
 extern const char kTitleCredit[];
-// And, while no client is connected, what to do to play.
 extern const char kTitleHint[];
-// Where they go: centered on the 320-pixel screen, 8 pixels a character, in the band below the
-// planet, 12 pixels apart: the hint, then the version, then the credit.
-constexpr int kTitleHintY = 190, kTitleModY = 202, kTitleCreditY = 214;
-int title_line_x(size_t length);
 
 class TitleLines {
 public:
     // The helper's version, for the first line (until set, no lines are made).
-    void set_version(const std::string& version) { mod_line_ = title_mod_line(version); }
+    void set_version(const std::string& version) { mod_line_ = "ARCHIPELAGO MOD " + version; }
 
     // Game thread, every frame call (looks every 9th): adds the lines when the copyright line
     // is up without them, and shows them as the game shows its line's ©. Returns "" or why the
     // lines could not be made on this title. `client`: a client is connected (the hint is
     // hidden).
-    std::string watch(const TitleAddresses& a, bool client);
+    std::string watch(const GameAddresses& a, bool client);
     // Game thread: the lines hidden, if up (before an unload).
-    void hide(const TitleAddresses& a);
+    void hide(const GameAddresses& a);
     // Whether the lines were in the list at the last look (for `hello`).
     bool shown() const { return shown_; }
 

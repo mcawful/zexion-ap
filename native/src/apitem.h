@@ -23,6 +23,16 @@ constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progress
 // The empty item frames their logos are painted into (frames 63 and 95 of the item sprites).
 constexpr int kStandInFrame = 63, kStandInProgressionFrame = 95;
 constexpr int kStandInCount = 2;
+// Each stand-in's index (0 for Scrap Energy, 1 for Scrap Chunk) from its record, or from its
+// logo frame; -1 for neither. And the records and logo frames by index.
+constexpr int stand_in_index(int record) {
+    return record == kStandInItem ? 0 : record == kStandInProgression ? 1 : -1;
+}
+constexpr int logo_index(int frame) {
+    return frame == kStandInFrame ? 0 : frame == kStandInProgressionFrame ? 1 : -1;
+}
+constexpr int kStandInRecords[kStandInCount] = {kStandInItem, kStandInProgression};
+constexpr int kStandInFrames[kStandInCount] = {kStandInFrame, kStandInProgressionFrame};
 // Their own names, as the game loads their records (47's, then 48's).
 constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
@@ -151,11 +161,6 @@ public:
     // own (again, if the game reloaded its records), and names each for its cell in `cells`
     // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records.
     void watch(BYTE* records_holder, const int (&cells)[2]);
-    // Both named for one cell.
-    void watch(BYTE* records_holder, int cell) {
-        const int cells[2] = {cell, cell};
-        watch(records_holder, cells);
-    }
 
     // Game thread, every frame while active (from the swap hook, the game's GL context
     // current): paints the logo into the sprite texture now and then, and whenever the
@@ -178,7 +183,6 @@ public:
     unsigned painted_texture() const { return painted_; }
 
 private:
-    BYTE* record(BYTE* records_holder, int item) const;
     // Paints (or clears) the logos and the glyph, only where the texture check finds the three
     // places blank (or already the helper's) and the game's art where the PNG has it.
     // `arrow_only`: just the progression logo's frame, for the arrow's next color.

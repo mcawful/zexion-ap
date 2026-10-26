@@ -57,6 +57,20 @@ std::string narrow(const std::wstring& w) {
     return out;
 }
 
+// The next line of `lines`, its \r dropped; false at the end.
+bool next_line(std::istream& lines, std::string& line) {
+    if (!std::getline(lines, line)) return false;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return true;
+}
+
+// The cached config's file for `build` in `folder`.
+std::wstring config_path(const std::wstring& folder, const char* build) {
+    std::wstring path = folder + L"\\config-";
+    for (const char* c = build; *c != '\0'; ++c) path += static_cast<wchar_t>(*c);
+    return path + L".txt";
+}
+
 // The cached config: the `config` request, then "check KEY HEX" lines, at least
 // kOfflineMinChecks, each on a key of the config. "" or what is wrong.
 std::string parse_offline_config(const std::string& text, std::map<std::string, uint64_t>& rvas,
@@ -65,12 +79,10 @@ std::string parse_offline_config(const std::string& text, std::map<std::string, 
     checks.clear();
     std::istringstream lines(text);
     std::string first, line;
-    std::getline(lines, first);
-    if (!first.empty() && first.back() == '\r') first.pop_back();
+    next_line(lines, first);
     std::string why = parse_config(first, rvas);
     if (!why.empty()) return why;
-    while (std::getline(lines, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+    while (next_line(lines, line)) {
         std::istringstream words(line);
         std::string op, key, hex, extra;
         if (!(words >> op)) continue;
@@ -111,17 +123,12 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     out = OfflineSeed{};
     std::istringstream lines(text);
     std::string line;
-    auto next = [&]() {
-        if (!std::getline(lines, line)) return false;
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        return true;
-    };
-    if (!next() || line != "zexion-ap offline 1") return "not a seed file";
+    if (!next_line(lines, line) || line != "zexion-ap offline 1") return "not a seed file";
     bool table = false, start = false;
-    while (next()) {
+    while (next_line(lines, line)) {
         if (line == "ap_labels") {
             std::string labels = "ap_labels";
-            while (next()) {
+            while (next_line(lines, line)) {
                 if (line.empty()) continue;
                 labels += "\n" + line;
             }
@@ -161,17 +168,8 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             out.discs = true;
         } else if (key == "unfound") {
             if (!(words >> a)) return "bad unfound";
-            if (a == "-") continue;
-            std::istringstream items(a);
-            std::string item;
-            while (std::getline(items, item, ',')) {
-                if (item.empty() || item.size() > 4 ||
-                    item.find_first_not_of("0123456789") != std::string::npos) {
-                    return "bad unfound";
-                }
-                int cell = std::stoi(item);
-                if (cell >= kMapCells) return "bad unfound";
-                out.unfound.push_back(cell);
+            if (a != "-" && !parse_number_list(a, 4, 0, kMapCells - 1, out.unfound)) {
+                return "bad unfound";
             }
         }
         // Unknown keys are ignored (a newer client).
@@ -243,9 +241,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
         std::map<std::string, std::string> checks;
         std::string why = parse_offline_config(body, rvas, checks);
         if (!why.empty()) return "error " + why;
-        path = folder + L"\\config-";
-        for (const char* c = build; *c != '\0'; ++c) path += static_cast<wchar_t>(*c);
-        path += L".txt";
+        path = config_path(folder, build);
     } else if (kind == "seed") {
         if (!(words >> name) || (words >> extra) || !good_seed_name(name)) {
             return "error bad name";
@@ -303,10 +299,7 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build) {
     }
     std::string text;
     if (build != nullptr) {
-        std::wstring name = folder + L"\\config-";
-        for (const char* c = build; *c != '\0'; ++c) name += static_cast<wchar_t>(*c);
-        name += L".txt";
-        if (read_file(name, text)) {
+        if (read_file(config_path(folder, build), text)) {
             std::map<std::string, uint64_t> rvas;
             std::string why = parse_offline_config(text, rvas, files.checks);
             if (why.empty()) {

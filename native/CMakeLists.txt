@@ -43,29 +43,22 @@ target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
 target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
 
 enable_testing()
-# Single-program tests on zap_core: NAME=SOURCE builds tests/SOURCE.cpp as zap_SOURCE.
-set(ZAP_TESTS
-    parts=tests game=game_tests requests=requests_tests menu=menu_tests apitem=apitem_tests
-    equip=equip_tests mission=mission_tests pause=pause_tests files=files_tests
-    intel=intel_tests title=title_tests mapmarks=mapmarks_tests offline=offline_tests)
-foreach(entry IN LISTS ZAP_TESTS)
-  string(REPLACE "=" ";" pair ${entry})
-  list(GET pair 0 name)
-  list(GET pair 1 source)
-  add_executable(zap_${source} tests/${source}.cpp)
-  target_link_libraries(zap_${source} PRIVATE zap_core)
-  add_test(NAME ${name} COMMAND zap_${source})
+# Single-program tests on zap_core: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
+set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
+    offline)
+foreach(name IN LISTS ZAP_TESTS)
+  add_executable(zap_${name}_tests tests/${name}_tests.cpp)
+  target_link_libraries(zap_${name}_tests PRIVATE zap_core)
+  add_test(NAME ${name} COMMAND zap_${name}_tests)
 endforeach()
 
 # The whole helper loaded and unloaded under load, and grants applied in its frame calls.
-add_executable(zap_unload_test tests/unload_test.cpp)
-target_link_libraries(zap_unload_test PRIVATE zap_core)
-add_dependencies(zap_unload_test zexion_ap_hooktest)
+foreach(name IN ITEMS unload apply)
+  add_executable(zap_${name}_test tests/${name}_test.cpp)
+  target_link_libraries(zap_${name}_test PRIVATE zap_core)
+  add_dependencies(zap_${name}_test zexion_ap_hooktest)
+endforeach()
 add_test(NAME unload_under_load COMMAND zap_unload_test $<TARGET_FILE:zexion_ap_hooktest> 300)
-
-add_executable(zap_apply_test tests/apply_test.cpp)
-target_link_libraries(zap_apply_test PRIVATE zap_core)
-add_dependencies(zap_apply_test zexion_ap_hooktest)
 add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hooktest>)
 
 add_executable(zap_proxy_test tests/proxy_test.cpp)

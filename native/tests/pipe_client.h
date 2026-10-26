@@ -1,8 +1,11 @@
-// A minimal client for the helper's pipe, for the native tests.
+// A minimal client for the helper's pipe, and what the hook-test hosts share: the busy "frame"
+// threads and the wait for an unload.
 #pragma once
 
 #include <windows.h>
 
+#include <atomic>
+#include <cstdint>
 #include <string>
 
 namespace zap_test {
@@ -30,6 +33,22 @@ inline std::string ask(HANDLE pipe, const std::string& request) {
     char buffer[1024];
     if (!ReadFile(pipe, buffer, sizeof(buffer), &n, nullptr)) return "(read failed)";
     return std::string(buffer, n);
+}
+
+// Calls GetTickCount, the hook-test helper's target, through this program's import table
+// nonstop, as the game calls its frame function, until `stop`; counted in `calls` if given.
+inline void busy(const std::atomic<bool>& stop, std::atomic<uint64_t>* calls = nullptr) {
+    while (!stop.load()) {
+        volatile DWORD t = GetTickCount();
+        (void)t;
+        if (calls != nullptr) calls->fetch_add(1);
+    }
+}
+
+// Whether `dll` is unloaded within two seconds.
+inline bool unloaded(const wchar_t* dll) {
+    for (int i = 0; i < 2000 && GetModuleHandleW(dll) != nullptr; ++i) Sleep(1);
+    return GetModuleHandleW(dll) == nullptr;
 }
 
 }  // namespace zap_test

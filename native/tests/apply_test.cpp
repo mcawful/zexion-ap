@@ -27,12 +27,7 @@ std::atomic<bool> g_stop{false};
 std::atomic<void*> g_next{nullptr};
 DWORD WINAPI chained_tick() { return reinterpret_cast<DWORD(WINAPI*)()>(g_next.load())(); }
 
-void busy() {
-    while (!g_stop.load()) {
-        volatile DWORD t = GetTickCount();
-        (void)t;
-    }
-}
+void busy() { zap_test::busy(g_stop); }
 
 std::string config_request() {
     std::string request = "config";
@@ -111,10 +106,8 @@ int wmain(int argc, wchar_t** argv) {
 
     check(zap_test::ask(pipe, "unload") == "bye", "unload");
     CloseHandle(pipe);
-    for (int i = 0; i < 2000 && GetModuleHandleW(L"zexion_ap_hooktest.dll") != nullptr; ++i) Sleep(1);
-    check(GetModuleHandleW(L"zexion_ap_hooktest.dll") == nullptr, "unloaded");
+    check(zap_test::unloaded(L"zexion_ap_hooktest.dll"), "unloaded");
     g_stop = true;
     c.join();
-    if (g_failures == 0) std::printf("all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("apply_in_frames test");
 }

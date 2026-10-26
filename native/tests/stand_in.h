@@ -10,6 +10,8 @@
 #include <map>
 #include <string>
 
+#include "game_calls.h"
+
 namespace stand_in {
 
 inline BYTE g_player[0x2000];  // player state; the inventory is at +0x108E
@@ -322,6 +324,12 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
         {"halt_flag", rva(&g_halt_flag)},
     };
+}
+
+// The stand-in game's configuration given to `game` (`active`: a client's, not the offline
+// cache's): "" or why not.
+inline std::string configure(zap::Game& game, bool active = true) {
+    return game.configure(GetModuleHandleW(nullptr), stand_in_config(), active);
 }
 
 inline void reset_game() {

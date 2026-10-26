@@ -75,11 +75,6 @@ BYTE* widget_new(const char* str, int glyphs, BYTE* panel, void* handler, void* 
 }
 
 BYTE g_frames[256 * 0x38];
-// The game's (object, template): the template's frames (0x74780).
-void sprite_sheet(void* o, void* t) {
-    at<int32_t>(static_cast<BYTE*>(o), 0x1BC) = at<int32_t>(static_cast<BYTE*>(t), 0x1BC);
-    at<BYTE*>(static_cast<BYTE*>(o), 0x1A8) = at<BYTE*>(static_cast<BYTE*>(t), 0x1A8);
-}
 
 std::vector<BYTE*> g_linked;
 void panel_link(void* panel) { g_linked.push_back(static_cast<BYTE*>(panel)); }
@@ -203,24 +198,24 @@ struct Screen {
         current = pause;
     }
 
-    zap::EquipAddresses addresses() {
-        zap::EquipAddresses a;
+    zap::GameAddresses addresses() {
+        zap::GameAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
-        a.widget_handler = reinterpret_cast<void*>(&widget_handler);
-        a.equipment_fn = reinterpret_cast<void*>(&equipment_fn);
-        a.equip_panel_fn = reinterpret_cast<void*>(&equip_panel_fn);
-        a.widget_move_fn = reinterpret_cast<void*>(&widget_move);
-        a.text_place_fn = reinterpret_cast<void*>(&text_place);
-        a.widget_new_fn = reinterpret_cast<void*>(&widget_new);
-        a.sprite_sheet_fn = reinterpret_cast<void*>(&sprite_sheet);
-        a.panel_link_fn = reinterpret_cast<void*>(&panel_link);
-        a.text_set_fn = reinterpret_cast<void*>(&text_set);
+        a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler);
+        a.equipment_fn = reinterpret_cast<BYTE*>(&equipment_fn);
+        a.equip_panel_fn = reinterpret_cast<BYTE*>(&equip_panel_fn);
+        a.widget_move_fn = reinterpret_cast<BYTE*>(&widget_move);
+        a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
+        a.widget_new_fn = reinterpret_cast<BYTE*>(&widget_new);
+        a.sprite_sheet_fn = reinterpret_cast<BYTE*>(&sprite_sheet);
+        a.panel_link_fn = reinterpret_cast<BYTE*>(&panel_link);
+        a.text_set_fn = reinterpret_cast<BYTE*>(&text_set);
         a.malloc_slot = reinterpret_cast<BYTE*>(&malloc_slot);
         a.free_slot = reinterpret_cast<BYTE*>(&free_slot);
         a.sprite_templates = reinterpret_cast<BYTE*>(&templates_holder);
         a.item_records = reinterpret_cast<BYTE*>(&records_holder);
-        a.hook = reinterpret_cast<void*>(&hook);
-        a.panel_hook = reinterpret_cast<void*>(&panel_hook);
+        a.hooks.equipment = reinterpret_cast<void*>(&hook);
+        a.hooks.equipment_panel = reinterpret_cast<void*>(&panel_hook);
         return a;
     }
     void* equipment_callback() { return at<void*>(entries[1], 0x2C0); }
@@ -229,8 +224,8 @@ struct Screen {
 void test_the_hook_follows_the_pause_menu() {
     Screen s;
     zap::EquipmentHook h;
-    zap::EquipAddresses a = s.addresses();
-    check(h.install(a) && s.equipment_callback() == a.hook, "EQUIPMENT points at the hook");
+    zap::GameAddresses a = s.addresses();
+    check(h.install(a) && s.equipment_callback() == a.hooks.equipment, "EQUIPMENT points at the hook");
     check(at<void*>(s.entries[0], 0x2C0) == reinterpret_cast<void*>(&other_fn),
           "and nothing else changes");
     check(!h.install(a) && h.installed(), "hooked once");
@@ -246,7 +241,7 @@ void test_the_hook_follows_the_pause_menu() {
     h.install(a);
     BYTE title[0x80] = {};
     s.current = title;
-    check(!h.restore(a) && s.equipment_callback() == a.hook && !h.installed(),
+    check(!h.restore(a) && s.equipment_callback() == a.hooks.equipment && !h.installed(),
           "a closed menu is forgotten, not written");
 
     // A released widget or another handler: not taken.
@@ -261,7 +256,7 @@ void test_the_hook_follows_the_pause_menu() {
 
 void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
     Screen s;
-    zap::EquipAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.current = s.equip;
     g_widgets.clear();
     g_freed.clear();
@@ -283,7 +278,7 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
           "in a row, as the missile panel with both icons");
     check(g_freed.size() == 1 && g_freed[0] == old, "the panel's one-widget array freed");
     check(at<BYTE*>(disk, 0x1F8) == s.records + 44 * 100 && at<int32_t>(disk, 0x1E0) == 1 &&
-              at<void*>(disk, 0x2C8) == a.widget_handler && at<void*>(disk, 0x2C0) == nullptr,
+              at<void*>(disk, 0x2C8) == a.widget_handler_fn && at<void*>(disk, 0x2C0) == nullptr,
           "the Data Disc's record, index 1, the generic handler and no callback");
     check(at<int16_t>(disk, 0x1E8) == -10 && at<int16_t>(disk, 0x1EE) == 10,
           "the Energy Tank's mouse rectangle");
@@ -300,7 +295,7 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
     check(at<int32_t>(disk, 0x1D0) == -1, "style -1, as the Energy Tank");
     check(at<int32_t>(disk, 0x230) == 0x6E, "a color for when it is selected");
     check(g_linked.size() == 1 && g_linked[0] == p3, "the panel linked again");
-    check(at<void*>(p3, 0x2F8) == a.panel_hook && screen.holds_hook(),
+    check(at<void*>(p3, 0x2F8) == a.hooks.equipment_panel && screen.holds_hook(),
           "the panel's handler the helper's");
 
     // Hovering the disk: its name and description; anything else is the game's.
@@ -328,13 +323,13 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
 
 void test_a_closed_screen_is_forgotten_unwritten() {
     Screen s;
-    zap::EquipAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.current = s.equip;
     zap::EquipmentScreen screen;
     check(screen.add(a, 1).empty(), "added");
     s.current = s.pause;  // the equipment screen closed: freed with its panels
     screen.tidy(a);
-    check(!screen.holds_hook() && at<void*>(s.panels[3], 0x2F8) == a.panel_hook,
+    check(!screen.holds_hook() && at<void*>(s.panels[3], 0x2F8) == a.hooks.equipment_panel,
           "forgotten without a write");
 }
 
@@ -347,7 +342,7 @@ void test_an_unexpected_screen_is_left_alone() {
           "no disk yet: the screen as the game built it");
 
     Screen s;
-    zap::EquipAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.current = s.pause;  // not the equipment screen
     check(!screen.add(a, 1).empty() && at<double>(s.energy, 0x40) == 32,
           "another menu: nothing moved");
@@ -396,6 +391,5 @@ int main() {
     test_a_closed_screen_is_forgotten_unwritten();
     test_an_unexpected_screen_is_left_alone();
     test_the_count_text();
-    if (g_failures == 0) std::printf("equip tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("equip tests");
 }

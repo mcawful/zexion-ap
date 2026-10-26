@@ -1,5 +1,7 @@
 #include "game_mem.h"
 
+#include <algorithm>
+
 namespace zap {
 
 namespace {
@@ -56,6 +58,42 @@ bool writable(const void* at, size_t size) {
     return true;
 }
 
+bool live_widget(const BYTE* w, const void* handler) {
+    int32_t released = 1;
+    void* h = nullptr;
+    return read(w, sprite::kReleased, released) && released == 0 &&
+           read(w, widget::kHandler, h) && h == handler;
+}
+
+bool live_widget(const BYTE* w, const void* handler, const void* callback) {
+    void* cb = nullptr;
+    return live_widget(w, handler) && read(w, widget::kCallback, cb) && cb == callback;
+}
+
+bool matches(const BYTE* r, const RecordShape& s) {
+    return word(r, record::kKind) == s.kind && word(r, record::kFrame) == s.frame &&
+           word(r, record::kTicks) == s.ticks && word(r, record::kFrames) == s.frames &&
+           r[record::kIcon] == s.icon && r[record::kPalette] == s.palette &&
+           word(r, record::kInventory) == s.inventory && word(r, record::kRedirect) == s.redirect &&
+           word(r, record::kPickupClass) == s.pickup_class;
+}
+
+BYTE* writable_record(const BYTE* holder, int item, BYTE (&copy)[record::kSize]) {
+    BYTE* records = pointer_at(holder);
+    if (records == nullptr || item < 0 || item >= record::kCount) return nullptr;
+    BYTE* r = records + item * record::kSize;
+    if (!safe_read(r, copy, sizeof(copy)) || !writable(r, record::kSize)) return nullptr;
+    return r;
+}
+
+void set_record_name(BYTE* r, std::string_view name) {
+    char field[record::kNameSize] = {};
+    std::memcpy(field, name.data(), (std::min)(name.size(), record::kNameSize - 1));
+    if (std::memcmp(r + record::kName, field, sizeof(field)) != 0) {
+        std::memcpy(r + record::kName, field, sizeof(field));
+    }
+}
+
 bool is_open(const BYTE* current_menu, const BYTE* wanted) {
     BYTE* menu = nullptr;
     if (!read(current_menu, 0, menu)) return false;
@@ -81,6 +119,32 @@ bool set_frame(BYTE* s, int32_t frame) {
     }
     put<int32_t>(s, sprite::kFrameIndex, frame);
     put(s, sprite::kFrameShown, list + frame * sprite::kFrameSize);
+    return true;
+}
+
+void look_like(BYTE* s, const BYTE* like) {
+    if (s == like) return;
+    std::memcpy(s + sprite::kPalette, like + sprite::kPalette, sizeof(void*));
+    std::memcpy(s + sprite::kPaletteNumber, like + sprite::kPaletteNumber, sizeof(int16_t));
+    std::memcpy(s + sprite::kStyle, like + sprite::kStyle, sizeof(int32_t));
+    std::memcpy(s + sprite::kTint, like + sprite::kTint, sprite::kTintSize);
+}
+
+const IMAGE_NT_HEADERS64* nt_headers(HMODULE module) {
+    auto* base = reinterpret_cast<const BYTE*>(module);
+    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    if (dos == nullptr || dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+    return nt->Signature == IMAGE_NT_SIGNATURE ? nt : nullptr;
+}
+
+bool patch_code(BYTE* at, const void* bytes, size_t size) {
+    DWORD old = 0;
+    if (!VirtualProtect(at, size, PAGE_EXECUTE_READWRITE, &old)) return false;
+    std::memcpy(at, bytes, size);
+    DWORD unused = 0;
+    VirtualProtect(at, size, old, &unused);
+    FlushInstructionCache(GetCurrentProcess(), at, size);
     return true;
 }
 

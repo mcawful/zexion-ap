@@ -29,14 +29,6 @@ void place(BYTE* s, double x, double y, const double (&local)[4]) {
     put(s, kWorld + 24, y + local[3]);
 }
 
-// Drawn as `like` is: its palette, style and tint.
-void look_like(BYTE* s, const BYTE* like) {
-    std::memcpy(s + sprite::kPalette, like + sprite::kPalette, sizeof(void*));
-    std::memcpy(s + sprite::kPaletteNumber, like + sprite::kPaletteNumber, sizeof(int16_t));
-    std::memcpy(s + sprite::kStyle, like + sprite::kStyle, sizeof(int32_t));
-    std::memcpy(s + sprite::kTint, like + sprite::kTint, sprite::kTintSize);
-}
-
 }  // namespace
 
 std::string pause_row_text(int count, int required) {
@@ -50,32 +42,25 @@ std::string pause_row_text(int count, int required) {
     return out;
 }
 
-bool PauseDiskRow::patch(const PauseAddresses& a, uint8_t from, uint8_t to) {
+bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
     BYTE now[2] = {};
     if (a.keys_branch == nullptr || !safe_read(a.keys_branch, now, sizeof(now)) ||
         now[1] != kSkip || now[0] != from) {
         return false;
     }
-    DWORD old = 0;
-    if (!VirtualProtect(a.keys_branch, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
-    *a.keys_branch = to;
-    DWORD unused = 0;
-    VirtualProtect(a.keys_branch, 1, old, &unused);
-    FlushInstructionCache(GetCurrentProcess(), a.keys_branch, 2);
-    return true;
+    return patch_code(a.keys_branch, &to, 1);
 }
 
-void PauseDiskRow::watch(const PauseAddresses& a) {
+void PauseDiskRow::watch(const GameAddresses& a) {
     if (text_.empty()) {
         restore(a);
         return;
     }
     if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
-    BYTE* top = nullptr;
-    if (read(a.current_menu, 0, top) && top != nullptr) turn(a, top);
+    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top);
 }
 
-void PauseDiskRow::restore(const PauseAddresses& a) {
+void PauseDiskRow::restore(const GameAddresses& a) {
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
     BYTE now = 0;
@@ -83,19 +68,14 @@ void PauseDiskRow::restore(const PauseAddresses& a) {
     if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
 }
 
-void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
+void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu) {
     // The text fills the row's cells (pause_row_text), read by index below.
     if (text_.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
-    int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0, released = 1;
-    BYTE** panels = nullptr;
-    BYTE* entries = nullptr;
-    BYTE* row = nullptr;
-    if (!read(menu, menu::kPanelCount, panels_n) || panels_n != kPausePanels ||
-        !read(menu, 0, panels) || !read(reinterpret_cast<BYTE*>(panels), 0, entries) ||
-        !read(reinterpret_cast<BYTE*>(panels), 8, row)) {
-        return;
-    }
+    int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0;
+    BYTE* entries = panel_at(menu, 0);
+    BYTE* row = panel_at(menu, 1);
+    if (!read(menu, menu::kPanelCount, panels_n) || panels_n != kPausePanels) return;
     BYTE** children = nullptr;
     int32_t entry_count = 0;
     if (!read(entries, panel::kCapacity, entry_count) || entry_count < 1 ||
@@ -108,22 +88,17 @@ void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
     for (int i = 0; i < entry_count; ++i) {
         void* cb = nullptr;
         if (read(list[i], widget::kCallback, cb) &&
-            (cb == a.equipment_fn || (a.equipment_hook != nullptr && cb == a.equipment_hook))) {
+            (cb == a.equipment_fn || (a.hooks.equipment != nullptr && cb == a.hooks.equipment))) {
             equipment = true;
         }
     }
-    BYTE** row_children = nullptr;
-    BYTE* keys = nullptr;
+    BYTE* keys = child_at(row, 0);
     BYTE* label = nullptr;
     BYTE** glyph_list = nullptr;
     BYTE** sprite_list = nullptr;
-    void* handler = nullptr;
     if (!equipment || !read(row, panel::kCapacity, capacity) || capacity != 1 ||
         !read(row, kPanelSpriteCount, sprites_n) || sprites_n != kRowSprites ||
-        !read(row, panel::kChildren, row_children) ||
-        !read(reinterpret_cast<BYTE*>(row_children), 0, keys) ||
-        !read(keys, sprite::kReleased, released) ||
-        released != 0 || !read(keys, widget::kHandler, handler) || handler != a.widget_handler ||
+        !live_widget(keys, a.widget_handler_fn) ||
         !read(keys, widget::kLabel, label) || !read(label, label::kLength, glyphs_n) ||
         glyphs_n != kKeysGlyphs || !read(label, label::kGlyphs, glyph_list) ||
         !read(row, kPanelSprites, sprite_list)) {

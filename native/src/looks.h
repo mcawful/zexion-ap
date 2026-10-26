@@ -20,19 +20,12 @@
 #include <map>
 #include <vector>
 
+#include "addresses.h"
+
 namespace zap {
 
 class ItemLooks {
 public:
-    struct Places {
-        BYTE* pool = nullptr;              // 128 item objects, 0x3B0 bytes each
-        BYTE* palette_table = nullptr;     // palette objects by number
-        BYTE* frame_clock = nullptr;       // 64-bit count the item animations follow
-        BYTE* sprite_templates = nullptr;  // holds the pointer to the sprite definitions' templates
-        BYTE* item_records = nullptr;      // holds the pointer to the item records
-        BYTE* object_pool = nullptr;       // the general objects, 1000 of 0x5C8 bytes
-    };
-
     // Game thread. Map cell (y * 54 + x) -> the Zexion item to show there.
     void set_items(std::map<int, int> items) { items_ = std::move(items); }
 
@@ -40,15 +33,15 @@ public:
     // cells, and puts back any it dressed whose cell no longer names an item. `pool`: this
     // frame's copy of the item pool (kSlots objects; null if it could not be read), `base` the
     // item sprites' frame list (item_frame_base), both taken once a frame by the caller.
-    void apply(const Places& at, const BYTE* pool, BYTE* base);
+    void apply(const GameAddresses& at, const BYTE* pool, BYTE* base);
 
     // Game thread, every frame while the stand-ins are restyled, before apply: every 31st frame,
     // finds the general objects showing a stand-in's logo (flipped_slots), and puts back any it
     // dressed that no longer shows one.
-    void scan(const Places& at, BYTE* base);
+    void scan(const GameAddresses& at, BYTE* base);
 
     // Game thread: puts back every object it dressed that is still that spawn; forgets them.
-    void restore(const Places& at);
+    void restore(const GameAddresses& at);
     bool dressed() const;
     // General objects showing a stand-in's logo at the last scan (slots of the pool); each
     // still to be checked with shows_stand_in, as the list can be 30 frames old.
@@ -57,7 +50,7 @@ public:
     // logo frame, empty in the game's own art: a stand-in.
     static bool shows_stand_in(const BYTE* object, const BYTE* base);
     // The item sprites' frame list (every item object's base, the template's), or null.
-    static BYTE* item_frame_base(const Places& at);
+    static BYTE* item_frame_base(const GameAddresses& at);
 
     static constexpr int kSlots = 128;
     static constexpr int kObjectSlots = 1000;
@@ -69,15 +62,19 @@ private:
     };
     // The Zexion item to show at map cell (row, column), or -1.
     int item_at(uint8_t row, uint8_t column) const;
-    // Puts the object back if it is still that spawn, on the base it was given or the
-    // template's; forgets it only if put back, or if it is no longer that spawn.
-    void undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
+    // Puts `object` (`seen`: this frame's copy of it) back if it is still the spawn `d` dressed,
+    // on the base it was given or the template's: the template's base `base` and the stand-ins'
+    // palette, and with `frame_shown` the frame it shows on that base (a general object's).
+    // Forgets it only if put back, or if it is no longer that spawn. undress_live reads the
+    // object's `size` bytes first (one that does not read is forgotten).
+    static void undress(BYTE* object, const BYTE* seen, Dressed& d, BYTE* base,
+                        BYTE* standin_palette, bool frame_shown);
+    static void undress_live(BYTE* object, size_t size, Dressed& d, BYTE* base,
+                             BYTE* standin_palette, bool frame_shown);
 
     // General objects showing a stand-in's logo (found by scan), dressed every frame.
-    void apply_flipped(const Places& at, BYTE* base, BYTE* standin_palette, BYTE* records,
+    void apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                        int64_t clock, const bool (&ours)[2]);
-    void undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
-    void restore_flipped(const Places& at, BYTE* base, BYTE* standin_palette);
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};
