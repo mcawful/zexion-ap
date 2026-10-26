@@ -108,14 +108,6 @@ def components(cells: set, grid) -> dict:
     return comp
 
 
-def location_ok(grid, cell, have, settings, reached: set) -> bool:
-    x, y = cell
-    rec = grid[y][x]
-    return not rec.item_gated or rc.satisfied(
-        rec.item_needs, have, settings, rc.Where(x, y, reached)
-    )
-
-
 # The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
 # Double Teleport, Safety (code 69's mode) and Gates. The helper refuses a new game whose
 # settings differ (client/newgame.py, expect lines).
@@ -158,7 +150,7 @@ def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
     settings = rdata(exe, settings_at, 64)
     if not set(start) <= {0, 1} or not set(pool) <= {0, 1} or not set(settings) <= {0, 1}:
         raise SystemExit(f"{name}'s preset at {start_at:#x} is not 0/1 entries")
-    saved = save[rc.OPTIONS_IN_SAVE + 10 : rc.OPTIONS_IN_SAVE + 74]
+    saved = save[sp.OPTIONS + 10 : sp.OPTIONS + 74]
     wrong = [t + 10 for t in range(64) if t + 10 != COLOR and settings[t] != saved[t]]
     if wrong:
         raise SystemExit(f"{name}'s preset settings {wrong} differ from its fresh save")
@@ -189,7 +181,7 @@ def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
     found = [
         i
         for i, c in enumerate(locations)
-        if c in cells and location_ok(grid, c, have, settings, cells)
+        if c in cells and rc.collectible(grid, c, have, settings, cells)
     ]
     return cells, found
 
@@ -276,13 +268,13 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             raise SystemExit(f"{save_path.name}: its location list differs from the others")
         start_inv = rc.inventory_from_save(data)
         settings = rc.settings_from_save(data)
-        double = bool(data[rc.OPTIONS_IN_SAVE + rc.DOUBLE_TELEPORT])
+        double = bool(data[sp.OPTIONS + rc.DOUBLE_TELEPORT])
         starts = mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double)
         for st in starts:
             union |= st["cells"]
         modes[name] = {
             "amounts": struct.unpack_from("<6h", data, sp.AMOUNTS),
-            "checked_options": {t: data[rc.OPTIONS_IN_SAVE + t] for t in CHECKED_OPTIONS},
+            "checked_options": {t: data[sp.OPTIONS + t] for t in CHECKED_OPTIONS},
             "double_teleport": double,
             "settings": settings,
             "pool": pool,

@@ -33,7 +33,6 @@ import importlib.util
 import struct
 import sys
 from collections import Counter
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -112,15 +111,6 @@ def settings_from_save(data: bytes) -> logic.Settings:
     return logic.Settings(start + pool, hi * 2 + lo, options)
 
 
-@dataclass(frozen=True)
-class Where:
-    """What a check needs to know about where it happens (for gen_world_data.py's checks)."""
-
-    x: int
-    y: int
-    reached: frozenset[tuple[int, int]] | set[tuple[int, int]]
-
-
 def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
     out = []
     for k in range(8):
@@ -149,20 +139,6 @@ def parse(data: bytes) -> list[list[Cell]]:
             )
         grid.append(row)
     return grid
-
-
-def satisfied(
-    entries: Sequence[logic.Entry],
-    have: Counter,
-    settings: logic.Settings = logic.DEFAULT_SETTINGS,
-    where: Where | None = None,
-) -> bool:
-    """The game's check (RVA 0xE3C80); see worlds/zexion/logic.py."""
-    if where is None:
-        return logic.satisfied(entries, have, settings)
-    return logic.satisfied(
-        entries, have, settings, (where.x, where.y), lambda cell: cell in where.reached
-    )
 
 
 def collectible(grid, cell: tuple[int, int], have: Counter, settings, reached: set) -> bool:
@@ -278,7 +254,6 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
 
 
 DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
-OPTIONS_IN_SAVE = save_patch.OPTIONS  # for gen_world_data.py
 
 
 def starts_from_save(data: bytes) -> list[tuple[int, int]]:
