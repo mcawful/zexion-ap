@@ -81,8 +81,9 @@ the helper. With Area Map hints on (the default), each Intel Chip (the Area Map,
 get makes an Archipelago hint for one of your upgrades, keys or OS Install Disks, and the
 helper shows it in a popup.
 
-If you load a save of a different seed while the client is connected, the game says the
-client is for another seed, and nothing is sent or received for that save.
+The client's window says when a save of your seed is loaded (and in which slot) and when it is
+closed. If you load a save of a different seed while the client is connected, the game says
+the client is for another seed, and nothing is sent or received for that save.
 
 ## Playing without the client
 

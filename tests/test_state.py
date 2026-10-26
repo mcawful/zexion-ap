@@ -195,3 +195,11 @@ def test_a_message_is_said_once_until_it_changes() -> None:
     assert said("helper", "b") and said("helper", "a")
     said.clear("helper")
     assert said("helper", "a")
+
+
+def test_the_save_loaded_line_names_the_games_slot() -> None:
+    assert state.save_loaded((4).to_bytes(4, "little") + bytes(10)) == (
+        "This seed's save is loaded (slot 5): items and checks go through."
+    )
+    assert "(slot" not in state.save_loaded(b"")  # no stamp read: the slot left out
+    assert "(slot" not in state.save_loaded((0xFFFFFFFF).to_bytes(4, "little"))

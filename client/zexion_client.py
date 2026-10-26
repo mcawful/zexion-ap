@@ -428,6 +428,8 @@ async def poll(ctx: ZexionContext) -> None:
         choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
         detail(f"{choice} is armed again: another empty slot can start this seed.")
     if step.seed_matches:
+        if not load.seed_loaded:
+            logger.info(state.save_loaded(step.save_stamp))  # again after a reconnect
         load.seed_loaded = True
         conn.discs_told = step.scanned
         load.save_collected = set(step.checked)
@@ -439,6 +441,8 @@ async def poll(ctx: ZexionContext) -> None:
         load.assists_want = conn.lock_assists
         load.intel_want = conn.intel_chip
     elif step.left_seed:
+        if load.seed_loaded:
+            logger.info(state.SAVE_CLOSED)
         load.leave()  # reminded again on the next load, and so on
     conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
     if conn.death_link_on:

@@ -312,3 +312,14 @@ class LoadState:
         self.ending_unseen = False
         self.assists_want = self.intel_want = False
         self.goal_withheld = False
+
+
+SAVE_CLOSED = "This seed's save is closed: nothing is sent or received until it is loaded again."
+
+
+def save_loaded(stamp: bytes) -> str:
+    """The client's line when a save of this seed is loaded, with its slot as the game numbers
+    it (the save stamp starts with current_slot, from 0: client/game.py, save_stamp)."""
+    slot = int.from_bytes(stamp[:4], "little") + 1 if len(stamp) >= 4 else 0
+    where = f" (slot {slot})" if 1 <= slot <= 30 else ""
+    return f"This seed's save is loaded{where}: items and checks go through."
