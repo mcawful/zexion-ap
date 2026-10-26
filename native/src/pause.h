@@ -31,6 +31,10 @@ public:
     // Game thread: the text to show ("" turns it off, the branch then put back).
     void set(std::string text) { text_ = std::move(text); }
 
+    // Game thread: a save of a disk seed is loaded, its count not set yet: the branch is
+    // changed anyway, so a pause screen opened at once has the panel the count fills when set.
+    void prepare(bool on) { prepared_ = on; }
+
     // Game thread, each frame: the branch while on (or put back while off), and the row turned
     // on a pause screen that has not been.
     void watch(const GameAddresses& addresses);
@@ -45,6 +49,7 @@ private:
     void turn(const GameAddresses& addresses, BYTE* menu);
 
     std::string text_;
+    bool prepared_ = false;
     bool patched_ = false;
 };
 

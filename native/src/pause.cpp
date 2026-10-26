@@ -52,15 +52,17 @@ bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
 }
 
 void PauseDiskRow::watch(const GameAddresses& a) {
-    if (text_.empty()) {
+    if (text_.empty() && !prepared_) {
         restore(a);
         return;
     }
     if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
+    if (text_.empty()) return;  // prepared: the panel built, the row waits for its count
     if (BYTE* top = pointer_at(a.current_menu)) turn(a, top);
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
+    prepared_ = false;  // prepared again by the next look (Game::watch_offline)
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
     BYTE now = 0;

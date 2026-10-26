@@ -351,7 +351,9 @@ the helper:
   frees it with the menu;
 - makes the pause screen's KEYS row the disk row (`src/pause.cpp`): the `jne` that builds the
   row only once flag 39 is set made a `jmp`, then the small Data Disc icon and the count, the
-  key slots and icons hidden;
+  key slots and icons hidden. The `jmp` goes in as soon as a save of a known disk seed (one the
+  client left a file for) is loaded, in play or not, so a pause screen opened before the count
+  arrives has the row, filled when it does;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
   play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
   (`src/mission.cpp`), whose YES closes the prompt through the game's NO and then starts the

@@ -72,10 +72,20 @@ void Game::watch_offline() {
     }
     if (offline_seeds_.empty()) {
         leave_offline();
+        pause_row_.prepare(false);
         return;
     }
     if (offline_frames_-- > 0) return;
     offline_frames_ = kOfflineFrames;
+    // A save of a known seed with the disks, loaded in play or not: the pause screen's KEYS panel
+    // is built before its count is set (by the client or below), for a player who pauses at once.
+    bool disk_seed = false;
+    if (rando_save_loaded()) {
+        for (const OfflineSeed& sd : offline_seeds_) {
+            if (sd.discs && section_is(sd, at_.rando_blob)) disk_seed = true;
+        }
+    }
+    pause_row_.prepare(disk_seed);
     // A save is dressed with no client, or with a client that said the loaded save is not its
     // seed's (other_save); undressed when that stops.
     const bool other = other_mode();

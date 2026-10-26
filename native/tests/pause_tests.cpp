@@ -142,6 +142,25 @@ void test_the_row_shows_the_disks() {
     check(branch() == 0x75 && !row.patched(), "off: the jne back");
 }
 
+// A disk seed's save loaded before its count is known: the panel is built (the branch changed)
+// with nothing turned; setting the count turns the open pause screen's row.
+void test_prepared_before_the_count() {
+    Pause p;
+    zap::PauseDiskRow row;
+    zap::GameAddresses a = p.addresses();
+    row.prepare(true);
+    row.watch(a);
+    check(branch() == 0xEB && row.patched(), "prepared: the panel built");
+    check(p.frame(p.sprite[4]) != 829, "nothing turned without a count");
+    row.set(zap::pause_row_text(2, 0));
+    row.watch(a);
+    check(p.frame(p.sprite[4]) == 829, "the open screen's row turned once the count is set");
+    row.set("");
+    row.prepare(false);
+    row.watch(a);
+    check(branch() == 0x75 && !row.patched(), "neither: the jne back");
+}
+
 void test_anything_else_is_left_alone() {
     zap::PauseDiskRow row;
     struct Case {
@@ -189,6 +208,7 @@ void test_the_text() {
 
 int main() {
     test_the_row_shows_the_disks();
+    test_prepared_before_the_count();
     test_anything_else_is_left_alone();
     test_the_text();
     return report("pause tests");
