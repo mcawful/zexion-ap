@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import save_lab
-from protected import ProtectedPathError
+from protected import ProtectedPathError, append_log
 
 SIZE = 4096
 
@@ -106,3 +106,16 @@ def test_lab_outputs_refuse_protected_folders(saves: Path, tmp_path: Path) -> No
     bad = tmp_path / "Gallant Leaf" / "Zexion" / "x.sav"
     with pytest.raises(ProtectedPathError):
         save_lab.main(["copy", "1", "--out", str(bad)])
+
+
+def test_append_log_stamps_each_line_and_refuses_protected_folders(tmp_path: Path) -> None:
+    path = tmp_path / "lab" / "x.jsonl"
+    append_log(path, {"event": "a"})
+    append_log(path, {"event": "b", "pid": 7})
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [list(e) for e in lines] == [["time", "event"], ["time", "event", "pid"]]
+    assert [e["event"] for e in lines] == ["a", "b"]
+    bad = tmp_path / "Gallant Leaf" / "Zexion" / "x.jsonl"
+    with pytest.raises(ProtectedPathError):
+        append_log(bad, {"event": "a"})
+    assert not bad.parent.exists()

@@ -1,6 +1,6 @@
 ---
 name: preflight
-description: Run the checks CI runs (ruff format, ruff check, pytest) and, once worlds/zexion exists, Archipelago's own world tests against the pinned checkout in .ap/. Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
+description: Run the checks CI runs (ruff format, ruff check, pytest) and, on the apworld branch (where worlds/zexion is), Archipelago's own world tests against the pinned checkout in .ap/. Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
 ---
 
 # Pre-flight
@@ -29,7 +29,8 @@ something to paper over.
 
 ## Archipelago's world tests
 
-Only once `worlds/zexion/` exists. Until then, say they were not run because there is no world.
+On `apworld` and branches cut from it, where `worlds/zexion/` is. On `main` (no world), say
+they were not run because there is no world.
 
 1. `.ap/Archipelago` must exist at the tag in `AP_VERSION`. If not, run
    `.venv/Scripts/python tools/ap_checkout.py`, which also links `worlds/zexion/` into it.

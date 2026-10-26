@@ -12,11 +12,16 @@ this one definition. Of the tools, only ``save_lab.py install`` and ``save_lab.p
 write into the save folder, and only after a verified backup. The one other writer is the
 Archipelago client's ``/prepare`` (``client/prepare.py``), which keeps its own checks (Zexion
 closed, a verified backup, an atomic replace) because the client does not ship this module.
+
+``append_log`` is the JSON-lines log that ``grant.py`` and ``helper.py`` keep in ``lab/`` of
+each change they make to the running game.
 """
 
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
+import json
 import os
 import re
 import sys
@@ -89,6 +94,19 @@ def assert_writable(path: str | os.PathLike[str]) -> Path:
             "Work on a copy in lab/ (see /save-lab)."
         )
     return Path(path)
+
+
+def append_log(path: str | os.PathLike[str], entry: dict) -> None:
+    """Append ``entry``, stamped with the time, as one JSON line to ``path``.
+
+    It raises rather than skip the line (a protected path, a full disk), so a tool that logs
+    before it changes the game stops when the log cannot be written.
+    """
+    path = assert_writable(path)
+    entry = {"time": dt.datetime.now().isoformat(timespec="milliseconds"), **entry}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 
 def save_dir() -> Path:

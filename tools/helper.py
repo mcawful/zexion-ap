@@ -14,8 +14,6 @@ another build of the helper than native/build/Release/zexion_ap.dll.
 from __future__ import annotations
 
 import argparse
-import datetime as dt
-import json
 import sys
 import time
 from pathlib import Path
@@ -27,16 +25,12 @@ from client import (  # noqa: E402
     game,
     native,
 )
-from protected import assert_writable, lab_dir  # noqa: E402
+from protected import append_log, lab_dir  # noqa: E402
 
 
 def log(entry: dict) -> None:
     """Append to lab/helper.jsonl; a failure here stops the change it describes."""
-    path = assert_writable(lab_dir() / "helper.jsonl")
-    entry = {"time": dt.datetime.now().isoformat(timespec="milliseconds"), **entry}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    append_log(lab_dir() / "helper.jsonl", entry)
 
 
 def frames(helper: native.Helper) -> int:
