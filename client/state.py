@@ -50,9 +50,15 @@ class Connection:
     items_listed: bool = False
     awaiting_backlog: bool = True
     # The follow-up popups shown for this world's own finds, by location index, until the
-    # server's record has them; and the popup count last stored on the server.
+    # server's record has them.
     popped_mine: set[int] = field(default_factory=set)
+    # Received items' popups (announced_tick): the count of those shown that this client last
+    # stored on the server, and the last count known shown; and how many the connection before
+    # (a reconnect) handed the same helper, which still holds them (not queued again).
     announced_sent: int | None = None
+    announced_shown: int | None = None
+    queued_before: int | None = None
+    found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     # Whether this seed's save has had the scanner's message (the disks needed are known).
     discs_told: bool = False
     # Whether the helper should hold the labels: only while this seed's save is loaded
@@ -63,6 +69,7 @@ class Connection:
     newgame: NewGame | None = None  # None: to arm
     newgame_said: bool | None = None  # the offer "Ready" was logged for (once a connection)
     newgame_polled_at: float = 0.0
+    newgame_retry_at: float = 0.0  # when to arm again after the helper refused (newgame_tick)
     warned: set[int] = field(default_factory=set)  # received items said to be no Zexion item
 
     @classmethod
@@ -118,6 +125,98 @@ class Connection:
     @property
     def hints_key(self) -> str:
         return self.key("hints")
+
+    def helper_lost(self) -> None:
+        """The helper is gone, and the popups it had not shown with it: received items past
+        the last count known shown are queued again, on the next helper."""
+        queued = self.session.announced
+        if queued is not None and self.announced_shown is not None:
+            self.session.mark_announced(min(queued, self.announced_shown))
+        self.queued_before = None
+
+
+# Received items' popups. The server keeps how many have been shown (Connection.announced_key),
+# so an item received while no client ran pops up when it is given and a reconnect replays
+# none. The session counts those handed to the helper or written directly (Session.announced:
+# queued); the helper says how many of its popups are still waiting (Helper.popups_pending), and
+# queued minus those is the count shown. The key is open to any client in the room: anything
+# but a count in it reads as absent.
+
+
+def stored_count(raw: object) -> int | None:
+    """A count read from data storage, or None when absent (or not a count)."""
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+        return raw
+    return None
+
+
+def announced_start(raw: object, held: int, queued_before: int | None = None) -> tuple[int, int]:
+    """Where a connection's session starts counting received items' popups, as (queued, shown):
+    shown, the server's count (at most the ``held`` items), or, with none stored (a slot played
+    before the count, or its data lost), every item held: no flood of old popups. Queued, the
+    same, but never below what the connection before handed the same helper
+    (``queued_before``), which the helper still holds."""
+    stored = stored_count(raw)
+    shown = held if stored is None else min(stored, held)
+    queued = shown if queued_before is None else max(shown, min(queued_before, held))
+    return queued, shown
+
+
+def popups_unstored(queued: int, raw: object, sent: int | None) -> bool:
+    """Whether more popups have been queued than the server holds as shown: only then is the
+    helper asked how many are still waiting."""
+    return queued > max(stored_count(raw) or 0, sent or 0)
+
+
+def popups_shown(queued: int, pending: int, before: int) -> int:
+    """The received items whose popup has been shown: those queued less the helper's popups
+    still waiting, never below the count known before. A lower bound, as the helper's count
+    takes in the popups of every ``apply`` (the follow-ups too), not only received items'."""
+    return min(queued, max(before, queued - pending))
+
+
+def announced_to_store(shown: int, raw: object, sent: int | None) -> int | None:
+    """The count to store on the server now (as a maximum), or None: ``shown`` when it is above
+    both the server's count and what this client last stored; and, while the server has none
+    and this client has stored none, ``shown`` as it is, so the key exists. A store that fails
+    leaves ``sent`` as it was, so it is sent again on the next poll."""
+    stored = stored_count(raw)
+    if stored is None and sent is None:
+        return shown
+    if shown > max(stored or 0, sent or 0):
+        return shown
+    return None
+
+
+def found_to_store(
+    in_game: set[int], stored: set[int] | None, new: set[int], due: bool
+) -> set[int]:
+    """The locations found (indices) to record in the server's data storage now: those just
+    found (``new``) until the server's record (``stored``) has been read; then every one found
+    in the game that the record lacks, when one was just found or a resend is ``due`` (one sent
+    before may have been dropped with a closing connection)."""
+    if stored is None:
+        return set(new)
+    missing = in_game - stored
+    return missing if missing and (new & missing or due) else set()
+
+
+class SayOnce:
+    """Messages said once each until they change, by topic."""
+
+    def __init__(self) -> None:
+        self._last: dict[str, str] = {}
+
+    def __call__(self, topic: str, message: str) -> bool:
+        """True if ``message`` is not what was last said for ``topic`` (and so is to be said)."""
+        if self._last.get(topic) == message:
+            return False
+        self._last[topic] = message
+        return True
+
+    def clear(self, topic: str) -> None:
+        """The next message for ``topic`` is said, whatever it is (it went well meanwhile)."""
+        self._last.pop(topic, None)
 
 
 @dataclass
@@ -185,6 +284,8 @@ class LoadState:
     # Whether the helper should lock ASSIST, and name the Area Map INTEL CHIP, now.
     assists_want: bool = False
     intel_want: bool = False
+    # An ending without enough OS Install Disks, said once a load.
+    goal_withheld: bool = False
 
     def leave(self) -> None:
         """No save of this seed is loaded: the next load starts afresh."""
@@ -193,3 +294,4 @@ class LoadState:
         self.return_home = discs.ReturnHome()
         self.ending_unseen = False
         self.assists_want = self.intel_want = False
+        self.goal_withheld = False

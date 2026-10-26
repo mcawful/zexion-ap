@@ -152,3 +152,14 @@ def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) 
     with pytest.raises(native.HelperError, match="copy this release's"):
         native.attach(Game(), tmp_path / "no-build.dll")
     assert "unload" not in _OldHelper.requests
+
+
+def test_the_popups_waiting_are_read_from_the_helpers_reply(monkeypatch) -> None:
+    helper = object.__new__(native.Helper)
+    replies = iter(["pending 3", "pending 0", "pending", "pending -1", "refused no frame"])
+    monkeypatch.setattr(helper, "request", lambda text, *args: next(replies), raising=False)
+    assert helper.popups_pending() == 3
+    assert helper.popups_pending() == 0
+    for _ in range(3):
+        with pytest.raises(native.HelperError, match="unexpected reply to popups"):
+            helper.popups_pending()

@@ -4,7 +4,7 @@ The helper runs inside Zexion: it gets a call from the game's main loop, on the 
 thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
 call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
 per message: ``hello``, ``ping``, ``config``, ``apply``, ``ap_newgame``, ``disarm``,
-``newgame_status``, ``offline_put``, ``unload`` and others (native/README.md).
+``newgame_status``, ``popups``, ``offline_put``, ``unload`` and others (native/README.md).
 ``attach`` loads the helper if needed and configures it with the addresses the client resolved
 by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
 optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it
@@ -32,7 +32,7 @@ from pathlib import Path
 from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
-VERSION = "0.26.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.27.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
@@ -361,6 +361,15 @@ class Helper:
         if reply != "applied" and not reply.startswith("refused "):
             raise HelperError(f"unexpected reply to apply: {reply!r}")
         return reply
+
+    def popups_pending(self) -> int:
+        """How many popups of ``apply`` batches the helper holds that it has not shown yet
+        (``popups``, replying ``pending N``); HelperError for any other reply."""
+        reply = self.request("popups")
+        words = reply.split()
+        if len(words) != 2 or words[0] != "pending" or not words[1].isdigit():
+            raise HelperError(f"unexpected reply to popups: {reply!r}")
+        return int(words[1])
 
     def close(self) -> None:
         if self._handle is not None:

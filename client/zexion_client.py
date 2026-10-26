@@ -213,12 +213,21 @@ class ZexionContext(CommonContext):
     def connected(self, slot: dict) -> None:
         conn = state.Connection.from_slot_data(slot, self.team, self.slot)
         conn.session.helper = self.helper
+        old = self.conn  # a dropped connection's, on reconnecting
+        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
+        if (
+            old is not None
+            and identity == self.seed_state.identity
+            and self.helper is not None
+            and old.session.helper is self.helper
+        ):
+            # The popups it handed this helper are still the helper's to show: not queued again.
+            conn.queued_before = old.session.announced
         self.conn = conn
         # Kept by the server across connections and clients: the Energy Shields given, the
         # locations found, the follow-up popups shown, and how many received items have had
         # their popup (so the items received while no client ran get theirs on connecting).
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
-        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
         if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
             self.seed_state = state.SeedState(identity)
         # Wait for this connection's own read of the stored hints and its item list.
@@ -297,6 +306,7 @@ class ZexionContext(CommonContext):
         conn = self.conn
         if conn is not None:
             conn.session.helper = None
+            conn.helper_lost()  # its popups not shown yet are queued again on the next one
             # A plan the lost helper held is armed again in the next one; a new game just made
             # waits until its save is in play (poll), and a seed that cannot make one
             # stays as it is.
@@ -463,37 +473,34 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     )
 
 
-def stored_announced(ctx: ZexionContext, p: Poll) -> int | None:
-    """The server's count of received items whose popup has been shown, or None until it has
-    been read. A slot with none stored (played before the count, or its data lost) counts
-    every item it holds now as shown, as the client did before: no flood of old popups."""
-    if ctx.conn is None or ctx.conn.announced_key not in ctx.stored_data:
-        return None
-    stored = ctx.stored_data.get(ctx.conn.announced_key)
-    if isinstance(stored, int) and stored >= 0:
-        return stored
-    return len(p.codes)
-
-
 async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) -> None:
-    """Received items' popups, kept across connections: the session starts from the
-    server's count (so an item received while no client ran pops up when it is given,
-    and a reconnect replays none), and the count is stored again as popups are shown
-    (the larger one wins, for two clients of a slot)."""
-    stored = stored_announced(ctx, p)
-    if stored is None or not conn.items_listed:
+    """Received items' popups, kept across connections (client/state.py): the session starts
+    from the server's count of those shown, once it has been read (a slot with none stored
+    counts every item it holds as shown, and stores that at once, so the key exists); and the
+    count is stored again as the helper shows them (the larger one wins, for two clients of a
+    slot). The helper is asked how many are still waiting only while more have been queued than
+    the server holds as shown."""
+    if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
+    raw = ctx.stored_data.get(conn.announced_key)
     current = conn.session
     if current.announced is None:
-        current.mark_announced(min(stored, len(p.codes)))  # counts as received() does
-        conn.announced_sent = stored
+        # Counted as received() counts: Zexion items only.
+        queued, conn.announced_shown = state.announced_start(raw, len(p.codes), conn.queued_before)
+        current.mark_announced(queued)
+    queued, shown = current.announced, conn.announced_shown or 0
+    helper = ctx.helper
+    if helper is None:
+        shown = queued  # nothing waits in a helper: direct writes show no popups
+    elif state.popups_unstored(queued, raw, conn.announced_sent):
+        pending = await asyncio.to_thread(helper.popups_pending)
+        shown = state.popups_shown(queued, pending, shown)
+    conn.announced_shown = shown
+    count = state.announced_to_store(shown, raw, conn.announced_sent)
+    if count is None:
         return
-    count = current.announced
-    if count <= max(stored, conn.announced_sent or 0):
-        return
-    conn.announced_sent = count
-    if not await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups shown"):
-        conn.announced_sent = None  # sent again on the next poll
+    if await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups shown"):
+        conn.announced_sent = count  # else sent again on the next poll
 
 
 def popped(ctx: ZexionContext) -> set[int] | None:
