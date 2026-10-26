@@ -18,19 +18,20 @@ Measured 2026-10-20 with `tools/build_id.py`, on the Steam install that was curr
   - `Files/MapData`: `79a0510f4dbbee0f` (4,590,805 bytes)
   - `Files/Objects`: `72ea406ad4ff9b37` (6,128 bytes)
   - `Files/AreaEvents`: `bb8946fd16dd10ad` (152,802 bytes)
-  - `Files/Enemies`: `8e41d2ef5665ceae` (2,686,584 bytes; added to `tools/build_id.py` on 2026-10-22, read from the same install)
+  - `Files/Enemies`: `8e41d2ef5665ceae` (2,686,584 bytes)\*
   - `Files/Flags`: `e9882b596fc69a59` (8 bytes)
   - `Files/Text`: `3bf8cd5e07ede18f` (114,050 bytes)
-  - `Files/Bosses`: `265feab61b4aa2cf` (1,176,558 bytes; added to `tools/build_id.py` on 2026-10-22,
-    read from the same install)
+  - `Files/Bosses`: `265feab61b4aa2cf` (1,176,558 bytes)\*
+
+\* Fingerprinted on 2026-10-22, from the same install.
 
 ## Engine and mod support (B1)
 
 | Field | |
 |---|---|
-| Value | A native x64 exe with ASLR (DynamicBase and HighEntropyVA), so addresses change on every run. It ships SDL2, SDL2_image, FMOD, FreeType, GLEW, zlib and the Steam API as DLLs beside it, and no Unity, GameMaker or Godot runtime. The only mod folders are `Mods/{Local,Workshop}/{Sprites,Translations}`. That the engine is custom C++ built with MSVC, and that it has no scripting language, is assumed from the owner's inspection of the exe and not recorded here. |
-| Status | measured (machine, PE flags, DLLs, mod folder names); assumed (custom MSVC C++, no scripting) |
-| Method | `tools/build_id.py` (PE header, DLL list); directory listing of the save folder's `Mods/` |
+| Value | A native x64 exe with ASLR (DynamicBase and HighEntropyVA), so addresses change on every run. It ships SDL2, SDL2_image, FMOD, FreeType, GLEW, zlib and the Steam API as DLLs beside it, and no Unity, GameMaker or Godot runtime. The only mod folders are `Mods/{Local,Workshop}/{Sprites,Translations}`, and B1 does not read the sprite ones (`memory.md`, "Other players' items"); whether it reads translation mods is not measured. That the engine is custom C++ built with MSVC, with no scripting language, is assumed (the owner's inspection of the exe; no evidence recorded). |
+| Status | measured (machine, PE flags, DLLs, mod folder names; sprite mods not read, from disassembly); assumed (custom MSVC C++, no scripting) |
+| Method | `tools/build_id.py` (PE header, DLL list); directory listing of the save folder's `Mods/`; disassembly for the sprite paths (`memory.md`) |
 | Build | B1 |
 | Evidence | `build_id.py` and `ls` of the install and save folders, 2026-10-20. |
 
