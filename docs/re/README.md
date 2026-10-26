@@ -29,6 +29,9 @@ Each fact is a heading followed by this table:
 | Build | A build from [`builds.md`](builds.md), or "older build" with what is known about it. |
 | Evidence | The command and what it showed, the date, and the `lab/` file it used (local only, never committed). |
 
+A long Value runs over several rows, one paragraph each: the rows after the first leave the
+field column empty and start with a bold label.
+
 Statuses:
 
 - **assumed**: believed for a stated reason, not yet measured. Fine to build on, but anything that
