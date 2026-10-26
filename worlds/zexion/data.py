@@ -14,18 +14,9 @@ LOCATIONS = [(8, 1), (13, 1), (37, 2), (38, 2), (47, 2), (21, 3), (23, 5), (39, 
 # the second together).
 MIN_SPHERE_ZERO = 3
 
-# Per mode: the starting and pool Energy, missiles and bombs as the save holds them
-# (docs/re/save-format.md), the settings the client checks in the save, whether it has
-# a second teleport target, the seed's settings (as the logic reads them),
-# its item pool (item IDs, one per location), its starting inventory, and its start
-# rooms (the game's candidate index, the cell, the save point's column and row in
-# tiles). The regions every item reaches from a start, and in a mode with a second
-# target the locations it reaches, are the mode's 'regions' and 'location_indices'
-# when every start has the same (else None, and each start has its own). A mode without
-# a second target lists only valid rooms; a mode with one lists every candidate, with
-# the locations its starting items reach from it alone ('sphere0_indices'). Then the
-# mode's randomizer-menu preset (the start-with and pool arrays and settings 10 to 73)
-# and, with one start, the second target the game writes.
+# Per mode ('checked_options': the settings a new game must match). 'regions' and
+# 'location_indices' are None when starts differ (each start then has its own); a mode
+# with a second teleport target lists every candidate with 'sphere0_indices'.
 MODES = {
     'easy': {
         'amounts': (5, 35, 3, 199, 0, 18),

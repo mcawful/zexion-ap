@@ -1,26 +1,12 @@
 """Names for other players' items in the game.
 
-The world fills a location holding another player's item with a stand-in: item 47 (Scrap
-Energy), or 48 (Scrap Chunk) for a progression item, which the helper draws with Archipelago's up
-arrow; and, with the OS Install Disks goal, one holding this player's own disk with 48 too,
-labeled ``@44 OS INSTALL DISK`` (own_label): the disk's look, its glyph and that name. The
-client asks the server whom each such location's item is for (``LocationScouts``) and sends the
-helper a label per map cell, "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE":
-generic names, as many Archipelago games use (Pokemon Red and Blue's "AP ITEM", Castlevania:
-Circle of the Moon's icons by classification), since another game's item names can be long. For
-another Zexion player's item the popup instead shows the item's own icon and the game's name for
-it (or, for an OS Install Disk, an Area Map and an Intel Chip, the name given here: zexion_look),
-and the helper shows the item itself in the room, as the Castlevania worlds show their own
-game's items.
-The helper names each stand-in after the label of the cell its item object carries (an enemy's
-drop lands wherever the enemy dies), so the game's own pickup popup shows it, with the
-Archipelago logo the helper paints (native/README.md, docs/re/memory.md "Other players' items").
-
-Labels keep only what the game's 8 x 8 font draws: upper-case letters, digits, space and a
-little punctuation. A label is two lines joined by a newline, the item and "FOR ALICE" (at most
-24 characters, cut at a word); the helper lays them out in the popup, each centered.
-
-Pure functions; the client does the networking and talks to the helper.
+The world puts a stand-in at each location holding another player's item: 47 (Scrap Energy),
+or 48 (Scrap Chunk) for progression, and with the OS Install Disks goal 48 for this player's
+own disks too. The client scouts those locations and sends the helper a label per map cell:
+"PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE", or ``@N`` for another Zexion player's item
+(its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
+"Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a
+line. Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
 from __future__ import annotations
@@ -66,11 +52,8 @@ def label(progression: bool, player_name: str) -> str:
     return f"{item}\n{who}"
 
 
-# Another Zexion player's items whose name in this game is not what the game's own record
-# says in every seed: the OS Install Disk (the game's DATA DISC), the Area Map, whose record this
-# player's own seed may have the helper rename INTEL CHIP (Area Map Hints), and the Intel Chip,
-# an item that is not the game's (code 101, worlds/zexion/items.py), drawn as the Area Map.
-# Each is its record's look under the name given here.
+# Zexion items shown under a name of our own: the Data Disc as OS INSTALL DISK, and the Area
+# Map and the Intel Chip, whose record a seed with Area Map Hints renames.
 ZEXION_LOOKS = {
     ids.DATA_DISC: (ids.DATA_DISC, "OS INSTALL DISK"),
     ids.AREA_MAP: (ids.AREA_MAP, "AREA MAP"),

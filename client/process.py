@@ -1,15 +1,6 @@
-"""Reading and writing another process's memory with the Windows API alone (ctypes).
-
-What the client needs of a running Zexion: open it by its executable's name, find where its
-module is loaded, and read and write bytes. Archipelago's Windows release bundles no
-third-party library for this, so the client does it itself, and the RE tools (tools/memscan.py)
-and the tests use it too.
-
-``Process`` has the names ``game.Game`` and its tests' fakes use (``read_bytes``,
-``write_bytes``, ``process_handle``, ``process_id``, ``close_process``; pymem's, which the client
-once used), and ``alive``, which ``game.Game`` checks before every read and write
-(``alive``, for a bare handle, is the native helper's loader's too). ``kernel32`` is the one
-binding of kernel32's functions, the helper's loader's and pipe's (client/native.py) among them.
+"""Reading and writing another process's memory with ctypes alone: Archipelago's Windows
+release bundles no library for it. ``kernel32()`` is the one binding of kernel32's functions,
+client/native.py's included.
 """
 
 from __future__ import annotations

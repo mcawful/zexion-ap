@@ -18,13 +18,10 @@ that does not change the energy, missile or bomb numbers the game uses (docs/re/
 "Granting each kind of item"). A grant becomes part of the slot once the game saves, so use
 it only on a lab slot, never on a real save.
 
-``set`` refuses unless ``Game.settled_state()`` reads "in play" (a save loaded, no menu open,
-the player alive, twice a moment apart); the person playing should still be standing still.
-After writing it waits as long again and logs ``unconfirmed`` (exit 2) if the state left
-"in play" or the byte no longer holds the value, which is how a reload undoing the write
-shows up. ``--yes`` records that they
-agreed to the write. The item names are
-read from the game folder, read-only; without it, items are shown by ID.
+``set`` refuses unless ``Game.settled_state()`` reads in play, and after writing checks again
+a moment later, logging ``unconfirmed`` (exit 2) if a reload undid it. ``--yes`` records that
+the person playing agreed. Item names are read from the game folder, read-only; without it,
+items show by ID.
 """
 
 from __future__ import annotations

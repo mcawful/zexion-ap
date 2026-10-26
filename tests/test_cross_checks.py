@@ -1,8 +1,9 @@
 """What the client and the native helper must agree on, read from the helper's sources.
 
 Each value has one home on either side and a copy on the other: the helper's version (the
-client refuses another), the game builds both identify, and the addresses the client sends in
-``config``. These read the C++ as text, so they run without a native build.
+client refuses another), the game builds both identify, the addresses the client sends in
+``config``, and the proxy's off switch. These read the C++ as text, so they run without a
+native build.
 """
 
 from __future__ import annotations
@@ -28,6 +29,11 @@ def braced(text: str, opening: str) -> str:
 def test_the_helper_is_the_version_the_client_asks_for() -> None:
     versions = re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', source("dllmain.cpp"))
     assert versions == [native.VERSION]
+
+
+def test_the_proxy_and_the_client_have_the_same_off_switch() -> None:
+    proxy = (SRC.parent / "proxy" / "version.cpp").read_text(encoding="utf-8")
+    assert f'L"{native.DISABLED_NAME}"' in proxy
 
 
 def test_the_helper_knows_the_builds_the_client_knows() -> None:

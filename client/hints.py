@@ -1,22 +1,13 @@
-"""Area Maps as hints (the world's Area Map Hints option, on by default).
+"""Area Maps as hints (the world's Area Map Hints option).
 
-The world lists where each of this player's progression items is, in any world, in a random
-order (slot data "hints": [player, location id, item code] each). Each Area Map the player
-gets uses the next entry whose item the player does not have yet: the client creates an
-Archipelago hint for it (``CreateHints``), which this player and the player whose world holds
-the item see in their hint lists, and a
-notice in the game names it, worded as the hint: a popup of its text alone, left-aligned
-("HINT: SLIDE MOD IS AT GUARDIA 22,7"). An Area Map comes either from another world,
-received from the server (the notice in place of the received item's popup), or from one of
-this world's own locations,
-which the game hands out itself (the server sends this client no items of its own world): the
-notice follows the game's own pickup popup.
-
-Each Area Map is named by a key, ``r<k>`` for the k-th received one and ``l<i>`` for the one
-at location i, and the entry it used is kept under that key in the server's data storage, so a
-reconnect neither hints again nor names them differently.
-
-Pure functions; the client does the networking.
+The slot data lists where this player's progression items are ("hints": [player, location id,
+item code]), in a random order. Each Area Map the player gets uses the next entry whose item
+they lack: the client creates the Archipelago hint and the helper shows it as a notice, in
+place of a received item's popup or after the game's own pickup popup. Each Area Map has a key
+(``r<k>``: the k-th received; ``l<i>``: the one at location i) under which the server's data
+storage keeps its entry, so a reconnect neither hints again nor renumbers. A received Intel
+Chip counts as the Area Map the game holds (ids.DRAWN_AS). Pure functions; the client does the
+networking.
 """
 
 from __future__ import annotations
@@ -26,14 +17,10 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from .ids import AREA_MAP
 
-# With the world's Area Map Hints on, the Area Maps are Intel Chips (ids.INTEL_CHIP), an item
-# that is not the game's: the client counts a received one as the Area Map the game holds
-# (ids.DRAWN_AS, ZexionContext.received), and the helper names the Area Map's record so
-# (`intel on`).
 NONE_LEFT = (-1, -1)  # an Area Map that found no item left to hint
-POPUP_MAX = 200  # the helper's longest notice (native/src/game_calls.cpp, kNoticeMax)
+POPUP_MAX = 200  # the helper's longest notice (native/src/requests.cpp, kNoticeMax)
 NO_HINT_NOTE = "HINT: NO HINTS LEFT"
-# What the helper keeps of a notice's text (native/src/game_calls.cpp, the notice line's
+# What the helper keeps of a notice's text (native/src/requests.cpp, the notice line's
 # parser): anything else would be dropped there, and counted here.
 POPUP_CHARS = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:")
 
@@ -100,7 +87,7 @@ def popup_note(item: str, location: str, player: str | None = None) -> str:
     """A hint's notice, worded as the server's hint: "HINT: SLIDE MOD IS AT GUARDIA 22,7" for an
     item in this world, "HINT: SLIDE MOD IS AT <LOCATION> IN ALICE'S WORLD" for one in
     ``player``'s, in the characters the helper keeps (POPUP_CHARS). The helper wraps it, every
-    line shown. Past POPUP_MAX (no real name comes near) it drops the words between the names
+    line shown. Past POPUP_MAX it drops the words between the names
     ("HINT: SLIDE MOD - <LOCATION> - ALICE"), and is cut at a word only past that."""
     item, location = _popup_text(item), _popup_text(location)
     whose = None if player is None else _popup_text(player)

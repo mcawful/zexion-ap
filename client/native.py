@@ -1,23 +1,12 @@
 """Load the native helper (native/, ``zexion_ap.dll``) into the running game and talk to it.
 
-The helper runs inside Zexion: it gets a call from the game's main loop, on the game's own
-thread (through the game's import of ``SDL_GL_SwapWindow``; docs/re/memory.md, "The per-frame
-call"), and serves a local named pipe, ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply
-per message: ``hello``, ``ping``, ``config``, ``apply``, ``ap_newgame``, ``disarm``,
-``newgame_status``, ``popups``, ``offline_put``, ``unload`` and others (native/README.md).
-``attach`` loads the helper if needed and configures it with the addresses the client resolved
-by pattern; ``batch_text`` builds an ``apply``: compare-and-set writes to inventory bytes, an
-optional HUD refresh, and popups. The AP client (client/session.py) grants through it when it
-is attached; tools/helper.py loads and unloads it for tests.
-
-Loading: a remote thread runs ``LoadLibraryW`` on the helper's path, with a timeout, under a
-named mutex so two loaders cannot race. The player may instead have put the helper in the
-game's folder with the proxy ``version.dll`` (native/README.md, "The proxy"), which loads it as
-the game starts, under the same mutex; ``attach`` then uses that one. Talking: the client
-opens the pipe at the identification level only (the server cannot act as the user) and checks
-that the process serving it is the game, so another program that took the name first is
-refused. Loading is a change to the running game, made only when asked, and the helper hooks
-nothing in a build it does not know.
+The helper runs on the game's thread once a frame (docs/re/memory.md, "The per-frame call")
+and serves ``\\\\.\\pipe\\zexion-ap-<pid>``, one request and one reply per message
+(native/README.md). ``attach`` uses a helper already loaded (by the proxy, native/README.md,
+"The proxy", or an earlier client) or loads one with ``LoadLibraryW`` from a remote thread,
+under a named mutex so two loaders cannot race; ``batch_text`` builds an ``apply``. The pipe
+is opened at identification level and its server must be the game's process, so a program
+that took the name first is refused.
 """
 
 from __future__ import annotations
@@ -32,11 +21,15 @@ from pathlib import Path
 from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
+# The player's off switch, beside the proxy in the game's folder (native/proxy/version.cpp
+# looks for it in its own folder): while it exists neither the proxy nor the client loads the
+# game folder's helper.
+DISABLED_NAME = "zexion_ap.disabled"
 VERSION = "0.28.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
-APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
+APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
@@ -48,6 +41,11 @@ class HelperError(RuntimeError):
 
 class GameExited(HelperError):
     """The game is no longer running."""
+
+
+class ModDisabled(HelperError):
+    """The player turned the mod off (DISABLED_NAME in the game's folder): the game folder's
+    helper is not loaded. The message is for the player as it is."""
 
 
 def config_text(rvas: dict[str, int]) -> str:
@@ -94,6 +92,7 @@ def pipe_name(pid: int) -> str:
 # --- Windows calls -----------------------------------------------------------------------------
 
 WAIT_OBJECT_0 = 0
+WAIT_ABANDONED = 0x80  # the lock's last owner exited holding it: ours now, as with 0
 INVALID_HANDLE = ctypes.c_void_p(-1).value
 GENERIC_READ_WRITE = 0x80000000 | 0x40000000
 OPEN_EXISTING = 3
@@ -156,14 +155,27 @@ def module_names(process_handle: int, attempts: int = 5) -> list[str]:
     raise HelperError(f"cannot list the game's modules: {_last_error()}")
 
 
-def game_folder_dll(process_handle: int) -> Path | None:
-    """The helper beside the game's executable (where the player put it with the proxy), if
-    there is one there. Only read: the client never writes the game's folder."""
+def game_folder(process_handle: int) -> Path | None:
+    """The folder of the game's executable, where the player puts the mod. Only read: the
+    client never writes the game's folder."""
     path = ctypes.create_unicode_buffer(1024)
     if not _psapi().GetModuleFileNameExW(process_handle, None, path, len(path)):
         return None
-    dll = Path(path.value).parent / DLL_NAME
-    return dll if dll.is_file() else None
+    return Path(path.value).parent
+
+
+def game_folder_dll(process_handle: int) -> Path | None:
+    """The helper beside the game's executable (where the player put it with the proxy), if
+    there is one there."""
+    folder = game_folder(process_handle)
+    dll = folder / DLL_NAME if folder is not None else None
+    return dll if dll is not None and dll.is_file() else None
+
+
+def mod_disabled(process_handle: int) -> bool:
+    """Whether the player has turned the mod off: DISABLED_NAME in the game's folder."""
+    folder = game_folder(process_handle)
+    return folder is not None and (folder / DISABLED_NAME).exists()
 
 
 def is_loaded(process_handle: int) -> bool:
@@ -233,10 +245,7 @@ def load(
     if not mutex:
         raise HelperError(f"could not create the load lock: {_last_error()}")
     try:
-        if _kernel32().WaitForSingleObject(mutex, 5000) not in (
-            WAIT_OBJECT_0,
-            0x80,
-        ):  # 0x80: abandoned
+        if _kernel32().WaitForSingleObject(mutex, 5000) not in (WAIT_OBJECT_0, WAIT_ABANDONED):
             raise HelperError("another loader is busy with this game")
         try:
             if is_loaded(process_handle):
@@ -386,9 +395,8 @@ class Helper:
         self.close()
 
 
-# A helper file that turned out another version than VERSION once loaded, by its path: the
-# file's modification time then, and that version. Neither loaded again nor put in place of
-# the helper it loaded until the file changes, as each retry would give the same version.
+# Helper files that loaded as another version than VERSION, by path: (mtime, version). Not
+# loaded again until the file changes.
 _STALE: dict[str, tuple[int, str]] = {}
 
 
@@ -409,22 +417,24 @@ def _wrong_version(dll: Path, version: str, own_build: bool) -> HelperError:
             "version.dll into Zexion's folder"
         )
     return HelperError(
-        f"the helper in the game's folder is version {version}, and this client needs "
-        f"{VERSION}: copy this release's zexion_ap.dll and version.dll there"
+        f"the copy in Zexion's folder is version {version} and this client needs {VERSION}; "
+        "with Zexion closed, copy this release's zexion_ap.dll and version.dll there"
     )
 
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
-    """The helper in game ``g``, loaded if it is not, and configured. ``g`` is an attached
-    ``game.Game``. A helper already loaded (by the proxy in the game's folder, or by an earlier
-    client) is used. One of another version is unloaded and the built ``dll`` loaded instead,
-    if there is one; a copy in the game's folder that cannot be replaced so is refused, as the
-    player has to update it there, and so is a ``dll`` that loaded as another version, until
-    the file changes (_STALE). ``notes`` collects what the client should tell the player."""
+    """The helper in game ``g``, loaded if absent, and configured. A loaded helper of another
+    version is replaced by the built ``dll`` if there is one; a game-folder copy with no build
+    to replace it, or a ``dll`` known to load as another version (_STALE), is refused; with
+    DISABLED_NAME in the game's folder, no build and none loaded, ModDisabled. ``notes``
+    collects what to tell the player."""
     handle = g.pm.process_handle
     own_build = dll.is_file()  # this client's own build (not from the Launcher's apworld)
     built = own_build
-    if not built:
+    # DISABLED_NAME turns off the game folder's copy only, as the proxy does: a build of this
+    # client's own (native/build, ZEXION_DLL) still loads, and a helper already loaded is used.
+    disabled = not own_build and mod_disabled(handle)
+    if not built and not disabled:
         # No build: the game folder's copy, as the proxy loads it (after an unload, say).
         dll = game_folder_dll(handle) or dll
         built = dll.is_file()
@@ -453,10 +463,16 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
+        if disabled:
+            raise ModDisabled(
+                f"The mod is turned off ({DISABLED_NAME} is in Zexion's folder): items arrive "
+                "without popups, and new games of this seed can't be started. Delete that file "
+                "to turn the mod back on."
+            )
         if not built:
             if not ROOT.is_dir():  # the client in an apworld: the player installs the helper
                 raise HelperError(
-                    "none is loaded in the game: with Zexion closed, copy this release's "
+                    "it isn't installed; with Zexion closed, copy this release's "
                     "zexion_ap.dll and version.dll into Zexion's folder"
                 )
             raise HelperError(f"none is loaded in the game, and there is no build at {dll}")

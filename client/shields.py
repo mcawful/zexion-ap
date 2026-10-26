@@ -2,12 +2,11 @@
 
 An Energy Shield's effect is its pickup's spawn, not an inventory byte (docs/re/memory.md,
 "Received Energy Shields"). The client asks the helper to spawn received ones not given yet,
-one at a time, and counts each in the server's data storage (per team and slot, so a restart
-or a shield received offline is not lost) once the game shows it up in play. One not seen
-within SEEN_SECONDS, or whose player died or whose save was unloaded first, is spawned again
-(shield_outcome); after MISSES in a row the client waits BACKOFF_SECONDS.
+one at a time, and counts each in the server's data storage once the game shows it up in
+play. One not seen within SEEN_SECONDS, or whose player died or whose save was unloaded first,
+is spawned again (shield_outcome); after MISSES in a row the client waits BACKOFF_SECONDS.
 
-Pure logic and the game read; client/zexion_client.py talks to the helper and the server.
+Pure logic and the game read; client/ticks.py talks to the helper and the server.
 """
 
 from __future__ import annotations
@@ -32,10 +31,9 @@ def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> s
     save was unloaded since the spawn, which takes back what the last save did not hold;
     ``overdue``, the time to see it has run out.
 
-    The link to the shield is set from the frame it appears (docs/re/memory.md, "Received
-    Energy Shields"), so a shield up in play counts at once: the check confirms that it
-    appeared, not that it lasts, or a player under fire would be given shield after shield. A
-    shield already up is refreshed by the new one and looks the same, so it counts too."""
+    A shield up in play counts at once (the link is set from its first frame): the check
+    confirms it appeared, not that it lasts, or a player under fire would get shield after
+    shield. A refreshed shield looks the same and counts too."""
     if left_play:
         return AGAIN
     if not in_play:

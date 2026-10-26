@@ -1,18 +1,10 @@
 """A seed's plan from the slot data, the randomizer save's layout, and an Archipelago seed
 written into a fresh Zexion randomizer save.
 
-``SeedPlan`` is what the client works from (``plan_from_slot_data``), and ``section_matches``
-tells whether a loaded randomizer section holds the seed. ``patch`` rewrites a fresh save to
-hold the seed: the item at each location, the start room (and the second teleport target in
-OHKO), the continue point, the revealed map cell (if the game revealed one), the four keys'
-map markers, and the starting items with their current energy and missiles. The client writes
-no saves: ``patch`` is the reference the tests hold the new game's edits
-(client/newgame.py) to, and ``check_fresh`` is tools/gen_world_data.py's check of its saves.
-Offsets and their evidence are in docs/re/save-format.md; a whole Standard save patched by
-this module loaded with its seed, start and starting items (docs/re/memory.md, "The client in
-a live game").
-
-Pure functions over bytes, so the tests run here without the game.
+``SeedPlan`` is what the client works from; ``section_matches`` tells whether a loaded section
+holds the seed. The client writes no saves: ``patch`` is the reference the tests hold
+client/newgame.py's edits to, and ``check_fresh`` is also tools/gen_world_data.py's check.
+Offsets and evidence: docs/re/save-format.md. Pure functions over bytes.
 """
 
 from __future__ import annotations
@@ -39,14 +31,15 @@ MISSILES_NOW = 0x9352  # 16-bit; a fresh save holds containers + 10 x Missile Bo
 CONTINUE = 0x935C  # tile row, tile column (16-bit each)
 SECTION = 0x12814  # the randomizer section, as loaded to +0xCDD6D0
 ITEM_TABLE = 0x12A80  # item ID per location
-START_RECORD = 0x12B24  # candidate index, tile column, tile row
+START_RECORD = 0x12B24  # start-candidate index - 1, tile column, tile row
 SECOND_START = 0x12EE0  # the same, for the second teleport target
 AMOUNTS = 0x12ED4  # starting and pool Energy, missiles, bombs (six 16-bit values)
 OPTIONS = 0x1308F  # setting t at OPTIONS + t
 
 SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
-# Where the save keeps current bombs is not known, so a seed cannot start with bombs.
+# Where the save keeps current bombs is not known, so ``patch`` refuses starting bombs (and
+# worlds/zexion/starting.py refuses them in generation).
 BOMB_ITEMS = (ids.MEGA_BOMB, ids.BOMB_BOX)
 
 
@@ -79,7 +72,7 @@ class SeedPlan:
 
     location_items: tuple[int, ...]  # item ID per location, as the game should hold it
     start_items: dict[int, int]  # item ID -> count
-    start: tuple[int, int, int]  # candidate index, tile column, tile row
+    start: tuple[int, int, int]  # start-candidate index - 1, tile column, tile row
     second_start: tuple[int, int, int] | None
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value

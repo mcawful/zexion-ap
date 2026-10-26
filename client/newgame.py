@@ -19,17 +19,11 @@ Anything else (filler, other key sets, more than 9 containers or Mega Bombs) can
 expressed: ``NewGameError``. The world refuses such starting items in generation
 (worlds/zexion/starting.py), so the client meeting one is a bug to report.
 
-For the ARCHIPELAGO choice (a mode with one start), the request also carries ``menu``
-lines: the randomizer menu's state (``+0xDF7340``) as the seed's mode, which the helper's
-ARCHIPELAGO choice sets before it runs the game's placement and puts back afterwards
-(docs/re/memory.md, "The game-mode panel"): the seed text, the two 27-entry arrays, the
-amounts, and settings 10 to 73 except 12 (the player's color choice). The second teleport
-target is then written as START GAME would write it, since the choice skips that step. For a
-mode with Double Teleport (OHKO), whose placement reads the start table the menu builds when it
-opens, the request also carries that table (``start_table``), which the helper fills in if
-the menu has not built it; the table is used only in the game build it was measured on, and
-its flag for the second start is written on the RANDOMIZER path too. Without a menu setup, the
-player starts the seed from RANDOMIZER, its mode and START GAME.
+With ``offer_choice`` (ARCHIPELAGO) the request also carries ``menu`` lines, the randomizer
+menu's state as the seed's mode, which the helper sets around the game's placement
+(docs/re/memory.md, "The game-mode panel"), and what START GAME's skipped first step would
+write: the second target, or for Double Teleport (OHKO) the start table the placement reads,
+used only on the build it was measured on.
 
 Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
 start (``save_patch.SECTION``).

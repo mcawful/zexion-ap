@@ -12,8 +12,10 @@ world refuses those items in generation (``problems``, from generate_early), wit
 - Missile Containers: 9 at most, the mode's own included (the new game takes one missile amount,
   containers plus 10 per Missile Box, and the game splits it back into tens and containers);
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
-- no Mega Bombs or Bomb Boxes (kept from when the client also wrote seeds into saves, where
-  current bombs' place is not known);
+- no Mega Bombs or Bomb Boxes, not supported yet: client/newgame.py writes them as the new
+  game's bomb amount, but the game's use of that amount is from disassembly only (docs/re/
+  memory.md, "Starting a new game"), and client/save_patch.py, the reference the new game's
+  edits are tested against, has no place for current bombs;
 - no Scrap, Area Map or Energy Shield (no way into a new game; the shield is a pickup's spawn);
 - no Intel Chip or Assist Unlock: the client acts on them only as received (a hint, the assist
   lock lifted), and a starting one is never received (the Allow Assists option lifts the lock);
@@ -34,8 +36,8 @@ MAX_CONTAINERS = 9
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
 START_WITH |= {32, 33, 34}
 NEVER = {
-    2: "the client cannot write starting bombs",
-    37: "the client cannot write starting bombs",
+    2: "starting bombs are not supported yet",
+    37: "starting bombs are not supported yet",
     46: "a new game cannot start with Scrap",
     47: "a new game cannot start with Scrap",
     48: "a new game cannot start with Scrap",

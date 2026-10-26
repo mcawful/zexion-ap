@@ -7,8 +7,8 @@ times a second from a worker thread and does the networking.
 Safety, in order:
 
 - Nothing happens unless two reads of the game, ``SETTLE_SECONDS`` apart, agree on everything
-  used (state, map, inventory, supplies, randomizer section). That covers a load in progress
-  and the moment a pickup is being recorded.
+  the poll reads (``Snapshot``). That covers a load in progress and the moment a pickup is
+  being recorded.
 - The loaded save must be a randomizer save (its marker reads 1: loading a normal save leaves
   the previous seed's section in memory) and hold this seed (the section's item table and
   start, see ``save_patch.section_matches``); otherwise no check is sent and nothing is
@@ -22,18 +22,10 @@ Safety, in order:
   way through recording (the map cell set, the inventory byte not yet) is never taken for an
   item owed.
 
-With the native helper attached (``Session.helper``), the grants go to the game as one batch
-the helper applies between frames (client/native.py): it checks again that the game is in
-play and that every byte still holds what this poll read, writes all or none, sets missiles,
-bombs and energy as a pickup would, refreshes the HUD, and shows the game's popup for each
-item received not yet handed to it (``announced``, which starts from the server's count of
-popups shown, ``mark_announced``; until that is known nothing is given through the helper;
-the client stores that count as the helper shows them, client/state.py); an Area Map with a
-hint gets a
-notice instead, the hint's text alone (``notes``, client/hints.py). When nothing is owed but
-max missiles or bombs lag behind the counts, it sends a refresh that sets them. A helper that
-fails is dropped, and grants go back to direct writes. Both ran in the game on 2026-10-22
-(native/README.md).
+With the helper attached (``Session.helper``) the grants go as one batch the helper applies
+between frames, re-checking each byte, with the game's popup for each item not yet
+``announced`` (nothing goes through the helper until that count is known). A helper that
+fails is dropped and grants go back to direct writes.
 """
 
 from __future__ import annotations
@@ -47,19 +39,15 @@ from . import discs, game, ids, native, reconcile, save_patch
 logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
-# The goal: flag 250 with flag 211 clear. The ending sets flag 250 and clears flags 185 to 212
-# when its first cutscene starts, and both are saved. The escape skip's YES sets flag 250 too,
-# before the ship, with flag 211 set. Both live-tested (2026-10-22 and 2026-10-23):
-# docs/re/memory.md, "The ending: flag 250" and "The escape skip".
+# The goal: flag 250 with flag 211 clear. The ending sets 250 and clears 185-212; the escape
+# skip's YES sets 250 with 211 still set (docs/re/memory.md, "The ending: flag 250" and "The
+# escape skip"). It is always the ending: the world sends Abridged Finale (setting 32) as 0 and
+# newgame's expect lines require it.
 ENDING_FLAG, FINALE_FLAG = 250, 211
 # Set once the scanner has shown where the keys are, or said how many OS Install Disks are
 # needed (docs/re/memory.md, "The scanner"); also set from the start of a game whose map is
 # revealed in full.
 SCANNED_FLAG = 39
-# The game's Abridged Finale (setting 32) would make the grab the game's victory, and whether
-# its end reaches flag 250 is not known; the world sends setting 32 as 0 in every mode
-# (worlds/zexion/data.py, checked_options), which the new game requires of the game
-# (newgame's expect lines), so the goal is always the ending.
 
 
 @dataclass(frozen=True)
@@ -105,8 +93,7 @@ def read_once(g: game.Game) -> Snapshot:
 
 
 def save_stamp(g: game.Game) -> bytes:
-    """The loaded slot's save stamp, or b"" if the slot number reads out of range (only the
-    landing pod's RETURN HOME then waits)."""
+    """The loaded slot's save stamp, or b"" if the slot number is out of range."""
     try:
         return g.save_stamp()
     except game.GameNotRunning:
@@ -153,10 +140,8 @@ class Session:
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
-        # How many received items have been handed to the helper with their popup, or written
-        # directly (with none): the next batch's first, so no popup is queued twice. None until
-        # the server's count of shown popups has been read (announced_tick, mark_announced);
-        # until then nothing is given through the helper.
+        # Received items already handed over (helper popup or direct write); None until the
+        # server's count is read.
         self._announced: int | None = None
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
@@ -203,23 +188,17 @@ class Session:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
         except game.GameError:
             seed = None
+        # Another seed's save is said once a load by the game loop (state.OTHER_SAVE).
         if seed is None or list(seed.locations) != self.cells:
-            self.say_once("no seed", "The loaded save is not a randomizer save of this seed.")
             self._due = None
             self._leave()
             if seed is None:
                 return Step(left_seed=True)  # a normal save: nothing to say in the game
             return Step(left_seed=True, other_seed=True, state=snap.state)
         if not save_patch.section_matches(snap.blob, self.plan):
-            self.say_once(
-                "other seed",
-                "The loaded save holds a different seed: nothing is sent or given. "
-                "Load this seed's save.",
-            )
             self._due = None
             self._leave()
             return Step(left_seed=True, other_seed=True, state=snap.state)
-        self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
         goal = snap.ended >= 1 and snap.finale == 0
         step = Step(
@@ -324,7 +303,7 @@ class Session:
             if item in ids.PROGRESSIVE:
                 if item in weapons:
                     item = ids.PROGRESSIVE[item]
-
+                # The weapon is owned from now on, whichever byte this one set.
                 weapons.add(received[index])
             sender = senders[index] if senders and index < len(senders) else ""
             note = (notes or {}).get(index)

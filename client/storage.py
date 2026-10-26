@@ -20,7 +20,8 @@ from .ids import ITEM_ID_BASE, LOCATION_ID_BASE
 if TYPE_CHECKING:
     from .zexion_client import Poll, ZexionContext
 
-logger = logging.getLogger("Client")  # CommonClient's
+logger = logging.getLogger("Client")  # CommonClient's: the client's window shows it
+log = logging.getLogger("Zexion")  # the log only (client/ticks.py, log)
 
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
 FOUND_RESEND_SECONDS = 5.0  # likewise for the locations found (store_found)
@@ -59,7 +60,8 @@ async def store(
             ]
         )
     except Exception as exc:
-        logger.warning(f"{what} failed ({exc}).")
+        logger.warning(f"{what} failed (connection lost?); trying again.")
+        log.warning(f"{what} failed ({exc}).")
         return False
     return True
 
@@ -204,7 +206,8 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
         for player, locations in by_player.items():
             await ctx.send_msgs([{"cmd": "CreateHints", "player": player, "locations": locations}])
     except Exception as exc:  # a closing connection: tried again once connected
-        logger.warning(f"Creating the Area Map hints failed ({exc}); trying again.")
+        logger.warning("Creating the Area Map hints failed (connection lost?); trying again.")
+        log.warning(f"Creating the Area Map hints failed ({exc}).")
         return
     seed.hints_mine = (seed.hints_mine or {}) | new
     await store_hints(ctx, conn)

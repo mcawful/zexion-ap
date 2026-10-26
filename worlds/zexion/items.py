@@ -8,13 +8,10 @@ Disk of the OS Install Disks goal (the Goal option): an Archipelago-only count, 
 into the game's inventory, since holding one changes the game's endings (docs/re/memory.md, "The
 Data Disc").
 
-Two items are not the game's. Assist Unlock (code 100), never in the pool: sent from the server
-console (``/send PLAYER Assist Unlock``) as an escape hatch, it makes the client stop locking the
-assist menu for a seed generated with Allow Assists off (client/zexion_client.py; live-tested
-2026-10-23). Intel Chip (code 101): the Area Map under the name its use has with Area Map Hints
-on, which puts it in the pool in the Area Maps' places. The game holds and draws it as the Area
-Map (DRAWN_AS), whose record the client's helper renames INTEL CHIP, its map reveal turned off,
-while the seed's save is loaded (docs/re/memory.md, "Intel Chips").
+Two items are not the game's: Assist Unlock (100), never in the pool, sent from the server
+console to lift the client's assist lock; and Intel Chip (101), the Area Map as a hint (Area
+Map Hints), which the game holds and draws as the Area Map (DRAWN_AS) and the helper renames
+INTEL CHIP (docs/re/memory.md, "Intel Chips").
 """
 
 from __future__ import annotations
@@ -26,8 +23,6 @@ from .logic import WEAPON_UPGRADES
 GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
 
-# Not items of the game's: the client's escape hatch from the assist lock, and the Area Map as a
-# hint (the Area Map Hints option), which the game holds and draws as the Area Map.
 ASSIST_UNLOCK = 100
 AREA_MAP, INTEL_CHIP = 49, 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
@@ -85,10 +80,11 @@ NAMES = {
 PROGRESSION = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37}
 # Supplies, with many copies in every pool (Energy Tank, Missile Container, Mega Bomb, Missile
-# Box, Bomb Box): progression for the rules' counts, but skipped by progression balancing (the
-# owner's call) and not worth an Area Map's hint (worlds/zexion/world.py).
+# Box, Bomb Box): progression for the rules' counts, but skipped by progression balancing and
+# not worth an Area Map's hint (worlds/zexion/world.py).
 SUPPLIES = {0, 1, 2, 36, 37}
-# Intel Chip as the Area Map was: filler, so excluded locations still have filler to take.
+# Intel Chips are filler like the Area Maps they replace, so excluded locations still have
+# filler.
 FILLER = {SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 

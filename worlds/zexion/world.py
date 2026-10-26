@@ -50,16 +50,13 @@ GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
 AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
-# What the game holds at a location whose item is not this world's to hand out natively.
-# Another player's item: Scrap Energy, or Scrap Chunk for a progression item, which the
-# client's helper shows as an Archipelago item (the progression one with its up arrow), named at
-# pickup (client/aplabels.py). A location left out, and this world's own Scrap Energy and Scrap
-# Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item, or (48)
-# one of this world's own OS Install Disks, which the game must not hand out (location_items);
-# all are filler the game counts as Scrap Metal.
+# Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
+# progression), or this world's own OS Install Disk (Scrap Chunk). This world's own Scrap
+# Energy and Chunk are written as Scrap Metal, so 47 and 48 always mean a stand-in
+# (client/aplabels.py).
 FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
 # Supplies (items.SUPPLIES) are progression for the rules' counts, but not worth an Area Map's
-# hint. The OS Install Disks are hinted: each is a step to the goal (the owner's call).
+# hint. The OS Install Disks are hinted: each is a step to the goal.
 NOT_HINTED = SUPPLIES
 # With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
@@ -251,13 +248,10 @@ class ZexionWorld(World):
                 location.access_rule = rules.requirement(self, entries, tuple(cell), cells)
             region.locations.append(location)
 
-        # The goal is the ending (the client reads flag 250: docs/re/memory.md, "The ending:
-        # flag 250"). The logic asks only for the grab of Zexion in the core: after it, the helper
-        # has the game offer its skip to the ship ("The escape skip"); without the helper the
-        # escape needs one of several combinations of items, the Zenith Thrusters alone being
-        # one (reported by the owner). The four keys open the core; RandoCells does not model
-        # them. With the OS Install Disks goal there is no event: the disks are the goal
-        # (set_rules).
+        # The core goal is the grab of Zexion behind the four keys (RandoCells does not model
+        # the keys); the client sends the goal at the ending (docs/re/memory.md, "The ending:
+        # flag 250"), reached through the helper's escape skip or the escape itself. The OS
+        # Install Disks goal has no event.
         if self.disc_hunt:
             return
         core = by_index[cells[GOAL_CELL]]
@@ -401,12 +395,10 @@ class ZexionWorld(World):
         return setup
 
     def location_items(self) -> list[int]:
-        """The item code the game should hold at each of its locations: this world's own items
-        as the game's item IDs (a progressive weapon as the weapon; the game makes a second
-        copy the upgrade, and Scrap Energy and Scrap Chunk as Scrap Metal), FOREIGN where another
-        world's item is (FOREIGN_PROGRESSION for a progression item, and for this world's own
-        OS Install Disk, which the game must not hand out), and Scrap Metal where the location was
-        left out."""
+        """The item code the game holds at each location: this world's own item as its game ID
+        (a progressive weapon as the weapon; Scrap Energy and Chunk as Scrap Metal), FOREIGN or
+        FOREIGN_PROGRESSION for another world's item and for this world's own OS Install Disk,
+        and Scrap Metal at a left-out location."""
         out = []
         for i in range(len(data.LOCATIONS)):
             if i not in self.kept_locations:

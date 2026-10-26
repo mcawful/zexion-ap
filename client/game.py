@@ -1,36 +1,16 @@
 """Find and access Zexion's game state in the running process, by byte pattern.
 
-Nothing here uses a fixed address. On attach, the game's build is identified from its PE
-header and refused unless it is in ``patterns.KNOWN_BUILDS``; then every target the client
-uses (``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) is
-located by scanning the code section of Zexion.exe as loaded. Each
-pattern must match exactly once (overlapping matches count) and all of a target's patterns
-must lead to the same address, or ``PatternError`` is raised and nothing is read or written.
+``attach`` refuses a build not in ``patterns.KNOWN_BUILDS`` and locates each target
+(``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) by scanning
+.text; every pattern must match exactly once and a target's patterns must agree, else
+``PatternError`` and nothing is touched. Every read and write first checks the process is
+alive (``GameNotRunning`` only once it has exited).
 
-Every read and write first checks that the attached process is still running. A failure is
-``GameNotRunning`` only when the process has exited; any other failure is a ``GameError``
-naming the address, because it means something is wrong with what was located.
-
-Item writes are compare-and-set (``set_item``, and ``set_supplies`` for the energy, missile
-and bomb numbers): the caller says what it expects to be there, the module re-reads it just
-before writing and refuses if it differs, and reads the write back (``ReadBackMismatch`` if the
-game changed it straight away). That cannot see a
-later reload of the inventory: a grant lasts only once the game has saved it, and a death
-returns to the last save (measured; docs/re/memory.md, "Granting each kind of item"), so the
-delivery layer (client/session.py) gives again whatever a reload took away.
-
-``state()`` says whether the game is in play: a save is loaded, no menu is open, and the
-player is alive (docs/re/memory.md, "Telling play from menus, the title screen and death").
-It reads three values one after another, so the state can change between them and right after.
-Worse, loading a save (which is also how the game respawns after a death) sets two of them
-before it copies the inventory back from the save, so one ``state()`` can read IN_PLAY in the
-middle of a load, and a write made then reads back fine and is overwritten a moment later.
-``settled_state()`` reads the state twice, ``SETTLE_SECONDS`` apart, and only agrees on
-IN_PLAY when both do; a caller writes only then, and afterwards waits as long again and checks
-that the state is still IN_PLAY and the byte still holds what it wrote. Even that only says
-the write was not undone at once: the save is the final word. Room transitions and saving kept
-the in-play values in a recording of the bytes; the ending's cutscenes read as play at times
-(docs/re/memory.md, "The ending: flag 250").
+Item writes are compare-and-set and read back. A grant lasts only once the game saves it
+(docs/re/memory.md, "Granting each kind of item"); client/session.py gives again what a reload
+took. ``state()`` can read IN_PLAY mid-load (the load sets two of its three values before
+restoring the inventory), so writers use ``settled_state()`` and re-check after writing
+(docs/re/memory.md, "Telling play from menus, the title screen and death").
 """
 
 from __future__ import annotations
@@ -47,9 +27,8 @@ from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Tar
 
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
-# The loaded slot's block from +0x9354 (file 0x9356): a 16-bit value that changed with each
-# save (play time, assumed), then the continue point's row (+0x935A) and column (+0x935C). The
-# game rewrites the block on every save (measured, docs/re/save-format.md).
+# The loaded slot's block from +0x9354: a stamp that changes with each save (play time,
+# assumed), then the continue point's row and column (docs/re/save-format.md).
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
 PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
 
@@ -69,10 +48,9 @@ SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
 # One read covering the supplies, the player's cell and the inventory (player_state).
 PLAYER_SPAN = (SUPPLY_SPAN[0], INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
-# The player's link to their Energy Shield (docs/re/memory.md, "Received Energy Shields"): a
-# pointer to the shield object, then that object's handle (a 32-bit serial number, then its
-# pool's type, 2). The pointer is 0 while no shield is up. The object holds the same handle
-# at +0x1D8, with serial 0 once its slot is free, and its own address at +0x3C8.
+# The player's link to their Energy Shield: pointer, then handle (serial, pool type 2). The
+# object repeats the handle at +0x1D8 and its own address at +0x3C8 (docs/re/memory.md,
+# "Received Energy Shields").
 SHIELD_LINK = 0xFE8
 SHIELD_POOL_TYPE = 2
 OBJECT_HANDLE = 0x1D8
@@ -318,7 +296,7 @@ class Game:
                 out[key] = self._read_pointer(self.base + rva, size)
         return out
 
-    # Every access goes through these two, so the liveness check cannot be skipped.
+    # Every access goes through _read_pointer or _write, which check liveness first.
     def _read(self, target: str, offset: int, size: int) -> bytes:
         return self._read_pointer(self.base + self.rva[target] + offset, size)
 
@@ -364,7 +342,9 @@ class Game:
         """``count`` of the loaded game's flags from ``first``, in one read (0 to 0x9C3;
         docs/re/memory.md, "Keys, the gates and the key markers" and "The ending")."""
         if first < 0 or count <= 0 or first + count > FLAGS:
-            raise ValueError(f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X}")
+            raise ValueError(
+                f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X} flags"
+            )
         return self._read("flags", first, count)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
@@ -455,8 +435,8 @@ class Game:
         return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Located only for
-        the RE tools, which attach with every target (``patterns.TOOL_TARGETS``).
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Only the RE tools
+        locate it (``patterns.TOOL_TARGETS``).
 
         Not a per-location signal; the map grid is (docs/re/memory.md).
         """

@@ -139,7 +139,7 @@ def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) 
     # copy of another version must be refused, not unloaded and loaded again.
     folder_copy = tmp_path / "zexion_ap.dll"
     folder_copy.write_bytes(b"")
-    monkeypatch.setattr(native, "game_folder_dll", lambda handle: folder_copy)
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
     monkeypatch.setattr(native, "is_loaded", lambda handle: True)
     monkeypatch.setattr(native, "Helper", _OldHelper)
     _OldHelper.requests = []
@@ -203,8 +203,7 @@ def stand_in_attach(monkeypatch, game: _Game) -> None:
 
 
 def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkeypatch) -> None:
-    # Before, every retry unloaded the helper the stale build had loaded, loaded the same file
-    # again, and failed the version check after loading.
+    # Each retry must not unload and reload the same stale file.
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")
     game = _Game()
@@ -235,6 +234,55 @@ def test_a_stale_build_is_not_loaded_into_a_game_without_a_helper(tmp_path, monk
     with pytest.raises(native.HelperError, match="rebuild native"):
         native.attach(game, built)
     assert game.loads == 1
+
+
+def test_the_off_switch_is_read_from_the_games_folder(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
+    assert not native.mod_disabled(1)
+    (tmp_path / "zexion_ap.disabled").write_bytes(b"")
+    assert native.mod_disabled(1)
+    monkeypatch.setattr(native, "game_folder", lambda handle: None)
+    assert not native.mod_disabled(1), "no folder read: not turned off"
+
+
+def turned_off(tmp_path: Path, monkeypatch) -> Path:
+    """A game folder holding the helper and zexion_ap.disabled; its helper's path."""
+    folder_copy = tmp_path / "zexion_ap.dll"
+    folder_copy.write_bytes(b"")
+    (tmp_path / "zexion_ap.disabled").write_bytes(b"")
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
+    return folder_copy
+
+
+def test_a_turned_off_mod_is_not_loaded_from_the_games_folder(tmp_path, monkeypatch) -> None:
+    turned_off(tmp_path, monkeypatch)
+    game = _Game()
+    game.file_version = native.VERSION
+    stand_in_attach(monkeypatch, game)
+    with pytest.raises(native.ModDisabled, match="zexion_ap.disabled"):
+        native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
+    assert game.loads == 0
+
+
+def test_a_turned_off_mod_still_loads_the_clients_own_build(tmp_path, monkeypatch) -> None:
+    turned_off(tmp_path, monkeypatch)
+    built = tmp_path / "build" / "zexion_ap.dll"
+    built.parent.mkdir()
+    built.write_bytes(b"")
+    game = _Game()
+    game.file_version = native.VERSION
+    stand_in_attach(monkeypatch, game)
+    native.attach(game, built)
+    assert game.loads == 1 and game.loaded == native.VERSION
+
+
+def test_a_turned_off_mod_already_loaded_is_used(tmp_path, monkeypatch) -> None:
+    turned_off(tmp_path, monkeypatch)
+    game = _Game()
+    game.loaded = native.VERSION
+    stand_in_attach(monkeypatch, game)
+    native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
+    assert game.loads == 0 and game.unloads == 0
 
 
 def test_the_popups_waiting_are_read_from_the_helpers_reply(monkeypatch) -> None:

@@ -1,7 +1,6 @@
-"""client/patterns.py against patterns_frozen.json, a copy of every build and pattern as they
-were before the file was rewritten to one line per pattern (``rip`` and ``at``): the rewrite
-changed none. A change to the patterns updates the copy in the same change, so it shows in
-review: ``.venv/Scripts/python tests/test_patterns.py`` writes it from client/patterns.py.
+"""client/patterns.py against patterns_frozen.json, a copy of every build and pattern. A change
+to the patterns updates the copy in the same change, so it shows in review:
+``.venv/Scripts/python tests/test_patterns.py`` rewrites it.
 """
 
 from __future__ import annotations

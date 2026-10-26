@@ -260,7 +260,7 @@ class TestOHKO(ZexionTestBase):
 
 
 class TestSlotDataForTheClient(ZexionTestBase):
-    """What client/save_patch.py writes into the save comes from here."""
+    """The slot data the client builds its plan and new game from."""
 
     def test_location_items_are_this_worlds_items_as_game_ids(self) -> None:
         distribute_items_restrictive(self.multiworld)
@@ -399,7 +399,7 @@ class TestIntelChips(ZexionTestBase):
 
 class TestIntelChipsLeaveFillerForExcludedLocations(ZexionTestBase):
     """Standard with the OS Install Disks goal's defaults has no Scrap left: its filler is the
-    Intel Chips, which an excluded location can take (found by the logic review)."""
+    Intel Chips, which an excluded location can take."""
 
     options = {"goal": "os_install_disks", "os_install_disks": 16, "os_install_disks_required": 12}
 

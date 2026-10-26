@@ -14,16 +14,10 @@ Only the game process is touched; nothing here opens the install or the save fol
 are only good for one run of the game (ASLR); each output also gives the address relative to
 the start of its memory region, and to Zexion.exe's base when it lies inside the module.
 
-``classify`` and ``record`` work in RVAs (offsets from Zexion.exe's base), so they hold across
-restarts of the game. ``classify`` takes ``snap --module-only`` snapshots grouped by the state
-they were taken in, keeps the bytes that hold one value in every snapshot of each group, and of
-those the ones whose value in the target group (default: the first) differs from every other
-group's. It prints them, most distinct values first, and with ``--out`` saves them to
-``lab/mem/NAME.json`` for ``record``. ``record`` polls those bytes in the running game and logs
-the changes seen between polls to ``lab/mem/NAME.log`` (a change undone within one poll is not
-seen; the end line gives the number of polls and the longest gap); it reads only. Snapshots and
-candidate files record the game build (PE timestamp and image size), and both commands refuse to
-mix builds.
+``classify`` and ``record`` work in RVAs, so they hold across restarts: ``classify`` keeps the
+bytes whose value is stable within each group of ``snap --module-only`` snapshots and differs
+in the target group (``--out`` saves them to lab/mem/NAME.json); ``record`` polls them, read
+only, and logs changes to lab/mem/NAME.log. Both refuse to mix builds.
 """
 
 from __future__ import annotations

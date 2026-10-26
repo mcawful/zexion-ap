@@ -1,11 +1,6 @@
-"""The few PE header fields the client and the tools read, with the standard library only.
-
-``parse`` reads the start of a PE image, either a file (Zexion.exe or a copy) or the module as
-the game has it loaded (its first 4 KiB hold the whole header): the COFF machine and timestamp,
-the optional header's SizeOfImage and DllCharacteristics, and the section table. The offsets
-are the PE format's own (Microsoft's PE/COFF specification), the same for PE32 and PE32+ up to
-DllCharacteristics. A section table that runs past the bytes given is cut where they end, so
-the first 4 KiB of a loaded image are enough for the sections that fit in them.
+"""The few PE header fields the client and tools read (machine, timestamp, SizeOfImage,
+DllCharacteristics, sections), from a file or a loaded image's first 4 KiB. A section table
+that runs past the bytes given is cut where they end.
 """
 
 from __future__ import annotations

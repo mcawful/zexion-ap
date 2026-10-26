@@ -9,14 +9,10 @@ counts them,
                 + the disks received from other worlds
                 + this world's own disk locations the player has found
 
-and shows the count in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scanner has said
-how many are needed). This world's own are stand-ins in the save's item table, listed by
-location in the slot data, so the game hands out none. "Found" is what the client has reported
-from the game's map, kept in the server's data storage so every save of the seed counts it
-(storage.own_found), not what the server has as checked, which after a release is every
-location; the real disc the game gives for beating its secret boss does not count.
-
-Pure functions; the client does the networking and talks to the helper.
+Shown in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scanner has said how many).
+"Found" is what clients reported from the game's map (storage.own_found), not the server's
+checked set, which a release fills; the disc the game gives for its secret boss does not count.
+Pure functions; client/ticks.py talks to the helper.
 """
 
 from __future__ import annotations
@@ -129,8 +125,8 @@ def scan_line(required: int) -> str:
     return f"COLLECT {required} OS INSTALL DISK{'' if required == 1 else 'S'}!"
 
 
-# What the player is told once they have enough disks: RETURN HOME WITH THE DISKS? is offered
-# only after a save at the landing pod, the seed's start (the owner's design, 2026-10-25).
+# Told once the player has enough disks: RETURN HOME WITH THE DISKS? is offered only after a
+# save at the landing pod, the seed's start.
 POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
 
 # The randomizer section's start record (docs/re/save-format.md, "The continue point and the
@@ -167,13 +163,11 @@ def saved_at_start(stamp: bytes, blob: bytes) -> bool:
 
 @dataclass
 class ReturnHome:
-    """For one load of this seed's save, in play: the reminder (POD_NOTE), once the player has
-    enough disks, and RETURN HOME WITH THE DISKS? after each save at the landing pod while they
-    do. A save shows as a new stamp (the game rewrites the slot's block, play time and all, on
-    every save); the first stamp of a load, or of another slot, is not one. The save must leave
-    the pod as the continue point with the player in the start cell (the game also saves during
-    the escape, keeping the last continue point), and the offer lapses once the player leaves
-    that cell."""
+    """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,
+    and RETURN HOME WITH THE DISKS? after each save at the pod. A save shows as a new stamp in
+    the same slot; it counts only with the pod as continue point and the player in the start
+    cell (the escape saves too, keeping the old continue point), and the offer lapses when the
+    player leaves that cell."""
 
     reminded: bool = False
     stamp: bytes | None = None

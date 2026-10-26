@@ -8,7 +8,7 @@ request, docs/re/memory.md, "DeathLink") in turn, once the player is in play, so
 together kill the player twice, the second after the respawn. A death the helper deals is not
 sent back; a death of the player's own is sent and leaves the queue as it was.
 
-Pure logic; client/zexion_client.py reads the game and talks to the server and the helper.
+Pure logic; client/ticks.py (deathlink_tick) sends deaths and has the helper deal them.
 """
 
 from __future__ import annotations

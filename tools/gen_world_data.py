@@ -115,8 +115,8 @@ def location_ok(grid, cell, have, settings, reached: set) -> bool:
 
 
 # The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
-# Double Teleport, Safety (code 69's mode) and Gates. The client refuses a save whose
-# settings differ from the mode's here.
+# Double Teleport, Safety (code 69's mode) and Gates. The helper refuses a new game whose
+# settings differ (client/newgame.py, expect lines).
 CHECKED_OPTIONS = (30, 31, 32, 33, 37, 42, 43, 72, 73)
 ARRAY = 27
 # The section's 27-entry arrays, the start-with array then the pool (docs/re/save-format.md).
@@ -131,7 +131,9 @@ PRESETS = {
         "ohko": (0x20D260, 0x20D200, 0x20D420),
     },
 }
-GUNS = range(4, 9)  # the random gun and guns first change these and their upgrades'
+# The array entries of the five guns (4-8) and their upgrades (13-17), which the Random Gun
+# and Guns First settings change.
+GUNS = range(4, 9)
 GUN_UPGRADES = range(13, 18)
 COLOR = 12  # the player's choice, not the mode's
 OBJECT_25 = 25  # a start room holding it is flagged in the menu's start table
@@ -387,18 +389,9 @@ def render(d: dict, source: str) -> str:
         "# the second together).",
         f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
         "",
-        "# Per mode: the starting and pool Energy, missiles and bombs as the save holds them",
-        "# (docs/re/save-format.md), the settings the client checks in the save, whether it has",
-        "# a second teleport target, the seed's settings (as the logic reads them),",
-        "# its item pool (item IDs, one per location), its starting inventory, and its start",
-        "# rooms (the game's candidate index, the cell, the save point's column and row in",
-        "# tiles). The regions every item reaches from a start, and in a mode with a second",
-        "# target the locations it reaches, are the mode's 'regions' and 'location_indices'",
-        "# when every start has the same (else None, and each start has its own). A mode without",
-        "# a second target lists only valid rooms; a mode with one lists every candidate, with",
-        "# the locations its starting items reach from it alone ('sphere0_indices'). Then the",
-        "# mode's randomizer-menu preset (the start-with and pool arrays and settings 10 to 73)",
-        "# and, with one start, the second target the game writes.",
+        "# Per mode ('checked_options': the settings a new game must match). 'regions' and",
+        "# 'location_indices' are None when starts differ (each start then has its own); a mode",
+        "# with a second teleport target lists every candidate with 'sphere0_indices'.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
