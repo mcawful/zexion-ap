@@ -23,8 +23,8 @@ nothing in a build it does not know.
 from __future__ import annotations
 
 import ctypes
+import functools
 import os
-import sys
 import time
 from ctypes import wintypes
 from pathlib import Path
@@ -108,33 +108,10 @@ MEM_RELEASE = 0x8000
 PAGE_READWRITE = 0x04
 
 
-def _kernel32():
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
-    h, b, d, p, s = wintypes.HANDLE, wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, ctypes.c_size_t
-    sig = {
-        "VirtualAllocEx": (p, [h, p, s, d, d]),
-        "VirtualFreeEx": (b, [h, p, s, d]),
-        "WriteProcessMemory": (b, [h, p, p, s, ctypes.POINTER(s)]),
-        "GetModuleHandleW": (h, [wintypes.LPCWSTR]),
-        "GetProcAddress": (p, [h, ctypes.c_char_p]),
-        "CreateRemoteThread": (h, [h, p, s, p, p, d, p]),
-        "WaitForSingleObject": (d, [h, d]),
-        "CloseHandle": (b, [h]),
-        "CreateMutexW": (h, [p, b, wintypes.LPCWSTR]),
-        "ReleaseMutex": (b, [h]),
-        "CreateFileW": (h, [wintypes.LPCWSTR, d, d, p, d, d, h]),
-        "SetNamedPipeHandleState": (b, [h, ctypes.POINTER(d), p, p]),
-        "GetNamedPipeServerProcessId": (b, [h, ctypes.POINTER(wintypes.ULONG)]),
-        "WriteFile": (b, [h, p, d, ctypes.POINTER(d), p]),
-        "ReadFile": (b, [h, p, d, ctypes.POINTER(d), p]),
-        "PeekNamedPipe": (b, [h, p, d, p, ctypes.POINTER(d), p]),
-    }
-    for name, (restype, argtypes) in sig.items():
-        fn = getattr(k, name)
-        fn.restype, fn.argtypes = restype, argtypes
-    return k
+_kernel32 = process.kernel32  # the one binding (client/process.py), made on first use
 
 
+@functools.cache
 def _psapi():
     k = ctypes.WinDLL("psapi", use_last_error=True)
     h, d = wintypes.HANDLE, wintypes.DWORD
@@ -147,8 +124,6 @@ def _psapi():
     return k
 
 
-_K = _kernel32() if sys.platform == "win32" else None
-_PSAPI = _psapi() if sys.platform == "win32" else None
 LIST_MODULES_ALL = 3
 
 
@@ -168,14 +143,14 @@ def module_names(process_handle: int, attempts: int = 5) -> list[str]:
             raise GameExited("the game has exited")
         handles = (wintypes.HMODULE * 1024)()
         needed = wintypes.DWORD()
-        if _PSAPI.EnumProcessModulesEx(
+        if _psapi().EnumProcessModulesEx(
             process_handle, handles, ctypes.sizeof(handles), ctypes.byref(needed), LIST_MODULES_ALL
         ):
             count = min(needed.value // ctypes.sizeof(wintypes.HMODULE), len(handles))
             names = []
             name = ctypes.create_unicode_buffer(260)
             for module in handles[:count]:
-                if _PSAPI.GetModuleBaseNameW(process_handle, module, name, len(name)):
+                if _psapi().GetModuleBaseNameW(process_handle, module, name, len(name)):
                     names.append(name.value.lower())
             return names
         time.sleep(0.02)
@@ -186,7 +161,7 @@ def game_folder_dll(process_handle: int) -> Path | None:
     """The helper beside the game's executable (where the player put it with the proxy), if
     there is one there. Only read: the client never writes the game's folder."""
     path = ctypes.create_unicode_buffer(1024)
-    if not _PSAPI.GetModuleFileNameExW(process_handle, None, path, len(path)):
+    if not _psapi().GetModuleFileNameExW(process_handle, None, path, len(path)):
         return None
     dll = Path(path.value).parent / DLL_NAME
     return dll if dll.is_file() else None
@@ -202,26 +177,32 @@ LATE_LOAD_SECONDS = 60.0
 
 def _load_library(process_handle: int, path: Path, seconds: float) -> None:
     data = (str(path) + "\0").encode("utf-16-le")
-    remote = _K.VirtualAllocEx(process_handle, None, len(data), MEM_COMMIT_RESERVE, PAGE_READWRITE)
+    remote = _kernel32().VirtualAllocEx(
+        process_handle, None, len(data), MEM_COMMIT_RESERVE, PAGE_READWRITE
+    )
     if not remote:
         raise HelperError(f"could not allocate in the game: {_last_error()}")
     free_it = True
     try:
         written = ctypes.c_size_t()
-        if not _K.WriteProcessMemory(
+        if not _kernel32().WriteProcessMemory(
             process_handle, remote, data, len(data), ctypes.byref(written)
         ):
             raise HelperError(f"could not write the path into the game: {_last_error()}")
         # kernel32 sits at the same address in every process of a session.
-        load_library = _K.GetProcAddress(_K.GetModuleHandleW("kernel32.dll"), b"LoadLibraryW")
-        thread = _K.CreateRemoteThread(process_handle, None, 0, load_library, remote, 0, None)
+        load_library = _kernel32().GetProcAddress(
+            _kernel32().GetModuleHandleW("kernel32.dll"), b"LoadLibraryW"
+        )
+        thread = _kernel32().CreateRemoteThread(
+            process_handle, None, 0, load_library, remote, 0, None
+        )
         if not thread:
             raise HelperError(f"could not start the loading thread: {_last_error()}")
         try:
-            if _K.WaitForSingleObject(thread, int(seconds * 1000)) != WAIT_OBJECT_0:
+            if _kernel32().WaitForSingleObject(thread, int(seconds * 1000)) != WAIT_OBJECT_0:
                 # The load may still happen. Hold the caller's lock until it has, so nobody
                 # starts a second load meanwhile (that would leave the helper pinned).
-                late = _K.WaitForSingleObject(thread, int(LATE_LOAD_SECONDS * 1000))
+                late = _kernel32().WaitForSingleObject(thread, int(LATE_LOAD_SECONDS * 1000))
                 free_it = late == WAIT_OBJECT_0  # a stuck thread may still read the path
                 raise HelperError(
                     f"loading did not finish within {seconds} s"
@@ -232,10 +213,10 @@ def _load_library(process_handle: int, path: Path, seconds: float) -> None:
                     )
                 )
         finally:
-            _K.CloseHandle(thread)
+            _kernel32().CloseHandle(thread)
     finally:
         if free_it:
-            _K.VirtualFreeEx(process_handle, remote, 0, MEM_RELEASE)
+            _kernel32().VirtualFreeEx(process_handle, remote, 0, MEM_RELEASE)
 
 
 def load(
@@ -249,11 +230,14 @@ def load(
     or with ``if_absent`` left as it is (False): the proxy may have loaded it meanwhile."""
     if not dll.is_file():
         raise HelperError(f"{dll} does not exist; build native/ first (native/README.md)")
-    mutex = _K.CreateMutexW(None, False, f"Local\\zexion-ap-load-{pid}")
+    mutex = _kernel32().CreateMutexW(None, False, f"Local\\zexion-ap-load-{pid}")
     if not mutex:
         raise HelperError(f"could not create the load lock: {_last_error()}")
     try:
-        if _K.WaitForSingleObject(mutex, 5000) not in (WAIT_OBJECT_0, 0x80):  # 0x80: abandoned
+        if _kernel32().WaitForSingleObject(mutex, 5000) not in (
+            WAIT_OBJECT_0,
+            0x80,
+        ):  # 0x80: abandoned
             raise HelperError("another loader is busy with this game")
         try:
             if is_loaded(process_handle):
@@ -265,9 +249,9 @@ def load(
                 raise HelperError(f"loading {dll.name} into the game failed")
             return True
         finally:
-            _K.ReleaseMutex(mutex)
+            _kernel32().ReleaseMutex(mutex)
     finally:
-        _K.CloseHandle(mutex)
+        _kernel32().CloseHandle(mutex)
 
 
 def wait_unloaded(process_handle: int, seconds: float = 3.0) -> bool:
@@ -287,7 +271,7 @@ class Helper:
         name = pipe_name(pid)
         deadline = time.monotonic() + connect_seconds
         while True:
-            handle = _K.CreateFileW(
+            handle = _kernel32().CreateFileW(
                 name,
                 GENERIC_READ_WRITE,
                 0,
@@ -309,12 +293,12 @@ class Helper:
         self._handle = handle
         try:
             server = wintypes.ULONG()
-            if not _K.GetNamedPipeServerProcessId(handle, ctypes.byref(server)):
+            if not _kernel32().GetNamedPipeServerProcessId(handle, ctypes.byref(server)):
                 raise HelperError(f"cannot tell who serves {name}: {_last_error()}")
             if server.value != pid:
                 raise HelperError(f"{name} is served by process {server.value}, not the game")
             mode = wintypes.DWORD(PIPE_READMODE_MESSAGE)
-            if not _K.SetNamedPipeHandleState(handle, ctypes.byref(mode), None, None):
+            if not _kernel32().SetNamedPipeHandleState(handle, ctypes.byref(mode), None, None):
                 raise HelperError(f"cannot set message mode: {_last_error()}")
         except BaseException:
             self.close()
@@ -334,12 +318,14 @@ class Helper:
 
     def _exchange(self, data: bytes, seconds: float) -> bytes:
         done = wintypes.DWORD()
-        if not _K.WriteFile(self._handle, data, len(data), ctypes.byref(done), None):
+        if not _kernel32().WriteFile(self._handle, data, len(data), ctypes.byref(done), None):
             raise HelperError(f"the helper's pipe closed: {_last_error()}")
         deadline = time.monotonic() + seconds
         available = wintypes.DWORD()
         while True:
-            if not _K.PeekNamedPipe(self._handle, None, 0, None, ctypes.byref(available), None):
+            if not _kernel32().PeekNamedPipe(
+                self._handle, None, 0, None, ctypes.byref(available), None
+            ):
                 raise HelperError(f"the helper's pipe closed: {_last_error()}")
             if available.value:
                 break
@@ -349,7 +335,7 @@ class Helper:
         reply = b""
         buffer = ctypes.create_string_buffer(65536)
         while True:
-            ok = _K.ReadFile(self._handle, buffer, len(buffer), ctypes.byref(done), None)
+            ok = _kernel32().ReadFile(self._handle, buffer, len(buffer), ctypes.byref(done), None)
             reply += buffer.raw[: done.value]
             if ok:
                 return reply
@@ -379,7 +365,7 @@ class Helper:
 
     def close(self) -> None:
         if self._handle is not None:
-            _K.CloseHandle(self._handle)
+            _kernel32().CloseHandle(self._handle)
             self._handle = None
 
     def __enter__(self) -> Helper:

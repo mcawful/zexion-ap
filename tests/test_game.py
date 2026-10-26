@@ -151,10 +151,10 @@ class FakeProcess:
     def read_bytes(self, address: int, size: int) -> bytes:
         return bytes(self.memory[address : address + size])
 
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
+    def write_bytes(self, address: int, data: bytes) -> None:
         if self.fail_write:
             raise OSError("access denied")
-        self.memory[address : address + size] = data
+        self.memory[address : address + len(data)] = data
 
 
 class FakeGame(game.Game):
@@ -214,8 +214,8 @@ def test_a_read_back_that_differs_is_its_own_error() -> None:
     g = fake_game()
     write = g.pm.write_bytes
 
-    def game_puts_it_back(address: int, data: bytes, size: int) -> None:
-        write(address, data, size)
+    def game_puts_it_back(address: int, data: bytes) -> None:
+        write(address, data)
         g.pm.memory[address] = 7
 
     g.pm.write_bytes = game_puts_it_back
@@ -263,9 +263,9 @@ def test_set_supplies_is_compare_and_set_and_writes_only_changes() -> None:
     writes = []
     write = g.pm.write_bytes
 
-    def counted(address: int, data: bytes, size: int) -> None:
+    def counted(address: int, data: bytes) -> None:
         writes.append(address)
-        write(address, data, size)
+        write(address, data)
 
     g.pm.write_bytes = counted
     g.set_supplies((30, 48, 2, 3, 0, 0), (64, 64, 2, 3, 0, 0))

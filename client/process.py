@@ -8,8 +8,8 @@ and the tests use it too.
 ``Process`` has the names ``game.Game`` and its tests' fakes use (``read_bytes``,
 ``write_bytes``, ``process_handle``, ``process_id``, ``close_process``; pymem's, which the client
 once used), and ``alive``, which ``game.Game`` checks before every read and write
-(``alive``, for a bare handle, is the native helper's loader's too).
-
+(``alive``, for a bare handle, is the native helper's loader's too). ``kernel32`` is the one
+binding of kernel32's functions, the helper's loader's and pipe's (client/native.py) among them.
 """
 
 from __future__ import annotations
@@ -69,42 +69,44 @@ class MODULEENTRY32W(ctypes.Structure):
 
 
 @functools.cache
-def _kernel32():
+def kernel32():
+    """kernel32, with the argument and result types of every function the client calls."""
     if sys.platform != "win32":  # pragma: no cover - the client runs on Windows only
         raise ProcessError("reading another process needs Windows")
     k = ctypes.WinDLL("kernel32", use_last_error=True)
-    k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-    k.GetExitCodeProcess.restype = wintypes.BOOL
-    k.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    k.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-    k.Process32FirstW.restype = wintypes.BOOL
-    k.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-    k.Process32NextW.restype = wintypes.BOOL
-    k.Module32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W)]
-    k.Module32FirstW.restype = wintypes.BOOL
-    k.Module32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W)]
-    k.Module32NextW.restype = wintypes.BOOL
-    k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    k.OpenProcess.restype = wintypes.HANDLE
-    k.CloseHandle.argtypes = [wintypes.HANDLE]
-    k.CloseHandle.restype = wintypes.BOOL
-    k.ReadProcessMemory.argtypes = [
-        wintypes.HANDLE,
-        wintypes.LPCVOID,
-        wintypes.LPVOID,
-        ctypes.c_size_t,
-        ctypes.POINTER(ctypes.c_size_t),
-    ]
-    k.ReadProcessMemory.restype = wintypes.BOOL
-    k.WriteProcessMemory.argtypes = [
-        wintypes.HANDLE,
-        wintypes.LPVOID,
-        wintypes.LPCVOID,
-        ctypes.c_size_t,
-        ctypes.POINTER(ctypes.c_size_t),
-    ]
-    k.WriteProcessMemory.restype = wintypes.BOOL
+    h, b, d, p, s = wintypes.HANDLE, wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, ctypes.c_size_t
+    sig = {
+        # Processes, their modules and their memory.
+        "GetExitCodeProcess": (b, [h, ctypes.POINTER(d)]),
+        "CreateToolhelp32Snapshot": (h, [d, d]),
+        "Process32FirstW": (b, [h, ctypes.POINTER(PROCESSENTRY32W)]),
+        "Process32NextW": (b, [h, ctypes.POINTER(PROCESSENTRY32W)]),
+        "Module32FirstW": (b, [h, ctypes.POINTER(MODULEENTRY32W)]),
+        "Module32NextW": (b, [h, ctypes.POINTER(MODULEENTRY32W)]),
+        "OpenProcess": (h, [d, b, d]),
+        "CloseHandle": (b, [h]),
+        "ReadProcessMemory": (b, [h, wintypes.LPCVOID, wintypes.LPVOID, s, ctypes.POINTER(s)]),
+        "WriteProcessMemory": (b, [h, wintypes.LPVOID, wintypes.LPCVOID, s, ctypes.POINTER(s)]),
+        # The helper's loader (client/native.py).
+        "VirtualAllocEx": (p, [h, p, s, d, d]),
+        "VirtualFreeEx": (b, [h, p, s, d]),
+        "GetModuleHandleW": (h, [wintypes.LPCWSTR]),
+        "GetProcAddress": (p, [h, ctypes.c_char_p]),
+        "CreateRemoteThread": (h, [h, p, s, p, p, d, p]),
+        "WaitForSingleObject": (d, [h, d]),
+        "CreateMutexW": (h, [p, b, wintypes.LPCWSTR]),
+        "ReleaseMutex": (b, [h]),
+        # The helper's pipe (client/native.py).
+        "CreateFileW": (h, [wintypes.LPCWSTR, d, d, p, d, d, h]),
+        "SetNamedPipeHandleState": (b, [h, ctypes.POINTER(d), p, p]),
+        "GetNamedPipeServerProcessId": (b, [h, ctypes.POINTER(wintypes.ULONG)]),
+        "WriteFile": (b, [h, p, d, ctypes.POINTER(d), p]),
+        "ReadFile": (b, [h, p, d, ctypes.POINTER(d), p]),
+        "PeekNamedPipe": (b, [h, p, d, p, ctypes.POINTER(d), p]),
+    }
+    for name, (restype, argtypes) in sig.items():
+        fn = getattr(k, name)
+        fn.restype, fn.argtypes = restype, argtypes
     return k
 
 
@@ -116,13 +118,13 @@ def _error(what: str) -> ProcessError:
 def alive(process_handle: int) -> bool:
     """Whether the process behind an open handle is still running."""
     code = wintypes.DWORD()
-    ok = _kernel32().GetExitCodeProcess(process_handle, ctypes.byref(code))
+    ok = kernel32().GetExitCodeProcess(process_handle, ctypes.byref(code))
     return bool(ok) and code.value == STILL_ACTIVE
 
 
 def find_pid(name: str) -> int | None:
     """The id of a running process whose executable is ``name`` (case ignored), or None."""
-    k = _kernel32()
+    k = kernel32()
     snap = k.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if snap in (None, INVALID_HANDLE_VALUE):
         raise _error("listing processes")
@@ -145,7 +147,7 @@ def module_base(pid: int, name: str) -> tuple[int, int] | None:
     """Where module ``name`` (case ignored) is loaded in process ``pid``, and its size."""
     import time
 
-    k = _kernel32()
+    k = kernel32()
     for _ in range(SNAPSHOT_TRIES):
         snap = k.CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid)
         if snap not in (None, INVALID_HANDLE_VALUE):
@@ -172,7 +174,7 @@ class Process:
     """An open handle on a running process, by its executable's name."""
 
     def __init__(self, name: str, pid: int | None = None):
-        self._k = _kernel32()
+        self._k = kernel32()
         pid = find_pid(name) if pid is None else pid
         if pid is None:
             raise ProcessNotFound(f"{name} is not running")
@@ -200,14 +202,11 @@ class Process:
             raise _error(f"reading {size} bytes at {address:#x}")
         return buffer.raw[: done.value]
 
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
+    def write_bytes(self, address: int, data: bytes) -> None:
+        size = len(data)
         done = ctypes.c_size_t(0)
         if not self._k.WriteProcessMemory(
-            self.process_handle,
-            ctypes.c_void_p(address),
-            bytes(data[:size]),
-            size,
-            ctypes.byref(done),
+            self.process_handle, ctypes.c_void_p(address), bytes(data), size, ctypes.byref(done)
         ):
             raise _error(f"writing {size} bytes at {address:#x}")
         if done.value != size:

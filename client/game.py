@@ -342,7 +342,7 @@ class Game:
         self._check_alive()
         address = self.base + self.rva[target] + offset
         try:
-            self.pm.write_bytes(address, data, len(data))
+            self.pm.write_bytes(address, data)
         except Exception as exc:
             raise WriteStateUnknown(f"write at {address:#x} failed part-way: {exc}") from exc
         try:

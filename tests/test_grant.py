@@ -44,11 +44,11 @@ class FakeProcess:
     def read_bytes(self, address: int, size: int) -> bytes:
         return bytes(self.memory[address : address + size])
 
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
+    def write_bytes(self, address: int, data: bytes) -> None:
         if self.fail_write:
             raise OSError("access denied")
         self.writes += 1
-        self.memory[address : address + size] = data
+        self.memory[address : address + len(data)] = data
         if self.overwrite_with is not None:
             self.memory[address] = self.overwrite_with
 
