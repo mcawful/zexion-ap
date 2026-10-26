@@ -10,8 +10,6 @@ namespace zap {
 
 namespace {
 
-// The pools' layouts are in game_layout.h (sprite::, obj::; docs/re/memory.md, "Live item
-// objects"; B1).
 constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
@@ -100,8 +98,8 @@ void ItemLooks::undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palett
 
 void ItemLooks::apply(const Places& at, const BYTE* pool, BYTE* base) {
     if (at.pool == nullptr) return;
-    // The template every item object's frame-list base is copied from, the stand-ins' palette,
-    // the records and the clock; without any of them, nothing is dressed.
+    // Without the template's base, the stand-ins' palette, the records or the clock, nothing is
+    // dressed.
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
     BYTE* records = read_pointer(at.item_records);
     int64_t clock = 0;
@@ -181,8 +179,6 @@ void ItemLooks::undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standi
     d = {};
 }
 
-// An object showing a stand-in: live, drawing from the item sprites' frame list (the
-// template's), at one of the two logo frames, which are empty in the game's own art.
 BYTE* ItemLooks::item_frame_base(const Places& at) {
     BYTE* templates = read_pointer(at.sprite_templates);
     BYTE* item_template =

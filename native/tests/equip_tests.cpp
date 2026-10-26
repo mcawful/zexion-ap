@@ -298,7 +298,7 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
     check(at<BYTE*>(disk, 0x198) == s.palette3 && at<int16_t>(disk, 0x1A0) == 3 &&
               disk[0x120] == 1,
           "the Energy Tank's palette, shown");
-    check(at<int32_t>(disk, 0x1D0) == -1, "no control hints, as the Energy Tank");
+    check(at<int32_t>(disk, 0x1D0) == -1, "style -1, as the Energy Tank");
     check(at<int32_t>(disk, 0x230) == 0x6E, "a color for when it is selected");
     check(g_linked.size() == 1 && g_linked[0] == p3, "the panel linked again");
     check(at<void*>(p3, 0x2F8) == a.panel_hook && screen.holds_hook(),

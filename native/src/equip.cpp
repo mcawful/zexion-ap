@@ -20,21 +20,19 @@ const char kDiskDescription[] =
 namespace {
 
 // A panel's own place in its menu's list and its columns; a widget's record, its offset in its
-// panel (dy), its mouse rectangle and its control hints (docs/re/memory.md, "The equipment
-// screen"; B1).
+// panel (dy) and its mouse rectangle (docs/re/memory.md, "The equipment screen"; B1).
 constexpr ptrdiff_t kPanelIndex = 0x2E4, kPanelColumns = 0x2C6;
 constexpr ptrdiff_t kChildRecord = 0x1F8, kChildDy = 0x1E4;
-constexpr ptrdiff_t kChildRect = 0x1E8, kChildHints = 0x1D0;
-// The color an item takes while selected, when its record's palette is not one of its own (1, 2,
-// 14 to 19): built from this code (0xB465A to 0xB4D85, 0x1EDC00). The builder gives each such
-// item one (0x12C91E on); the Data Disc's record palette is 5, so the disk needs one, or it turns
-// black when selected. Navcore's, for a computer part (a first pick, tuned by eye).
+constexpr ptrdiff_t kChildRect = 0x1E8;
+// The color code a selected item takes when its record's palette is not 1, 2 or 14 to 19
+// (0xB465A to 0xB4D85; the builder gives each such item one, 0x12C91E on). The Data Disc's
+// palette is 5, so without one the disk turns black when selected. 0x6E is Navcore's, chosen by
+// eye.
 constexpr ptrdiff_t kChildColor = 0x230;
 constexpr int32_t kDiskColor = 0x6E;
 constexpr int kMaxEntries = 16;
-// The equipment screen (docs/re/memory.md, "The equipment screen"; B1, read live and from
-// disassembly): panel 3 the Energy Tank, panel 6 the description box (child 0 the description,
-// 0x88 glyphs; child 1 the name after the icon glyph, 0x11 glyphs).
+// The equipment screen (docs/re/memory.md, "The equipment screen"): panel 3 the Energy Tank,
+// panel 6 the description box (child 0 the description, child 1 the icon and name).
 constexpr int32_t kEquipmentPanels = 7, kEnergyPanel = 3, kTextPanel = 6, kEnergyGlyphs = 3;
 constexpr int kDescriptionGlyphs = 0x88, kNameGlyphs = 0x11;
 constexpr double kMove = 16.0;       // the Energy Tank's move left
@@ -115,7 +113,7 @@ bool EquipmentHook::restore(const EquipAddresses& a) {
 std::string EquipmentScreen::add(const EquipAddresses& a, int count) {
     if (count < 1) return "no disk yet";
     if (count > 99) return "the count is too long";
-    restore(a);  // an earlier screen's, if still open (never, as the game builds one at a time)
+    restore(a);  // an earlier screen's, if still open
     // The equipment screen on top, its Energy Tank panel as the builder leaves it.
     BYTE* menu = nullptr;
     BYTE* panel = nullptr;
@@ -185,7 +183,7 @@ std::string EquipmentScreen::add(const EquipAddresses& a, int count) {
         game_free(array);
         return "the disk's widget could not be made";
     }
-    put<int32_t>(disk, kChildHints, -1);
+    put<int32_t>(disk, sprite::kStyle, -1);  // as the Energy Tank's widget
     put<int32_t>(disk, kChildColor, kDiskColor);
     reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(disk, item_template);
     int32_t frames = 0;
@@ -220,6 +218,8 @@ std::string EquipmentScreen::add(const EquipAddresses& a, int count) {
     array[0] = energy;
     array[1] = disk;
     put(panel, panel::kChildren, array);
+    // `old` came from the game's malloc (docs/re/memory.md, "The equipment screen"), so the
+    // game's free releases it.
     game_free(old);
     put<int32_t>(panel, panel::kCapacity, 2);
     put<int32_t>(panel, panel::kSelectable, 2);

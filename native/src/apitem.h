@@ -1,23 +1,12 @@
-// How other players' items look in the game.
-//
-// A location holding another player's item is given item 47 (Scrap Energy) by the world, or 48
-// (Scrap Chunk) for a progression item. While the client has sent the helper its labels, the
-// helper restyles both items' records (the `Objects` file, 100 bytes per record behind
-// `item_records`; docs/re/memory.md, "Other players' items"): their in-world animation points
-// at an item frame that is transparent in the game's own art (63 and 95, one frame each), and
-// their pickup no longer runs an area event (3549 and 3550, a refill drop). The helper paints
-// Archipelago's logo into those frames (with its up arrow for progression) and its ring of dots
-// into the font's glyph 0xEE (empty in the game's own art) of the game's sprite texture (OpenGL,
-// from the per-frame call, where the game's context is current), and names each record after a
-// location, the name starting with that glyph ("MASTER SWORD FOR ALICE"), or "AP ITEM" where no
-// label is: the game's own pickup popup then shows that name. The location is the one a live
-// object of that stand-in within the player's reach belongs to, by the map cell the object
-// carries (an enemy's drop lands wherever the enemy dies, and a room can span several cells);
-// else the player's cell's, if it has a label; else that of the nearest such object in the
-// loaded rooms. Every field is checked against the game's own values before the first write,
-// and the texture is read back once (the places to paint blank, known art where the PNG has it)
-// before the first paint; unload puts the records back to the game's values and clears the
-// painted pixels (transparent, as in the game's art).
+// How other players' items look (docs/re/memory.md, "Other players' items"). The world puts
+// Scrap Energy (47) at locations holding another player's item and Scrap Chunk (48) at their
+// progression items. While labels are set, the helper restyles both records: one frame each (63
+// and 95, transparent in the game's art), no pickup area event (3549, 3550), and a name from the
+// label (the logo glyph 0xEE, then e.g. MASTER SWORD FOR ALICE) or AP ITEM. It paints the logos
+// into those frames and the glyph into the font through OpenGL, in the frame call. Records are
+// written only over the game's own values or the helper's, and the texture only where
+// TextureCheck finds the place blank or already the helper's. Unload restores the records and
+// clears the pixels.
 #pragma once
 
 #include <windows.h>
@@ -69,8 +58,8 @@ struct StandInSeen {
     double x = 0, y = 0;
 };
 
-// How far from the player (pixels, between the positions) an object counts as within reach:
-// more than a stand-in's and the player's half-sizes together, less than half a cell.
+// How far from the player (pixels, between the positions) an object counts as within reach.
+// Chosen, not measured: past touching range, under half a cell (320 x 224).
 constexpr double kStandInReach = 96;
 
 // For each stand-in record (47, then 48), the map cell to name it after: the cell of the nearest
@@ -87,8 +76,8 @@ GlFunctions load_gl();
 // helper paints into it: whether it holds the game's art where Sprites.png has it, and the alpha
 // of the font's glyphs and the item frames as they were, against which each place is checked
 // before the first paint (FontGlyph, ApItems). A texture that could not be read, or whose art
-// is not where the PNG has it (a sprite mod, say), is read again a few times, some seconds
-// apart (it may have been loading), then not until the texture changes.
+// is not where the PNG has it (a sprite mod, say), is read up to 3 times, 5 s apart (it may
+// still be loading), then not until the texture changes.
 class TextureCheck {
 public:
     // Game thread, inside on_texture (the texture bound, plain pixel stores). Whether the w x h
@@ -121,8 +110,8 @@ private:
 };
 
 // One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
-// game's art (the locked ASSIST's padlock, menu.h). Painted while wanted, again now and then
-// and whenever the texture changes, and cleared when no longer wanted.
+// game's art (the AP logo glyph, the padlock, the disk glyphs). Painted while wanted, again now
+// and then and whenever the texture changes, and cleared when no longer wanted.
 class FontGlyph {
 public:
     // `rows`: 8 strings of 8, '#' for an opaque white pixel.
@@ -176,7 +165,7 @@ public:
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check, uint64_t now_ms,
                bool world = true);
 
-    // Game thread: the record back to the game's own values (also one an earlier helper left
+    // Game thread: the records back to the game's own values (also ones an earlier helper left
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
     void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,
                  TextureCheck& check);

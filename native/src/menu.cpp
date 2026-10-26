@@ -8,7 +8,7 @@
 
 namespace zap {
 
-// Padlock 1 of lab/icons/locks.png, the owner's pick: 7 wide like the font's letters.
+// The padlock: 7 wide, like the font's letters.
 const char kLockRows[8][9] = {
     "..###...", ".#...#..", ".#...#..", "#######.",
     "###.###.", "###.###.", "#######.", "........",
@@ -17,16 +17,13 @@ const char kLockRows[8][9] = {
 namespace {
 
 constexpr ptrdiff_t kPanelIndex = 3;  // the game-mode panel, in its menu's panel list
-// The border the panel draws round the button under the mouse (docs/re/memory.md, "The
-// game-mode panel"): on hover the panel's handler makes it 8 pixels wider than the label's 11
-// glyphs (0xAE531 to 0xAE545), from 8 pixels left of the label, out of eight 8 x 8 pieces whose
-// pointers the panel holds from +0x278: top-left, top, top-right, right, bottom-right, bottom,
-// bottom-left, left. Each is an object with its x at +0x40 and the x of the rectangle it is
-// drawn in from +0x128 to +0x138 (doubles); the top and bottom edges also keep their length at
-// +0x114 (a float), their right at +0x158, and the right-hand corners of the quad they are drawn
-// as at +0xA8 and +0xB8 (doubles, read live: 80.1, as the length). That is even round
-// RANDOMIZER, whose eleventh glyph is a blank, but puts the right-hand pieces on ARCHIPELAGO's
-// last letter.
+// The hover border (docs/re/memory.md, "The game-mode panel"): the panel's handler sizes it
+// 11 x 8 + 8 = 96 wide from 8 left of the label (0xAE531 to 0xAE545; width at +0x2B8), out of
+// eight pieces pointed to from +0x278 (top-left, top, top-right, right, bottom-right, bottom,
+// bottom-left, left). Each piece has its x at +0x40 and its drawn rectangle from +0x128 to
+// +0x138; the top and bottom edges also keep their length (+0x114, float), their right (+0x158)
+// and their quad's right corners (+0xA8, +0xB8). Even around RANDOMIZER's ten letters and a
+// blank, it ends on ARCHIPELAGO's last letter.
 constexpr ptrdiff_t kPanelBorderPieces = 0x278, kPanelBorderWidth = 0x2B8;
 constexpr int kBorderPieces = 8;
 constexpr int kTop = 1, kTopRight = 2, kRight = 3, kBottomRight = 4, kBottom = 5;
@@ -34,7 +31,7 @@ constexpr ptrdiff_t kPieceLeft = 0x128, kPieceRight = 0x138;  // x: sprite::kX
 constexpr ptrdiff_t kEdgeLength = 0x114, kEdgeLocalRight = 0x158;
 constexpr ptrdiff_t kEdgeQuadRight1 = 0xA8, kEdgeQuadRight2 = 0xB8;
 constexpr int32_t kGameBorderWidth = kLabelLength * 8 + 8;  // 96
-constexpr double kEdgeAsLaid = 80.1;  // the game's top edge, from the label's x (read live)
+constexpr double kEdgeAsLaid = 80.1;  // the top-right piece's x past the label's (read live)
 constexpr double kBorderMove = 8.0;   // one character: as far past the label as on its left
 constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
@@ -223,8 +220,7 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     BYTE* child = choice_in(top, a, a.rando_menu);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
-    // A label left reading ARCHIPELAGO by an earlier release (should its menu ever outlive the
-    // new game) is not taken for the original: RANDOMIZER is.
+    // A label already reading ARCHIPELAGO (left by `release`) saves RANDOMIZER as its original.
     bool already = true;
     for (int i = 0; i < kLabelLength; ++i) {
         if (at<int32_t>(glyphs[i], sprite::kFrameIndex) !=

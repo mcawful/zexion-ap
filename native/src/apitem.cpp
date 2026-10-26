@@ -72,8 +72,7 @@ constexpr int8_t kLogo[16][16] = {
 };
 // The same with Archipelago's up arrow for a progression item, as in its own icons (Factorio's
 // ap.png in Archipelago), over the lower right; kArrow marks the arrow, which flashes.
-// (Palette entries 13 to 15 show different colors at different times, but did not change
-// while watched, so the helper flashes the arrow itself.)
+// The helper flashes the arrow itself: palette entries 13 to 15 did not animate when watched.
 constexpr int8_t kLogoArrow[16][16] = {
     {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
     {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
@@ -213,7 +212,8 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
             at<int16_t>(r, record::kFrames) = kLogoFrames;
             at<int16_t>(r, record::kEvent) = kNoEvent;
         }
-        records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)
+        // Ours now, or already (an earlier watch, or a helper unloaded without a frame).
+        records_[i] = r;
         if (std::memcmp(r + record::kName, want, sizeof(want)) != 0) {
             std::memcpy(r + record::kName, want, sizeof(want));
         }
@@ -461,8 +461,6 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
 }
 
 void ApItems::release(BYTE* records_holder) {
-    // The records back to the game's own values, whether this helper restyled them or an earlier
-    // one left them so: what watch changes, the frames, the area event and the name.
     for (int i = 0; i < kStandInCount; ++i) {
         const StandIn& s = kStandIns[i];
         BYTE* r = record(records_holder, s.item);
