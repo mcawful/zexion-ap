@@ -1,8 +1,9 @@
 """Find and access Zexion's game state in the running process, by byte pattern.
 
 Nothing here uses a fixed address. On attach, the game's build is identified from its PE
-header and refused unless it is in ``patterns.KNOWN_BUILDS``; then every target in
-``patterns.TARGETS`` is located by scanning the code section of Zexion.exe as loaded. Each
+header and refused unless it is in ``patterns.KNOWN_BUILDS``; then every target the client
+uses (``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) is
+located by scanning the code section of Zexion.exe as loaded. Each
 pattern must match exactly once (overlapping matches count) and all of a target's patterns
 must lead to the same address, or ``PatternError`` is raised and nothing is read or written.
 
@@ -42,7 +43,7 @@ from dataclasses import dataclass
 
 from . import ids, pe, process
 from .ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
-from .patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
@@ -53,8 +54,6 @@ SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
 PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
 
 PROCESS = "Zexion.exe"
-COLLECTED = ids.COLLECTED  # (tools/ use these two by these names)
-ITEM_IDS = ids.GAME_ITEMS  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
 RANDO_BLOB_SIZE = SECTION_SIZE
@@ -68,7 +67,7 @@ ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
 SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
 SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
 # One read covering the supplies, the player's cell and the inventory (player_state).
-PLAYER_SPAN = (SUPPLY_SPAN[0], INVENTORY_IN_PLAYER_STATE + len(ITEM_IDS))
+PLAYER_SPAN = (SUPPLY_SPAN[0], INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
 # The player's link to their Energy Shield (docs/re/memory.md, "Received Energy Shields"): a
 # pointer to the shield object, then that object's handle (a 32-bit serial number, then its
@@ -125,7 +124,9 @@ class PlayerState:
     inventory: bytes  # one byte per item ID 0-50
     supplies: tuple[int, ...]  # as Game.supplies returns them
     energy: int  # current energy, as Game.energy
-    cell: tuple[int, int]  # as Game.player_cell
+    # The player's map cell as the player update keeps it (docs/re/memory.md, "Other players'
+    # items"): +0x107A, floor(x / 320), and +0x107B, floor((y - 8) / 224).
+    cell: tuple[int, int]
 
 
 # --- pure helpers (tested without the game) ----------------------------------------------
@@ -182,7 +183,7 @@ def parse_player_state(span: bytes) -> PlayerState:
     inv = INVENTORY_IN_PLAYER_STATE - start
     cell = PLAYER_CELL - start
     return PlayerState(
-        inventory=bytes(span[inv : inv + len(ITEM_IDS)]),
+        inventory=bytes(span[inv : inv + len(ids.GAME_ITEMS)]),
         supplies=tuple(i16(f) for f in SUPPLY_FIELDS),
         energy=i16(ENERGY_NOW),
         cell=(span[cell], span[cell + 1]),
@@ -247,7 +248,7 @@ def parse_seed(blob: bytes) -> Seed:
     if any(blob[4 * LOCATIONS : ITEM_TABLE_AT]):
         raise GameError("randomizer section: no zero gap after the location list")
     items = bytes(blob[ITEM_TABLE_AT : ITEM_TABLE_AT + LOCATIONS])
-    if any(i not in ITEM_IDS for i in items):
+    if any(i not in ids.GAME_ITEMS for i in items):
         raise GameError("randomizer section: an item ID is out of range")
     return Seed(cells, items)
 
@@ -274,7 +275,8 @@ class Game:
     build: Build
 
     @classmethod
-    def attach(cls) -> Game:
+    def attach(cls, targets: Iterable[Target] = CLIENT_TARGETS) -> Game:
+        """Attach to the running game and locate ``targets`` (the client's by default)."""
         try:
             pm = process.Process(PROCESS)
         except process.ProcessNotFound as exc:
@@ -290,7 +292,7 @@ class Game:
             build = identify_build(header)
             text_rva, text_size = code_section(header)
             code = pm.read_bytes(base + text_rva, text_size)
-            rva = locate_all(code, text_rva)
+            rva = locate_all(code, text_rva, targets)
             return cls(pm, base, rva, pm.process_id, build)
         except GameError:
             pm.close_process()
@@ -363,20 +365,14 @@ class Game:
 
     def inventory(self) -> bytes:
         """One byte per item ID 0-50."""
-        return self._read("inventory", 0, len(ITEM_IDS))
+        return self._read("inventory", 0, len(ids.GAME_ITEMS))
 
     def flag_bytes(self, first: int, count: int) -> bytes:
-        """``count`` of the loaded game's flags from ``first``, in one read (as ``flag``)."""
+        """``count`` of the loaded game's flags from ``first``, in one read (0 to 0x9C3;
+        docs/re/memory.md, "Keys, the gates and the key markers" and "The ending")."""
         if first < 0 or count <= 0 or first + count > FLAGS:
             raise ValueError(f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X}")
         return self._read("flags", first, count)
-
-    def flag(self, number: int) -> int:
-        """One of the loaded game's flags (0 to 0x9C3; docs/re/memory.md, "Keys, the gates and
-        the key markers" and "The ending")."""
-        if not 0 <= number < FLAGS:
-            raise ValueError(f"flag {number} is outside the 0x{FLAGS:X} flags")
-        return self._read("flags", number, 1)[0]
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         """Compare-and-set an item's inventory byte, then read it back.
@@ -466,7 +462,8 @@ class Game:
         return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45.
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Located only for
+        the RE tools, which attach with every target (``patterns.TOOL_TARGETS``).
 
         Not a per-location signal; the map grid is (docs/re/memory.md).
         """
@@ -496,12 +493,6 @@ class Game:
         if not 0 <= slot < SLOTS:
             raise GameError(f"the current slot reads {slot}")
         return raw + self._read("slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, SAVE_STAMP_SIZE)
-
-    def player_cell(self) -> tuple[int, int]:
-        """The player's map cell as the player update keeps it (docs/re/memory.md, "Other
-        players' items"): +0x107A, floor(x / 320), and +0x107B, floor((y - 8) / 224)."""
-        raw = self._read("inventory", PLAYER_CELL - INVENTORY_IN_PLAYER_STATE, 2)
-        return raw[0], raw[1]
 
     def rando_slot_copies(self) -> bytes:
         """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in

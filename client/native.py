@@ -33,10 +33,9 @@ from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
 VERSION = "0.26.0"  # the helper's, in its hello (native/src/dllmain.cpp)
-# The addresses the helper needs: every target client/patterns.py locates but those only the
-# client reads (native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
-CLIENT_ONLY = frozenset({"pickup_counter"})
-CONFIG_KEYS = tuple(t.name for t in patterns.TARGETS if t.name not in CLIENT_ONLY)
+# The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
+# native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
+CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0

@@ -7,7 +7,7 @@ import struct
 import pytest
 
 from client import game
-from client.patterns import TARGETS, Build, Pattern, Target
+from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
 
 # lea rax, [rip + disp32] ; add rax, rdx ; ret  -- a stand-in for a referring instruction
 LEA = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 C3", disp_at=3, kind="rip", rip_end=7, addend=0)
@@ -70,6 +70,13 @@ def test_patterns_that_disagree_are_refused() -> None:
     agree = Pattern(other.text, 3, "rip", 7, 0x100 - 0x900 - 11)
     found = game.locate_all(code, 0, [Target("t", "test", {}, (LEA, agree))])
     assert found["t"] == 0x40 + 7 + 0x100
+
+
+def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
+    # A pattern of the pickup counter breaking with an update cannot stop the client attaching.
+    assert {"pickup_counter"} == TOOL_TARGETS
+    assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
+    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)
 
 
 # --- PE header and build identity ----------------------------------------------------------
@@ -184,23 +191,16 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(3, 0, 256)
 
 
-def test_a_flag_is_one_byte_of_the_flags_array() -> None:
-    g = FakeGame(pm=FakeProcess(0x1000), base=0, rva={"flags": 0x10}, pid=1, build=None)
-    g.pm.memory[0x10 + 250] = 1
-    assert g.flag(250) == 1 and g.flag(249) == 0
-    for outside in (-1, game.FLAGS):
-        with pytest.raises(ValueError, match="outside"):
-            g.flag(outside)
-
-
 def test_a_run_of_flags_is_read_at_once() -> None:
     g = FakeGame(pm=FakeProcess(0x1000), base=0, rva={"flags": 0x10}, pid=1, build=None)
     g.pm.memory[0x10 + 39] = 1
     g.pm.memory[0x10 + 250] = 2
     run = g.flag_bytes(39, 212)
-    assert len(run) == 212 and run[0] == g.flag(39) == 1 and run[-1] == g.flag(250) == 2
-    with pytest.raises(ValueError, match="outside"):
-        g.flag_bytes(game.FLAGS - 1, 2)
+    assert len(run) == 212 and run[0] == 1 and run[-1] == 2 and run[1:-1] == bytes(210)
+    assert g.flag_bytes(250, 1) == b"\x02"
+    for first, count in ((-1, 2), (game.FLAGS - 1, 2), (0, 0)):
+        with pytest.raises(ValueError, match="outside"):
+            g.flag_bytes(first, count)
 
 
 def test_a_failed_write_says_its_state_is_unknown() -> None:
@@ -253,7 +253,7 @@ def test_the_player_state_read_at_once_agrees_with_each_read() -> None:
     assert player.inventory == g.inventory()
     assert player.supplies == g.supplies()
     assert player.energy == g.energy() == 30
-    assert player.cell == g.player_cell() == (12, 34)
+    assert player.cell == (12, 34)
 
 
 def test_set_supplies_is_compare_and_set_and_writes_only_changes() -> None:

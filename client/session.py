@@ -72,7 +72,7 @@ class Snapshot:
     finale: int = 0
     scanned: int = 0
     stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
-    cell: tuple[int, int] = (-1, -1)  # game.Game.player_cell
+    cell: tuple[int, int] = (-1, -1)  # game.PlayerState.cell
 
 
 # The flags a poll reads, in one read from the first.

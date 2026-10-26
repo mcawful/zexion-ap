@@ -71,7 +71,7 @@ def fake(monkeypatch, tmp_path):
     g = FakeGame(FakeProcess(), 0, dict(RVA), 1, Build("B1", "0" * 64, 0, 0))
     g.pm.memory[INV] = 5  # 5 Energy Tanks
     g.pm.memory[ENERGY : ENERGY + 2] = (80).to_bytes(2, "little")  # alive, a save loaded
-    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: g))
+    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls, targets=None: g))
     monkeypatch.setattr(grant, "load_item_names", lambda: dict(NAMES))
     monkeypatch.setattr(game.time, "sleep", lambda _: None)
     return g, tmp_path / "grants.jsonl"

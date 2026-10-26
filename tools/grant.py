@@ -40,7 +40,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the client package
 
-from client import game  # noqa: E402
+from client import game, ids  # noqa: E402
+from client.patterns import TARGETS  # noqa: E402
 from protected import assert_writable, game_dir, lab_dir  # noqa: E402
 
 ITEM_NAMES = Path("Files/Translations/English(HD)/ItemNames.txt")
@@ -75,8 +76,8 @@ def resolve_item(arg: str, names: dict[int, str]) -> int:
     """An item ID from an ID or an exact name (case, spaces and punctuation ignored)."""
     if arg.isdigit():
         item = int(arg)
-        if item not in game.ITEM_IDS:
-            raise ValueError(f"item {item} is not an item ID (0 to {game.ITEM_IDS[-1]})")
+        if item not in ids.GAME_ITEMS:
+            raise ValueError(f"item {item} is not an item ID (0 to {ids.GAME_ITEMS[-1]})")
         return item
     found = [i for i, n in names.items() if _key(n) == _key(arg)]
     if len(found) != 1:
@@ -107,7 +108,7 @@ def log(entry: dict) -> None:
 
 
 def cmd_show(args: argparse.Namespace, names: dict[int, str]) -> int:
-    g = game.Game.attach()
+    g = game.Game.attach(TARGETS)  # the pickup counter too
     inv = g.inventory()
     print(f"build {g.build.name}; {g.state()}; pickup counter {g.pickup_counter()}")
     for i, v in enumerate(inv):
@@ -173,7 +174,7 @@ def _stamp() -> str:
 def cmd_watch(args: argparse.Namespace, names: dict[int, str]) -> int:
     """Print and log every inventory and counter change; a change undone within one interval
     is not seen."""
-    g = game.Game.attach()
+    g = game.Game.attach(TARGETS)
     inv, counter, state = g.inventory(), g.pickup_counter(), g.state()
     owned = {label(i, names): v for i, v in enumerate(inv) if v}
     print(f"{_stamp()}  watching; {state}; counter {counter}; inventory {owned}; Ctrl+C stops")

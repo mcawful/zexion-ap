@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the client package
 
-from client import game, pe  # noqa: E402
+from client import game, ids, pe  # noqa: E402
 from client.patterns import KNOWN_BUILDS, TARGETS  # noqa: E402
 
 
@@ -54,7 +54,7 @@ def offline(exe: Path) -> int:
 
 def live() -> int:
     try:
-        g = game.Game.attach()
+        g = game.Game.attach(TARGETS)  # the pickup counter too
     except game.GameError as exc:
         print(f"FAILED: {exc}")
         return 1
@@ -68,7 +68,7 @@ def live() -> int:
     print(f"pickup counter {g.pickup_counter()}; inventory {owned}")
     print(
         f"map: {sum(1 for v in grid if v)} cells explored, "
-        f"{sum(1 for v in grid if v == game.COLLECTED)} collected"
+        f"{sum(1 for v in grid if v == ids.COLLECTED)} collected"
     )
     try:
         seed = g.seed()
