@@ -24,8 +24,9 @@ constexpr ptrdiff_t kPanelIndex = 3;  // the game-mode panel, in its menu's pane
 // bottom-left, left. Each is an object with its x at +0x40 and the x of the rectangle it is
 // drawn in from +0x128 to +0x138 (doubles); the top and bottom edges also keep their length at
 // +0x114 (a float), their right at +0x158, and the right-hand corners of the quad they are drawn
-// as at +0xA8 and +0xB8 (doubles, read live: 80.1, as the length). That is even round RANDOMIZER, whose eleventh
-// glyph is a blank, but puts the right-hand pieces on ARCHIPELAGO's last letter.
+// as at +0xA8 and +0xB8 (doubles, read live: 80.1, as the length). That is even round
+// RANDOMIZER, whose eleventh glyph is a blank, but puts the right-hand pieces on ARCHIPELAGO's
+// last letter.
 constexpr ptrdiff_t kPanelBorderPieces = 0x278, kPanelBorderWidth = 0x2B8;
 constexpr int kBorderPieces = 8;
 constexpr int kTop = 1, kTopRight = 2, kRight = 3, kBottomRight = 4, kBottom = 5;

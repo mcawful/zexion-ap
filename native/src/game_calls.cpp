@@ -292,7 +292,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         std::string key = kConfigKeys[i];
         auto it = rvas.find(key);
         if (it == rvas.end()) {
-            // The title screen's lines are left off without theirs (an older helper's cache).
+            // An older helper's cache: the title screen's lines and the map cursor's names are
+            // left off without their keys (is_optional).
             if (is_optional(key)) continue;
             return "missing " + key;
         }

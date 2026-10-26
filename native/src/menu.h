@@ -110,9 +110,8 @@ private:
 // Unlocking puts all of it back. As for the ARCHIPELAGO choice, it
 // writes only into a widget whose menu is still open and that is not released, and checks
 // every value first: the menu's panel list and count, each panel's children and capacity, the
-// widget's handler and callback, and a label of 12 glyphs reading ASSIST and six blanks.
-// ASSIST's label has 12 glyphs (the widget constructor's width at 0x16285A): ASSIST, then six
-// blanks (character 0), as read live.
+// widget's handler and callback, and a label of 12 glyphs (the widget constructor's width at
+// 0x16285A) reading ASSIST and six blanks (character 0), as read live.
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
 // helper paints it, apitem.h FontGlyph), with a blank before it.

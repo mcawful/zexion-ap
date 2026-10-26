@@ -14,7 +14,7 @@ namespace {
 
 // The prompt as 0x1668A0 builds it: one panel of three children, YES, NO and the question.
 constexpr int32_t kPromptChildren = 3;
-constexpr int kMinQuestionGlyphs = 28;  // kMissionQuestion's length
+constexpr int kMinQuestionGlyphs = static_cast<int>(sizeof(kMissionQuestion) - 1);
 
 void* routine(const MissionAddresses& a, int index) {
     void* fn = nullptr;

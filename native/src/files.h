@@ -35,7 +35,7 @@ namespace zap {
 struct FileAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu
     void* file_panel_fn = nullptr;  // the entries' panel handler
-    void* entry_fns[3] = {};        // the file select's, COPY FILE's and DELETE FILE's entry handlers
+    void* entry_fns[3] = {};        // the entry handlers: the file select's, COPY's and DELETE's
     void* hook = nullptr;           // the helper's stand-in for an entry's handler
 };
 
@@ -70,8 +70,7 @@ public:
     void restore(const FileAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
-    // For a refused unload, which turns it back on as it was.
-    // Each listed slot's count (a refused unload sets them again).
+    // Each listed slot's count.
     const std::map<int, int>& counts() const { return counts_; }
 
 private:

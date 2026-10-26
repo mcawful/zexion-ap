@@ -3,9 +3,9 @@
 //
 // In the OS Install Disks goal the disks are found in play, and the goal is the game's ending
 // reached with enough of them; once the player has enough, the client asks the helper to offer
-// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds such a prompt for the escape skip: routine 15 of its
-// transition-routine table (0x1668A0), run when the transition timer ends, as area event 3666
-// sets it. The helper sets the same two fields, but to its own opener, which calls the game's
+// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds
+// such a prompt for the escape skip: routine 15 of its transition-routine table (0x1668A0), run
+// when the transition timer ends, as area event 3666 sets it. The helper sets the same two fields, but to its own opener, which calls the game's
 // builder and, before the prompt's first frame, relabels the question (the game's text routine)
 // and points YES at the helper. YES then closes the prompt as NO does (the game's own NO
 // callback) and asks for the ending: once the game is idle again, the helper sets routine 4

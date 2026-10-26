@@ -6,8 +6,8 @@
 // and \config-<build>.txt), never the game's. The helper writes them itself, from inside the
 // game: run from a packaged app (an MSIX package, the Claude desktop app in this repo's tests),
 // the client's own writes there were not found by the game (2026-10-25: error 3, path not
-// found), inferred to be the package's AppData redirect. The helper reads them when it starts and each time a client goes away. With no client, it
-// configures itself from the cache (only for the build it was made on), and while a save of
+// found), inferred to be the package's AppData redirect. The helper reads them when it starts
+// and each time a client goes away. With no client, it configures itself from the cache (only for the build it was made on), and while a save of
 // one of those seeds is loaded it gives the save the same look: the item labels (AP ITEM,
 // PROGRESSION ITEM, this player's own disks), the Intel Chip's name, the ASSIST lock, the
 // OS Install Disks goal's screens and the escape skip; and the file select shows those
@@ -76,7 +76,8 @@ struct OfflineFiles {
     std::string error;  // the last file that could not be read, and why
 };
 
-// The per-user folder (%LOCALAPPDATA%\ZexionAP), or `folder` if given (tests).
+// The per-user folder (%LOCALAPPDATA%\ZexionAP), or "" if LOCALAPPDATA is not an absolute
+// path. The functions below take the folder, so tests give their own.
 std::wstring offline_folder();
 // Reads the folder's config for `build` (the client's `config` request, parse_config, then
 // its check lines) and its seeds, the newest first; a file that does not parse is skipped.

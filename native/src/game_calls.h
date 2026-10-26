@@ -1,5 +1,11 @@
-// What the helper does in the game, on the game's thread: grants as one batch, the HUD refresh
-// the game itself runs after loading a save, and the game's own pickup popup and sound.
+// Game: what the helper does in the game, on the game's thread. It keeps the addresses the
+// client resolved (configure) and runs each part from the frame call: grants as one batch, with
+// the HUD refresh the game runs after loading a save and the game's own pickup popup and sound;
+// the AP new game and ARCHIPELAGO (menu.h); the escape skip (skip.h); other players' items
+// (apitem.h, looks.h, mapmarks.h); the ASSIST lock (menu.h); Intel Chips (intel.h); the OS
+// Install Disks goal (scan.h, equip.h, pause.h, files.h, mission.h); the title screen's lines
+// (title.h); and AP saves without the client (offline.h). The pipe's requests are parsed here
+// too.
 //
 // The client finds every address by byte pattern (client/patterns.py) and sends them as RVAs;
 // nothing here is a fixed address. The functions' arguments are as traced in
@@ -56,11 +62,6 @@ struct SectionBytes {
     std::vector<uint8_t> bytes;
 };
 
-// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
-// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
-// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
-// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
-// plan.
 // One room of the randomizer menu's start table: its map cell and flag (object 25 there).
 struct StartRoom {
     int16_t x;
@@ -68,6 +69,11 @@ struct StartRoom {
     uint8_t flag;
 };
 
+// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
+// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
+// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
+// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
+// plan.
 struct NewGamePlan {
     std::vector<SectionBytes> expect;
     std::vector<SectionBytes> write;
@@ -226,10 +232,10 @@ public:
     void watch_menu(WidgetCallback callback);
     // Game thread: puts RANDOMIZER back now (before an unload).
     void restore_menu(WidgetCallback callback);
-    // Whether a menu holds the helper's callback (ARCHIPELAGO). The locked ASSIST holds none.
-    // ARCHIPELAGO on the menu, or the helper's handler possibly still on its panel.
-    // ARCHIPELAGO on the menu, the helper's handler possibly still on its panel, or EQUIPMENT
-    // pointed at the helper's callback.
+    // Whether the game may still hold one of the helper's functions, which unload must take
+    // back first: ARCHIPELAGO's callback or the game-mode panel's handler, EQUIPMENT's callback
+    // or the Energy Tank panel's handler, the mission prompt's opener or YES, a file entry's
+    // handler or the map's. The locked ASSIST holds none.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
                equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
@@ -267,8 +273,8 @@ public:
     void restore_skip();
     bool skip_offered() const { return skip_.patched(); }
 
-    // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show and
-    // the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
+    // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show
+    // and the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
     // rewording the scanner's message while a line is set and putting it back otherwise;
     // restore_discs puts it back now (before an unload).
     void set_discs(int count, int required, std::string scan_line, bool told = true);
@@ -333,11 +339,12 @@ public:
     std::string offline_state() const;
     // Game thread (`other_save`, from a client whose session sees a randomizer save in play
     // that is not its seed's): THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. once a load and
-    // again after a reconnect (whether shown now),
-    // and the save's offline look if the helper has its seed's file, until the save goes.
+    // again after a reconnect (whether it was queued now), and the save's offline look if the
+    // helper has its seed's file, until the save goes.
     bool other_save();
-    // Game thread (`client_back`, from a client whose session has seen its seed's save in play):
-    // if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once. Whether it did.
+    // Game thread (`client_back`, from a client whose session has seen its seed's save in
+    // play): if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once.
+    // Whether it did.
     bool client_back();
     bool intel_on() const { return intel_.on(); }
     void watch_intel();
@@ -376,8 +383,6 @@ public:
     // The live stand-in objects in both pools, with their cells and positions (name_cells).
     std::vector<StandInSeen> stand_ins_seen() const;
     void restore_ap_items();
-    // The stand-ins restyled, or the pickup popup's line width changed: unload must wait for
-    // a frame to put them back.
     // Game thread, every frame: notes how long the player has been in play in one cell.
     void note_play(uint64_t now_ms);
     // Game thread (the `shield` request): spawns a received Energy Shield the way its pickup
@@ -389,6 +394,8 @@ public:
     // message is showing: "died", or "refused <why>".
     std::string kill(uint64_t now_ms);
 
+    // An item record restyled (the stand-ins, the Area Map), an object dressed, or the pickup
+    // popup's line width changed: unload must wait for a frame to put them back.
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
                looks_.dressed() || intel_.restyled();

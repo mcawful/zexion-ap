@@ -4,19 +4,20 @@
 // (Scrap Chunk) for a progression item. While the client has sent the helper its labels, the
 // helper restyles both items' records (the `Objects` file, 100 bytes per record behind
 // `item_records`; docs/re/memory.md, "Other players' items"): their in-world animation points
-// at an item frame that is transparent in the game's own art (63 and 95, one frame each), their
-// popup icon at the font's glyph 0xEE (empty in the game's own art), and their pickup no longer
-// runs an area event (3549 and 3550, a refill drop). The helper paints Archipelago's logo into
-// those frames (with its up arrow for progression) and its ring of dots into the glyph of the
-// game's sprite texture (OpenGL, from the per-frame call, where the game's context is current),
-// and names each record after a location ("MASTER SWORD FOR ALICE"), or "AP ITEM" where no label
-// is: the game's own pickup popup then shows that name. The location is the one a live object of
-// that stand-in within the player's reach belongs to, by the map cell the object carries (an
-// enemy's drop lands wherever the enemy dies, and a room can span several cells); else the
-// player's cell's, if it has a label; else that of the nearest such object in the loaded rooms. Every field is checked against the game's own values before the first write, and the
-// texture is read back once (the places to paint blank, known art where the PNG has it) before
-// the first paint; unload puts the records back to the game's values and clears the painted
-// pixels (transparent, as in the game's art).
+// at an item frame that is transparent in the game's own art (63 and 95, one frame each), and
+// their pickup no longer runs an area event (3549 and 3550, a refill drop). The helper paints
+// Archipelago's logo into those frames (with its up arrow for progression) and its ring of dots
+// into the font's glyph 0xEE (empty in the game's own art) of the game's sprite texture (OpenGL,
+// from the per-frame call, where the game's context is current), and names each record after a
+// location, the name starting with that glyph ("MASTER SWORD FOR ALICE"), or "AP ITEM" where no
+// label is: the game's own pickup popup then shows that name. The location is the one a live
+// object of that stand-in within the player's reach belongs to, by the map cell the object
+// carries (an enemy's drop lands wherever the enemy dies, and a room can span several cells);
+// else the player's cell's, if it has a label; else that of the nearest such object in the
+// loaded rooms. Every field is checked against the game's own values before the first write,
+// and the texture is read back once (the places to paint blank, known art where the PNG has it)
+// before the first paint; unload puts the records back to the game's values and clears the
+// painted pixels (transparent, as in the game's art).
 #pragma once
 
 #include <windows.h>

@@ -8,10 +8,13 @@
 // and the trampoline back at SDL, waits until no call is inside the helper, and unloads the
 // DLL, so a rebuilt helper can be loaded without restarting the game.
 //
-// Each frame call counts itself, serves the mailbox (requests from the pipe thread that touch
-// the game, mailbox.h), watches for a new game to write the AP seed into and offers ARCHIPELAGO
-// on the game-mode panel (helper phase 3), and shows queued popups (helper phase 2,
-// game_calls.h), where none of it can race the game.
+// Each frame call counts itself; puts back everything the helper changed if the pipe's client
+// went away; takes the files a client left for AP saves without it (offline.h); serves the
+// mailbox (requests from the pipe thread that touch the game, mailbox.h); runs each part's
+// watch (game_calls.h: the new game and ARCHIPELAGO, ASSIST, the escape skip, the OS Install
+// Disks goal's screens, Intel Chips, the title screen, the offline look, the map and other
+// players' items); publishes what an unload must wait for; and shows queued popups. None of it
+// can race the game.
 //
 // The target is set at build time: the game's SDL_GL_SwapWindow, behind the build check, in
 // zexion_ap.dll; this test program's own GetTickCount, with no build check, in the
@@ -216,9 +219,10 @@ void equip_panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
     g_in_callback.fetch_sub(1);
 }
 
-// RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition routine, on its
-// thread outside the frame call; it builds the game's prompt and relabels it. YES: the game's
-// NO (closing the prompt), then the ending once idle. Unload takes both off first.
+// RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition
+// routine, on its thread outside the frame call; it builds the game's prompt and relabels it.
+// YES: the game's NO (closing the prompt), then the ending once idle. Unload takes both off
+// first.
 void mission_open() {
     g_in_callback.fetch_add(1);
     try {
