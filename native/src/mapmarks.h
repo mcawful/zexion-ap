@@ -1,15 +1,10 @@
-// Important-item markers on the map for the progression stand-in (item 48, Scrap Chunk).
+// The map in AP saves: item 48's squares drawn as important, and the cursor's name for
+// stand-in squares.
 //
-// Each map square's marker is its value in the map grid (+0x3E469D), set when the square is
-// revealed; the game draws an item as important (major) or basic (minor) by a fixed range of
-// item IDs, 3 to 35, tested where it writes the value (0x7E980 and eleven other places), not by
-// the item's record (docs/re/memory.md, "Map markers"). This world places its own OS Install
-// Disks and other players' progression items as item 48, outside that range, so the map showed
-// them as basic. For an Archipelago save, the helper raises each such square's value from the
-// minor class to the major one, as the game would have set it: below 0x24, value % 12 is the
-// class, 1 a minor shown and 2 a major shown, 7 a minor obscured and 9 a major obscured (the
-// Obscure settings); a collected item (0x1B) and an unrevealed square are left alone. The grid
-// is saved, so the markers stay; nothing is put back.
+// A square's marker is its map-grid value (+0x3E469D on B1), set when revealed; the game picks
+// major/minor by item ID 3..35 where it writes it (0x7E980 and eleven other places), not by
+// record, so item 48 shows as minor. mark_important raises those squares' class to major as the
+// game would. The grid is saved, so nothing is put back (docs/re/memory.md, "Map markers").
 #pragma once
 
 #include <windows.h>
@@ -47,23 +42,15 @@ struct MapAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu
     BYTE* map_handler = nullptr;   // holds the map's per-frame handler (0x169E50)
     void* text_set_fn = nullptr;   // (text, string, first glyph, glyphs)
-    void* hook = nullptr;          // the helper's stand-in for the map's handler
+    void* hook = nullptr;          // the helper's wrapper of the map's handler
 };
 
-// The map cursor's name for the stand-ins' squares (docs/re/memory.md, "Map markers"). The top
-// menu is the map's when its first panel's first child holds the map's per-frame handler
-// (0x169E50, or the helper's stand-in for it) in either of its two slots: the game calls +0x168
-// each frame (the child its only argument), and the builder puts the handler in +0x178 too. The
-// handler computes the cursor's square from the cursor widget (the panel's fourth child, +0x1E6
-// and +0x1E4) at the map's scale (zoomed in when it reads 40.0) and writes the name of the
-// record of the item there into the cursor's 17-glyph text (read live: X 35 Y 28 on the map's
-// readout from the cursor's (350, 223) zoomed in, 2026-10-25). While on (an Archipelago save's
-// labels known), the helper points both slots, where they hold the game's handler, at its
-// stand-in, which calls the game's handler and then, where it wrote SCRAP ENERGY or SCRAP CHUNK
-// for a labeled square, writes the label's map name over it with the game's text routine, before
-// the frame is drawn. The records are not touched. Off, and before an unload, the game's handler
-// goes back in a map still open; the helper refuses to unload while an open map holds its
-// stand-in. With no stand-in (`hook` null) nothing is wrapped.
+// The map cursor's name for labeled stand-in squares (docs/re/memory.md, "Map markers"). While
+// on, both handler slots of the map menu's first child (+0x168, +0x178) that hold the game's
+// handler point at the helper's wrapper, which calls the game's and then, where it wrote SCRAP
+// ENERGY/CHUNK, writes the label's map name. Game thread only. Off, and before an unload, the
+// game's handler goes back in a map still open; an unload refuses while an open map holds the
+// wrapper. `hook` null: nothing wrapped.
 class MapCursorNames {
 public:
     void watch(const MapAddresses& a, bool on);
@@ -74,8 +61,8 @@ public:
     bool holds_hook() const { return child_ != nullptr; }
 
 private:
-    // The wrapped child is still the open map menu's first child, a slot holding the stand-in
-    // (never true with no stand-in).
+    // The wrapped child is still the open map menu's first child, a slot holding the wrapper
+    // (never true with no wrapper).
     bool still_wrapped(const MapAddresses& a) const;
     BYTE* child_ = nullptr;   // the map menu's first child, its handler the helper's
     BYTE* menu_ = nullptr;    // the map's menu

@@ -283,7 +283,7 @@ bool ArchipelagoChoice::fit_border(const MenuAddresses& a) {
             return false;
         }
     }
-    // Only a border as the game laid it out round this label: its top-right piece where the
+    // Only a border as the game laid it out around this label: its top-right piece where the
     // top edge ends, 80.1 past the label's x (once moved, it is 8 further and left alone).
     double right_x = 0;
     read(pieces[kTopRight], sprite::kX, right_x);

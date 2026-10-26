@@ -9,8 +9,8 @@ namespace zap {
 namespace {
 
 constexpr uint8_t kJne = 0x75, kJmp = 0xEB, kSkip = 0x2E;
-// The KEYS row's panel: its sprites and their count, where other panels keep their widgets'
-// label and record (docs/re/memory.md, "The pause screen's KEYS row"; B1).
+// The KEYS row's panel: its sprites and their count, at the offsets a widget uses for its label
+// and record (docs/re/memory.md, "The pause screen's KEYS row"; B1).
 constexpr ptrdiff_t kPanelSprites = 0x1F0, kPanelSpriteCount = 0x1F8;
 constexpr int kMaxEntries = 16;
 constexpr int32_t kPausePanels = 2, kRowSprites = 9, kKeysGlyphs = 4;

@@ -61,7 +61,7 @@ public:
     bool holds_hook() const { return hook_panel_ != nullptr; }
 
     // Game thread, each frame while installed: if the mouse is on ARCHIPELAGO and the panel has
-    // just laid its border out round it, moves the border's right-hand pieces 8 pixels right
+    // just laid its border out around it, moves the border's right-hand pieces 8 pixels right
     // and stretches its top and bottom edges to meet them. Returns true when it moved them.
     bool fit_border(const MenuAddresses& addresses);
 

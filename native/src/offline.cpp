@@ -11,8 +11,7 @@ namespace zap {
 
 namespace {
 
-// A seed file is some 20 KB at most; the pipe drops a message over 64 KB, so the client sends
-// none larger than this (client/offline.py, MAX_FILE).
+// Under the pipe's 64 KB message limit; the client's MAX_FILE (client/offline.py).
 constexpr size_t kMaxFile = 48 * 1024;
 constexpr size_t kMaxSeeds = 256;  // the newest kept
 constexpr size_t kCheckBytes = 16;
@@ -175,7 +174,7 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
                 out.unfound.push_back(cell);
             }
         }
-        // Other keys: from a later client, ignored.
+        // Unknown keys are ignored (a newer client).
     }
     if (!table || !start) return "no table or start";
     return "";
@@ -240,7 +239,6 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     if (op != "offline_put") return "error not an offline_put request";
     if (kind == "config") {
         if (build == nullptr) return "error an unknown build";
-        // Checked as the reader will: the config, then its check lines.
         std::map<std::string, uint64_t> rvas;
         std::map<std::string, std::string> checks;
         std::string why = parse_offline_config(body, rvas, checks);

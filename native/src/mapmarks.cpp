@@ -78,7 +78,7 @@ bool map_menu(BYTE* current_menu, void* handler, BYTE*& menu, BYTE*& panel, BYTE
             (read(child, kChildHandlers[1], slot) && slot == handler));
 }
 
-// The panel holding the scale and the cursor's name: [[panel + 0x300]] + 8, as 0x16B843 to
+// The panel holding the scale and the cursor's name: [[[panel + 0x300]] + 8], as 0x16B843 to
 // 0x16B85F and 0x169EF1 to 0x169F3B read it.
 BYTE* info_panel(BYTE* panel) {
     BYTE *a = nullptr, *b = nullptr, *c = nullptr;
@@ -94,7 +94,7 @@ int cursor_cell(BYTE* panel) {
         !read(cursor, kCursorRow, at_row) || !read(cursor, kCursorColumn, at_column)) {
         return -1;
     }
-    // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158 (read live 40.0 zoomed in, 2026-10-25).
+    // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158.
     BYTE* info = info_panel(panel);
     BYTE *d = nullptr, *e = nullptr;
     double scale = 0;
@@ -135,9 +135,9 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
     void* handler = nullptr;
     if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;
     if (child_ != nullptr && !still_wrapped(a)) {
-        // The map closed (its menu and child went with it), another menu took its address, or
-        // the game put a handler of its own in both slots (the navigation room's reveal, then
-        // the map's handler again, 0x16DA80 and 0x16D550): wrapped again below if it is the map.
+        // No longer the open map's child holding the wrapper (map closed, or the game rewrote
+        // both slots, e.g. the navigation room's reveal): forget it; rewrapped below if it is
+        // still the map.
         child_ = nullptr;
         menu_ = nullptr;
     }
