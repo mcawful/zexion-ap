@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import struct
 from collections import Counter
 
 import pytest
 
 import randocells as rc
+from client import save_patch as sp
+
+logic = rc.logic  # worlds/zexion/logic.py, as the tool loads it
 
 
 def blank() -> bytearray:
@@ -68,7 +72,7 @@ def test_lists_and_passages_parse() -> None:
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
-    assert rc.satisfied(entries, Counter(have)) is expected
+    assert logic.satisfied(entries, Counter(have)) is expected
 
 
 def test_sweep_collects_in_order_of_access() -> None:
@@ -107,26 +111,29 @@ def test_weapon_pairs_are_progressive() -> None:
     assert have[24] == 1
 
 
-HERE = rc.Where(10, 10, {(10, 10)})
+def at(cell: tuple[int, int], *reached: tuple[int, int]) -> dict:
+    """logic.satisfied's arguments for a check made in ``cell``, with these cells reached."""
+    return {"cell": cell, "reached": {cell, *reached}.__contains__}
+
+
+HERE = at((10, 10))
 
 
 def test_neighbor_codes_look_at_reached_cells() -> None:
-    west = rc.Where(10, 10, {(10, 10), (9, 10)})
-    assert rc.satisfied([(64, 1)], Counter(), where=west) is True  # west reached
-    assert rc.satisfied([(64, 1)], Counter(), where=HERE) is False
+    assert logic.satisfied([(64, 1)], Counter(), **at((10, 10), (9, 10))) is True  # west reached
+    assert logic.satisfied([(64, 1)], Counter(), **HERE) is False
     # Decided first and outright: an item that would pass does not help.
-    assert rc.satisfied([(16, 1), (64, 1)], Counter({16: 1}), where=HERE) is False
+    assert logic.satisfied([(16, 1), (64, 1)], Counter({16: 1}), **HERE) is False
     # Off the map edge the code does not apply, and the rest of the list decides.
-    edge = rc.Where(0, 10, {(0, 10)})
-    assert rc.satisfied([(16, 1), (64, 1)], Counter({16: 1}), where=edge) is True
+    assert logic.satisfied([(16, 1), (64, 1)], Counter({16: 1}), **at((0, 10))) is True
 
 
 def test_code_68_follows_the_options() -> None:
-    on = rc.Settings(options=bytes(30) + b"\x01" + bytes(33))
-    assert rc.satisfied([(68, 30)], Counter(), on, HERE) is True
+    on = logic.Settings(options=bytes(30) + b"\x01" + bytes(33))
+    assert logic.satisfied([(68, 30)], Counter(), on, **HERE) is True
     # An option that is off does not decide; the other entries do.
-    assert rc.satisfied([(68, 30), (16, 1)], Counter({16: 1}), rc.Settings(), HERE) is True
-    assert rc.satisfied([(68, 30)], Counter(), rc.Settings(), HERE) is False
+    assert logic.satisfied([(68, 30), (16, 1)], Counter({16: 1}), logic.Settings(), **HERE)
+    assert logic.satisfied([(68, 30)], Counter(), logic.Settings(), **HERE) is False
 
 
 @pytest.mark.parametrize(
@@ -142,25 +149,23 @@ def test_code_68_follows_the_options() -> None:
     ],
 )
 def test_code_69_checks_energy(mode, tier, energy, total, expected) -> None:
-    settings = rc.Settings(energy_total=total, mode69=mode)
+    settings = logic.Settings(energy_total=total, mode69=mode)
     have = Counter({0: energy})
-    assert rc.satisfied([(69, tier)], have, settings, HERE) is expected
+    assert logic.satisfied([(69, tier)], have, settings, **HERE) is expected
 
 
 def test_combat_tier_scales_energy_to_the_pool() -> None:
     have = [0] * 64
     have[0], have[3], have[13] = 12, 1, 1  # 12 Energy, Machine Gun, Power Cartridge
-    assert rc.combat_tier(have, rc.Settings(energy_total=20)) == 3  # 12 > 10
-    assert rc.combat_tier(have, rc.Settings(energy_total=40)) == 1  # 12 x 20 / 40 = 6
+    assert logic.combat_tier(have, logic.Settings(energy_total=20)) == 3  # 12 > 10
+    assert logic.combat_tier(have, logic.Settings(energy_total=40)) == 1  # 12 x 20 / 40 = 6
 
 
 def test_starts_come_from_the_start_record_and_the_second_target() -> None:
-    import struct
-
     save = bytearray(0x13200)
-    struct.pack_into("<3H", save, rc.START_HEADER, 6, 191, 329)  # cell (13, 16)
-    struct.pack_into("<3H", save, rc.SECOND_START, 3, 151, 464)  # cell (10, 23)
+    struct.pack_into("<3H", save, sp.START_RECORD, 6, 191, 329)  # cell (13, 16)
+    struct.pack_into("<3H", save, sp.SECOND_START, 3, 151, 464)  # cell (10, 23)
     assert rc.start_from_save(bytes(save)) == (13, 16)
     assert rc.starts_from_save(bytes(save)) == [(13, 16)]
-    save[rc.OPTIONS_IN_SAVE + rc.DOUBLE_TELEPORT] = 1
+    save[sp.OPTIONS + rc.DOUBLE_TELEPORT] = 1
     assert rc.starts_from_save(bytes(save)) == [(13, 16), (10, 23)]
