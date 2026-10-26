@@ -61,9 +61,7 @@ def test_components_number_each_strongly_connected_group_once() -> None:
     assert sorted(set(comp.values())) == [0, 1]
 
 
-def test_what_every_start_shares_is_held_once() -> None:
-    same = [{"regions": [1, 2]}, {"regions": [1, 2]}]
-    assert gwd.shared(same, "regions") == [1, 2]
-    assert gwd.shared([{"regions": [1]}, {"regions": [2]}], "regions") is None
-    assert gwd.shared([{"regions": [1]}, {}], "regions") is None
-    assert gwd.shared(same, "location_indices") is None
+def test_a_mode_holds_what_its_starts_share_and_refuses_what_they_do_not() -> None:
+    assert gwd.shared([[1, 2], [1, 2]], "ohko", "regions") == [1, 2]
+    with pytest.raises(SystemExit, match="ohko: its starts differ in regions"):
+        gwd.shared([[1], [2]], "ohko", "regions")

@@ -26,18 +26,19 @@ from .items import (
     KEY_CODES,
     KEYS,
     NAMES,
-    PROGRESSIVE,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
     SCRAP_METAL,
     SUPPLIES,
     ZexionItem,
+    as_inventory,
     classification,
     code_of,
     item_name_groups,
     item_name_to_id,
 )
 from .locations import (
+    LOCATION_ID_BASE,
     ZexionLocation,
     cell_name,
     location_name,
@@ -61,7 +62,7 @@ NOT_HINTED = SUPPLIES
 # With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
 # them (worlds/zexion/data.py).
-DISC_REPLACES = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, ENERGY_SHIELD)
+DISC_REPLACES = (*FILLER_ORDER, ENERGY_SHIELD)
 
 
 class ZexionWorld(World):
@@ -92,17 +93,13 @@ class ZexionWorld(World):
             self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
         )
         self.check_start_inventory()
-        starts = {tuple(s["cell"]): s for s in self.mode["starts"]}
-        if not starts:
-            raise OptionError(f"Zexion: {self.mode_name} mode has no start room to offer")
+        starts = {s["cell"]: s for s in self.mode["starts"]}
         choice = self.options.start_room.value
-        if choice == AUTOMATIC:
-            cell = AUTOMATIC_START if AUTOMATIC_START in starts else sorted(starts)[0]
-        else:
-            cell = START_CELLS[choice]
+        cell = AUTOMATIC_START if choice == AUTOMATIC else START_CELLS[choice]
         if cell not in starts:
             # A room this mode does not offer, typed or rolled by 'random' over every mode's
-            # rooms (the two cannot be told apart): take one the mode offers instead.
+            # rooms (the two cannot be told apart), or automatic's should the mode not offer
+            # it: take one the mode offers instead.
             replacement = self.random.choice(sorted(starts))
             logging.warning(
                 f"Zexion ({self.player_name}): start room {cell_name(cell)} is not offered "
@@ -110,12 +107,15 @@ class ZexionWorld(World):
             )
             cell = replacement
         self.start = starts[cell]
-        self.second = None
-        self.kept_locations = set(range(len(data.LOCATIONS)))
-        if self.mode["double_teleport"]:
-            self.pick_second_start(starts)
-        if self.disc_hunt:
-            self.check_discs()
+        self.second = self.pick_second_start(starts) if self.mode["double_teleport"] else None
+        self.kept_locations = set(self.mode["location_indices"])
+        placed = self.options.os_install_disks.value
+        required = self.options.os_install_disks_required.value
+        if self.disc_hunt and required > placed:
+            raise OptionError(
+                f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
+                f"more than OS Install Disks ({placed})"
+            )
 
     def check_start_inventory(self) -> None:
         """Refuse a start_inventory the client could not give (worlds/zexion/starting.py)."""
@@ -133,70 +133,24 @@ class ZexionWorld(World):
     def disc_hunt(self) -> bool:
         return self.options.goal.value == Goal.option_os_install_disks
 
-    def disc_room(self) -> int:
-        """How many OS Install Disks this mode's pool has room for: its Scrap, the keys' places,
-        Area Maps and Energy Shields, less the filler that left-out locations take out."""
-        pool = Counter(self.mode["pool"])
-        room = sum(pool[c] for c in DISC_REPLACES) + sum(pool[c] for c in KEY_CODES)
-        return room - (len(data.LOCATIONS) - len(self.kept_locations))
-
-    def check_discs(self) -> None:
-        placed = self.options.os_install_disks.value
-        required = self.options.os_install_disks_required.value
-        if required > placed:
-            raise OptionError(
-                f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
-                f"more than OS Install Disks ({placed})"
-            )
-        # Every mode has room for the option's most (30) as the data stands, so this guards
-        # only data regenerated with less room (tools/gen_world_data.py).
-        room = self.disc_room()
-        if placed > room:
-            raise OptionError(
-                f"Zexion ({self.player_name}): {self.mode_name} mode has room for {room} OS "
-                f"Install Disks, not {placed}"
-            )
-
-    def pick_second_start(self, starts: dict) -> None:
-        """Pick the second teleport target: a room that, together with the start, lets the
-        starting items reach at least data.MIN_SPHERE_ZERO locations. Only locations every item
-        reaches from one of the two are kept (docs/re/locations.md)."""
-
-        def sphere0(a: dict, b: dict) -> int:
-            return len(set(a["sphere0_indices"]) | set(b["sphere0_indices"]))
-
+    def pick_second_start(self, starts: dict) -> dict:
+        """The second teleport target: a room that, together with the start, lets the starting
+        items reach at least data.MIN_SPHERE_ZERO locations. Every item reaches the same
+        locations and regions from each room, which the mode holds (docs/re/locations.md)."""
+        reached = set(self.start["sphere0_indices"])
         partners = [
             b
             for c, b in sorted(starts.items())
-            if b is not self.start and sphere0(self.start, b) >= data.MIN_SPHERE_ZERO
+            if b is not self.start
+            and len(reached | set(b["sphere0_indices"])) >= data.MIN_SPHERE_ZERO
         ]
         if not partners:
-            pairs = [
-                (a, b)
-                for a in starts.values()
-                for b in starts.values()
-                if a is not b and sphere0(a, b) >= data.MIN_SPHERE_ZERO
-            ]
-            if not pairs:
-                raise OptionError(f"Zexion: {self.mode_name} mode has no pair of start rooms")
-            a, b = self.random.choice(pairs)
-            logging.warning(
-                f"Zexion ({self.player_name}): no second target suits start room "
-                f"{cell_name(self.start['cell'])} in {self.mode_name} mode; "
-                f"starting at {cell_name(a['cell'])} instead"
+            # Every OHKO room has one on build B1 (the tests try each).
+            raise OptionError(
+                f"Zexion: no second teleport target suits start room "
+                f"{cell_name(self.start['cell'])} in {self.mode_name} mode"
             )
-            self.start = a
-            partners = [b]
-        self.second = self.random.choice(partners)
-        self.kept_locations = set(self.of_start(self.start, "location_indices")) | set(
-            self.of_start(self.second, "location_indices")
-        )
-
-    def of_start(self, start: dict, key: str) -> list[int]:
-        """A start's regions or location indices: the mode's, which data.py holds once when
-        every start has the same, else the start's own."""
-        shared = self.mode[key]
-        return start[key] if shared is None else shared
+        return self.random.choice(partners)
 
     def create_item(self, name: str) -> Item:
         return ZexionItem(name, classification(code_of[name]), item_name_to_id[name], self.player)
@@ -205,47 +159,38 @@ class ZexionWorld(World):
         return FILLER_NAME
 
     def create_regions(self) -> None:
-        cells = rules.cell_region()
-        self.created_regions = set(self.of_start(self.start, "regions"))
-        if self.second is not None:
-            self.created_regions |= set(self.of_start(self.second, "regions"))
+        cells = data.CELL_REGION
+        self.created_regions = set(self.mode["regions"])
         menu = Region("Menu", self.player, self.multiworld)
-        self.multiworld.regions.append(menu)
-        by_index = {}
-        for r in sorted(self.created_regions):
-            region = Region(rules.region_name(r), self.player, self.multiworld)
-            by_index[r] = region
-            self.multiworld.regions.append(region)
-        menu.connect(by_index[cells[tuple(self.start["cell"])]], "Start")
+        by_index = {
+            r: Region(rules.region_name(r), self.player, self.multiworld)
+            for r in sorted(self.created_regions)
+        }
+        self.multiworld.regions += [menu, *by_index.values()]
+        menu.connect(by_index[cells[self.start["cell"]]], "Start")
         if self.second is not None:
-            menu.connect(by_index[cells[tuple(self.second["cell"])]], "Second teleport target")
+            menu.connect(by_index[cells[self.second["cell"]]], "Second teleport target")
 
         for (a, b), ways in data.ENTRANCES.items():
             if a not in self.created_regions or b not in self.created_regions:
                 continue
             for k, way in enumerate(ways):
                 name = f"{rules.region_name(a)} to {b}" + (f" #{k + 1}" if len(ways) > 1 else "")
-                if way is None:
-                    by_index[a].connect(by_index[b], name)
-                    continue
-                entries, cell = way
-                entrance = by_index[a].connect(
-                    by_index[b], name, rules.requirement(self, entries, cell, cells)
-                )
-                for r in rules.neighbor_regions(entries, cell, cells):
-                    if r in self.created_regions:
+                rule = None if way is None else rules.requirement(self, *way)
+                entrance = by_index[a].connect(by_index[b], name, rule)
+                if way is not None:
+                    for r in rules.neighbor_regions(*way) & self.created_regions:
                         self.multiworld.register_indirect_condition(by_index[r], entrance)
 
-        for i, cell in enumerate(data.LOCATIONS):
-            if i not in self.kept_locations:
-                continue
-            region = by_index[cells[tuple(cell)]]
+        for i in sorted(self.kept_locations):
+            cell = data.LOCATIONS[i]
+            region = by_index[cells[cell]]
             location = ZexionLocation(
                 self.player, location_name(i), location_name_to_id[location_name(i)], region
             )
             entries = data.LOCATION_RULES.get(i)
             if entries is not None:
-                location.access_rule = rules.requirement(self, entries, tuple(cell), cells)
+                location.access_rule = rules.requirement(self, entries, cell)
             region.locations.append(location)
 
         # The core goal is the grab of Zexion behind the four keys (RandoCells does not model
@@ -268,10 +213,7 @@ class ZexionWorld(World):
         codes = list(self.mode["pool"])
         # A location left out takes a filler item out of the pool with it.
         for _ in range(len(data.LOCATIONS) - len(self.kept_locations)):
-            filler = next((c for c in FILLER_ORDER if c in codes), None)
-            if filler is None:
-                raise OptionError(f"Zexion: {self.mode_name}'s pool has too little filler")
-            codes.remove(filler)
+            codes.remove(next(c for c in FILLER_ORDER if c in codes))
         if self.disc_hunt:
             # The keys' places become Scrap Metal, then each disc takes one of DISC_REPLACES.
             codes = [c for c in codes if c not in KEY_CODES] + [SCRAP_METAL] * len(KEY_CODES)
@@ -304,6 +246,7 @@ class ZexionWorld(World):
             spoiler_handle.write(f"Second teleport target:          {target}\n")
 
     def fill_slot_data(self) -> Mapping[str, Any]:
+        start_names = [item.name for item in self.multiworld.precollected_items[self.player]]
         return {
             "mode": self.mode_name,
             "start_index": self.start["index"],
@@ -333,24 +276,14 @@ class ZexionWorld(World):
             "goal": self.options.goal.current_key,
             "discs_required": self.options.os_install_disks_required.value if self.disc_hunt else 0,
             "discs_placed": self.options.os_install_disks.value if self.disc_hunt else 0,
-            "discs_start": self.precollected_discs(),
+            "discs_start": start_names.count(NAMES[DATA_DISC]),
             "disc_locations": self.disc_locations(),
         }
 
-    def precollected_discs(self) -> int:
-        precollected = self.multiworld.precollected_items[self.player]
-        return sum(1 for item in precollected if item.name == NAMES[DATA_DISC])
-
     def disc_locations(self) -> list[int]:
         """The location indices holding this world's own OS Install Disks."""
-        out = []
-        for i in range(len(data.LOCATIONS)):
-            if i not in self.kept_locations:
-                continue
-            item = self.get_location(location_name(i)).item
-            if item is not None and item.player == self.player and item.name == NAMES[DATA_DISC]:
-                out.append(i)
-        return out
+        found = self.multiworld.find_item_locations(NAMES[DATA_DISC], self.player)
+        return sorted(loc.address - LOCATION_ID_BASE for loc in found if loc.player == self.player)
 
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item
@@ -380,18 +313,16 @@ class ZexionWorld(World):
         menu's start table, the table instead of a second target (the seed's second start is
         written)."""
         name = f"{self.multiworld.seed_name}:{self.player}".encode()
+        double = self.mode["double_teleport"]
         setup = {
             "seed_text": hashlib.sha256(name).hexdigest()[:16].upper(),
-            "start": list(self.mode["menu"]["start"]),
-            "pool": list(self.mode["menu"]["pool"]),
-            "settings": list(self.mode["menu"]["settings"]),
-            "second_target": None,
+            # start, pool and settings
+            **{key: list(value) for key, value in self.mode["menu"].items()},
+            "second_target": None if double else list(self.mode["second_target"]),
         }
-        if self.mode["double_teleport"]:
+        if double:
             setup["start_table"] = [list(room) for room in data.START_TABLE]
             setup["table_build"] = data.DATA_BUILD
-        else:
-            setup["second_target"] = list(self.mode["second_target"])
         return setup
 
     def location_items(self) -> list[int]:
@@ -431,12 +362,4 @@ class ZexionWorld(World):
             and code_of[item.name] in GAME_ITEMS
             and code_of[item.name] != DATA_DISC
         )
-        out: dict[int, int] = {}
-        for code, n in counts.items():
-            if code in PROGRESSIVE:
-                out[code] = 1
-                if n > 1:
-                    out[PROGRESSIVE[code]] = 1
-            else:
-                out[code] = n
-        return out
+        return as_inventory(counts.items())
