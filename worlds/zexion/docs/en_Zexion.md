@@ -37,6 +37,13 @@ starting items and settings. OHKO starts with no Energy Tanks and a second telep
 and a few of its locations cannot be reached at all; those are left out. The spoiler log names
 the start room and, in OHKO, the second teleport target.
 
+Extra starting items (`start_inventory`) must be ones a new game can start with: upgrades,
+weapons (two copies give the upgrade), Energy Tanks, Missile Boxes, up to 9 Missile
+Containers counting the mode's own, keys from the Alpha Key on, and OS Install Disks with
+their goal. Generation stops with an error for anything else, such as Scrap, Area Maps, Intel
+Chips, Energy Shields, Mega Bombs or Bomb Boxes, or Assist Unlock (use the Allow Assists
+option instead).
+
 ## Where does the game start?
 
 In one of the game's own start rooms, chosen with the Start Room option. Only rooms from which

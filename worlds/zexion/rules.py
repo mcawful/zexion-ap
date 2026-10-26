@@ -8,12 +8,10 @@ from typing import TYPE_CHECKING
 from BaseClasses import CollectionState
 
 from . import data, logic
-from .items import NAMES, PROGRESSIVE
+from .items import PROGRESSIVE, code_of
 
 if TYPE_CHECKING:
     from .world import ZexionWorld
-
-_CODE_OF = {name: code for code, name in NAMES.items()}
 
 
 def inventory(state: CollectionState, player: int) -> dict[int, int]:
@@ -25,7 +23,7 @@ def inventory(state: CollectionState, player: int) -> dict[int, int]:
     """
     have: dict[int, int] = {}
     for name, count in state.prog_items[player].items():
-        code = _CODE_OF.get(name)
+        code = code_of.get(name)
         if code is None or count <= 0:
             continue
         if code in PROGRESSIVE:
@@ -54,7 +52,7 @@ def requirement(
     """A rule for one requirement list; ``cell`` is where it is checked (codes 64-69)."""
     player = world.player
     created = world.created_regions
-    settings = world.settings
+    settings = world.logic_settings
 
     def rule(state: CollectionState) -> bool:
         def reached(other: tuple[int, int]) -> bool:

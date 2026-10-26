@@ -1,7 +1,7 @@
 # Zexion Setup Guide
 
-This world is in development. Its client has run against a local Archipelago server but not
-yet in a full game, so treat any seed as a test.
+This world is in development. Its client has played seeds through to the goal, but treat any
+seed as a test.
 
 ## Requirements
 
@@ -59,8 +59,8 @@ When the client disconnects, the choice reads RANDOMIZER again.
 
 ## Preparing a save instead
 
-Without the helper, or for a seed whose starting items a new game cannot hold (the client
-says so), the client writes the seed into a saved new game:
+Without the helper, or when the client says a new game cannot start the seed, the client
+writes the seed into a saved new game:
 
 1. Pause Steam Cloud for Zexion (Steam, Library, Zexion, Properties, General), so the cloud
    keeps a copy of your saves as they were.

@@ -1,3 +1,4 @@
+import logging
 import random
 import types
 import unittest
@@ -6,27 +7,50 @@ from BaseClasses import Item, ItemClassification, LocationProgressType
 from Fill import distribute_items_restrictive
 from Options import OptionError
 
-from .. import data, rules
-from ..items import DRAWN_AS, code_of
+from .. import data, rules, starting
+from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, code_of
 from ..locations import location_name
 from ..logic import FIRST_SPECIAL
-from ..options import START_CELLS
+from ..options import START_CELLS, Goal, Mode, StartRoom
 from ..world import (
     DISC_REPLACES,
     FOREIGN,
     FOREIGN_PROGRESSION,
     GOAL_CELL,
     NOT_HINTED,
-    SCRAP_CHUNK,
-    SCRAP_ENERGY,
-    SCRAP_METAL,
     ZexionWorld,
 )
 from .bases import ZexionTestBase
 
 
+def fake_world(
+    mode: int = Mode.option_standard,
+    start_room: int = StartRoom.option_automatic,
+    goal: int = Goal.option_core,
+    start_inventory: dict[str, int] | None = None,
+    placed: int = 16,
+    required: int = 12,
+) -> ZexionWorld:
+    """A world with just the options generate_early reads, to run it alone."""
+    world = ZexionWorld.__new__(ZexionWorld)
+    world.options = types.SimpleNamespace(
+        mode=Mode(mode),
+        start_room=StartRoom(start_room),
+        local_items=types.SimpleNamespace(value=set()),
+        goal=Goal(goal),
+        start_inventory=types.SimpleNamespace(value=dict(start_inventory or {})),
+        os_install_disks=types.SimpleNamespace(value=placed),
+        os_install_disks_required=types.SimpleNamespace(value=required),
+    )
+    world.random = random.Random(1)
+    world.player = 1
+    world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
+    return world
+
+
 class TestDefaultStart(ZexionTestBase):
-    """The default start: every location reachable with everything, a few with nothing."""
+    """The default options: Standard from its default room, the core goal, DeathLink off and
+    assists locked; a few locations reachable with the starting items alone."""
 
     def test_start_is_the_default_presets(self) -> None:
         self.assertEqual(tuple(self.world.start["cell"]), (13, 16))
@@ -41,8 +65,8 @@ class TestDefaultStart(ZexionTestBase):
 
     def test_slot_data_names_the_start(self) -> None:
         slot = self.world.fill_slot_data()
-        self.assertEqual(slot["start_cell"], [13, 16])
         self.assertEqual((slot["start_column"], slot["start_row"]), (191, 329))
+        self.assertIsNone(slot["second_start"])
         self.assertEqual(len(slot["locations"]), 154)
 
     def test_goal_needs_all_four_keys(self) -> None:
@@ -55,15 +79,43 @@ class TestDefaultStart(ZexionTestBase):
         core = self.multiworld.get_location("Zexion", self.player).parent_region
         self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
 
-
-class TestDeathLinkIsOffByDefault(ZexionTestBase):
     def test_slot_data_says_death_link_is_off(self) -> None:
         self.assertIs(self.world.fill_slot_data()["death_link"], False)
 
-
-class TestAssistsAreLockedByDefault(ZexionTestBase):
     def test_slot_data_disallows_assists(self) -> None:
         self.assertIs(self.world.fill_slot_data()["allow_assists"], False)
+
+    def test_mode_and_items_are_standards(self) -> None:
+        self.assertEqual(self.world.mode_name, "standard")
+        self.assertEqual(self.world.logic_settings.energy_total, 20)
+        self.assertEqual(self.count("Energy Tank"), 3)  # the starting inventory
+        self.assertEqual(self.world.fill_slot_data()["mode"], "standard")
+
+    def test_slot_data_sets_up_the_menu_as_the_mode(self) -> None:
+        menu = self.world.fill_slot_data()["menu"]
+        self.assertEqual(len(menu["seed_text"]), 16)
+        self.assertLessEqual(set(menu["seed_text"]), set("0123456789ABCDEF"))
+        self.assertEqual((len(menu["start"]), len(menu["pool"])), (27, 27))
+        for t, value in self.world.mode["checked_options"].items():
+            self.assertEqual(menu["settings"][t - 10], value, f"setting {t}")
+        self.assertEqual(menu["second_target"], [0, 20, 509])
+
+    def test_no_discs_and_the_keys_in_the_pool(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("OS Install Disk", pool)
+        self.assertEqual(
+            sum(pool.count(k) for k in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")), 4
+        )
+        slot = self.world.fill_slot_data()
+        self.assertEqual(
+            (slot["goal"], slot["discs_required"], slot["disc_locations"]), ("core", 0, [])
+        )
+
+    def test_location_groups_are_the_areas(self) -> None:
+        groups = self.world.location_name_groups
+        self.assertIn("Guardia 22,7", groups["Guardia"])
+        named = set().union(*(names for g, names in groups.items() if g != "Everywhere"))
+        self.assertEqual(len(named), len(data.LOCATIONS))
 
 
 class TestAssistsAllowed(ZexionTestBase):
@@ -83,13 +135,6 @@ class TestAssistUnlockIsNeverPlaced(ZexionTestBase):
         self.assertFalse(item.advancement)
 
 
-class TestAssistUnlockAtTheStart(ZexionTestBase):
-    options = {"start_inventory": {"Assist Unlock": 1}}
-
-    def test_it_is_not_written_into_the_save(self) -> None:
-        self.assertNotIn("100", self.world.fill_slot_data()["start_items"])
-
-
 class TestDeathLinkOn(ZexionTestBase):
     options = {"death_link": True}
 
@@ -97,28 +142,11 @@ class TestDeathLinkOn(ZexionTestBase):
         self.assertIs(self.world.fill_slot_data()["death_link"], True)
 
 
-class TestStandardIsTheDefault(ZexionTestBase):
-    def test_mode_and_items_are_standards(self) -> None:
-        self.assertEqual(self.world.mode_name, "standard")
-        self.assertEqual(self.world.settings.energy_total, 20)
-        self.assertEqual(self.count("Energy Tank"), 3)  # the starting inventory
-        self.assertEqual(self.world.fill_slot_data()["mode"], "standard")
-
-    def test_slot_data_sets_up_the_menu_as_the_mode(self) -> None:
-        menu = self.world.fill_slot_data()["menu"]
-        self.assertEqual(len(menu["seed_text"]), 16)
-        self.assertLessEqual(set(menu["seed_text"]), set("0123456789ABCDEF"))
-        self.assertEqual((len(menu["start"]), len(menu["pool"])), (27, 27))
-        for t, value in self.world.mode["checked_options"].items():
-            self.assertEqual(menu["settings"][t - 10], value, f"setting {t}")
-        self.assertEqual(menu["second_target"], [0, 20, 509])
-
-
 class TestEasy(ZexionTestBase):
     options = {"mode": "easy"}
 
     def test_easy_has_its_own_pool_items_and_settings(self) -> None:
-        self.assertEqual(self.world.settings.energy_total, 40)
+        self.assertEqual(self.world.logic_settings.energy_total, 40)
         self.assertEqual(self.count("Energy Tank"), 5)
         pool = [i.name for i in self.multiworld.itempool if i.player == self.player]
         self.assertEqual(pool.count("Energy Tank"), 35)
@@ -132,24 +160,11 @@ class TestOtherStart(ZexionTestBase):
 
 
 class TestStartRoomNotOffered(unittest.TestCase):
-    def world(self, start_room: int) -> ZexionWorld:
-        world = ZexionWorld.__new__(ZexionWorld)
-        world.options = types.SimpleNamespace(
-            mode=types.SimpleNamespace(value=1),
-            start_room=types.SimpleNamespace(value=start_room),
-            local_items=types.SimpleNamespace(value=set()),
-            goal=types.SimpleNamespace(value=0),
-        )
-        world.random = random.Random(1)
-        world.player = 1
-        world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
-        return world
-
     def test_a_room_the_mode_does_not_offer_is_replaced(self) -> None:
         saved = data.MODES["standard"]["starts"]
         data.MODES["standard"]["starts"] = [s for s in saved if tuple(s["cell"]) != START_CELLS[0]]
         try:
-            world = self.world(0)
+            world = fake_world(start_room=0)
             with self.assertLogs(level="WARNING"):
                 world.generate_early()
             self.assertIn(world.start, data.MODES["standard"]["starts"])
@@ -161,9 +176,35 @@ class TestStartRoomNotOffered(unittest.TestCase):
         data.MODES["standard"]["starts"] = []
         try:
             with self.assertRaises(OptionError):
-                self.world(0).generate_early()
+                fake_world(start_room=0).generate_early()
         finally:
             data.MODES["standard"]["starts"] = saved
+
+    def test_every_room_random_can_roll_gives_a_start_of_the_mode(self) -> None:
+        # 'random' rolls any of StartRoom's values, in any mode.
+        logger = logging.getLogger()
+        for mode, name in Mode.name_lookup.items():
+            offered = {tuple(s["cell"]) for s in data.MODES[name]["starts"]}
+            for value in StartRoom.name_lookup:
+                world = fake_world(mode=mode, start_room=value)
+                with self.subTest(mode=name, room=value):
+                    level = logger.level
+                    logger.setLevel(logging.ERROR)  # the warning for a room not offered
+                    try:
+                        world.generate_early()
+                    finally:
+                        logger.setLevel(level)
+                    self.assertIn(tuple(world.start["cell"]), offered)
+                    if world.second is not None:
+                        self.assertIn(tuple(world.second["cell"]), offered)
+                        self.assertNotEqual(world.start["cell"], world.second["cell"])
+
+
+class TestRandomModeAndStartRoom(ZexionTestBase):
+    options = {"mode": "random", "start_room": "random"}
+
+    def test_the_start_is_one_the_mode_offers(self) -> None:
+        self.assertIn(self.world.start, data.MODES[self.world.mode_name]["starts"])
 
 
 class TestNames(ZexionTestBase):
@@ -204,13 +245,17 @@ class TestOHKO(ZexionTestBase):
     def test_slot_data_names_the_second_target(self) -> None:
         slot = self.world.fill_slot_data()
         self.assertEqual(slot["mode"], "ohko")
-        self.assertEqual(slot["second_start"]["cell"], list(self.world.second["cell"]))
+        second = self.world.second
+        self.assertEqual(
+            slot["second_start"],
+            {"index": second["index"], "column": second["column"], "row": second["row"]},
+        )
         menu = slot["menu"]
         self.assertIsNone(menu["second_target"], "the seed's second start is written instead")
         self.assertEqual(len(menu["start_table"]), 34)
         self.assertEqual(menu["table_build"], data.DATA_BUILD)
         index = slot["second_start"]["index"]
-        self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(slot["second_start"]["cell"]))
+        self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(second["cell"]))
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
 
 
@@ -372,19 +417,6 @@ def pool_names(test: ZexionTestBase) -> list[str]:
     return [i.name for i in test.multiworld.itempool if i.player == test.player]
 
 
-class TestCoreIsTheDefaultGoal(ZexionTestBase):
-    def test_no_discs_and_the_keys_in_the_pool(self) -> None:
-        pool = pool_names(self)
-        self.assertNotIn("OS Install Disk", pool)
-        self.assertEqual(
-            sum(pool.count(k) for k in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")), 4
-        )
-        slot = self.world.fill_slot_data()
-        self.assertEqual(
-            (slot["goal"], slot["discs_required"], slot["disc_locations"]), ("core", 0, [])
-        )
-
-
 class DiscHuntBase(ZexionTestBase):
     mode = "standard"
     placed, required = 20, 15
@@ -499,19 +531,7 @@ class TestDiscStartInventory(DiscHuntBase):
 
 class TestDiscOptionsChecked(unittest.TestCase):
     def world(self, mode: int, placed: int, required: int) -> ZexionWorld:
-        world = ZexionWorld.__new__(ZexionWorld)
-        world.options = types.SimpleNamespace(
-            mode=types.SimpleNamespace(value=mode),
-            start_room=types.SimpleNamespace(value=len(START_CELLS)),
-            local_items=types.SimpleNamespace(value=set()),
-            goal=types.SimpleNamespace(value=1),
-            os_install_disks=types.SimpleNamespace(value=placed),
-            os_install_disks_required=types.SimpleNamespace(value=required),
-        )
-        world.random = random.Random(1)
-        world.player = 1
-        world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
-        return world
+        return fake_world(mode, goal=Goal.option_os_install_disks, placed=placed, required=required)
 
     def test_room_per_mode(self) -> None:
         for mode, room in ((0, 31), (1, 31), (2, 41)):
@@ -520,6 +540,8 @@ class TestDiscOptionsChecked(unittest.TestCase):
             self.assertEqual(world.disc_room(), room, mode)
 
     def test_too_many_discs_is_an_error(self) -> None:
+        # Beyond the option's range: every mode has room for its most (30), so this guards only
+        # data regenerated with less room.
         with self.assertRaises(OptionError):
             self.world(1, 32, 1).generate_early()
 
@@ -539,3 +561,72 @@ class TestDiscOptionsChecked(unittest.TestCase):
         # is not the Energy Shield.
         items = {c for c in codes if c < FIRST_SPECIAL}
         self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
+
+
+class TestStartInventoryChecked(unittest.TestCase):
+    """start_inventory the client could not give is refused in generation (starting.py)."""
+
+    def refused(self, start_inventory: dict[str, int], **options) -> str:
+        world = fake_world(start_inventory=start_inventory, **options)
+        with self.assertRaises(OptionError) as caught:
+            world.generate_early()
+        return str(caught.exception)
+
+    def test_what_a_new_game_can_start_with_passes(self) -> None:
+        fine = {
+            "Energy Tank": 4,
+            "Missile Container": 6,  # 9 with Standard's own 3
+            "Missile Box": 3,
+            "Progressive Snake": 2,
+            "Slide Mod": 1,
+            "Alpha Key": 1,
+            "Beta Key": 1,
+        }
+        fake_world(start_inventory=fine).generate_early()
+        disks = {"OS Install Disk": 3}
+        fake_world(goal=Goal.option_os_install_disks, start_inventory=disks).generate_early()
+
+    def test_items_no_new_game_can_hold_are_refused(self) -> None:
+        for name in (
+            "Energy Shield",
+            "Scrap Metal",
+            "Scrap Energy",
+            "Scrap Chunk",
+            "Area Map",
+            "Intel Chip",
+            "Assist Unlock",
+            "Mega Bomb",
+            "Bomb Box",
+        ):
+            with self.subTest(name):
+                self.assertIn(name, self.refused({name: 1}))
+
+    def test_missile_containers_count_the_modes_own(self) -> None:
+        self.assertIn("10 Missile Containers", self.refused({"Missile Container": 7}))
+        # OHKO starts with 3 too; Easy's own are 3.
+        self.assertIn("Missile Containers", self.refused({"Missile Container": 7}, mode=2))
+
+    def test_keys_must_be_the_first_ones(self) -> None:
+        self.assertIn("keys", self.refused({"Beta Key": 1}))
+        self.assertIn("keys", self.refused({"Alpha Key": 1, "Gamma Key": 1}))
+        self.assertIn("Alpha Key", self.refused({"Alpha Key": 2}))
+
+    def test_one_of_an_upgrade_and_two_of_a_weapon(self) -> None:
+        self.assertIn("Slide Mod", self.refused({"Slide Mod": 2}))
+        # Easy starts with a Power Cartridge of its own.
+        self.assertIn("Power Cartridge", self.refused({"Power Cartridge": 1}, mode=0))
+        self.assertIn("Progressive Lance", self.refused({"Progressive Lance": 3}))
+
+    def test_a_disk_needs_the_disk_goal(self) -> None:
+        self.assertIn("OS Install Disk", self.refused({"OS Install Disk": 1}))
+
+    def test_the_modes_own_starting_items_pass(self) -> None:
+        for mode in data.MODES.values():
+            self.assertEqual(starting.problems(mode["start_inventory"], False), [])
+
+
+class TestStartInventoryAccepted(ZexionTestBase):
+    options = {"start_inventory": {"Alpha Key": 1, "Missile Box": 2, "Progressive Snake": 2}}
+
+    def test_the_seed_generates(self) -> None:
+        self.assertEqual(self.world.mode_name, "standard")

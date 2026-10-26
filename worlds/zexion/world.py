@@ -12,32 +12,44 @@ from BaseClasses import Item, ItemClassification, Region
 from Options import OptionError
 from worlds.AutoWorld import World
 
-from . import data, logic, rules, web_world
+from . import data, logic, rules, starting, web_world
 from .items import (
     AREA_MAP,
     DATA_DISC,
     DRAWN_AS,
+    ENERGY_SHIELD,
     FILLER_NAME,
     GAME,
     GAME_ITEMS,
     INTEL_CHIP,
     ITEM_ID_BASE,
+    KEY_CODES,
     KEYS,
     NAMES,
     PROGRESSIVE,
+    SCRAP_CHUNK,
+    SCRAP_ENERGY,
+    SCRAP_METAL,
+    SUPPLIES,
     ZexionItem,
     classification,
     code_of,
+    item_name_groups,
     item_name_to_id,
 )
-from .locations import ZexionLocation, cell_name, location_name, location_name_to_id
-from .options import AUTOMATIC, MODE_NAMES, START_CELLS, Goal, ZexionOptions
+from .locations import (
+    ZexionLocation,
+    cell_name,
+    location_name,
+    location_name_groups,
+    location_name_to_id,
+)
+from .options import AUTOMATIC, START_CELLS, Goal, ZexionOptions
 
 GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
 AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
-MIN_SPHERE_ZERO = 3  # as tools/gen_world_data.py requires of a single start
 # Filler item codes, in the order a left-out location removes them from the pool.
-FILLER_ORDER = (46, 47, 48, 49)
+FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
 # What the game holds at a location whose item is not this world's to hand out natively.
 # Another player's item: Scrap Energy, or Scrap Chunk for a progression item, which the
 # client's helper shows as an Archipelago item (the progression one with its up arrow), named at
@@ -45,17 +57,14 @@ FILLER_ORDER = (46, 47, 48, 49)
 # Chunk, are Scrap Metal, so 47 or 48 in a location always means another player's item, or (48)
 # one of this world's own OS Install Disks, which the game must not hand out (location_items);
 # all are filler the game counts as Scrap Metal.
-FOREIGN, FOREIGN_PROGRESSION, SCRAP_METAL = 47, 48, 46
-# Supplies, with many copies in every pool (Energy Tank, Missile Container, Mega Bomb, Missile
-# Box, Bomb Box): progression for the rules' counts, but not worth an Area Map's hint. The OS
-# Install Disks are hinted: each is a step to the goal (the owner's call).
-NOT_HINTED = {0, 1, 2, 36, 37}
-KEY_CODES = (27, 28, 29, 30)
+FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
+# Supplies (items.SUPPLIES) are progression for the rules' counts, but not worth an Area Map's
+# hint. The OS Install Disks are hinted: each is a step to the goal (the owner's call).
+NOT_HINTED = SUPPLIES
 # With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
 # them (worlds/zexion/data.py).
-DISC_REPLACES = (46, 47, 48, 49, 50)
-SCRAP_ENERGY, SCRAP_CHUNK = 47, 48
+DISC_REPLACES = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, ENERGY_SHIELD)
 
 
 class ZexionWorld(World):
@@ -68,8 +77,8 @@ class ZexionWorld(World):
     options: ZexionOptions
     item_name_to_id = item_name_to_id
     location_name_to_id = location_name_to_id
-    item_name_groups = {"Keys": set(KEYS)}
-    origin_region_name = "Menu"
+    item_name_groups = item_name_groups
+    location_name_groups = location_name_groups
 
     created_regions: set[int]
     start: dict
@@ -77,14 +86,15 @@ class ZexionWorld(World):
     kept_locations: set[int]  # location indices this world creates
     mode_name: str
     mode: dict
-    settings: logic.Settings
+    logic_settings: logic.Settings  # not World.settings, the host.yaml settings
 
     def generate_early(self) -> None:
-        self.mode_name = MODE_NAMES[self.options.mode.value]
+        self.mode_name = self.options.mode.current_key
         self.mode = data.MODES[self.mode_name]
-        self.settings = logic.Settings(
+        self.logic_settings = logic.Settings(
             self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
         )
+        self.check_start_inventory()
         starts = {tuple(s["cell"]): s for s in self.mode["starts"]}
         if not starts:
             raise OptionError(f"Zexion: {self.mode_name} mode has no start room to offer")
@@ -110,6 +120,18 @@ class ZexionWorld(World):
         if self.disc_hunt:
             self.check_discs()
 
+    def check_start_inventory(self) -> None:
+        """Refuse a start_inventory the client could not give (worlds/zexion/starting.py)."""
+        counts = Counter(self.mode["start_inventory"])
+        for name, n in self.options.start_inventory.value.items():
+            counts[code_of[name]] += n
+        found = starting.problems(counts, self.disc_hunt)
+        if found:
+            raise OptionError(
+                f"Zexion ({self.player_name}): the client cannot start a seed with this "
+                f"start_inventory: {'; '.join(found)}"
+            )
+
     @property
     def disc_hunt(self) -> bool:
         return self.options.goal.value == Goal.option_os_install_disks
@@ -129,6 +151,8 @@ class ZexionWorld(World):
                 f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
                 f"more than OS Install Disks ({placed})"
             )
+        # Every mode has room for the option's most (30) as the data stands, so this guards
+        # only data regenerated with less room (tools/gen_world_data.py).
         room = self.disc_room()
         if placed > room:
             raise OptionError(
@@ -138,7 +162,7 @@ class ZexionWorld(World):
 
     def pick_second_start(self, starts: dict) -> None:
         """Pick the second teleport target: a room that, together with the start, lets the
-        starting items reach at least MIN_SPHERE_ZERO locations. Only locations every item
+        starting items reach at least data.MIN_SPHERE_ZERO locations. Only locations every item
         reaches from one of the two are kept (docs/re/locations.md)."""
 
         def sphere0(a: dict, b: dict) -> int:
@@ -147,14 +171,14 @@ class ZexionWorld(World):
         partners = [
             b
             for c, b in sorted(starts.items())
-            if b is not self.start and sphere0(self.start, b) >= MIN_SPHERE_ZERO
+            if b is not self.start and sphere0(self.start, b) >= data.MIN_SPHERE_ZERO
         ]
         if not partners:
             pairs = [
                 (a, b)
                 for a in starts.values()
                 for b in starts.values()
-                if a is not b and sphere0(a, b) >= MIN_SPHERE_ZERO
+                if a is not b and sphere0(a, b) >= data.MIN_SPHERE_ZERO
             ]
             if not pairs:
                 raise OptionError(f"Zexion: {self.mode_name} mode has no pair of start rooms")
@@ -167,9 +191,15 @@ class ZexionWorld(World):
             self.start = a
             partners = [b]
         self.second = self.random.choice(partners)
-        self.kept_locations = set(self.start["location_indices"]) | set(
-            self.second["location_indices"]
+        self.kept_locations = set(self.of_start(self.start, "location_indices")) | set(
+            self.of_start(self.second, "location_indices")
         )
+
+    def of_start(self, start: dict, key: str) -> list[int]:
+        """A start's regions or location indices: the mode's, which data.py holds once when
+        every start has the same, else the start's own."""
+        shared = self.mode[key]
+        return start[key] if shared is None else shared
 
     def create_item(self, name: str) -> Item:
         return ZexionItem(name, classification(code_of[name]), item_name_to_id[name], self.player)
@@ -179,9 +209,9 @@ class ZexionWorld(World):
 
     def create_regions(self) -> None:
         cells = rules.cell_region()
-        self.created_regions = set(self.start["regions"])
+        self.created_regions = set(self.of_start(self.start, "regions"))
         if self.second is not None:
-            self.created_regions |= set(self.second["regions"])
+            self.created_regions |= set(self.of_start(self.second, "regions"))
         menu = Region("Menu", self.player, self.multiworld)
         self.multiworld.regions.append(menu)
         by_index = {}
@@ -232,7 +262,9 @@ class ZexionWorld(World):
             return
         core = by_index[cells[GOAL_CELL]]
         goal = ZexionLocation(self.player, "Zexion", None, core)
-        goal.place_locked_item(Item("Victory", ItemClassification.progression, None, self.player))
+        goal.place_locked_item(
+            ZexionItem("Victory", ItemClassification.progression, None, self.player)
+        )
         core.locations.append(goal)
 
     def create_items(self) -> None:
@@ -281,13 +313,11 @@ class ZexionWorld(World):
         return {
             "mode": self.mode_name,
             "start_index": self.start["index"],
-            "start_cell": list(self.start["cell"]),
             "start_column": self.start["column"],
             "start_row": self.start["row"],
             "second_start": None
             if self.second is None
-            else {k: self.second[k] for k in ("index", "column", "row")}
-            | {"cell": list(self.second["cell"])},
+            else {k: self.second[k] for k in ("index", "column", "row")},
             "kept_locations": sorted(self.kept_locations),
             "locations": [list(c) for c in data.LOCATIONS],
             "location_items": self.location_items(),
@@ -306,7 +336,7 @@ class ZexionWorld(World):
             # The OS Install Disks goal (client/discs.py): the disks are counted by the client
             # and never written into the game's inventory, so this world's own are stand-ins
             # in location_items, listed here by location index.
-            "goal": "os_install_disks" if self.disc_hunt else "core",
+            "goal": self.options.goal.current_key,
             "discs_required": self.options.os_install_disks_required.value if self.disc_hunt else 0,
             "discs_placed": self.options.os_install_disks.value if self.disc_hunt else 0,
             "discs_start": self.precollected_discs(),

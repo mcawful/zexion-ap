@@ -58,7 +58,6 @@ FIRST_SPECIAL = logic.FIRST_SPECIAL
 H, W = logic.H, logic.W
 Settings = logic.Settings
 combat_tier = logic.combat_tier
-derive = logic.derive
 
 
 def find_randocells(explicit: Path | None = None) -> Path:
@@ -201,9 +200,9 @@ def reachable_cells(
 
 # Item definition redirects (the live item table, fields +0x54 and +0x56; docs/re/randocells.md):
 # a weapon picked up again counts as its upgrade; an upgrade picked up first counts as its
-# weapon. In effect each weapon and its upgrade are progressive.
-REDIRECT_IF_OWNED = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
-REDIRECT_IF_MISSING = {9: 3, 10: 6, 12: 7, 14: 4, 15: 5}
+# weapon. In effect each weapon and its upgrade are progressive (logic.WEAPON_UPGRADES).
+REDIRECT_IF_OWNED = logic.WEAPON_UPGRADES
+REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in logic.WEAPON_UPGRADES.items()}
 
 
 def collect(have: Counter, item: int) -> None:

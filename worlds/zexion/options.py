@@ -22,19 +22,20 @@ class Mode(Choice):
     default = 1
 
 
-MODE_NAMES = {Mode.option_easy: "easy", Mode.option_standard: "standard", Mode.option_ohko: "ohko"}
-
 # Every start room valid in some mode, in a fixed order; which ones a mode accepts is in
 # data.MODES[mode]["starts"].
 START_CELLS = sorted({tuple(s["cell"]) for m in MODES.values() for s in m["starts"]})
 AUTOMATIC = len(START_CELLS)
 
 
+def _room_option(a: int, b: int) -> str:
+    """kresezoa_16_13: the area, then X and Y as the game displays them."""
+    area = CELL_AREAS[(a, b)].lower().replace("'", "")
+    return f"option_{area}_{b}_{a}"
+
+
 def _make_start_room() -> type[Choice]:
-    attrs = {
-        f"option_{CELL_AREAS[(a, b)].lower().replace(chr(39), '')}_{b}_{a}": i
-        for i, (a, b) in enumerate(START_CELLS)
-    }
+    attrs = {_room_option(a, b): i for i, (a, b) in enumerate(START_CELLS)}
     attrs["option_automatic"] = AUTOMATIC
     attrs["default"] = AUTOMATIC
     attrs["display_name"] = "Start Room"

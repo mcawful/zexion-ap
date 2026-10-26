@@ -1,9 +1,11 @@
 from BaseClasses import Tutorial
 from worlds.AutoWorld import WebWorld
 
+from .items import GAME
+
 
 class ZexionWebWorld(WebWorld):
-    game = "Zexion"
+    game = GAME
     theme = "dirt"
     setup_en = Tutorial(
         "Multiworld Setup Guide",

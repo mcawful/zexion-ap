@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+import types
 
 import pytest
 
@@ -44,3 +45,25 @@ def test_other_builds_files_are_refused() -> None:
     map_data, text = tables({}, {0: 0}, ["KRESEZOA"])
     with pytest.raises(SystemExit, match="MapData is not build B1's"):
         gwd.cell_areas(map_data, text, [(0, 0)])
+
+
+def test_components_number_each_strongly_connected_group_once() -> None:
+    # A row of four cells: 0 <-> 1 open both ways, 1 -> 2 open one way, 2 <-> 3 open both ways.
+    def cell(**open_to):
+        passage = {d: gwd.rc.OPEN if open_to.get(d) else gwd.rc.WALL for d in "NSWE"}
+        return types.SimpleNamespace(passage=passage)
+
+    row = [cell(E=True), cell(W=True, E=True), cell(E=True), cell(W=True)]
+    comp = gwd.components({(x, 0) for x in range(4)}, [row])
+    assert comp[(0, 0)] == comp[(1, 0)]
+    assert comp[(2, 0)] == comp[(3, 0)]
+    assert comp[(0, 0)] != comp[(2, 0)]
+    assert sorted(set(comp.values())) == [0, 1]
+
+
+def test_what_every_start_shares_is_held_once() -> None:
+    same = [{"regions": [1, 2]}, {"regions": [1, 2]}]
+    assert gwd.shared(same, "regions") == [1, 2]
+    assert gwd.shared([{"regions": [1]}, {"regions": [2]}], "regions") is None
+    assert gwd.shared([{"regions": [1]}, {}], "regions") is None
+    assert gwd.shared(same, "location_indices") is None

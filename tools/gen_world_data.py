@@ -67,7 +67,7 @@ def components(cells: set, grid) -> dict:
             if n in cells and grid[y][x].passage[d] == rc.OPEN:
                 succ[(x, y)].append(n)
     index, low, on_stack, stack, comp = {}, {}, set(), [], {}
-    counter = 0
+    counter = found = 0
     for root in sorted(cells, key=lambda c: (c[1], c[0])):
         if root in index:
             continue
@@ -91,13 +91,13 @@ def components(cells: set, grid) -> dict:
                 if nxt in on_stack:
                     low[node] = min(low[node], low[nxt])
             if low[node] == index[node]:
-                k = len(set(comp.values()))
                 while True:
                     w = stack.pop()
                     on_stack.discard(w)
-                    comp[w] = k
+                    comp[w] = found
                     if w == node:
                         break
+                found += 1
     return comp
 
 
@@ -183,30 +183,34 @@ def check_fresh(data: bytes, name: str) -> None:
         raise SystemExit(f"{name} has picked something up: not a fresh save")
 
 
+def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
+    """The cells ``have`` reaches from ``start``, and the indices of the locations it collects."""
+    cells = rc.reachable_cells(grid, have, settings, start)
+    found = [
+        i
+        for i, c in enumerate(locations)
+        if c in cells and location_ok(grid, c, have, settings, cells)
+    ]
+    return cells, found
+
+
 def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list[dict]:
     """The candidates valid for one mode, each with the cells every item reaches from it."""
     full = full_inventory(start_inv, pool)
     starts = []
     for cand in candidates:
         start = tuple(cand["cell"])
-        reach_all = rc.reachable_cells(grid, full, settings, start)
-        every = all(
-            c in reach_all and location_ok(grid, c, full, settings, reach_all) for c in locations
-        )
-        reach_0 = rc.reachable_cells(grid, start_inv, settings, start)
-        sphere0 = sum(
-            1
-            for c in locations
-            if c in reach_0 and location_ok(grid, c, start_inv, settings, reach_0)
-        )
-        valid = every and sphere0 >= MIN_SPHERE_ZERO
+        reach_all, every = reach(grid, locations, full, settings, start)
+        _, sphere0 = reach(grid, locations, start_inv, settings, start)
+        whole = len(every) == len(locations)
+        valid = whole and len(sphere0) >= MIN_SPHERE_ZERO
         print(
             f"{name}: start {cand['index']:2d} {start}: all items reach "
-            f"{'all' if every else 'NOT all'} locations; sphere 0 has {sphere0}"
+            f"{'all' if whole else 'NOT all'} locations; sphere 0 has {len(sphere0)}"
             f"{'' if valid else '  -> left out'}"
         )
         if valid:
-            starts.append({**cand, "sphere0": sphere0, "cells": reach_all})
+            starts.append({**cand, "cells": reach_all})
     return starts
 
 
@@ -219,18 +223,8 @@ def pair_starts(grid, locations, pool, start_inv, settings, candidates, name) ->
     out = []
     for cand in candidates:
         start = tuple(cand["cell"])
-        reach_all = rc.reachable_cells(grid, full, settings, start)
-        reach_0 = rc.reachable_cells(grid, start_inv, settings, start)
-        every = [
-            i
-            for i, c in enumerate(locations)
-            if c in reach_all and location_ok(grid, c, full, settings, reach_all)
-        ]
-        sphere0 = [
-            i
-            for i, c in enumerate(locations)
-            if c in reach_0 and location_ok(grid, c, start_inv, settings, reach_0)
-        ]
+        reach_all, every = reach(grid, locations, full, settings, start)
+        _, sphere0 = reach(grid, locations, start_inv, settings, start)
         out.append(
             {**cand, "cells": reach_all, "location_indices": every, "sphere0_indices": sphere0}
         )
@@ -239,6 +233,14 @@ def pair_starts(grid, locations, pool, start_inv, settings, candidates, name) ->
             f"locations, the starting items {len(sphere0)}"
         )
     return out
+
+
+def shared(starts: list[dict], key: str) -> list | None:
+    """The value of ``key`` when every start has the same one (then held once by the mode)."""
+    values = [st[key] for st in starts if key in st]
+    if not values or len(values) < len(starts) or any(v != values[0] for v in values):
+        return None
+    return values[0]
 
 
 # The area of each map cell, as the pause screen shows it (docs/re/locations.md, "Location
@@ -300,7 +302,6 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             "pool": pool,
             "start_inventory": dict(sorted(start_inv.items())),
             "starts": starts,
-            "source": save_path,
             "menu": menu_preset(exe, cells_path.parent.name, name, data),
             "second_target": None if double else struct.unpack_from("<3H", data, SECOND_TARGET),
         }
@@ -337,17 +338,25 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             location_rules[i] = tuple(grid[y][x].item_needs)
 
     for mode in modes.values():
-        mode["starts"] = [
+        starts = [
             {
                 "index": st["index"],
                 "cell": tuple(st["cell"]),
                 "column": st["column"],
                 "row": st["row"],
                 "regions": sorted({comp[c] for c in st["cells"]}),
-                **{k: st[k] for k in ("sphere0", "location_indices", "sphere0_indices") if k in st},
+                **{k: st[k] for k in ("location_indices", "sphere0_indices") if k in st},
             }
             for st in mode["starts"]
         ]
+        # What every start agrees on is held once by the mode (it is, on build B1).
+        for key in ("regions", "location_indices"):
+            value = shared(starts, key)
+            mode[key] = value
+            if value is not None:
+                for st in starts:
+                    del st[key]
+        mode["starts"] = starts
     return {
         "locations": locations,
         "modes": modes,
@@ -377,16 +386,23 @@ def render(d: dict, source: str) -> str:
         "# The game's 154 locations, in the order of its location list: cell (a, b), X = b, Y = a.",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
+        "# A start room is offered when every item reaches all 154 locations from it and its",
+        "# mode's starting items at least this many (with a second teleport target, from it and",
+        "# the second together).",
+        f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
+        "",
         "# Per mode: the starting and pool Energy, missiles and bombs as the save holds them",
         "# (docs/re/save-format.md), the settings the client checks in the save, whether it has",
         "# a second teleport target, the seed's settings (as the logic reads them),",
         "# its item pool (item IDs, one per location), its starting inventory, and its start",
-        "# rooms (the game's candidate index, the cell, the save point's column and row in tiles,",
-        "# and the regions every item reaches from there). A mode without a second target lists",
-        "# only valid rooms, with how many locations the starting inventory reaches; a mode with",
-        "# one lists every candidate, with the locations every item and the starting items reach",
-        "# from it alone. Then the mode's randomizer-menu preset (the start-with and pool arrays",
-        "# and settings 10 to 73) and, with one start, the second target the game writes.",
+        "# rooms (the game's candidate index, the cell, the save point's column and row in",
+        "# tiles). The regions every item reaches from a start, and in a mode with a second",
+        "# target the locations it reaches, are the mode's 'regions' and 'location_indices'",
+        "# when every start has the same (else None, and each start has its own). A mode without",
+        "# a second target lists only valid rooms; a mode with one lists every candidate, with",
+        "# the locations its starting items reach from it alone ('sphere0_indices'). Then the",
+        "# mode's randomizer-menu preset (the start-with and pool arrays and settings 10 to 73)",
+        "# and, with one start, the second target the game writes.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
@@ -401,6 +417,8 @@ def render(d: dict, source: str) -> str:
             f"        'options': bytes.fromhex({s.options.hex()!r}),",
             f"        'pool': {list(m['pool'])!r},",
             f"        'start_inventory': {m['start_inventory']!r},",
+            f"        'regions': {m['regions']!r},",
+            f"        'location_indices': {m['location_indices']!r},",
             "        'starts': [",
         ]
         for st in m["starts"]:

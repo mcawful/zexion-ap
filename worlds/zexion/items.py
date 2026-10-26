@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from BaseClasses import Item, ItemClassification
 
+from .logic import WEAPON_UPGRADES
+
 GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
 
@@ -31,8 +33,10 @@ AREA_MAP, INTEL_CHIP = 49, 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 
-# Progressive weapon item code -> its upgrade's code.
-PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
+# Progressive weapon item code -> its upgrade's code, as the logic counts them.
+PROGRESSIVE = WEAPON_UPGRADES
+SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK = 46, 47, 48
+ENERGY_SHIELD = 50
 
 NAMES = {
     0: "Energy Tank",
@@ -80,19 +84,30 @@ NAMES = {
 # (worlds/zexion/logic.py), plus the keys for the core goal.
 PROGRESSION = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37}
+# Supplies, with many copies in every pool (Energy Tank, Missile Container, Mega Bomb, Missile
+# Box, Bomb Box): progression for the rules' counts, but skipped by progression balancing (the
+# owner's call) and not worth an Area Map's hint (worlds/zexion/world.py).
+SUPPLIES = {0, 1, 2, 36, 37}
 # Intel Chip as the Area Map was: filler, so excluded locations still have filler to take.
-FILLER = {46, 47, 48, 49, INTEL_CHIP}
+FILLER = {SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
-KEYS = ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")
-FILLER_NAME = "Scrap Metal"
+KEY_CODES = (27, 28, 29, 30)  # Alpha, Beta, Gamma, Omega
+KEYS = tuple(NAMES[code] for code in KEY_CODES)
+FILLER_NAME = NAMES[SCRAP_METAL]
 
 item_name_to_id = {name: ITEM_ID_BASE + code for code, name in NAMES.items()}
 code_of = {name: code for code, name in NAMES.items()}
+item_name_groups = {
+    "Keys": set(KEYS),
+    "Weapons": {NAMES[code] for code in PROGRESSIVE},
+    "Supplies": {NAMES[code] for code in SUPPLIES},
+    "Scrap": {NAMES[code] for code in (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)},
+}
 
 
 def classification(code: int) -> ItemClassification:
-    if code == DATA_DISC:
+    if code == DATA_DISC or code in SUPPLIES:
         return ItemClassification.progression_skip_balancing
     if code in PROGRESSION:
         return ItemClassification.progression
