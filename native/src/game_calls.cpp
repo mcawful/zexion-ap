@@ -799,9 +799,9 @@ void Game::resolve_item_labels() {
         std::string name;
         if (!pending.item_name.empty()) {
             name = pending.item_name;  // this player's own, named by the client
-        } else if (pending.item == kStandInItem || pending.item == kStandInProgression) {
+        } else if (stand_in_index(pending.item) >= 0) {
             // The stand-ins' records are restyled: their own names, as the game loads them.
-            name = kStandInNames[pending.item == kStandInItem ? 0 : 1];
+            name = kStandInNames[stand_in_index(pending.item)];
             record[record::kIcon] = 0;
         } else {
             for (size_t i = 0; i < record::kNameSize && record[record::kName + i] != 0; ++i) {
@@ -903,9 +903,7 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
     constexpr double kMapWidth = kMapSide * 320.0, kMapHeight = kMapSide * 224.0 + 8;
     std::vector<StandInSeen> out;
     auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {
-        double x = 0, y = 0;
-        std::memcpy(&x, o + sprite::kX, sizeof(x));
-        std::memcpy(&y, o + sprite::kY, sizeof(y));
+        const double x = field<double>(o, sprite::kX), y = field<double>(o, sprite::kY);
         if (row >= kMapSide || column >= kMapSide || !(x >= 0 && x < kMapWidth) ||
             !(y >= 0 && y < kMapHeight)) {
             return;
@@ -916,11 +914,8 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
         if (pool == nullptr) return out;  // not read: none named after an object
         for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
             const BYTE* o = pool + slot * obj::kItemSize;
-            int32_t spawn = 0;
-            int16_t record = 0;
-            std::memcpy(&spawn, o + obj::kSpawn, sizeof(spawn));
-            std::memcpy(&record, o + obj::kRecord, sizeof(record));
-            if (spawn == 0 || (record != kStandInItem && record != kStandInProgression)) continue;
+            const int16_t record = field<int16_t>(o, obj::kRecord);
+            if (field<int32_t>(o, obj::kSpawn) == 0 || stand_in_index(record) < 0) continue;
             add(record, o[obj::kItemRow], o[obj::kItemColumn], o);
         }
     }
@@ -933,9 +928,8 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
                 !ItemLooks::shows_stand_in(o, base)) {
                 continue;
             }
-            int32_t frame = 0;
-            std::memcpy(&frame, o + sprite::kFrameIndex, sizeof(frame));
-            int item = frame == kStandInFrame ? kStandInItem : kStandInProgression;
+            // A logo frame (shows_stand_in): which stand-in it is.
+            int item = kStandInRecords[logo_index(field<int32_t>(o, sprite::kFrameIndex))];
             add(item, o[obj::kGeneralRow], o[obj::kGeneralColumn], o);
         }
     }

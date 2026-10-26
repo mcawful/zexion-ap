@@ -117,6 +117,12 @@ void reset_gl() {
 BYTE* holder() { return reinterpret_cast<BYTE*>(&g_records_ptr); }
 BYTE* sprites() { return reinterpret_cast<BYTE*>(&g_sprite_holder); }
 
+// Both stand-ins named for one cell.
+void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
+    const int cells[2] = {cell, cell};
+    items.watch(records_holder, cells);
+}
+
 // --- tests -----------------------------------------------------------------------------------
 
 void test_restyle_and_names() {
@@ -126,12 +132,12 @@ void test_restyle_and_names() {
     BYTE before[100], before_chunk[100];
     std::memcpy(before, g_scrap, 100);
     std::memcpy(before_chunk, g_chunk, 100);
-    items.watch(holder(), 5);
+    watch(items, holder(), 5);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "nothing happens before the labels arrive");
 
     items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
-    items.watch(holder(), 2 * 54 + 5);
+    watch(items, holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
     check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 &&
               g_scrap[0x08] == 0,
@@ -145,11 +151,11 @@ void test_restyle_and_names() {
               g_chunk[0x08] == 0 &&
               get<int16_t>(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
-    items.watch(holder(), 7);
+    watch(items, holder(), 7);
     check(name() == "\xEE" "AP ITEM", "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
     items.set_labels({{7, long_name}});
-    items.watch(holder(), 7);
+    watch(items, holder(), 7);
     check(name() == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
           "a name is cut to 49 bytes and stays terminated");
 
@@ -167,7 +173,7 @@ void test_one_record_not_as_expected_leaves_the_other_restyled() {
     zap::ApItems items;
     zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
+    watch(items, holder(), 1);
     check(items.restyled() && get<int16_t>(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
     items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
@@ -183,7 +189,7 @@ void test_records_not_as_expected_are_left_alone() {
     zap::ApItems items;
     zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
+    watch(items, holder(), 1);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "a record not as traced is not written");
 
@@ -191,7 +197,7 @@ void test_records_not_as_expected_are_left_alone() {
     zap::ApItems no_table;
     zap::TextureCheck no_table_check;
     no_table.set_labels({{1, "X"}});
-    no_table.watch(reinterpret_cast<BYTE*>(&none), 1);
+    watch(no_table, reinterpret_cast<BYTE*>(&none), 1);
     check(!no_table.restyled(), "no records loaded: nothing");
 }
 
@@ -202,11 +208,11 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
     zap::ApItems earlier;
     zap::TextureCheck earlier_check;
     earlier.set_labels({{1, "OLD NAME"}});
-    earlier.watch(holder(), 1);  // and then unloaded with no frame to restore it
+    watch(earlier, holder(), 1);  // and then unloaded with no frame to restore it
     zap::ApItems later;
     zap::TextureCheck later_check;
     later.set_labels({{1, "NEW NAME"}});
-    later.watch(holder(), 1);
+    watch(later, holder(), 1);
     check(later.restyled() && name() == "NEW NAME", "a later helper takes it over and renames it");
     later.restore(holder(), sprites(), zap::GlFunctions{}, later_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "and puts the game's own values back");
@@ -217,9 +223,9 @@ void test_a_reload_is_restyled_again() {
     zap::ApItems items;
     zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
+    watch(items, holder(), 1);
     reset_records();  // the game reloaded its records
-    items.watch(holder(), 1);
+    watch(items, holder(), 1);
     check(get<int16_t>(g_scrap, 0x02) == 63 && name() == "X", "restyled again after a reload");
 }
 

@@ -1,5 +1,7 @@
 #include "game_mem.h"
 
+#include <algorithm>
+
 namespace zap {
 
 namespace {
@@ -66,6 +68,30 @@ bool live_widget(const BYTE* w, const void* handler) {
 bool live_widget(const BYTE* w, const void* handler, const void* callback) {
     void* cb = nullptr;
     return live_widget(w, handler) && read(w, widget::kCallback, cb) && cb == callback;
+}
+
+bool matches(const BYTE* r, const RecordShape& s) {
+    return word(r, record::kKind) == s.kind && word(r, record::kFrame) == s.frame &&
+           word(r, record::kTicks) == s.ticks && word(r, record::kFrames) == s.frames &&
+           r[record::kIcon] == s.icon && r[record::kPalette] == s.palette &&
+           word(r, record::kInventory) == s.inventory && word(r, record::kRedirect) == s.redirect &&
+           word(r, record::kPickupClass) == s.pickup_class;
+}
+
+BYTE* writable_record(const BYTE* holder, int item, BYTE (&copy)[record::kSize]) {
+    BYTE* records = pointer_at(holder);
+    if (records == nullptr || item < 0 || item >= record::kCount) return nullptr;
+    BYTE* r = records + item * record::kSize;
+    if (!safe_read(r, copy, sizeof(copy)) || !writable(r, record::kSize)) return nullptr;
+    return r;
+}
+
+void set_record_name(BYTE* r, std::string_view name) {
+    char field[record::kNameSize] = {};
+    std::memcpy(field, name.data(), (std::min)(name.size(), record::kNameSize - 1));
+    if (std::memcmp(r + record::kName, field, sizeof(field)) != 0) {
+        std::memcpy(r + record::kName, field, sizeof(field));
+    }
 }
 
 bool is_open(const BYTE* current_menu, const BYTE* wanted) {

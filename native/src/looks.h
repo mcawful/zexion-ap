@@ -62,15 +62,19 @@ private:
     };
     // The Zexion item to show at map cell (row, column), or -1.
     int item_at(uint8_t row, uint8_t column) const;
-    // Puts the object back if it is still that spawn, on the base it was given or the
-    // template's; forgets it only if put back, or if it is no longer that spawn.
-    void undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
+    // Puts `object` (`seen`: this frame's copy of it) back if it is still the spawn `d` dressed,
+    // on the base it was given or the template's: the template's base `base` and the stand-ins'
+    // palette, and with `frame_shown` the frame it shows on that base (a general object's).
+    // Forgets it only if put back, or if it is no longer that spawn. undress_live reads the
+    // object's `size` bytes first (one that does not read is forgotten).
+    static void undress(BYTE* object, const BYTE* seen, Dressed& d, BYTE* base,
+                        BYTE* standin_palette, bool frame_shown);
+    static void undress_live(BYTE* object, size_t size, Dressed& d, BYTE* base,
+                             BYTE* standin_palette, bool frame_shown);
 
     // General objects showing a stand-in's logo (found by scan), dressed every frame.
     void apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                        int64_t clock, const bool (&ours)[2]);
-    void undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);
-    void restore_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette);
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};
