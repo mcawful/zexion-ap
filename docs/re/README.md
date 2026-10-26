@@ -7,6 +7,7 @@ relies on a fact cites the page and heading it comes from.
 ## Pages
 
 - [`builds.md`](builds.md): the game builds facts were measured on.
+- [`new-build.md`](new-build.md): what to do when the game is patched.
 - [`save-format.md`](save-format.md): the `.sav` files.
 - [`memory.md`](memory.md): where the running game keeps its state.
 - [`randocells.md`](randocells.md): the randomizer's logic file.

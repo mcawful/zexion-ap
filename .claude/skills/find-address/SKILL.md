@@ -99,4 +99,5 @@ In `docs/re/memory.md`, in the format from `docs/re/README.md`:
 ## 6. After a game update
 
 Run `build_id.py`. If the build changed, re-run every pattern in `docs/re/memory.md` against
-the new exe and record each one as still matching once, moved, or broken.
+the new exe and record each one as still matching once, moved, or broken. The whole checklist
+for a new build is `docs/re/new-build.md`.
