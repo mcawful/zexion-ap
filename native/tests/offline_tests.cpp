@@ -256,8 +256,10 @@ void test_a_save_of_the_seed_dressed_offline() {
     other.set_offline({s});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a client's own: no offline look by itself");
-    check(other.other_save() && other.queued_popups() == 1, "told once: the other-seed notice");
-    check(!other.other_save() && other.queued_popups() == 1, "and not again this load");
+    check(other.other_save() == "told" && other.queued_popups() == 1,
+          "told once: the other-seed notice");
+    check(other.other_save() == "already told" && other.queued_popups() == 1,
+          "and not again this load");
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
           "the other seed's save dressed, with no not-connected warning");
@@ -280,9 +282,17 @@ void test_a_save_of_the_seed_dressed_offline() {
     g_save_loaded = 3;
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a new load: the client's again until it says otherwise");
-    check(other.other_save() && other.queued_popups() == 2, "and told again for this load");
+    check(other.other_save() == "told" && other.queued_popups() == 2,
+          "and told again for this load");
     configure(other);  // a reconnect
-    check(other.other_save() && other.queued_popups() == 3, "and again on a reconnect");
+    check(other.other_save() == "told" && other.queued_popups() == 3, "and again on a reconnect");
+    {
+        // A randomizer save of no known seed (a plain randomizer game): nothing said or done.
+        zap::Game plain;
+        configure(plain);
+        check(plain.other_save() == "unknown" && plain.queued_popups() == 0,
+              "a plain randomizer game: no notice");
+    }
 
     // The file select with a client: its counts for its saves, the offline ones for others'.
     g_save_loaded = 0xFF;

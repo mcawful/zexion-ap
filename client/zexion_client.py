@@ -468,11 +468,8 @@ async def poll(ctx: ZexionContext) -> None:
         if load.seed_loaded:
             logger.info(state.SAVE_CLOSED)
         load.leave()  # reminded again on the next load, and so on
-    if step.other_seed:
-        if ctx.said("other save", "loaded"):  # once a load
-            logger.info(state.OTHER_SAVE)
-    elif step.left_seed or step.seed_matches:  # not an unsettled read
-        ctx.said.clear("other save")
+    if not step.other_seed and (step.left_seed or step.seed_matches):  # not an unsettled read
+        ctx.said.clear("other save")  # said again for the next such load (other_save_tick)
     conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
     if conn.death_link_on:
         await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))

@@ -473,7 +473,7 @@ const Request kRequests[] = {
      }},
     // The client's session sees a randomizer save in play that is not its seed's (offline.h).
     {"other_save", Match::kName, true,
-     [] { return std::string(g_game.other_save() ? "told" : "already told"); }},
+     [] { return g_game.other_save(); }},
     // The client's session sees its seed's save in play: if it was played offline, the player is
     // told the client is back (offline.h).
     {"client_back", Match::kName, true,

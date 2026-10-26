@@ -200,10 +200,11 @@ public:
     void watch_offline();
     void leave_offline();
     std::string offline_state() const;
-    // Game thread (`other_save`): the loaded randomizer save is not the client's seed's. Queues
-    // the other-seed notice once a load (again after a reconnect) and returns whether it did;
-    // the save gets the offline look if its seed is known.
-    bool other_save();
+    // Game thread (`other_save`): the loaded randomizer save is not the client's seed's. For an
+    // AP save (its seed known from a file), queues the other-seed notice once a load (again
+    // after a reconnect) and gives the save its offline look: "told" or "already told". A
+    // randomizer save of no known seed (a plain randomizer game): "unknown", left alone.
+    std::string other_save();
     // Game thread (`client_back`, from a client whose session has seen its seed's save in
     // play): if that save was played offline, ARCHIPELAGO CLIENT CONNECTED. pops up, once.
     // Whether it did.

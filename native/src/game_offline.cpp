@@ -164,16 +164,23 @@ void Game::watch_offline() {
     }
 }
 
-bool Game::other_save() {
-    if (!configured_ || *at_.save_loaded == kNoSaveLoaded) return false;
-    bool told = other_warned_;
-    other_save_ = true;
-    if (!other_warned_) {
-        drop_offline_warning();
-        popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true, true});
-        other_warned_ = true;
+std::string Game::other_save() {
+    // Only an AP save of another seed: one whose seed the helper has a file for (every new game
+    // from ARCHIPELAGO is made with a client, which leaves one). A plain randomizer game is left
+    // alone.
+    bool known = false;
+    if (configured_ && rando_save_loaded()) {
+        for (const OfflineSeed& sd : offline_seeds_) {
+            if (section_is(sd, at_.rando_blob)) known = true;
+        }
     }
-    return !told;
+    if (!known) return "unknown";
+    other_save_ = true;
+    if (other_warned_) return "already told";
+    drop_offline_warning();
+    popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true, true});
+    other_warned_ = true;
+    return "told";
 }
 
 bool Game::client_back() {

@@ -592,9 +592,9 @@ async def newgame_tick(ctx: ZexionContext) -> None:
 
 
 async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
-    """Once a load: a randomizer save of another seed in play. The helper tells the player
-    nothing is sent or received, and gives the save its look if it knows the seed
-    (other_save; client/offline.py)."""
+    """Once a load: a randomizer save of another seed in play. If it is an AP save (a seed the
+    helper has a file for), the helper and the window tell the player items wait, and the save
+    gets its look (other_save; client/offline.py); a plain randomizer game is left alone."""
     helper, told = ctx.helper, ctx.told
     if helper is None:
         return
@@ -606,9 +606,13 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
     if told.other_save_sent or step.state != game.IN_PLAY:
         return
     reply = await asyncio.to_thread(helper.request, "other_save")
-    if not reply.startswith("refused"):
-        told.other_save_sent = True
-        detail("Another seed's save: the game says nothing is sent or received.")
+    if reply.startswith("refused"):
+        return
+    told.other_save_sent = True
+    if reply == "unknown":
+        return  # a plain randomizer game (no seed the mod has a file for): left alone
+    if ctx.said("other save", "loaded"):  # once a load
+        logger.info(state.OTHER_SAVE)
 
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:

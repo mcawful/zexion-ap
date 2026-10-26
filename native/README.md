@@ -98,7 +98,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
-| `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`; or `refused <why>` | AP saves without the client |
+| `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
 `hello`'s fields (spaces inside a field written as underscores):
@@ -393,7 +393,8 @@ prompt", "The pause screen's KEYS row", "The file select").
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock, the escape skip, the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
-  notice a load that the client is not connected (or, for `other_save`, is for another seed).
+  notice a load that the client is not connected (or, for `other_save`, is for another seed;
+  only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
   The file select shows each such save's count, from its map in the game's copy of the slot.
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up

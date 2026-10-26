@@ -1211,7 +1211,9 @@ void test_pending_popups() {
     game.pump_popups();
     check(g_messages == 1 && game.pending_popups() == 2, "one shown: two pending");
     g_rando_marker = 1;
-    check(game.other_save() && game.queued_popups() == 3, "the helper's own notice queued");
+    game.set_offline({zap::offline_seed_of(g_section)});  // an AP save of a known seed
+    check(game.other_save() == "told" && game.queued_popups() == 3,
+          "the helper's own notice queued");
     check(game.pending_popups() == 2, "and not counted");
     game.clear_popups();
     check(game.pending_popups() == 0, "dropped with the client: none pending");
