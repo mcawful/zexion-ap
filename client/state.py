@@ -7,9 +7,12 @@ each, or None).
 - ``SeedState``: what carries over reconnections to the same seed and slot (the Area Map
   hints this client stored, DeathLink's queue); started afresh for another seed or slot.
 - ``LoadState``: what the polls found of the loaded save of this seed; mostly started afresh
-  when no save of the seed is loaded.
+  when no save of the seed is loaded, or when the game closes.
 
-No Archipelago imports, so the tests build them from slot data.
+Also the decisions the game loop makes from that state, as pure functions: the count of
+received items' popups shown, kept on the server (``announced_start`` and the rest), the
+locations found to record there (``found_to_store``), and ``SayOnce`` for messages that would
+repeat each poll. No Archipelago imports, so the tests build them from slot data.
 """
 
 from __future__ import annotations
