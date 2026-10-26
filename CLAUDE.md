@@ -182,9 +182,12 @@ and on connecting the client shows the ones missing for the loaded save, after t
 connected notice (live-tested 2026-10-25).
 `--no-helper`, no helper to use (none loaded in the game, and neither a build nor a copy in the
 game's folder) or a helper that fails means items are written directly, with no popup; the client's `/unload_helper` unloads it as if it had failed, to test that (ask
-first), and the client loads it again within 30 seconds. Popups are not for items the slot
-already held when the client connected (the list the server sends right after connecting), so
-a reconnect does not replay them. With the helper, the client also arms it with the seed,
+first), and the client loads it again within 30 seconds. Each received item's popup is shown
+once: the server's data storage keeps how many have been shown
+(`zexion_announced_<team>_<slot>`), so an item received while no client ran pops up when it is
+given, and a reconnect replays none (stand-in tests; not yet seen live; it replaced a rule,
+live-tested, that took the items the slot held at connecting as shown, which still applies to
+a slot with no count stored yet, so an older slot gets no flood of popups). With the helper, the client also arms it with the seed,
 and again once each new game holding it is in play, so one seed can start several saves: for
 a seed whose slot data carries the menu setup (from the world on `apworld`), picking an empty
 slot then offers ARCHIPELAGO, which starts a new game holding the seed with no `/prepare` (run
@@ -236,6 +239,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   configured, with a client or without, it adds ARCHIPELAGO MOD and its version, and
   ©2026 MCAWFUL, under the title screen's copyright line, with START THE AP CLIENT TO
   PLAY A SEED above them while no client is connected (`title.cpp`; the two lines
+  working in game 2026-10-25). In an Archipelago save the map shows the progression
+  stand-in's squares (this player's disks, other players' progression) as important
+  items and names them under the cursor (`mapmarks.cpp`, wrapping the map's handler;
   working in game 2026-10-25).
 - `tools/`: RE and save tooling, and `build_apworld.py`, the release builder (on `apworld`; see
   Commands). `tools/protected.py` defines the protected folders for both the tools and the

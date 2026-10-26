@@ -24,7 +24,7 @@ const char* const kConfigKeys[] = {
     "text_set_fn",   "routine_table", "keys_branch",
     "file_panel_fn", "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
     "map_grid",      "flags",         "slot_array",    "rando_slots",
-    "text_new_fn",   "text_link_fn",  "draw_layer",
+    "text_new_fn",   "text_link_fn",  "draw_layer",   "map_handler",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
@@ -149,10 +149,12 @@ bool is_function(const std::string& key) {
     return false;
 }
 
-// Keys a config may lack (an offline cache written by a helper before 0.22.0): the title
-// screen's lines (title.h) are then not made.
+// Keys a config may lack (an offline cache written by an older helper): the title screen's
+// lines (title.h, keys from 0.22.0) and the map cursor's names (mapmarks.h, map_handler from
+// 0.24.1) are then left off.
 bool is_optional(const std::string& key) {
-    return key == "text_new_fn" || key == "text_link_fn" || key == "draw_layer";
+    return key == "text_new_fn" || key == "text_link_fn" || key == "draw_layer" ||
+           key == "map_handler";
 }
 
 }  // namespace
@@ -433,6 +435,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     pause_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
     pause_at_.keys_branch = found["keys_branch"];
     title_at_.draw_layer = found["draw_layer"];
+    map_handler_ = found["map_handler"];
+    map_at_.current_menu = found["current_menu"];
+    map_at_.map_handler = map_handler_;
+    map_at_.text_set_fn = found["text_set_fn"];
+    map_at_.hook = map_hook_;
     title_at_.text_new_fn = found["text_new_fn"];
     title_at_.text_place_fn = found["text_place_fn"];
     title_at_.text_link_fn = found["text_link_fn"];
@@ -1305,6 +1312,48 @@ std::string Game::offline_state() const {
     return out;
 }
 
+bool Game::labels_seed_loaded(bool in_play_only) const {
+    if (labels_seed_.size() != 160 || *save_loaded_ == kNoSaveLoaded ||
+        (in_play_only && !in_play()) || at<uint16_t>(rando_marker_, 0) != 1) {
+        return false;
+    }
+    return std::memcmp(labels_seed_.data(), rando_blob_ + kOfflineTableAt, 154) == 0 &&
+           std::memcmp(labels_seed_.data() + 154, rando_blob_ + kOfflineStartAt, 6) == 0;
+}
+
+void Game::watch_map_names() {
+    // The map cursor's name for the stand-ins' squares (mapmarks.h): the map's handler wrapped
+    // while this save's labels are known.
+    if (configured_) map_names_.watch(map_at_, ap_items_.active() && labels_seed_loaded(false));  // the map is a menu
+}
+
+void Game::map_after() {
+    if (configured_) map_names_.after(map_at_, ap_items_.labels());
+}
+
+void* Game::map_original(void* child) const {
+    void* handler = map_names_.original(child);
+    // An object the helper did not wrap: the map's own handler, as the game holds it.
+    if (handler == nullptr && map_handler_ != nullptr) safe_read(map_handler_, &handler, sizeof(handler));
+    return handler;
+}
+
+void Game::restore_map_names() {
+    if (configured_) map_names_.restore(map_at_);
+}
+
+void Game::watch_map_marks() {
+    constexpr int kMapFrames = 15;
+    constexpr int kEndingFlag = 250;
+    if (!configured_ || !ap_items_.active()) return;
+    if (map_frames_-- > 0) return;
+    map_frames_ = kMapFrames;
+    // An Archipelago save in use: a randomizer save loaded, as the labels are for (a plain
+    // randomizer game may hold the game's own Scrap Chunk).
+    if (!labels_seed_loaded(true)) return;
+    mark_important(rando_blob_, map_grid_, flags_[kEndingFlag] != 0);
+}
+
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
     if (!configured_ || *save_loaded_ != kNoSaveLoaded) return;
@@ -1442,6 +1491,13 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
 }
 
 void Game::set_labels(std::map<int, Label> labels) {
+    labels_seed_.clear();
+    if (!labels.empty() && *save_loaded_ != kNoSaveLoaded &&
+        at<uint16_t>(rando_marker_, 0) == 1) {
+        labels_seed_.assign(rando_blob_ + kOfflineTableAt, rando_blob_ + kOfflineTableAt + 154);
+        labels_seed_.insert(labels_seed_.end(), rando_blob_ + kOfflineStartAt,
+                            rando_blob_ + kOfflineStartAt + 6);
+    }
     if (labels.empty()) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;

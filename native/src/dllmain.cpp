@@ -44,7 +44,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.23.1";
+constexpr char kVersion[] = "0.25.3";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -109,6 +109,7 @@ void equip_panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9);
 void mission_open();
 void mission_yes(void* widget, int event);
 void file_entry_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9);
+void map_handler_event(void* child, intptr_t rdx, intptr_t r8, intptr_t r9);
 
 // Game thread: the helper's stand-ins the game's menus are pointed at, given to the game
 // object before it is configured (by a client, or from the offline cache).
@@ -119,6 +120,7 @@ void set_hooks() {
     g_game.set_mission_hooks(reinterpret_cast<void*>(&mission_open),
                              reinterpret_cast<void*>(&mission_yes));
     g_game.set_file_entry_hook(reinterpret_cast<void*>(&file_entry_event));
+    g_game.set_map_hook(reinterpret_cast<void*>(&map_handler_event));
 }
 
 // Game thread: the files read last, if new. With no client yet, the cached addresses for this
@@ -243,6 +245,23 @@ void file_entry_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
     g_in_callback.fetch_sub(1);
 }
 
+// The map's per-frame handler while the helper names the stand-ins' squares (mapmarks.h): the
+// game's own first (it writes the cursor's name), then the name rewritten. Called by the game
+// with the map menu's first child, on its thread outside the frame call; unload puts the game's
+// back first.
+void map_handler_event(void* child, intptr_t rdx, intptr_t r8, intptr_t r9) {
+    g_in_callback.fetch_add(1);
+    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
+    auto handler = reinterpret_cast<Handler>(g_game.map_original(child));
+    if (handler != nullptr) handler(child, rdx, r8, r9);
+    try {
+        g_game.map_after();
+    } catch (...) {
+        // Nothing may unwind into the game.
+    }
+    g_in_callback.fetch_sub(1);
+}
+
 void mission_yes(void* widget, int event) {
     g_in_callback.fetch_add(1);
     void* no = nullptr;
@@ -266,6 +285,7 @@ void put_back_all() {
     g_game.restore_mission();
     g_game.restore_files();
     g_game.restore_intel();
+    g_game.restore_map_names();
     g_game.restore_ap_items();
     g_game.restore_menu(&archipelago_chosen);
     g_game.set_assists_locked(false);
@@ -312,7 +332,9 @@ uintptr_t frame(void* argument) {
                     g_game.watch_intel();
                     g_game.watch_title();
                     g_game.watch_offline();
+                    g_game.watch_map_names();
                     g_game.watch_ap_items();
+                    g_game.watch_map_marks();
                 }
                 g_menu_installed.store(g_game.menu_installed());
                 g_items_restyled.store(g_game.ap_items_restyled());

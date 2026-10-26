@@ -140,6 +140,7 @@ inline void delete_entry_fn() { g_equip_calls += 12; }
 inline void* text_new_fn() { g_equip_calls += 13; return nullptr; }
 inline void text_link_fn(void*) { g_equip_calls += 14; }
 inline BYTE* g_draw_layer = nullptr;
+inline void* g_map_handler = nullptr;  // no map open
 inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
@@ -306,6 +307,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"text_new_fn", rva(reinterpret_cast<void*>(&text_new_fn))},
         {"text_link_fn", rva(reinterpret_cast<void*>(&text_link_fn))},
         {"draw_layer", rva(&g_draw_layer)},
+        {"map_handler", rva(&g_map_handler)},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},
