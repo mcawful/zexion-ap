@@ -102,7 +102,6 @@ void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
-    prepared_.clear();  // prepared again by the next look (Game::watch_offline)
     entry_shows(false);  // the image is cleared next: a sprite still on the entry shows 829's
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
@@ -137,8 +136,8 @@ bool PauseDiskRow::show_disc(BYTE* s) {
         std::memcpy(page, copy, sizeof(copy));
         std::memcpy(game_rect_, copy, sizeof(game_rect_));
         entry_ = page;
+        entry_shows(true);  // watch's ran before the entry was made
     }
-    entry_shows(true);
     put(s, sprite::kFrameList, entry_);
     put(s, sprite::kFrameShown, entry_);
     put<int32_t>(s, sprite::kFrameCount, 1);
@@ -219,31 +218,28 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         return;
     }
     // The label's glyphs: the middle four characters (they stay where the game put them).
-    const std::string& t = text;
     for (int i = 0; i < kKeysGlyphs; ++i) {
-        set_frame(glyph[i], static_cast<unsigned char>(t[2 + i]));
+        set_frame(glyph[i], static_cast<unsigned char>(text[2 + i]));
         *(glyph[i] + sprite::kVisible) = 1;
     }
     // The key slots, given the font: two characters each side of the label.
-    const double textlocal[4] = {0, 0, 8, 8};
+    const double text_local[4] = {0, 0, 8, 8};
     const int cells[4] = {0, 1, 6, 7};
     for (int k = 0; k < 4; ++k) {
         BYTE* s = sprite[k];
         reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(s, font);
-        set_frame(s, static_cast<unsigned char>(t[cells[k]]));
-        std::memcpy(s + kLocal, textlocal, sizeof(textlocal));
+        set_frame(s, static_cast<unsigned char>(text[cells[k]]));
+        std::memcpy(s + kLocal, text_local, sizeof(text_local));
         double x = kLabelX + 8.0 * (cells[k] - 2);
-        place(s, x, kRowY, textlocal);
+        place(s, x, kRowY, text_local);
         look_like(s, glyph[0]);
         *(s + sprite::kVisible) = 1;
     }
     // The disc in the middle, white as the text: the helper's if painted, else the game's small
     // Data Disc. The other key icons and Zexion's hidden.
-    double icon_local[4] = {};
-    safe_read(sprite[4] + kLocal, icon_local, sizeof(icon_local));
-    const bool own_disc = disc && show_disc(sprite[4]);
-    if (own_disc) std::memcpy(icon_local, kDiscLocal, sizeof(icon_local));
-    if (own_disc || set_frame(sprite[4], kDiskIcon)) {
+    if ((disc && show_disc(sprite[4])) || set_frame(sprite[4], kDiskIcon)) {
+        double icon_local[4] = {};  // its own size, or the helper's disc's (show_disc)
+        safe_read(sprite[4] + kLocal, icon_local, sizeof(icon_local));
         place(sprite[4], kIconX, kIconY, icon_local);
         std::memcpy(sprite[4] + sprite::kTint, glyph[0] + sprite::kTint, sprite::kTintSize);
         *(sprite[4] + sprite::kVisible) = 1;
