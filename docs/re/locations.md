@@ -44,7 +44,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Status | measured (9 placements, one per start, seeds 100 to 108) |
 | Method | `Generate.py --spoiler 1`, the spoiler's placement parsed and passed to `randocells.sweep`; `AP_TEST_WORLDS=zexion pytest worlds/zexion test/general` in the pinned checkout |
 | Build | B1 |
-| Evidence | 2026-10-21. Outputs in the session scratchpad (not kept). |
+| Evidence | None kept: the spoilers and replays were in the session scratchpad, 2026-10-21, and were not saved (rerun with the method above). |
 
 ## Which start rooms the world offers
 
@@ -64,17 +64,17 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Status | measured (the pockets, from the data); working in game (the teleport from the pause menu, from anywhere, and to a patched start: slot 26, 2026-10-21) |
 | Method | the `logic-reviewer` subagent's route search over `worlds/zexion/data.py` and the cell-by-cell flood fill; the owner's account of using the teleport |
 | Build | B1 |
-| Evidence | 2026-10-21. |
+| Evidence | 2026-10-21. The route search's and the flood fill's output were not kept (rerun from `data.py`); the teleport, the owner's account (no file); the patched start in slot 26, `lab/work/slot28-fresh-start-23-22.sav` (`save-format.md`, "The continue point and the seed's start"). |
 
 ## The core goal is the core, behind the four keys
 
 | Field | |
 |---|---|
-| Value | With the Goal option's default, core (the OS Install Disks goal is below), the world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client detects the goal as item 31's byte going 0 → 1. |
-| Status | measured (the cell, the byte); reported by the owner (the keys) |
+| Value | With the Goal option's default, core (the OS Install Disks goal is below), the world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client sends the goal when the ending that follows the grab begins: flag 250 set with flag 211 clear, with this seed's section loaded (`client/session.py`, `ENDING_FLAG` and `FINALE_FLAG`; `memory.md`, "The ending: flag 250"). |
+| Status | measured (the cell, the grab's byte; the ending's flag, `memory.md`); reported by the owner (the keys) |
 | Method | as in `memory.md` |
 | Build | B1 |
-| Evidence | 2026-10-21. |
+| Evidence | 2026-10-21: the grab's recording and saves named in `memory.md`, "The goal: Zexion's inventory byte at the grab" (`lab/grants.jsonl`, `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav`); the ending's flag, "The ending: flag 250"; the keys, the owner's account (no file). |
 
 ## The OS Install Disks goal: the disks, then the ending
 

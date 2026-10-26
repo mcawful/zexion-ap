@@ -140,9 +140,9 @@ backs up the slot first and works only while Zexion is closed).
 |---|---|
 | Value | Between `0x3000` and `0x7000`, the only bytes set to 1 are `0x4589` after location #52 was collected, and `0x4589` and `0x43C7` after #52 and #48. Neither is set in the fork save without the pickup. How an offset here maps to a location is not known (the two are 450 bytes apart, which no simple grid width explains). The map grid above is the usable source for now. |
 | Status | measured (two locations); mapping unknown |
-| Method | as above |
+| Method | the fork test and the two-pickup save, as in "The map grid marks collected locations" |
 | Build | B1 |
-| Evidence | as above. |
+| Evidence | `lab/backups/20261020-221347/` (slots 27 and 30 after the fork run) and `lab/backups/20261020-215709/` (two pickups), 2026-10-20. |
 
 ## The continue point and the seed's start
 
@@ -162,7 +162,7 @@ backs up the slot first and works only while Zexion is closed).
 | Status | measured |
 | Method | fork test and earlier saves |
 | Build | B1 |
-| Evidence | as above. |
+| Evidence | The fork run, `lab/backups/20261020-221347/` (slots 27 and 30), and the two-pickup save, `lab/backups/20261020-215709/` ("The map grid marks collected locations"); slot 30 after one Scrap pickup, `lab/backups/20261020-213055/`, and slot 28 after one normal item, `lab/backups/20261020-213828/` ("The game loads and keeps a patched placement table"), 2026-10-20. Which save gave slot 1's 150 is not recorded. |
 
 ## Current energy and missiles
 

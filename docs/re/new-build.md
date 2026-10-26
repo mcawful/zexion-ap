@@ -13,8 +13,11 @@ the same heading with the new build, beside the old one, never in its place.
    [`builds.md`](builds.md). If the exe's SHA-256 differs from every build there, add a new
    section (B2, and so on) with it, and note which data files changed.
 2. **Copy the new build's files** into `lab/`: `.venv/Scripts/python tools/game_data.py
-   RandoCells MapData Text --exe` (into `lab/data/<build>/`, named by the exe's hash, so builds
-   never mix). Everything below reads these copies, never the install.
+   RandoCells MapData Text Objects AreaEvents Enemies Bosses Sprites.png --exe` (into
+   `lab/data/<build>/`, named by the exe's hash, so builds never mix): every data file the
+   layouts in `memory.md` and `randocells.md` depend on. Everything below reads these copies,
+   never the install. `builds.md` fingerprints the others but not `Sprites.png` or `Palettes`,
+   so compare those with the old build's by hand.
 3. **Check every pattern** against the copy: `.venv/Scripts/python tools/check_patterns.py
    lab/data/<build>/Zexion.exe`. Each target must resolve (every pattern once, all agreeing);
    for a build not yet known the tool reports the addresses found, for `docs/re/memory.md`.

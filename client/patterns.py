@@ -57,8 +57,9 @@ def rip(text: str, disp_at: int, rip_end: int, addend: int = 0) -> Pattern:
 
 
 def at(text: str, addend: int = 0) -> Pattern:
-    """A pattern that matches the target's own bytes (a function's start), or ``addend`` bytes
-    before them."""
+    """A pattern whose match is the target's own bytes (a function's start, or an instruction),
+    or starts ``addend`` bytes before them (an instruction found with the code just before it,
+    as for keys_branch and popup_width_code)."""
     return Pattern(text, 0, "at", 0, addend)
 
 
