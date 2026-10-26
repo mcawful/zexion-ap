@@ -10,24 +10,25 @@ logic problems.
 
 ## Get the diff
 
-Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use
-`git diff develop...HEAD`; on `develop` itself, `git diff main...develop`. On `main`, or when
-the base is unclear, ask for the range rather than review a whole branch's history. Use
-`git diff HEAD` when uncommitted. If a target was named, review that. When the diff touches
-rules, also read the regions and rules it did not touch that lead to or from the changed ones: a
-rule is only as good as the path to it.
+Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use `git diff
+develop...HEAD` (`origin/develop` if the local `develop` is behind); on `develop` itself, `git diff
+main...develop`. On `main`, or when the base is unclear, ask for the range rather than review a
+whole branch's history. Use `git diff HEAD` when uncommitted. If a target was named, review that.
+When the diff touches rules, also read the regions and rules it did not touch that lead to or from
+the changed ones: a rule is only as good as the path to it.
 
 ## What you check against
 
 `docs/re/locations.md` is the evidence. The world's rules are not written per location:
-`tools/gen_world_data.py` derives every location, region, entrance and requirement list at once from the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
-`worlds/zexion/logic.py` checks those lists the way the game does. `locations.md` records how
-that derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
+`tools/gen_world_data.py` derives every location, region, entrance and requirement list at once from
+the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
+`worlds/zexion/logic.py` checks those lists the way the game does. `locations.md` records how that
+derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
 playthroughs it was checked against), section by section, including the world's deliberate
 exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come from
-`docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in
-the game); the item pool and its classifications are `worlds/zexion/items.py` and each mode's
-pool in `data.py`.
+`docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in the
+game); the item pool and its classifications are `worlds/zexion/items.py` and each mode's pool in
+`data.py`.
 
 If `worlds/zexion/` exists but `docs/re/locations.md` does not, every rule is unbacked; say so
 once and stop.

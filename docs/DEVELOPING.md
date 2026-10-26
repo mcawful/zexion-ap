@@ -9,8 +9,9 @@ evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-In development. Every in-game run was on game build B1. A release build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1:
-[`docs/re/memory.md`](re/memory.md), "The client in a live game").
+In development. Every in-game run was on game build B1. A release build has run from Archipelago
+0.6.8's Launcher (working in game 2026-10-25, B1: [`docs/re/memory.md`](re/memory.md), "The client
+in a live game").
 
 ## How it fits together
 
@@ -158,17 +159,15 @@ helper into the game: the one already there if it is this version, else
   30 seconds.
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
-## Branches and releases
-
-`main` holds released code only (GitHub shows its README); `develop` holds code ready for the
-next release. Work happens on short-lived topic branches cut from `develop`, merged into
-`develop` by pull request, then deleted. `develop` and `main` take changes only through pull
-requests with every CI check passing (branch protection).
+## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub
+shows its README); `develop` holds code ready for the next release. Work happens on short-lived
+topic branches cut from `develop`, merged into `develop` by pull request, then deleted. `develop`
+and `main` take changes only through pull requests with every CI check passing (branch protection).
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate: it must come from
-this repo's `develop` and raise the version above the last release's tag
-(`tools/release_check.py`).
+this repo's `develop` and raise the version above every release's tag
+(`tools/release_check.py`); if GitHub can't list the releases, the gate fails.
 
 A release has one version number, in three places: `VERSION` in `client/native.py`,
 `kVersion` in `native/src/dllmain.cpp` and `world_version` in
@@ -178,14 +177,20 @@ refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
 To release:
 
 1. On a topic branch, raise the version in all three places; merge it into `develop`.
-2. Open a pull request from `develop` into `main`. Only the owner merges it: Claude never
-   merges into `main`.
+2. Open a pull request from `develop` into `main`. Only the owner merges it, with **Create a
+   merge commit** (a ruleset on `main` allows nothing else: a squash or rebase would put a
+   commit on `main` that `develop` lacks, and the branches would drift apart). Claude never
+   merges into `main`: a rule, plus a deny rule for `gh pr merge` in Claude's settings; GitHub
+   itself enforces only the release approval below.
 3. The merge starts `.github/workflows/release.yml`. Its job runs in the GitHub environment
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
    tagged or published before that. It then builds the helper and proxy, runs the native
    tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
    GitHub Release of the files below, with generated notes. A version already released is
    skipped.
+4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
+   release: fix the cause (on a topic branch into `develop`, then `develop` into `main` again if
+   code changed) or re-run the workflow from the Actions page; the skip makes a re-run safe.
 
 `tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
 `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as

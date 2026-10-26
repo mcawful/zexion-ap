@@ -61,3 +61,6 @@ the same heading with the new build, beside the old one, never in its place.
     a grant with its popup, a new game from ARCHIPELAGO, and each feature in
     [`docs/DEVELOPING.md`](../DEVELOPING.md) as it is touched. Record each run with its date and
     the build.
+12. **Release it:** raise the version and release
+    ([`docs/DEVELOPING.md`](../DEVELOPING.md), "Branches and releases"), so players get a build
+    that supports the new game version.
