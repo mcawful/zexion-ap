@@ -80,7 +80,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
   modes: 2026-10-22.
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
-  2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25.
+  2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
+  three-game seed (other games' items, no owner on the map, other Zexion players' supplies
+  minor, markers right in a pause just after loading): 2026-10-26.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
 - The escape skip (SKIP ESCAPE AND FINAL BATTLE?): 2026-10-23.
 - DeathLink, both ways: 2026-10-23.
@@ -90,8 +92,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   name and no map reveal: 2026-10-25.
 - OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the
   file select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO):
-  2026-10-24; offered at the landing pod only: 2026-10-25. Not seen in game: the reminder's
-  current wording (ENOUGH OS INSTALL DISKS FOUND...).
+  2026-10-24; offered at the landing pod only: 2026-10-25. The reminder (ENOUGH OS INSTALL
+  DISKS FOUND...) after the received disks' popups, and the pause row on a pause right after
+  loading: 2026-10-26.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
