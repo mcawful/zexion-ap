@@ -166,6 +166,14 @@ def saved_at_start(stamp: bytes, blob: bytes) -> bool:
     return (column, row) == start
 
 
+def popups_handed(queued: int | None, received: int) -> bool:
+    """Whether every received item's popup has gone to the helper (``Session.announced``).
+    The helper shows its queue in order, so POD_NOTE queued after that comes after the disks'
+    own popups (a received item is handed over a poll after it arrives, once its grant is
+    confirmed)."""
+    return queued is not None and queued >= received
+
+
 @dataclass
 class ReturnHome:
     """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,

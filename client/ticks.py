@@ -696,6 +696,8 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     if done is None or any(i in hunt.locations for i in ctx.load.save_collected - done):
         return
     if not home.reminded:
+        if not discs.popups_handed(conn.session.announced, len(p.codes)):
+            return  # the received disks' popups first
         note = [(ids.DATA_DISC, discs.POD_NOTE, True)]
         reply = await asyncio.to_thread(helper.apply, native.batch_text([], note))
         if reply != "applied":

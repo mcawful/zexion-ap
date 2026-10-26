@@ -151,3 +151,9 @@ def test_another_slot_is_not_a_save() -> None:
     assert not home.offer  # another save of the seed loaded at its pod
     home.see(stamp(950, 191, 329, slot=5), True, True, True)
     assert home.offer
+
+
+def test_the_pod_note_waits_for_the_received_items_popups() -> None:
+    assert not discs.popups_handed(None, 3)  # not known yet
+    assert not discs.popups_handed(2, 3)  # the third received disk's popup not handed yet
+    assert discs.popups_handed(3, 3)
