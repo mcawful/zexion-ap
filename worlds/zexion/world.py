@@ -8,13 +8,15 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any, TextIO
 
-from BaseClasses import Item, ItemClassification, Region
+from BaseClasses import Item, ItemClassification, LocationProgressType, MultiWorld, Region
 from Options import OptionError
 from worlds.AutoWorld import World
+from worlds.generic.Rules import add_item_rule
 
 from . import data, logic, rules, starting, web_world
 from .items import (
     AREA_MAP,
+    ASSIST_UNLOCK,
     DATA_DISC,
     DRAWN_AS,
     ENERGY_SHIELD,
@@ -121,10 +123,13 @@ class ZexionWorld(World):
         self.kept_locations = set(self.mode["location_indices"])
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
-        if self.disc_hunt and required > placed:
+        # Starting disks count toward the goal (set_rules; the client's discs_start).
+        start = self.options.start_inventory.value.get(NAMES[DATA_DISC], 0)
+        if self.disc_hunt and required > placed + start:
             raise OptionError(
                 f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
                 f"more than OS Install Disks ({placed})"
+                + (f" plus the {start} in start_inventory" if start else "")
             )
 
     def check_start_inventory(self) -> None:
@@ -237,6 +242,16 @@ class ZexionWorld(World):
         self.multiworld.itempool += pool
 
     def set_rules(self) -> None:
+        # This player's own Assist Unlock never goes to this player's own locations, by plando
+        # or otherwise: the game would hand it out as Scrap Metal (location_items), and the
+        # server never sends a player's own item, which the client needs to lift the assist
+        # lock. Sent from the server console (its use) or found in another world, it arrives.
+        assist = NAMES[ASSIST_UNLOCK]
+        for location in self.multiworld.get_locations(self.player):
+            if location.address is not None:
+                add_item_rule(
+                    location, lambda item: item.player != self.player or item.name != assist
+                )
         if self.disc_hunt:
             required = self.options.os_install_disks_required.value
             self.multiworld.completion_condition[self.player] = lambda state: state.has(
@@ -247,6 +262,39 @@ class ZexionWorld(World):
         self.multiworld.completion_condition[self.player] = lambda state: state.has(
             "Victory", self.player
         )
+
+    @classmethod
+    def stage_pre_fill(cls, multiworld: MultiWorld) -> None:
+        """Refuse, naming the options, a seed whose fill would stop on AP's "Not enough filler
+        items for excluded locations": excluded locations take only filler, and with the OS
+        Install Disks goal each disk takes a filler item's place. The fill takes any player's
+        filler, so this counts the whole multiworld's, after plando and every world's pre_fill
+        but this stage, and refuses for a Zexion player whose excluded locations outnumber
+        their own filler."""
+        unfilled = multiworld.get_unfilled_locations()
+        excluded = Counter(
+            loc.player for loc in unfilled if loc.progress_type == LocationProgressType.EXCLUDED
+        )
+        # As Fill.distribute_items_restrictive sorts the pool: filler is neither kind.
+        filler = Counter(
+            item.player for item in multiworld.itempool if not item.advancement and not item.useful
+        )
+        if sum(excluded.values()) <= sum(filler.values()):
+            return
+        for world in multiworld.get_game_worlds(GAME):
+            n, have = excluded[world.player], filler[world.player]
+            if n <= have:
+                continue
+            fix = "exclude fewer locations (exclude_locations)"
+            if world.disc_hunt:
+                disks = world.options.os_install_disks.value
+                fix = f"lower OS Install Disks ({disks}: each takes a filler item's place) or {fix}"
+            locations = "location" if n == 1 else "locations"
+            raise OptionError(
+                f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
+                f"items (Scrap, Area Maps or Intel Chips) to put there, and the other players' "
+                f"filler does not make up the difference: {fix}"
+            )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:
         spoiler_handle.write(f"Mode:                            {self.mode_name}\n")
@@ -298,13 +346,20 @@ class ZexionWorld(World):
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item
         code], in a random order: the client hints the next one the player does not have for
-        each Intel Chip (client/hints.py). Supplies (NOT_HINTED), starting items, which are in
-        no location, and events are left out."""
+        each Intel Chip (client/hints.py). This player's items include those of an item link
+        this player is in: the group's item goes to every member, from the location listed
+        here. Supplies (NOT_HINTED), starting items, which are in no location, and events are
+        left out."""
+        mine = {self.player} | {
+            group_id
+            for group_id, group in self.multiworld.groups.items()
+            if self.player in group["players"]
+        }
         out = []
         for location in self.multiworld.get_filled_locations():
             item = location.item
             if (
-                item.player != self.player
+                item.player not in mine
                 or not item.advancement
                 or item.code is None
                 or location.address is None
@@ -354,8 +409,8 @@ class ZexionWorld(World):
                 out.append(FOREIGN_PROGRESSION)
                 continue
             code = DRAWN_AS.get(code, code)  # an Intel Chip: the Area Map
-            # Scrap Energy and Chunk, and an item that is not the game's (Assist Unlock, only
-            # ever placed by plando), are handed out as Scrap Metal.
+            # Scrap Energy and Chunk, and an item that is not the game's, are handed out as Scrap
+            # Metal. (The only such item, Assist Unlock, is kept out of these locations: set_rules.)
             own_scrap = code in (SCRAP_ENERGY, SCRAP_CHUNK) or code not in GAME_ITEMS
             out.append(SCRAP_METAL if own_scrap else code)
         return out

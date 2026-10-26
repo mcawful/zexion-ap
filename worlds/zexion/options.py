@@ -110,7 +110,9 @@ class OSInstallDisks(Range):
     """OS Install Disks goal only: how many disks are placed. They replace filler items. Above
     16 in Standard (26 in Easy) they also replace Area Maps, so there are fewer Intel Chips
     (or Area Maps), and above 25 in Standard, Energy Shields. In OHKO they replace filler
-    items only."""
+    items only. Excluded locations can hold only filler items, of which Standard keeps 25
+    minus the disks (Easy 30, OHKO 36): exclude more locations than that, and generation stops
+    with an error saying so, unless the other players' filler makes up the difference."""
 
     display_name = "OS Install Disks"
     range_start = 1
@@ -120,7 +122,7 @@ class OSInstallDisks(Range):
 
 class OSInstallDisksRequired(Range):
     """OS Install Disks goal only: how many disks you need to win (no more than OS Install
-    Disks)."""
+    Disks plus any disks in start_inventory)."""
 
     display_name = "OS Install Disks Required"
     range_start = 1

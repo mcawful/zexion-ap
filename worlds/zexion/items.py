@@ -9,9 +9,10 @@ into the game's inventory, since holding one changes the game's endings (docs/re
 Data Disc").
 
 Two items are not the game's: Assist Unlock (100), never in the pool, sent from the server
-console to lift the client's assist lock; and Intel Chip (101), the Area Map as a hint (Area
-Map Hints), which the game holds and draws as the Area Map (DRAWN_AS) and the helper renames
-INTEL CHIP (docs/re/memory.md, "Intel Chips").
+console to lift the client's assist lock (an item rule keeps a plando'd one out of its own
+player's locations, where it would never be received: worlds/zexion/world.py); and Intel Chip
+(101), the Area Map as a hint (Area Map Hints), which the game holds and draws as the Area Map
+(DRAWN_AS) and the helper renames INTEL CHIP (docs/re/memory.md, "Intel Chips").
 """
 
 from __future__ import annotations
