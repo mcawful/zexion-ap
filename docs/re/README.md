@@ -15,9 +15,6 @@ relies on a fact cites the page and heading it comes from.
   derived from it, and what backs them; the `logic-reviewer` subagent checks the APWorld
   against it.
 
-Planned, and created when its first fact is recorded: `items.md` (item IDs and what they
-grant).
-
 ## How a fact is recorded
 
 Each fact is a heading followed by this table:

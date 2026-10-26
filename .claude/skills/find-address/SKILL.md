@@ -56,7 +56,9 @@ routine, the inventory UI): they are likelier to survive a patch. Regenerate
 ## 5. Record it
 
 In `docs/re/memory.md`, in the format of `docs/re/README.md` ("How a fact is recorded"): the
-pattern and the arithmetic to the value, its type, size and meaning (bit 3 = Wall Jump Boots);
+target (its patterns and their source instructions stay in `client/patterns.py`; its first
+offline and live match goes in "Byte patterns") and the arithmetic to the value, its type, size
+and meaning (bit 3 = Wall Jump Boots);
 the status (**measured** once it resolves to the right value in a fresh game process, **working
 in game** only once a client read or write built on it did the right thing in the real game);
 the method and the game actions used; the build and date; and the evidence (the scan steps with

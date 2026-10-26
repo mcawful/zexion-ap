@@ -32,8 +32,8 @@ the same heading with the new build, beside the old one, never in its place.
    - the build in `KNOWN_BUILDS` (`client/patterns.py`: name, exe SHA-256, PE timestamp and
      SizeOfImage) and in `kKnownBuilds` (`native/src/build.cpp`: name, timestamp and
      SizeOfImage); `tests/test_cross_checks.py` checks the two agree;
-   - each pattern's state in `docs/re/memory.md` ("Byte patterns"): still matching once, moved,
-     or broken and replaced.
+   - the patterns' state on the new build in `docs/re/memory.md` ("Byte patterns"): which still
+     match once, which moved, and which broke and were replaced.
 6. **Re-check the struct layouts.** Patterns find where things are, not what is inside them.
    The offsets inside objects and records (the player state, the item records, menus and
    widgets, the event table, the draw list and others) are labeled B1 in `docs/re/memory.md`,
