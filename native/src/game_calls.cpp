@@ -1502,6 +1502,7 @@ void Game::set_labels(std::map<int, Label> labels) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;
     }
+    labels_ = labels;
     std::map<int, std::string> names;
     std::map<int, int> items;
     label_widths_.clear();
@@ -1691,6 +1692,65 @@ void Game::restore_ap_items() {
     set_popup_width(kGamePopupWidth);
     label_widths_.clear();
     item_labels_.clear();
+    labels_.clear();
+}
+
+void Game::put_back_all(WidgetCallback callback) {
+    disarm_newgame();
+    restore_skip();
+    set_discs(0, 0, "");
+    restore_discs();
+    restore_mission();
+    restore_files();
+    restore_intel();
+    restore_map_names();
+    restore_ap_items();
+    restore_menu(callback);
+    set_assists_locked(false);
+    restore_assists();
+    leave_offline();
+}
+
+ClientState Game::snapshot() const {
+    ClientState s;
+    s.file_counts = client_file_counts_;
+    s.newgame_armed = newgame_armed_;
+    s.starting = starting_;
+    s.newgame = newgame_;
+    s.newgame_status = newgame_status_;
+    s.mission_asked = mission_.asked();
+    s.mission_ending = mission_.ending();
+    if (offline_index_ >= 0) return s;  // the look is the offline one's, set again by its watch
+    s.assists_locked = assists_locked_;
+    s.intel = intel_.on();
+    s.disc_count = disc_count_;
+    s.discs_required = discs_required_;
+    s.discs_told = discs_told_;
+    s.scan_line = scan_line_;
+    s.labels = labels_;
+    s.labels_seed = labels_seed_;
+    return s;
+}
+
+void Game::rearm(ClientState s) {
+    if (!configured_) return;
+    set_assists_locked(s.assists_locked);
+    set_intel(s.intel);
+    if (!s.scan_line.empty()) {
+        set_discs(s.disc_count, s.discs_required, std::move(s.scan_line), s.discs_told);
+    }
+    set_disk_slot_counts(std::move(s.file_counts));
+    if (!s.labels.empty()) {
+        set_labels(std::move(s.labels));
+        labels_seed_ = std::move(s.labels_seed);  // the seed they were set for
+    }
+    if (s.newgame_armed) {
+        newgame_ = std::move(s.newgame);
+        newgame_armed_ = true;
+        starting_ = s.starting;
+        newgame_status_ = std::move(s.newgame_status);
+    }
+    mission_.resume(s.mission_asked, s.mission_ending);
 }
 
 }  // namespace zap

@@ -1292,8 +1292,58 @@ void test_popup_text_breaks_before_the_sender() {
           "a long sender wraps at a word, not inside one");
 }
 
+// A refused unload: put_back_all drops what clients set, and rearm sets all of it again, since
+// the client does not know to resend it.
+void test_refused_unload_rearms() {
+    reset_game();
+    reset_sprites();
+    reset_texts();
+    reset_events();
+    g_rando_marker = 1;
+    g_section[0x26C] = 0x2F;  // the loaded seed the labels are for
+    zap::Game game;
+    check(game.configure(GetModuleHandleW(nullptr), stand_in_config()).empty(), "configures");
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
+    game.set_labels(labels);
+    zap::NewGamePlan plan;
+    zap::parse_newgame("ap_newgame\nexpect 0 00\nwrite 2 01\nmenu 0 01", plan);
+    game.arm_newgame(plan);
+    game.set_assists_locked(true);
+    game.set_intel(true);
+    game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
+    game.set_disk_slots(3, 15, {2, 5});
+    game.request_mission();
+
+    zap::ClientState saved = game.snapshot();
+    game.put_back_all(&chosen);
+    check(game.newgame_status() == "idle" && !game.assists_locked() && !game.intel_on() &&
+              game.scan_line().empty() && game.files().counts().empty() &&
+              game.label_names().empty() && game.mission_status() == "not asked",
+          "put_back_all drops what the client set");
+    check(game.snapshot().labels.empty(), "the labels too");
+
+    game.rearm(saved);
+    zap::ClientState again = game.snapshot();
+    check(game.newgame_status() == "armed" && again.newgame.write.size() == 1 &&
+              again.newgame.menu.size() == 1,
+          "the new-game plan armed again, its menu lines too (ARCHIPELAGO offered again)");
+    check(game.assists_locked() && game.intel_on(), "ASSIST locked and INTEL CHIP again");
+    check(game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
+              game.scan_line() == "COLLECT 15 OS INSTALL DISKS!",
+          "the disk count and the scanner's line again");
+    check(game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}}, "the file select's counts");
+    check(game.label_names().count(4 * 54 + 3) == 1 && again.labels.size() == 1 &&
+              again.labels_seed == saved.labels_seed && !saved.labels_seed.empty(),
+          "the labels again, for the seed they were set for (the map names follow them)");
+    check(game.mission_status() == "asked", "RETURN HOME WITH THE DISKS? asked for again");
+    game.put_back_all(&chosen);
+    g_rando_marker = 0;
+}
+
 int main() {
     test_parsers();
+    test_refused_unload_rearms();
     test_configure();
     test_apply();
     test_popups();

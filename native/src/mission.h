@@ -67,6 +67,11 @@ public:
 
     // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.
     bool holds_hook() const { return armed_ || yes_child_ != nullptr; }
+    // For a refused unload: a prompt on its way (asked for, opening or shown), the ending after
+    // YES; `resume` asks for them again after restore.
+    bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
+    bool ending() const { return ending_; }
+    void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 
 private:

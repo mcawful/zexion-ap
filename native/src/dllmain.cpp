@@ -273,26 +273,6 @@ void mission_yes(void* widget, int event) {
     g_in_callback.fetch_sub(1);
 }
 
-// Game thread: everything the helper changed in the game put back, as far as a frame can (a
-// change held by a menu no longer open is gone with it): the new-game plan, the escape skip,
-// the OS Install Disks goal's changes, the Area Map's name, the stand-in items, ARCHIPELAGO and
-// the ASSIST lock. Unload and a client going away both use it.
-void put_back_all() {
-    g_game.disarm_newgame();
-    g_game.restore_skip();
-    g_game.set_discs(0, 0, "");
-    g_game.restore_discs();
-    g_game.restore_mission();
-    g_game.restore_files();
-    g_game.restore_intel();
-    g_game.restore_map_names();
-    g_game.restore_ap_items();
-    g_game.restore_menu(&archipelago_chosen);
-    g_game.set_assists_locked(false);
-    g_game.restore_assists();
-    g_game.leave_offline();
-}
-
 // Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
 bool set_unloading(bool unloading) {
     AcquireSRWLockExclusive(&g_menu_lock);
@@ -312,7 +292,7 @@ uintptr_t frame(void* argument) {
             if (g_client_gone.exchange(false)) {
                 // The client went away: everything it asked for goes, and nothing comes back
                 // (the escape skip included) until a client configures the helper again.
-                put_back_all();
+                g_game.put_back_all(&archipelago_chosen);
                 g_game.clear_popups();
                 g_game.set_active(false);
             }
@@ -671,26 +651,16 @@ std::string handle(const std::string& request, bool& stop) {
 std::string undo_for_unload() {
     // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
     set_unloading(true);
-    bool was_locked = false;  // ASSIST's lock, armed again should the unload be refused
-    // The disk count and scanner line, likewise given back on a refusal.
-    int disc_count = 0, discs_required = 0;
-    bool discs_told = true;
-    std::string scan_line;
-    bool intel = false;  // and the Area Map named INTEL CHIP
-    // And the file select's counts.
-    std::map<int, int> file_counts;
+    // What clients set, armed again should the unload be refused (they would not resend it).
+    bool saved = false;
+    zap::ClientState state;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
             [&] {
-                was_locked = g_game.assists_locked();
-                disc_count = g_game.disc_count();
-                discs_required = g_game.discs_required();
-                discs_told = g_game.discs_told();
-                scan_line = g_game.scan_line();
-                file_counts = g_game.files().counts();
-                intel = g_game.intel_on();
-                put_back_all();
+                state = g_game.snapshot();
+                saved = true;
+                g_game.put_back_all(&archipelago_chosen);
                 g_game.hide_title();  // a refused unload shows them again (its watch)
                 g_menu_installed.store(g_game.menu_installed());
                 g_items_restyled.store(g_game.ap_items_restyled());
@@ -702,19 +672,10 @@ std::string undo_for_unload() {
     }
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        if (was_locked || !scan_line.empty() || !file_counts.empty() || intel) {
+        if (saved) {
             std::string ignored;
-            g_mailbox.call(
-                [&] {
-                    if (was_locked) g_game.set_assists_locked(true);
-                    if (!scan_line.empty()) {
-                        g_game.set_discs(disc_count, discs_required, scan_line, discs_told);
-                    }
-                    if (!file_counts.empty()) g_game.set_disk_slot_counts(file_counts);
-                    if (intel) g_game.set_intel(true);
-                    return std::string();
-                },
-                kFrameWaitMs, ignored);
+            g_mailbox.call([&] { g_game.rearm(std::move(state)); return std::string(); },
+                           kFrameWaitMs, ignored);
         }
         return why;
     };

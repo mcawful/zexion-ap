@@ -106,6 +106,26 @@ struct Label {
     std::string item_name;
 };
 
+// What clients set that Game::put_back_all drops, for a refused unload to set again
+// (Game::snapshot and Game::rearm). The offline look's own settings are left out: once the
+// unload is refused, watch_offline dresses the save again by itself.
+struct ClientState {
+    bool assists_locked = false;
+    bool intel = false;
+    int disc_count = 0, discs_required = 0;
+    bool discs_told = true;
+    std::string scan_line;
+    std::map<int, int> file_counts;  // the client's disk_slots
+    std::map<int, Label> labels;
+    std::vector<BYTE> labels_seed;
+    bool newgame_armed = false;
+    bool starting = false;
+    NewGamePlan newgame;
+    std::string newgame_status;
+    bool mission_asked = false;   // RETURN HOME WITH THE DISKS? on its way
+    bool mission_ending = false;  // its YES pressed, the ending not started yet
+};
+
 // A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in
 // the longer, which is the width.
 Label layout_label(const std::string& first, const std::string& who);
@@ -166,6 +186,17 @@ public:
     void set_active(bool active) { active_ = active; }
     // Popups not shown yet dropped (the client that sent them went away).
     void clear_popups() { popups_.clear(); }
+
+    // Game thread: everything the helper changed in the game put back, as far as a frame can (a
+    // change held by a menu no longer open is gone with it): the new-game plan, the escape skip,
+    // the OS Install Disks goal's changes, the Area Map's name, the stand-in items and their
+    // looks, the map's handler, ARCHIPELAGO (`callback` its callback), the ASSIST lock and the
+    // offline look. Unload and a client going away both use it.
+    void put_back_all(WidgetCallback callback);
+    // Game thread: what clients set, before put_back_all drops it, and set again after it (an
+    // unload refused).
+    ClientState snapshot() const;
+    void rearm(ClientState state);
 
     // Game thread. In play (a save loaded, no menu, energy above 0) or refused; then every
     // compare-and-set or none; then (after writes, or for "refresh") missiles, bombs and energy
@@ -344,6 +375,8 @@ public:
     // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
     // frame; restore_ap_items puts everything back (before an unload).
     void set_labels(std::map<int, Label> labels);
+    // The stand-ins' names by map cell, as last laid out (tests).
+    const std::map<int, std::string>& label_names() const { return ap_items_.labels(); }
     void watch_ap_items();
     // The live stand-in objects in both pools, with their cells and positions (name_cells).
     std::vector<StandInSeen> stand_ins_seen() const;
@@ -469,6 +502,7 @@ private:
     // The loaded section's item table and start when the labels were set (the seed they
     // are for): the map is changed only in a save in play holding that seed.
     std::vector<BYTE> labels_seed_;
+    std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
     BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
