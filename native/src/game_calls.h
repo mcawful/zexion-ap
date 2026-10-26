@@ -24,6 +24,7 @@
 #include "intel.h"
 #include "offline.h"
 #include "scan.h"
+#include "mapmarks.h"
 #include "title.h"
 #include "skip.h"
 
@@ -203,7 +204,8 @@ public:
     // pointed at the helper's callback.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
-               equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook();
+               equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
+               map_names_.holds_hook();
     }
     // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
     void set_panel_hook(void* hook) { panel_hook_ = hook; }
@@ -318,6 +320,17 @@ public:
     // "1" up, "0" not, else why they could not be made.
     void set_title_version(const std::string& version) { title_.set_version(version); }
     void watch_title();
+    // Game thread, every few frames: the progression stand-in's map squares drawn as important
+    // in an Archipelago save (mapmarks.h): one with labels, from the client or the offline look.
+    void watch_map_marks();
+    // Game thread: the map cursor's name for the stand-ins' squares (mapmarks.h): the open map's
+    // handler wrapped while this save's labels are known (each frame), the name rewritten after
+    // the game's handler (`map_after`, from the stand-in), and the handler put back.
+    void set_map_hook(void* hook) { map_hook_ = hook; }
+    void watch_map_names();
+    void map_after();
+    void* map_original(void* child) const;
+    void restore_map_names();
     void hide_title();
     std::string title_state() const;
     void restore_intel();
@@ -452,6 +465,16 @@ private:
     TitleAddresses title_at_;
     TitleLines title_;
     std::string title_error_;
+    int map_frames_ = 0;  // frames until the next map look
+    // The loaded section's item table and start when the labels were set (the seed they
+    // are for): the map is changed only in a save in play holding that seed.
+    std::vector<BYTE> labels_seed_;
+    // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
+    bool labels_seed_loaded(bool in_play_only) const;
+    BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
+    MapAddresses map_at_;
+    MapCursorNames map_names_;
+    void* map_hook_ = nullptr;
     void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;
