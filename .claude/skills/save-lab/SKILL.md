@@ -7,13 +7,12 @@ description: Experiment with Zexion save files safely - pause Steam Cloud, back 
 
 The real saves live in `%APPDATA%\Gallant Leaf\Zexion` and Steam Cloud syncs them. The user has
 real progress in some slots. Nothing writes there except `tools/save_lab.py install` and
-`restore`, and the Archipelago client's `/prepare` (`client/prepare.py`, after its own verified
-backup; ask before it, as before `install`). The write-guard hook blocks every other route
+`restore` (the Archipelago client never does). The write-guard hook blocks every other route
 Claude could take.
 
 ## 1. Pause Steam Cloud for Zexion first
 
-Before any session that installs or prepares a save, or plays a lab slot, ask the user to turn Steam Cloud
+Before any session that installs a save or plays a lab slot, ask the user to turn Steam Cloud
 off for Zexion, and wait until they confirm. You can't do it for them, and you can't check it.
 
 > Steam → Library → right-click Zexion → Properties → General → turn off "Keep game saves in the

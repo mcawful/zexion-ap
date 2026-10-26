@@ -1,6 +1,6 @@
 ---
 name: re-auditor
-description: Reviews diffs to the Zexion client and the RE tools for hard-coded addresses, memory reads and writes that are not checked, writes to the game or save folders outside save_lab and the client's /prepare, hooks in the native helper that could crash the game or outlive an unload, and anything that could deliver an Archipelago item twice, lose one, or send a location check that did not happen. Use after any change to client/, tools/ or native/.
+description: Reviews diffs to the Zexion client and the RE tools for hard-coded addresses, memory reads and writes that are not checked, writes to the game or save folders outside save_lab's install and restore, hooks in the native helper that could crash the game or outlive an unload, and anything that could deliver an Archipelago item twice, lose one, or send a location check that did not happen. Use after any change to client/, tools/ or native/.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -58,12 +58,9 @@ live in the path around the change.
    never re-sent after a disconnect.
 8. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
    install, the save folder, or Steam's cloud cache for writing, other than `save_lab.py
-   install` and `restore` and `client/prepare.py`'s `prepare`. The tools' paths must go
-   through `tools/protected.py` (`assert_writable`). `prepare` is the client's one writer and
-   writes the save folder on purpose, so it does not use `protected.py` (dev tooling the
-   client does not ship with); it must keep its own checks: game closed, a backup verified by
-   hash, an atomic replace and a read-back. Also flag any new path around the backup checks
-   in those three.
+   install` and `restore` (the client writes neither). The tools' paths must go through
+   `tools/protected.py` (`assert_writable`). Also flag any new path around the backup checks
+   in those two.
 9. **Patterns that won't survive a patch.** Patterns with few fixed bytes, patterns over data
    rather than code, or wildcards missing over `rel32`/`disp32` bytes.
 10. **Native helper safety** (`native/`). Code that runs inside the game: anything done in

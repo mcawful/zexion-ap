@@ -48,7 +48,7 @@ Grep for the identifiers, subcommand and flag names, file names, numbers and use
 strings involved, old value and new. Check:
 
 - `CLAUDE.md` (commands, layout, rules, the tooling list) and `README.md` (status, and each
-  feature with when it ran in the game).
+  feature with when it was working in game).
 - Module docstrings in the files the diff touches **and in their callers**. `tools/save_lab.py`
   and `.claude/hooks/guard_protected.py` describe their own behavior at the top.
 - `docs/re/`, by fact: a code change that relies on a different offset or pattern than the page
