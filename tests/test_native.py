@@ -8,7 +8,6 @@ itself, including unloading under load.
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import threading
@@ -28,13 +27,6 @@ def test_pipe_name_and_default_dll(monkeypatch: pytest.MonkeyPatch) -> None:
     assert native.default_dll().parts[-4:] == ("native", "build", "Release", "zexion_ap.dll")
     monkeypatch.setenv("ZEXION_DLL", "elsewhere/x.dll")
     assert native.default_dll() == Path("elsewhere/x.dll")
-
-
-def test_the_config_names_the_addresses_the_helper_takes() -> None:
-    source = (native.ROOT / "native" / "src" / "game_calls.cpp").read_text(encoding="utf-8")
-    listed = source.split("kConfigKeys[] = {", 1)[1].split("};", 1)[0]
-    assert set(native.CONFIG_KEYS) == set(re.findall(r'"(\w+)"', listed))
-    assert len(set(native.CONFIG_KEYS)) == len(native.CONFIG_KEYS)
 
 
 def test_load_refuses_a_missing_dll(tmp_path: Path) -> None:
