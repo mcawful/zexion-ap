@@ -249,3 +249,10 @@ def test_watch_reports_state_changes(fake, monkeypatch, capsys) -> None:
     monkeypatch.setattr(grant.time, "sleep", sleep)
     assert grant.main(["watch"]) == 0
     assert "state: in play -> menu" in capsys.readouterr().out
+
+
+def test_the_log_creates_a_missing_lab_folder(monkeypatch, tmp_path) -> None:
+    lab = tmp_path / "fresh" / "lab"
+    monkeypatch.setenv("ZEXION_LAB_DIR", str(lab))
+    grant.log({"event": "attempt"})
+    assert [e["event"] for e in entries(lab / "grants.jsonl")] == ["attempt"]

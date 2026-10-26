@@ -101,6 +101,7 @@ def log(entry: dict) -> None:
     """Append to lab/grants.jsonl; a failure here stops the write it describes."""
     path = assert_writable(lab_dir() / "grants.jsonl")
     entry = {"time": dt.datetime.now().isoformat(timespec="milliseconds"), **entry}
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
