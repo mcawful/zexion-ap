@@ -1,6 +1,5 @@
-// Host tests for Game against a stand-in "game" made of this program's own data and functions
-// (so configure's checks and every call are real). requests_tests.cpp tests the request
-// parsers, the popup text and the mailbox, which need no game.
+// Tests for Game against a stand-in game made of this program's own data and functions, so
+// configure's checks and every call are real.
 
 #include <windows.h>
 
@@ -24,8 +23,6 @@ std::string apply(zap::Game& game, const std::string& request) {
     std::string error = zap::parse_batch(request, batch);
     return error.empty() ? game.apply(batch) : "parse: " + error;
 }
-
-// --- tests ------------------------------------------------------------------------------------
 
 // The RVA of the start of the section holding `p` in this program.
 uint64_t section_start_of(const void* p) {
@@ -172,7 +169,7 @@ void test_popups() {
               g_text == "\xC5MISSILE BOX  FROM BOB",
           "then shows the next");
 
-    // A notice: its text alone, wrapped and centered, with the item's sound.
+    // A notice: its text alone, left-aligned and wrapped at 24, with the item's sound.
     reset_game();
     apply(game, "apply\nnotice 36 HINT: PHASER AT MACHINUS 29,30");
     for (int i = 0; i < 30; ++i) game.pump_popups();
@@ -203,7 +200,7 @@ void test_popups() {
               *reinterpret_cast<double*>(g_message + 0x48) == 0x58 - 1,
           "a two-line notice keeps the game's box");
 
-    // Three lines and the blank one: the box made for the three, centred on them.
+    // Three lines and the blank one: the box fitted to the three.
     reset_game();
     ::apply(game, "apply\nnotice 36 HINT: GAMMA KEY IS AT AN OLD TOWER BY THE SEA IN ALICE'S WORLD");
     for (int i = 0; i < 30; ++i) game.pump_popups();
@@ -220,10 +217,8 @@ void test_popups() {
               "a message not as the game made it is left alone");
     }
 
-    // A long notice: every line shown, up to what the game's 256-byte message slot holds. A
-    // 24-letter word makes the box 24 wide, then each 12-letter word takes a line of its own,
-    // padded to 24: past 255 bytes, cut to the whole lines that fit (10 of 24), then the
-    // blank line that keeps the last one in the game's window.
+    // A notice past the 256-byte message slot: cut to the whole lines that fit (here 10 lines
+    // of 24), then the blank line.
     reset_game();
     std::string words(24, 'Y');
     for (int i = 0; i < 14; ++i) words += " ABCDEFGHIJKL";
@@ -689,7 +684,7 @@ void test_pickup_popup_width() {
     game.restore_ap_items();
     check(popup_width_in_code() == 24 && !game.ap_items_restyled(), "restore puts 24 back");
 
-    // A width an earlier helper left (one that went without putting 24 back) is taken over.
+    // A width an earlier helper left behind is adopted and put back to 24.
     {
         DWORD old_protect = 0;
         VirtualProtect(g_popup_width_code, 5, PAGE_EXECUTE_READWRITE, &old_protect);
@@ -806,9 +801,8 @@ int16_t object_palette_number(int k) { return *reinterpret_cast<int16_t*>(pool_s
 
 BYTE* general_slot(int k) { return g_object_pool + k * 0x5C8; }
 
-// An item as some rooms show it: an object in the general pool (type 2026 in the reversed-gravity
-// rooms, 715 elsewhere) with the sprite fields an item object has, its cell at +0x210 and +0x211,
-// and the frame its stand-in record gives.
+// An item shown by a general-pool object: an item object's sprite fields, its cell at +0x210
+// (row) and +0x211 (column), and the frame its stand-in record gives.
 void put_flipped(int k, int32_t spawn, int32_t frame, int x, int y) {
     BYTE* o = general_slot(k);
     std::memset(o, 0, 0x5C8);
@@ -1009,7 +1003,7 @@ void test_stand_ins_named_by_their_own_cell() {
                       "label 6 2 4150204974656d0a464f52205a4558494f4e32",
                       labels);
     game.set_labels(labels);
-    // The player in a cell with no label (a boss arena's other cell), at (1000, 600).
+    // The player in a cell with no label, at (1000, 600).
     field<uint8_t>(0x107A) = 3;
     field<uint8_t>(0x107B) = 9;
     field<double>(0x1100) = 1000;
@@ -1216,9 +1210,8 @@ void test_refused_unload_rearms() {
     g_rando_marker = 0;
 }
 
-// A refused unload after ARCHIPELAGO was pressed, its new game queued: set again as started, so
-// the next frame applies the plan without the mode check (the AP seed's own amounts now differ
-// from the mode's) and ARCHIPELAGO is not offered again meanwhile.
+// A refused unload after ARCHIPELAGO's new game was queued: rearm keeps it started, so the next
+// frame applies the plan without the mode check and ARCHIPELAGO is not offered again.
 void test_refused_unload_keeps_a_start() {
     zap::Game game;
     g_choice_game = &game;

@@ -43,7 +43,7 @@ void put(BYTE* p, ptrdiff_t offset, T value) {
 
 // A stand-in item's record (Scrap Energy, 47: frame 134, event 3549; Scrap Chunk, 48: frame
 // 142, event 3550) as B1 loads it: kind 34, 6 ticks a frame, 2 frames, palette 8, inventory 46,
-// pickup class 1 (docs/re/memory.md, "Other players' items").
+// +0x3E 45, pickup class 1, sound 13, Database 244 (docs/re/memory.md, "Other players' items").
 inline void own_stand_in(BYTE* r, int16_t frame, const char* name, int16_t event) {
     std::memset(r, 0, 100);
     put<int16_t>(r, 0x00, 34);

@@ -58,7 +58,7 @@ int main() {
               fixed != nullptr && fixed->dwSignature == 0xFEEF04BD,
           "and queried");
 
-    // The forwarders of the real one, kept as forwarders.
+    // VerLanguageNameW (a forwarder to KERNEL32) works through the proxy.
     using LangW = DWORD(WINAPI*)(DWORD, LPWSTR, DWORD);
     auto lang = reinterpret_cast<LangW>(GetProcAddress(proxy, "VerLanguageNameW"));
     wchar_t name[64] = {};
@@ -69,7 +69,7 @@ int main() {
           "the ordinals kept");
 
     // Not Zexion.exe: no helper, whatever is beside it.
-    Sleep(200);
+    Sleep(200);  // time for the proxy's loader thread to run (and load nothing)
     check(GetModuleHandleW(L"zexion_ap.dll") == nullptr, "no helper outside the game");
 
     if (g_failures == 0) std::printf("proxy test: all passed\n");

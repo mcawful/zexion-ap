@@ -221,7 +221,8 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(game.queued_popups() == 0, "the warning not shown yet withdrawn");
     g_rando_marker = 1;
 
-    // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty.
+    // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty (its section
+    // still the seed's).
     auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
     for (int n : {3, 4, 5}) {
         *reinterpret_cast<uint16_t*>(block(n) + 0x9400) = 1;
@@ -269,7 +270,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     other.set_offline({s});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a client's own: no offline look by itself");
-    check(other.other_save() && other.queued_popups() == 1, "told once: ANOTHER SEED");
+    check(other.other_save() && other.queued_popups() == 1, "told once: the other-seed notice");
     check(!other.other_save() && other.queued_popups() == 1, "and not again this load");
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,

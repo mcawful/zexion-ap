@@ -1,21 +1,14 @@
-// The pause screen's disk row (the OS Install Disks goal), in place of KEYS.
+// The pause screen's disk row (the OS Install Disks goal), in place of KEYS. The pause screen
+// (built by 0x168BD0 each time it opens) has a KEYS panel under its entries: a 4-glyph KEYS label
+// at (144, 208) and nine sprites (key slots 0-3, key icons 4-7 at frames 384-387, Zexion's icon
+// 8). The game builds it only once flag 39 is set or a key is owned (the `jne` at 0x168C7D)
+// (docs/re/memory.md, "The pause screen's KEYS row").
 //
-// The pause screen (built by 0x168BD0 each time it opens) has a second panel under its entries:
-// a KEYS label (4 glyphs at x 144 to 168, y 208) and nine sprites: four key slots (0 to 3), the
-// four key icons (4 to 7, the small icons' frames 384 to 387) in a diamond round (160, 188), and
-// Zexion's icon (8, shown once Zexion is held). The game builds that panel only once the
-// scanner's flag 39 is set or a key is owned (the `jne` at 0x168C7D), so in a game without keys
-// there is none before the scanner (docs/re/memory.md, "The pause screen's KEYS row").
-//
-// While the disk count is shown, the helper makes that `jne` a `jmp` (the panel always built),
-// and once the pause screen is on top, turns the row into the disks: the small Data Disc icon
-// (frame 829, the one the game's own pause screen shows for a held disc) in the middle, the key
-// slots and icons hidden, and the count ("2 OF ?", or "2 OF 15" once the scanner has said how
-// many) on the label's line: the label's 4 glyphs carry the middle four characters and the four
-// key slots, given the font, two on each side. Everything is written only after the screen's
-// shape is checked; the branch is put back when the count is off and before an unload, and only
-// where it still reads as written. The pause screen is built afresh each time it opens, so a row
-// already turned (its icon reading 829) is left as it is.
+// While a count is set, that `jne` becomes `jmp` and, on a pause screen whose shape checks out,
+// the row shows the Data Disc icon (frame 829) and the count ("2 OF ?", or "2 OF 15" once told)
+// across the label's 4 glyphs and the 4 key slots; the other sprites are hidden. A row already
+// showing 829 is left alone. The branch is put back when off and before an unload, only where it
+// still reads `jmp`.
 #pragma once
 
 #include <windows.h>

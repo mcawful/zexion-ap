@@ -1,22 +1,11 @@
-// RETURN HOME WITH THE DISKS?: the game's ending, offered once the player has enough OS Install
-// Disks.
-//
-// In the OS Install Disks goal the disks are found in play, and the goal is the game's ending
-// reached with enough of them; once the player has enough, the client asks the helper to offer
-// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds
-// such a prompt for the escape skip: routine 15 of its transition-routine table (0x1668A0), run
-// when the transition timer ends, as area event 3666 sets it. The helper sets the same two
-// fields, but to its own opener, which calls the game's builder and, before the prompt's first
-// frame, relabels the question (the game's text routine) and points YES at the helper. YES
-// then closes the prompt as NO does (the game's own NO callback) and asks for the ending: once
-// the game is idle again, the helper sets routine 4 (0x94A30), as the ship's ending event 2567
-// does, with no menu open (0x94A30 skips recording the ending while one is). NO is the game's
-// own: the prompt closes and play goes on.
-//
-// The helper only sets the transition while the game is idle in play: no transition pending
-// (timer 0), the routine the idle one (table entry 2, the pause), no menu, a save loaded and the
-// player alive. On unload, an opener not yet run is replaced by the idle routine, and a YES still
-// wrapped is pointed at NO (never back at the escape skip's YES, which would end the escape).
+// RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
+// Disks (docs/re/memory.md, "The mission prompt"). When idle in play (timer 0, routine table
+// entry 2 the pause opener, no menu), the helper sets the transition routine to its opener with
+// timer 1, as event 3666 does for the escape skip's prompt (routine 15, 0x1668A0). The opener
+// runs that builder, relabels the question and points YES at the helper; YES runs the game's NO
+// and then, once idle, starts routine 4 (0x94A30, which records the ending only with no menu
+// open). On unload an opener not yet run becomes the idle routine and a wrapped YES points at NO
+// (never the escape skip's YES, which would end the escape).
 #pragma once
 
 #include <windows.h>
@@ -34,7 +23,7 @@ struct MissionAddresses {
     void* widget_handler = nullptr;    // the generic widget handler, the prompt's
     void* text_set_fn = nullptr;       // (text, string, first glyph, glyphs)
     void* open_hook = nullptr;         // the helper's opener (no arguments)
-    void* yes_hook = nullptr;          // the helper's stand-in for YES's callback
+    void* yes_hook = nullptr;          // the helper's wrapper of YES's callback
 };
 
 constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;
@@ -42,7 +31,7 @@ extern const char kMissionQuestion[];
 
 class MissionPrompt {
 public:
-    // Any thread holding the game's frame (the mailbox): offer the prompt when next idle.
+    // Game thread (the `mission_prompt` request): offer the prompt when next idle.
     void request();
 
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
@@ -51,7 +40,8 @@ public:
     void watch(const MissionAddresses& addresses, bool idle_in_play);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
-    // and wraps YES. Returns "" or what was not as traced (YES then points at NO).
+    // and wraps YES. Returns "" or what was not as traced; once the three children are read,
+    // YES points at NO (if NO's callback reads) whatever else fails.
     std::string open(const MissionAddresses& addresses);
 
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
@@ -63,7 +53,7 @@ public:
     void restore(const MissionAddresses& addresses);
 
     // Game thread: drops a prompt asked for or the ending after YES, and an opener not yet run
-    // (the save changed, or the disk count is off), so neither comes in another save.
+    // (a save loaded or closed, or `discs` turned off), so neither comes in another save.
     void cancel(const MissionAddresses& addresses);
 
     // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.

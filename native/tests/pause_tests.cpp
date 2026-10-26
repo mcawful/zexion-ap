@@ -21,10 +21,10 @@ void other_fn(void*, int) { g_calls += 3; }
 #pragma section(".zapcode", read, execute)
 __declspec(allocate(".zapcode")) unsigned char g_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
 
-// The branch's first byte as the game would run it (not folded to its initial value).
+// Read volatile so the compiler cannot fold it to its initial value.
 unsigned char branch() { return static_cast<volatile unsigned char*>(g_branch)[0]; }
 
-// The branch's first byte set by the test, as the game's code: unprotected for the write.
+// Sets the branch's first byte, unprotecting the code page for the write.
 void set_branch(unsigned char b) {
     DWORD old = 0;
     VirtualProtect(g_branch, 1, PAGE_EXECUTE_READWRITE, &old);
@@ -32,7 +32,8 @@ void set_branch(unsigned char b) {
     VirtualProtect(g_branch, 1, old, &old);
 }
 
-// The game's (object, template): the template's frames.
+// Stand-in for the game's sprite-sheet function (object, template): copies the template's frame
+// list and count.
 void sprite_sheet(void* o, void* t) {
     at<int32_t>(static_cast<BYTE*>(o), 0x1BC) = at<int32_t>(static_cast<BYTE*>(t), 0x1BC);
     at<BYTE*>(static_cast<BYTE*>(o), 0x1A8) = at<BYTE*>(static_cast<BYTE*>(t), 0x1A8);

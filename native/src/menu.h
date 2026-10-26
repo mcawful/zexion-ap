@@ -1,28 +1,16 @@
-// The ARCHIPELAGO choice on the file screen's game-mode panel.
+// The ARCHIPELAGO choice on the game-mode panel, and the ASSIST lock in the options menu
+// (docs/re/memory.md, "The game-mode panel").
 //
-// After the player picks an empty slot, the game shows NORMAL / RANDOMIZER. While armed, the
-// helper finds that panel, rewrites RANDOMIZER's label to ARCHIPELAGO (same length, so its 11
-// glyphs are just given other characters) and points the choice at the helper's callback; on
-// disarm it puts RANDOMIZER back. While the mouse is on it, it moves the right-hand side of the
-// border the panel draws round it a character out (fit_border), as the game's border is sized
-// for RANDOMIZER's ten letters and a blank; so that this happens in the frame the game lays the
-// border out, the panel's handler (+0x2F8) is the helper's panel_hook while the choice is
-// installed, put back with the callback. Structure layout as traced on B1 (docs/re/memory.md, "The
-// game-mode panel"): the open menus form a list from the top one at `current_menu` down
-// through [menu+0x78]; a menu's panels at [menu+0], the game-mode panel 3; a panel's handler
-// at +0x2F8, capacity at +0x1E8, children at +0x1E0; a child's callback at +0x2C0, handler at
-// +0x2C8, label at +0x1F0, released flag at +0x1C8; a label's glyph capacity at +0x1D8 and
-// glyph pointers at +0x228; a glyph's released flag at +0x1C8, frame count at +0x1BC, frame
-// at +0x1C4, frame table at +0x1A8 and current frame at +0x1B0.
+// After an empty slot is picked the game shows NORMAL / RANDOMIZER. While armed, the helper
+// relabels RANDOMIZER as ARCHIPELAGO (same 11 glyphs) and points its callback at the helper's.
+// While installed, the panel's handler is `panel_hook`, so `fit_border` can widen the hover
+// border (sized for RANDOMIZER) in the same frame. Disarming puts both back.
 //
-// Closing a menu releases its widgets, labels and glyphs (their +0x1C8 set to 2, onto the
-// game's dead list) and frees the menu and its panel list, and nothing in them is cleared
-// first, so a widget's old contents prove nothing. The helper writes into the choice only
-// while the menu it was found in is still on the list of open menus and the widget and its
-// glyphs are not released, and otherwise forgets it without writing: the game builds every
-// widget with its own callback, and closing a menu does not send events 6 or 7, so nothing
-// calls the helper's callback from a freed widget. Every read is fault-safe and every
-// expected value is checked before anything is written.
+// Closing a menu releases its widgets and frees the menu without clearing them, so a widget's
+// old contents prove nothing. The helper writes only into a widget whose menu is still on the
+// open list and that is not released; otherwise it forgets it. Closing sends no event 6 or 7,
+// so no freed widget calls the helper's callback. Every read is fault-safe and checked before a
+// write.
 #pragma once
 
 #include <windows.h>
@@ -34,7 +22,7 @@ namespace zap {
 struct MenuAddresses {
     BYTE* current_menu = nullptr;  // holds a pointer to the top open menu
     void* panel_handler = nullptr;
-    // The helper's stand-in for the game-mode panel's handler (dllmain.cpp): calls the game's,
+    // The helper's wrapper of the game-mode panel's handler (dllmain.cpp): calls the game's,
     // then fits ARCHIPELAGO's hover border at once (fit_border). Null: the handler is left as
     // the game's, and the border is fitted from the frame call only.
     void* panel_hook = nullptr;
@@ -73,7 +61,7 @@ public:
     bool holds_hook() const { return hook_panel_ != nullptr; }
 
     // Game thread, each frame while installed: if the mouse is on ARCHIPELAGO and the panel has
-    // just laid its border out round it, moves the border's right-hand pieces 8 pixels right
+    // just laid its border out around it, moves the border's right-hand pieces 8 pixels right
     // and stretches its top and bottom edges to meet them. Returns true when it moved them.
     bool fit_border(const MenuAddresses& addresses);
 
@@ -95,23 +83,14 @@ private:
     BYTE* frame_ptrs_[kLabelLength] = {};
 };
 
-// The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"): with a save
-// loaded, the options menu (pause, OPTIONS) has a widget labeled ASSIST whose callback opens
-// the assist menu. While locked, the helper finds it in the top menu, gives its label the style
-// the controls screen's STYLE: AUTO is drawn in (style 5 under palette 0 with its grey tint, the
-// owner's choice, pinned: the options menu itself takes another palette after some screens),
-// puts a padlock after
-// it (its eighth glyph given the lock's character, as ARCHIPELAGO's glyphs are given theirs)
-// and clears its callback: the generic widget handler calls a callback only if it is set
-// (0xD0270), so pressing it does nothing, and nothing in the menu points into the helper. It
-// also moves the entry past the panel's selectable ones (the panel's +0x1EC counts the
-// children the cursor reaches, from the first: as the controls screen's STYLE: AUTO, the last
-// of two with a count of 1), so the cursor skips it.
-// Unlocking puts all of it back. As for the ARCHIPELAGO choice, it
-// writes only into a widget whose menu is still open and that is not released, and checks
-// every value first: the menu's panel list and count, each panel's children and capacity, the
-// widget's handler and callback, and a label of 12 glyphs (the widget constructor's width at
-// 0x16285A) reading ASSIST and six blanks (character 0), as read live.
+// The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
+// the helper draws its label like STYLE: AUTO (style 5, palette 0, its grey tint; re-applied
+// while its menu is up, as the menu changes palette after some screens) and puts a padlock in
+// its eighth glyph. It clears the callback, which the generic widget handler then skips
+// (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
+// panel's selectable ones (+0x1EC), so the cursor skips it. Unlocking puts all of it back,
+// under the same rules as the ARCHIPELAGO choice (a 12-glyph label reading ASSIST and six
+// blanks, 0x16285A).
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
 // helper paints it, apitem.h FontGlyph), with a blank before it.

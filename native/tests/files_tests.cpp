@@ -143,7 +143,7 @@ void test_this_seeds_slots_show_the_disks() {
     check(at<void*>(s.e[0].widget, 0x2C8) == a.hook && f.holds_hook(), "the handlers wrapped");
     check(f.original(s.e[0].widget) == reinterpret_cast<void*>(&file_entry), "the game's kept");
 
-    // The game fills the entry again (paging): the stand-in rewrites it after.
+    // The game fills the entry again (paging): the helper's handler rewrites it after event 0xF.
     s.e[0].fill(false);
     f.on_event(a, s.e[0].widget, 0xF);
     check(cells(s.e[0], {kDi, kSk, '0', '3', 0, 0}), "rewritten after the fill");
@@ -275,8 +275,7 @@ void test_the_request() {
     check(zap::file_disk_digits(3) == "03" && zap::file_disk_digits(15) == "15" &&
               zap::file_disk_digits(120) == "99",
           "two digits");
-    // The painted DISK keeps to the game's squashed letters' rows (2 to 6) and leaves no glyph
-    // blank.
+    // The painted DISK keeps to the game's squashed letters' rows (2 to 6).
     for (const auto& rows : zap::kDiskHeaderRows) {
         bool fits = std::strcmp(rows[0], "........") == 0 && std::strcmp(rows[1], "........") == 0 &&
                     std::strcmp(rows[7], "........") == 0;

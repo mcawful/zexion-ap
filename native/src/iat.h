@@ -1,5 +1,5 @@
-// Import-table hooks: the game calls SDL and FMOD through its import table, so replacing one
-// slot there redirects every call the game makes to that function, with no byte patterns.
+// Import-table hooks: replacing one slot redirects every call the game makes to that import,
+// with no byte patterns.
 #pragma once
 
 #include <windows.h>
@@ -18,8 +18,9 @@ bool swap_slot(void** slot, void* expected, void* replacement);
 // `*in_flight`, calls `*target` with the same register arguments (at most four, none on the
 // stack) and returns its result. Pointing an import slot here instead of at the DLL makes
 // unloading safe: put the slot back, set `*target` to the original function, and wait for
-// `*in_flight` to reach 0; after that no thread can be in, or about to enter, the DLL's code.
-// The memory is deliberately leaked, a page or two per load.
+// `*in_flight` to reach 0; after that no thread can be in, or about to enter, the DLL's code
+// through the trampoline (calls the game makes into helper functions are counted separately:
+// InCallback, dllmain.cpp). Deliberately leaked: two pages per load.
 struct Trampoline {
     void* entry = nullptr;
     volatile LONG* in_flight = nullptr;

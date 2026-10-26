@@ -20,7 +20,8 @@ namespace {
 constexpr ptrdiff_t kListHead = 0x18, kListTail = 0x20;
 constexpr ptrdiff_t kOwner = 0x00, kNext = 0x10, kPrevious = 0x18;
 constexpr int kMaxObjects = 4096;
-// A text object (0x92300), past its label fields (game_layout.h): the count shown and its tag.
+// A text object's own fields (0x92300): past label:: (game_layout.h), 0x1E4 to 0x1EC (the last
+// the count shown), and its tag (0x178, 0x180).
 constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8, kTextShown = 0x1EC;
 constexpr ptrdiff_t kTag = 0x178, kTagNumber = 0x180;
 constexpr size_t kTextSize = 0x268;
@@ -130,8 +131,8 @@ std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const st
     using New = BYTE* (*)(const char*, int, int);
     using Place = void (*)(void*, int, int);
     using Link = void (*)(void*);
-    // One row: the game's 32 columns, or the line's length if longer (a row of 32 wraps a longer
-    // line onto a second, seen in game with helper 0.23.0).
+    // One row: the game's 32 columns, or the line's length if longer (a 32-column row wraps a
+    // longer line, seen in game).
     const int32_t columns = (std::max)(length, kTextColumnsAll);
     BYTE* t = reinterpret_cast<New>(a.text_new_fn)(text.c_str(), length, columns);
     BYTE* g[kMaxGlyphs] = {};

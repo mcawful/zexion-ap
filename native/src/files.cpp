@@ -7,7 +7,7 @@
 namespace zap {
 
 // A 3-wide D and I, then the game's own S and 4-wide K (as its KEYS draws them, 0x81 and
-// 0x82), each letter one blank column from the next (the owner's pick, 2026-10-25).
+// 0x82), each letter one blank column from the next.
 const char kDiskHeaderRows[2][8][9] = {
     {"........", "........", "##..###.", "#.#..#..", "#.#..#..", "#.#..#..", "##..###.",
      "........"},
@@ -34,10 +34,8 @@ constexpr int32_t kBlank = 0;
 // layout (0xA79E0: each glyph at the label's place plus 8 a column and 8 a row).
 constexpr ptrdiff_t kBoxTop = 0x130, kBoxBottom = 0x140;
 constexpr double kRowHeight = 8.0;
-// The count's two glyphs, moved down from their row to center on the items bracket beside
-// them (the owner's ask): the bracket (0xD9 over 0xDA, rows 3 and 4) is opaque over all 16
-// pixel rows, center 7.5 below row 3's top; a digit's 7 pixel rows (0 to 6), center 3, so 4.5:
-// 5, a pixel lower than 4, as the owner chose in game.
+// The count's glyphs drop 5 px to center on the items bracket beside them (0xD9 over 0xDA, rows
+// 3 and 4: center 7.5 below row 3's top; a digit's 3, so 4.5; 5 chosen in game).
 constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
 constexpr intptr_t kFill = 0xF;
@@ -188,7 +186,7 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
         return false;
     }
     // What the block should read: DISK, then the count, then nothing; with no disk, nothing at
-    // all, as a save with no key (the owner's ask).
+    // all, as a save with no key.
     std::string count = file_disk_digits(shown);
     int32_t want[6] = {kDiskHeaderGlyphs[0],
                        kDiskHeaderGlyphs[1],

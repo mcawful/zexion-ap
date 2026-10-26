@@ -22,7 +22,7 @@ struct Popup {
     uint8_t item;
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
-    bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
+    bool silent = false;  // no pickup sound (the helper's offline notices, game_offline.cpp)
     // A client's (from `apply`), which the client counts as shown once it has left the queue:
     // the `popups` request counts those still queued. The helper's own notices are not.
     bool counted = false;
@@ -40,7 +40,8 @@ struct SectionBytes {
     std::vector<uint8_t> bytes;
 };
 
-// One room of the randomizer menu's start table: its map cell and flag (object 25 there).
+// One room of the randomizer menu's start table: its map cell and flag (1 where the room holds
+// object 25).
 struct StartRoom {
     int16_t x;
     int16_t y;

@@ -37,7 +37,7 @@ bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
     if (expected(copy, kSkipOfferEvent)) {
         table_ = table;
         record_ = record;
-        return true;  // already patched (by this helper before, or this frame)
+        return true;  // already patched
     }
     if (!expected(copy, kNone) || !writable(record + kElse, sizeof(int16_t))) {
         table_ = nullptr;

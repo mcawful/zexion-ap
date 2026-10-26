@@ -6,8 +6,7 @@
 
 namespace zap {
 
-// Centered on the escape skip's line, which has room for 30 characters (0x166D9F); the owner's
-// wording, after the disks' description (equip.cpp).
+// Centered in the escape skip's 30-glyph line (0x166D9F).
 const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
 
 namespace {

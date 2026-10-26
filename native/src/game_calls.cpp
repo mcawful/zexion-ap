@@ -8,7 +8,8 @@ namespace zap {
 
 namespace {
 
-// Player state, from the inventory (docs/re/memory.md, "Granting each kind of item").
+// Player state, from the inventory (docs/re/memory.md, "Granting each kind of item", "Game
+// functions the helper calls", "Other players' items").
 constexpr ptrdiff_t kInventoryInPlayer = 0x108E;
 constexpr ptrdiff_t kEnergy = 0xCEA, kEnergyMax = 0xCEC;
 constexpr ptrdiff_t kMissiles = 0xCBC, kMissilesMax = 0xCC0;
@@ -40,18 +41,15 @@ using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event 
 constexpr uint8_t kEnergyShield = 50;
 constexpr uint8_t kSpawnEventType = 11;  // its arguments: the subtype, then the object
 constexpr int16_t kShieldObject = 2018;
-constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before a shield
+constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a death
 // The player's death (docs/re/memory.md, "DeathLink"): death_fn(player, 0), as the game's
 // damage code calls it once energy is 0 or below.
 using DeathFn = void (*)(void* player, char kind);
 
-// The addresses the client sends (`config`, client/patterns.py target names), checked in this
-// order: each must lie in the game's image, with at least kKeyBytes there (the offline cache
-// checks a function's first 16 bytes: offline.h), a function in executable code and anything
-// else in writable data, except the C runtime's import slots, which are only read, in the
-// read-only data they live in. Some must also leave room in their section for what is read or
-// written there. Every key is required: an offline cache written for an older helper that
-// lacks one is refused (offline.h), and the client's next `config` rewrites it.
+// The config keys (client/patterns.py target names), in checking order. Each lies in the image
+// with kKeyBytes there (the offline cache checks a function's first 16 bytes): functions in
+// code, data in writable data, the CRT's import slots (only read) outside code. room/before:
+// what must also fit in the key's section. Every key is required.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 struct ConfigKey {
@@ -322,7 +320,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     death_fn_ = f("death_fn");
     object_pool_ = f("object_pool");
     halt_flag_ = f("halt_flag");
-    // And each part's own, with the helper's stand-ins it points the game at.
+    // And each part's own, with the helper's wrappers it points the game at.
     menu_ = menu_addresses(f, hooks_);
     equip_at_ = equip_addresses(f, hooks_);
     mission_at_ = mission_addresses(f, hooks_);
@@ -474,15 +472,10 @@ std::string Game::spawn_shield(uint64_t now_ms) {
 }
 
 std::string Game::kill(uint64_t now_ms) {
-    // A received DeathLink: the player dies as from damage, through the shield too. The game's
-    // damage code calls the death routine once energy is 0 or below (0x1B9D3A, 0x1F07A,
-    // 0x4771B); the helper sets energy to 0 and calls it the same way, once the player has been
-    // in play in one cell for a second (not during a load, a respawn or a room change). The
-    // routine returns at once while the halt flag is set, which would leave the player alive at
-    // 0 energy, so that is refused first. It also posts a message and writes through the
-    // result unchecked (0x1DA6E7, 0x1DA6EF), which is NULL when all four message slots are
-    // busy; each message cuts the previous one short, and the helper shows one popup at a
-    // time, so it waits until the last message has ended.
+    // As the damage code does (calls at 0x1B9D3A, 0x1F07A, 0x4771B): energy 0, then death_fn.
+    // It returns at once while the halt flag is set (leaving the player alive at 0), and writes
+    // unchecked through the message it posts (0x1DA6E7, 0x1DA6EF), NULL with all four slots
+    // busy: so refuse while halted or a message shows.
     if (!configured_) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
@@ -496,11 +489,9 @@ std::string Game::kill(uint64_t now_ms) {
 }
 
 std::string Game::run_item_event(uint8_t item) {
-    // A received Energy Shield's effect is its pickup's area event, 3553, type 11, which
-    // spawns object 2018, the shield (docs/re/memory.md, "Received Energy Shields"). The
-    // helper runs that event as the pickup does (0x1FE85): the handler for its type, from the
-    // table the game fills, with a cell and the record; the cell is the player's. Every part
-    // is checked against B1 first.
+    // The Energy Shield's pickup event (3553, type 11, spawns object 2018), run as the pickup
+    // does (0x1FE85): the type's handler with the player's cell; every field checked first
+    // (docs/re/memory.md, "Received Energy Shields").
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
     int16_t event = at<int16_t>(rec, record::kEvent);
@@ -558,9 +549,8 @@ void Game::watch_newgame() {
     if (at<void*>(transition_fn_, 0) != newgame_fn_) return;  // no new game queued
     if (at<int32_t>(transition_timer_, 0) <= 1) return;       // too close to being built
     if (at<uint16_t>(rando_marker_, 0) != 1) return;          // a normal new game: not ours
-    // The section the seed's mode, unless ARCHIPELAGO started it (starting_): that section was
-    // checked before the plan went in, and the plan's own writes (the starting amounts) now
-    // differ from the mode's.
+    // Check the section is the seed's mode, unless ARCHIPELAGO started it (starting_): that was
+    // checked before the plan went in, and the plan's own writes now differ from the mode's.
     int differs = starting_ ? -1 : first_difference(rando_blob_, newgame_.expect);
     if (differs >= 0) {
         newgame_status_ = "refused the new game is not the seed's mode (section +" +
@@ -590,7 +580,6 @@ void Game::restore_menu(WidgetCallback callback) {
 void Game::watch_assists() {
     if (!configured_) return;
     if (assists_locked_) {
-        // The padlock in the font while armed.
         lock_glyph_.paint(sprite_texture_, gl_, texture_check_);
         assists_.install(menu_);
         return;
@@ -627,7 +616,8 @@ private:
 std::string Game::ensure_start_table() {
     const std::vector<StartRoom>& rooms = newgame_.start_table;
     if (rooms.empty()) return "";
-    // The placement reads the flag of the second target's room by its index: it must be one.
+    // The second target (+0x6CC) names a room of the start table by index; the placement reads
+    // that room's flag, so the index must be in the table.
     constexpr uint16_t kSecondTarget = 0x6CC;
     for (const SectionBytes& e : newgame_.write) {
         if (e.offset == kSecondTarget && e.bytes.size() >= 2) {
@@ -641,6 +631,8 @@ std::string Game::ensure_start_table() {
     int16_t count = at<int16_t>(start_count_, 0);
     if (count == 0) {
         // The menu never opened in this run: build the table as it would, count last.
+        // rooms.size() <= kStartTableMax (parse_newgame, requests.cpp), the room configure
+        // checked for start_cells and start_flags.
         for (size_t i = 0; i < rooms.size(); ++i) {
             at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i)) = rooms[i].x;
             at<int16_t>(start_cells_, static_cast<ptrdiff_t>(4 * i + 2)) = rooms[i].y;
@@ -732,7 +724,8 @@ void Game::set_discs(int count, int required, std::string scan_line, bool told) 
     discs_told_ = told;
     scan_line_ = std::move(scan_line);
     pause_row_.set(scan_line_.empty() ? std::string() : pause_row_text(count, told ? required : 0));
-    if (scan_line_.empty() && configured_) mission_.cancel(mission_at_);  // not this seed now
+    // discs off: drop a prompt asked for.
+    if (scan_line_.empty() && configured_) mission_.cancel(mission_at_);
     scan_frames_ = 0;  // checked in the next frame
 }
 
@@ -761,7 +754,6 @@ void Game::watch_equipment() {
     equip_screen_.tidy(equip_at_);
     pause_row_.watch(pause_at_);
     if (!scan_line_.empty()) {
-        // The disk's icon while a count is shown.
         disk_glyph_.paint(sprite_texture_, gl_, texture_check_);
         equip_.install(equip_at_);
     } else {
@@ -779,13 +771,13 @@ void Game::equipment_built() {
 
 void Game::watch_mission() {
     if (!configured_) return;
-    // Not over a popup: once none is showing or queued, and the last one a moment ago.
-    // Another save, or none: a prompt asked for in the last one is dropped.
+    // A save loaded or closed (save_loaded flips between 0 and 0xFF): a prompt asked for drops.
     int save = *save_loaded_;
     if (save != mission_save_) {
         if (mission_save_ != -1) mission_.cancel(mission_at_);
         mission_save_ = save;
     }
+    // Idle: no popup showing or queued, the last one kPopupGapFrames ago.
     bool idle = in_play() && popups_.empty() && !popup_busy() &&
                 frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(mission_at_, idle);
@@ -796,7 +788,6 @@ void Game::watch_files() {
     files_.watch(files_at_);
     for (FontGlyph& glyph : disk_header_) {
         if (files_.on()) {
-            // DISK over the keys while the count is on.
             glyph.paint(sprite_texture_, gl_, texture_check_);
         } else if (glyph.painted()) {
             glyph.clear(sprite_texture_, gl_, texture_check_);
@@ -826,8 +817,6 @@ bool Game::labels_seed_loaded(bool in_play_only) const {
 }
 
 void Game::watch_map_names() {
-    // The map cursor's name for the stand-ins' squares (mapmarks.h): the map's handler wrapped
-    // while this save's labels are known.
     // The map is a menu: the save loaded, in play or not.
     if (configured_) map_names_.watch(map_at_, ap_items_.active() && labels_seed_loaded(false));
 }
@@ -853,8 +842,7 @@ void Game::watch_map_marks() {
     if (!configured_ || !ap_items_.active()) return;
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
-    // An Archipelago save in use: a randomizer save loaded, as the labels are for (a plain
-    // randomizer game may hold the game's own Scrap Chunk).
+    // Only in the labels' seed's save: a plain randomizer game has the game's own Scrap Chunks.
     if (!labels_seed_loaded(true)) return;
     mark_important(rando_blob_, map_grid_, flags_[flag::kEnding] != 0);
 }
@@ -1003,9 +991,7 @@ void Game::watch_ap_items() {
     // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
     // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
     bool world = *save_loaded_ != kNoSaveLoaded && *menu_state_ == 0;
-    // This frame's look at the live item objects, taken once for naming the stand-ins and for
-    // dressing them (only in the world, as both are): the item pool copied, and the item
-    // sprites' frame list.
+    // One read of the item pool a frame, shared by naming and dressing (world only).
     const ItemLooks::Places places = looks_places();
     BYTE* base = ItemLooks::item_frame_base(places);
     const BYTE* pool = world ? read_item_pool() : nullptr;
@@ -1013,9 +999,8 @@ void Game::watch_ap_items() {
     // be picked up was named for.
     int width_cell = cell;
     if (world) {
-        // Each stand-in named for the location of one of its kind within reach, by the cell the
-        // object carries: a drop lands wherever its enemy dies, and a room can span several
-        // cells (apitem.h). The general objects among them as of the last scan, below.
+        // Each stand-in named by the cell its object carries (a drop lands where its enemy died;
+        // apitem.h). The general objects among them as of the last scan, below.
         int cells[kStandInCount];
         int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
@@ -1050,7 +1035,8 @@ const BYTE* Game::read_item_pool() {
 std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) const {
     // Item objects keep their position in their sprite fields (pixels, as the player's), and the
     // general objects are assumed to; each pool keeps its cell (obj::) (docs/re/memory.md, "Live
-    // item objects"). A position off the map is not used.
+    // item objects"). A position off the map is not used: a cell is 320 x 224 pixels, its row
+    // floor((y - 8) / 224) (docs/re/memory.md, "Other players' items").
     constexpr double kMapWidth = kMapSide * 320.0, kMapHeight = kMapSide * 224.0 + 8;
     std::vector<StandInSeen> out;
     auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {

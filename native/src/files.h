@@ -1,26 +1,11 @@
-// The disk count on the file select (the OS Install Disks goal), in place of the keys.
-//
-// The file select (and COPY FILE and DELETE FILE) is a menu whose first panel (handler
-// 0xB6920) holds the three save entries: each a widget whose label is 145 glyphs, 5 rows of 29,
-// its slot at +0x230 (1 to 30) and the save block it shows at +0x1F8 (docs/re/memory.md, "The
-// file select"). The game fills an entry (0xDF840) through its handler on event 0xF (opening
-// the screen, paging), and directly after a copy or delete. Six glyphs show the keys: 85 and 86
-// (row 2, columns 27 and 28) a squashed KEYS, and 114, 115, 143, 144 the keys as circles; all
-// blank with no key and the save's flag 39 clear.
-//
-// For the slots the client lists (those holding the seed), the helper fills the keys' block
-// with the disks (the owner's layout): a squashed DISK in place of KEYS, in the game's style
-// (two font glyphs the helper paints, kDiskHeaderGlyphs), the count in two digits on the row
-// below ("03", moved 5 pixels down to center on the items bracket, and put back for any other
-// entry and when off), and the last row blank, drawn as the keys are. With no disk the block
-// is blank, as with no key.
-// While on, each entry's handler is the helper's, which calls the game's and rewrites the entry
-// after event 0xF, so a filled entry never shows a frame of keys; a frame-call watch catches
-// the fills that bypass the handler. Every value is checked before a write; an entry whose key
-// glyphs are not the game's (or the helper's) is left alone, and so is an entry whose handler
-// it does not hold. When off and before an unload, in menus still open, it puts back the frames
-// the game last filled each entry's keys' block with (while the entry still shows the
-// helper's), the count's glyphs in their row, and the handlers.
+// The disk count on the file select, COPY FILE and DELETE FILE, in place of the keys
+// (docs/re/memory.md, "The file select"). For each listed slot, the keys' six glyphs show a
+// squashed DISK and the count in two digits (5 px lower, on the items bracket), then a blank
+// row; with no disk, all blank. While on, each entry's handler is the helper's wrapper: it calls
+// the game's, then rewrites the entry after the fill (event 0xF), so no frame shows keys; a
+// frame-call watch catches fills that bypass the handler. Written only over the game's key
+// glyphs or the helper's own; when off and before an unload, the game's frames, the count's row
+// and the handlers go back, in menus still open.
 #pragma once
 
 #include <windows.h>
@@ -35,7 +20,7 @@ struct FileAddresses {
     BYTE* current_menu = nullptr;  // holds the top menu
     void* file_panel_fn = nullptr;  // the entries' panel handler
     void* entry_fns[3] = {};        // the entry handlers: the file select's, COPY's and DELETE's
-    void* hook = nullptr;           // the helper's stand-in for an entry's handler
+    void* hook = nullptr;           // the helper's wrapper of an entry's handler
 };
 
 // The squashed DISK: "DI" and "SK", drawn as the game's KEYS (0x81 "KE", 0x82 "YS"), into font
@@ -58,8 +43,8 @@ public:
     // on, else puts them back), and rewrites entries still showing keys.
     void watch(const FileAddresses& addresses);
 
-    // Game thread, from the stand-in handler: the game's handler for `widget` (null if not one
-    // this wrapped), to call first.
+    // Game thread, from the helper's entry handler: the game's handler for `widget` (null if
+    // not one this wrapped), to call first.
     void* original(void* widget) const;
     // ...then, after event 0xF (the fill), the entry rewritten.
     void on_event(const FileAddresses& addresses, void* widget, intptr_t event);

@@ -1,5 +1,6 @@
-// Host tests for the ARCHIPELAGO choice (menu.h): a stand-in game-mode panel laid out as traced
-// on B1, relabeled, put back, and left alone whenever anything on the way does not match.
+// Host tests for menu.h: the ARCHIPELAGO choice on a stand-in game-mode panel and the ASSIST
+// lock on a stand-in options menu, both laid out as traced on B1, and each left alone when
+// anything on the way does not match.
 
 #include <windows.h>
 
@@ -49,8 +50,8 @@ void test_the_border_under_the_mouse_fits_archipelago() {
     Stand stand;
     zap::ArchipelagoChoice choice;
     zap::MenuAddresses a = stand.addresses();
-    // The panel's border as the game lays it out round a label at x = 160: eight 8 x 8 pieces,
-    // the top and bottom edges 80.1 long, the right-hand pieces at 240.1.
+    // The border as the game lays it out around a label at x = 160: eight pieces 8 long, but the
+    // top and bottom edges (1, 5) 80.1, the right-hand ones at 240.1.
     BYTE pieces[8][0x160] = {};
     auto at_d = [](BYTE* p, ptrdiff_t o) -> double& { return *reinterpret_cast<double*>(p + o); };
     const double xs[8] = {152, 160, 240.1, 240.1, 240.1, 160, 152, 152};
@@ -103,7 +104,7 @@ void test_the_border_under_the_mouse_fits_archipelago() {
 }
 
 int g_hook_calls = 0;
-void panel_hook() { g_hook_calls += 3; }  // a body of its own: the linker folds identical ones
+void panel_hook() { g_hook_calls += 3; }
 void other_handler() { g_hook_calls += 5; }
 
 void test_the_panel_handler_is_the_helpers_while_installed() {
@@ -200,7 +201,7 @@ void test_a_closed_menu_is_forgotten_unwritten() {
     check(stand.text() == "ARCHIPELAGO" && stand.callback() == &archipelago,
           "writes nothing into the closed menu");
 
-    choice.install(a, &archipelago);  // nothing up: still nothing
+    choice.install(a, &archipelago);  // another menu on top: nothing to install
     stand.current = stand.menu;
     Stand fresh;
     zap::MenuAddresses b = fresh.addresses();

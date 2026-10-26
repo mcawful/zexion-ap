@@ -1,25 +1,11 @@
-// zexion_ap.dll: the native helper the AP client loads into the running game, or the proxy
-// version.dll loads as the game starts (native/proxy/).
+// zexion_ap.dll, loaded by the client or by the proxy (native/proxy/). On load, one thread hooks
+// the game's SDL_GL_SwapWindow import slot through a trampoline (iat.h), in a known build only
+// (build.h), and then serves the pipe (pipe.h). The frame function so runs on the game's thread,
+// between frames (docs/re/memory.md, "The per-frame call"). "unload" restores the slot, waits
+// for calls to drain, and frees the DLL.
 //
-// On load it starts one thread of its own. If the game is a build it knows, that thread points
-// the game's import-table slot for SDL_GL_SwapWindow at a trampoline (iat.h), which calls the
-// helper's frame function and then SDL. The game makes that call from its main loop
-// (docs/re/memory.md, "The per-frame call"), so the frame function runs on the game's thread,
-// between frames. The thread then serves the command pipe (pipe.h). "unload" points the slot
-// and the trampoline back at SDL, waits until no call is inside the helper, and unloads the
-// DLL, so a rebuilt helper can be loaded without restarting the game.
-//
-// Each frame call counts itself; puts back everything the helper changed if the pipe's client
-// went away; takes the files a client left for AP saves without it (offline.h); serves the
-// mailbox (requests from the pipe thread that touch the game, mailbox.h); runs each part's
-// watch (game_calls.h: the new game and ARCHIPELAGO, ASSIST, the escape skip, the OS Install
-// Disks goal's screens, Intel Chips, the title screen, the offline look, the map and other
-// players' items); publishes what an unload must wait for; and shows queued popups. None of it
-// can race the game.
-//
-// The target is set at build time: the game's SDL_GL_SwapWindow, behind the build check, in
-// zexion_ap.dll; this test program's own GetTickCount, with no build check, in the
-// zexion_ap_hooktest.dll that native/tests/ load and unload under load.
+// Hook target, set at build time: SDL_GL_SwapWindow in a known build (zexion_ap.dll), or the
+// host's own GetTickCount in any but a known build (zexion_ap_hooktest.dll, for the native tests).
 
 #include <windows.h>
 
@@ -51,7 +37,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.28.0";
+constexpr char kVersion[] = "0.29.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
@@ -69,9 +55,9 @@ zap::Mailbox g_mailbox;
 // functions the game calls (archipelago_chosen and the others below).
 zap::Game g_game;
 std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
-// Whether the game's menu holds a pointer to archipelago_chosen, for the pipe thread's unload.
-// The frame call offers ARCHIPELAGO only while holding g_menu_lock with g_unloading clear; it
-// only tries the lock, so it never waits on the pipe thread, which holds it only briefly.
+// Whether a game structure (menu, panel, entry, map, transition routine) may still hold a helper
+// function: unload refuses while set. The frame offers ARCHIPELAGO only under g_menu_lock with
+// g_unloading clear, and only tries the lock, so it never waits on the pipe thread.
 std::atomic<bool> g_menu_installed{false};
 // Whether an item record is restyled (the stand-ins, apitem.h; the Area Map, intel.h), which
 // unload must undo first.
@@ -79,15 +65,13 @@ std::atomic<bool> g_items_restyled{false};
 // Whether the scanner's message is still the helper's (scan.h): unload waits for it, since a
 // later helper would not take it for the game's.
 std::atomic<bool> g_scan_written{false};
-// Likewise the pause screen's branch (pause.h), left as `jmp` the game would build its KEYS row.
+// Likewise the pause screen's KEYS-row branch while it is the helper's jmp (pause.h).
 std::atomic<bool> g_branch_patched{false};
 SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
-// Set by the pipe thread when its client goes away (the AP client exited or crashed): the next
-// frame puts back everything the helper changed and goes inactive, before it serves any
-// request, so a reconnected client's `config` and requests come after it. Without a client the
-// game is the base game (the helper may have been loaded with the game, by the proxy).
+// Set by the pipe thread when its client disconnects; the next frame puts everything back before
+// it serves any request, so a reconnecting client's requests come after.
 std::atomic<bool> g_client_gone{false};
 // What clients had set, from a refused unload (undo_for_unload): the next frame sets it again
 // before anything else, so before any request after the refusal. The pipe thread publishes it,
@@ -96,8 +80,8 @@ std::atomic<zap::ClientState*> g_rearm{nullptr};
 // Whether the helper was loaded from the game's own folder (by the proxy, native/proxy/, or by
 // a client with no build of its own) rather than from elsewhere: `hello` reports it.
 bool g_from_game_folder = false;
-// What the client left for AP saves without it (offline.h), read by the helper's thread when it
-// starts and by the pipe thread each time a client goes away, and handed to the next frame.
+// The offline files (offline.h), read on the helper's thread at start and after each
+// disconnect, handed to the next frame under g_offline_lock.
 SRWLOCK g_offline_lock = SRWLOCK_INIT;
 bool g_offline_ready = false;
 zap::OfflineFiles g_offline_files;
@@ -144,11 +128,9 @@ void publish_blockers() {
     g_branch_patched.store(g_game.keys_branch_patched());
 }
 
-// ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
-// the frame call (so outside the trampoline's count). Unload therefore first takes it off the
-// menu on the game's thread, through the mailbox, refuses to unload while it may still be
-// there, and waits for a call still inside it. The helper's other functions below are called
-// the same way and handled the same way.
+// ARCHIPELAGO's callback. The game calls it on its thread but outside the trampoline's count, so
+// InCallback counts it, and unload first takes it off the menu (via the mailbox) and refuses
+// while it may remain. The other game-called functions below follow the same rule.
 void archipelago_chosen(void*, int) {
     InCallback in;
     guarded([] { g_game.start_archipelago(&archipelago_chosen); });
@@ -187,8 +169,8 @@ void file_entry_after(void* widget, intptr_t event) { g_game.file_event(widget, 
 void* map_original(void* child) { return g_game.map_original(child); }
 void map_after(void*, intptr_t) { g_game.map_after(); }
 
-// EQUIPMENT's callback while the disk count is shown (equip.h): the game's own builds the
-// screen, then the count is added in the same call, before the screen's first frame.
+// EQUIPMENT's callback while the disk goal is on (equip.h): the game builds the screen, then the
+// disk widget is added in the same call.
 void equipment_chosen(void* widget, int event) {
     InCallback in;
     auto game_fn = reinterpret_cast<void (*)(void*, int)>(g_game.equipment_fn());
@@ -211,8 +193,7 @@ void mission_yes(void* widget, int event) {
     if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
 }
 
-// Game thread: the helper's stand-ins the game's menus are pointed at, given to the game
-// object before it is configured (by a client, or from the offline cache).
+// Game thread: the helper's wrappers for the game's menus, given to Game before it is configured.
 void set_hooks() {
     zap::Hooks hooks;
     hooks.panel = reinterpret_cast<void*>(&handler_event<&panel_original, &panel_after>);
@@ -277,8 +258,8 @@ uintptr_t frame(void* argument) {
                 g_game.rearm(std::move(*owned));
             }
             if (g_client_gone.exchange(false)) {
-                // The client went away: everything it asked for goes, and nothing comes back
-                // (the escape skip included) until a client configures the helper again.
+                // The client went away: put back what it set; only the offline look may dress a
+                // save until a client configures again.
                 g_game.put_back_all(&archipelago_chosen);
                 g_game.clear_popups();
                 g_game.set_active(false);
@@ -287,7 +268,7 @@ uintptr_t frame(void* argument) {
             g_mailbox.serve();
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
-                // Once an unload has begun, neither the choice nor the skip is put back in.
+                // Once an unload has begun, no watch runs (nothing is put back in).
                 if (!g_unloading) {
                     g_game.watch_menu(&archipelago_chosen);
                     g_game.watch_assists();
@@ -598,8 +579,8 @@ std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request.rfind("offline_put ", 0) == 0) {
-        // What the client leaves for AP saves without it (offline.h), written from here so it
-        // lands where the game reads it.
+        // Written by the helper, not the client: a packaged client's AppData writes are
+        // redirected (offline.h).
         return zap::put_offline_file(zap::offline_folder(), g_build, request);
     }
     if (request == "unload") {
@@ -639,9 +620,9 @@ std::string undo_for_unload() {
     }
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        // Set again by the next frame, however long it takes to come (a call through the mailbox
-        // could be withdrawn for want of one, and the client would never resend it). One left
-        // from an earlier refusal was taken already: a frame ran the snapshot after it.
+        // Re-armed by the next frame however late it comes; a mailbox call could be withdrawn
+        // and the client would not resend. One left from an earlier refusal was taken already:
+        // a frame ran the snapshot after it.
         if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };

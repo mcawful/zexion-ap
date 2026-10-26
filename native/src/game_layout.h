@@ -17,10 +17,8 @@ namespace zap {
 constexpr int kMapSide = 54;
 constexpr int kMapCells = kMapSide * kMapSide;
 
-// The loaded game: `save_loaded` is 0xFF with no save loaded (loading one copies the slot's
-// empty marker into it and then sets 0; docs/re/memory.md,
-// "Telling play from menus, the title screen and death"), and its flags are 0x9C4 bytes
-// (client/game.py, FLAGS).
+// save_loaded: 0xFF with no save loaded, 0 in one (docs/re/memory.md, "Telling play from menus,
+// the title screen and death"). The flags: 0x9C4 bytes (client/game.py, FLAGS).
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr uint64_t kFlagCount = 0x9C4;
 
@@ -42,10 +40,10 @@ constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;
 constexpr ptrdiff_t kSelf = 0x24;
 }  // namespace event
 
-// The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408 bytes in
-// the slot array, each 0xFF at +0x935E when empty (the file's 0x9360, as each block starts at
-// the file's offset 2), its randomizer marker at +0x9400 and its map grid at the file's 0x877F,
-// and a copy of each slot's randomizer section (kSectionSize, requests.h) in the slots' table.
+// The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408, each a
+// save file from its offset 2, so file offset F is at F - 2 (empty: 0xFF at the file's 0x9360;
+// the map at 0x877F); the randomizer marker at +0x9400. A copy of each slot's randomizer section
+// (kSectionSize, requests.h) is in the slots' table.
 namespace slot {
 constexpr int kCount = 30;
 constexpr ptrdiff_t kStride = 0x9408, kEmpty = 0x935E, kRandoMarker = 0x9400;
@@ -65,7 +63,7 @@ constexpr ptrdiff_t kBelow = 0x78;
 // handler (docs/re/memory.md, "The game-mode panel", "The assist menu").
 namespace panel {
 constexpr ptrdiff_t kChildren = 0x1E0;
-constexpr ptrdiff_t kCapacity = 0x1E8;    // 32-bit
+constexpr ptrdiff_t kCapacity = 0x1E8;    // 32-bit; the child count, read and written as such
 constexpr ptrdiff_t kSelectable = 0x1EC;  // 32-bit
 constexpr ptrdiff_t kHandler = 0x2F8;
 }  // namespace panel

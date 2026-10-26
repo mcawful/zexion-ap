@@ -33,10 +33,6 @@ std::vector<std::string> wrap_words(const std::string& text, size_t width) {
 }
 
 std::string center_lines(const std::vector<std::string>& lines, int per_line) {
-    // The message routine lays text out per_line characters a line and cuts wherever a line
-    // ends, with no line-break code, and sizes a one-line box to its text (docs/re/memory.md,
-    // "Other players' items"). So with more than one line, each is centered by spaces before it
-    // and padded with spaces to the end of its line; one line stays as it is.
     if (lines.size() == 1 || per_line <= 0) return lines.empty() ? std::string() : lines[0];
     const size_t width = static_cast<size_t>(per_line);
     std::string text;
@@ -110,11 +106,9 @@ std::string notice_text(const std::string& text, int per_line, int* width) {
     const size_t w = widest == 0 ? static_cast<size_t>(per_line)
                                  : (std::min)(widest, static_cast<size_t>(per_line));
     if (width != nullptr) *width = static_cast<int>(w);
-    // The game shows a popup of n lines through a window from y = 88 - 4n to 88 + 3n while its
-    // text runs to 88 + 4n (measured, docs/re/memory.md, "Game functions the helper calls"), so
-    // from 3 lines on the last line is cut. One blank line more (a space past a full last line)
-    // makes the window reach far enough for up to 7 lines of text. Lines past what the game's
-    // 256-byte message slot holds, the NUL and that space included, are left out.
+    // The game shows only part of a text past two or three lines; one blank line more makes it
+    // show up to 7 (docs/re/memory.md, "Game functions the helper calls"). Lines past the
+    // 256-byte slot, the NUL and that space included, are left out.
     const bool blank_line = lines.size() >= 3;
     size_t fit = (kMessageMax - (blank_line ? 1 : 0)) / w;
     if (lines.size() > fit) lines.resize(fit);
@@ -130,13 +124,10 @@ std::string notice_text(const std::string& text, int per_line, int* width) {
 }
 
 void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
-    // A notice ending in its blank line (notice_text): the game sized its box for that line too,
-    // a line's worth of empty box under the text. The box is the message's own: centred on its
-    // y (+0x48), opening to a half-height (+0x1FC) of 4 per line past the first plus 7, set from
-    // the text's length (0x182A90). Given the half-height for its real lines plus one, and its
-    // centre moved 4 up onto them, it fits them with about 4 pixels above and below, the least
-    // that still shows every line (docs/re/memory.md, "Game functions the helper calls"). Only a
-    // message holding what the game wrote for that text is changed.
+    // The game sized the box for the blank line too (half-height 4 per line past the first, plus
+    // 7: 0x182A90). The half-height for the real lines plus one, the center 4 up, leaves about 4
+    // pixels above and below, the least that shows every line (docs/re/memory.md, "Game
+    // functions the helper calls"). Only a box still as the game set it is changed.
     if (message == nullptr || per_line <= 0) return;
     const size_t w = static_cast<size_t>(per_line);
     if (text.size() % w != 1 || text.size() / w < 3) return;

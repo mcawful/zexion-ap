@@ -1,6 +1,5 @@
-// Game's part for AP saves without the client (offline.h): the seeds' files taken, a save of
-// one of them dressed while no client is there (or one of another seed is), the file select's
-// counts, and the notices that tell the player.
+// Game's offline look (offline.h): an AP save dressed with no client (or with a client of
+// another seed), the file select's counts, and the notices.
 #include "game_calls.h"
 
 #include <iterator>
@@ -17,7 +16,8 @@ constexpr char kOfflineWarning[] =
 constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
 // And once a load, from a client whose seed the loaded randomizer save is not.
 constexpr char kOtherSeedNotice[] =
-    "THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. LOAD THAT SEED'S SAVE OR START A NEW GAME.";
+    "THIS SAVE IS NOT FROM THE SEED THE ARCHIPELAGO CLIENT IS CONNECTED TO. NOTHING IS SENT OR "
+    "RECEIVED.";
 
 }  // namespace
 
@@ -87,8 +87,8 @@ void Game::watch_offline() {
     // seed's (other_save); undressed when that stops.
     const bool other = other_mode();
     const bool dress = !active_ || other;
-    // This seed's save loaded: the randomizer section as the game loaded it (it is the
-    // previous one after a normal save, hence the marker).
+    // Which known seed's save is loaded: the marker first, as after a normal save the section is
+    // still the last randomizer game's.
     int seed = -1;
     if (dress && *save_loaded_ != kNoSaveLoaded && at<uint16_t>(rando_marker_, 0) == 1) {
         for (size_t i = 0; i < offline_seeds_.size() && seed < 0; ++i) {
@@ -145,7 +145,8 @@ void Game::watch_offline() {
         const BYTE* copy = rando_slots_ + static_cast<ptrdiff_t>(n - 1) * kSectionSize;
         for (const OfflineSeed& sd : offline_seeds_) {
             if (sd.discs && section_is(sd, copy)) {
-                // This save's own count: its map, in its block (docs/re/save-format.md).
+                // This save's own count, from its map grid (docs/re/save-format.md, "The map
+                // grid marks collected locations").
                 counts[n] = offline_disk_count(sd, block + slot::kMap);
                 break;
             }
@@ -158,8 +159,6 @@ void Game::watch_offline() {
 }
 
 bool Game::other_save() {
-    // A client whose session sees a randomizer save in play that is not its seed's: the player
-    // is told once a load, and the save gets its offline look if it is a known seed's.
     if (!configured_ || *save_loaded_ == kNoSaveLoaded) return false;
     bool told = other_warned_;
     other_save_ = true;
@@ -172,8 +171,6 @@ bool Game::other_save() {
 }
 
 bool Game::client_back() {
-    // The save played offline still loaded (the same seed's section), and the client that asks
-    // has seen it is its seed's: the player is told the client is back, once.
     bool shown = configured_ && offline_played_ >= 0 && *save_loaded_ != kNoSaveLoaded &&
                  static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
                  at<uint16_t>(rando_marker_, 0) == 1 &&

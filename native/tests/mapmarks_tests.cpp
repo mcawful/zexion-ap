@@ -106,10 +106,9 @@ struct Page {
     }
 };
 
-// The map's menu as the helper walks it: the menu, its first panel, the panel's children (the
-// first holding the handler, the fourth the cursor), and the info panel ([[panel + 0x300]] + 8)
-// with the scale (+0x1F0, through one more pointer) and the name widget (its fourth child).
-// Built in place: it points into itself.
+// The map menu as the helper walks it (mapmarks.cpp): first panel, its children (first holds
+// the handler, fourth the cursor), the info panel and its scale and name widget. Not copyable:
+// it points into itself.
 struct MapMenu {
     std::vector<BYTE> cursor = std::vector<BYTE>(0x200);
     Page first;  // the child holding the handler, in both slots
@@ -158,9 +157,9 @@ struct MapMenu {
     }
     MapMenu(const MapMenu&) = delete;
     BYTE* current_menu() { return reinterpret_cast<BYTE*>(&holder); }
-    void at(int16_t x, int16_t y) {
-        std::memcpy(cursor.data() + 0x1E6, &x, 2);
-        std::memcpy(cursor.data() + 0x1E4, &y, 2);
+    void at(int16_t row, int16_t column) {
+        std::memcpy(cursor.data() + 0x1E6, &row, 2);
+        std::memcpy(cursor.data() + 0x1E4, &column, 2);
     }
     void* slot() {  // both slots' handler, or null if they differ
         void* h = slot_at(0x168);
@@ -247,7 +246,7 @@ void test_the_cursor_square() {
     check(!names.holds_hook() && m.slot() == &m.handler, "no handler known");
 }
 
-// No stand-in given (no hooks before configure): nothing is wrapped, nothing written.
+// No wrapper given (no hooks before configure): nothing is wrapped, nothing written.
 void test_no_stand_in_wraps_nothing() {
     MapMenu m(40.0);
     void* handler_slot = &m.handler;
@@ -255,14 +254,14 @@ void test_no_stand_in_wraps_nothing() {
     a.hook = nullptr;
     zap::MapCursorNames names;
     names.watch(a, true);
-    check(m.slot() == &m.handler && !names.holds_hook(), "no stand-in: the game's handler");
-    m.set_slot(0x178, nullptr);  // a null slot is not the stand-in either
+    check(m.slot() == &m.handler && !names.holds_hook(), "no wrapper: the game's handler");
+    m.set_slot(0x178, nullptr);  // a null slot is not the wrapper either
     names.watch(a, true);
     check(m.slot_at(0x168) == &m.handler && m.slot_at(0x178) == nullptr && !names.holds_hook(),
           "a null slot left alone");
 }
 
-// The game's own writes over one slot, and a child that cannot be written.
+// A write over one slot, and a child that cannot be written.
 void test_one_slot_and_a_read_only_child() {
     MapMenu m(40.0);
     void* handler_slot = &m.handler;
@@ -270,16 +269,16 @@ void test_one_slot_and_a_read_only_child() {
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &g_hook, "both slots wrapped");
-    // The game's reveal writes +0x168 only: +0x178 still holds the stand-in, so it stays wrapped.
+    // A write over +0x168 only: +0x178 still holds the wrapper, so it stays wrapped.
     int reveal = 0;
     m.set_slot(0x168, &reveal);
     names.watch(a, true);
     check(names.holds_hook() && m.slot_at(0x168) == &reveal && m.slot_at(0x178) == &g_hook,
-          "one slot the stand-in: still wrapped, the other left as the game wrote it");
+          "one slot the wrapper: still wrapped, the other left as the game wrote it");
     names.restore(a);
     check(!names.holds_hook() && m.slot_at(0x168) == &reveal && m.slot_at(0x178) == &m.handler,
-          "restored: only the slot holding the stand-in put back");
-    // Only +0x168 the stand-in now.
+          "restored: only the slot holding the wrapper put back");
+    // Only +0x168 the wrapper now.
     m.set_slot(0x168, &m.handler);
     names.watch(a, true);
     m.set_slot(0x178, &reveal);
@@ -308,7 +307,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off: the game's handler");
     names.watch(a, true);
-    check(m.slot() == &g_hook && names.holds_hook(), "on: the helper's stand-in");
+    check(m.slot() == &g_hook && names.holds_hook(), "on: the helper's wrapper");
     check(names.original(m.first.data()) == &m.handler, "the game's handler to call");
     check(names.original(m.panel.data()) == nullptr, "only for the map's child");
     const std::map<int, std::string> labels = {

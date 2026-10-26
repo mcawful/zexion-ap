@@ -20,7 +20,7 @@ constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 // A message's text past the 255 characters (and the NUL) of its slot overruns the next slot:
 // the game copies it with no check (docs/re/memory.md, "Game functions the helper calls").
 constexpr size_t kMessageMax = 255;
-// The popup message's box: its centre's y (a double) and its half-height (docs/re/memory.md,
+// The popup message's box: its center's y (a double) and its half-height (docs/re/memory.md,
 // "Game functions the helper calls").
 constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
 
@@ -29,9 +29,8 @@ constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
 struct Label {
     std::string name;
     int width = 0;
-    // For another Zexion player's item: the item's record, whose icon and name the first line
-    // is made of once the records are loaded (until then the name says AP ITEM), and the
-    // second line.
+    // `item`: another Zexion player's item N (-1 if none); its record's icon and name make the
+    // first line once records load (AP ITEM until then). `who`: the second line.
     int item = -1;
     std::string who;
     // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
@@ -45,8 +44,8 @@ Label layout_label(const std::string& first, const std::string& who);
 
 // Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
 std::vector<std::string> wrap_words(const std::string& text, size_t width);
-// `lines` as one popup text: with more than one line, each centered in per_line characters and
-// padded to the end of its line; one line as it is.
+// `lines` as one popup text: with more than one line, each centered in per_line characters,
+// all but the last padded to the line's end; one line as it is.
 std::string center_lines(const std::vector<std::string>& lines, int per_line);
 // A received item's popup text: `head` (the icon and the game's name), then `suffix` ("FROM
 // ALICE") from the next line, its words wrapped at per_line characters, every line centered in
@@ -54,10 +53,11 @@ std::string center_lines(const std::vector<std::string>& lines, int per_line);
 // to it).
 std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
                        int* width = nullptr);
-// A notice's popup text: `text` alone, left-aligned, its words wrapped whole at per_line
-// characters (a word longer than a line split with a hyphen at the line's end), the box as
-// wide as the widest line (`*width`), kept within the game's 256-byte message slot.
+// `text` in lines of at most `width`, words whole; a longer word split with a hyphen ending
+// each line it fills.
 std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width);
+// A notice: `text` alone, left-aligned (wrap_hyphenated), the box as wide as its widest line
+// (`*width`), within the 256-byte message slot.
 std::string notice_text(const std::string& text, int per_line, int* width = nullptr);
 // Game thread, right after the game made a notice's message from `text`: fits the box to the
 // notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
