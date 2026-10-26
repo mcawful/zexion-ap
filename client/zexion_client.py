@@ -235,6 +235,8 @@ class ZexionContext(CommonContext):
         self.goal_withheld = False  # an ending without enough disks, said once
         self.hints_failed = ""  # the last error the hints raised, said once
         self.offline_failed = False  # the last offline file failed, said once
+        # The offline config file, built once per attach to the game: (the game, its text).
+        self.offline_config: tuple[game.Game, str] | None = None
 
     @property
     def plan(self) -> save_patch.SeedPlan | None:
@@ -869,20 +871,34 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
     return labels, own
 
 
-def offline_files(ctx: ZexionContext) -> tuple[str | None, str | None]:
-    """What the helper needs to dress this seed's saves without the client (client/offline.py):
-    the config request for the attached game's build, and this seed's file; None for either
-    that is not known yet (no game attached; the items or the labels not listed yet)."""
-    config = None
+def config_file(g: game.Game) -> str:
+    """The config file for the attached game's build (client/offline.py): the addresses, and
+    the first bytes of each function among them, read from the game."""
+    keys = [k for k in native.CONFIG_KEYS if k not in offline.NOT_CHECKED]
+    return offline.config_text(
+        native.config_text(dict(g.rva)), g.code_checks(keys, offline.CHECK_BYTES)
+    )
+
+
+async def offline_config(ctx: ZexionContext) -> str | None:
+    """The config file, built once per attach to the game (in a thread: it reads ~66 places
+    in the game); None while no game is attached, or if building it failed (tried again)."""
     g = ctx.game_conn
-    if g is not None:
-        try:
-            keys = [k for k in native.CONFIG_KEYS if k not in offline.NOT_CHECKED]
-            config = offline.config_text(
-                native.config_text(dict(g.rva)), g.code_checks(keys, offline.CHECK_BYTES)
-            )
-        except (native.HelperError, game.GameError):
-            config = None
+    if g is None:
+        return None
+    if ctx.offline_config is not None and ctx.offline_config[0] is g:
+        return ctx.offline_config[1]
+    try:
+        text = await asyncio.to_thread(config_file, g)
+    except (native.HelperError, game.GameError):
+        return None
+    ctx.offline_config = (g, text)
+    return text
+
+
+def offline_seed(ctx: ZexionContext) -> str | None:
+    """This seed's file for the helper to dress its saves without the client (client/
+    offline.py), or None while it is not known yet (the items or the labels not listed yet)."""
     seed = None
     conn = ctx.conn
     if conn is not None and conn.items_listed:
@@ -904,7 +920,7 @@ def offline_files(ctx: ZexionContext) -> tuple[str | None, str | None]:
                 disc_info,
                 labels,
             )
-    return config, seed
+    return seed
 
 
 async def offline_tick(ctx: ZexionContext) -> None:
@@ -918,7 +934,7 @@ async def offline_tick(ctx: ZexionContext) -> None:
     seed_name = ctx.server_seed_name or ctx.seed_name  # the server's (RoomInfo)
     if not seed_name or not ctx.slot:
         return
-    config, seed = offline_files(ctx)
+    config, seed = await offline_config(ctx), offline_seed(ctx)
     name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
     for kind, text, file in (("config", config, ""), ("seed", seed, name)):
         if text is None or told.offline_sent.get(kind) == text:
