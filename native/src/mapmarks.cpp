@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "apitem.h"  // kStandInNames
 #include "game_mem.h"
 
 namespace zap {
@@ -64,7 +65,6 @@ constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabe
 constexpr ptrdiff_t kCursorChild = 0x18, kCursorRow = 0x1E6, kCursorColumn = 0x1E4;
 constexpr ptrdiff_t kNameChild = 0x18;
 constexpr double kFineScale = 40.0;
-const char* const kStandInNames[2] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 
 // The map's menu, its first panel and that panel's first child, if the top menu is the map's
 // (its handler `handler`).

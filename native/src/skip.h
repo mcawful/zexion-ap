@@ -20,7 +20,6 @@ namespace zap {
 
 constexpr int kSkipEvent = 3665;
 constexpr int kSkipOfferEvent = 3668;
-constexpr ptrdiff_t kEventSize = 0x28;
 
 class EscapeSkip {
 public:

@@ -102,8 +102,8 @@ struct StandIn {
     const int8_t (*logo)[16];
 };
 constexpr StandIn kStandIns[kStandInCount] = {
-    {kStandInItem, 134, 3549, "SCRAP ENERGY", kStandInFrame, kLogo},
-    {kStandInProgression, 142, 3550, "SCRAP CHUNK", kStandInProgressionFrame, kLogoArrow},
+    {kStandInItem, 134, 3549, kStandInNames[0], kStandInFrame, kLogo},
+    {kStandInProgression, 142, 3550, kStandInNames[1], kStandInProgressionFrame, kLogoArrow},
 };
 
 // A color for each palette entry, in the middle of its range of int(r * 3 + g * 6 + b * 9).
