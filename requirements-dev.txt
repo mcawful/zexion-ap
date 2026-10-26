@@ -1,7 +1,6 @@
 # Development and reverse-engineering tools. Archipelago's own requirements are installed
 # separately by tools/ap_checkout.py from the pinned checkout.
 ruff==0.17.1
-pytest==9.1.1
+pytest==9.1.1  # its subtests (pytest 9.0) serve Archipelago's world tests
 capstone==5.0.9
 numpy==2.5.4
-pytest-subtests==0.14.2  # Archipelago's world tests use it
