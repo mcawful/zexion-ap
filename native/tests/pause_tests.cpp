@@ -180,6 +180,12 @@ void test_anything_else_is_left_alone() {
         row.watch(p.addresses());
         check(p.frame(p.sprite[4]) == 384, "another sprite count");
     }
+    {
+        Pause p;
+        row.set("2 OF 15");  // not the row's eight cells
+        row.watch(p.addresses());
+        check(p.frame(p.sprite[4]) == 384 && p.frame(p.glyph[0]) == 'K', "a text of another length");
+    }
     row.set("");
     Pause p;
     row.watch(p.addresses());

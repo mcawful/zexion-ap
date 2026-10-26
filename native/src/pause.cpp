@@ -84,6 +84,8 @@ void PauseDiskRow::restore(const PauseAddresses& a) {
 }
 
 void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
+    // The text fills the row's cells (pause_row_text), read by index below.
+    if (text_.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
     int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0, released = 1;
     BYTE** panels = nullptr;
@@ -133,15 +135,16 @@ void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
         !safe_read(sprite_list, sprite, sizeof(sprite))) {
         return;
     }
+    // Turned already (each frame, as the screen stays up): nothing more to check.
+    int32_t icon = -1;
+    read(sprite[4], sprite::kFrameIndex, icon);
+    if (icon == kDiskIcon) return;
     for (BYTE* s : sprite) {
         if (!writable(s, sprite::kSize)) return;
     }
     for (BYTE* g : glyph) {
         if (!writable(g, sprite::kSize)) return;
     }
-    int32_t icon = -1;
-    read(sprite[4], sprite::kFrameIndex, icon);
-    if (icon == kDiskIcon) return;  // turned already
     // Still the game's KEYS row: KEYS, and the first key's icon.
     const char keys_text[] = "KEYS";
     for (int i = 0; i < kKeysGlyphs; ++i) {
