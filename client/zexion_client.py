@@ -19,7 +19,7 @@ DeathLinks and keeps AP saves' look without the client. ``/prepare SLOT`` writes
 fresh save instead (client/prepare.py). The client asks the server only for items from other
 worlds: this world's own are in the save's item table, and the game hands them out itself.
 
-What each part does, and when it was tested in the game: CLAUDE.md (the client) and
+What each part does, and when it was tested in the game: README.md ("Features") and
 native/README.md; the docstrings of the ticks below and of the modules they use; the state the
 client keeps, by how long it lasts: client/state.py.
 """
