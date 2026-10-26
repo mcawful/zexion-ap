@@ -4,8 +4,8 @@
 #include <cstring>
 #include <sstream>
 
-#include "game_calls.h"  // parse_config
 #include "game_mem.h"
+#include "requests.h"  // parse_config
 
 namespace zap {
 

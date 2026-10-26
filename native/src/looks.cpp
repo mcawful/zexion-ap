@@ -141,9 +141,9 @@ void ItemLooks::apply(const Places& at, const BYTE* pool, BYTE* base) {
         BYTE* now_base = field<BYTE*>(seen, sprite::kFrameList);
         // Not dressed: it must hold the template's base and the stand-ins' palette. Dressed (this
         // spawn): the base it was given, or the template's if the game set it back.
-        const bool expected =
-            d.spawn == 0 ? now_base == base && field<BYTE*>(seen, sprite::kPalette) == standin_palette
-                         : now_base == d.base || now_base == base;
+        BYTE* now_palette = field<BYTE*>(seen, sprite::kPalette);
+        const bool expected = d.spawn == 0 ? now_base == base && now_palette == standin_palette
+                                           : now_base == d.base || now_base == base;
         Look look;
         if (!expected || !look_of(at.palette_table, records, item, clock,
                                   field<int32_t>(seen, sprite::kFrameCount), look)) {

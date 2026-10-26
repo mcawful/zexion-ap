@@ -134,13 +134,16 @@ void test_restyle_and_names() {
     items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
     items.watch(holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
-    check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0,
+    check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 &&
+              g_scrap[0x08] == 0,
           "the logo frame, one frame, no icon of its own (the name starts with the glyph)");
     check(get<int16_t>(g_scrap, 0x40) == -1, "no refill drop at pickup");
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
-    check(get<int16_t>(g_scrap, 0x60) == 244 && get<int16_t>(g_scrap, 0x3C) == 46, "the rest left alone");
+    check(get<int16_t>(g_scrap, 0x60) == 244 && get<int16_t>(g_scrap, 0x3C) == 46,
+          "the rest left alone");
     check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
-    check(get<int16_t>(g_chunk, 0x02) == 95 && get<int16_t>(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0 &&
+    check(get<int16_t>(g_chunk, 0x02) == 95 && get<int16_t>(g_chunk, 0x06) == 1 &&
+              g_chunk[0x08] == 0 &&
               get<int16_t>(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     items.watch(holder(), 7);

@@ -154,8 +154,9 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
     }
     if (on && child_ == nullptr) {
         BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
+        constexpr size_t kBothSlots = kChildHandlers[1] - kChildHandlers[0] + sizeof(void*);
         if (map_menu(a.current_menu, handler, menu, panel, child) &&
-            writable(child + kChildHandlers[0], kChildHandlers[1] - kChildHandlers[0] + sizeof(void*))) {
+            writable(child + kChildHandlers[0], kBothSlots)) {
             for (ptrdiff_t at : kChildHandlers) {
                 void* slot = nullptr;
                 if (read(child, at, slot) && slot == handler) {

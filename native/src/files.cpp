@@ -18,10 +18,11 @@ const char kDiskHeaderRows[2][8][9] = {
 
 namespace {
 
-// An entry's save block and slot (docs/re/memory.md, "The file select").
+// An entry's save block (its slot's first block, laid out as slot::) and its slot
+// (docs/re/memory.md, "The file select").
 constexpr ptrdiff_t kChildBlock = 0x1F8, kChildSlot = 0x230;
 // The entry (read live on B1, 2026-10-24): 145 glyphs, 5 rows of 29.
-constexpr int32_t kEntryGlyphs = 145, kEntryColumns = 29, kEntries = 3, kSlots = 30;
+constexpr int32_t kEntryGlyphs = 145, kEntryColumns = 29, kEntries = 3;
 constexpr int kRow2 = 2 * kEntryColumns;
 // The keys' block, columns 27 and 28 of rows 2 to 4: the header, then the circles.
 constexpr int kKeysHeader[2] = {kRow2 + 27, kRow2 + 28};
@@ -30,9 +31,6 @@ constexpr int kBlock[6] = {kKeysHeader[0], kKeysHeader[1], kKeyCircles[0],
                            kKeyCircles[1], kKeyCircles[2], kKeyCircles[3]};
 constexpr int32_t kHeaderK = 0x81, kHeaderS = 0x82, kHollow = 0x83, kFilled = 0x84;
 constexpr int32_t kBlank = 0;
-// The save block an entry shows (the slot's first block, file offset - 2).
-constexpr ptrdiff_t kBlockEmpty = 0x935E;
-constexpr uint8_t kEmptySlot = 0xFF;
 // A glyph's place: its y (sprite::kY), and the top and bottom of its box, set by the label's
 // layout (0xA79E0: each glyph at the label's place plus 8 a column and 8 a row).
 constexpr ptrdiff_t kBoxTop = 0x130, kBoxBottom = 0x140;
@@ -152,7 +150,7 @@ void FileDisks::watch(const FileAddresses& a) {
                 void* h = nullptr;
                 int32_t slot = 0;
                 if (!entry_glyphs(entry, glyphs) || !read(entry, widget::kHandler, h) ||
-                    !read(entry, kChildSlot, slot) || slot < 1 || slot > kSlots) {
+                    !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
                 if (h != a.hook && is_entry_fn(a, h) && a.hook != nullptr &&
@@ -190,9 +188,9 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     if (listed == counts_.end()) return false;
     const int shown = listed->second;
     BYTE* block = nullptr;
-    uint8_t empty = kEmptySlot;
-    if (!read(entry, kChildBlock, block) || !read(block, kBlockEmpty, empty) ||
-        empty == kEmptySlot) {
+    uint8_t empty = slot::kEmptyMark;
+    if (!read(entry, kChildBlock, block) || !read(block, slot::kEmpty, empty) ||
+        empty == slot::kEmptyMark) {
         return false;
     }
     // What the block should read: DISK, then the count, then nothing; with no disk, nothing at
@@ -313,7 +311,7 @@ std::string parse_disk_slots(const std::string& request, int& count, int& requir
             return "bad disk_slots request";
         }
         int n = std::stoi(item);
-        if (n < 1 || n > kSlots) {
+        if (n < 1 || n > slot::kCount) {
             slots.clear();
             return "bad disk_slots request";
         }

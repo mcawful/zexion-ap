@@ -4,8 +4,8 @@
 // the AP new game and ARCHIPELAGO (menu.h); the escape skip (skip.h); other players' items
 // (apitem.h, looks.h, mapmarks.h); the ASSIST lock (menu.h); Intel Chips (intel.h); the OS
 // Install Disks goal (scan.h, equip.h, pause.h, files.h, mission.h); the title screen's lines
-// (title.h); and AP saves without the client (offline.h). The pipe's requests are parsed here
-// too.
+// (title.h); and AP saves without the client (offline.h, game_offline.cpp). The pipe's requests
+// are parsed in requests.h, and the popups' text laid out in text.h.
 //
 // The client finds every address by byte pattern (client/patterns.py) and sends them as RVAs;
 // nothing here is a fixed address. The functions' arguments are as traced in
@@ -31,89 +31,14 @@
 #include "files.h"
 #include "intel.h"
 #include "offline.h"
+#include "requests.h"
 #include "scan.h"
 #include "mapmarks.h"
 #include "title.h"
 #include "skip.h"
+#include "text.h"
 
 namespace zap {
-
-struct Cas {
-    uint8_t item;  // inventory byte 0..49
-    uint8_t expected;
-    uint8_t value;
-};
-
-struct Popup {
-    uint8_t item;
-    std::string suffix;  // already filtered to the font (see parse_batch)
-    bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
-    bool silent = false;  // no pickup sound (the helper's own notice, offline.h)
-};
-
-struct Batch {
-    std::vector<Cas> cas;
-    bool refresh = false;
-    std::vector<Popup> popups;
-};
-
-// Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).
-struct SectionBytes {
-    uint16_t offset;
-    std::vector<uint8_t> bytes;
-};
-
-// One room of the randomizer menu's start table: its map cell and flag (object 25 there).
-struct StartRoom {
-    int16_t x;
-    int16_t y;
-    uint8_t flag;
-};
-
-// What an AP new game needs: the section must already hold `expect` (the seed's mode), and
-// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
-// randomizer menu's state) sets the menu up as the seed's mode for the ARCHIPELAGO choice;
-// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
-// plan.
-struct NewGamePlan {
-    std::vector<SectionBytes> expect;
-    std::vector<SectionBytes> write;
-    std::vector<SectionBytes> menu;
-    // The menu's start table as it builds it when it opens; for a mode with Double Teleport,
-    // whose placement reads it. Filled in before the placement if the menu has not built it.
-    std::vector<StartRoom> start_table;
-};
-
-constexpr size_t kStartTableMax = 64;  // the rooms the menu's builder allows
-
-constexpr size_t kSectionSize = 0x908;
-constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
-
-// "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
-// "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
-// digits; every range must lie inside its block. Also "start_table HEX": 5 bytes per room
-// (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
-std::string parse_newgame(const std::string& request, NewGamePlan& out);
-
-// The game's popup line width, 24 characters: `mov edx, 24` in its pickup code
-// (docs/re/memory.md, "Other players' items"), and the width the helper lays its own popups and
-// the stand-ins' names out in.
-constexpr int kGamePopupWidth = 24;
-
-// A label for another player's item: the stand-in's name as laid out, and the popup's line
-// width that name is laid out for (its widest line).
-struct Label {
-    std::string name;
-    int width = 0;
-    // For another Zexion player's item: the item's record, whose icon and name the first line
-    // is made of once the records are loaded (until then the name says AP ITEM), and the
-    // second line.
-    int item = -1;
-    std::string who;
-    // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
-    // the game's record calls DATA DISC).
-    std::string item_name;
-};
 
 // What clients set that Game::put_back_all drops, for a refused unload to set again
 // (Game::snapshot and Game::rearm). The offline look's own settings are left out: once the
@@ -134,51 +59,6 @@ struct ClientState {
     bool mission_asked = false;   // RETURN HOME WITH THE DISKS? on its way
     bool mission_ending = false;  // its YES pressed, the ending not started yet
 };
-
-// A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in
-// the longer, which is the width.
-Label layout_label(const std::string& first, const std::string& who);
-
-// Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
-std::vector<std::string> wrap_words(const std::string& text, size_t width);
-// `lines` as one popup text: with more than one line, each centered in per_line characters and
-// padded to the end of its line; one line as it is.
-std::string center_lines(const std::vector<std::string>& lines, int per_line);
-// A received item's popup text: `head` (the icon and the game's name), then `suffix` ("FROM
-// ALICE") from the next line, its words wrapped at per_line characters, every line centered in
-// the widest line, whose width goes to `*width` (the popup's line width: the game sizes a box
-// to it).
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
-                       int* width = nullptr);
-// A notice's popup text: `text` alone, left-aligned, its words wrapped whole at per_line
-// characters (a word longer than a line split with a hyphen at the line's end), the box as
-// wide as the widest line (`*width`). The frame call keeps it within the game's 256-byte
-// message slot.
-std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width);
-std::string notice_text(const std::string& text, int per_line, int* width = nullptr);
-// Game thread, right after the game made a notice's message from `text`: fits the box to the
-// notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
-void fit_notice_box(BYTE* message, const std::string& text, int per_line);
-
-// "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
-// item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
-// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
-// Returns "" or an error.
-std::string parse_labels(const std::string& request, std::map<int, Label>& out);
-
-// "config name=rva name=rva ...", RVAs in hex (0x...) or decimal. Returns "" or an error.
-std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
-
-// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
-// "notice ITEM TEXT". Returns "" or an error. A popup's suffix keeps only letters (made
-// upper-case), digits, space and . , ' ! ? -, at most 40 characters; a notice's text keeps the
-// same and :, at most 200, and is shown alone, with no icon or name (notice_text).
-std::string parse_batch(const std::string& request, Batch& out);
-
-// A `discs` request: "discs" (off: count 0, required 0, line "") or "discs COUNT REQUIRED HEX",
-// the scanner's line in hex (scan.h). Returns "" or what is wrong.
-std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
-                        bool& told);
 
 // The helper's own functions the game is pointed at while a part is on (dllmain.cpp), each in
 // place of the game's: the game-mode panel's handler (menu.h), EQUIPMENT's callback and the

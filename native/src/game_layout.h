@@ -17,6 +17,23 @@ namespace zap {
 constexpr int kMapSide = 54;
 constexpr int kMapCells = kMapSide * kMapSide;
 
+// The loaded game: `save_loaded` holds the slot loaded, 0xFF with none (docs/re/memory.md,
+// "Telling play from menus, the title screen and death"), and its flags are 0x9C4 bytes
+// (client/game.py, FLAGS).
+constexpr uint8_t kNoSaveLoaded = 0xFF;
+constexpr uint64_t kFlagCount = 0x9C4;
+
+// The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408 bytes in
+// the slot array, each 0xFF at +0x935E when empty (the file's 0x9360, as each block starts at
+// the file's offset 2), its randomizer marker at +0x9400 and its map grid at the file's 0x877F,
+// and a copy of each slot's randomizer section (kSectionSize, requests.h) in the slots' table.
+namespace slot {
+constexpr int kCount = 30;
+constexpr ptrdiff_t kStride = 0x9408, kEmpty = 0x935E, kRandoMarker = 0x9400;
+constexpr ptrdiff_t kMap = 0x877F - 2;
+constexpr uint8_t kEmptyMark = 0xFF;
+}  // namespace slot
+
 // The open menus: the top one at [current_menu], each one's next below at +0x78; a menu's panel
 // list at +0 and their count at +8 (docs/re/memory.md, "The game-mode panel").
 namespace menu {

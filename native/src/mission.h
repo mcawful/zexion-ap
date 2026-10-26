@@ -5,12 +5,13 @@
 // reached with enough of them; once the player has enough, the client asks the helper to offer
 // the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds
 // such a prompt for the escape skip: routine 15 of its transition-routine table (0x1668A0), run
-// when the transition timer ends, as area event 3666 sets it. The helper sets the same two fields, but to its own opener, which calls the game's
-// builder and, before the prompt's first frame, relabels the question (the game's text routine)
-// and points YES at the helper. YES then closes the prompt as NO does (the game's own NO
-// callback) and asks for the ending: once the game is idle again, the helper sets routine 4
-// (0x94A30), as the ship's ending event 2567 does, with no menu open (0x94A30 skips recording
-// the ending while one is). NO is the game's own: the prompt closes and play goes on.
+// when the transition timer ends, as area event 3666 sets it. The helper sets the same two
+// fields, but to its own opener, which calls the game's builder and, before the prompt's first
+// frame, relabels the question (the game's text routine) and points YES at the helper. YES
+// then closes the prompt as NO does (the game's own NO callback) and asks for the ending: once
+// the game is idle again, the helper sets routine 4 (0x94A30), as the ship's ending event 2567
+// does, with no menu open (0x94A30 skips recording the ending while one is). NO is the game's
+// own: the prompt closes and play goes on.
 //
 // The helper only sets the transition while the game is idle in play: no transition pending
 // (timer 0), the routine the idle one (table entry 2, the pause), no menu, a save loaded and the

@@ -7,13 +7,14 @@
 // game: run from a packaged app (an MSIX package, the Claude desktop app in this repo's tests),
 // the client's own writes there were not found by the game (2026-10-25: error 3, path not
 // found), inferred to be the package's AppData redirect. The helper reads them when it starts
-// and each time a client goes away. With no client, it configures itself from the cache (only for the build it was made on), and while a save of
-// one of those seeds is loaded it gives the save the same look: the item labels (AP ITEM,
-// PROGRESSION ITEM, this player's own disks), the Intel Chip's name, the ASSIST lock, the
-// OS Install Disks goal's screens and the escape skip; and the file select shows those
-// saves' disk counts. What needs the server (received items, hints, the goal) waits for the
-// client. A seed file is matched to a save by the randomizer section's item table and start
-// record, as the client matches it (client/save_patch.py, section_matches).
+// and each time a client goes away. With no client, it configures itself from the cache (only
+// for the build it was made on), and while a save of one of those seeds is loaded it gives the
+// save the same look: the item labels (AP ITEM, PROGRESSION ITEM, this player's own disks), the
+// Intel Chip's name, the ASSIST lock, the OS Install Disks goal's screens and the escape skip;
+// and the file select shows those saves' disk counts. What needs the server (received items,
+// hints, the goal) waits for the client. A seed file is matched to a save by the randomizer
+// section's item table and start record, as the client matches it (client/save_patch.py,
+// section_matches).
 //
 // A seed file, one line each, then the labels:
 //   zexion-ap offline 1

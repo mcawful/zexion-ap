@@ -1,9 +1,8 @@
 #include "game_calls.h"
 
-#include <cctype>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <sstream>
 
 namespace zap {
 
@@ -20,43 +19,12 @@ constexpr ptrdiff_t kSuitBits = 0x10D8;
 constexpr ptrdiff_t kX = 0x1100, kY = 0x1108;
 constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
-constexpr uint8_t kNoSaveLoaded = 0xFF;
-// Offline (offline.h): how often a frame looks, the save slots (docs/re/memory.md, "The file
-// select": the slot array's blocks, each slot's copy of its randomizer section), flag 39 (the
-// scanner has said how many disks), and what the player is told on loading an AP save.
-constexpr int kOfflineFrames = 15;
-constexpr int kSaveSlots = 30;
-constexpr ptrdiff_t kSlotStride = 0x9408, kSlotEmpty = 0x935E, kSlotRandoMarker = 0x9400;
-// A slot block's map grid: the save's file offset 0x877F, less the block's 2 (as +0x935E is
-// the file's 0x9360).
-constexpr ptrdiff_t kSlotMap = 0x877F - 2;
-constexpr uint8_t kEmptySlotMark = 0xFF;
-constexpr int kScannerFlag = 39;
-constexpr uint64_t kFlagCount = 0x9C4;  // the loaded game's flags (client/game.py, FLAGS)
-constexpr char kOfflineWarning[] = "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
-// And once a client connects while a save was dressed offline.
-constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
-// And once a load, from a client whose seed the loaded randomizer save is not.
-constexpr char kOtherSeedNotice[] =
-    "THE ARCHIPELAGO CLIENT IS FOR ANOTHER SEED. LOAD THAT SEED'S SAVE OR START A NEW GAME.";
-constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
-// A message's sequence number and frames left, and the popup's place and time (its line
-// length kGamePopupWidth).
+// A message's sequence number and frames left (the popup's place and time: text.h), and the
+// frames between two of the helper's popups.
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
-constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 constexpr int kPopupGapFrames = 20;
-constexpr size_t kSuffixMax = 40;
-// A notice's text as sent, and its laid-out text (padding included): the game copies a
-// message's text into a 256-byte slot with no check, overrunning the next slot past that
-// (docs/re/memory.md, "Game functions the helper calls"), so a notice is cut to whole lines
-// that fit, the NUL included.
-constexpr size_t kNoticeMax = 200;
-constexpr size_t kMessageMax = 255;
-// The popup message's box: its centre's y (a double) and its half-height (docs/re/memory.md,
-// "Game functions the helper calls").
-constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -135,18 +103,11 @@ constexpr ConfigKey kConfigKeys[] = {
     // and their copies of the randomizer section.
     data("map_grid", kMapCells, "what is read there"),
     data("flags", kFlagCount, "what is read there"),
-    data("slot_array", kSaveSlots * kSlotStride, "what is read there"),
-    data("rando_slots", kSaveSlots * kSectionSize, "what is read there"),
+    data("slot_array", slot::kCount * slot::kStride, "what is read there"),
+    data("rando_slots", slot::kCount * kSectionSize, "what is read there"),
     code("text_new_fn", true), code("text_link_fn", true), optional_data("draw_layer"),
     optional_data("map_handler"),
 };
-
-bool parse_number(const std::string& text, uint64_t& out) {
-    if (text.empty()) return false;
-    char* end = nullptr;
-    out = std::strtoull(text.c_str(), &end, text.rfind("0x", 0) == 0 ? 16 : 10);
-    return end != nullptr && *end == '\0';
-}
 
 // The RVA just past a section, as loaded.
 uint64_t section_end(const IMAGE_SECTION_HEADER* section) {
@@ -185,18 +146,6 @@ std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, 
     return "";
 }
 
-// Adds `c` to `out` if the game's font draws it: a letter (made upper-case), a digit, or one of
-// `kept`.
-void keep_font_char(std::string& out, unsigned char c, const char* kept) {
-    if (std::isalpha(c)) {
-        out += static_cast<char>(std::toupper(c));
-    } else if (std::isdigit(c) || (c != 0 && std::strchr(kept, c) != nullptr)) {
-        out += static_cast<char>(c);
-    }
-}
-// What a label keeps besides letters and digits (parse_labels).
-constexpr char kLabelChars[] = " .,'!?-:()/&";
-
 // A section offset as a reply names it: "0x6CC".
 std::string hex_offset(unsigned offset) {
     char text[16];
@@ -219,134 +168,6 @@ void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
 }
 
 }  // namespace
-
-std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out) {
-    std::istringstream words(request);
-    std::string word;
-    words >> word;
-    if (word != "config") return "not a config request";
-    while (words >> word) {
-        size_t eq = word.find('=');
-        uint64_t rva = 0;
-        if (eq == std::string::npos || !parse_number(word.substr(eq + 1), rva)) {
-            return "bad entry " + word;
-        }
-        out[word.substr(0, eq)] = rva;
-    }
-    return "";
-}
-
-std::string parse_batch(const std::string& request, Batch& out) {
-    std::istringstream lines(request);
-    std::string line;
-    if (!std::getline(lines, line) || line != "apply") return "not an apply request";
-    while (std::getline(lines, line)) {
-        std::istringstream words(line);
-        std::string op;
-        words >> op;
-        if (op == "cas") {
-            unsigned item = 0, expected = 0, value = 0;
-            if (!(words >> item >> expected >> value) || item >= kItems || expected > 255 ||
-                value > 255) {
-                return "bad line " + line;
-            }
-            out.cas.push_back({static_cast<uint8_t>(item), static_cast<uint8_t>(expected),
-                               static_cast<uint8_t>(value)});
-        } else if (op == "refresh") {
-            out.refresh = true;
-        } else if (op == "popup" || op == "notice") {
-            // "popup ITEM SUFFIX": the item's icon and name, then the suffix. "notice ITEM
-            // TEXT": the text alone (the item's sound); it also keeps colons.
-            const bool bare = op == "notice";
-            const char* kept = bare ? " .,'!?-:" : " .,'!?-";
-            const size_t most = bare ? kNoticeMax : kSuffixMax;
-            unsigned item = 0;
-            if (!(words >> item) || item >= record::kCount) return "bad line " + line;
-            std::string rest;
-            std::getline(words >> std::ws, rest);
-            std::string suffix;
-            for (char c : rest) {
-                keep_font_char(suffix, static_cast<unsigned char>(c), kept);
-                if (suffix.size() >= most) break;
-            }
-            while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
-            if (bare && suffix.empty()) return "bad line " + line;
-            out.popups.push_back({static_cast<uint8_t>(item), suffix, bare});
-        } else if (!op.empty()) {
-            return "unknown line " + line;
-        }
-    }
-    return "";
-}
-
-namespace {
-
-bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
-    if (text.empty() || text.size() % 2 != 0) return false;
-    for (size_t i = 0; i < text.size(); i += 2) {
-        unsigned value = 0;
-        for (size_t j = i; j < i + 2; ++j) {
-            char c = text[j];
-            value <<= 4;
-            if (c >= '0' && c <= '9') {
-                value |= static_cast<unsigned>(c - '0');
-            } else if (c >= 'a' && c <= 'f') {
-                value |= static_cast<unsigned>(c - 'a' + 10);
-            } else if (c >= 'A' && c <= 'F') {
-                value |= static_cast<unsigned>(c - 'A' + 10);
-            } else {
-                return false;
-            }
-        }
-        out.push_back(static_cast<uint8_t>(value));
-    }
-    return true;
-}
-
-}  // namespace
-
-std::string parse_newgame(const std::string& request, NewGamePlan& out) {
-    std::istringstream lines(request);
-    std::string line;
-    if (!std::getline(lines, line) || line != "ap_newgame") return "not an ap_newgame request";
-    while (std::getline(lines, line)) {
-        std::istringstream words(line);
-        std::string op, offset_text, hex;
-        if (!(words >> op)) continue;
-        if (op == "start_table") {
-            std::vector<uint8_t> raw;
-            if (!(words >> hex) || !parse_hex(hex, raw) || raw.size() % 5 != 0 ||
-                raw.size() / 5 > kStartTableMax || !out.start_table.empty()) {
-                return "bad line " + line;
-            }
-            for (size_t i = 0; i < raw.size(); i += 5) {
-                StartRoom room;
-                std::memcpy(&room.x, raw.data() + i, 2);
-                std::memcpy(&room.y, raw.data() + i + 2, 2);
-                room.flag = raw[i + 4];
-                if (room.x < 0 || room.x >= kMapSide || room.y < 0 || room.y >= kMapSide ||
-                    room.flag > 1) {
-                    return "bad line " + line;
-                }
-                out.start_table.push_back(room);
-            }
-            continue;
-        }
-        if (op != "expect" && op != "write" && op != "menu") return "unknown line " + line;
-        uint64_t offset = 0;
-        SectionBytes edit;
-        size_t room = op == "menu" ? kMenuSize : kSectionSize;
-        if (!(words >> offset_text >> hex) || !parse_number(offset_text, offset) ||
-            !parse_hex(hex, edit.bytes) || offset + edit.bytes.size() > room) {
-            return "bad line " + line;
-        }
-        edit.offset = static_cast<uint16_t>(offset);
-        (op == "expect" ? out.expect : op == "write" ? out.write : out.menu)
-            .push_back(std::move(edit));
-    }
-    if (out.write.empty()) return "nothing to write";
-    return "";
-}
 
 namespace {
 
@@ -575,7 +396,8 @@ std::string Game::apply(const Batch& batch) {
         // As the pickup routine does (docs/re/memory.md, "Granting each kind of item").
         auto missiles = static_cast<int16_t>(inv[kMissileContainer] + 10 * inv[kMissileBox]);
         if (missiles != at<int16_t>(p, kMissilesMax)) {
-            at<int16_t>(p, kMissiles) += static_cast<int16_t>(missiles - at<int16_t>(p, kMissilesMax));
+            at<int16_t>(p, kMissiles) +=
+                static_cast<int16_t>(missiles - at<int16_t>(p, kMissilesMax));
             at<int16_t>(p, kMissilesMax) = missiles;
         }
         auto bombs = static_cast<int16_t>(inv[kMegaBomb] + 10 * inv[kBombPack]);
@@ -603,150 +425,6 @@ bool Game::popup_busy() const {
     if (last == nullptr) return false;
     return at<int32_t>(last, kMessageSequence) == at<int32_t>(last_message_, 8) &&
            at<int32_t>(last, kMessageFramesLeft) > 1;
-}
-
-std::vector<std::string> wrap_words(const std::string& text, size_t width) {
-    std::vector<std::string> lines;
-    std::string line;
-    std::istringstream words(text);
-    std::string word;
-    while (words >> word) {
-        while (word.size() > width) {  // longer than a line: cut it
-            if (!line.empty()) lines.push_back(line);
-            line.clear();
-            lines.push_back(word.substr(0, width));
-            word.erase(0, width);
-        }
-        if (word.empty()) continue;
-        if (!line.empty() && line.size() + 1 + word.size() > width) {
-            lines.push_back(line);
-            line.clear();
-        }
-        if (!line.empty()) line += ' ';
-        line += word;
-    }
-    if (!line.empty()) lines.push_back(line);
-    return lines;
-}
-
-std::string center_lines(const std::vector<std::string>& lines, int per_line) {
-    // The message routine lays text out per_line characters a line and cuts wherever a line
-    // ends, with no line-break code, and sizes a one-line box to its text (docs/re/memory.md,
-    // "Other players' items"). So with more than one line, each is centered by spaces before it
-    // and padded with spaces to the end of its line; one line stays as it is.
-    if (lines.size() == 1 || per_line <= 0) return lines.empty() ? std::string() : lines[0];
-    const size_t width = static_cast<size_t>(per_line);
-    std::string text;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        const std::string& line = lines[i];
-        if (line.size() < width) text.append((width - line.size()) / 2, ' ');
-        text += line;
-        if (i + 1 < lines.size() && text.size() % width != 0) {
-            text.append(width - text.size() % width, ' ');
-        }
-    }
-    return text;
-}
-
-std::string popup_text(const std::string& head, const std::string& suffix, int per_line,
-                       int* width) {
-    std::vector<std::string> lines{head};
-    if (per_line > 0) {
-        for (std::string& line : wrap_words(suffix, static_cast<size_t>(per_line))) {
-            lines.push_back(std::move(line));
-        }
-    }
-    size_t widest = 0;
-    for (const std::string& line : lines) widest = (std::max)(widest, line.size());
-    int w = (std::min)(static_cast<int>(widest), per_line);
-    if (w <= 0) w = per_line;
-    if (width != nullptr) *width = w;
-    return center_lines(lines, w);
-}
-
-std::vector<std::string> wrap_hyphenated(const std::string& text, size_t width) {
-    std::vector<std::string> lines;
-    std::string line;
-    std::istringstream words(text);
-    std::string word;
-    while (words >> word) {
-        // A word that fits a line starts a new one if it does not fit this one; a longer one
-        // starts where it is and is split, a hyphen ending each line it fills.
-        if (word.size() <= width && !line.empty() && line.size() + 1 + word.size() > width) {
-            lines.push_back(line);
-            line.clear();
-        }
-        while (word.size() > width && width > 1) {
-            std::string head = line.empty() ? std::string() : line + ' ';
-            if (head.size() + 2 > width) {  // no room for a letter and the hyphen: a new line
-                lines.push_back(line);
-                line.clear();
-                continue;
-            }
-            const size_t room = width - head.size();
-            lines.push_back(head + word.substr(0, room - 1) + '-');
-            line.clear();
-            word.erase(0, room - 1);
-        }
-        if (!line.empty()) line += ' ';
-        line += word;
-    }
-    if (!line.empty()) lines.push_back(line);
-    return lines;
-}
-
-std::string notice_text(const std::string& text, int per_line, int* width) {
-    if (per_line <= 0) {
-        if (width != nullptr) *width = per_line;
-        return text;
-    }
-    std::vector<std::string> lines = wrap_hyphenated(text, static_cast<size_t>(per_line));
-    size_t widest = 0;
-    for (const std::string& line : lines) widest = (std::max)(widest, line.size());
-    // Never wider than asked: the game is only ever given the widths it uses itself.
-    const size_t w = widest == 0 ? static_cast<size_t>(per_line)
-                                 : (std::min)(widest, static_cast<size_t>(per_line));
-    if (width != nullptr) *width = static_cast<int>(w);
-    // The game shows a popup of n lines through a window from y = 88 - 4n to 88 + 3n while its
-    // text runs to 88 + 4n (measured, docs/re/memory.md, "Game functions the helper calls"), so
-    // from 3 lines on the last line is cut. One blank line more (a space past a full last line)
-    // makes the window reach far enough for up to 7 lines of text. Lines past what the game's
-    // 256-byte message slot holds, the NUL and that space included, are left out.
-    const bool blank_line = lines.size() >= 3;
-    size_t fit = (kMessageMax - (blank_line ? 1 : 0)) / w;
-    if (lines.size() > fit) lines.resize(fit);
-    // Left-aligned: each line but the last padded with spaces to the box's width, where the
-    // game starts the next line (it cuts every `w` characters, with no line-break code).
-    std::string out;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        out += lines[i];
-        if (i + 1 < lines.size() || blank_line) out.append(w - lines[i].size(), ' ');
-    }
-    if (blank_line) out += ' ';
-    return out;
-}
-
-void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
-    // A notice ending in its blank line (notice_text): the game sized its box for that line too,
-    // a line's worth of empty box under the text. The box is the message's own: centred on its
-    // y (+0x48), opening to a half-height (+0x1FC) of 4 per line past the first plus 7, set from
-    // the text's length (0x182A90). Given the half-height for its real lines plus one, and its
-    // centre moved 4 up onto them, it fits them with about 4 pixels above and below, the least
-    // that still shows every line (docs/re/memory.md, "Game functions the helper calls"). Only a
-    // message holding what the game wrote for that text is changed.
-    if (message == nullptr || per_line <= 0) return;
-    const size_t w = static_cast<size_t>(per_line);
-    if (text.size() % w != 1 || text.size() / w < 3) return;
-    const int lines = static_cast<int>(text.size() / w);
-    int32_t half = 0;
-    double y = 0;
-    std::memcpy(&half, message + kMessageHalfHeight, sizeof(half));
-    std::memcpy(&y, message + kMessageY, sizeof(y));
-    if (half != 4 * lines + 7 || !(y == kPopupY - 1)) return;
-    half = 4 * lines + 4;
-    y -= 4;
-    std::memcpy(message + kMessageHalfHeight, &half, sizeof(half));
-    std::memcpy(message + kMessageY, &y, sizeof(y));
 }
 
 void Game::pump_popups() {
@@ -1065,36 +743,6 @@ void Game::restore_skip() {
     if (configured_) skip_.restore(event_table_);
 }
 
-std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
-                        bool& told) {
-    count = required = 0;
-    told = false;
-    line.clear();
-    if (request == "discs") return "";
-    if (request.rfind("discs ", 0) != 0) return "not a discs request";
-    std::istringstream words(request.substr(6));
-    std::string hex, extra;
-    int told_word = 1;
-    std::vector<uint8_t> raw;
-    if (!(words >> count >> required >> hex) || count < 0 || count > 255 || required < 1 ||
-        required > 255 || !parse_hex(hex, raw)) {
-        count = required = 0;
-        return "bad discs request";
-    }
-    if ((words >> told_word && (told_word < 0 || told_word > 1)) || (words >> extra)) {
-        count = required = 0;
-        return "bad discs request";
-    }
-    told = told_word == 1;
-    std::string text(raw.begin(), raw.end());
-    if (!scan_line_ok(text)) {
-        count = required = 0;
-        return "the scanner's line is not one line of the game's font";
-    }
-    line = std::move(text);
-    return "";
-}
-
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {
     disc_count_ = count;
     discs_required_ = required;
@@ -1186,175 +834,6 @@ void Game::restore_files() {
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_, texture_check_);
 }
 
-void Game::set_offline(std::vector<OfflineSeed> seeds) {
-    leave_offline();
-    offline_seeds_ = std::move(seeds);
-}
-
-void Game::drop_offline_warning() {
-    for (auto it = popups_.begin(); it != popups_.end();) {
-        it = it->silent && it->suffix == kOfflineWarning ? popups_.erase(it) : std::next(it);
-    }
-}
-
-void Game::leave_offline_seed() {
-    drop_offline_warning();
-    if (offline_index_ < 0) return;
-    offline_index_ = -1;
-    offline_count_ = -1;
-    offline_told_ = -1;
-    restore_ap_items();
-    set_intel(false);
-    restore_intel();
-    set_assists_locked(false);
-    restore_assists();
-    set_discs(0, 0, "");
-    restore_discs();
-    offline_skip_ = false;
-    restore_skip();
-}
-
-void Game::leave_offline() {
-    leave_offline_seed();
-    if (!offline_file_counts_.empty()) {
-        offline_file_counts_.clear();
-        apply_file_counts();
-    }
-}
-
-void Game::apply_file_counts() {
-    // The client's counts for its seed's saves, the offline ones for the other known seeds'.
-    std::map<int, int> merged = offline_file_counts_;
-    for (const auto& [slot, count] : client_file_counts_) merged[slot] = count;
-    if (merged != files_.counts()) files_.set_counts(std::move(merged));
-}
-
-bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
-    return offline_matches(seed, section + kOfflineTableAt, section + kOfflineStartAt);
-}
-
-void Game::watch_offline() {
-    if (!configured_) return;
-    if (*save_loaded_ == kNoSaveLoaded) {
-        // No save: each notice comes again with the next load.
-        offline_warned_ = false;
-        other_warned_ = false;
-        offline_played_ = -1;
-        other_save_ = false;
-    }
-    if (offline_seeds_.empty()) {
-        leave_offline();
-        return;
-    }
-    if (offline_frames_-- > 0) return;
-    offline_frames_ = kOfflineFrames;
-    // A save is dressed with no client, or with a client that said the loaded save is not its
-    // seed's (other_save); undressed when that stops.
-    const bool other = other_mode();
-    const bool dress = !active_ || other;
-    // This seed's save loaded: the randomizer section as the game loaded it (it is the
-    // previous one after a normal save, hence the marker).
-    int seed = -1;
-    if (dress && *save_loaded_ != kNoSaveLoaded && at<uint16_t>(rando_marker_, 0) == 1) {
-        for (size_t i = 0; i < offline_seeds_.size() && seed < 0; ++i) {
-            if (section_is(offline_seeds_[i], rando_blob_)) seed = static_cast<int>(i);
-        }
-    }
-    // A save is dressed once it is in play (not while it loads, when the marker and section may
-    // still be another save's), and undressed at once.
-    if (seed != offline_index_ && (seed < 0 || in_play())) {
-        leave_offline_seed();
-        offline_index_ = seed;
-        if (seed >= 0) {
-            const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(seed)];
-            std::map<int, Label> labels;
-            if (!sd.labels.empty() && parse_labels(sd.labels, labels).empty()) {
-                set_labels(std::move(labels));
-            }
-            set_intel(sd.intel);
-            set_assists_locked(sd.lock_assists);
-            offline_skip_ = true;
-            // Once a load: the player is told why received items and hints wait (with a
-            // client of another seed, its own notice said so: other_save).
-            if (!offline_warned_ && !other) {
-                popups_.push_back(Popup{kAreaMapItem, kOfflineWarning, true, true});
-                offline_warned_ = true;
-            }
-            if (!other) offline_played_ = seed;
-        }
-    } else if (seed != offline_index_ && offline_index_ >= 0) {
-        leave_offline_seed();  // another seed's save, not in play yet: dressed once it is
-    }
-    if (offline_index_ >= 0) {
-        const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(offline_index_)];
-        if (sd.discs) {
-            int count = offline_disk_count(sd, map_grid_);
-            int told = flags_[kScannerFlag] != 0 ? 1 : 0;
-            if (count != offline_count_ || told != offline_told_) {
-                offline_count_ = count;
-                offline_told_ = told;
-                set_discs(count, sd.required, sd.scan_line, told != 0);
-            }
-        }
-    }
-    // The file select: each save of a known seed with the disks, by its own copy of the section
-    // (valid for a randomizer save in use: client/discs.py, seed_slots), with or without a
-    // client (whose own counts win for its seed's saves: apply_file_counts).
-    std::map<int, int> counts;
-    for (int n = 1; n <= kSaveSlots; ++n) {
-        const BYTE* block = slot_array_ + static_cast<ptrdiff_t>(n - 1) * kSlotStride;
-        if (block[kSlotEmpty] == kEmptySlotMark || at<uint16_t>(const_cast<BYTE*>(block),
-                                                               kSlotRandoMarker) != 1) {
-            continue;
-        }
-        const BYTE* copy = rando_slots_ + static_cast<ptrdiff_t>(n - 1) * kSectionSize;
-        for (const OfflineSeed& sd : offline_seeds_) {
-            if (sd.discs && section_is(sd, copy)) {
-                // This save's own count: its map, in its block (docs/re/save-format.md).
-                counts[n] = offline_disk_count(sd, block + kSlotMap);
-                break;
-            }
-        }
-    }
-    if (counts != offline_file_counts_) {
-        offline_file_counts_ = std::move(counts);
-        apply_file_counts();
-    }
-}
-
-bool Game::other_save() {
-    // A client whose session sees a randomizer save in play that is not its seed's: the player
-    // is told once a load, and the save gets its offline look if it is a known seed's.
-    if (!configured_ || *save_loaded_ == kNoSaveLoaded) return false;
-    bool told = other_warned_;
-    other_save_ = true;
-    if (!other_warned_) {
-        drop_offline_warning();
-        popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true, true});
-        other_warned_ = true;
-    }
-    return !told;
-}
-
-bool Game::client_back() {
-    // The save played offline still loaded (the same seed's section), and the client that asks
-    // has seen it is its seed's: the player is told the client is back, once.
-    bool shown = configured_ && offline_played_ >= 0 && *save_loaded_ != kNoSaveLoaded &&
-                 static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
-                 at<uint16_t>(rando_marker_, 0) == 1 &&
-                 section_is(offline_seeds_[static_cast<size_t>(offline_played_)], rando_blob_);
-    offline_played_ = -1;
-    if (shown) popups_.push_back(Popup{kAreaMapItem, kOnlineNotice, true, true});
-    return shown;
-}
-
-std::string Game::offline_state() const {
-    if (offline_seeds_.empty()) return "-";
-    std::string out = std::to_string(offline_seeds_.size());
-    if (offline_index_ >= 0) out += ":" + offline_seeds_[static_cast<size_t>(offline_index_)].name;
-    return out;
-}
-
 bool Game::labels_seed_loaded(bool in_play_only) const {
     if (!labels_seed_ || *save_loaded_ == kNoSaveLoaded || (in_play_only && !in_play()) ||
         at<uint16_t>(rando_marker_, 0) != 1) {
@@ -1438,90 +917,6 @@ void Game::equipment_event(void* widget, intptr_t event) {
     if (configured_) equip_screen_.on_event(equip_at_, widget, event);
 }
 
-Label layout_label(const std::string& first, const std::string& who) {
-    std::vector<std::string> shown{first};
-    if (!who.empty()) shown.push_back(who);
-    size_t widest = 0;
-    for (const std::string& part : shown) widest = (std::max)(widest, part.size());
-    Label label;
-    label.width = (std::min)(static_cast<int>(widest), kGamePopupWidth);
-    label.name = center_lines(shown, label.width);
-    if (label.name.size() > kItemNameMax) label.name.resize(kItemNameMax);
-    while (!label.name.empty() && label.name.back() == ' ') label.name.pop_back();
-    return label;
-}
-
-std::string parse_labels(const std::string& request, std::map<int, Label>& out) {
-    std::istringstream lines(request);
-    std::string line;
-    if (!std::getline(lines, line) || line != "ap_labels") return "not an ap_labels request";
-    while (std::getline(lines, line)) {
-        std::istringstream words(line);
-        std::string op, hex;
-        unsigned x = 0, y = 0;
-        if (!(words >> op)) continue;
-        std::vector<uint8_t> raw;
-        if (op != "label" || !(words >> x >> y >> hex) || x >= kMapSide || y >= kMapSide ||
-            !parse_hex(hex, raw)) {
-            return "bad line " + line;
-        }
-        // Up to two lines (the item, then whom it is for), each kept to the font's characters
-        // and to its line: the first after the logo glyph. A first line "@N" names item N of
-        // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
-        // it this name instead of the record's (this player's own OS Install Disk).
-        std::vector<std::string> parts{std::string()};
-        int item = -1;
-        size_t from = 0;
-        std::string item_name;
-        if (!raw.empty() && raw[0] == '@') {
-            int n = 0;
-            size_t i = 1;
-            while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
-            size_t end = i;
-            if (i > 1 && i < raw.size() && raw[i] == ' ') {
-                for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_font_char(item_name, raw[end], kLabelChars);
-                }
-            }
-            if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
-                item = n;
-                from = end;
-            } else {
-                item_name.clear();
-            }
-        }
-        for (size_t k = from; k < raw.size(); ++k) {
-            if (raw[k] == '\n') {
-                if (parts.size() == 2) break;
-                parts.emplace_back();
-                continue;
-            }
-            keep_font_char(parts.back(), raw[k], kLabelChars);
-        }
-        std::string first, who;
-        {
-            std::vector<std::string> wrapped =
-                wrap_words(parts[0], static_cast<size_t>(kGamePopupWidth) - 1);
-            first = wrapped.empty() ? std::string(kApItemName) : wrapped.front();
-            first.insert(first.begin(), static_cast<char>(kApItemGlyph));
-        }
-        if (parts.size() > 1) {
-            std::vector<std::string> wrapped =
-                wrap_words(parts[1], static_cast<size_t>(kGamePopupWidth));
-            if (!wrapped.empty()) who = wrapped.front();
-        }
-        Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
-                                                   kApItemName
-                                             : first,
-                                   who);
-        label.item = item;
-        label.who = who;
-        label.item_name = item_name;
-        out[static_cast<int>(y * kMapSide + x)] = label;
-    }
-    return "";
-}
-
 void Game::set_labels(std::map<int, Label> labels) {
     labels_seed_.reset();
     if (!labels.empty() && *save_loaded_ != kNoSaveLoaded &&
@@ -1573,7 +968,8 @@ void Game::resolve_item_labels() {
                 name += static_cast<char>(record[record::kName + i]);
             }
         }
-        if (name.size() > static_cast<size_t>(kGamePopupWidth) - 1) name.resize(kGamePopupWidth - 1);
+        const size_t room = static_cast<size_t>(kGamePopupWidth) - 1;  // after the icon
+        if (name.size() > room) name.resize(room);
         if (name.empty()) name = kApItemName;  // a record with no name
         uint8_t icon = record[record::kIcon] != 0 ? record[record::kIcon]
                        : pending.item == kDiskItem ? kDiskGlyph  // the helper's (equip.h)
@@ -1648,9 +1044,9 @@ void Game::watch_ap_items() {
         ap_items_.release(item_records_);
     }
     ap_items_.paint(sprite_texture_, gl_, texture_check_, GetTickCount64(), world);
-    // The pickup popup as wide as that label (width_cell's), if the stand-ins are ours; the game's 24
-    // elsewhere. Called from the frame call, on the game's thread, so the game is not running
-    // the instruction while it changes.
+    // The pickup popup as wide as that label (width_cell's), if the stand-ins are ours; the
+    // game's 24 elsewhere. Called from the frame call, on the game's thread, so the game is not
+    // running the instruction while it changes.
     auto it = label_widths_.find(width_cell);
     set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
                                                                       : kGamePopupWidth);
