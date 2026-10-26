@@ -203,3 +203,18 @@ def test_the_save_loaded_line_names_the_games_slot() -> None:
     )
     assert "(slot" not in state.save_loaded(b"")  # no stamp read: the slot left out
     assert "(slot" not in state.save_loaded((0xFFFFFFFF).to_bytes(4, "little"))
+
+
+def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
+    from client import game
+
+    unknown = state.attach_failed(game.UnknownBuild("timestamp 0x1234 and image size 0x5678"))
+    assert "isn't supported yet" in unknown and "0x" not in unknown
+    assert state.REPORT in state.attach_failed(game.PatternError("pattern matched 2 times"))
+    assert "0x" not in state.attach_failed(game.GameError("read at 0x1000 failed"))
+
+
+def test_leaving_this_seeds_save_says_items_wait() -> None:
+    # The server still sends items: they are given once this seed's save is loaded again.
+    for line in (state.SAVE_CLOSED, state.OTHER_SAVE):
+        assert "wait until" in line and "received" not in line

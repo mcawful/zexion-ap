@@ -74,6 +74,7 @@ from .ticks import (  # noqa: E402
     discs_helper_tick,
     followups_tick,
     labels_tick,
+    log,
     mission_tick,
     newgame_tick,
     offline_tick,
@@ -87,10 +88,22 @@ from .ticks import (  # noqa: E402
 GAME = "Zexion"
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
+HELPER_LOST = (
+    f"The Zexion mod stopped responding; trying again in {HELPER_RETRY_SECONDS:.0f} seconds. "
+    "Until then items arrive without popups."
+)
 
 
 class ZexionCommandProcessor(ClientCommandProcessor):
     ctx: ZexionContext
+    HIDDEN = ("unload_helper",)  # for testing the client: they work, but /help leaves them out
+
+    def get_help_text(self) -> str:
+        self.commands = {k: v for k, v in type(self).commands.items() if k not in self.HIDDEN}
+        try:
+            return super().get_help_text()
+        finally:
+            del self.commands  # the class's again
 
     def _cmd_unload_helper(self) -> bool:
         """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
@@ -164,7 +177,11 @@ class ZexionContext(CommonContext):
         try:
             conn = state.Connection.from_slot_data(slot, self.team, self.slot)
         except state.UnsupportedSeed as exc:
-            logger.error(f"Cannot play this seed: {exc}. Disconnecting.")
+            logger.error(
+                "This seed was made with another version of the Zexion APWorld than this "
+                "client: generate and play with the same release. Disconnecting."
+            )
+            log.error(f"Cannot play this seed: {exc}.")
             Utils.async_start(self.disconnect(), name="disconnect")
             return
         conn.session.helper = self.helper
@@ -240,7 +257,7 @@ class ZexionContext(CommonContext):
             detail(f"DeathLink: {queued} deaths are queued, dealt one after another.")
         if self.helper is None:
             logger.warning(
-                "DeathLink: the in-game helper is not running, so the death waits for it."
+                "DeathLink: the Zexion mod isn't running, so this death waits until it is."
             )
 
     def drop_helper(self) -> None:
@@ -283,7 +300,11 @@ class ZexionContext(CommonContext):
                 )
             elif index not in warned:
                 warned.add(index)
-                logger.warning(f"Received item {item.item}, which is not a Zexion item; ignored.")
+                name = self.item_names.lookup_in_game(item.item)
+                logger.warning(
+                    f"Received {name}, which this client doesn't know; ignored. Is the client "
+                    "from the same release as the seed?"
+                )
         return codes, senders
 
 
@@ -302,7 +323,8 @@ def helper_failure(ctx: ZexionContext) -> Iterator[None]:
     try:
         yield
     except native.HelperError as exc:
-        logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+        logger.warning(HELPER_LOST)
+        log.warning(f"The in-game helper failed ({exc}); trying it again later.")
         ctx.drop_helper()
 
 
@@ -315,7 +337,11 @@ async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[
             await tick()
     except Exception as exc:
         if ctx.said(f"tick {name}", repr(exc)):
-            logger.exception(f"The client's {name} failed ({exc!r}); items and checks go on.")
+            logger.warning(
+                f"Something went wrong with the {name} (details in the log); items and checks "
+                f"still work. Please report it at {state.REPORT}."
+            )
+            log.exception(f"The client's {name} failed ({exc!r}); items and checks go on.")
 
 
 async def game_loop(ctx: ZexionContext) -> None:
@@ -323,8 +349,13 @@ async def game_loop(ctx: ZexionContext) -> None:
         await asyncio.sleep(POLL_SECONDS)
         try:
             await poll(ctx)
-        except Exception:  # never the end of the loop: what failed is tried on the next poll
-            logger.exception("The Zexion game loop failed; trying again.")
+        except Exception as exc:  # never the end of the loop: what failed is tried on the next poll
+            if ctx.said("loop", repr(exc)):
+                logger.error(
+                    "Something went wrong in the client (details in the log); trying again. "
+                    f"Please report it at {state.REPORT}."
+                )
+                log.exception("The Zexion game loop failed; trying again.")
             await asyncio.sleep(2)
 
 
@@ -356,7 +387,8 @@ async def poll(ctx: ZexionContext) -> None:
         await offline_tick(ctx, p)  # the helper's files for this seed's saves without the client
     except Exception as exc:  # never in the way of items and checks
         if not ctx.offline_failed:
-            logger.warning(f"Writing the helper's offline files failed: {exc!r}")
+            logger.warning(ticks.OFFLINE_FAILED)
+            log.warning(f"Writing the helper's offline files failed: {exc!r}")
         ctx.offline_failed = True
     if ctx.game_conn is None:
         try:
@@ -365,7 +397,8 @@ async def poll(ctx: ZexionContext) -> None:
             return
         except game.GameError as exc:
             if ctx.said("game", str(exc)):  # said again only when it changes
-                logger.error(f"Cannot use this Zexion: {exc}")
+                logger.error(state.attach_failed(exc))
+                log.error(f"Cannot use this Zexion: {exc}")
             await asyncio.sleep(10)
             return
         ctx.said.clear("game")
@@ -385,7 +418,11 @@ async def poll(ctx: ZexionContext) -> None:
         except Exception as exc:  # the hints must never stop items or checks
             if str(exc) != ctx.hints_failed:
                 ctx.hints_failed = str(exc)
-                logger.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
+                logger.warning(
+                    "Area Map hints aren't working right now (details in the log); items and "
+                    "checks still work."
+                )
+                log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
         if hunt is not None:  # a received disc pops up with the count
             notes |= discs.received_notes(hunt, p.codes, p.found, conn.discs_told)
@@ -404,12 +441,18 @@ async def poll(ctx: ZexionContext) -> None:
         ctx.drop_helper()
         return
     except game.GameError as exc:
-        logger.error(f"Reading Zexion failed: {exc}")
+        if ctx.said("read", "failing"):  # said again only after a read that worked
+            logger.warning("Can't read Zexion right now; trying again.")
+        if ctx.said("read detail", str(exc)):
+            log.warning(f"Reading Zexion failed: {exc}")
         await asyncio.sleep(2)
         return
+    ctx.said.clear("read")
+    ctx.said.clear("read detail")
     if ctx.helper is not None and current.helper is None:
         # The session gave up on it (try again later): dropped before the count below, so the
         # popups it had not shown are not counted as shown.
+        logger.warning(HELPER_LOST)
         ctx.drop_helper()
     elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
@@ -444,6 +487,11 @@ async def poll(ctx: ZexionContext) -> None:
         if load.seed_loaded:
             logger.info(state.SAVE_CLOSED)
         load.leave()  # reminded again on the next load, and so on
+    if step.other_seed:
+        if ctx.said("other save", "loaded"):  # once a load
+            logger.info(state.OTHER_SAVE)
+    elif step.left_seed or step.seed_matches:  # not an unsettled read
+        ctx.said.clear("other save")
     conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
     if conn.death_link_on:
         await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))
@@ -464,7 +512,11 @@ async def poll(ctx: ZexionContext) -> None:
         try:
             await ctx.check_locations(new)
         except Exception as exc:  # a closing connection
-            logger.warning(f"Sending the locations found failed ({exc}); sent on reconnecting.")
+            logger.warning(
+                "Couldn't send the locations found (connection lost?); they're sent on "
+                "reconnecting."
+            )
+            log.warning(f"Sending the locations found failed ({exc}); sent on reconnecting.")
     just_found = {loc - LOCATION_ID_BASE for loc in new}
     await side_tick(ctx, "found record", lambda: store_found(ctx, conn, found, just_found))
     if new:
@@ -488,7 +540,8 @@ async def poll(ctx: ZexionContext) -> None:
             try:
                 await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
             except Exception as exc:  # a closing connection: sent on a later poll
-                logger.warning(f"Sending the goal failed ({exc}); trying again.")
+                logger.warning("Couldn't send the goal (connection lost?); trying again.")
+                log.warning(f"Sending the goal failed ({exc}); trying again.")
                 return
             conn.goal_sent = True
             ctx.finished_game = True

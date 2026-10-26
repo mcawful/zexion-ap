@@ -431,8 +431,8 @@ def _wrong_version(dll: Path, version: str, own_build: bool) -> HelperError:
             "version.dll into Zexion's folder"
         )
     return HelperError(
-        f"the helper in the game's folder is version {version}, and this client needs "
-        f"{VERSION}: copy this release's zexion_ap.dll and version.dll there"
+        f"the copy in Zexion's folder is version {version} and this client needs {VERSION}; "
+        "with Zexion closed, copy this release's zexion_ap.dll and version.dll there"
     )
 
 
@@ -487,7 +487,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
         if not built:
             if not ROOT.is_dir():  # the client in an apworld: the player installs the helper
                 raise HelperError(
-                    "none is loaded in the game: with Zexion closed, copy this release's "
+                    "it isn't installed; with Zexion closed, copy this release's "
                     "zexion_ap.dll and version.dll into Zexion's folder"
                 )
             raise HelperError(f"none is loaded in the game, and there is no build at {dll}")

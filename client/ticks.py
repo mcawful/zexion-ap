@@ -25,9 +25,15 @@ if TYPE_CHECKING:
     from . import session
     from .zexion_client import Poll, ZexionContext
 
-logger = logging.getLogger("Client")  # CommonClient's
+logger = logging.getLogger("Client")  # CommonClient's: the client's window shows it
+# Technical detail behind a window message (exception text, addresses, replies): the log file
+# and the console, not the window (Archipelago's window shows the "Client" logger only).
+log = logging.getLogger("Zexion")
+OFFLINE_FAILED = (
+    "Couldn't save this seed for playing without the client; playing with it is unaffected."
+)
 
-# The client's window shows what the player acts on (the connection, the helper, ARCHIPELAGO,
+# The client's window shows what the player acts on (the connection, the mod, ARCHIPELAGO,
 # warnings); what it sets up in the game for the seed is a detail, shown with --verbose.
 VERBOSE = False
 
@@ -59,7 +65,8 @@ async def attach_helper(ctx: ZexionContext) -> None:
     except native.HelperError as exc:
         if ctx.said("helper", str(exc)):
             logger.warning(
-                f"The in-game helper could not be used ({exc}); items arrive with no popup."
+                f"The Zexion mod isn't working: {exc}. Until it is, new games of this seed "
+                "can't be started, and items arrive without popups."
             )
         ctx.drop_helper()
         return
@@ -75,7 +82,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
-    logger.info(f"The in-game helper {native.VERSION} is running.")
+    logger.info(f"The Zexion mod {native.VERSION} is running.")
 
 
 # The settings the helper is told to turn on or off while this seed's save is loaded: its
@@ -282,7 +289,8 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
             told.offline_sent[kind] = text
             ctx.offline_failed = False
         elif not ctx.offline_failed:
-            logger.warning(f"The helper did not keep the offline {kind} file: {reply}")
+            logger.warning(OFFLINE_FAILED)
+            log.warning(f"The helper did not keep the offline {kind} file: {reply}")
             ctx.offline_failed = True
 
 
@@ -329,7 +337,11 @@ async def labels_tick(ctx: ZexionContext) -> None:
     elif reply.startswith("refused"):
         told.labels_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS  # no frame came yet
     else:
-        logger.warning(f"The helper did not take the item labels: {reply}")
+        logger.warning(
+            "Other players' items can't be shown as Archipelago items in the game; checks "
+            "still work."
+        )
+        log.warning(f"The helper did not take the item labels: {reply}")
         told.labels_refused = True  # not asked again until a helper is attached again
 
 
@@ -384,7 +396,8 @@ async def confirm_shield(
     if failed:
         said = f"check failed: {failed}"
         if said != sh.said:
-            logger.warning(f"Reading the player's Energy Shield failed ({failed}).")
+            logger.warning("Can't tell whether a received Energy Shield is up; trying again.")
+            log.warning(f"Reading the player's Energy Shield failed ({failed}).")
         sh.said = said
     stored = ctx.stored_data.get(key) or 0
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
@@ -422,7 +435,8 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         try:
             await ctx.send_death(f"{ctx.player_names.get(ctx.slot, 'A player')} died in Zexion.")
         except Exception as exc:  # a closing connection: this death is not sent
-            logger.warning(f"DeathLink: sending the death failed ({exc}).")
+            logger.warning("DeathLink: your death couldn't be sent (connection lost?).")
+            log.warning(f"DeathLink: sending the death failed ({exc}).")
     if step.goal and deaths.owed:
         deaths.ending()
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
@@ -466,10 +480,11 @@ async def skip_tick(ctx: ZexionContext) -> None:
         )
     else:
         logger.warning(
-            "The helper could not offer the escape skip (the game's event is not as expected): "
-            "a first playthrough must finish the escape, which needs items the seed's logic "
-            "does not ask for (for example the Zenith Thrusters)."
+            "The mod couldn't add SKIP ESCAPE AND FINAL BATTLE?: you'll have to finish the "
+            "escape, which may need items the seed doesn't require (such as the Zenith "
+            "Thrusters)."
         )
+        log.warning("The helper did not patch the escape skip's event (not as expected).")
 
 
 async def newgame_tick(ctx: ZexionContext) -> None:
@@ -495,13 +510,17 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 text = newgame.plan_text(plan, build, offer)
                 break
             except newgame.NewGameError as exc:
+                log.info(f"No new game plan (ARCHIPELAGO: {offer}): {exc}")
                 if offer:
-                    logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
+                    logger.info(
+                        "This seed can't be started with ARCHIPELAGO, so start it from "
+                        "RANDOMIZER (see the next message)."
+                    )
                     continue
                 conn.newgame = state.NewGame.UNAVAILABLE
                 logger.warning(
-                    f"This seed cannot start as a new game ({exc}): please report it, with "
-                    "the seed's settings."
+                    "This seed can't be started as a new game: please report it at "
+                    f"{state.REPORT}, with the seed's settings."
                 )
                 return
         reply = await asyncio.to_thread(helper.request, text)
@@ -525,7 +544,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             logger.info(
                 "To play, load this seed's save, or start a new game: in an empty slot "
                 "choose RANDOMIZER, pick this seed's mode with no options changed, and "
-                "START GAME (the AP seed is written in as the game starts)."
+                "START GAME."
             )
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
@@ -537,9 +556,21 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         detail(f"The new game holds the AP seed ({status}).")
     elif status.startswith("refused"):
         conn.newgame = None  # arm again for the next try
-        logger.warning(f"No new game with the AP seed: {status[len('refused ') :]}.")
-        if "start table" in status:
+        why = status[len("refused ") :]
+        log.warning(f"No new game with the AP seed: {why}.")
+        if why.startswith("the new game is not the seed's mode"):  # RANDOMIZER's START GAME
+            logger.warning(
+                "That new game isn't this seed (another mode, or options changed), so it plays "
+                "as an ordinary randomizer game. Start another in an empty slot."
+            )
+        elif "start table" in why:
             conn.choice_refused = True  # the game's own table differs: RANDOMIZER from now on
+            logger.warning(
+                "ARCHIPELAGO couldn't start this seed, so start it from RANDOMIZER (see the next "
+                "message)."
+            )
+        else:
+            logger.warning("ARCHIPELAGO couldn't start this seed; try again in an empty slot.")
     elif status == "idle":
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
 
@@ -561,7 +592,7 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
     reply = await asyncio.to_thread(helper.request, "other_save")
     if not reply.startswith("refused"):
         told.other_save_sent = True
-        logger.info("Another seed's save is loaded: the game says nothing is sent or received.")
+        detail("Another seed's save: the game says nothing is sent or received.")
 
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:

@@ -21,7 +21,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, save_patch, session
+from . import aplabels, deathlink, discs, game, save_patch, session
 
 
 class UnsupportedSeed(ValueError):
@@ -314,7 +314,27 @@ class LoadState:
         self.goal_withheld = False
 
 
-SAVE_CLOSED = "This seed's save is closed: nothing is sent or received until it is loaded again."
+REPORT = "https://github.com/mcawful/zexion-ap/issues"
+SAVE_CLOSED = "This seed's save is closed. Items sent to you wait until you load it again."
+OTHER_SAVE = (
+    "This save is from another seed: its checks aren't sent, and items sent to you wait until "
+    "you load this seed's save."
+)
+
+
+def attach_failed(exc: game.GameError) -> str:
+    """The client's line when attaching to the game failed (the details go to the log)."""
+    if isinstance(exc, game.UnknownBuild):
+        return (
+            "This version of Zexion isn't supported yet (a game update?): wait for a new "
+            "release of the Zexion client and mod."
+        )
+    if isinstance(exc, game.PatternError):
+        return (
+            "Can't find what the client needs in this version of Zexion: please report it at "
+            f"{REPORT}."
+        )
+    return "Can't reach the running game; trying again (details in the log)."
 
 
 def save_loaded(stamp: bytes) -> str:

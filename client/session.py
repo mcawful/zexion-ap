@@ -203,23 +203,17 @@ class Session:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
         except game.GameError:
             seed = None
+        # Another seed's save is said once a load by the game loop (state.OTHER_SAVE).
         if seed is None or list(seed.locations) != self.cells:
-            self.say_once("no seed", "The loaded save is not a randomizer save of this seed.")
             self._due = None
             self._leave()
             if seed is None:
                 return Step(left_seed=True)  # a normal save: nothing to say in the game
             return Step(left_seed=True, other_seed=True, state=snap.state)
         if not save_patch.section_matches(snap.blob, self.plan):
-            self.say_once(
-                "other seed",
-                "The loaded save holds a different seed: nothing is sent or given. "
-                "Load this seed's save.",
-            )
             self._due = None
             self._leave()
             return Step(left_seed=True, other_seed=True, state=snap.state)
-        self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
         goal = snap.ended >= 1 and snap.finale == 0
         step = Step(
