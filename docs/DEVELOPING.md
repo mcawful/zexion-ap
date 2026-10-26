@@ -176,8 +176,10 @@ and `main` take changes only through pull requests with every CI check passing (
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate: it must come from
-this repo's `develop` and raise the version above every release's tag
-(`tools/release_check.py`); if GitHub can't list the releases, the gate fails.
+this repo's `develop` and raise the version above every release's tag and above the version
+on `main` (`tools/release_check.py`). The second matters while a merged release waits for
+approval: it has no tag yet, but `main` already holds its number. If GitHub can't list the
+releases or `main`'s version can't be read, the gate fails.
 
 A release has one version number, in three places: `VERSION` in `client/native.py`,
 `kVersion` in `native/src/dllmain.cpp` and `world_version` in
@@ -196,11 +198,14 @@ To release:
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
    tagged or published before that. It then builds the helper and proxy, runs the native
    tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
-   GitHub Release of the files below, with generated notes. A version already released is
-   skipped.
+   GitHub Release of the files below, with generated notes. A version already released from
+   this same commit is skipped (a re-run). The job fails instead if that version's release is
+   a draft (a publish that failed part-way: publish or delete it on GitHub, then re-run) or was
+   released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
-   release: fix the cause (on a topic branch into `develop`, then `develop` into `main` again if
-   code changed) or re-run the workflow from the Actions page; the skip makes a re-run safe.
+   release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
+   `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
+   `main` again.
 
 `tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
 `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as

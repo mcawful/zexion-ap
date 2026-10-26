@@ -131,7 +131,7 @@ game or save folders.
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
 | `build_apworld.py` | a release into `dist/` | no |
-| `release_check.py [--above TAG]` | the release version; fails unless above `TAG` | no |
+| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or `save_lab.py
@@ -153,8 +153,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
   `tests/test_cross_checks.py` and `build_apworld.py` check they match, and CI's release gate
-  (`tools/release_check.py`) that it is above the last release. The helper shows it on the
-  title screen.
+  (`tools/release_check.py`) that it is above the last release and the version on `main`. The
+  helper shows it on the title screen.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout

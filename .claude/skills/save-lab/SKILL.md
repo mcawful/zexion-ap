@@ -76,9 +76,9 @@ the slot is empty.
 ```
 
 It refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
-backup. It writes through a temporary file, reads the result back, and logs to
-`lab/installs.log`. The game may cache saves; have the user return to the title screen or restart
-before loading the slot.
+backup. It writes through a temporary file (removed if the write fails), reads the result
+back, and logs to `lab/installs.log`. The game may cache saves; have the user return to the
+title screen or restart before loading the slot.
 
 ## 6. Put things back
 
@@ -87,8 +87,9 @@ before loading the slot.
 .venv/Scripts/python tools/save_lab.py restore lab/backups/<time> --yes        # everything
 ```
 
-Ask first. `restore` checks the backup against its manifest, then backs up the current state
-before overwriting, so a restore can itself be undone.
+Ask first. `restore` refuses a backup of another save folder (one taken with `--save-dir` or
+`ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
+manifest, then backs up the current state before overwriting, so a restore can itself be undone.
 
 ## 7. Record what you learned
 

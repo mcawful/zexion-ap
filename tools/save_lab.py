@@ -11,7 +11,8 @@
 A save is named by slot number (``2``), ``slot:2``, or a file path. Everything except ``install``
 and ``restore`` only reads the save folder. ``install`` fills only an empty slot, and only when a
 backup from the last 12 hours holds that slot as it is now. ``restore`` may overwrite slots in
-use; it checks the backup against its manifest and backs up the present state first.
+use; it refuses a backup of another save folder, checks the backup against its manifest, and
+backs up the present state first.
 
 ``--save-dir`` (or ``ZEXION_SAVE_DIR``) points at another save folder, and ``ZEXION_LAB_DIR`` at
 another lab folder; the tests use both.
@@ -271,8 +272,13 @@ def latest_backup_covering(path: Path) -> Path | None:
 
 def _write_into_save_dir(target: Path, data: bytes) -> None:
     tmp = target.with_name(target.name + ".zexion-ap-tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, target)
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    except BaseException:
+        # Left behind, it would sit in the save folder and ride along in every later backup.
+        tmp.unlink(missing_ok=True)
+        raise
     if target.read_bytes() != data:
         raise RuntimeError(f"read-back of {target} does not match what was written")
 
@@ -309,6 +315,10 @@ def cmd_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def _same_folder(a: Path, b: Path) -> bool:
+    return os.path.normcase(a.resolve()) == os.path.normcase(b.resolve())
+
+
 def cmd_restore(args: argparse.Namespace) -> int:
     if not args.yes:
         print("restore writes into the real save folder; pass --yes once the user has agreed")
@@ -317,6 +327,10 @@ def cmd_restore(args: argparse.Namespace) -> int:
     if not chosen.is_absolute() and not chosen.exists():
         chosen = lab_dir() / "backups" / args.backup
     manifest = json.loads((chosen / "manifest.json").read_text(encoding="utf-8"))
+    if not _same_folder(Path(manifest["source"]), save_dir()):
+        print(f"{chosen} is a backup of {manifest['source']}, not of {save_dir()}; not restoring.")
+        print("Pass --save-dir (or ZEXION_SAVE_DIR) for the folder it came from.")
+        return 1
     files = manifest["files"]
     if args.slot is not None:
         name = SLOT_NAME.format(args.slot)
