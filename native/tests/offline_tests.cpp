@@ -269,7 +269,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     other.set_offline({s});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a client's own: no offline look by itself");
-    check(other.other_save() && other.queued_popups() == 1, "told once: ANOTHER SEED");
+    check(other.other_save() && other.queued_popups() == 1, "told once: the other-seed notice");
     check(!other.other_save() && other.queued_popups() == 1, "and not again this load");
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
