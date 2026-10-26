@@ -5,8 +5,7 @@ description: Run the checks CI runs (ruff format, ruff check, pytest) and, on th
 
 # Pre-flight
 
-Run these in order and stop at the first failure. A format failure makes the lint output noise,
-and a lint failure often means the tests are importing the same broken code.
+Run these in order and stop at the first failure.
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -17,8 +16,8 @@ and a lint failure often means the tests are importing the same broken code.
 `.github/workflows/ci.yml` runs these three on Windows and Ubuntu, plus a Windows `native` job
 (the CMake build of `native/`, its ctest tests, and `tests/test_native.py` against the built DLL)
 that preflight does not run. Locally, `tests/test_native.py` skips its load test unless
-`native/build/Release/zexion_ap.dll` exists; build it as `CLAUDE.md` shows when `native/` or
-`client/native.py` changed.
+`native/build/Release/zexion_ap.dll` exists (or `ZEXION_DLL` names a build); build it as
+`CLAUDE.md` ("Checks") shows when `native/` or `client/native.py` changed.
 
 ## Before you start
 
@@ -41,9 +40,9 @@ they were not run because there is no world.
    AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
    ```
 
-   `AP_TEST_WORLDS=zexion` limits `test/general` to this world; it generates seeds: fill, accessibility,
-   item and location name groups, and that the world loads at all. AP prints a `_speedups not
-   available` warning on this machine; it is harmless.
+   `AP_TEST_WORLDS=zexion` limits `test/general` to this world; it generates seeds: fill,
+   accessibility, item and location name groups, and that the world loads at all. AP may print
+   a `_speedups not available` warning; it is harmless.
 
 If the AP checkout can't be created (no network, say), report the world as untested against AP.
 
