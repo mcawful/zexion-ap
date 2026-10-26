@@ -149,10 +149,12 @@ Disks goal's screens.
 `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST again, then, in a
 frame call, puts back what a client going away puts back and hides the title screen's lines.
 
-It refuses (`error <why>; not unloading`) when no frame came to do that, or while the game may
-still call into the helper: an open menu's panel or entry, the open map or the game's transition
-routine holding one of its wrappers, or the scanner's text, the pause screen's branch or an item
-record still the helper's. A refused unload sets again, in the next frame call and before any
+It refuses (`error <why>; not unloading`) while the game may still call into the helper: an
+open menu's panel or entry, the open map or the game's transition routine holding one of its
+wrappers, or the scanner's text, the pause screen's branch or an item record still the helper's.
+If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
+came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
+refused unload sets again, in the next frame call and before any
 request, what clients had set (`zap::ClientState`), since a client would not know to resend it.
 
 Then it points the slot back at SDL, only if the slot still holds the trampoline (otherwise
@@ -204,6 +206,12 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown: `popups` counts a client's popups still queued (not the helper's own notices), so the
   client counts one as shown only once it has left the queue.
+- **Their save:** a client's popup is for the seed of the randomizer save loaded when `apply`
+  took it (with none loaded, it shows in any save). While a save of another seed, or a normal
+  save, is in play it waits (still counted in `popups`, but not keeping RETURN HOME WITH THE
+  DISKS? waiting), and the next one for this save, or a helper notice, shows instead. The first
+  `apply` in a save of another seed (a client connected to another seed) drops those still held.
+  Stand-in tests only (`tests/game_tests.cpp`), not yet seen in game.
 - **Text:** a `popup` is the item's icon and name, then the client's suffix (≤ 40 characters);
   a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character width
   (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls").
@@ -407,6 +415,9 @@ pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
   notice a load that the client is not connected (or, for `other_save`, is for another seed;
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
+  While the save stays dressed, each look sets that look again where it was changed: a client of
+  another seed, attaching with the save in play, takes its own look back, which is not this
+  save's (stand-in tests, `tests/offline_tests.cpp`; not yet seen in game).
   The file select shows each such save's count, from its map in the game's copy of the slot.
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up

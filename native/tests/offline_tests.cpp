@@ -263,6 +263,15 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
           "the other seed's save dressed, with no not-connected warning");
+    // A client attaching meanwhile takes its own look back (it has none for this save): the
+    // dressed save keeps its own.
+    other.set_labels({});
+    other.set_intel(false);
+    other.set_assists_locked(false);
+    other.set_discs(0, 0, "");
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.intel_on() && other.assists_locked() && other.scan_line() == "COLLECT",
+          "a client's look taken back: the dressed save's own again");
     {
         // A refused unload meanwhile: the look is the offline one's, not set again with what
         // the client set; the watch dresses the save again by itself.

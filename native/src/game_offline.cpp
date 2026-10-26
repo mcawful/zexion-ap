@@ -110,14 +110,7 @@ void Game::watch_offline() {
         leave_offline_seed();
         offline_index_ = seed;
         if (seed >= 0) {
-            const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(seed)];
-            std::map<int, Label> labels;
-            if (!sd.labels.empty() && parse_labels(sd.labels, labels).empty()) {
-                set_labels(std::move(labels));
-            }
-            set_intel(sd.intel);
-            set_assists_locked(sd.lock_assists);
-            offline_skip_ = true;
+            offline_skip_ = true;  // the look itself: below
             // Once a load: the player is told why received items and hints wait (with a
             // client of another seed, its own notice said so: other_save).
             if (!offline_warned_ && !other) {
@@ -131,10 +124,19 @@ void Game::watch_offline() {
     }
     if (offline_index_ >= 0) {
         const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(offline_index_)];
+        // The save's look, set when it is dressed and kept while it is: a client of another
+        // seed, attaching while this save is in play, takes its own look back (no labels, ASSIST
+        // free, AREA MAP, no disks), which is not this save's.
+        if (!ap_items_.active() && !sd.labels.empty()) {
+            std::map<int, Label> labels;
+            if (parse_labels(sd.labels, labels).empty()) set_labels(std::move(labels));
+        }
+        if (intel_on() != sd.intel) set_intel(sd.intel);
+        if (assists_locked_ != sd.lock_assists) set_assists_locked(sd.lock_assists);
         if (sd.discs) {
             int count = offline_disk_count(sd, at_.map_grid);
             int told = at_.flags[flag::kScannerTold] != 0 ? 1 : 0;
-            if (count != offline_count_ || told != offline_told_) {
+            if (count != offline_count_ || told != offline_told_ || scan_line_ != sd.scan_line) {
                 offline_count_ = count;
                 offline_told_ = told;
                 set_discs(count, sd.required, sd.scan_line, told != 0);

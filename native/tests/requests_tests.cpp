@@ -68,6 +68,11 @@ void test_newgame_parser() {
     check(!zap::parse_newgame("ap_newgame\nwrite 0x906 112233", bad).empty(),
           "a write past the section is refused");
     check(!zap::parse_newgame("ap_newgame\nwrite 0x10 123", bad).empty(), "odd hex is refused");
+    check(!zap::parse_newgame("ap_newgame\nwrite -1 AABB", bad).empty(),
+          "a negative offset is refused (strtoull reads -1 as the largest)");
+    check(!zap::parse_newgame("ap_newgame\nwrite +5 AABB", bad).empty(), "a sign is refused");
+    check(!zap::parse_newgame("ap_newgame\nmenu 18446744073709551615 AABB", bad).empty(),
+          "an offset whose end wraps around is refused");
     check(!zap::parse_newgame("ap_newgame\nexpect 0x10 00", bad).empty(), "nothing to write");
     check(!zap::parse_newgame("ap_newgame\npoke 0x10 00", bad).empty(), "unknown lines");
 }

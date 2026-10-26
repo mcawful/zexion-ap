@@ -268,8 +268,26 @@ std::string Game::apply(const Batch& batch) {
         auto palette = static_cast<short>((~(at<uint32_t>(p, kSuitBits) >> 18)) & 1);
         reinterpret_cast<SuitColorFn>(at_.suit_color_fn)(0, palette);
     }
-    for (const Popup& popup : batch.popups) popups_.push_back(popup);
+    // Each for this save: one the player leaves with popups still queued keeps them for its
+    // next load, not showing them in another save (pump_popups).
+    std::shared_ptr<const OfflineSeed> origin;
+    if (rando_save_loaded()) {
+        origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
+        // A client's popups still held for another seed are an earlier connection's (this one
+        // applies only in its own seed's save): dropped, not held for good.
+        popups_.erase(std::remove_if(popups_.begin(), popups_.end(),
+                                     [this](const Popup& p) { return p.counted && !showable(p); }),
+                      popups_.end());
+    }
+    for (Popup popup : batch.popups) {
+        if (popup.counted) popup.origin = origin;
+        popups_.push_back(std::move(popup));
+    }
     return "applied";
+}
+
+bool Game::showable(const Popup& popup) const {
+    return !popup.origin || (rando_save_loaded() && section_is(*popup.origin, at_.rando_blob));
 }
 
 size_t Game::pending_popups() const {
@@ -288,10 +306,14 @@ void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
-    const Popup& popup = popups_.front();
+    // The first one for this save (or for any): a client's popups for another save wait for it.
+    auto next = std::find_if(popups_.begin(), popups_.end(),
+                             [this](const Popup& p) { return showable(p); });
+    if (next == popups_.end()) return;
+    const Popup& popup = *next;
     BYTE* rec = record(popup.item);
     if (rec == nullptr) {
-        popups_.pop_front();
+        popups_.erase(next);
         return;
     }
     int per_line = kGamePopupWidth;
@@ -316,7 +338,7 @@ void Game::pump_popups() {
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
-    popups_.pop_front();
+    popups_.erase(next);
     frames_since_popup_ = 0;
 }
 
@@ -667,9 +689,11 @@ void Game::watch_mission() {
         if (mission_save_ != -1) mission_.cancel(at_);
         mission_save_ = save;
     }
-    // Idle: no popup showing or queued, the last one kPopupGapFrames ago.
-    bool idle = in_play() && popups_.empty() && !popup_busy() &&
-                frames_since_popup_ >= kPopupGapFrames;
+    // Idle: no popup showing or to show here (one held for another save does not count), the
+    // last one kPopupGapFrames ago.
+    bool waiting = std::any_of(popups_.begin(), popups_.end(),
+                               [this](const Popup& p) { return showable(p); });
+    bool idle = in_play() && !waiting && !popup_busy() && frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle);
 }
 
@@ -806,7 +830,7 @@ void Game::resolve_item_labels() {
     for (auto it = item_labels_.begin(); it != item_labels_.end();) {
         const Label& pending = it->second;
         BYTE record[record::kSize];
-        if (!safe_read(records + pending.item * record::kSize, record, sizeof(record))) return;
+        if (!safe_read(records + pending.item * record::kSize, record, sizeof(record))) break;
         std::string name;
         if (!pending.item_name.empty()) {
             name = pending.item_name;  // this player's own, named by the client

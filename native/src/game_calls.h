@@ -288,6 +288,8 @@ private:
     BYTE* player() const;
     BYTE* record(uint8_t item) const;
     bool popup_busy() const;
+    // Whether a queued popup may show in the save loaded now (Popup::origin).
+    bool showable(const Popup& popup) const;
     void refresh_hud();
 
     bool configured_ = false;

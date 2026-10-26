@@ -578,7 +578,7 @@ std::string undo_for_unload() {
         return why;
     };
     if (const char* blocker = set_unloading(true)) {
-        return refuse(std::string(blocker) + " (no frame came)");
+        return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
     }
     if (!unhook()) return refuse(kHookReplaced);
     delete g_rearm.exchange(nullptr);  // one no frame took: unloading anyway

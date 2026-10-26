@@ -1274,10 +1274,43 @@ void test_pending_popups() {
           "a batch's popups are counted");
 }
 
+// A client's popups are for the save loaded when they came: while another save is in play they
+// wait (still pending, so the client does not count them shown), and the helper's own notices
+// still show.
+void test_popups_wait_for_their_save() {
+    zap::Game game;
+    ready(game);
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 36 FROM ALICE");
+    g_section[0x26C] = 0x22;  // the player left: another seed's save in play
+    game.set_offline({zap::offline_seed_of(g_section)});
+    check(game.other_save() == "told", "the other seed's notice queued behind it");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1 && game.pending_popups() == 1,
+          "the notice shows; the client's popup waits, pending");
+    g_rando_marker = 0;  // a normal save
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1 && game.pending_popups() == 1, "and in a normal save");
+    g_rando_marker = 1;
+    g_section[0x26C] = 0x11;  // its save again
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 2 && game.pending_popups() == 0, "shown in its own save");
+    // A client of another seed: the first's popups held, then dropped by its first batch.
+    apply(game, "apply\npopup 36 FROM ALICE");
+    g_section[0x26C] = 0x22;
+    check(game.pending_popups() == 1, "held for its seed");
+    apply(game, "apply\npopup 36 FROM BOB");
+    check(game.pending_popups() == 1, "another seed's client: the held one dropped, its own kept");
+    g_rando_marker = 0;
+}
+
 }  // namespace
 
 int main() {
     test_map_marks_with_a_menu_open();
+    test_popups_wait_for_their_save();
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();
     test_pending_popups();
