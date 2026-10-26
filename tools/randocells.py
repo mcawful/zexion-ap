@@ -38,6 +38,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))  # the client package, whose save offsets these are
+
+from client import ids, save_patch  # noqa: E402
 
 
 def _load_logic():
@@ -84,10 +88,10 @@ STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 ITEM_FLAG, ITEM_LIST, ITEM_TIERS = 0x44, 0x45, 0x4D
 WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
 
-# Where a randomizer save keeps its seed (docs/re/save-format.md).
-SAVE_CELLS, SAVE_ITEMS, LOCATIONS = 0x12814, 0x12A80, 154
-PLAYER_STATE = 0x92F3  # one byte per code; items 0-49 are the inventory
-MAP_GRID = 0x877F  # 54 x 54, one byte per cell
+# Where a randomizer save keeps its seed (docs/re/save-format.md), as client/save_patch.py has it.
+SAVE_CELLS, SAVE_ITEMS, LOCATIONS = save_patch.SECTION, save_patch.ITEM_TABLE, ids.LOCATIONS
+PLAYER_STATE = save_patch.INVENTORY  # one byte per code; items 0-49 are the inventory
+MAP_GRID = save_patch.MAP_GRID  # 54 x 54, one byte per cell
 # The save's randomizer section is loaded to RVA 0xCDD6D0; settings sit at these RVAs in it.
 RANDO_BLOB_RVA = 0xCDD6D0
 ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
@@ -263,7 +267,7 @@ def inventory_from_save(data: bytes) -> Counter:
     )
 
 
-START_HEADER = 0x12B24  # candidate index - 1, tile column, tile row (16-bit each)
+START_HEADER = save_patch.START_RECORD  # candidate index - 1, tile column, tile row (16-bit)
 
 
 def start_from_save(data: bytes) -> tuple[int, int] | None:
@@ -279,9 +283,9 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
     return (column // 14, row // 20)
 
 
-SECOND_START = 0x12EE0  # the second teleport target, in the start record's form
+SECOND_START = save_patch.SECOND_START  # the second teleport target, as the start record
 DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
-OPTIONS_IN_SAVE = 0x1308F
+OPTIONS_IN_SAVE = save_patch.OPTIONS
 
 
 def starts_from_save(data: bytes) -> list[tuple[int, int]]:
