@@ -25,7 +25,8 @@ MISSILE_BOX, BOMB_BOX = 36, 37
 DATA_DISC = 44  # the game's Data Disc: the OS Install Disk of the OS Install Disks goal
 SCRAP_METAL = 46
 # The stand-ins the world puts in this world's locations for other players' items
-# (client/aplabels.py): Scrap Energy, and Scrap Chunk for progression items and own disks.
+# (client/aplabels.py): Scrap Energy, and Scrap Chunk for progression items (not another Zexion
+# player's supplies, which stay minor) and own disks.
 STAND_IN, STAND_IN_PROGRESSION = 47, 48
 AREA_MAP = 49
 ENERGY_SHIELD = 50

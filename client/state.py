@@ -11,10 +11,10 @@ each, or None).
 
 Also the decisions the game loop makes from that state, as pure functions: the count of
 received items' popups shown, kept on the server (``announced_start`` and the rest), the
-locations found to record there (``found_to_store``), ``SayOnce`` for messages that would
-repeat each poll, and the player's lines when the game or the mod can't be used
-(``attach_failed``, ``helper_failed``). No Archipelago imports, so the tests build them from
-slot data.
+server's count of Energy Shields given (``shield_count``), the locations found to record there
+(``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
+lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``). No
+Archipelago imports, so the tests build them from slot data.
 """
 
 from __future__ import annotations
@@ -146,6 +146,16 @@ def stored_count(raw: object) -> int | None:
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None
+
+
+def shield_count(raw: object) -> int | None:
+    """The server's count of Energy Shields given (client/shields.py): 0 when none is stored,
+    None when the key holds something other than a count. The key is open to any client in the
+    room, and a bad value must not read as 0, which would give every received shield again: the
+    shields wait instead."""
+    if raw is None:
+        return 0
+    return stored_count(raw)
 
 
 def announced_start(raw: object, held: int, queued_before: int | None = None) -> tuple[int, int]:

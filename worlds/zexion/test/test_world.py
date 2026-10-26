@@ -264,17 +264,19 @@ class TestSlotDataForTheClient(ZexionTestBase):
     def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
         # Progression for the rules' counts, but the game marks supplies minor on the map.
         other = self.player + 1
+        ids = self.world.item_name_to_id
+        skip_balancing = ItemClassification.progression_skip_balancing
         placed = [
-            ZexionItem(
-                "Missile Container", ItemClassification.progression_skip_balancing, 1, other
-            ),
-            ZexionItem("Energy Tank", ItemClassification.progression_skip_balancing, 0, other),
-            ZexionItem("Navcore", ItemClassification.progression, 32, other),
+            ZexionItem("Missile Container", skip_balancing, ids["Missile Container"], other),
+            ZexionItem("Energy Tank", skip_balancing, ids["Energy Tank"], other),
+            ZexionItem("Navcore", ItemClassification.progression, ids["Navcore"], other),
+            # Another game's item that happens to share a supply's name: not a Zexion supply.
+            Item("Energy Tank", ItemClassification.progression, 1, other),
         ]
         for i, item in enumerate(placed):
             self.multiworld.get_location(location_name(i), self.player).item = item
         items = self.world.fill_slot_data()["location_items"]
-        self.assertEqual(items[:3], [FOREIGN, FOREIGN, FOREIGN_PROGRESSION])
+        self.assertEqual(items[:4], [FOREIGN, FOREIGN, FOREIGN_PROGRESSION, FOREIGN_PROGRESSION])
 
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()

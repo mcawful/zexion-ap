@@ -305,6 +305,8 @@ private:
     bool other_warned_ = false;   // this load's other-seed notice queued
     bool other_mode() const { return active_ && other_save_; }
     bool section_is(const OfflineSeed& seed, const BYTE* section) const;
+    // The index of the known seed whose save is loaded, or -1.
+    int loaded_seed() const;
     // The pause row's text for a known disk seed's loaded save, from its file ("" if none).
     std::string known_disk_row() const;
     std::vector<OfflineSeed> offline_seeds_;
@@ -345,8 +347,9 @@ private:
     TitleLines title_;
     std::string title_error_;
     int map_frames_ = 0;  // frames until the next map look
+    int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The loaded section's item table and start when the labels were set (the seed they
-    // are for): the map is changed only in a save in play holding that seed.
+    // are for): the map is changed only in a save holding that seed.
     std::optional<OfflineSeed> labels_seed_;
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).

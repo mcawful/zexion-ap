@@ -1099,7 +1099,8 @@ void test_assist_watch() {
 }
 
 // The map's important squares are raised in the labels' seed's save with a menu open too (the
-// player may pause and open the map at once), and not in another seed's save.
+// player may pause and open the map at once), once two looks in a row (every 16th frame) have
+// read that seed loaded, and not in another seed's save.
 void test_map_marks_with_a_menu_open() {
     reset_game();
     g_rando_marker = 1;
@@ -1115,11 +1116,19 @@ void test_map_marks_with_a_menu_open() {
     game.set_labels(labels);
     g_menu = 1;  // paused
     game.watch_all(&chosen);
-    check(g_map_grid[4 * 54 + 3] == 0x1A, "raised with a menu open");
+    check(g_map_grid[4 * 54 + 3] == 0x19, "the first look: not yet (a load may not have settled)");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A, "the next: raised, with a menu open");
     g_map_grid[4 * 54 + 3] = 0x19;
+    const BYTE was = g_section[0x26D];
     g_section[0x26D] = 0x2F;  // another seed's save
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x19, "not in another seed's save");
+    g_section[0x26D] = was;  // the labels' seed's again: counted afresh
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x19, "a look of another seed starts the count again");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A, "then the second look raises them");
     game.put_back_all(&chosen);
     g_menu = 0;
     g_rando_marker = 0;
@@ -1201,6 +1210,47 @@ void test_refused_unload_keeps_a_start() {
           "the queued new game gets the plan, the mode check skipped as before");
 }
 
+// A known disk seed's save loaded before the client has set its count: the pause row is
+// prepared from the seed's file (its count with the map as it is), so a pause screen opened at
+// once shows it; a save of no known seed gets no row.
+void test_pause_row_from_the_seed_file() {
+    reset_game();
+    g_rando_marker = 1;
+    zap::Game game;
+    check(configure(game).empty(), "configures");  // a client, its count not set yet
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.discs = true;
+    seed.count = 2;
+    seed.required = 15;
+    seed.unfound = {4 * 54 + 3};
+    g_map_grid[4 * 54 + 3] = zap::kCollectedCell;  // one more found since the file
+    game.set_offline({seed});
+    stand_in::PauseScreen p(reinterpret_cast<void*>(&equipment_fn), nullptr,
+                            reinterpret_cast<void*>(&widget_handler_fn));
+    g_template_list[1] = p.font;
+    g_current_menu = p.menu;
+    game.watch_all(&chosen);
+    check(game.keys_branch_patched() && game.disc_count() == 0, "the row built, no count set");
+    check(p.frame(p.sprite[1]) == '3' && p.frame(p.sprite[2]) == '?' &&
+              p.frame(p.sprite[4]) == 829,
+          "the file's count on the pause screen at once (\" 3 OF ? \")");
+    game.put_back_all(&chosen);
+    check(!game.keys_branch_patched(), "put back");
+
+    g_section[0x26D] ^= 1;  // another seed's save
+    stand_in::PauseScreen q(reinterpret_cast<void*>(&equipment_fn), nullptr,
+                            reinterpret_cast<void*>(&widget_handler_fn));
+    g_current_menu = q.menu;
+    game.watch_all(&chosen);
+    check(!game.keys_branch_patched() && q.frame(q.glyph[0]) == 'K', "no known seed: KEYS");
+    g_section[0x26D] ^= 1;
+    game.put_back_all(&chosen);
+    g_current_menu = nullptr;
+    g_template_list[1] = nullptr;
+    g_map_grid[4 * 54 + 3] = 0;
+    g_rando_marker = 0;
+}
+
 // The `popups` request's count: the client's popups still queued, not the helper's own notices.
 void test_pending_popups() {
     zap::Game game;
@@ -1231,6 +1281,7 @@ int main() {
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();
     test_pending_popups();
+    test_pause_row_from_the_seed_file();
     test_configure();
     test_apply();
     test_popups();

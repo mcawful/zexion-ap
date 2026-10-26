@@ -59,8 +59,10 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
   from `native/proxy/`. Players call the two together "the mod".
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
-  item it cannot hand out itself: another player's item (48 if it is progression), or, with
-  the OS Install Disks goal, one of this world's own disks (48). The helper restyles them.
+  item it cannot hand out itself: another player's item (48 if it is progression, except another
+  Zexion player's supplies, 47 and minor as the game marks this player's own:
+  `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
+  (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
   helper runs its frame function in it.
 - **B1**: the only game build supported so far (Steam build 23943567:
@@ -82,7 +84,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
   2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
   three-game seed (other games' items, no owner on the map, other Zexion players' supplies
-  minor, markers right in a pause just after loading): 2026-10-26.
+  minor, markers right in a pause just after loading): 2026-10-26. Not seen in game: the
+  markers' wait for a settled load (two looks in a row, `native/README.md`, "The map").
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
 - The escape skip (SKIP ESCAPE AND FINAL BATTLE?): 2026-10-23.
 - DeathLink, both ways: 2026-10-23.
@@ -103,7 +106,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
   screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
 - AP saves without the client, from a fresh start too, and another seed's save told so:
-  2026-10-25.
+  2026-10-25; its notice as now worded: 2026-10-26. Not seen in game: a plain (not Archipelago)
+  randomizer game left alone with a client connected (no notice, no look).
 
 ## Setup
 

@@ -61,17 +61,26 @@ bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
     return offline_matches(seed, section + kOfflineTableAt, section + kOfflineStartAt);
 }
 
+int Game::loaded_seed() const {
+    // The marker first: after a normal save the section is still the last randomizer game's.
+    if (!rando_save_loaded()) return -1;
+    for (size_t i = 0; i < offline_seeds_.size(); ++i) {
+        if (section_is(offline_seeds_[i], at_.rando_blob)) return static_cast<int>(i);
+    }
+    return -1;
+}
+
 std::string Game::known_disk_row() const {
     // A save of a known seed with the disks, loaded in play or not: its count from the seed's
-    // file, for the pause screen's row until the client's (or the offline look's) is set.
-    if (!rando_save_loaded()) return "";
-    for (const OfflineSeed& sd : offline_seeds_) {
-        if (sd.discs && section_is(sd, at_.rando_blob)) {
-            const bool told = at_.flags[flag::kScannerTold] != 0;
-            return pause_row_text(offline_disk_count(sd, at_.map_grid), told ? sd.required : 0);
-        }
-    }
-    return "";
+    // file, for the pause screen's row until the client's (or the offline look's) is set. During
+    // a load it may read the last save's count for a frame: only the branch's code byte follows
+    // it, put right the next frame, and no pause screen opens mid-load.
+    const int seed = loaded_seed();
+    if (seed < 0) return "";
+    const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(seed)];
+    if (!sd.discs) return "";
+    const bool told = at_.flags[flag::kScannerTold] != 0;
+    return pause_row_text(offline_disk_count(sd, at_.map_grid), told ? sd.required : 0);
 }
 
 void Game::watch_offline() {
@@ -93,14 +102,8 @@ void Game::watch_offline() {
     // seed's (other_save); undressed when that stops.
     const bool other = other_mode();
     const bool dress = !active_ || other;
-    // Which known seed's save is loaded: the marker first, as after a normal save the section is
-    // still the last randomizer game's.
-    int seed = -1;
-    if (dress && rando_save_loaded()) {
-        for (size_t i = 0; i < offline_seeds_.size() && seed < 0; ++i) {
-            if (section_is(offline_seeds_[i], at_.rando_blob)) seed = static_cast<int>(i);
-        }
-    }
+    // Which known seed's save is loaded.
+    const int seed = dress ? loaded_seed() : -1;
     // A save is dressed once it is in play (not while it loads, when the marker and section may
     // still be another save's), and undressed at once.
     if (seed != offline_index_ && (seed < 0 || in_play())) {
@@ -168,13 +171,7 @@ std::string Game::other_save() {
     // Only an AP save of another seed: one whose seed the helper has a file for (every new game
     // from ARCHIPELAGO is made with a client, which leaves one). A plain randomizer game is left
     // alone.
-    bool known = false;
-    if (configured_ && rando_save_loaded()) {
-        for (const OfflineSeed& sd : offline_seeds_) {
-            if (section_is(sd, at_.rando_blob)) known = true;
-        }
-    }
-    if (!known) return "unknown";
+    if (!configured_ || loaded_seed() < 0) return "unknown";
     other_save_ = true;
     if (other_warned_) return "already told";
     drop_offline_warning();

@@ -102,6 +102,13 @@ def test_a_stored_count_starts_the_session_capped_at_the_items_held() -> None:
     assert state.announced_to_store(3, 3, None) is None, "nothing new: nothing stored"
 
 
+def test_a_shield_count_that_is_not_a_count_pauses_shields_rather_than_reading_as_none() -> None:
+    assert state.shield_count(None) == 0, "none stored: none given"
+    assert state.shield_count(0) == 0 and state.shield_count(4) == 4
+    for bad in ("x", -1, True, 2.5, [1]):
+        assert state.shield_count(bad) is None, "every received shield would be given again"
+
+
 def test_a_reconnect_does_not_queue_again_what_the_same_helper_holds() -> None:
     assert state.announced_start(3, 5, queued_before=5) == (5, 3)
     assert state.announced_start(3, 5, queued_before=9) == (5, 3)

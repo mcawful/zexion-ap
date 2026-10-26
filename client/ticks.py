@@ -341,17 +341,15 @@ async def labels_tick(ctx: ZexionContext) -> None:
 
 
 def stored_shields(ctx: ZexionContext, key: str) -> int | None:
-    """The server's count of Energy Shields given (0 when none is stored), read afresh: None
-    when the key holds something other than a count. It is open to any client in the room,
-    and a bad value must not read as 0, which would give every received shield again."""
-    raw = ctx.stored_data.get(key)
-    count = state.stored_count(raw)
-    if count is None and raw is not None:
+    """The server's count of Energy Shields given, read afresh (state.shield_count): None, and
+    said once, when the key holds something other than a count."""
+    count = state.shield_count(ctx.stored_data.get(key))
+    if count is None:
         if ctx.said("shields", "bad count"):
             logger.warning("The server's Energy Shield count is not a number: shields wait.")
         return None
     ctx.said.clear("shields")
-    return count or 0
+    return count
 
 
 async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:

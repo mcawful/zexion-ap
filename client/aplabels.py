@@ -1,8 +1,9 @@
 """Names for other players' items in the game.
 
 The world puts a stand-in at each location holding another player's item: 47 (Scrap Energy),
-or 48 (Scrap Chunk) for progression, and with the OS Install Disks goal 48 for this player's
-own disks too. The client scouts those locations and sends the helper a label per map cell:
+or 48 (Scrap Chunk) for progression (not another Zexion player's supplies, which stay minor:
+world.important_elsewhere), and with the OS Install Disks goal 48 for this player's own disks
+too. The client scouts those locations and sends the helper a label per map cell:
 "PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE", or ``@N`` for another Zexion player's item
 (its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
 "Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a

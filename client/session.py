@@ -178,7 +178,9 @@ class Session:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
         except game.GameError:
             seed = None
-        # Another seed's save is said once a load by the game loop (state.OTHER_SAVE).
+        # Another seed's save is said once a load by ticks.other_save_tick (state.OTHER_SAVE),
+        # only when the helper knows its seed (an AP save): nothing for a plain randomizer game
+        # ("unknown"), and nothing with no helper, as without it the two can't be told apart.
         if seed is None or list(seed.locations) != self.cells:
             self._due = None
             self._leave()
