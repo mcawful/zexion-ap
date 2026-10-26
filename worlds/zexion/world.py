@@ -56,13 +56,23 @@ FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
 # Energy and Chunk are written as Scrap Metal, so 47 and 48 always mean a stand-in
 # (client/aplabels.py).
 FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
-# Supplies (items.SUPPLIES) are progression for the rules' counts, but not worth an Area Map's
-# hint. The OS Install Disks are hinted: each is a step to the goal.
+# Supplies (items.SUPPLIES) are progression for the rules' counts, but minor on the map, as the
+# game marks this player's own (important_elsewhere), and not worth an Area Map's hint. The OS
+# Install Disks are hinted: each is a step to the goal.
 NOT_HINTED = SUPPLIES
 # With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
 # them (worlds/zexion/data.py).
 DISC_REPLACES = (*FILLER_ORDER, ENERGY_SHIELD)
+
+
+def important_elsewhere(item: Item | None) -> bool:
+    """Whether another player's item gets the important stand-in, its map square raised: a
+    progression item, but not a Zexion supply, which the game marks minor like this player's
+    own (an Energy Tank, a Missile Container)."""
+    if item is None or not item.advancement:
+        return False
+    return not (item.game == ZexionItem.game and code_of.get(item.name) in SUPPLIES)
 
 
 class ZexionWorld(World):
@@ -337,9 +347,7 @@ class ZexionWorld(World):
                 continue
             item = self.get_location(location_name(i)).item
             if item is None or item.player != self.player or item.code is None:
-                out.append(
-                    FOREIGN_PROGRESSION if item is not None and item.advancement else FOREIGN
-                )
+                out.append(FOREIGN_PROGRESSION if important_elsewhere(item) else FOREIGN)
                 continue
             code = code_of[item.name]
             if code == DATA_DISC:

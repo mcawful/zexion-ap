@@ -404,9 +404,10 @@ Working in game: 2026-10-25 ("AP saves without the client").
 
 ### The map
 
-- **What:** in an AP save in play holding the seed the labels are for (a plain randomizer save
-  is never touched), raises the map squares of item 48 (this player's OS Install Disks and other
-  players' progression items) from the game's basic marker to its important one
+- **What:** in an AP save holding the seed the labels are for, in play or in a menu (a plain
+  randomizer save is never touched), raises the map squares of item 48 (this player's OS Install Disks and other
+  players' progression items, but not a Zexion player's supplies: `worlds/zexion/world.py`,
+  `important_elsewhere`) from the game's basic marker to its important one
   (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame handler writes
   the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game writes the cursor's
   name, in the same frame.

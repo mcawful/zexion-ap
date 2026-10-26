@@ -8,7 +8,7 @@ from Fill import distribute_items_restrictive
 from Options import OptionError
 
 from .. import data, rules
-from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, code_of
+from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS, Goal, Mode, StartRoom
@@ -260,6 +260,21 @@ class TestSlotDataForTheClient(ZexionTestBase):
         )
         slot = self.world.fill_slot_data()
         self.assertEqual((slot["stand_in"], slot["stand_in_progression"]), (47, 48))
+
+    def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
+        # Progression for the rules' counts, but the game marks supplies minor on the map.
+        other = self.player + 1
+        placed = [
+            ZexionItem(
+                "Missile Container", ItemClassification.progression_skip_balancing, 1, other
+            ),
+            ZexionItem("Energy Tank", ItemClassification.progression_skip_balancing, 0, other),
+            ZexionItem("Navcore", ItemClassification.progression, 32, other),
+        ]
+        for i, item in enumerate(placed):
+            self.multiworld.get_location(location_name(i), self.player).item = item
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(items[:3], [FOREIGN, FOREIGN, FOREIGN_PROGRESSION])
 
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()

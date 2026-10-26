@@ -718,8 +718,9 @@ void Game::watch_map_marks() {
     if (!ap_items_.active()) return;
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
-    // Only in the labels' seed's save: a plain randomizer game has the game's own Scrap Chunks.
-    if (!labels_seed_loaded(true)) return;
+    // Only in the labels' seed's save (a plain randomizer game has the game's own Scrap Chunks),
+    // in play or in a menu: a player who pauses at once and opens the map sees them raised.
+    if (!labels_seed_loaded(false)) return;
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
 }
 

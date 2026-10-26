@@ -65,8 +65,9 @@ or Assist Unlock, stops generation with an error that names it.
   (FOR ALICE).
 - Another Zexion player's item looks like the item itself.
 - On the map, other players' important items and your OS Install Disks are marked as important
-  items, and the cursor says what each one is (PROGRESSION ITEM, AP ITEM, or a Zexion item's
-  name). Whose it is shows only when you pick it up.
+  items (another Zexion player's Energy Tanks and Missile Containers stay minor, as yours do),
+  and the cursor says what each one is (PROGRESSION ITEM, AP ITEM, or a Zexion item's name).
+  Whose it is shows only when you pick it up.
 - Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
   around you.
 

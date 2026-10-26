@@ -1098,6 +1098,34 @@ void test_assist_watch() {
     g_current_menu = nullptr;
 }
 
+// The map's important squares are raised in the labels' seed's save with a menu open too (the
+// player may pause and open the map at once), and not in another seed's save.
+void test_map_marks_with_a_menu_open() {
+    reset_game();
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;  // a progression stand-in
+    g_map_grid[4 * 54 + 3] = 0x19;  // shown as a minor item
+    zap::Game game;
+    check(configure(game).empty(), "configures");
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
+    game.set_labels(labels);
+    g_menu = 1;  // paused
+    game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A, "raised with a menu open");
+    g_map_grid[4 * 54 + 3] = 0x19;
+    g_section[0x26D] = 0x2F;  // another seed's save
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x19, "not in another seed's save");
+    game.put_back_all(&chosen);
+    g_menu = 0;
+    g_rando_marker = 0;
+    g_map_grid[4 * 54 + 3] = 0;
+}
+
 // A refused unload: put_back_all drops what clients set, and rearm sets all of it again, since
 // the client does not know to resend it.
 void test_refused_unload_rearms() {
@@ -1197,6 +1225,7 @@ void test_pending_popups() {
 }  // namespace
 
 int main() {
+    test_map_marks_with_a_menu_open();
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();
     test_pending_popups();
