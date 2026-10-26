@@ -123,6 +123,7 @@ BYTE* sprites() { return reinterpret_cast<BYTE*>(&g_sprite_holder); }
 void test_restyle_and_names() {
     reset_records();
     zap::ApItems items;
+    zap::TextureCheck items_check;
     BYTE before[100], before_chunk[100];
     std::memcpy(before, g_scrap, 100);
     std::memcpy(before_chunk, g_chunk, 100);
@@ -150,7 +151,7 @@ void test_restyle_and_names() {
     check(name() == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
           "a name is cut to 49 bytes and stays terminated");
 
-    items.restore(holder(), sprites(), zap::GlFunctions{});
+    items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "restore puts the whole record back");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and Scrap Chunk's");
     check(!items.restyled() && !items.active(), "and forgets them");
@@ -162,11 +163,12 @@ void test_one_record_not_as_expected_leaves_the_other_restyled() {
     BYTE before_chunk[100];
     std::memcpy(before_chunk, g_chunk, 100);
     zap::ApItems items;
+    zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
     items.watch(holder(), 1);
     check(items.restyled() && get<int16_t>(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
-    items.restore(holder(), sprites(), zap::GlFunctions{});
+    items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and restore leaves it alone too");
 }
 
@@ -177,6 +179,7 @@ void test_records_not_as_expected_are_left_alone() {
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems items;
+    zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
     items.watch(holder(), 1);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
@@ -184,6 +187,7 @@ void test_records_not_as_expected_are_left_alone() {
 
     BYTE* none = nullptr;
     zap::ApItems no_table;
+    zap::TextureCheck no_table_check;
     no_table.set_labels({{1, "X"}});
     no_table.watch(reinterpret_cast<BYTE*>(&none), 1);
     check(!no_table.restyled(), "no records loaded: nothing");
@@ -194,19 +198,22 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems earlier;
+    zap::TextureCheck earlier_check;
     earlier.set_labels({{1, "OLD NAME"}});
     earlier.watch(holder(), 1);  // and then unloaded with no frame to restore it
     zap::ApItems later;
+    zap::TextureCheck later_check;
     later.set_labels({{1, "NEW NAME"}});
     later.watch(holder(), 1);
     check(later.restyled() && name() == "NEW NAME", "a later helper takes it over and renames it");
-    later.restore(holder(), sprites(), zap::GlFunctions{});
+    later.restore(holder(), sprites(), zap::GlFunctions{}, later_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "and puts the game's own values back");
 }
 
 void test_a_reload_is_restyled_again() {
     reset_records();
     zap::ApItems items;
+    zap::TextureCheck items_check;
     items.set_labels({{1, "X"}});
     items.watch(holder(), 1);
     reset_records();  // the game reloaded its records
@@ -219,10 +226,11 @@ void test_painting() {
     reset_gl();
     zap::GlFunctions gl = fake_gl();
     zap::ApItems items;
-    items.paint(sprites(), gl, 0);
+    zap::TextureCheck items_check;
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.empty(), "nothing painted before the labels arrive");
     items.set_labels({{1, "X"}});
-    items.paint(sprites(), gl, 0);
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.size() == 3, "two frames and the glyph");
     if (g_uploads.size() != 3) return;
     check(items.painted_texture() == 7, "into the sprite texture");
@@ -240,18 +248,18 @@ void test_painting() {
 
     check(g_readbacks == 1, "the texture read back before the first paint");
     g_uploads.clear();
-    items.paint(sprites(), gl, 0);
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.empty(), "not every frame");
-    items.paint(sprites(), gl, 299);
+    items.paint(sprites(), gl, items_check, 299);
     check(g_uploads.empty(), "the arrow keeps its color for 300 ms");
-    items.paint(sprites(), gl, 300);
+    items.paint(sprites(), gl, items_check, 300);
     check(g_uploads.size() == 1 && g_uploads[0].x == 240 && g_uploads[0].y == 816,
           "then only the arrow's frame is repainted");
     std::vector<uint8_t> second = g_uploads.empty() ? std::vector<uint8_t>() : g_uploads[0].pixels;
     g_uploads.clear();
-    items.paint(sprites(), gl, 450);
+    items.paint(sprites(), gl, items_check, 450);
     check(g_uploads.empty(), "not again until the color changes");
-    items.paint(sprites(), gl, 600);
+    items.paint(sprites(), gl, items_check, 600);
     check(g_uploads.size() == 1 && g_uploads[0].pixels != second, "and back: the arrow flashes");
     check(g_bound == 3 && g_row_length == 5, "the game's state put back after an arrow repaint");
     g_uploads.clear();
@@ -260,60 +268,66 @@ void test_painting() {
     reset_gl();
     g_known_art = false;
     zap::ApItems flipped;
+    zap::TextureCheck flipped_check;
     flipped.set_labels({{1, "X"}});
-    flipped.paint(sprites(), gl, 0);
+    flipped.paint(sprites(), gl, flipped_check, 0);
     check(g_uploads.empty() && flipped.painted_texture() == 0, "unexpected art: nothing painted");
 
     // Something already where the arrow logo goes (another build's art, say): never painted.
     reset_gl();
     g_frame95_used = true;
     zap::ApItems used;
+    zap::TextureCheck used_check;
     used.set_labels({{1, "X"}});
-    used.paint(sprites(), gl, 0);
+    used.paint(sprites(), gl, used_check, 0);
     check(g_uploads.empty() && used.painted_texture() == 0, "frame 95 not empty: nothing painted");
 
     // Another texture size (not the sprite sheet): nothing uploaded.
     reset_gl();
     g_width = 1024;
     zap::ApItems other;
+    zap::TextureCheck other_check;
     other.set_labels({{1, "X"}});
-    other.paint(sprites(), gl, 0);
+    other.paint(sprites(), gl, other_check, 0);
     check(g_uploads.empty() && other.painted_texture() == 0, "a texture of another size is left alone");
 
     // An unpack buffer bound: pixels would be read from it, so nothing is uploaded.
     reset_gl();
     g_unpack_buffer = 9;
     zap::ApItems buffered;
+    zap::TextureCheck buffered_check;
     buffered.set_labels({{1, "X"}});
-    buffered.paint(sprites(), gl, 0);
+    buffered.paint(sprites(), gl, buffered_check, 0);
     check(g_uploads.empty(), "an unpack buffer bound: nothing uploaded");
 
     // A menu open: the logos come off (menus draw item frames too); back in the world, they go
     // back on at once.
     reset_gl();
     zap::ApItems menu;
+    zap::TextureCheck menu_check;
     menu.set_labels({{1, "X"}});
-    menu.paint(sprites(), gl, 0);
+    menu.paint(sprites(), gl, menu_check, 0);
     g_uploads.clear();
-    menu.paint(sprites(), gl, 10, false);
+    menu.paint(sprites(), gl, menu_check, 10, false);
     bool blank = g_uploads.size() == 3;
     for (const Upload& u : g_uploads) {
         for (uint8_t b : u.pixels) blank &= b == 0;
     }
     check(blank && menu.painted_texture() == 0, "a menu clears both frames and the glyph");
     g_uploads.clear();
-    menu.paint(sprites(), gl, 20, false);
+    menu.paint(sprites(), gl, menu_check, 20, false);
     check(g_uploads.empty(), "and leaves them clear while it stays open");
-    menu.paint(sprites(), gl, 30);
+    menu.paint(sprites(), gl, menu_check, 30);
     check(g_uploads.size() == 3 && menu.painted_texture() == 7, "the world paints them again");
 
     // Restore clears the painted pixels.
     reset_gl();
     zap::ApItems painted;
+    zap::TextureCheck painted_check;
     painted.set_labels({{1, "X"}});
-    painted.paint(sprites(), gl, 0);
+    painted.paint(sprites(), gl, painted_check, 0);
     g_uploads.clear();
-    painted.restore(holder(), sprites(), gl);
+    painted.restore(holder(), sprites(), gl, painted_check);
     bool cleared = g_uploads.size() == 3;
     for (const Upload& u : g_uploads) {
         for (uint8_t b : u.pixels) cleared &= b == 0;
@@ -350,7 +364,8 @@ void test_font_glyph() {
     reset_gl();
     zap::GlFunctions gl = fake_gl();
     zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
-    lock.paint(sprites(), gl);
+    zap::TextureCheck lock_check;
+    lock.paint(sprites(), gl, lock_check);
     const int x = (zap::kLockGlyph % 16) * 8, y = 976 + (zap::kLockGlyph / 16) * 8;
     check(lock.painted() && g_uploads.size() == 1 && g_uploads[0].x == x && g_uploads[0].y == y &&
               g_uploads[0].w == 8 && g_uploads[0].h == 8,
@@ -360,9 +375,9 @@ void test_font_glyph() {
               alpha(g_uploads[0], 3, 4) == 0 && alpha(g_uploads[0], 0, 6) == 0xFF,
           "drawn from its rows");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and pixel store are put back");
-    lock.paint(sprites(), gl);
+    lock.paint(sprites(), gl, lock_check);
     check(g_uploads.size() == 1, "not painted again every frame");
-    lock.clear(sprites(), gl);
+    lock.clear(sprites(), gl, lock_check);
     bool blank = true;
     for (uint8_t v : g_uploads.back().pixels) blank = blank && v == 0;
     check(!lock.painted() && g_uploads.size() == 2 && blank, "cleared");
@@ -370,15 +385,52 @@ void test_font_glyph() {
     reset_gl();
     g_known_art = false;
     zap::FontGlyph other(zap::kLockGlyph, zap::kLockRows);
-    other.paint(sprites(), gl);
+    zap::TextureCheck other_check;
+    other.paint(sprites(), gl, other_check);
     check(!other.painted() && g_uploads.empty(), "a texture not as expected is left alone");
     int reads = g_readbacks;
-    for (int i = 0; i < 10; ++i) other.paint(sprites(), gl);
+    for (int i = 0; i < 10; ++i) other.paint(sprites(), gl, other_check);
     check(g_readbacks == reads, "and not read back again every frame");
+}
+
+// Everything painted into the sprite texture shares one read of it (16 MB), until the game
+// makes the texture again.
+void test_one_readback_for_every_painter() {
+    reset_records();
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::TextureCheck shared;
+    zap::ApItems items;
+    items.set_labels({{1, "X"}});
+    zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
+    zap::FontGlyph disk(zap::kDiskGlyph, zap::kDiskRows);
+    items.paint(sprites(), gl, shared, 0);
+    lock.paint(sprites(), gl, shared);
+    disk.paint(sprites(), gl, shared);
+    check(g_readbacks == 1 && items.painted_texture() == 7 && lock.painted() && disk.painted(),
+          "the logos and two glyphs painted after one readback");
+    g_texture_object[0] = 8;  // the game made the texture again
+    lock.paint(sprites(), gl, shared);
+    disk.paint(sprites(), gl, shared);
+    check(g_readbacks == 2 && lock.painted() && disk.painted(), "a new texture is read once more");
+
+    // One slot taken (another build's art in frame 95): the logos are not painted, the glyphs
+    // still are.
+    reset_gl();
+    g_frame95_used = true;
+    zap::TextureCheck taken;
+    zap::ApItems blocked;
+    blocked.set_labels({{1, "X"}});
+    zap::FontGlyph padlock(zap::kLockGlyph, zap::kLockRows);
+    blocked.paint(sprites(), gl, taken, 0);
+    padlock.paint(sprites(), gl, taken);
+    check(blocked.painted_texture() == 0 && padlock.painted() && g_readbacks == 1,
+          "a slot not blank stops only what paints there");
 }
 
 int main() {
     test_font_glyph();
+    test_one_readback_for_every_painter();
     test_restyle_and_names();
     test_one_record_not_as_expected_leaves_the_other_restyled();
     test_records_not_as_expected_are_left_alone();

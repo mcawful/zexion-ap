@@ -554,6 +554,7 @@ private:
     void resolve_item_labels();
     void set_popup_width(int width);
     GlFunctions gl_;
+    TextureCheck texture_check_;  // for everything painted into the sprite texture
     int skip_frames_ = 0;  // frames until the next escape-skip check
 };
 

@@ -871,18 +871,19 @@ void Game::restore_menu(WidgetCallback callback) {
 void Game::watch_assists() {
     if (!configured_) return;
     if (assists_locked_) {
-        lock_glyph_.paint(sprite_texture_, gl_);  // the padlock in the font while armed
+        // The padlock in the font while armed.
+        lock_glyph_.paint(sprite_texture_, gl_, texture_check_);
         assists_.install(menu_);
         return;
     }
     if (assists_.installed()) assists_.restore(menu_);
-    if (lock_glyph_.painted()) lock_glyph_.clear(sprite_texture_, gl_);
+    if (lock_glyph_.painted()) lock_glyph_.clear(sprite_texture_, gl_, texture_check_);
 }
 
 void Game::restore_assists() {
     if (!configured_) return;
     assists_.restore(menu_);
-    lock_glyph_.clear(sprite_texture_, gl_);
+    lock_glyph_.clear(sprite_texture_, gl_, texture_check_);
 }
 
 namespace {
@@ -1063,7 +1064,7 @@ void Game::restore_discs() {
     equip_.restore(equip_at_);
     equip_screen_.restore(equip_at_);
     pause_row_.restore(pause_at_);
-    disk_glyph_.clear(sprite_texture_, gl_);
+    disk_glyph_.clear(sprite_texture_, gl_, texture_check_);
 }
 
 void Game::watch_equipment() {
@@ -1071,10 +1072,11 @@ void Game::watch_equipment() {
     equip_screen_.tidy(equip_at_);
     pause_row_.watch(pause_at_);
     if (!scan_line_.empty()) {
-        disk_glyph_.paint(sprite_texture_, gl_);  // the disk's icon while a count is shown
+        // The disk's icon while a count is shown.
+        disk_glyph_.paint(sprite_texture_, gl_, texture_check_);
         equip_.install(equip_at_);
     } else {
-        if (disk_glyph_.painted()) disk_glyph_.clear(sprite_texture_, gl_);
+        if (disk_glyph_.painted()) disk_glyph_.clear(sprite_texture_, gl_, texture_check_);
         if (equip_.installed()) equip_.restore(equip_at_);
         if (equip_screen_.holds_hook()) equip_screen_.restore(equip_at_);
     }
@@ -1105,9 +1107,10 @@ void Game::watch_files() {
     files_.watch(files_at_);
     for (FontGlyph& glyph : disk_header_) {
         if (files_.on()) {
-            glyph.paint(sprite_texture_, gl_);  // DISK over the keys while the count is on
+            // DISK over the keys while the count is on.
+            glyph.paint(sprite_texture_, gl_, texture_check_);
         } else if (glyph.painted()) {
-            glyph.clear(sprite_texture_, gl_);
+            glyph.clear(sprite_texture_, gl_, texture_check_);
         }
     }
 }
@@ -1122,7 +1125,7 @@ void Game::restore_files() {
     offline_file_counts_.clear();
     files_.set(0, {});
     files_.restore(files_at_);
-    for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_);
+    for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_, texture_check_);
 }
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
@@ -1580,7 +1583,7 @@ void Game::watch_ap_items() {
     } else {
         ap_items_.release(item_records_);
     }
-    ap_items_.paint(sprite_texture_, gl_, GetTickCount64(), world);
+    ap_items_.paint(sprite_texture_, gl_, texture_check_, GetTickCount64(), world);
     // The pickup popup as wide as that label (width_cell's), if the stand-ins are ours; the game's 24
     // elsewhere. Called from the frame call, on the game's thread, so the game is not running
     // the instruction while it changes.
@@ -1653,7 +1656,7 @@ void Game::restore_ap_items() {
     if (!configured_) return;
     looks_.restore(looks_places());  // the objects first, while their records are still ours
     looks_.set_items({});
-    ap_items_.restore(item_records_, sprite_texture_, gl_);
+    ap_items_.restore(item_records_, sprite_texture_, gl_, texture_check_);
     set_popup_width(kGamePopupWidth);
     label_widths_.clear();
     item_labels_.clear();

@@ -81,6 +81,43 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
 // From opengl32.dll if the process has loaded it; otherwise all null.
 GlFunctions load_gl();
 
+// The sprite texture as read back (glGetTexImage, 16 MB), once per texture for everything the
+// helper paints into it: whether it holds the game's art where Sprites.png has it, and the alpha
+// of the font's glyphs and the item frames as they were, against which each place is checked
+// before the first paint (FontGlyph, ApItems). A texture that could not be read, or whose art
+// is not where the PNG has it (a sprite mod, say), is read again a few times, some seconds
+// apart (it may have been loading), then not until the texture changes.
+class TextureCheck {
+public:
+    // Game thread, inside on_texture (the texture bound, plain pixel stores). Whether the w x h
+    // place at (x, y), in the font or the item frames, is blank in the texture as read, or
+    // already the helper's: `ours(px, py)` says where the helper's pixels are opaque.
+    template <typename Ours>
+    bool place_ok(unsigned texture, const GlFunctions& gl, int x, int y, int w, int h,
+                  Ours&& ours) {
+        if (!ready(texture, gl) || !kept(x, y, w, h)) return false;
+        for (int py = 0; py < h; ++py) {
+            for (int px = 0; px < w; ++px) {
+                uint8_t a = alpha(x + px, y + py);
+                if (a != 0 && a != (ours(px, py) ? 0xFF : 0)) return false;
+            }
+        }
+        return true;
+    }
+
+private:
+    bool ready(unsigned texture, const GlFunctions& gl);
+    void read(const GlFunctions& gl);
+    static bool kept(int x, int y, int w, int h);
+    uint8_t alpha(int x, int y) const;
+
+    unsigned texture_ = 0;  // the texture last read
+    bool good_ = false;     // read, with the game's art where expected
+    int tries_ = 0;
+    uint64_t tried_ms_ = 0;
+    std::vector<uint8_t> alpha_;  // the kept rectangle's alpha, as read
+};
+
 // One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
 // game's art (the locked ASSIST's padlock, menu.h). Painted while wanted, again now and then
 // and whenever the texture changes, and cleared when no longer wanted.
@@ -90,19 +127,27 @@ public:
     FontGlyph(uint8_t code, const char (*rows)[9]) : code_(code), rows_(rows) {}
     // Game thread (the GL context current). `texture_holder` holds the pointer to the sprite
     // data.
-    void paint(BYTE* texture_holder, const GlFunctions& gl);
-    void clear(BYTE* texture_holder, const GlFunctions& gl);
+    void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
+    void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     bool painted() const { return painted_ != 0; }
 
+    // Inside on_texture: whether its slot may be painted, and the slot painted (or cleared).
+    bool fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const;
+    void upload_pixels(const GlFunctions& gl, bool clear) const;
+
 private:
-    bool upload(unsigned texture, const GlFunctions& gl, bool clear);
+    bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear);
+    int x() const { return (code_ % 16) * 8; }
+    int y() const;
     uint8_t code_;
     const char (*rows_)[9];
     unsigned painted_ = 0;
-    unsigned verified_ = 0;
     unsigned failed_ = 0;  // a texture it could not paint into: tried again only now and then
     int frames_to_paint_ = 0;
 };
+
+// The logo glyph's ring of dots (kApItemGlyph).
+extern const char kApItemRows[8][9];
 
 class ApItems {
 public:
@@ -126,11 +171,13 @@ public:
     // texture changes. `texture_holder` holds the pointer to the sprite data.
     // `now_ms` is a millisecond clock (GetTickCount64): the progression arrow's color follows it.
     // `world`: false while a menu is open, when the logos are cleared instead.
-    void paint(BYTE* texture_holder, const GlFunctions& gl, uint64_t now_ms, bool world = true);
+    void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check, uint64_t now_ms,
+               bool world = true);
 
     // Game thread: the record back to the game's own values (also one an earlier helper left
     // restyled), the pixels cleared if this helper painted them, the labels dropped.
-    void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl);
+    void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,
+                 TextureCheck& check);
 
     // Game thread: the records back to the game's own values, the labels and the logo kept
     // (the next watch restyles them again): for menus, which show the records too.
@@ -141,15 +188,16 @@ public:
 
 private:
     BYTE* record(BYTE* records_holder, int item) const;
-    // Paints (or clears) the logo, the first time for a texture only after reading it back:
-    // the two places blank (or already the logo) and known art where the PNG has it.
+    // Paints (or clears) the logos and the glyph, only where the texture check finds the three
+    // places blank (or already the helper's) and the game's art where the PNG has it.
     // `arrow_only`: just the progression logo's frame, for the arrow's next color.
-    bool upload(unsigned texture, const GlFunctions& gl, bool clear, bool arrow_only);
+    bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear,
+                bool arrow_only);
 
     std::map<int, std::string> labels_;
     BYTE* records_[kStandInCount] = {};
+    FontGlyph glyph_{kApItemGlyph, kApItemRows};
     unsigned painted_ = 0;
-    unsigned verified_ = 0;  // the texture read back and found as expected
     int frames_to_paint_ = 0;
     int arrow_phase_ = 0;
 };
