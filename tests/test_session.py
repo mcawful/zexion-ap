@@ -334,12 +334,26 @@ def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     assert popups == ["popup 17 FROM Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
 
 
-def test_no_popups_before_the_servers_list_arrives(setup) -> None:
+def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setup) -> None:
     session, g = setup
     helper = FakeHelper(g)
     session.helper = helper
+    assert give(session, g, [17], senders=["Alice"]) == {}
+    assert helper.requests == [] and g.inv[17] == 0
+    session.mark_announced(0)  # the server's count: no popup shown yet
     give(session, g, [17], senders=["Alice"])
-    assert "popup" not in helper.requests[-1]
+    assert g.inv[17] == 1 and "popup 17 FROM Alice" in helper.requests[-1]
+
+
+def test_items_received_while_offline_pop_up_and_shown_ones_do_not(setup) -> None:
+    session, g = setup
+    helper = FakeHelper(g)
+    session.helper = helper
+    session.mark_announced(1)  # the first had its popup in an earlier connection
+    give(session, g, [17, 36], senders=["Alice", "Bob"])
+    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
+    assert popups == ["popup 36 FROM Bob"]
+    assert session.announced == 2
 
 
 def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> None:

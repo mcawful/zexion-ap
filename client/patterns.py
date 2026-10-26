@@ -1372,6 +1372,35 @@ TARGETS = (
         ),
     ),
     Target(
+        "map_handler",
+        "holds the map screen's per-frame handler (0x169E50), the map menu's mark",
+        0xCDD5E0,
+        (
+            # from the instruction at RVA 0x16d5ba on B1 (the map builder)
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 44 89 81 70 01 00 00 48 8B 82 "
+                    "E0 01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+            # from the instruction at RVA 0x16e976 on B1
+            Pattern(
+                (
+                    "48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 89 91 70 01 00 00 48 8B 87 E0 "
+                    "01 00 00"
+                ),
+                3,
+                "rip",
+                7,
+                0x0,
+            ),
+        ),
+    ),
+    Target(
         "file_panel_fn",
         "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)",
         0xB6920,

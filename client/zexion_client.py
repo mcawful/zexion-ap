@@ -270,6 +270,8 @@ class ZexionContext(CommonContext):
         # finds, by location index: the server's record, and this client's until it has them.
         self.popped_key: str | None = None
         self.popped_mine: set[int] = set()
+        self.announced_key: str | None = None
+        self.announced_sent: int | None = None  # the count last stored on the server
         self.save_collected: set[int] = set()  # the loaded save's collected locations
         self.client_back_sent = False  # the helper asked once per attach (client_back)
         self.other_save_sent = False  # the helper told of another seed's save, this load
@@ -356,11 +358,9 @@ class ZexionContext(CommonContext):
         if self.awaiting_backlog and cmd != "Connected":
             # The server sends what the slot already holds right after Connected, in the same
             # message, and nothing when it holds nothing: so only the packet after Connected can
-            # be that list. A later list from index 0 is the slot's first item, popped up.
+            # be that list. Which of them have had their popup is the server's count
+            # (announced_tick).
             self.awaiting_backlog = False
-            if self.session is not None:
-                backlog = cmd == "ReceivedItems" and args.get("index") == 0
-                self.session.mark_announced(len(self.received()[0]) if backlog else 0)
             self.items_listed = True
         if cmd == "Connected":
             self.awaiting_backlog = True
@@ -379,6 +379,11 @@ class ZexionContext(CommonContext):
             self.popped_key = f"zexion_popped_{self.team}_{self.slot}"
             self.set_notify(self.popped_key)
             self.popped_mine = set()
+            # How many received items have had their popup, kept by the server so the
+            # items received while no client ran get theirs on connecting (announced_tick).
+            self.announced_key = f"zexion_announced_{self.team}_{self.slot}"
+            self.set_notify(self.announced_key)
+            self.announced_sent = None
             # A world from before Area Map hints sends no "hints": Area Maps are filler.
             self.hint_targets = [list(t) for t in slot.get("hints", [])]
             self.hints_key = f"zexion_hints_{self.team}_{self.slot}"
@@ -446,6 +451,8 @@ class ZexionContext(CommonContext):
         self.found_key = None
         self.popped_key = None
         self.popped_mine = set()
+        self.announced_key = None
+        self.announced_sent = None
         self.save_collected = set()
         self.hint_targets = []
         self.hints_key = None
@@ -600,6 +607,52 @@ async def mission_tick(ctx: ZexionContext, step: session.Step) -> None:
         "offered. YES starts the game's ending, which sends the goal; NO plays on, and it is "
         "offered again after the next save there."
     )
+
+
+def stored_announced(ctx: ZexionContext) -> int | None:
+    """The server's count of received items whose popup has been shown, or None until it has
+    been read. A slot with none stored (played before the count, or its data lost) counts
+    every item it holds now as shown, as the client did before: no flood of old popups."""
+    key = ctx.announced_key
+    if key is None or key not in ctx.stored_data:
+        return None
+    stored = ctx.stored_data.get(key)
+    if isinstance(stored, int) and stored >= 0:
+        return stored
+    return len(ctx.received()[0])
+
+
+async def announced_tick(ctx: ZexionContext, current: session.Session) -> None:
+    """Received items' popups, kept across connections: the session starts from the
+    server's count (so an item received while no client ran pops up when it is given,
+    and a reconnect replays none), and the count is stored again as popups are shown
+    (the larger one wins, for two clients of a slot)."""
+    stored = stored_announced(ctx)
+    if stored is None or not ctx.items_listed:
+        return
+    if current.announced is None:
+        current.mark_announced(min(stored, len(ctx.received()[0])))  # counts as received() does
+        ctx.announced_sent = stored
+        return
+    count = current.announced
+    if count <= max(stored, ctx.announced_sent or 0):
+        return
+    ctx.announced_sent = count
+    try:
+        await ctx.send_msgs(
+            [
+                {
+                    "cmd": "Set",
+                    "key": ctx.announced_key,
+                    "default": 0,
+                    "want_reply": False,
+                    "operations": [{"operation": "max", "value": count}],
+                }
+            ]
+        )
+    except Exception as exc:  # a closing connection: sent again on the next poll
+        ctx.announced_sent = None
+        logger.warning(f"Recording the item popups shown failed ({exc}).")
 
 
 def popped(ctx: ZexionContext) -> set[int] | None:
@@ -1390,6 +1443,8 @@ async def game_loop(ctx: ZexionContext) -> None:
                 await asyncio.sleep(10)
                 continue
         current = ctx.session
+        if current is not None:
+            await announced_tick(ctx, current)
         try:
             codes, senders = ctx.received()
             notes: dict[int, str] = {}
@@ -1407,6 +1462,7 @@ async def game_loop(ctx: ZexionContext) -> None:
             step = await asyncio.to_thread(
                 current.step, ctx.game_conn, codes, senders=senders, notes=notes
             )
+            await announced_tick(ctx, current)  # the popups just shown, stored at once
         except game.GameNotRunning:
             logger.info("Zexion has closed.")
             if ctx.shield_pending is not None:

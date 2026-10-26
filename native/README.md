@@ -49,7 +49,7 @@ back); `tests/game_tests.cpp` also the received shield and death, the ASSIST wat
 scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
 `tests/files_tests.cpp` the file select's disk count, `tests/intel_tests.cpp` the Intel Chip,
-`tests/title_tests.cpp` the title screen's lines, `tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
+`tests/title_tests.cpp` the title screen's lines, `tests/mapmarks_tests.cpp` the map's markers and names, `tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
 helper outside Zexion), `tests/offline_tests.cpp` AP saves without the client (the seed file,
 its match and disk count, the folder, the cache check, `offline_put`, and a stand-in game dressed
 and undressed),
@@ -134,9 +134,10 @@ through the real pipe and hook in a busy host.
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
       inside the game's image, functions in its code and data outside it (writable, except the
       C runtime's `malloc` and `free` import slots, which are only read), or the whole
-      configuration is refused. Every name is required except the title screen's three
+      configuration is refused. Every name is required except the title screen's three and `map_handler`
       (`text_new_fn`, `text_link_fn`, `draw_layer`), so an offline cache from an older
-      helper still configures it, without the title screen's lines.
+      helper still configures it, without the title screen's lines and the map cursor's names (the map's markers need only
+      `map_grid`).
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
@@ -434,6 +435,16 @@ through the real pipe and hook in a busy host.
   disk counted offline, a fresh start with no client, and the two disks picked up offline
   sent once the client connected; `docs/re/memory.md`, "AP saves without the client"). The
   CLIENT CONNECTED. notice: live-tested 2026-10-25 (0.21.8), asked for by the client.
+- **The map.** In an Archipelago save (labels known), every 15th frame call raises the
+  map squares of the progression stand-in (item 48: this player's OS Install Disks and
+  other players' progression items) from the game's basic marker to its important one
+  (`src/mapmarks.cpp`; the marker is the square's value in the saved grid, the game's
+  important range being item IDs 3 to 35), and while the map is open the helper wraps the
+  map's per-frame handler (both of its menu child's slots, `+0x168` and `+0x178`): after
+  the game's handler writes the cursor's name, it writes the square's label's name over a
+  SCRAP ENERGY or SCRAP CHUNK, in the same frame. The handler goes back when off and before
+  an unload, which refuses while an open map holds the stand-in. Working in game
+  (2026-10-25, helpers 0.24.0 and 0.25.1; `docs/re/memory.md`, "Map markers").
 - **The title screen's lines.** While configured (by a client, or with none from the
   cached addresses) and no save is loaded, every 8th frame call looks through the
   game's draw list for the
@@ -474,7 +485,7 @@ through the real pipe and hook in a busy host.
   with the OS Install Disks goal's changes (the scanner's text, the pause screen's branch,
   EQUIPMENT's callback and the Energy Tank panel's handler, a prompt opener not yet run and a
   prompt's YES, pointed at NO, and the file screens' entry handlers) and the Area Map's
-  record (INTEL CHIP) and the offline look, hides the title screen's lines, and refuses (`error a menu
+  record (INTEL CHIP), the offline look and the map's handler, hides the title screen's lines, and refuses (`error a menu
   still holds the helper's callback (no frame came); not unloading`) if no frame came to take
   ARCHIPELAGO off, or while an open menu's panel or entry, or the game's transition routine,
   may still hold one of the helper's functions, since the game would call into the unloaded
