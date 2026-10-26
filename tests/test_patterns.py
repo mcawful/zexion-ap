@@ -27,7 +27,7 @@ def targets() -> list[dict]:
         {
             "name": t.name,
             "description": t.description,
-            "b1_rva": t.b1_rva,
+            "rvas": dict(t.rvas),
             "patterns": [[p.text, p.disp_at, p.kind, p.rip_end, p.addend] for p in t.patterns],
         }
         for t in TARGETS
@@ -39,7 +39,7 @@ def frozen_text() -> str:
     lines = ["{", f' "builds": [{", ".join(json.dumps(b) for b in builds())}],', ' "targets": [']
     listed = targets()
     for i, t in enumerate(listed):
-        head = {k: t[k] for k in ("name", "description", "b1_rva")}
+        head = {k: t[k] for k in ("name", "description", "rvas")}
         lines.append(f"  {json.dumps(head)[:-1]}, " + '"patterns": [')
         pats = [f"   {json.dumps(p)}" for p in t["patterns"]]
         lines.append(",\n".join(pats))
@@ -64,6 +64,12 @@ def test_the_constructors_build_each_kind() -> None:
     assert rip("C6 05 ?? ?? ?? ?? 01", 2, 7, -2).addend == -2
     assert at("4C 8B DC") == Pattern("4C 8B DC", 0, "at", 0, 0)
     assert at("4C 8B DC", 7) == Pattern("4C 8B DC", 0, "at", 0, 7)
+
+
+def test_every_target_has_an_rva_for_each_known_build_and_no_other() -> None:
+    names = {b.name for b in KNOWN_BUILDS}
+    for t in TARGETS:
+        assert set(t.rvas) == names, t.name
 
 
 if __name__ == "__main__":

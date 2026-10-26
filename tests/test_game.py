@@ -66,9 +66,10 @@ def test_patterns_that_disagree_are_refused() -> None:
     other = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 CC", 3, "rip", 7, 0)
     code = code_with(lea(0x100), b"\x48\x8d\x05" + struct.pack("<i", 0x900) + b"\x48\x01\xd0\xcc")
     with pytest.raises(game.PatternError, match="disagree"):
-        game.locate_all(code, 0, [Target("t", "test", 0, (LEA, other))])
+        game.locate_all(code, 0, [Target("t", "test", {}, (LEA, other))])
     agree = Pattern(other.text, 3, "rip", 7, 0x100 - 0x900 - 11)
-    assert game.locate_all(code, 0, [Target("t", "test", 0, (LEA, agree))])["t"] == 0x40 + 7 + 0x100
+    found = game.locate_all(code, 0, [Target("t", "test", {}, (LEA, agree))])
+    assert found["t"] == 0x40 + 7 + 0x100
 
 
 # --- PE header and build identity ----------------------------------------------------------

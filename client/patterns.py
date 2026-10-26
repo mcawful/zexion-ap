@@ -4,13 +4,14 @@ Each target has two or more patterns from different code (candidates from tools/
 every one must match exactly once in .text and all must lead to the same address
 (client/game.py). Where a pattern refers to a field inside the target rather than its start,
 another refers to the start, so a layout change makes them disagree. Recorded with evidence
-in docs/re/memory.md. ``b1_rva`` is what each target resolved to on build B1, for checking
-only: code never uses it as an address.
+in docs/re/memory.md. ``rvas`` is what each target resolved to on each build it was checked
+on, by the build's name in ``KNOWN_BUILDS`` (tools/check_patterns.py compares them), for
+checking only: code never uses it as an address.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -45,8 +46,8 @@ class Pattern:
 class Target:
     name: str
     description: str
-    b1_rva: int
-    patterns: tuple[Pattern, ...]
+    rvas: dict[str, int] = field(hash=False)  # what it resolved to, by build name
+    patterns: tuple[Pattern, ...] = ()
 
 
 def rip(text: str, disp_at: int, rip_end: int, addend: int = 0) -> Pattern:
@@ -67,7 +68,7 @@ TARGETS = (
     Target(
         "map_grid",
         "the live 54 x 54 map grid (one byte per cell; 0x1B = item collected)",
-        0x3E469D,
+        {"B1": 0x3E469D},
         (
             # from the instruction at RVA 0x16e30c on B1
             rip("48 8D 05 ?? ?? ?? ?? 41 FF C7 49 03 C2 42 0F B6 14 00 80 FA 18 7C 0B 8D 43 01 80 FA 32 0F 4F C3 8B D8 48 8D 05 ?? ?? ?? ??", 3, 7),
@@ -78,7 +79,7 @@ TARGETS = (
     Target(
         "inventory",
         "the live inventory, one byte per item ID (inside the player state)",
-        0x3ED47E,
+        {"B1": 0x3ED47E},
         (
             # from the instruction at RVA 0x1e36a9 on B1
             rip("C6 05 ?? ?? ?? ?? 01 44 89 25 ?? ?? ?? ?? 44 88 25 ?? ?? ?? ?? C7 05 ?? ?? ?? ?? 00 00 03 00", 2, 7, -0x2),
@@ -89,7 +90,7 @@ TARGETS = (
     Target(
         "pickup_counter",
         "the pickup counter shown as ITEMS: x/150 (16-bit)",
-        0x3D0168,
+        {"B1": 0x3D0168},
         (
             # from the instruction at RVA 0x1216f on B1
             rip("66 FF 0D ?? ?? ?? ?? EB 55 66 83 F8 07 75 4F 66 C7 83 2C 0D 00 00 01 00", 3, 7),
@@ -100,7 +101,7 @@ TARGETS = (
     Target(
         "rando_blob",
         "the loaded save's randomizer section: location list, item table, settings",
-        0xCDD6D0,
+        {"B1": 0xCDD6D0},
         (
             # from the instruction at RVA 0xeb6ec on B1
             rip("48 8D 05 ?? ?? ?? ?? 44 0F B7 74 24 44 88 94 08 6C 02 00 00 41 0F BF D1 44 0F B7 C3 66 44 3B CB 7D 1C", 3, 7),
@@ -113,7 +114,7 @@ TARGETS = (
     Target(
         "slot_array",
         "the in-memory copy of every save slot's first block (stride 0x9408)",
-        0x230600,
+        {"B1": 0x230600},
         (
             # from the instruction at RVA 0x1741c4 on B1
             rip("48 8D 05 ?? ?? ?? ?? 48 03 C1 48 8D 4D 67 48 89 4C 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 01 00 00 00", 3, 7),
@@ -124,7 +125,7 @@ TARGETS = (
     Target(
         "menu_state",
         "nonzero while a menu is open (pause, map, quit or file-select menus); 0 otherwise",
-        0x345F03,
+        {"B1": 0x345F03},
         (
             # from the instruction at RVA 0xa905a on B1 (stores 2)
             rip("C6 05 ?? ?? ?? ?? 02 48 8B 07 33 F6 44 8B C6 48 8B 78 10 48 8B 87 E0 01 00 00 48 8B 08 48 8B 91 F0 01 00 00 8B CE 39 8A D8 01 00 00", 2, 7),
@@ -135,7 +136,7 @@ TARGETS = (
     Target(
         "save_loaded",
         "the loaded slot's empty marker (file 0x9360): 0xFF when no save is loaded",
-        0x3D016A,
+        {"B1": 0x3D016A},
         (
             # from the instruction at RVA 0x1633c6 on B1 (turns the player on or off by it)
             rip("80 3D ?? ?? ?? ?? FF 74 0D 48 8B 40 38 C6 80 20 01 00 00 01 EB 0B 48 8B 40 38 C6 80 20 01 00 00 00 48 8B 87 F0 01 00 00", 2, 7),
@@ -149,7 +150,7 @@ TARGETS = (
         "rando_marker",
         "the loaded save's randomizer marker (file 0x9402, 16-bit): 1 for a randomizer save, 0 "
         "for a normal one; the randomizer section is copied in only when it is 1",
-        0x3E2DD8,
+        {"B1": 0x3E2DD8},
         (
             # from the instructions at RVA 0x9c91c-0x9c923 on B1 (the load routine reads the
             # save's 0x9402, block offset 0x9400, and stores it)
@@ -163,7 +164,7 @@ TARGETS = (
     Target(
         "message_fn",
         "the game message function: shows a popup (memory.md, Game functions the helper calls)",
-        0x182670,
+        {"B1": 0x182670},
         (
             # from the call at RVA 0x1f90f on B1 (the pickup popup)
             rip("E8 ?? ?? ?? ?? 44 38 3D ?? ?? ?? ?? 48 8B D8 66 44 89 BC 24 90 00 00 00", 1, 5),
@@ -176,7 +177,7 @@ TARGETS = (
     Target(
         "sound_fn",
         "the game's play-a-sound function",
-        0x75E00,
+        {"B1": 0x75E00},
         (
             # from the call at RVA 0x193178 on B1
             rip("E8 ?? ?? ?? ?? F2 0F 10 93 08 02 00 00 48 8D 35 ?? ?? ?? ?? F2 0F 10 83 10 02 00 00 0F 28 CA F2 0F 58 47 18 F2 0F 58 8B 00 02 00 00 66 41 FF C7", 1, 5),
@@ -189,7 +190,7 @@ TARGETS = (
     Target(
         "sound_system",
         "the static sound-system object the sound function takes first",
-        0x22F370,
+        {"B1": 0x22F370},
         (
             # from the instruction at RVA 0x1f9cd on B1 (the pickup sound)
             rip("F3 0F 10 44 11 5C 0F B7 54 11 5A 48 8D 0D ?? ?? ?? ?? F3 0F 11 44 24 20 E8 ?? ?? ?? ??", 14, 18),
@@ -200,7 +201,7 @@ TARGETS = (
     Target(
         "hud_number_fn",
         "sets a HUD number object's value (a double in xmm1)",
-        0x1F5B10,
+        {"B1": 0x1F5B10},
         (
             # from the call at RVA 0x9e325 on B1 (the refresh after a save loads)
             rip("E8 ?? ?? ?? ?? 0F BF 87 BE 0C 00 00 48 8D 8F B8 0B 00 00 66 0F 6E C8 F3 0F E6 C9 E8 ?? ?? ?? ?? 48 8B 87 E8 09 00 00", 1, 5),
@@ -213,7 +214,7 @@ TARGETS = (
     Target(
         "hud_layout_fn",
         "lays out the missile and bomb HUD (icons and digits) from the player state",
-        0x1D5470,
+        {"B1": 0x1D5470},
         (
             # from the call at RVA 0x9e308 on B1 (the refresh after a save loads)
             rip("E8 ?? ?? ?? ?? 44 0F BF 87 BC 0C 00 00 48 8D 8F 30 0B 00 00", 1, 5),
@@ -226,7 +227,7 @@ TARGETS = (
     Target(
         "energy_hud_fn",
         "redraws the energy-tank HUD from the player state",
-        0x1D70C0,
+        {"B1": 0x1D70C0},
         (
             # from the call at RVA 0x9e2f8 on B1 (the refresh after a save loads)
             rip("E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 44 0F BF 87 BC 0C 00 00", 1, 5),
@@ -239,7 +240,7 @@ TARGETS = (
     Target(
         "weapon_strip_fn",
         "redraws the weapon-switch icon strip while it is on screen",
-        0x1BC7A0,
+        {"B1": 0x1BC7A0},
         (
             # from the call at RVA 0x1fdfb on B1 (the pickup)
             rip("E8 ?? ?? ?? ?? 44 38 BF A7 10 00 00 75 06 41 0F B7 D7", 1, 5),
@@ -252,7 +253,7 @@ TARGETS = (
     Target(
         "suit_color_fn",
         "sets the suit's palette (Magnus Armor's color), through OpenGL",
-        0x1EDC00,
+        {"B1": 0x1EDC00},
         (
             # from the call at RVA 0xb4670 on B1
             rip("E8 ?? ?? ?? ?? 49 8B 84 24 F0 01 00 00 48 8B 88 28 02 00 00 48 8B 01 40 38 B8 20 01 00 00 0F 84 ?? ?? ?? ??", 1, 5),
@@ -265,7 +266,7 @@ TARGETS = (
     Target(
         "item_records",
         "holds a pointer to the item records (100 bytes each, indexed by item ID)",
-        0xCDD068,
+        {"B1": 0xCDD068},
         (
             # from the instruction at RVA 0x3dbf8 on B1
             rip("48 8B 05 ?? ?? ?? ?? 41 0F 28 C7 0F B6 5C 01 08 48 8B 0D ?? ?? ?? ?? 48 83 C1 08 F3 0F 10 5C 24 60", 3, 7),
@@ -276,7 +277,7 @@ TARGETS = (
     Target(
         "last_message",
         "holds a pointer to the last popup message, with its sequence number at +8",
-        0x3E29F0,
+        {"B1": 0x3E29F0},
         (
             # from the instruction at RVA 0x1826b0 on B1 (the message function)
             rip("4C 89 15 ?? ?? ?? ?? EB 40 41 C7 80 EC 01 00 00 01 00 00 00", 3, 7),
@@ -287,7 +288,7 @@ TARGETS = (
     Target(
         "weapon_strip_gate",
         "a byte that is set while the weapon strip may be redrawn",
-        0xCE02BD,
+        {"B1": 0xCE02BD},
         (
             # from the instruction at RVA 0x1fde5 on B1 (the pickup)
             rip("44 38 3D ?? ?? ?? ?? 74 12 66 44 39 BF 4C 0A 00 00", 3, 7),
@@ -298,7 +299,7 @@ TARGETS = (
     Target(
         "transition_fn",
         "holds the routine the game runs when the transition timer ends (a new game: newgame_fn)",
-        0xCE0F50,
+        {"B1": 0xCE0F50},
         (
             # from the instruction at RVA 0xf6395 on B1 (START GAME)
             rip("48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 42 C6 04 37 00", 3, 7),
@@ -311,7 +312,7 @@ TARGETS = (
     Target(
         "transition_timer",
         "frames left before the game runs transition_fn (32-bit)",
-        0xDF6870,
+        {"B1": 0xDF6870},
         (
             # from the instruction at RVA 0xf9e50 on B1
             rip("C7 05 ?? ?? ?? ?? 01 00 00 00 66 0F 6E D0 0F 5B D2 F3 0F 11 4C 24 20 E8 ?? ?? ?? ?? 8B 8F 30 02 00 00", 2, 10),
@@ -322,7 +323,7 @@ TARGETS = (
     Target(
         "flags",
         "the loaded game's flags, one byte each (0x9C4 of them; flag 250: the ending began)",
-        0x3CF78D,
+        {"B1": 0x3CF78D},
         (
             # from the instruction at RVA 0x1fcfd2 on B1
             rip("48 8D 0D ?? ?? ?? ?? 48 3B C1 72 1C 33 C9 41 0F B6 84 0E ED 00 00 00", 3, 7),
@@ -335,7 +336,7 @@ TARGETS = (
     Target(
         "event_table",
         "holds a pointer to the loaded area events, 0x28 bytes each (the AreaEvents file)",
-        0xDF6880,
+        {"B1": 0xDF6880},
         (
             # from the instruction at RVA 0x2a248 on B1
             rip("4C 8B 05 ?? ?? ?? ?? 33 D2 49 81 C0 E0 23 01 00 41 0F B6 CF 49 0F BE 00 FF 94 C6 ?? ?? ?? ?? 0F B6 54 24 7C", 3, 7),
@@ -348,7 +349,7 @@ TARGETS = (
     Target(
         "event_count",
         "the number of loaded area events (16-bit)",
-        0xEAE9A8,
+        {"B1": 0xEAE9A8},
         (
             # from the instruction at RVA 0x1ddf58 on B1 (the loader: 0x28 bytes per event)
             rip("48 8D 15 ?? ?? ?? ?? 41 B8 02 00 00 00 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 85 C0 75 1A 48 0F BF 0D ?? ?? ?? ?? BA 28 00 00 00", 3, 7),
@@ -359,7 +360,7 @@ TARGETS = (
     Target(
         "text_table",
         "holds a pointer to the loaded Text table, 32 bytes an entry (the Text file)",
-        0x3CF688,
+        {"B1": 0x3CF688},
         (
             # from the instruction at RVA 0x10f318 on B1 (in the function at 0x10f110)
             rip("48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 00 74 32 0F BE 05 ?? ?? ?? ?? 33 C9", 3, 7),
@@ -372,7 +373,7 @@ TARGETS = (
     Target(
         "equipment_fn",
         "the pause menu's EQUIPMENT callback, which builds the equipment screen",
-        0x12BA90,
+        {"B1": 0x12BA90},
         (
             # from the instruction at RVA 0x167777 on B1 (the pause menu's builder)
             rip("48 8D 05 ?? ?? ?? ?? 4C 89 6C 24 30 4C 89 6C 24 28 48 89 44 24 20 E8 ?? ?? ?? ?? F3 0F 10 35 ?? ?? ?? ?? 48 8B C8 48 8B 07 48 89 48 08", 3, 7),
@@ -385,7 +386,7 @@ TARGETS = (
     Target(
         "equip_panel_fn",
         "the equipment screen's panel handler",
-        0xB2160,
+        {"B1": 0xB2160},
         (
             # from the instruction at RVA 0x12dfb4 on B1 (the Energy Tank panel)
             rip("4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 4C 8D 0D ?? ?? ?? ?? 48 8D 45 A7", 3, 7),
@@ -398,7 +399,7 @@ TARGETS = (
     Target(
         "widget_move_fn",
         "places a widget at its panel's position plus an offset, with its label",
-        0xAA8C0,
+        {"B1": 0xAA8C0},
         (
             # from the call at RVA 0x10561d on B1
             rip("E8 ?? ?? ?? ?? 41 8B FF 4C 89 A3 E8 02 00 00 44 89 A3 C6 02 00 00 44 88 BB C3 02 00 00 44 89 BB D8 01 00 00 44 39 BB E8 01 00 00 7E 2B", 1, 5),
@@ -411,7 +412,7 @@ TARGETS = (
     Target(
         "text_place_fn",
         "places a text object's glyphs from (x, y), 8 pixels apart",
-        0xA79E0,
+        {"B1": 0xA79E0},
         (
             # from the call at RVA 0x12ef28 on B1 (the missile count)
             rip("E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 41 BF 01 00 00 00 41 0F BF 96 C0 0C 00 00", 1, 5),
@@ -424,7 +425,7 @@ TARGETS = (
     Target(
         "widget_new_fn",
         "makes a menu widget: its label, panel, handler, callback, record and index",
-        0xAA610,
+        {"B1": 0xAA610},
         (
             # from the call at RVA 0x17f011 on B1
             rip("E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 48 89 01 48 8B 87 E0 01 00 00 48 8B 08 48 8B 81 F0 01 00 00 C7 80 DC 01 00 00 1D 00 00 00 B8 56 55 55 55", 1, 5),
@@ -437,7 +438,7 @@ TARGETS = (
     Target(
         "sprite_sheet_fn",
         "gives an object a sprite definition's frames (the item icons for the equipment screen)",
-        0x74780,
+        {"B1": 0x74780},
         (
             # from the call at RVA 0x180ff6 on B1
             rip("E8 ?? ?? ?? ?? 4D 8B 16 49 8B 42 20 48 8B 88 E0 01 00 00 48 8B 01 48 8B 88 F0 01 00 00 48 8B 81 38 02 00 00 48 8B 08 44 39 B9 BC 01 00 00", 1, 5),
@@ -448,7 +449,7 @@ TARGETS = (
     Target(
         "panel_link_fn",
         "links a panel's widgets, their labels and glyphs into its menu's draw list",
-        0xABB30,
+        {"B1": 0xABB30},
         (
             # from the call at RVA 0x12f7e9 on B1
             rip("E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 45 33 C0 48 8B 93 F0 01 00 00 48 8B 89 F8 01 00 00 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 08 4C 39 29", 1, 5),
@@ -461,7 +462,7 @@ TARGETS = (
     Target(
         "text_set_fn",
         "writes a string into a text object's glyphs from one glyph on, blanking the rest",
-        0xA61C0,
+        {"B1": 0xA61C0},
         (
             # from the call at RVA 0x1119c7 on B1
             rip("E8 ?? ?? ?? ?? 44 38 25 ?? ?? ?? ?? 48 8B 85 E0 01 00 00 48 8B 50 10 74 23 C6 44 24 30 01 0F 28 DE 44 89 64 24 28 44 8B C6", 1, 5),
@@ -474,7 +475,7 @@ TARGETS = (
     Target(
         "routine_table",
         "the transition routines: 2 the pause (idle), 4 the ending, 15 the escape skip's prompt",
-        0x3CF5F0,
+        {"B1": 0x3CF5F0},
         (
             # from the instruction at RVA 0x9498f on B1 (entry 8)
             rip("48 8B 05 ?? ?? ?? ?? 48 0F 4F 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 C7 05 ?? ?? ?? ?? 00 00 00 00", 3, 7, -0x40),
@@ -485,7 +486,7 @@ TARGETS = (
     Target(
         "keys_branch",
         "the pause screen's jne past its KEYS panel when flag 39 is set (75 2E)",
-        0x168C7D,
+        {"B1": 0x168C7D},
         (
             # from the instruction at RVA 0x168c76 on B1 (cmp flag 39, then the jne, its opcode
             # wild: the helper makes it a jmp while it runs)
@@ -500,7 +501,7 @@ TARGETS = (
     Target(
         "rando_slots",
         "every slot's copy of its randomizer section, 0x908 bytes each (the section's layout)",
-        0x347830,
+        {"B1": 0x347830},
         (
             # from the instruction at RVA 0xa2b63 on B1
             rip("48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 8C 24 E8 01 00 00", 3, 7),
@@ -513,7 +514,7 @@ TARGETS = (
     Target(
         "text_new_fn",
         "(characters, length, 32): makes a text object and its glyphs, from the game's heap",
-        0x92300,
+        {"B1": 0x92300},
         (
             # from the call at RVA 0x93864 on B1 (the title's copyright)
             rip("E8 ?? ?? ?? ?? BA 58 00 00 00 41 B8 78 00 00 00", 1, 5),
@@ -528,7 +529,7 @@ TARGETS = (
     Target(
         "text_link_fn",
         "(text): puts a text object's glyphs in its draw list, right after it",
-        0xA8620,
+        {"B1": 0xA8620},
         (
             # from the call at RVA 0x28822 on B1
             rip("E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 89 83 98 01 00 00 66 89 B3 A0 01 00 00", 1, 5),
@@ -541,7 +542,7 @@ TARGETS = (
     Target(
         "draw_layer",
         "holds the draw list new screen objects join (head +0x18, tail +0x20)",
-        0xCE0F78,
+        {"B1": 0xCE0F78},
         (
             # from the instruction at RVA 0x182b93 on B1
             rip("48 8B 05 ?? ?? ?? ?? 48 8B 48 20 48 85 C9 74 06 48 89 59 10 EB 04 48 89 58 18 48 89 4B 18 48 89 53 10 48 89 58 20 48 89 03 41 8D 46 FF", 3, 7),
@@ -554,7 +555,7 @@ TARGETS = (
     Target(
         "map_handler",
         "holds the map screen's per-frame handler (0x169E50), the map menu's mark",
-        0xCDD5E0,
+        {"B1": 0xCDD5E0},
         (
             # from the instruction at RVA 0x16d5ba on B1 (the map builder)
             rip("48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 44 89 81 70 01 00 00 48 8B 82 E0 01 00 00", 3, 7),
@@ -565,7 +566,7 @@ TARGETS = (
     Target(
         "file_panel_fn",
         "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)",
-        0xB6920,
+        {"B1": 0xB6920},
         (
             # from the instruction at RVA 0x17e908 on B1 (the file select's builder)
             rip("4C 8D 05 ?? ?? ?? ?? 41 8B D5 B9 04 00 00 00 49 89 46 68", 3, 7),
@@ -576,7 +577,7 @@ TARGETS = (
     Target(
         "file_entry_fn",
         "the file select's save entry handler (event 0xF fills the entry)",
-        0xE1ED0,
+        {"B1": 0xE1ED0},
         (
             # from the instruction at RVA 0x17f196 on B1 (the builder, entry 3)
             rip("4C 8D 0D ?? ?? ?? ?? F7 2D ?? ?? ?? ?? 4C 8B C7 8B C2 C1 E8 1F 03 D0 8D 04 52 BA 91 00 00 00 48 63 C8 48 83 C1 02", 3, 7),
@@ -589,7 +590,7 @@ TARGETS = (
     Target(
         "copy_entry_fn",
         "COPY FILE's save entry handler",
-        0xF7550,
+        {"B1": 0xF7550},
         (
             # from the instruction at RVA 0x17418f on B1 (COPY FILE's builder)
             rip("4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 42 80 BC 29 5E 93 00 00 FF", 3, 7),
@@ -602,7 +603,7 @@ TARGETS = (
     Target(
         "delete_entry_fn",
         "DELETE FILE's save entry handler",
-        0xF67F0,
+        {"B1": 0xF67F0},
         (
             # from the instruction at RVA 0x171c20 on B1 (DELETE FILE's builder)
             rip("4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 49 8D 85 ?? ?? ?? ??", 3, 7),
@@ -615,7 +616,7 @@ TARGETS = (
     Target(
         "malloc_slot",
         "the import slot of the C runtime's malloc, the game's heap",
-        0x2097A0,
+        {"B1": 0x2097A0},
         (
             # from the call at RVA 0x89fd2 on B1
             rip("FF 15 ?? ?? ?? ?? 45 33 DB 48 85 C0 0F 84 ?? ?? ?? ?? 4C 8B F8 EB 03 4C 8B F9 49 8B CF 49 8B C6 BA 03 00 00 00 66 0F 1F 84 00 00 00 00 00", 2, 6),
@@ -626,7 +627,7 @@ TARGETS = (
     Target(
         "free_slot",
         "the import slot of the C runtime's free, which a closing menu frees its arrays with",
-        0x209798,
+        {"B1": 0x209798},
         (
             # from the call at RVA 0x1b4e8c on B1
             rip("FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 49 8B DE 4D 85 F6 74 0D 49 8B 7E 18 39 6F 18 0F 84 ?? ?? ?? ?? 48 8B 74 24 68 4C 8B 64 24 40", 2, 6),
@@ -637,7 +638,7 @@ TARGETS = (
     Target(
         "start_count",
         "the start table's count (16-bit): the randomizer menu's start rooms, 0 until it opens",
-        0xEAF7CC,
+        {"B1": 0xEAF7CC},
         (
             # from the instruction at RVA 0x1121fe on B1
             rip("0F BF 0D ?? ?? ?? ?? FF C1 41 83 FE 01 73 11 B8 01 00 00 00", 3, 7),
@@ -649,7 +650,7 @@ TARGETS = (
     Target(
         "start_cells",
         "the start table's map cells, (x, y) as two 16-bit values each",
-        0xEB2070,
+        {"B1": 0xEB2070},
         (
             # from the instruction at RVA 0xf387f on B1 (START GAME's first step)
             rip("4C 8B 15 ?? ?? ?? ?? 49 0F BF C1 48 6B C8 36 49 0F BF C2 48 03 C8 C6 85 40 01 00 00 00", 3, 7),
@@ -662,7 +663,7 @@ TARGETS = (
     Target(
         "start_flags",
         "the start table's flags, one byte per room: 1 if it holds object 25",
-        0xEAFC20,
+        {"B1": 0xEAFC20},
         (
             # from the instruction at RVA 0xf4188 on B1 (START GAME's first step)
             rip("40 38 35 ?? ?? ?? ?? 89 B5 38 01 00 00 75 17 33 C0", 3, 7),
@@ -675,7 +676,7 @@ TARGETS = (
     Target(
         "sprite_texture",
         "holds a pointer to the sprite data; its +0x40 is the Sprites.png texture object",
-        0xCDD060,
+        {"B1": 0xCDD060},
         (
             # from the instruction at RVA 0x7918a on B1, which stores the texture just loaded from
             # "Sprites.png" at +0x40
@@ -689,7 +690,7 @@ TARGETS = (
     Target(
         "current_slot",
         "the save slot being played or started, 0-based (32-bit)",
-        0xCDD080,
+        {"B1": 0xCDD080},
         (
             # from the instruction at RVA 0xe2137 on B1 (the file screen)
             rip("8B 0D ?? ?? ?? ?? F7 E9 8B C2 C1 E8 1F 03 D0 8D 04 52 2B C8 B8 80 00 00 00 66 89 86 DA 01 00 00 44 8D 2C 49", 2, 6),
@@ -702,7 +703,7 @@ TARGETS = (
     Target(
         "newgame_fn",
         "the new-game routine: builds a new game from the randomizer section and saves it",
-        0xA0570,
+        {"B1": 0xA0570},
         (
             # from the instruction at RVA 0xe3129 on B1 (NORMAL's new game)
             rip("48 8D 05 ?? ?? ?? ?? F3 0F 10 0D ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? BA 25 00 00 00 0F BF 05 ?? ?? ?? ??", 3, 7),
@@ -715,7 +716,7 @@ TARGETS = (
     Target(
         "current_menu",
         "holds the most recently opened menu (its panels at [menu]; the file screen's panel 3)",
-        0xDF82F8,
+        {"B1": 0xDF82F8},
         (
             # from the instruction at RVA 0x124da2 on B1
             rip("48 8B 05 ?? ?? ?? ?? BA 05 00 00 00 48 8B 08 48 8B 19 48 8B 83 E0 01 00 00 4C 8B 00 49 8B C8 41 FF 90 C8 02 00 00 48 8B 83 E0 01 00 00", 3, 7),
@@ -726,7 +727,7 @@ TARGETS = (
     Target(
         "randomizer_menu",
         "the randomizer menu's state: seed text, item arrays, amounts, settings at fixed offsets",
-        0xDF7340,
+        {"B1": 0xDF7340},
         (
             # from the instruction at RVA 0x1478d0 on B1
             rip("48 8D 0D ?? ?? ?? ?? 41 0F 45 D3 0F 44 DF 48 63 C2 44 8D 5A 01 0F BE 8C 08 94 00 00 00 44 8D 04 1B 23 CB F7 D9 66 45 1B C9", 3, 7),
@@ -737,7 +738,7 @@ TARGETS = (
     Target(
         "widget_handler_fn",
         "the generic menu-widget input handler (calls a widget's callback on select)",
-        0xD0240,
+        {"B1": 0xD0240},
         (
             # from the instruction at RVA 0x100ff4 on B1
             rip("4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 18 00 00 00 48 89 41 18 48 8D 45 67 48 89 44 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 04 00 00 00 4C 89 6C 24 30", 3, 7),
@@ -750,7 +751,7 @@ TARGETS = (
     Target(
         "panel_handler_fn",
         "the menu-panel handler",
-        0xAE4D0,
+        {"B1": 0xAE4D0},
         (
             # from the instruction at RVA 0x135c0a on B1
             rip("4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 C7 45 67 F4 FF FC FF 48 8D 45 67 C7 45 6B 28 00 0C 00", 3, 7),
@@ -763,7 +764,7 @@ TARGETS = (
     Target(
         "rando_menu_fn",
         "the RANDOMIZER choice's callback: opens the randomizer menu",
-        0x14B910,
+        {"B1": 0x14B910},
         (
             # from the call at RVA 0x1512aa on B1
             rip("E8 ?? ?? ?? ?? 48 8B 35 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 06 48 8D 3D ?? ?? ?? ?? BA 0F 00 00 00", 1, 5),
@@ -776,7 +777,7 @@ TARGETS = (
     Target(
         "placement_fn",
         "the randomizer's placement: the item table, starting items and amounts",
-        0xF11A0,
+        {"B1": 0xF11A0},
         (
             # from the call at RVA 0xf62ea on B1 (START GAME)
             rip("E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 ?? ?? ?? ?? 48 63 05 ?? ?? ?? ?? 48 69 F8 08 94 00 00", 1, 5),
@@ -787,7 +788,7 @@ TARGETS = (
     Target(
         "rando_newgame_fn",
         "queues a randomizer new game in the current slot (the play-anyway path)",
-        0xF5160,
+        {"B1": 0xF5160},
         (
             # from the instruction at RVA 0xf56af on B1 (the play-anyway button)
             rip("48 8D 05 ?? ?? ?? ?? 48 89 6C 24 30 48 89 6C 24 28 48 89 44 24 20 E8 ?? ?? ?? ?? 48 8B 8B E0 01 00 00 4C 8D 0D ?? ?? ?? ?? 4C 8B C3 BA 37 00 00 00", 3, 7),
@@ -799,7 +800,7 @@ TARGETS = (
         "popup_width_code",
         "the pickup popup's `mov edx, 24` (its line width) on the path items with no icon "
             "take; the helper changes the 24 for other players' items",
-        0x1F8F6,
+        {"B1": 0x1F8F6},
         (
             # the instruction itself on B1, with the rest of the call's arguments; its value is
             # wild, since the helper changes it while it runs
@@ -813,7 +814,7 @@ TARGETS = (
     Target(
         "item_pool",
         "the pool of 128 live item objects, 0x3B0 bytes each (memory.md, Live item objects)",
-        0xB6E030,
+        {"B1": 0xB6E030},
         (
             # from the stores of the pool's next-free-slot number, which lies right after the
             # 128 objects (at RVA 0x19ec55 and 0x19ec78 on B1, in the item spawn function)
@@ -825,7 +826,7 @@ TARGETS = (
     Target(
         "palette_table",
         "the palette objects by number, eight bytes each (an object's +0x198 is one of them)",
-        0xCDF5C0,
+        {"B1": 0xCDF5C0},
         (
             # from the instruction at RVA 0xfffda on B1, which gives an object palette 0
             rip("48 8B 05 ?? ?? ?? ?? 48 8B 11 48 89 82 98 01 00 00 33 C0 66 89 82 A0 01 00 00 48 8B 83 E0 01 00 00 48 8B 96 E8 02 00 00 48 8B 88 80 00 00 00", 3, 7),
@@ -836,7 +837,7 @@ TARGETS = (
     Target(
         "frame_clock",
         "the 64-bit count item animations follow (the item update at 0x19e2e0 divides it)",
-        0x3CF750,
+        {"B1": 0x3CF750},
         (
             # from the instruction at RVA 0x1c6333 on B1
             rip("48 8B 0D ?? ?? ?? ?? 48 8B C1 48 F7 D8 48 0F 48 C1 48 99 48 2B C2 48 D1 F8 48 99 83 E0 01 48 33 C2 48 2B C2 66 83 C0 45", 3, 7),
@@ -847,7 +848,7 @@ TARGETS = (
     Target(
         "sprite_templates",
         "holds the pointer to the sprite definitions' object templates; +0x110 is the items'",
-        0xDF7110,
+        {"B1": 0xDF7110},
         (
             # from the item spawn function at RVA 0x19ec92 on B1, which takes template 34
             rip("48 8B 05 ?? ?? ?? ?? 4C 8D 15 ?? ?? ?? ?? 48 8B B0 10 01 00 00 4D 85 C0 75 2D B9 D8 01 00 00", 3, 7),
@@ -858,7 +859,7 @@ TARGETS = (
     Target(
         "event_handlers",
         "the area-event handlers, a function pointer per event type (the pickup calls one)",
-        0xCDD090,
+        {"B1": 0xCDD090},
         (
             # from two of the places that run an area event through it, at RVA 0xd679 and
             # 0xd8df on B1: handler[type](cell, cell, record)
@@ -869,7 +870,7 @@ TARGETS = (
     Target(
         "death_fn",
         "the player's death: death_fn(player, 0), called once energy is 0 or below (DeathLink)",
-        0x1D9FA0,
+        {"B1": 0x1D9FA0},
         (
             # the touch handler's call after damage, at RVA 0x1f07a on B1
             rip("E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 66 83 F8 03 0F 85 ?? ?? ?? ?? 49 8B B6 40 01 00 00", 1, 5),
@@ -882,7 +883,7 @@ TARGETS = (
     Target(
         "assist_menu_fn",
         "ASSIST's callback in the options menu with a save loaded: opens the assist menu",
-        0x153D20,
+        {"B1": 0x153D20},
         (
             # the options menu's construction of ASSIST, at RVA 0x16286c on B1
             rip("48 8D 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 44 24 20 E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 45 8B C6 48 89 04 D9 4C 8B 97 E0 01 00 00", 3, 7),
@@ -893,7 +894,7 @@ TARGETS = (
     Target(
         "object_pool",
         "the general objects, 1000 of 0x5C8 bytes (items in reversed-gravity rooms among them)",
-        0x758440,
+        {"B1": 0x758440},
         (
             # the store of the pool's next-free-slot number, which lies right after the 1000
             # objects, at RVA 0x44bf1 on B1, in the object spawn function (with the 0x5C8 stride)
@@ -905,7 +906,7 @@ TARGETS = (
     Target(
         "halt_flag",
         "a byte the death routine (and much of the game) returns early on while it is set",
-        0x345EF4,
+        {"B1": 0x345EF4},
         (
             # from the test at RVA 0x178c85 on B1
             rip("80 3D ?? ?? ?? ?? 00 75 1E 33 C9 FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 33 C9 C6 80 20 01 00 00 00 FF 15 ?? ?? ?? ?? 48 8B 83 E0 01 00 00", 2, 7),

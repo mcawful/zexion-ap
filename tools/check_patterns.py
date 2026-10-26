@@ -3,8 +3,9 @@
     check_patterns.py EXE      resolve every pattern in a copy of Zexion.exe (read-only)
     check_patterns.py --live   attach to the running game, locate everything, show the state
 
-Offline, each target must resolve (every pattern once, all agreeing). On build B1 it must also
-land on the recorded B1 address; on another build a difference is expected and is reported for
+Offline, each target must resolve (every pattern once, all agreeing). On a known build it must
+also land on the address recorded for that build (``Target.rvas`` in client/patterns.py, by the
+build's name); an unknown build's addresses, or ones not yet recorded, are reported for
 docs/re/memory.md. Live, it reads (never writes) the game state, the pickup counter, the inventory,
 the map and the loaded seed's first location cell.
 """
@@ -37,11 +38,15 @@ def offline(exe: Path) -> int:
         return 1
     status = 0
     for t in TARGETS:
-        same = found[t.name] == t.b1_rva
-        print(f"{t.name:<15} RVA {found[t.name]:#x}  {'matches B1' if same else 'differs from B1'}")
-        if build is not None and build.name == "B1" and not same:
-            print(f"  FAILED: this is B1, so {t.name} must be at {t.b1_rva:#x}")
+        expected = t.rvas.get(build.name) if build is not None else None
+        if expected is None:
+            note = "not recorded for this build"
+        elif found[t.name] == expected:
+            note = f"matches {build.name}"
+        else:
+            note = f"FAILED: on {build.name} it must be at {expected:#x}"
             status = 1
+        print(f"{t.name:<15} RVA {found[t.name]:#x}  {note}")
     if build is None:
         print("unknown build: record the new addresses in docs/re/memory.md before trusting them")
     return status
