@@ -12,27 +12,18 @@ def lines(text: str) -> list[str]:
     return ["@" + line if i == 0 else line for i, line in enumerate(text.split("\n"))]
 
 
-def test_a_label_says_what_kind_of_item_then_whom_it_is_for() -> None:
-    assert lines(al.label(True, "Alice")) == ["@PROGRESSION ITEM", "FOR ALICE"]
-    assert lines(al.label(False, "Bob_2")) == ["@AP ITEM", "FOR BOB2"]
-    assert lines(al.label(False, "Zoë")) == ["@AP ITEM", "FOR ZO"]
-
-
-def test_long_player_names_are_cut_at_a_word() -> None:
-    assert lines(al.label(True, "Alice in Wonderland Forever")) == [
-        "@PROGRESSION ITEM",
-        "FOR ALICE IN WONDERLAND",
-    ]
-    long = al.label(False, "LinksAwakenerTheGreat")
-    assert lines(long) == ["@AP ITEM", "FOR LINKSAWAKENERTHEGREA"]
+def test_another_games_item_says_only_what_kind_it_is() -> None:
+    # Never whose it is: the player is not told who gets each item.
+    assert lines(al.label(True)) == ["@PROGRESSION ITEM"]
+    assert lines(al.label(False)) == ["@AP ITEM"]
 
 
 def test_another_zexion_players_item_is_named_by_its_record() -> None:
-    assert al.zexion_label(1, "Zexion2") == "@1\nFOR ZEXION2"
+    assert al.own_label(1) == "@1"
 
 
 def test_another_zexion_players_intel_chip_is_the_area_map_by_another_name() -> None:
-    assert al.zexion_label(49, "Zexion2", "Intel Chip") == "@49 INTEL CHIP\nFOR ZEXION2"
+    assert al.own_label(*al.zexion_look(101)) == "@49 INTEL CHIP"
 
 
 def test_another_zexion_players_items_keep_their_names_whatever_the_settings() -> None:
@@ -46,14 +37,9 @@ def test_another_zexion_players_items_keep_their_names_whatever_the_settings() -
     assert al.zexion_look(-1) is None
 
 
-def test_each_line_fits_the_popup() -> None:
-    text = al.label(True, "P" * 60)
-    assert lines(text) == ["@PROGRESSION ITEM", "FOR " + "P" * 20]
-    assert all(len(line) <= 24 for line in lines(text))
-
-
-def test_characters_the_font_lacks_are_dropped() -> None:
-    assert lines(al.label(False, "€")) == ["@AP ITEM", "FOR"]
+def test_an_own_items_name_keeps_to_the_font_and_one_line() -> None:
+    assert al.own_label(44, "Disk €1") == "@44 DISK 1"
+    assert len(al.own_label(44, "X" * 60)) == len("@44 ") + 23
 
 
 def test_foreign_locations_are_the_kept_stand_ins() -> None:

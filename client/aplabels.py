@@ -3,10 +3,11 @@
 The world puts a stand-in at each location holding another player's item: 47 (Scrap Energy),
 or 48 (Scrap Chunk) for progression, and with the OS Install Disks goal 48 for this player's
 own disks too. The client scouts those locations and sends the helper a label per map cell:
-"PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE", or ``@N`` for another Zexion player's item
-(its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
-"Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a
-line. Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
+"PROGRESSION ITEM" or "AP ITEM" for another game's item, or ``@N`` for another Zexion player's
+item (its own icon and name), which the pickup popup and the map show (native/README.md;
+docs/re/memory.md, "Other players' items"). A label says what the item is, never whose it is.
+Labels keep only what the game's 8 x 8 font draws, 24 characters a line. Pure functions;
+client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
 from __future__ import annotations
@@ -28,32 +29,9 @@ def _font_words(text: str) -> list[str]:
     return kept.split()
 
 
-def _fit(words: list[str], width: int) -> str:
-    """As many whole words as fit in `width`; a first word longer than that, cut."""
-    line = ""
-    for word in words:
-        if not line:
-            line = word[:width]
-            if len(word) > width:
-                break
-        elif len(line) + 1 + len(word) <= width:
-            line += " " + word
-        else:
-            break
-    return line
-
-
-def _for(player_name: str) -> str:
-    """A label's second line: whom the item is for, as much of the name as fits."""
-    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
-    return f"FOR {player}" if player else "FOR"
-
-
-def label(progression: bool, player_name: str) -> str:
-    """The stand-in's name for one location: what kind of item, a newline, then whom it is
-    for."""
-    item = PROGRESSION_ITEM if progression else AP_ITEM
-    return f"{item}\n{_for(player_name)}"
+def label(progression: bool) -> str:
+    """The stand-in's name for another game's item: what kind of item it is."""
+    return PROGRESSION_ITEM if progression else AP_ITEM
 
 
 # Zexion items shown under a name of our own: the Data Disc as OS INSTALL DISK, and the Area
@@ -73,17 +51,10 @@ def zexion_look(code: int) -> tuple[int, str] | None:
     return (code, "") if code in ids.GAME_ITEMS else None
 
 
-def zexion_label(item: int, player_name: str, name: str = "") -> str:
-    """The label for another Zexion player's item: ``@N`` asks the helper for item N's own icon
-    and the game's name for it (native/README.md), or ``name`` in its place (``@N NAME``,
-    zexion_look), then whom it is for."""
-    return f"{own_label(item, name)}\n{_for(player_name)}"
-
-
 def own_label(item: int, name: str = "") -> str:
-    """The label for one of this player's own items the world put a stand-in for (an OS Install
-    Disk, client/discs.py): its icon, and ``name`` in place of the game's name for it (the
-    helper's "@N NAME", native/README.md), for no one else."""
+    """The label for a Zexion item behind a stand-in, another player's or this player's own (an
+    OS Install Disk, client/discs.py): ``@N`` asks the helper for item N's own icon and the
+    game's name for it, or ``name`` in its place (``@N NAME``, zexion_look; native/README.md)."""
     kept = " ".join(_font_words(name))[: PER_LINE - 1]
     return f"@{item} {kept}" if kept else f"@{item}"
 

@@ -110,11 +110,8 @@ std::string map_name(const std::string& label) {
         flat += put;
     }
     while (!flat.empty() && flat.back() == ' ') flat.pop_back();
-    if (flat.size() <= kMapNameMax) return flat;
-    size_t at = flat.find(" FOR ");
-    std::string part = at == std::string::npos ? flat : flat.substr(at + 1);
-    if (part.size() > kMapNameMax) part.resize(kMapNameMax);
-    return part;
+    if (flat.size() > kMapNameMax) flat.resize(kMapNameMax);
+    return flat;
 }
 
 bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {

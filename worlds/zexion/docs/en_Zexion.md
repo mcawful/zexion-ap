@@ -61,8 +61,7 @@ or Assist Unlock, stops generation with an error that names it.
 ## What do other players' items look like?
 
 - A location holding another player's item shows the Archipelago logo, with a flashing up arrow
-  if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM, and whom it is for
-  (FOR ALICE).
+  if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM (not whose it is).
 - Another Zexion player's item looks like the item itself.
 - On the map, other players' important items and your OS Install Disks are marked as important
   items, and the cursor names each location holding another player's item or one of your disks.

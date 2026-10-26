@@ -189,7 +189,6 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
     labels: dict[tuple[int, int], str] = {}
     own = 0
     for i, info in zip(conn.foreign, infos, strict=True):
-        player = ctx.player_names.get(info.player, "")
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
         if info.player == ctx.slot and code in ids.GAME_ITEMS:
@@ -197,10 +196,9 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
             own += 1
         elif slot is not None and slot.game == ctx.game and (look := aplabels.zexion_look(code)):
             # Another Zexion player's own item, whatever that player's settings.
-            item, name = look
-            text = aplabels.zexion_label(item, player, name)
+            text = aplabels.own_label(*look)
         else:
-            text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
+            text = aplabels.label(bool(info.flags & ItemClassification.progression))
         labels[tuple(conn.session.cells[i])] = text
     return labels, own
 

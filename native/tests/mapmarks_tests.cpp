@@ -83,8 +83,8 @@ void test_a_cell_off_the_map_is_skipped() {
 
 void test_map_names() {
     check(zap::map_name("\xFB" "OS INSTALL DISK") == "OS INSTALL DISK", "own disk");
-    check(zap::map_name("\xEE" "PROGRESSION ITEM\nFOR ALICE") == "FOR ALICE", "long: FOR part");
-    check(zap::map_name("\xEE" "SLIDE MOD\n  FOR BOB  ") == "SLIDE MOD FOR BOB", "fits: both");
+    check(zap::map_name("\xEE" "PROGRESSION ITEM") == "PROGRESSION ITEM", "another game's");
+    check(zap::map_name("\xEE" "SLIDE MOD\n  TWO  ") == "SLIDE MOD TWO", "lines joined");
     check(zap::map_name("AN ITEM NAME THAT IS FAR TOO LONG") == "AN ITEM NAME THAT", "cut");
 }
 
@@ -304,7 +304,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     check(names.original(m.panel.data()) == nullptr, "only for the map's child");
     const std::map<int, std::string> labels = {
         {17 * 54 + 13, "\xFB" "OS INSTALL DISK"},
-        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM\nFOR ALICE"}};
+        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM"}};
     g_set_target = &m;
     m.at(165, 100);
     m.show("SCRAP CHUNK");  // the game's handler wrote the record's name
@@ -313,7 +313,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     m.at(165, 108);  // (108 + 4) / 8 = 14
     m.show("SCRAP CHUNK");
     names.after(a, labels);
-    check(m.shown() == "FOR ALICE", "another player's");
+    check(m.shown() == "PROGRESSION ITEM", "another player's");
     m.show("CURRENT LOCATION");
     g_sets = 0;
     names.after(a, labels);

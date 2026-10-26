@@ -30,8 +30,8 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended);
 uint8_t important_value(uint8_t value, bool obscure_majors, bool ended);
 
 // A label (apitem.h: the popup's text, a glyph and up to two lines) as the map cursor's name: the
-// font's characters only, on one line, at most kMapNameMax ("OS INSTALL DISK", "SLIDE MOD FOR
-// BOB"); a longer one keeps its "FOR ..." part ("FOR ALICE").
+// font's characters only, on one line, cut at kMapNameMax ("OS INSTALL DISK",
+// "PROGRESSION ITEM").
 constexpr size_t kMapNameMax = 17;  // the cursor's name text: 17 glyphs, cut (0xA61C0)
 std::string map_name(const std::string& label);
 

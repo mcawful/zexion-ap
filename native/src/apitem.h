@@ -2,7 +2,7 @@
 // Scrap Energy (47) at locations holding another player's item and Scrap Chunk (48) at their
 // progression items. While labels are set, the helper restyles both records: one frame each (63
 // and 95, transparent in the game's art), no pickup area event (3549, 3550), and a name from the
-// label (the logo glyph 0xEE, then e.g. MASTER SWORD FOR ALICE) or AP ITEM. It paints the logos
+// label (the logo glyph 0xEE, then e.g. PROGRESSION ITEM or MISSILE BOX) or AP ITEM. It paints the logos
 // into those frames and the glyph into the font through OpenGL, in the frame call. Records are
 // written only over the game's own values or the helper's, and the texture only where
 // TextureCheck finds the place blank or already the helper's. Unload restores the records and
