@@ -203,8 +203,7 @@ def stand_in_attach(monkeypatch, game: _Game) -> None:
 
 
 def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkeypatch) -> None:
-    # Before, every retry unloaded the helper the stale build had loaded, loaded the same file
-    # again, and failed the version check after loading.
+    # Each retry must not unload and reload the same stale file.
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")
     game = _Game()

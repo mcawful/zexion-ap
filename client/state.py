@@ -60,9 +60,8 @@ class Connection:
     # The follow-up popups shown for this world's own finds, by location index, until the
     # server's record has them.
     popped_mine: set[int] = field(default_factory=set)
-    # Received items' popups (announced_tick): the count of those shown that this client last
-    # stored on the server, and the last count known shown; and how many the connection before
-    # (a reconnect) handed the same helper, which still holds them (not queued again).
+    # Received items' popups (announced_tick): the count last stored, the last count known
+    # shown, and how many the previous connection handed this same helper.
     announced_sent: int | None = None
     announced_shown: int | None = None
     queued_before: int | None = None
@@ -75,7 +74,7 @@ class Connection:
     goal_sent: bool = False
     choice_refused: bool = False  # the game's start table differed: no ARCHIPELAGO
     newgame: NewGame | None = None  # None: to arm
-    newgame_said: bool | None = None  # the offer "Ready" was logged for (once a connection)
+    newgame_said: bool | None = None  # whose "To play" line was said (once a connection)
     newgame_polled_at: float = 0.0
     newgame_retry_at: float = 0.0  # when to arm again after the helper refused (newgame_tick)
     warned: set[int] = field(default_factory=set)  # received items said to be no Zexion item
@@ -152,16 +151,13 @@ class Connection:
         self.queued_before = None
 
 
-# Received items' popups. The server keeps how many have been shown (Connection.announced_key),
-# so an item received while no client ran pops up when it is given and a reconnect replays
-# none. The session counts those handed to the helper or written directly (Session.announced:
-# queued); the helper says how many of its popups are still waiting (Helper.popups_pending), and
-# queued minus those is the count shown. The key is open to any client in the room: anything
-# but a count in it reads as absent.
-
-
 def stored_count(raw: object) -> int | None:
-    """A count read from data storage, or None when absent (or not a count)."""
+    """A count read from data storage, or None when absent (or not a count).
+
+    For received items' popups the server keeps how many were shown (announced_key), so items
+    received offline still pop up and a reconnect replays none. Shown = queued
+    (Session.announced) minus the helper's pending popups. The key is open to any client in
+    the room: anything but a count reads as absent."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None
@@ -169,8 +165,8 @@ def stored_count(raw: object) -> int | None:
 
 def announced_start(raw: object, held: int, queued_before: int | None = None) -> tuple[int, int]:
     """Where a connection's session starts counting received items' popups, as (queued, shown):
-    shown, the server's count (at most the ``held`` items), or, with none stored (a slot played
-    before the count, or its data lost), every item held: no flood of old popups. Queued, the
+    shown, the server's count (at most the ``held`` items), or, with none stored (or its data
+    lost), every item held: no flood of old popups. Queued, the
     same, but never below what the connection before handed the same helper
     (``queued_before``), which the helper still holds."""
     stored = stored_count(raw)

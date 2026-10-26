@@ -8,15 +8,14 @@ with what the live inventory holds, and gives only the difference:
                + the items received from other worlds
 
 The collected locations come from the live map grid (a cell reading COLLECTED), and the game
-hands out what the patched item table holds there (client/save_patch.py). Both the map and the
+hands out what the seed's item table holds there (client/newgame.py). Both the map and the
 inventory go back to the last save when the player dies or reloads, so the difference stays
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
-A weapon and its upgrade are one progressive item, counted as one for each byte that is set.
-The game turns a second copy of a weapon into its upgrade, in the generator and in play
-(docs/re/randocells.md; seen for the Machine Gun only). Should another weapon not, its byte would
-read 2 and the upgrade would still be owed, so the client would give it.
+A weapon and its upgrade are one progressive item: the game turns a second copy into the
+upgrade (docs/re/randocells.md; seen for the Machine Gun only); should another weapon not, the
+upgrade is still owed and given.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -37,11 +36,9 @@ NOT_GRANTABLE = {ids.ZEXION}
 # Items never put in the inventory: the Data Disc, which the client counts instead
 # (client/discs.py), as holding one changes the game's endings.
 NOT_IN_INVENTORY = {ids.DATA_DISC}
-# Items the game counts in Scrap Metal's byte: every record from 46 to 50 names inventory byte
-# 46 as the one its pickup increments (docs/re/memory.md, "Other players' items"), and a
-# collected Scrap Energy or Area Map left its own byte at 0 while Scrap Metal's count rose
-# (docs/re/save-format.md, "Inventory"). So each counts as one Scrap Metal, collected (other
-# players' items are Scrap Energy in this world's locations) or received.
+# Records 46-50 all name Scrap Metal's byte as the one their pickup increments, so each of
+# these counts as one Scrap Metal, collected or received (docs/re/memory.md, "Other players'
+# items"; docs/re/save-format.md, "Inventory").
 SCRAP_METAL = ids.SCRAP_METAL
 COUNTED_AS_SCRAP = {ids.STAND_IN, ids.STAND_IN_PROGRESSION, ids.AREA_MAP, ids.ENERGY_SHIELD}
 # The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,

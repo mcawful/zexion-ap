@@ -17,12 +17,10 @@ manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion
 files that would share a name in the apworld.
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
-builder adds (``APWorldContainer.get_manifest()`` in AP 0.6.8's ``worlds/Files.py``, merged as
-``worlds/LauncherComponents.py``'s Build APWorlds does): without ``version`` and
-``compatible_version``, AP 0.6.8 logs the manifest as invalid and ignores ``world_version``
-and ``minimum_ap_version``. Reads this repo and writes only into ``--out``, which may not be
-inside the game's or the saves' folder (``tools/protected.py``). Only files git tracks are
-packed: an untracked file in ``worlds/zexion`` or ``client`` stops the build.
+builder adds (CONTAINER_KEYS): without them, AP 0.6.8 logs the manifest as invalid and ignores
+``world_version`` and ``minimum_ap_version``. Reads this repo and writes only into ``--out``,
+which may not be inside the game's or the saves' folder (``tools/protected.py``). Only files
+git tracks are packed: an untracked file in ``worlds/zexion`` or ``client`` stops the build.
 """
 
 from __future__ import annotations
@@ -50,7 +48,8 @@ PROXY_SOURCES = (ROOT / "native" / "proxy", CMAKE)
 SKIP_DIRS = {"__pycache__", "test"}
 MANIFEST = "zexion/archipelago.json"
 # The keys APWorldContainer.get_manifest() gives in AP 0.6.8 (worlds/Files.py: container_version
-# 7, and an APWorldContainer's compatible_version 7) besides "game", which the world's has.
+# 7, and an APWorldContainer's compatible_version 7) besides "game", which the world's has,
+# merged as worlds/LauncherComponents.py's Build APWorlds does.
 CONTAINER_KEYS = {"version": 7, "compatible_version": 7}
 
 

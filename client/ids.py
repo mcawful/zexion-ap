@@ -12,8 +12,8 @@ ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000 (worlds/zexion/items.py)
 LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 
 GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
-# A collected Energy Shield (item 50) left its byte at 0 in a live game: its pickup counts as
-# Scrap Metal (docs/re/memory.md, "Other players' items"), so byte 50 is never written.
+# Byte 50 is never written: an Energy Shield's pickup counts as Scrap Metal (docs/re/memory.md,
+# "Other players' items").
 WRITABLE_ITEMS = range(0, 50)
 
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB = 0, 1, 2

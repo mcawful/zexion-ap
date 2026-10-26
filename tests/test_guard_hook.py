@@ -183,8 +183,8 @@ def _crashing_payload(tool_input: dict) -> str:
 
 
 def test_guard_failure_does_not_block_unrelated_calls() -> None:
-    # Regression: the session's AppData transcript path once made every failure block every
-    # Edit, Write and shell call, locking the session out of fixing the guard.
+    # The payload's transcript path (under AppData) must not make a guard failure block
+    # everything.
     assert _hook(_crashing_payload({"file_path": "D:/code/zexion-ap/tools/x.py"})).returncode == 0
 
 

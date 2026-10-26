@@ -144,7 +144,7 @@ def neighbor(code: int, cell: Cell) -> Cell | None:
     index = y * W + x
     if code == 64 and x > 0:
         index -= 1
-    elif code == 65 and x < W:
+    elif code == 65 and x < W:  # always: east wraps to the next row
         index += 1
     elif code == 66 and y > 0:
         index -= W

@@ -8,17 +8,12 @@ data address or function to locate, relative to the image base (``Zexion.exe+0x3
 ``0x3E469D``); ``--size`` widens it to a range (a struct or array), so references to its fields
 count too.
 
-For each instruction that refers to the range, either relative to the instruction pointer
-(a memory operand, or a ``call``/``jmp`` with a 32-bit offset) or as an image-base offset baked
-into the instruction, it grows a window of whole instructions
-from there, wildcards every field that moves when code or data moves (that reference, calls,
-jumps, other instruction-pointer-relative offsets, other image-base offsets), and keeps the
-shortest window that matches exactly once in .text. It prints up to K such patterns, each with
-how to turn a match into the address (docs/re/memory.md and client/patterns.py use the same
-form). A call site resolves like an instruction-pointer-relative reference (kind "rip": its
-offset field leads to the function). When RVA starts a function, it also prints a pattern
-over the function's first instructions, kind "at" (the match itself is the address). The file
-is only read.
+For each instruction that refers to the range (RIP-relative, a call/jmp rel32, or an
+image-base offset), it grows a window of whole instructions, wildcards every field that moves
+when code or data moves, and keeps the shortest window that matches once in .text; up to K
+such patterns, each with how a match becomes the address (the form client/patterns.py uses).
+When RVA starts a function it also prints an "at" pattern over its first instructions. The
+file is only read.
 """
 
 from __future__ import annotations

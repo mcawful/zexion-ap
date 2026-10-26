@@ -1,28 +1,10 @@
-"""The Zexion Archipelago client.
+"""The Zexion Archipelago client: ``python -m client.zexion_client [archipelago://...]``.
 
-    .venv/Scripts/python -m client.zexion_client [archipelago://name:password@host:port]
-
-(``python client/zexion_client.py`` runs the same: it runs this module of the package.)
-
-It needs Archipelago's own modules: by default the pinned checkout in .ap/Archipelago
-(tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names. From Archipelago's Launcher, as
-Zexion Client (worlds/zexion/__init__.py, run_client), Archipelago is the Launcher's own.
-``--verbose`` also shows what the client sets up in the game for the seed; without it the
-window shows only what the player acts on.
-
-While Zexion runs with this seed's save loaded, the client sends the locations the map marks as
-collected, gives the items other worlds send (client/session.py) and sends the goal when the
-ending begins. With the in-game helper (client/native.py, native/) items arrive with the game's
-popup, and the helper also starts new games holding the seed, labels other players' items,
-offers the escape skip, locks ASSIST, names Intel Chips, shows the OS Install Disks, deals
-DeathLinks and keeps AP saves' look without the client. The client asks the server only for
-items from other worlds: this world's own are in the save's item table, and the game hands them
-out itself.
-
-What each part does, and when it was tested in the game: README.md ("Features") and
-native/README.md; the docstrings of the side tasks with the helper (client/ticks.py), of the
-records in the server's data storage (client/storage.py) and of the modules they use; the state
-the client keeps, by how long it lasts: client/state.py.
+Archipelago comes from .ap/Archipelago (or ``ZEXION_AP_DIR``), or is the Launcher's own when
+started as Zexion Client. While this seed's save is loaded it sends the locations the map marks
+collected, gives items from other worlds (client/session.py) and sends the goal when the ending
+begins; the side tasks with the in-game helper are in client/ticks.py. This world's own items
+are in the save's item table, so it asks the server only for other worlds' (items_handling).
 """
 
 from __future__ import annotations
@@ -164,10 +146,8 @@ class ZexionContext(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         conn = self.conn
         if conn is not None and conn.awaiting_backlog and cmd != "Connected":
-            # The server sends what the slot already holds right after Connected, in the same
-            # message, and nothing when it holds nothing: so only the packet after Connected can
-            # be that list. Which of them have had their popup is the server's count
-            # (announced_tick).
+            # Only the packet right after Connected can be the slot's backlog (the server sends
+            # none when it is empty).
             conn.awaiting_backlog = False
             conn.items_listed = True
         if cmd == "Connected":
@@ -196,9 +176,8 @@ class ZexionContext(CommonContext):
             # The popups it handed this helper are still the helper's to show: not queued again.
             conn.queued_before = old.session.announced
         self.conn = conn
-        # Kept by the server across connections and clients: the Energy Shields given, the
-        # locations found, the follow-up popups shown, and how many received items have had
-        # their popup (so the items received while no client ran get theirs on connecting).
+        # Kept by the server across clients: shields given, locations found, follow-ups and
+        # item popups shown.
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
         if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
             self.seed_state = state.SeedState(identity)

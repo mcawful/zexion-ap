@@ -7,12 +7,9 @@ __all__ = ["ZexionWorld"]
 
 
 def run_client(*args: str) -> None:
-    """The Zexion client (client/zexion_client.py), in the launcher's own process for it: the
-    subpackage ``client`` that tools/build_apworld.py bundles into the apworld beside this file
-    (zipimport reads it from there), or, with the world run from source (this folder linked
-    into an Archipelago checkout), this repo's ``client`` package, its root added to the end of
-    the path. The client's modules import one another relatively, so none of their names lands
-    on the path."""
+    """The Zexion client, run in the Launcher's process: the ``client`` subpackage bundled into
+    the apworld (tools/build_apworld.py), or, run from source, this repo's ``client`` package
+    (its root appended to the path)."""
     try:
         from .client.zexion_client import launch
     except ModuleNotFoundError as error:

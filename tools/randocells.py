@@ -202,9 +202,7 @@ def reachable_cells(
             return seen
 
 
-# Item definition redirects (the live item table, fields +0x54 and +0x56; docs/re/randocells.md):
-# a weapon picked up again counts as its upgrade; an upgrade picked up first counts as its
-# weapon. In effect each weapon and its upgrade are progressive (logic.WEAPON_UPGRADES).
+# A weapon and its upgrade are progressive (logic.WEAPON_UPGRADES; docs/re/randocells.md).
 REDIRECT_IF_OWNED = logic.WEAPON_UPGRADES
 REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in logic.WEAPON_UPGRADES.items()}
 

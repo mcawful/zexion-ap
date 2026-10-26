@@ -88,8 +88,8 @@ def assert_writable(path: str | os.PathLike[str]) -> Path:
     """Return ``path`` as a Path, or raise if it is inside a protected folder."""
     if is_protected_path(path):
         raise ProtectedPathError(
-            f"refusing to write {path}: it is inside the game install or the real save folder. "
-            "Work on a copy in lab/ (see /save-lab)."
+            f"refusing to write {path}: it is inside a protected folder (the game install, the "
+            "saves, or Steam's cloud cache). Work on a copy in lab/ (see /save-lab)."
         )
     return Path(path)
 

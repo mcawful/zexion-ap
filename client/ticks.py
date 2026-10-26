@@ -219,8 +219,8 @@ def config_file(g: game.Game) -> str:
 
 
 async def offline_config(ctx: ZexionContext) -> str | None:
-    """The config file, built once per attach to the game (in a thread: it reads ~66 places
-    in the game); None while no game is attached, or if building it failed (tried again)."""
+    """The config file, built once per attach to the game (in a thread: it reads dozens of
+    places in the game); None while no game is attached, or if building it failed (tried again)."""
     g = ctx.game_conn
     if g is None:
         return None
@@ -379,9 +379,9 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
 async def confirm_shield(
     ctx: ZexionContext, game_conn: game.Game, pending: shields.Pending, key: str
 ) -> None:
-    """One look at the game for a spawned shield: count it, wait, or let it be spawned again.
-    The state is settled again right before the shield is read (not the step's, which helper
-    requests since may have outlasted: a death or reload then would count a lost shield)."""
+    """One look for a spawned shield: count it, wait, or spawn it again. The state is settled
+    again here: the step's may be stale after the helper requests, and a death since would
+    count a lost shield."""
     sh = ctx.shields
 
     def look() -> tuple[str, bool, str]:
@@ -597,7 +597,7 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
     """Once per attach, when this seed's save is first seen in play: if the helper dressed it
-    with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED. (client_back)."""
+    with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED (client_back)."""
     helper, told = ctx.helper, ctx.told
     if helper is None or told.client_back_sent or not step.seed_matches:
         return
@@ -611,11 +611,9 @@ async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
 
 
 async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
-    """The popup after the game's own for each of this world's finds that has one: an OS Install
-    Disk's count, an Intel Chip's (or Area Map's) hint. Shown once for each, for the loaded
-    save's collected locations, whenever it was found: in play, before this connection, or with
-    no client at all; the server keeps which were shown (popped_key), so none is skipped and
-    none shown twice."""
+    """The follow-up popup (an OS Install Disk's count, an Intel Chip's hint) for each of this
+    world's finds in the loaded save, found with or without a client; the server's popped_key
+    keeps which were shown, so each is shown once."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     if helper is None or conn is None or not conn.items_listed or not step.seed_matches:
         return

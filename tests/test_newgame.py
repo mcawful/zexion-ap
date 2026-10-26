@@ -10,7 +10,7 @@ from fakes import fresh, menu_setup, plan
 from client import newgame as ng
 from client import save_patch as sp
 
-MENU_SIZE = 0x114  # the randomizer menu's state (native/src/game_calls.h, kMenuSize)
+MENU_SIZE = 0x114  # the randomizer menu's state (native/src/requests.h, kMenuSize)
 
 
 def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> list[str]:
