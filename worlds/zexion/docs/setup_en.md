@@ -26,25 +26,12 @@ seed as a test.
    is connected, it also says to start the client.
 
 To update, replace all three with the game closed. If the helper in the game's folder is not
-the version the client needs, the client cannot use it and says so. Items still arrive, with
-no popups, but the old helper stays loaded and acts as if no client were connected (on an AP
-save the game says the client is not connected, and the title screen asks you to start the
-client), and no new game can start the seed (a save that already holds it still plays).
-Copying this release's `zexion_ap.dll` and `version.dll` there, with the game closed, fixes it.
-To remove the helper, delete both DLLs (or, to turn it off for a
-while, create an empty file named `zexion_ap.disabled` beside them). A save that is not from a
-seed you have played with the client plays as it always does.
-
-With the helper there, a save of a seed you have played with the client keeps its look when
-you play it without the client: Archipelago items, Intel Chips, the ASSIST lock, the escape
-skip and your OS Install Disk count (counting disks you find in your own world), with a notice
-that the client is not connected. Items from other players and hints wait until you run the
-client again; what you pick up is sent then, after a notice that the client is connected, and
-the popups it would have shown (a disk's count, an Intel Chip's hint) come then too. The core
-goal's ending can be played without the client: the goal is sent once that save is next loaded
-with the client connected. RETURN HOME WITH THE DISKS? is offered only with the client. For this,
-the client has the helper keep a few small files in `%LOCALAPPDATA%\ZexionAP`; deleting that
-folder is safe (the client writes them again).
+the version the client needs, the client says so and cannot use it: items still arrive, with
+no popups, the game acts as if no client were connected, and no new game can start the seed.
+Copying this release's two DLLs there, with the game closed, fixes it. To remove the helper,
+delete both DLLs (or, to turn it off for a while, create an empty file named
+`zexion_ap.disabled` beside them). A save that is not from a seed you have played with the
+client plays as it always does.
 
 ## Generating a seed
 
@@ -67,13 +54,14 @@ playing.
    NORMAL and **ARCHIPELAGO**: choose ARCHIPELAGO. You start in the seed's start room with its
    starting items, and the game saves the new game at once.
 
-Once that game is in play, ARCHIPELAGO is offered again, so another empty
-slot can start a second save of the same seed; every save of the seed counts, whatever its slot.
+Once that game is in play, ARCHIPELAGO is offered again, so another empty slot can start a
+second save of the same seed; every save of the seed counts, whatever its slot.
 
 This works for every mode. If you would rather start from the game's own menu, start the client
 with `--keep-randomizer`, from a command line in your Archipelago folder:
-`ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`. RANDOMIZER then stays, and choosing it, the seed's mode with no
-options changed, and START GAME starts the seed the same way.
+`ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`. RANDOMIZER then stays, and
+choosing it, the seed's mode with no options changed, and START GAME starts the seed the same
+way.
 
 When the client disconnects, the choice reads RANDOMIZER again.
 
@@ -82,19 +70,27 @@ When the client disconnects, the choice reads RANDOMIZER again.
 Keep the client running while you play. It sends each location as you collect it, gives you
 the items other players find for you (only while you are in play, not in menus), and reports
 your goal when the ending begins, as you leave on the ship after grabbing Zexion in the core
-(with the OS Install Disks goal, when you answer YES to RETURN HOME WITH THE DISKS?, which
-the helper offers when you save at the landing pod you started from with enough disks:
-this goal needs the helper). If you die or reload, items received since your
-last save are given again. Items that arrive once the ending has begun (as a release or
-collect on your goal) are given the next time you load that save. With the DeathLink option on, the client also sends your deaths to
-the other players and ends your life when one of them dies; the second part needs the helper.
-With Area Map hints on (the default), each Intel Chip (the Area Map, renamed) you get makes an
-Archipelago hint for one of your upgrades, keys or OS Install Disks, and the helper shows it in
-a popup.
+(with the OS Install Disks goal, when you answer YES to RETURN HOME WITH THE DISKS?, which the
+helper offers when you save at the landing pod you started from with enough disks: this goal
+needs the helper). If you die or reload, items received since your last save are given again.
+Items that arrive once the ending has begun (as a release or collect on your goal) are given
+the next time you load that save. With the DeathLink option on, the client also sends your
+deaths to the other players and ends your life when one of them dies; the second part needs
+the helper. With Area Map hints on (the default), each Intel Chip (the Area Map, renamed) you
+get makes an Archipelago hint for one of your upgrades, keys or OS Install Disks, and the
+helper shows it in a popup.
 
-Play the seed's slot while the client is connected. If you load a save of a different
-seed, the game says the client is for another seed, and nothing is sent or received
-for that save. Without the client (with the helper in the game's folder) you can keep
-playing: what you pick up is sent when the client next connects with
-that save loaded, and an ending reached meanwhile sends the core goal then, but items from
-other players, hints and RETURN HOME WITH THE DISKS? wait for it.
+If you load a save of a different seed while the client is connected, the game says the
+client is for another seed, and nothing is sent or received for that save.
+
+## Playing without the client
+
+With the helper in the game's folder, a save of a seed you have played with the client keeps
+its look without the client: Archipelago items, Intel Chips, the ASSIST lock, the escape skip
+and your OS Install Disk count (counting disks you find in your own world), with a notice that
+the client is not connected. Items from other players, hints and RETURN HOME WITH THE DISKS?
+wait for the client. Once it connects with that save loaded, what you picked up is sent, after
+a notice that the client is connected, with the popups it would have shown (a disk's count, an
+Intel Chip's hint), and a core ending reached meanwhile sends your goal. For this, the client
+has the helper keep a few small files in `%LOCALAPPDATA%\ZexionAP`; deleting that folder is
+safe (the client writes them again).
