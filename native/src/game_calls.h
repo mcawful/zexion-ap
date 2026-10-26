@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "game_mem.h"
 #include "menu.h"
 #include "apitem.h"
 #include "looks.h"

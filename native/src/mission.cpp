@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
@@ -12,34 +12,9 @@ const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
 
 namespace {
 
-constexpr ptrdiff_t kMenuBelow = 0x78;
-constexpr int kMaxMenus = 64;
-constexpr ptrdiff_t kPanelChildren = 0x1E0, kPanelCapacity = 0x1E8;
-constexpr ptrdiff_t kChildLabel = 0x1F0, kChildCallback = 0x2C0, kChildHandler = 0x2C8;
-constexpr ptrdiff_t kReleased = 0x1C8, kLabelCapacity = 0x1D8;
 // The prompt as 0x1668A0 builds it: one panel of three children, YES, NO and the question.
 constexpr int32_t kPromptChildren = 3;
 constexpr int kMinQuestionGlyphs = 28;  // kMissionQuestion's length
-
-template <typename T>
-bool read(const BYTE* base, ptrdiff_t offset, T& out) {
-    return base != nullptr && safe_read(base + offset, &out, sizeof(T));
-}
-
-template <typename T>
-void put(BYTE* base, ptrdiff_t offset, T value) {
-    std::memcpy(base + offset, &value, sizeof(value));
-}
-
-bool is_open(BYTE* current_menu, const BYTE* wanted) {
-    BYTE* menu = nullptr;
-    if (!read(current_menu, 0, menu)) return false;
-    for (int i = 0; i < kMaxMenus && menu != nullptr; ++i) {
-        if (menu == wanted) return true;
-        if (!read(menu, kMenuBelow, menu)) return false;
-    }
-    return false;
-}
 
 void* routine(const MissionAddresses& a, int index) {
     void* fn = nullptr;
@@ -124,33 +99,33 @@ std::string MissionPrompt::open(const MissionAddresses& a) {
     BYTE* child[kPromptChildren] = {};
     if (!read(a.current_menu, 0, menu) || !read(menu, 0, panels) ||
         !read(reinterpret_cast<BYTE*>(panels), 0, panel) ||
-        !read(panel, kPanelCapacity, capacity) || capacity != kPromptChildren ||
-        !read(panel, kPanelChildren, children) ||
+        !read(panel, panel::kCapacity, capacity) || capacity != kPromptChildren ||
+        !read(panel, panel::kChildren, children) ||
         !safe_read(children, child, sizeof(child))) {
         return status_ = "not the prompt as traced";
     }
     // First of all, YES does what NO does: whatever else is not as traced, the escape skip's
     // YES never stays on a prompt outside the escape.
     void* first_no = nullptr;
-    if (read(child[1], kChildCallback, first_no) && first_no != nullptr &&
-        writable(child[0] + kChildCallback, sizeof(void*))) {
-        put(child[0], kChildCallback, first_no);
+    if (read(child[1], widget::kCallback, first_no) && first_no != nullptr &&
+        writable(child[0] + widget::kCallback, sizeof(void*))) {
+        put(child[0], widget::kCallback, first_no);
     }
     void* callbacks[kPromptChildren] = {};
     callbacks[0] = first_no;  // YES, now NO's
     for (int i = 1; i < kPromptChildren; ++i) {
         int32_t released = 1;
         void* handler = nullptr;
-        if (!read(child[i], kReleased, released) || released != 0 ||
-            !read(child[i], kChildHandler, handler) || handler != a.widget_handler ||
-            !read(child[i], kChildCallback, callbacks[i])) {
+        if (!read(child[i], sprite::kReleased, released) || released != 0 ||
+            !read(child[i], widget::kHandler, handler) || handler != a.widget_handler ||
+            !read(child[i], widget::kCallback, callbacks[i])) {
             return status_ = "not the prompt as traced";
         }
     }
     int32_t yes_released = 1;
     void* yes_handler = nullptr;
-    if (!read(child[0], kReleased, yes_released) || yes_released != 0 ||
-        !read(child[0], kChildHandler, yes_handler) || yes_handler != a.widget_handler) {
+    if (!read(child[0], sprite::kReleased, yes_released) || yes_released != 0 ||
+        !read(child[0], widget::kHandler, yes_handler) || yes_handler != a.widget_handler) {
         return status_ = "not the prompt as traced";
     }
     BYTE* question = nullptr;
@@ -159,13 +134,13 @@ std::string MissionPrompt::open(const MissionAddresses& a) {
     if (no == nullptr || callbacks[0] != no || callbacks[2] != nullptr) {
         return status_ = "not the prompt as traced";
     }
-    if (!read(child[2], kChildLabel, question) || !read(question, kLabelCapacity, glyphs) ||
+    if (!read(child[2], widget::kLabel, question) || !read(question, label::kLength, glyphs) ||
         glyphs < kMinQuestionGlyphs) {
         return status_ = "the question's label is not as traced: YES is NO";
     }
     reinterpret_cast<void (*)(void*, const char*, int, int)>(a.text_set_fn)(
         question, kMissionQuestion, 0, glyphs);
-    if (a.yes_hook != nullptr) put(child[0], kChildCallback, a.yes_hook);
+    if (a.yes_hook != nullptr) put(child[0], widget::kCallback, a.yes_hook);
     no_fn_ = no;
     yes_child_ = child[0];
     menu_ = menu;
@@ -202,8 +177,8 @@ void MissionPrompt::restore(const MissionAddresses& a) {
     cancel(a);  // an opener it could not take off stays armed_: still held
     void* cb = nullptr;
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
-        read(yes_child_, kChildCallback, cb) && cb == a.yes_hook) {
-        put(yes_child_, kChildCallback, no_fn_);
+        read(yes_child_, widget::kCallback, cb) && cb == a.yes_hook) {
+        put(yes_child_, widget::kCallback, no_fn_);
     }
     yes_child_ = nullptr;
     menu_ = nullptr;

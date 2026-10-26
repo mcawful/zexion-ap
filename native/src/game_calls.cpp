@@ -64,11 +64,6 @@ constexpr char kOtherSeedNotice[] =
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
-// Item records: 100 bytes each; icon at +0x08, name at +0x0A (50 bytes), sound at +0x5A,
-// its volume at +0x5C (docs/re/memory.md, "Game functions the helper calls").
-constexpr size_t kRecordSize = 100, kRecordIcon = 0x08, kRecordName = 0x0A, kNameMax = 50;
-constexpr size_t kRecordSound = 0x5A, kRecordVolume = 0x5C;
-constexpr size_t kRecordItems = 51;
 // A message's sequence number and frames left, and the popup's line length, place and time.
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupPerLine = 0x18, kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
@@ -94,7 +89,6 @@ using SuitColorFn = void (*)(int slot, short palette);
 using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
 // A received Energy Shield runs its pickup's area event (Game::run_item_event).
 constexpr uint8_t kEnergyShield = 50;
-constexpr ptrdiff_t kRecordEvent = 0x40;
 constexpr ptrdiff_t kEventRecordSize = 0x28;
 constexpr uint8_t kSpawnEventType = 11;
 constexpr int16_t kShieldObject = 2018;
@@ -102,11 +96,6 @@ constexpr uint64_t kSettledMs = 1000;  // in play, in one cell, this long before
 // The player's death (docs/re/memory.md, "DeathLink"): death_fn(player, 0), as the game's
 // damage code calls it once energy is 0 or below.
 using DeathFn = void (*)(void* player, char kind);
-
-template <typename T>
-T& at(BYTE* p, ptrdiff_t offset) {
-    return *reinterpret_cast<T*>(p + offset);
-}
 
 bool parse_number(const std::string& text, uint64_t& out) {
     if (text.empty()) return false;
@@ -200,7 +189,7 @@ std::string parse_batch(const std::string& request, Batch& out) {
             const char* kept = bare ? " .,'!?-:" : " .,'!?-";
             const size_t most = bare ? kNoticeMax : kSuffixMax;
             unsigned item = 0;
-            if (!(words >> item) || item >= kRecordItems) return "bad line " + line;
+            if (!(words >> item) || item >= record::kCount) return "bad line " + line;
             std::string rest;
             std::getline(words >> std::ws, rest);
             std::string suffix;
@@ -478,8 +467,8 @@ bool Game::in_play() const {
 
 BYTE* Game::record(uint8_t item) const {
     BYTE* records = at<BYTE*>(item_records_, 0);
-    if (records == nullptr || item >= kRecordItems) return nullptr;
-    return records + kRecordSize * item;
+    if (records == nullptr || item >= record::kCount) return nullptr;
+    return records + record::kSize * item;
 }
 
 void Game::refresh_hud() {
@@ -700,9 +689,9 @@ void Game::pump_popups() {
         text = notice_text(popup.suffix, kPopupPerLine, &per_line);
     } else {
         std::string head;
-        if (rec[kRecordIcon] != 0) head += static_cast<char>(rec[kRecordIcon]);
-        const char* name = reinterpret_cast<const char*>(rec + kRecordName);
-        head.append(name, strnlen(name, kNameMax));
+        if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
+        const char* name = reinterpret_cast<const char*>(rec + record::kName);
+        head.append(name, strnlen(name, record::kNameSize));
         text = popup_text(head, popup.suffix, kPopupPerLine, &per_line);
     }
     void* message = reinterpret_cast<MessageFn>(message_fn_)(
@@ -710,11 +699,11 @@ void Game::pump_popups() {
     if (message == nullptr) return;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     BYTE* p = player();
-    auto sound = at<int16_t>(rec, kRecordSound);
+    auto sound = at<int16_t>(rec, record::kSound);
     if (!popup.silent && sound >= 0) {
         reinterpret_cast<SoundFn>(sound_fn_)(
             sound_system_, sound, static_cast<float>(at<double>(p, kX)),
-            static_cast<float>(at<double>(p, kY)), at<float>(rec, kRecordVolume), -1.0f, 0, 8);
+            static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
     popups_.pop_front();
     frames_since_popup_ = 0;
@@ -774,7 +763,7 @@ std::string Game::run_item_event(uint8_t item) {
     // is checked against B1 first.
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
-    int16_t event = at<int16_t>(rec, kRecordEvent);
+    int16_t event = at<int16_t>(rec, record::kEvent);
     BYTE* table = nullptr;
     int16_t events = 0;
     if (event < 0 || !safe_read(event_table_, &table, sizeof(table)) || table == nullptr ||
@@ -1529,23 +1518,23 @@ void Game::resolve_item_labels() {
     std::map<int, std::string> names = ap_items_.labels();
     for (auto it = item_labels_.begin(); it != item_labels_.end();) {
         const Label& pending = it->second;
-        BYTE record[kRecordSize];
-        if (!safe_read(records + pending.item * kRecordSize, record, sizeof(record))) return;
+        BYTE record[record::kSize];
+        if (!safe_read(records + pending.item * record::kSize, record, sizeof(record))) return;
         std::string name;
         if (!pending.item_name.empty()) {
             name = pending.item_name;  // this player's own, named by the client
         } else if (pending.item == kStandInItem || pending.item == kStandInProgression) {
             // The stand-ins' records are restyled: their own names, as the game loads them.
             name = pending.item == kStandInItem ? "SCRAP ENERGY" : "SCRAP CHUNK";
-            record[kRecordIcon] = 0;
+            record[record::kIcon] = 0;
         } else {
-            for (size_t i = 0; i < kNameMax && record[kRecordName + i] != 0; ++i) {
-                name += static_cast<char>(record[kRecordName + i]);
+            for (size_t i = 0; i < record::kNameSize && record[record::kName + i] != 0; ++i) {
+                name += static_cast<char>(record[record::kName + i]);
             }
         }
         if (name.size() > static_cast<size_t>(kPopupPerLine) - 1) name.resize(kPopupPerLine - 1);
         if (name.empty()) name = kApItemName;  // a record with no name
-        uint8_t icon = record[kRecordIcon] != 0 ? record[kRecordIcon]
+        uint8_t icon = record[record::kIcon] != 0 ? record[record::kIcon]
                        : pending.item == kDiskItem ? kDiskGlyph  // the helper's (equip.h)
                                                    : kApItemGlyph;
         Label done = layout_label(std::string(1, static_cast<char>(icon)) + name, pending.who);
@@ -1628,52 +1617,47 @@ void Game::watch_ap_items() {
 }
 
 std::vector<StandInSeen> Game::stand_ins_seen() const {
-    // Item objects keep their position at +0x40 and +0x48 (doubles, pixels, as the player's),
-    // and the general objects are assumed to, sharing the sprite fields; the item pool's cell is
-    // at +0x3AC and +0x3AD, the general pool's at +0x210 and +0x211 (docs/re/memory.md, "Live
+    // Item objects keep their position in their sprite fields (pixels, as the player's), and the
+    // general objects are assumed to; each pool keeps its cell (obj::) (docs/re/memory.md, "Live
     // item objects"). A position off the map is not used.
-    constexpr ptrdiff_t kObjX = 0x40, kObjY = 0x48, kSpawn = 0x1D8, kRecord = 0x1E8;
-    constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;
-    constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211, kFrameIndex = 0x1C4;
-    constexpr size_t kItemSize = 0x3B0, kGeneralSize = 0x5C8;
     constexpr double kMapWidth = 54 * 320.0, kMapHeight = 54 * 224.0 + 8;
     std::vector<StandInSeen> out;
     BYTE* base = ItemLooks::item_frame_base(looks_places());
     auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {
         double x = 0, y = 0;
-        std::memcpy(&x, o + kObjX, sizeof(x));
-        std::memcpy(&y, o + kObjY, sizeof(y));
+        std::memcpy(&x, o + sprite::kX, sizeof(x));
+        std::memcpy(&y, o + sprite::kY, sizeof(y));
         if (row >= 54 || column >= 54 || !(x >= 0 && x < kMapWidth) || !(y >= 0 && y < kMapHeight)) {
             return;
         }
         out.push_back({item, row * 54 + column, x, y});
     };
     if (item_pool_ != nullptr) {
-        static BYTE pool[kItemSize * ItemLooks::kSlots];  // the game thread's only
+        static BYTE pool[obj::kItemSize * ItemLooks::kSlots];  // the game thread's only
         if (!safe_read(item_pool_, pool, sizeof(pool))) return out;
         for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
-            const BYTE* o = pool + slot * kItemSize;
+            const BYTE* o = pool + slot * obj::kItemSize;
             int32_t spawn = 0;
             int16_t record = 0;
-            std::memcpy(&spawn, o + kSpawn, sizeof(spawn));
-            std::memcpy(&record, o + kRecord, sizeof(record));
+            std::memcpy(&spawn, o + obj::kSpawn, sizeof(spawn));
+            std::memcpy(&record, o + obj::kRecord, sizeof(record));
             if (spawn == 0 || (record != kStandInItem && record != kStandInProgression)) continue;
-            add(record, o[kItemRow], o[kItemColumn], o);
+            add(record, o[obj::kItemRow], o[obj::kItemColumn], o);
         }
     }
     if (object_pool_ != nullptr && base != nullptr) {
-        BYTE o[kGeneralRow + 2];
+        BYTE o[obj::kGeneralRow + 2];
         for (int slot : looks_.flipped_slots()) {
             // Checked again: the list is from the last scan, up to 30 frames ago.
             if (slot < 0 || slot >= ItemLooks::kObjectSlots ||
-                !safe_read(object_pool_ + slot * kGeneralSize, o, sizeof(o)) ||
+                !safe_read(object_pool_ + slot * obj::kGeneralSize, o, sizeof(o)) ||
                 !ItemLooks::shows_stand_in(o, base)) {
                 continue;
             }
             int32_t frame = 0;
-            std::memcpy(&frame, o + kFrameIndex, sizeof(frame));
+            std::memcpy(&frame, o + sprite::kFrameIndex, sizeof(frame));
             int item = frame == kStandInFrame ? kStandInItem : kStandInProgression;
-            add(item, o[kGeneralRow], o[kGeneralColumn], o);
+            add(item, o[obj::kGeneralRow], o[obj::kGeneralColumn], o);
         }
     }
     return out;

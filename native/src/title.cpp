@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
@@ -20,17 +20,11 @@ namespace {
 constexpr ptrdiff_t kListHead = 0x18, kListTail = 0x20;
 constexpr ptrdiff_t kOwner = 0x00, kNext = 0x10, kPrevious = 0x18;
 constexpr int kMaxObjects = 4096;
-// A text object (0x92300): its glyph count, columns, the count shown, and the glyphs.
-constexpr ptrdiff_t kTextLength = 0x1D8, kTextColumns = 0x1DC, kTextHint = 0x1E4;
-constexpr ptrdiff_t kTextFlag = 0x1E8, kTextShown = 0x1EC, kTextGlyphs = 0x228;
+// A text object (0x92300), past its label fields (game_layout.h): the count shown and its tag.
+constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8, kTextShown = 0x1EC;
 constexpr ptrdiff_t kTag = 0x178, kTagNumber = 0x180;
 constexpr size_t kTextSize = 0x268;
 constexpr int32_t kTextColumnsAll = 32;
-// A glyph: shown, palette, style and frame.
-constexpr ptrdiff_t kVisible = 0x120, kPalettePtr = 0x198, kPaletteNumber = 0x1A0;
-constexpr ptrdiff_t kFrameBase = 0x1A8, kFrameShown = 0x1B0, kFrameCount = 0x1BC;
-constexpr ptrdiff_t kFrameIndex = 0x1C4, kStyle = 0x1D0, kFrameSize = 0x38;
-constexpr size_t kGlyphSize = 0x1D8;
 constexpr int32_t kCopyright = 0xA9;  // the font's ©
 // The game's line: © then "2025 GALLANT LEAF" (18 glyphs); the year is not checked.
 constexpr char kGameLineEnd[] = "GALLANT LEAF";
@@ -38,31 +32,15 @@ constexpr int32_t kGameLineLength = 18;
 constexpr int kLookFrames = 8;
 constexpr int kMaxGlyphs = 64;
 
-template <typename T>
-bool read(const BYTE* base, ptrdiff_t offset, T& out) {
-    return base != nullptr && safe_read(base + offset, &out, sizeof(T));
-}
-
-template <typename T>
-void put(BYTE* base, ptrdiff_t offset, T value) {
-    std::memcpy(base + offset, &value, sizeof(value));
-}
-
 // A text object's glyphs, if `object` reads as one of `length` glyphs in one row (the game's
 // line has 32 columns; the helper's are at least as wide as they are long).
 bool glyphs_of(BYTE* object, int32_t length, BYTE** glyphs) {
     int32_t n = 0, columns = 0;
     BYTE** list = nullptr;
-    return length > 0 && length <= kMaxGlyphs && read(object, kTextLength, n) && n == length &&
-           read(object, kTextColumns, columns) && columns >= length &&
-           read(object, kTextGlyphs, list) && list != nullptr &&
+    return length > 0 && length <= kMaxGlyphs && read(object, label::kLength, n) && n == length &&
+           read(object, label::kColumns, columns) && columns >= length &&
+           read(object, label::kGlyphs, list) && list != nullptr &&
            safe_read(list, glyphs, sizeof(BYTE*) * static_cast<size_t>(length));
-}
-
-int32_t frame_of(BYTE* g) {
-    int32_t f = -1;
-    read(g, kFrameIndex, f);
-    return f;
 }
 
 // Whether the text's glyphs show `text` (glyph 0 the © when `copyright`).
@@ -85,18 +63,6 @@ bool is_game_line(BYTE* object) {
             return false;
         }
     }
-    return true;
-}
-
-bool set_frame(BYTE* g, int32_t frame) {
-    int32_t frames = 0;
-    BYTE* base = nullptr;
-    if (!read(g, kFrameCount, frames) || frame < 0 || frame >= frames ||
-        !read(g, kFrameBase, base) || base == nullptr) {
-        return false;
-    }
-    put<int32_t>(g, kFrameIndex, frame);
-    put(g, kFrameShown, base + frame * kFrameSize);
     return true;
 }
 
@@ -136,8 +102,9 @@ void show(BYTE* object, size_t length, bool visible) {
     if (!glyphs_of(object, static_cast<int32_t>(length), g)) return;
     for (size_t i = 0; i < length; ++i) {
         uint8_t now = 0;
-        if (read(g[i], kVisible, now) && now != (visible ? 1 : 0) && writable(g[i], kGlyphSize)) {
-            *(g[i] + kVisible) = visible ? 1 : 0;
+        if (read(g[i], sprite::kVisible, now) && now != (visible ? 1 : 0) &&
+            writable(g[i], sprite::kSize)) {
+            *(g[i] + sprite::kVisible) = visible ? 1 : 0;
         }
     }
 }
@@ -153,8 +120,9 @@ std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const st
     BYTE* tag = nullptr;
     int16_t tag_number = 0;
     // Glyph 1, a plain character, carries the palette and style the routine gives them all.
-    if (!glyphs_of(model, kGameLineLength, mg) || !read(mg[1], kPalettePtr, palette) ||
-        !read(mg[1], kPaletteNumber, palette_number) || !read(mg[1], kStyle, style) ||
+    if (!glyphs_of(model, kGameLineLength, mg) || !read(mg[1], sprite::kPalette, palette) ||
+        !read(mg[1], sprite::kPaletteNumber, palette_number) ||
+        !read(mg[1], sprite::kStyle, style) ||
         !read(model, kTag, tag) || !read(model, kTagNumber, tag_number)) {
         return "the game's line does not read as traced";
     }
@@ -193,16 +161,16 @@ std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const st
     reinterpret_cast<Link>(a.text_link_fn)(t);
     put<int32_t>(t, kTextShown, length);
     for (int32_t i = 0; i < length; ++i) {
-        if (!writable(g[i], kGlyphSize)) continue;
-        *(g[i] + kVisible) = 1;
-        put(g[i], kPalettePtr, palette);
-        put(g[i], kPaletteNumber, palette_number);
-        put(g[i], kStyle, style);
+        if (!writable(g[i], sprite::kSize)) continue;
+        *(g[i] + sprite::kVisible) = 1;
+        put(g[i], sprite::kPalette, palette);
+        put(g[i], sprite::kPaletteNumber, palette_number);
+        put(g[i], sprite::kStyle, style);
     }
     if (copyright) set_frame(g[0], kCopyright);
     put(t, kTag, tag);
     put(t, kTagNumber, tag_number);
-    *(t + kVisible) = 0;
+    *(t + sprite::kVisible) = 0;
     put<int32_t>(t, kTextFlag, 0);
     made = t;
     return "";
@@ -240,7 +208,7 @@ std::string TitleLines::watch(const TitleAddresses& a, bool client) {
     // while no client is connected.
     BYTE* g[kGameLineLength] = {};
     uint8_t visible = 0;
-    if (glyphs_of(l.game_line, kGameLineLength, g) && read(g[0], kVisible, visible)) {
+    if (glyphs_of(l.game_line, kGameLineLength, g) && read(g[0], sprite::kVisible, visible)) {
         if (l.mod_line != nullptr) show(l.mod_line, mod_line_.size(), visible != 0);
         if (l.credit != nullptr) show(l.credit, sizeof(kTitleCredit) - 1, visible != 0);
         if (l.hint != nullptr) show(l.hint, sizeof(kTitleHint) - 1, visible != 0 && !client);

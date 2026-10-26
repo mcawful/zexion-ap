@@ -5,7 +5,7 @@
 #include <sstream>
 
 #include "game_calls.h"  // parse_config
-#include "menu.h"        // safe_read
+#include "game_mem.h"
 
 namespace zap {
 

@@ -4,17 +4,12 @@
 #include <functional>
 #include <vector>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
 namespace {
 
-// Record fields (docs/re/memory.md, "Other players' items").
-constexpr ptrdiff_t kRecordSize = 100, kRecordCount = 51;
-constexpr ptrdiff_t kKind = 0x00, kFrame = 0x02, kTicks = 0x04, kFrames = 0x06, kIcon = 0x08;
-constexpr ptrdiff_t kPalette = 0x09, kName = 0x0A, kInventory = 0x3C, kEvent = 0x40;
-constexpr ptrdiff_t kRedirect = 0x54, kPickupClass = 0x58;
 // What Scrap Energy and Scrap Chunk share as the game loads them (B1).
 constexpr int16_t kOwnKind = 34, kOwnTicks = 6, kOwnFrames = 2;
 constexpr uint8_t kOwnPalette = 8;
@@ -120,31 +115,20 @@ constexpr uint8_t kEntryRgb[19][3] = {
     {255, 255, 184}, {255, 255, 212}, {255, 255, 241}, {255, 255, 255},
 };
 
-template <typename T>
-T& at(BYTE* p, ptrdiff_t offset) {
-    return *reinterpret_cast<T*>(p + offset);
-}
-
 bool is_own(const BYTE* r, const StandIn& s) {
-    BYTE copy[kRecordSize];
-    std::memcpy(copy, r, sizeof(copy));
-    int16_t v;
-    auto word = [&](ptrdiff_t o) { std::memcpy(&v, copy + o, 2); return v; };
-    return word(kKind) == kOwnKind && word(kFrame) == s.own_frame && word(kTicks) == kOwnTicks &&
-           word(kFrames) == kOwnFrames && copy[kIcon] == 0 && copy[kPalette] == kOwnPalette &&
-           std::memcmp(copy + kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
-           word(kInventory) == kOwnInventory && word(kEvent) == s.own_event &&
-           word(kRedirect) == 0 && word(kPickupClass) == kOwnClass;
+    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.own_frame &&
+           word(r, record::kTicks) == kOwnTicks && word(r, record::kFrames) == kOwnFrames &&
+           r[record::kIcon] == 0 && r[record::kPalette] == kOwnPalette &&
+           std::memcmp(r + record::kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
+           word(r, record::kInventory) == kOwnInventory && word(r, record::kEvent) == s.own_event &&
+           word(r, record::kRedirect) == 0 && word(r, record::kPickupClass) == kOwnClass;
 }
 
 bool is_ours(const BYTE* r, const StandIn& s) {
-    int16_t frame, frames, event, kind;
-    std::memcpy(&kind, r + kKind, 2);
-    std::memcpy(&frame, r + kFrame, 2);
-    std::memcpy(&frames, r + kFrames, 2);
-    std::memcpy(&event, r + kEvent, 2);
-    return kind == kOwnKind && frame == s.frame && frames == kLogoFrames &&
-           (r[kIcon] == 0 || r[kIcon] == kLogoGlyph) && event == kNoEvent;
+    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.frame &&
+           word(r, record::kFrames) == kLogoFrames &&
+           (r[record::kIcon] == 0 || r[record::kIcon] == kLogoGlyph) &&
+           word(r, record::kEvent) == kNoEvent;
 }
 
 }  // namespace
@@ -171,13 +155,13 @@ void ApItems::set_labels(std::map<int, std::string> labels) { labels_ = std::mov
 BYTE* ApItems::record(BYTE* holder, int item) const {
     BYTE* records = nullptr;
     if (!safe_read(holder, &records, sizeof(records)) || records == nullptr) return nullptr;
-    BYTE* r = records + item * kRecordSize;
-    BYTE probe[kRecordSize];
+    BYTE* r = records + item * record::kSize;
+    BYTE probe[record::kSize];
     if (!safe_read(records, probe, 1) || !safe_read(r, probe, sizeof(probe)) ||
-        !writable(r, kRecordSize)) {
+        !writable(r, record::kSize)) {
         return nullptr;
     }
-    static_assert(kStandInItem < kRecordCount && kStandInProgression < kRecordCount);
+    static_assert(kStandInItem < record::kCount && kStandInProgression < record::kCount);
     return r;
 }
 
@@ -228,13 +212,13 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
         if (r == nullptr) continue;
         if (!is_ours(r, s)) {
             if (!is_own(r, s)) continue;  // neither the game's own nor ours: leave it alone
-            at<int16_t>(r, kFrame) = s.frame;
-            at<int16_t>(r, kFrames) = kLogoFrames;
-            at<int16_t>(r, kEvent) = kNoEvent;
+            at<int16_t>(r, record::kFrame) = s.frame;
+            at<int16_t>(r, record::kFrames) = kLogoFrames;
+            at<int16_t>(r, record::kEvent) = kNoEvent;
         }
         records_[i] = r;  // ours now, or already (left by a helper that unloaded without a frame)
-        if (std::memcmp(r + kName, want, sizeof(want)) != 0) {
-            std::memcpy(r + kName, want, sizeof(want));
+        if (std::memcmp(r + record::kName, want, sizeof(want)) != 0) {
+            std::memcpy(r + record::kName, want, sizeof(want));
         }
     }
 }
@@ -473,14 +457,14 @@ void ApItems::release(BYTE* records_holder) {
         const StandIn& s = kStandIns[i];
         BYTE* r = record(records_holder, s.item);
         if (r != nullptr && is_ours(r, s)) {
-            at<int16_t>(r, kFrame) = s.own_frame;
-            at<int16_t>(r, kTicks) = kOwnTicks;
-            at<int16_t>(r, kFrames) = kOwnFrames;
-            r[kIcon] = 0;
-            r[kPalette] = kOwnPalette;
-            std::memset(r + kName, 0, kItemNameMax + 1);
-            std::memcpy(r + kName, s.own_name, std::strlen(s.own_name));
-            at<int16_t>(r, kEvent) = s.own_event;
+            at<int16_t>(r, record::kFrame) = s.own_frame;
+            at<int16_t>(r, record::kTicks) = kOwnTicks;
+            at<int16_t>(r, record::kFrames) = kOwnFrames;
+            r[record::kIcon] = 0;
+            r[record::kPalette] = kOwnPalette;
+            std::memset(r + record::kName, 0, kItemNameMax + 1);
+            std::memcpy(r + record::kName, s.own_name, std::strlen(s.own_name));
+            at<int16_t>(r, record::kEvent) = s.own_event;
         }
         records_[i] = nullptr;
     }

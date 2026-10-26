@@ -31,13 +31,6 @@
 
 namespace zap {
 
-// Copies `size` bytes from `from` into `to`, or returns false if they are not committed,
-// readable memory (or reading them faults).
-bool safe_read(const void* from, void* to, size_t size);
-
-// Whether `size` bytes at `at` are committed memory the game may write (no guard page).
-bool writable(const void* at, size_t size);
-
 struct MenuAddresses {
     BYTE* current_menu = nullptr;  // holds a pointer to the top open menu
     void* panel_handler = nullptr;
