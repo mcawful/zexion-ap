@@ -5,7 +5,7 @@ An Energy Shield's effect is its pickup's spawn, not an inventory byte (docs/re/
 one at a time, and counts each in the server's data storage (per team and slot, so a restart
 or a shield received offline is not lost) once the game shows it up in play. One not seen
 within SEEN_SECONDS, or whose player died or whose save was unloaded first, is spawned again
-(reconcile.shield_outcome); after MISSES in a row the client waits BACKOFF_SECONDS.
+(shield_outcome); after MISSES in a row the client waits BACKOFF_SECONDS.
 
 Pure logic and the game read; client/zexion_client.py talks to the helper and the server.
 """
@@ -14,15 +14,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import game, reconcile
+from . import game
 
 GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
 MISSES = 3  # spawns in a row not seen before backing off
 BACKOFF_SECONDS = 60.0
 
-# What a look at a spawned shield led to (Shields.looked).
+# What a look at a spawned shield led to (shield_outcome, Shields.looked).
 WAIT, AGAIN, BACKOFF, UP = "wait", "again", "backoff", "up"
+
+
+def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> str:
+    """Whether a spawned Energy Shield counts as given (UP), needs another look (WAIT), or
+    must be spawned again (AGAIN), from one look at the game: ``in_play``, the settled state
+    reads in play; ``up``, the player has a shield up; ``left_play``, the player died or the
+    save was unloaded since the spawn, which takes back what the last save did not hold;
+    ``overdue``, the time to see it has run out.
+
+    The link to the shield is set from the frame it appears (docs/re/memory.md, "Received
+    Energy Shields"), so a shield up in play counts at once: the check confirms that it
+    appeared, not that it lasts, or a player under fire would be given shield after shield. A
+    shield already up is refreshed by the new one and looks the same, so it counts too."""
+    if left_play:
+        return AGAIN
+    if not in_play:
+        return WAIT  # paused or loading: look again once in play
+    if up:
+        return UP
+    return AGAIN if overdue else WAIT
 
 
 @dataclass
@@ -95,11 +115,11 @@ class Shields:
         if state != game.IN_PLAY:
             pending.at = now  # the time to see it runs in play only
         overdue = now >= pending.at + SEEN_SECONDS
-        outcome = reconcile.shield_outcome(state == game.IN_PLAY, up, pending.left_play, overdue)
-        if outcome == reconcile.WAIT:
+        outcome = shield_outcome(state == game.IN_PLAY, up, pending.left_play, overdue)
+        if outcome == WAIT:
             return WAIT
         self.pending = None
-        if outcome == reconcile.AGAIN:
+        if outcome == AGAIN:
             self.misses += 1
             if self.misses >= MISSES:
                 self.misses = 0

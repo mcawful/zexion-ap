@@ -26,8 +26,10 @@ With the native helper attached (``Session.helper``), the grants go to the game 
 the helper applies between frames (client/native.py): it checks again that the game is in
 play and that every byte still holds what this poll read, writes all or none, sets missiles,
 bombs and energy as a pickup would, refreshes the HUD, and shows the game's popup for each
-item received that has not had one (the count kept on the server, from ``mark_announced``;
-until it is known nothing is given through the helper); an Area Map with a hint gets a
+item received not yet handed to it (``announced``, which starts from the server's count of
+popups shown, ``mark_announced``; until that is known nothing is given through the helper;
+the client stores that count as the helper shows them, client/state.py); an Area Map with a
+hint gets a
 notice instead, the hint's text alone (``notes``, client/hints.py). When nothing is owed but
 max missiles or bombs lag behind the counts, it sends a refresh that sets them. A helper that
 fails is dropped, and grants go back to direct writes. Both ran in the game on 2026-10-22
@@ -72,7 +74,7 @@ class Snapshot:
     finale: int = 0
     scanned: int = 0
     stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
-    cell: tuple[int, int] = (-1, -1)  # game.Game.player_cell
+    cell: tuple[int, int] = (-1, -1)  # game.PlayerState.cell
 
 
 # The flags a poll reads, in one read from the first.
@@ -151,9 +153,10 @@ class Session:
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
-        # How many received items have had their popup. None until the server's count of
-        # shown popups has been read (announced_tick, mark_announced); until then nothing is
-        # given through the helper.
+        # How many received items have been handed to the helper with their popup, or written
+        # directly (with none): the next batch's first, so no popup is queued twice. None until
+        # the server's count of shown popups has been read (announced_tick, mark_announced);
+        # until then nothing is given through the helper.
         self._announced: int | None = None
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
@@ -163,11 +166,13 @@ class Session:
 
     @property
     def announced(self) -> int | None:
-        """How many received items have had their popup (None: not known yet)."""
+        """How many received items have been handed to the helper or written directly (None:
+        not known yet)."""
         return self._announced
 
     def mark_announced(self, count: int) -> None:
-        """Received items up to ``count`` have had their popup (the server's count)."""
+        """Received items up to ``count`` have had their popup, or are queued for it (the
+        server's count of those shown, or the count again after a lost helper)."""
         self._announced = count
 
     def say_once(self, key: str, message: str) -> None:

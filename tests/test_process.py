@@ -34,7 +34,7 @@ def test_reads_and_writes_go_through_and_a_bad_address_fails() -> None:
     p = process.Process(EXE, os.getpid())
     try:
         assert p.read_bytes(address, 8) == b"zexion--"
-        p.write_bytes(address, b"AP", 2)
+        p.write_bytes(address, b"AP")
         assert buffer.raw[:8] == b"APxion--"
         assert p.module() is not None
         with pytest.raises(process.ProcessError):

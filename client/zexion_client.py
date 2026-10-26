@@ -31,7 +31,7 @@ import contextlib
 import os
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -98,6 +98,7 @@ REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a
 SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
+FOUND_RESEND_SECONDS = 5.0  # likewise for the locations found (store_found)
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 
 BACKUPS = "zexion_backups"  # under Archipelago's user folder
@@ -176,8 +177,9 @@ class ZexionContext(CommonContext):
         self.unload_helper_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
         self.disarm_pending = False
-        self.goal_withheld = False  # an ending without enough disks, said once
         self.preparing = False  # a /prepare is running (in a thread)
+        # Warnings and failures that would repeat each poll or retry: each said once.
+        self.said = state.SayOnce()
 
         self.hints_failed = ""  # the last error the hints raised, said once
         self.offline_failed = False  # the last offline file failed, said once
@@ -187,10 +189,6 @@ class ZexionContext(CommonContext):
     @property
     def plan(self) -> save_patch.SeedPlan | None:
         return None if self.conn is None else self.conn.plan
-
-    @property
-    def session(self) -> session.Session | None:
-        return None if self.conn is None else self.conn.session
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -213,12 +211,21 @@ class ZexionContext(CommonContext):
     def connected(self, slot: dict) -> None:
         conn = state.Connection.from_slot_data(slot, self.team, self.slot)
         conn.session.helper = self.helper
+        old = self.conn  # a dropped connection's, on reconnecting
+        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
+        if (
+            old is not None
+            and identity == self.seed_state.identity
+            and self.helper is not None
+            and old.session.helper is self.helper
+        ):
+            # The popups it handed this helper are still the helper's to show: not queued again.
+            conn.queued_before = old.session.announced
         self.conn = conn
         # Kept by the server across connections and clients: the Energy Shields given, the
         # locations found, the follow-up popups shown, and how many received items have had
         # their popup (so the items received while no client ran get theirs on connecting).
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
-        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
         if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
             self.seed_state = state.SeedState(identity)
         # Wait for this connection's own read of the stored hints and its item list.
@@ -229,15 +236,16 @@ class ZexionContext(CommonContext):
             self.told.labels_retry_at = 0.0
         if conn.hint_targets:
             self.set_notify(conn.hints_key)
-        asyncio.create_task(self.update_death_link(conn.death_link_on))
+        Utils.async_start(self.update_death_link(conn.death_link_on), name="death link tag")
         if conn.death_link_on:
             detail("DeathLink is on for this seed.")
         if conn.foreign:
             scouts = [LOCATION_ID_BASE + i for i in conn.foreign]
-            asyncio.create_task(
+            Utils.async_start(
                 self.send_msgs(
                     [{"cmd": "LocationScouts", "locations": scouts, "create_as_hint": 0}]
-                )
+                ),
+                name="scout labels",
             )
         if conn.hunt is not None and not self.use_helper:
             logger.warning(
@@ -297,6 +305,7 @@ class ZexionContext(CommonContext):
         conn = self.conn
         if conn is not None:
             conn.session.helper = None
+            conn.helper_lost()  # its popups not shown yet are queued again on the next one
             # A plan the lost helper held is armed again in the next one; a new game just made
             # waits until its save is in play (poll), and a seed that cannot make one
             # stays as it is.
@@ -340,6 +349,13 @@ class Poll:
         self.found = own_found(ctx)
 
 
+def server_open(ctx: ZexionContext) -> bool:
+    """Whether a message can go to the server now: CommonContext.send_msgs drops one silently
+    while the socket is not open (the same test as its own)."""
+    server = ctx.server
+    return bool(server and server.socket and server.socket.open and not server.socket.closed)
+
+
 async def store(
     ctx: ZexionContext,
     key: str,
@@ -351,6 +367,8 @@ async def store(
 ) -> bool:
     """One operation on a data storage key (``Set``); False, warned with ``what``, when the send
     failed (a closing connection), for the caller to send it again."""
+    if not server_open(ctx):
+        return False  # send_msgs would drop it without a word
     try:
         await ctx.send_msgs(
             [
@@ -443,7 +461,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     if home.remind(enough):
         note = [(ids.DATA_DISC, discs.POD_NOTE, True)]
         reply = await asyncio.to_thread(helper.apply, native.batch_text([], note))
-        if helper is not ctx.helper or reply != "applied":
+        if reply != "applied":
             return
         home.reminded = True
         detail(
@@ -453,7 +471,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     if not home.offer:
         return
     reply = await asyncio.to_thread(helper.request, "mission_prompt")
-    if helper is not ctx.helper or reply != "queued":
+    if reply != "queued":
         return
     home.offer = False
     detail(
@@ -463,37 +481,34 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     )
 
 
-def stored_announced(ctx: ZexionContext, p: Poll) -> int | None:
-    """The server's count of received items whose popup has been shown, or None until it has
-    been read. A slot with none stored (played before the count, or its data lost) counts
-    every item it holds now as shown, as the client did before: no flood of old popups."""
-    if ctx.conn is None or ctx.conn.announced_key not in ctx.stored_data:
-        return None
-    stored = ctx.stored_data.get(ctx.conn.announced_key)
-    if isinstance(stored, int) and stored >= 0:
-        return stored
-    return len(p.codes)
-
-
 async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) -> None:
-    """Received items' popups, kept across connections: the session starts from the
-    server's count (so an item received while no client ran pops up when it is given,
-    and a reconnect replays none), and the count is stored again as popups are shown
-    (the larger one wins, for two clients of a slot)."""
-    stored = stored_announced(ctx, p)
-    if stored is None or not conn.items_listed:
+    """Received items' popups, kept across connections (client/state.py): the session starts
+    from the server's count of those shown, once it has been read (a slot with none stored
+    counts every item it holds as shown, and stores that at once, so the key exists); and the
+    count is stored again as the helper shows them (the larger one wins, for two clients of a
+    slot). The helper is asked how many are still waiting only while more have been queued than
+    the server holds as shown."""
+    if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
+    raw = ctx.stored_data.get(conn.announced_key)
     current = conn.session
     if current.announced is None:
-        current.mark_announced(min(stored, len(p.codes)))  # counts as received() does
-        conn.announced_sent = stored
+        # Counted as received() counts: Zexion items only.
+        queued, conn.announced_shown = state.announced_start(raw, len(p.codes), conn.queued_before)
+        current.mark_announced(queued)
+    queued, shown = current.announced, conn.announced_shown or 0
+    helper = current.helper  # None once the session gave up on it and wrote directly
+    if helper is None:
+        shown = queued  # nothing waits in a helper: direct writes show no popups
+    elif state.popups_unstored(queued, raw, conn.announced_sent):
+        pending = await asyncio.to_thread(helper.popups_pending)
+        shown = state.popups_shown(queued, pending, shown)
+    conn.announced_shown = shown
+    count = state.announced_to_store(shown, raw, conn.announced_sent)
+    if count is None:
         return
-    count = current.announced
-    if count <= max(stored, conn.announced_sent or 0):
-        return
-    conn.announced_sent = count
-    if not await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups shown"):
-        conn.announced_sent = None  # sent again on the next poll
+    if await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups shown"):
+        conn.announced_sent = count  # else sent again on the next poll
 
 
 def popped(ctx: ZexionContext) -> set[int] | None:
@@ -520,7 +535,7 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
     if told.other_save_sent or step.state != game.IN_PLAY:
         return
     reply = await asyncio.to_thread(helper.request, "other_save")
-    if helper is ctx.helper and not reply.startswith("refused"):
+    if not reply.startswith("refused"):
         told.other_save_sent = True
         logger.info("Another seed's save is loaded: the game says nothing is sent or received.")
 
@@ -534,7 +549,7 @@ async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
     if step.state != game.IN_PLAY:
         return
     reply = await asyncio.to_thread(helper.request, "client_back")
-    if helper is ctx.helper and not reply.startswith("refused"):
+    if not reply.startswith("refused"):
         told.client_back_sent = True
         if reply == "shown":
             detail("This save was played without the client: told the client is back.")
@@ -575,7 +590,7 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         ]
     popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
     reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
-    if helper is not ctx.helper or reply != "applied":
+    if reply != "applied":
         return  # not shown: tried again
     shown = set(disks) | set(maps)
     conn.popped_mine |= shown  # this client's record holds them until the server has them
@@ -594,13 +609,24 @@ def own_found(ctx: ZexionContext) -> list[int]:
     return sorted(found | stored_indices(ctx, key))
 
 
-async def store_found(ctx: ZexionContext, conn: state.Connection, locations: set[int]) -> None:
-    """Record locations just found in game (ids) in the server's data storage (own_found)."""
+async def store_found(
+    ctx: ZexionContext, conn: state.Connection, in_game: set[int], new: set[int]
+) -> None:
+    """Record this world's locations found in the game (indices: the loaded save's, ``new``
+    just found) in the server's data storage (own_found). Once the server's record has been
+    read, every one found that it lacks is sent, again every FOUND_RESEND_SECONDS while it
+    lacks them: a store lost with a closing connection heals without a restart (the server's
+    checked locations, which a reconnect starts from, are never reported again)."""
+    key = conn.found_key
+    stored = stored_indices(ctx, key) if key in ctx.stored_data else None
+    due = time.monotonic() >= conn.found_sent_at + FOUND_RESEND_SECONDS
+    locations = state.found_to_store(in_game, stored, new, due)
     if not locations:
         return
-    value = {str(loc - LOCATION_ID_BASE): 1 for loc in locations if loc >= LOCATION_ID_BASE}
-    # Not sent again: the next connection reports them again.
-    await store(ctx, conn.found_key, "update", value, {}, "Recording the locations found")
+    conn.found_sent_at = time.monotonic()
+    value = {str(i): 1 for i in sorted(locations)}
+    if not await store(ctx, key, "update", value, {}, "Recording the locations found"):
+        conn.found_sent_at = 0.0  # sent again on the next poll
 
 
 async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -677,9 +703,13 @@ async def attach_helper(ctx: ZexionContext) -> None:
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
     except native.HelperError as exc:
-        logger.warning(f"The in-game helper could not be used ({exc}); items arrive with no popup.")
+        if ctx.said("helper", str(exc)):  # tried every 30 s: said again only when it changes
+            logger.warning(
+                f"The in-game helper could not be used ({exc}); items arrive with no popup."
+            )
         ctx.drop_helper()
         return
+    ctx.said.clear("helper")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.
@@ -717,8 +747,6 @@ async def toggle_tick(ctx: ZexionContext, toggle: state.Toggle, want: bool, spec
         return
     requests, replies, notes = spec
     reply = await asyncio.to_thread(helper.request, requests[want])
-    if helper is not ctx.helper:
-        return
     if reply == replies[want]:
         toggle.sent = want
         if notes[want]:
@@ -747,13 +775,11 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
             # Whether the equipment screen showed the count when last opened (logged on change).
             told.discs_status_at = time.monotonic() + REFUSED_RETRY_SECONDS
             status = await asyncio.to_thread(helper.request, "discs_status")
-            if helper is ctx.helper and status != told.discs_status:
+            if status != told.discs_status:
                 told.discs_status = status
                 detail(f"The equipment screen's OS Install Disk count: {status}.")
         return
     reply = await asyncio.to_thread(helper.request, want)
-    if helper is not ctx.helper:
-        return
     if reply == ("discs off" if want == discs.OFF else "discs on"):
         if want == discs.OFF and told.discs_sent not in (None, discs.OFF):
             detail("Not this seed's save: the scanner's message is the game's again.")
@@ -790,9 +816,7 @@ async def slots_tick(ctx: ZexionContext, p: Poll) -> None:
     if want == told.slots_sent:
         return
     reply = await asyncio.to_thread(helper.request, want)
-    if helper is ctx.helper and reply == (
-        "disk_slots off" if want == discs.SLOTS_OFF else "disk_slots on"
-    ):
+    if reply == ("disk_slots off" if want == discs.SLOTS_OFF else "disk_slots on"):
         told.slots_sent = want
 
 
@@ -900,8 +924,6 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
                 )
             except native.HelperError as exc:
                 reply = f"error {exc}"
-            if helper is not ctx.helper:
-                return
         if reply in ("stored", "unchanged"):
             told.offline_sent[kind] = text
             ctx.offline_failed = False
@@ -922,8 +944,6 @@ async def labels_tick(ctx: ZexionContext) -> None:
             return
         ours = conn is not None and told.labels_for is conn
         reply = await asyncio.to_thread(helper.request, "ap_labels")  # none: Scrap Energy again
-        if helper is not ctx.helper:
-            return
         if reply.startswith("labeled"):
             told.labels_for, told.labels_held = None, False
             if ours:
@@ -943,8 +963,8 @@ async def labels_tick(ctx: ZexionContext) -> None:
         return  # the server has not answered yet
     labels, own = built
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
-    if conn is not ctx.conn or helper is not ctx.helper:
-        return  # a reconnect or a lost helper meanwhile: the next tick sends what is current
+    if conn is not ctx.conn:
+        return  # a reconnect meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
         told.labels_for, told.labels_held = conn, True
         detail(
@@ -1012,8 +1032,6 @@ async def confirm_shield(
         if said != sh.said:
             logger.warning(f"Reading the player's Energy Shield failed ({failed}).")
         sh.said = said
-    if sh.pending is not pending:
-        return
     stored = ctx.stored_data.get(key) or 0
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
     if outcome == shields.BACKOFF:
@@ -1113,6 +1131,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
     if conn is None or conn.newgame in (state.NewGame.DONE, state.NewGame.UNAVAILABLE):
         return
     if conn.newgame is None:
+        if time.monotonic() < conn.newgame_retry_at:
+            return  # refused a moment ago
         plan = conn.plan
         build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
         choice = plan.menu is not None and not ctx.keep_randomizer and not conn.choice_refused
@@ -1128,23 +1148,28 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
                 return
         reply = await asyncio.to_thread(helper.request, text)
-        if reply == "armed":
-            conn.newgame = state.NewGame.ARMED
-            conn.newgame_polled_at = time.monotonic()
-            if conn.newgame_said == offer:
-                return  # armed again after a new game: said once per connection
-            conn.newgame_said = offer
-            if offer:
-                logger.info(
-                    "To play, load this seed's save, or start a new game: pick an empty slot "
-                    "and choose ARCHIPELAGO."
-                )
-            else:
-                logger.info(
-                    "To play, load this seed's save, or start a new game: in an empty slot "
-                    "choose RANDOMIZER, pick this seed's mode with no options changed, and "
-                    "START GAME (the AP seed is written in as the game starts)."
-                )
+        if reply != "armed":  # refused (no frame yet, say): asked again in a moment
+            conn.newgame_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS
+            if ctx.said("arm", reply):
+                detail(f"The helper did not take the new game's plan yet ({reply}); asking again.")
+            return
+        ctx.said.clear("arm")
+        conn.newgame = state.NewGame.ARMED
+        conn.newgame_polled_at = time.monotonic()
+        if conn.newgame_said == offer:
+            return  # armed again after a new game: said once per connection
+        conn.newgame_said = offer
+        if offer:
+            logger.info(
+                "To play, load this seed's save, or start a new game: pick an empty slot "
+                "and choose ARCHIPELAGO."
+            )
+        else:
+            logger.info(
+                "To play, load this seed's save, or start a new game: in an empty slot "
+                "choose RANDOMIZER, pick this seed's mode with no options changed, and "
+                "START GAME (the AP seed is written in as the game starts)."
+            )
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
         return
@@ -1172,6 +1197,18 @@ def helper_failure(ctx: ZexionContext) -> Iterator[None]:
         ctx.drop_helper()
 
 
+async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
+    """Run a tick that the items, the checks and the goal must not wait on: a helper that fails
+    is dropped (helper_failure), and any other failure is logged, once for each distinct one,
+    and the poll goes on."""
+    try:
+        with helper_failure(ctx):
+            await tick()
+    except Exception as exc:
+        if ctx.said(f"tick {name}", repr(exc)):
+            logger.exception(f"The client's {name} failed ({exc!r}); items and checks go on.")
+
+
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
@@ -1192,15 +1229,18 @@ async def poll(ctx: ZexionContext) -> None:
             logger.info(f"The helper was asked to unload: {reply}")
         except native.HelperError as exc:
             logger.warning(f"Unloading the helper failed: {exc}")
-    if ctx.helper is not None:
-        with helper_failure(ctx):
-            await newgame_tick(ctx)
-            await skip_tick(ctx)
-            await labels_tick(ctx)
-            await toggle_tick(ctx, ctx.told.assists, ctx.load.assists_want, ASSISTS)
-            await toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL)
-            await discs_helper_tick(ctx, p)
-            await slots_tick(ctx, p)
+    for name, tick in (
+        ("new game", lambda: newgame_tick(ctx)),
+        ("escape skip check", lambda: skip_tick(ctx)),
+        ("item labels", lambda: labels_tick(ctx)),
+        ("assist lock", lambda: toggle_tick(ctx, ctx.told.assists, ctx.load.assists_want, ASSISTS)),
+        ("Intel Chips", lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL)),
+        ("disk count", lambda: discs_helper_tick(ctx, p)),
+        ("file select's disk count", lambda: slots_tick(ctx, p)),
+    ):
+        if ctx.helper is None:
+            break  # none, or it failed in the tick before
+        await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
         return
     try:
@@ -1212,20 +1252,22 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.game_conn is None:
         try:
             ctx.game_conn = await asyncio.to_thread(game.Game.attach)
-            logger.info("Attached to Zexion.")
-            await attach_helper(ctx)
         except game.GameNotRunning:
             return
         except game.GameError as exc:
-            logger.error(f"Cannot use this Zexion: {exc}")
+            if ctx.said("game", str(exc)):  # said again only when it changes
+                logger.error(f"Cannot use this Zexion: {exc}")
             await asyncio.sleep(10)
             return
+        ctx.said.clear("game")
+        logger.info("Attached to Zexion.")
+        await attach_helper(ctx)
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
     current = conn.session
     p = Poll(ctx)  # again: the items may have come while the above waited
-    await announced_tick(ctx, conn, p)
+    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
     try:
         notes: dict[int, str] = {}
         try:
@@ -1243,10 +1285,10 @@ async def poll(ctx: ZexionContext) -> None:
         step = await asyncio.to_thread(
             current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes
         )
-        await announced_tick(ctx, conn, p)  # the popups just shown, stored at once
     except game.GameNotRunning:
         logger.info("Zexion has closed.")
         ctx.shields.left()
+        ctx.load.leave()  # nothing of this game's carries into the next one's
         with contextlib.suppress(Exception):
             ctx.game_conn.pm.close_process()  # the exited game's handle
         ctx.game_conn = None
@@ -1256,6 +1298,8 @@ async def poll(ctx: ZexionContext) -> None:
         logger.error(f"Reading Zexion failed: {exc}")
         await asyncio.sleep(2)
         return
+    # The popups the step handed the helper, or the items it wrote directly.
+    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
     if ctx.helper is not None and current.helper is None:
         ctx.drop_helper()  # the session gave up on it; try again later
     elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
@@ -1286,34 +1330,38 @@ async def poll(ctx: ZexionContext) -> None:
     elif step.left_seed:
         load.leave()  # reminded again on the next load, and so on
     conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
-    with helper_failure(ctx):
-        if conn.death_link_on:
-            await deathlink_tick(ctx, step)
-        if ctx.helper is not None:
-            await other_save_tick(ctx, step)  # another seed's save: told so in the game
+    if conn.death_link_on:
+        await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))
+    if ctx.helper is not None:
+        # Another seed's save: told so in the game.
+        await side_tick(ctx, "other save's notice", lambda: other_save_tick(ctx, step))
     if not step.seed_matches or ctx.conn is not conn:
         return  # nothing to send, or the connection changed meanwhile
     shield_work = ctx.shields.pending is not None or ctx.shields.given is not None
     if ctx.helper is not None or shield_work:
-        with helper_failure(ctx):
-            await shields_tick(ctx, p.codes)
+        await side_tick(ctx, "Energy Shields", lambda: shields_tick(ctx, p.codes))
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: these checks are not its
-    locations = {LOCATION_ID_BASE + i for i in step.checked & conn.kept}
-    new = locations - ctx.locations_checked
+    found = step.checked & conn.kept
+    new = {LOCATION_ID_BASE + i for i in found} - ctx.locations_checked
     if new:
         ctx.locations_checked |= new  # sent again on connecting if this send fails
         try:
             await ctx.check_locations(new)
         except Exception as exc:  # a closing connection
             logger.warning(f"Sending the locations found failed ({exc}); sent on reconnecting.")
-        await store_found(ctx, conn, new)
+    just_found = {loc - LOCATION_ID_BASE for loc in new}
+    await side_tick(ctx, "found record", lambda: store_found(ctx, conn, found, just_found))
+    if new:
         p.found = own_found(ctx)  # counted from now on, in this poll too
-    if ctx.helper is not None:
-        with helper_failure(ctx):
-            await client_back_tick(ctx, step)  # first: CLIENT CONNECTED before the rest
-            await followups_tick(ctx, p, step)
-            await mission_tick(ctx, p, step)
+    for name, tick in (
+        ("client-back notice", lambda: client_back_tick(ctx, step)),  # CLIENT CONNECTED first
+        ("follow-up popups", lambda: followups_tick(ctx, p, step)),
+        ("landing pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
+    ):
+        if ctx.helper is None:
+            break  # none, or it failed in the tick before
+        await side_tick(ctx, name, tick)
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: this ending is not its goal
     if step.goal and not conn.goal_sent and not ctx.finished_game:
@@ -1334,8 +1382,8 @@ async def poll(ctx: ZexionContext) -> None:
                 if hunt is None
                 else f"The ending began with {have} of {hunt.required} OS Install Disks: goal sent."
             )
-        elif not ctx.goal_withheld:
-            ctx.goal_withheld = True
+        elif not load.goal_withheld:
+            load.goal_withheld = True  # said once a load
             logger.warning(
                 f"The ending began with {have} of {hunt.required} OS Install Disks: not the goal."
             )

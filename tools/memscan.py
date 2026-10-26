@@ -208,7 +208,7 @@ def cmd_write(args: argparse.Namespace) -> int:
     pm, _, _ = attach()
     addr, new = int(args.addr, 0), bytes.fromhex(args.hex)
     old = pm.read_bytes(addr, len(new))
-    pm.write_bytes(addr, new, len(new))
+    pm.write_bytes(addr, new)
     back = pm.read_bytes(addr, len(new))
     print(f"0x{addr:012x}: {old.hex(' ')} -> {back.hex(' ')}")
     if back != new:

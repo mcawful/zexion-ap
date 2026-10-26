@@ -58,7 +58,7 @@ def test_the_config_names_the_addresses_the_helper_takes() -> None:
     keys = config_keys()
     assert len(set(native.CONFIG_KEYS)) == len(native.CONFIG_KEYS)
     assert set(native.CONFIG_KEYS) == set(keys)
-    assert not native.CLIENT_ONLY & set(keys)
+    assert not patterns.TOOL_TARGETS & set(keys)
 
 
 def test_the_helper_takes_functions_as_code() -> None:

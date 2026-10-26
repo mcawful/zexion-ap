@@ -78,30 +78,6 @@ def should_own(
     return total
 
 
-# What a look at the game says about a shield the helper spawned (shield_outcome).
-COUNT, WAIT, AGAIN = "count", "wait", "again"
-
-
-def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> str:
-    """Whether a spawned Energy Shield counts as given (COUNT), needs another look (WAIT), or
-    must be spawned again (AGAIN), from one look at the game: ``in_play``, the settled state
-    reads in play; ``up``, the player has a shield up; ``left_play``, the player died or the
-    save was unloaded since the spawn, which takes back what the last save did not hold;
-    ``overdue``, the time to see it has run out.
-
-    The link to the shield is set from the frame it appears (docs/re/memory.md, "Received
-    Energy Shields"), so a shield up in play counts at once: the check confirms that it
-    appeared, not that it lasts, or a player under fire would be given shield after shield. A
-    shield already up is refreshed by the new one and looks the same, so it counts too."""
-    if left_play:
-        return AGAIN
-    if not in_play:
-        return WAIT  # paused or loading: look again once in play
-    if up:
-        return COUNT
-    return AGAIN if overdue else WAIT
-
-
 def shields_owed(received: Iterable[int], spawned: int) -> int:
     """How many received Energy Shields have not been given yet (``spawned``: those counted
     as given)."""

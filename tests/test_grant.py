@@ -44,11 +44,11 @@ class FakeProcess:
     def read_bytes(self, address: int, size: int) -> bytes:
         return bytes(self.memory[address : address + size])
 
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
+    def write_bytes(self, address: int, data: bytes) -> None:
         if self.fail_write:
             raise OSError("access denied")
         self.writes += 1
-        self.memory[address : address + size] = data
+        self.memory[address : address + len(data)] = data
         if self.overwrite_with is not None:
             self.memory[address] = self.overwrite_with
 
@@ -71,7 +71,7 @@ def fake(monkeypatch, tmp_path):
     g = FakeGame(FakeProcess(), 0, dict(RVA), 1, Build("B1", "0" * 64, 0, 0))
     g.pm.memory[INV] = 5  # 5 Energy Tanks
     g.pm.memory[ENERGY : ENERGY + 2] = (80).to_bytes(2, "little")  # alive, a save loaded
-    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: g))
+    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls, targets=None: g))
     monkeypatch.setattr(grant, "load_item_names", lambda: dict(NAMES))
     monkeypatch.setattr(game.time, "sleep", lambda _: None)
     return g, tmp_path / "grants.jsonl"
