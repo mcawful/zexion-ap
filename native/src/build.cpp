@@ -10,7 +10,7 @@ struct KnownBuild {
     DWORD size_of_image;
 };
 
-// Keep in step with KNOWN_BUILDS in client/patterns.py.
+// Keep in step with KNOWN_BUILDS in client/patterns.py; tests/test_cross_checks.py checks it.
 constexpr KnownBuild kKnownBuilds[] = {
     {"B1", 0x6A3F82DE, 0x1204000},
 };

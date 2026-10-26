@@ -1,14 +1,8 @@
-// The Area Map as an Intel Chip (the world's Area Map Hints option, on by default).
-//
-// With hints on, the world's Area Maps are Intel Chips, which the game holds as the Area Map
-// (item 49). Its record (docs/re/memory.md, "Other players' items", for the records' fields)
-// names it AREA MAP and runs area event 3551 at pickup, which reveals the map around it. While
-// on (the client's `intel on`: this seed's save loaded), the helper names the record INTEL CHIP
-// and sets its area event to none (-1), so the game's pickup popup says INTEL CHIP (seen), as
-// would anything else that shows the record's name (the map cursor, from disassembly: not seen),
-// and a pickup reveals nothing; the client's hint follows it.
-// Only a record that reads as the game loads it (or as the helper leaves it) is changed, and it
-// is put back when off and before an unload.
+// The Area Map (item 49) as an Intel Chip, for seeds with Area Map Hints: while on (`intel on`),
+// its record is named INTEL CHIP and its pickup event (3551, the map reveal) set to -1, so the
+// pickup popup says INTEL CHIP and reveals nothing (docs/re/memory.md, "Intel Chips"). Only a
+// record reading as the game's or the helper's is written; put back when off and before an
+// unload.
 #pragma once
 
 #include <windows.h>

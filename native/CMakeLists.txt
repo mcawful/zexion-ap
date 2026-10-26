@@ -36,14 +36,14 @@ set_target_properties(version_proxy PROPERTIES OUTPUT_NAME version
                       LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy
                       ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy)
 
-# The same helper hooking the loading program's GetTickCount, for the unload test.
+# The helper built to hook the host's own GetTickCount (never a known game build), for
+# unload_under_load and apply_in_frames.
 add_library(zexion_ap_hooktest SHARED src/dllmain.cpp)
 target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
 target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
 
 enable_testing()
-# The tests that need only zap_core, one program each. NAME=SOURCE: the test NAME runs
-# zap_SOURCE, built from tests/SOURCE.cpp.
+# Single-program tests on zap_core: NAME=SOURCE builds tests/SOURCE.cpp as zap_SOURCE.
 set(ZAP_TESTS
     parts=tests game=game_tests requests=requests_tests menu=menu_tests apitem=apitem_tests
     equip=equip_tests mission=mission_tests pause=pause_tests files=files_tests

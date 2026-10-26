@@ -1,15 +1,8 @@
-// A stand-in for Windows' version.dll that the player copies into Zexion's folder, next to
-// zexion_ap.dll, so the helper loads with the game (native/README.md, "The proxy").
-//
-// The game's SDL2.dll imports version.dll, and Windows looks for it in the game's folder first
-// (it is not a KnownDLL on the machines checked), so this one loads in its place. Every export
-// passes the call on to the real version.dll in the system folder, loaded by the thread below
-// as the process starts or on the first call, whichever comes first (never while the loader
-// lock is held by our own DllMain). DllMain only starts a thread: once the process has started,
-// it pins this DLL, loads the real one, then zexion_ap.dll from this DLL's own folder, if it is
-// there, the host is Zexion.exe and the player has not turned it off (zexion_ap.disabled beside
-// it), under the same named lock the AP client takes to load the helper (waiting at most 5 s),
-// so the two never load it twice.
+// version.dll proxy, copied by the player beside Zexion.exe so the helper loads with the game
+// (native/README.md, "The proxy"). SDL2.dll imports version.dll, not a KnownDLL, so this one
+// loads first; every export passes on to the system's. DllMain only starts load_helper, which
+// pins this DLL, loads the real one, and loads zexion_ap.dll from its own folder (host
+// Zexion.exe, no zexion_ap.disabled beside it) under the client's load mutex.
 #include <windows.h>
 
 #include <cstdint>
@@ -27,8 +20,7 @@ BOOL CALLBACK load_real(PINIT_ONCE, PVOID, PVOID*) {
     if (n == 0 || n + 13 >= MAX_PATH) return TRUE;
     wcscat_s(path, L"\\version.dll");
     HMODULE real = LoadLibraryW(path);
-    // Never this DLL itself (a module by the same name is already loaded: Windows could hand
-    // it back).
+    // Defensive: never take our own module for the real one.
     if (real != nullptr && real != g_self) g_real = real;
     return TRUE;
 }

@@ -75,7 +75,7 @@ bool serve_pipe(const std::wstring& name, const Handler& handle,
             }
             if (error != ERROR_PIPE_CONNECTED) {
                 CloseHandle(pipe);
-                return false;  // the pipe is broken; the helper unhooks and unloads
+                return false;  // broken
             }
         }
         std::string request;
