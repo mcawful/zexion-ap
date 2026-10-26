@@ -1,9 +1,9 @@
 # Working in zexion-ap
 
 Archipelago (AP) multiworld support for **Zexion** (Gallant Leaf, Steam app 3392510), a native
-x64 exe on SDL2 and FMOD with no modding API (build B1 reads only translation mods:
-[`docs/re/builds.md`](docs/re/builds.md)). Everything here comes from reverse engineering, hence
-the evidence rules below.
+x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites and translations
+only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
+Everything here comes from reverse engineering, hence the evidence rules below.
 
 **Status:** pre-release. Client and helper 0.28.0, played in game on build B1. The APWorld lives
 on the local branch `apworld` (never pushed: Rules).
