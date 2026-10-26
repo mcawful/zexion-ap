@@ -386,8 +386,9 @@ public:
     // The stand-ins' names by map cell, as last laid out (tests).
     const std::map<int, std::string>& label_names() const { return ap_items_.labels(); }
     void watch_ap_items();
-    // The live stand-in objects in both pools, with their cells and positions (name_cells).
-    std::vector<StandInSeen> stand_ins_seen() const;
+    // The live stand-in objects in both pools, with their cells and positions (name_cells), from
+    // this frame's copy of the item pool (null: not read) and the item sprites' frame list.
+    std::vector<StandInSeen> stand_ins_seen(const BYTE* pool, BYTE* base) const;
     void restore_ap_items();
     // Game thread, every frame: notes how long the player has been in play in one cell.
     void note_play(uint64_t now_ms);
@@ -551,6 +552,9 @@ private:
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
     ItemLooks looks_;  // other Zexion players' items shown as themselves
     ItemLooks::Places looks_places() const;
+    // The item pool copied into pool_copy_, once a frame; null if it could not be read.
+    const BYTE* read_item_pool();
+    std::vector<BYTE> pool_copy_;
     void resolve_item_labels();
     void set_popup_width(int width);
     GlFunctions gl_;

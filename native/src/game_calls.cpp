@@ -1568,6 +1568,12 @@ void Game::watch_ap_items() {
     // Restyled only in the world: menus show the records too (the equipment screen draws Scrap
     // Chunk's frame, the map cursor a record's name), and nothing is picked up in a menu.
     bool world = *save_loaded_ != kNoSaveLoaded && *menu_state_ == 0;
+    // This frame's look at the live item objects, taken once for naming the stand-ins and for
+    // dressing them (only in the world, as both are): the item pool copied, and the item
+    // sprites' frame list.
+    const ItemLooks::Places places = looks_places();
+    BYTE* base = ItemLooks::item_frame_base(places);
+    const BYTE* pool = world ? read_item_pool() : nullptr;
     // The cell whose label sets the popup's width: the player's, or the one the stand-in about to
     // be picked up was named for.
     int width_cell = cell;
@@ -1576,7 +1582,7 @@ void Game::watch_ap_items() {
         // object carries: a drop lands wherever its enemy dies, and a room can span several
         // cells (apitem.h). The general objects among them as of the last scan, below.
         int cells[kStandInCount];
-        int touching = name_cells(stand_ins_seen(), at<double>(player(), kX),
+        int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
         if (touching >= 0) width_cell = cells[touching];
         ap_items_.watch(item_records_, cells);
@@ -1592,20 +1598,26 @@ void Game::watch_ap_items() {
                                                                       : kGamePopupWidth);
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
-        looks_.scan(looks_places());
-        looks_.apply(looks_places());
+        looks_.scan(places, base);
+        looks_.apply(places, pool, base);
     } else {
-        looks_.restore(looks_places());
+        looks_.restore(places);
     }
 }
 
-std::vector<StandInSeen> Game::stand_ins_seen() const {
+const BYTE* Game::read_item_pool() {
+    if (item_pool_ == nullptr) return nullptr;
+    pool_copy_.resize(obj::kItemSize * ItemLooks::kSlots);
+    return safe_read(item_pool_, pool_copy_.data(), pool_copy_.size()) ? pool_copy_.data()
+                                                                       : nullptr;
+}
+
+std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) const {
     // Item objects keep their position in their sprite fields (pixels, as the player's), and the
     // general objects are assumed to; each pool keeps its cell (obj::) (docs/re/memory.md, "Live
     // item objects"). A position off the map is not used.
     constexpr double kMapWidth = kMapSide * 320.0, kMapHeight = kMapSide * 224.0 + 8;
     std::vector<StandInSeen> out;
-    BYTE* base = ItemLooks::item_frame_base(looks_places());
     auto add = [&](int item, uint8_t row, uint8_t column, const BYTE* o) {
         double x = 0, y = 0;
         std::memcpy(&x, o + sprite::kX, sizeof(x));
@@ -1617,8 +1629,7 @@ std::vector<StandInSeen> Game::stand_ins_seen() const {
         out.push_back({item, row * kMapSide + column, x, y});
     };
     if (item_pool_ != nullptr) {
-        static BYTE pool[obj::kItemSize * ItemLooks::kSlots];  // the game thread's only
-        if (!safe_read(item_pool_, pool, sizeof(pool))) return out;
+        if (pool == nullptr) return out;  // not read: none named after an object
         for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
             const BYTE* o = pool + slot * obj::kItemSize;
             int32_t spawn = 0;

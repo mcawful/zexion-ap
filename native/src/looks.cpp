@@ -98,11 +98,10 @@ void ItemLooks::undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palett
     d = {};
 }
 
-void ItemLooks::apply(const Places& at) {
+void ItemLooks::apply(const Places& at, const BYTE* pool, BYTE* base) {
     if (at.pool == nullptr) return;
     // The template every item object's frame-list base is copied from, the stand-ins' palette,
     // the records and the clock; without any of them, nothing is dressed.
-    BYTE* base = item_frame_base(at);
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
     BYTE* records = read_pointer(at.item_records);
     int64_t clock = 0;
@@ -111,8 +110,7 @@ void ItemLooks::apply(const Places& at) {
         return;
     }
     if (items_.empty() && !dressed()) return;  // nothing to show, nothing to put back
-    pool_.resize(obj::kItemSize * kSlots);
-    if (!safe_read(at.pool, pool_.data(), pool_.size())) return;
+    if (pool == nullptr) return;
     // The stand-ins' records as they are now: an object is dressed only while its record shows
     // the one logo frame the shift is worked out from (restyled by apitem.h), so the game's
     // frame plus the shift always stays in the frame list.
@@ -124,7 +122,7 @@ void ItemLooks::apply(const Places& at) {
     };
     bool ours[2] = {restyled(kStandInItem), restyled(kStandInProgression)};
     for (int slot = 0; slot < kSlots; ++slot) {
-        const BYTE* seen = pool_.data() + slot * obj::kItemSize;
+        const BYTE* seen = pool + slot * obj::kItemSize;
         BYTE* object = at.pool + slot * obj::kItemSize;
         Dressed& d = dressed_[slot];
         int32_t spawn = field<int32_t>(seen, obj::kSpawn);
@@ -198,10 +196,9 @@ bool ItemLooks::shows_stand_in(const BYTE* o, const BYTE* base) {
            (frame == logo_frame(kStandInItem) || frame == logo_frame(kStandInProgression));
 }
 
-void ItemLooks::scan(const Places& at) {
+void ItemLooks::scan(const Places& at, BYTE* base) {
     if (at.object_pool == nullptr || frames_to_scan_-- > 0) return;
     frames_to_scan_ = kScanFrames;
-    BYTE* base = item_frame_base(at);
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
     flipped_slots_.clear();
     if (base == nullptr) return;

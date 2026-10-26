@@ -40,13 +40,15 @@ public:
     void set_items(std::map<int, int> items) { items_ = std::move(items); }
 
     // Game thread, every frame while the stand-ins are restyled: dresses the stand-ins in those
-    // cells, and puts back any it dressed whose cell no longer names an item.
-    void apply(const Places& at);
+    // cells, and puts back any it dressed whose cell no longer names an item. `pool`: this
+    // frame's copy of the item pool (kSlots objects; null if it could not be read), `base` the
+    // item sprites' frame list (item_frame_base), both taken once a frame by the caller.
+    void apply(const Places& at, const BYTE* pool, BYTE* base);
 
     // Game thread, every frame while the stand-ins are restyled, before apply: every 30 frames,
     // finds the general objects showing a stand-in's logo (flipped_slots), and puts back any it
     // dressed that no longer shows one.
-    void scan(const Places& at);
+    void scan(const Places& at, BYTE* base);
 
     // Game thread: puts back every object it dressed that is still that spawn; forgets them.
     void restore(const Places& at);
@@ -82,7 +84,6 @@ private:
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};
-    std::vector<BYTE> pool_;  // this frame's copy of the pool
     std::vector<Dressed> flipped_dressed_ = std::vector<Dressed>(kObjectSlots);
     std::vector<int> flipped_slots_;  // general objects showing a logo at the last scan
     int frames_to_scan_ = 0;
