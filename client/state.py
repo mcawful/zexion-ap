@@ -11,8 +11,10 @@ each, or None).
 
 Also the decisions the game loop makes from that state, as pure functions: the count of
 received items' popups shown, kept on the server (``announced_start`` and the rest), the
-locations found to record there (``found_to_store``), and ``SayOnce`` for messages that would
-repeat each poll. No Archipelago imports, so the tests build them from slot data.
+locations found to record there (``found_to_store``), ``SayOnce`` for messages that would
+repeat each poll, and the player's lines when the game or the mod can't be used
+(``attach_failed``, ``helper_failed``). No Archipelago imports, so the tests build them from
+slot data.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, game, save_patch, session
+from . import aplabels, deathlink, discs, game, native, save_patch, session
 
 
 class UnsupportedSeed(ValueError):
@@ -227,9 +229,10 @@ class SayOnce:
         self._last[topic] = message
         return True
 
-    def clear(self, topic: str) -> None:
-        """The next message for ``topic`` is said, whatever it is (it went well meanwhile)."""
-        self._last.pop(topic, None)
+    def clear(self, *topics: str) -> None:
+        """The next message for each topic is said, whatever it is (it went well meanwhile)."""
+        for topic in topics:
+            self._last.pop(topic, None)
 
 
 @dataclass
@@ -311,7 +314,7 @@ class LoadState:
 
 
 REPORT = "https://github.com/mcawful/zexion-ap/issues"
-SAVE_CLOSED = "This seed's save is closed. Items sent to you wait until you load it again."
+SAVE_CLOSED = "You left this seed's save. Items sent to you wait until you load it again."
 OTHER_SAVE = (
     "This save is from another seed: its checks aren't sent, and items sent to you wait until "
     "you load this seed's save."
@@ -330,7 +333,30 @@ def attach_failed(exc: game.GameError) -> str:
             "Can't find what the client needs in this version of Zexion: please report it at "
             f"{REPORT}."
         )
+    if isinstance(exc, game.AccessDenied):
+        return (
+            "Zexion is running as administrator, so the client can't reach it: run Zexion "
+            "normally, or run the Archipelago Launcher as administrator too."
+        )
     return "Can't reach the running game; trying again (details in the log)."
+
+
+def helper_failed(exc: native.HelperError) -> str | None:
+    """The client's line when the mod could not be used (the details go to the log), or None
+    when the game has just closed (nothing for the player to do). A cause the player can fix
+    (native.ModFixable) is said as it is; any other gets one plain line."""
+    if isinstance(exc, native.GameExited):
+        return None
+    if isinstance(exc, native.ModDisabled):
+        return str(exc)
+    meanwhile = "new games of this seed can't be started, and items arrive without popups."
+    if isinstance(exc, native.ModFixable):
+        return f"The Zexion mod isn't working: {exc}. Until it is, {meanwhile}"
+    return (
+        "The Zexion mod didn't start (details in the log); trying again. If it keeps happening, "
+        "restart Zexion, or close it and copy this release's zexion_ap.dll and version.dll "
+        f"into its folder again. Until it starts, {meanwhile}"
+    )
 
 
 def save_loaded(stamp: bytes) -> str:

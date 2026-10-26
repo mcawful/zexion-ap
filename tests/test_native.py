@@ -208,7 +208,7 @@ def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkey
     built.write_bytes(b"")
     game = _Game()
     stand_in_attach(monkeypatch, game)
-    with pytest.raises(native.HelperError, match="rebuild native"):
+    with pytest.raises(native.ModFixable, match="rebuild native"):
         native.attach(game, built)
     assert game.loads == 1 and game.loaded == "0.0.1"
     for _ in range(2):

@@ -43,6 +43,11 @@ class GameExited(HelperError):
     """The game is no longer running."""
 
 
+class ModFixable(HelperError):
+    """The helper is missing or of another version: the message, a clause for the player,
+    says what to do about it."""
+
+
 class ModDisabled(HelperError):
     """The player turned the mod off (DISABLED_NAME in the game's folder): the game folder's
     helper is not loaded. The message is for the player as it is."""
@@ -407,16 +412,16 @@ def _modified(dll: Path) -> int | None:
         return None
 
 
-def _wrong_version(dll: Path, version: str, own_build: bool) -> HelperError:
+def _wrong_version(dll: Path, version: str, own_build: bool) -> ModFixable:
     """What to do about a helper file of another version: rebuild it, or update the game's
     folder."""
     if own_build:
-        return HelperError(
+        return ModFixable(
             f"the helper built at {dll} is version {version}, and this client needs {VERSION}: "
             "rebuild native/ (native/README.md), or copy this release's zexion_ap.dll and "
             "version.dll into Zexion's folder"
         )
-    return HelperError(
+    return ModFixable(
         f"the copy in Zexion's folder is version {version} and this client needs {VERSION}; "
         "with Zexion closed, copy this release's zexion_ap.dll and version.dll there"
     )
@@ -471,11 +476,11 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
             )
         if not built:
             if not ROOT.is_dir():  # the client in an apworld: the player installs the helper
-                raise HelperError(
+                raise ModFixable(
                     "it isn't installed; with Zexion closed, copy this release's "
                     "zexion_ap.dll and version.dll into Zexion's folder"
                 )
-            raise HelperError(f"none is loaded in the game, and there is no build at {dll}")
+            raise ModFixable(f"none is loaded in the game, and there is no build at {dll}")
         if stale is not None:
             raise _wrong_version(dll, stale[1], own_build)
         loaded_here = load(handle, g.pid, dll, if_absent=True)

@@ -19,10 +19,15 @@ class ProcessNotFound(ProcessError):
     """No process of that name is running."""
 
 
+class ProcessAccessDenied(ProcessError):
+    """Windows refused access (error 5): opening a process that runs as administrator from one
+    that does not, say."""
+
+
 PROCESS_ALL_ACCESS = 0x1F0FFF  # the helper's loader needs threads too
 TH32CS_SNAPPROCESS, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32 = 0x2, 0x8, 0x10
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES = 24, 18
+ERROR_ACCESS_DENIED, ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES = 5, 24, 18
 SNAPSHOT_TRIES = 10  # a module snapshot can fail while the process's loader is busy
 MAX_PATH = 260
 MAX_MODULE_NAME32 = 255
@@ -103,7 +108,8 @@ def kernel32():
 
 def _error(what: str) -> ProcessError:
     code = ctypes.get_last_error()
-    return ProcessError(f"{what} failed: {ctypes.FormatError(code).strip()} (error {code})")
+    kind = ProcessAccessDenied if code == ERROR_ACCESS_DENIED else ProcessError
+    return kind(f"{what} failed: {ctypes.FormatError(code).strip()} (error {code})")
 
 
 def alive(process_handle: int) -> bool:
