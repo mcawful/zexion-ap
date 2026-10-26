@@ -1404,172 +1404,185 @@ async def newgame_tick(ctx: ZexionContext) -> None:
 async def game_loop(ctx: ZexionContext) -> None:
     while not ctx.exit_event.is_set():
         await asyncio.sleep(POLL_SECONDS)
-        if ctx.helper is not None and ctx.unload_helper_pending:
-            ctx.unload_helper_pending = False
-            try:
-                reply = await asyncio.to_thread(ctx.helper.request, "unload")
-                logger.info(f"The helper was asked to unload: {reply}")
-            except native.HelperError as exc:
-                logger.warning(f"Unloading the helper failed: {exc}")
-        if ctx.helper is not None:
-            try:
-                await newgame_tick(ctx)
-                await skip_tick(ctx)
-                await labels_tick(ctx)
-                await assists_tick(ctx)
-                await intel_tick(ctx)
-                await discs_helper_tick(ctx)
-                await slots_tick(ctx)
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-                ctx.drop_helper()
-        if ctx.session is None or not ctx.slot:
-            continue
         try:
-            await offline_tick(ctx)  # the helper's files for this seed's saves without the client
-        except Exception as exc:  # never in the way of items and checks
-            if not ctx.offline_failed:
-                logger.warning(f"Writing the helper's offline files failed: {exc!r}")
-            ctx.offline_failed = True
-        if ctx.game_conn is None:
-            try:
-                ctx.game_conn = await asyncio.to_thread(game.Game.attach)
-                logger.info("Attached to Zexion.")
-                await attach_helper(ctx)
-            except game.GameNotRunning:
-                continue
-            except game.GameError as exc:
-                logger.error(f"Cannot use this Zexion: {exc}")
-                await asyncio.sleep(10)
-                continue
-        current = ctx.session
-        if current is not None:
-            await announced_tick(ctx, current)
-        try:
-            codes, senders = ctx.received()
-            notes: dict[int, str] = {}
-            try:
-                await hints_tick(ctx, codes)
-                notes = hint_notes(ctx, codes)
-            except Exception as exc:  # the hints must never stop items or checks
-                if str(exc) != ctx.hints_failed:
-                    ctx.hints_failed = str(exc)
-                    logger.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
-            # The hunt as of this poll: a disconnect while the game is read clears ctx.discs.
-            hunt = ctx.discs
-            if hunt is not None:  # a received disc pops up with the count
-                notes |= discs.received_notes(hunt, codes, own_found(ctx), ctx.discs_told)
-            step = await asyncio.to_thread(
-                current.step, ctx.game_conn, codes, senders=senders, notes=notes
-            )
-            await announced_tick(ctx, current)  # the popups just shown, stored at once
-        except game.GameNotRunning:
-            logger.info("Zexion has closed.")
-            if ctx.shield_pending is not None:
-                ctx.shield_pending.left_play = True
-            with contextlib.suppress(Exception):
-                ctx.game_conn.pm.close_process()  # the exited game's handle
-            ctx.game_conn = None
-            ctx.drop_helper()
-            continue
-        except game.GameError as exc:
-            logger.error(f"Reading Zexion failed: {exc}")
+            await poll(ctx)
+        except Exception:  # never the end of the loop: what failed is tried on the next poll
+            logger.exception("The Zexion game loop failed; trying again.")
             await asyncio.sleep(2)
-            continue
-        if ctx.helper is not None and current.helper is None:
-            ctx.drop_helper()  # the session gave up on it; try again later
-        elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
-            ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
+
+
+async def poll(ctx: ZexionContext) -> None:
+    """One pass of the game loop."""
+    if ctx.helper is not None and ctx.unload_helper_pending:
+        ctx.unload_helper_pending = False
+        try:
+            reply = await asyncio.to_thread(ctx.helper.request, "unload")
+            logger.info(f"The helper was asked to unload: {reply}")
+        except native.HelperError as exc:
+            logger.warning(f"Unloading the helper failed: {exc}")
+    if ctx.helper is not None:
+        try:
+            await newgame_tick(ctx)
+            await skip_tick(ctx)
+            await labels_tick(ctx)
+            await assists_tick(ctx)
+            await intel_tick(ctx)
+            await discs_helper_tick(ctx)
+            await slots_tick(ctx)
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    if ctx.session is None or not ctx.slot:
+        return
+    try:
+        await offline_tick(ctx)  # the helper's files for this seed's saves without the client
+    except Exception as exc:  # never in the way of items and checks
+        if not ctx.offline_failed:
+            logger.warning(f"Writing the helper's offline files failed: {exc!r}")
+        ctx.offline_failed = True
+    if ctx.game_conn is None:
+        try:
+            ctx.game_conn = await asyncio.to_thread(game.Game.attach)
+            logger.info("Attached to Zexion.")
             await attach_helper(ctx)
-        if step.left_seed and ctx.shield_pending is not None:
+        except game.GameNotRunning:
+            return
+        except game.GameError as exc:
+            logger.error(f"Cannot use this Zexion: {exc}")
+            await asyncio.sleep(10)
+            return
+    current = ctx.session
+    if current is None or not ctx.slot:
+        return  # a disconnect or another connection while the above waited
+    await announced_tick(ctx, current)
+    try:
+        codes, senders = ctx.received()
+        notes: dict[int, str] = {}
+        try:
+            await hints_tick(ctx, codes)
+            notes = hint_notes(ctx, codes)
+        except Exception as exc:  # the hints must never stop items or checks
+            if str(exc) != ctx.hints_failed:
+                ctx.hints_failed = str(exc)
+                logger.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
+        # The hunt as of this poll: a disconnect while the game is read clears ctx.discs.
+        hunt = ctx.discs
+        if hunt is not None:  # a received disc pops up with the count
+            notes |= discs.received_notes(hunt, codes, own_found(ctx), ctx.discs_told)
+        step = await asyncio.to_thread(
+            current.step, ctx.game_conn, codes, senders=senders, notes=notes
+        )
+        await announced_tick(ctx, current)  # the popups just shown, stored at once
+    except game.GameNotRunning:
+        logger.info("Zexion has closed.")
+        if ctx.shield_pending is not None:
             ctx.shield_pending.left_play = True
-        if ctx.session is current:
-            if step.seed_matches and ctx.newgame_state == "done":
-                # The new game holds the seed and is in play: arm again for another slot.
-                ctx.newgame_state = None
-                choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
-                detail(f"{choice} is armed again: another empty slot can start this seed.")
-            if step.seed_matches:
-                ctx.seed_loaded = True
-                ctx.discs_told = step.scanned
-                ctx.save_collected = set(step.checked)
-                if not step.ended:
-                    ctx.ending_unseen = True  # this load is before the ending: one can begin
-            elif step.left_seed:
-                ctx.seed_loaded = False
-                ctx.save_collected = set()
-                ctx.return_home = discs.ReturnHome()  # reminded again on the next load
-                ctx.ending_unseen = False
-        # A poll from before a reconnect says nothing of the new seed's lock or rename.
-        if step.seed_matches and ctx.session is current:
-            if ctx.lock_assists and ctx.assists_unlocked():
-                ctx.lock_assists = False
-                logger.info("Assist Unlock received: the assist menu is no longer locked.")
-            ctx.assists_want = ctx.lock_assists
-            ctx.intel_want = ctx.intel_chip
+        with contextlib.suppress(Exception):
+            ctx.game_conn.pm.close_process()  # the exited game's handle
+        ctx.game_conn = None
+        ctx.drop_helper()
+        return
+    except game.GameError as exc:
+        logger.error(f"Reading Zexion failed: {exc}")
+        await asyncio.sleep(2)
+        return
+    if ctx.helper is not None and current.helper is None:
+        ctx.drop_helper()  # the session gave up on it; try again later
+    elif ctx.helper is None and ctx.use_helper and time.monotonic() >= ctx.helper_retry_at:
+        ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
+        await attach_helper(ctx)
+    if step.left_seed and ctx.shield_pending is not None:
+        ctx.shield_pending.left_play = True
+    if ctx.session is current:
+        if step.seed_matches and ctx.newgame_state == "done":
+            # The new game holds the seed and is in play: arm again for another slot.
+            ctx.newgame_state = None
+            choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
+            detail(f"{choice} is armed again: another empty slot can start this seed.")
+        if step.seed_matches:
+            ctx.seed_loaded = True
+            ctx.discs_told = step.scanned
+            ctx.save_collected = set(step.checked)
+            if not step.ended:
+                ctx.ending_unseen = True  # this load is before the ending: one can begin
         elif step.left_seed:
-            ctx.assists_want = False
-            ctx.intel_want = False
-        if ctx.session is current:  # a poll from before a reconnect says nothing of this seed
-            ctx.labels_want = aplabels.labels_wanted(
-                step.seed_matches, step.left_seed, ctx.labels_want
-            )
-        if ctx.death_link_on and ctx.session is current:
-            try:
-                await deathlink_tick(ctx, step)
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-                ctx.drop_helper()
-        if ctx.helper is not None and ctx.session is current:
-            try:
-                await other_save_tick(ctx, step)  # another seed's save: told so in the game
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-                ctx.drop_helper()
-        if not step.seed_matches or ctx.session is not current:
-            continue  # nothing to send, or the connection changed while the game was read
-        shield_work = ctx.shield_pending is not None or ctx.shield_given is not None
-        if ctx.helper is not None or shield_work:
-            try:
-                await shields_tick(ctx, codes)
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-                ctx.drop_helper()
-        locations = {LOCATION_ID_BASE + i for i in step.checked & ctx.kept}
-        new = locations - ctx.locations_checked
-        if new:
-            ctx.locations_checked |= new
+            ctx.seed_loaded = False
+            ctx.save_collected = set()
+            ctx.return_home = discs.ReturnHome()  # reminded again on the next load
+            ctx.ending_unseen = False
+    # A poll from before a reconnect says nothing of the new seed's lock or rename.
+    if step.seed_matches and ctx.session is current:
+        if ctx.lock_assists and ctx.assists_unlocked():
+            ctx.lock_assists = False
+            logger.info("Assist Unlock received: the assist menu is no longer locked.")
+        ctx.assists_want = ctx.lock_assists
+        ctx.intel_want = ctx.intel_chip
+    elif step.left_seed:
+        ctx.assists_want = False
+        ctx.intel_want = False
+    if ctx.session is current:  # a poll from before a reconnect says nothing of this seed
+        ctx.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, ctx.labels_want)
+    if ctx.death_link_on and ctx.session is current:
+        try:
+            await deathlink_tick(ctx, step)
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    if ctx.helper is not None and ctx.session is current:
+        try:
+            await other_save_tick(ctx, step)  # another seed's save: told so in the game
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    if not step.seed_matches or ctx.session is not current:
+        return  # nothing to send, or the connection changed while the game was read
+    shield_work = ctx.shield_pending is not None or ctx.shield_given is not None
+    if ctx.helper is not None or shield_work:
+        try:
+            await shields_tick(ctx, codes)
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    locations = {LOCATION_ID_BASE + i for i in step.checked & ctx.kept}
+    new = locations - ctx.locations_checked
+    if new:
+        ctx.locations_checked |= new  # sent again on connecting if this send fails
+        try:
             await ctx.check_locations(new)
-            await store_found(ctx, new)
-        if ctx.helper is not None:
+        except Exception as exc:  # a closing connection
+            logger.warning(f"Sending the locations found failed ({exc}); sent on reconnecting.")
+        await store_found(ctx, new)
+    if ctx.helper is not None:
+        try:
+            await client_back_tick(ctx, step)  # first: CLIENT CONNECTED before the rest
+            await followups_tick(ctx, step)
+            await mission_tick(ctx, step)
+        except native.HelperError as exc:
+            logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
+            ctx.drop_helper()
+    if step.goal and not ctx.goal_sent and not ctx.finished_game:
+        # The goal is the ending; with the OS Install Disks goal, only with enough disks.
+        have = None if hunt is None else discs.owned(hunt, codes, own_found(ctx))
+        if hunt is not None and not ctx.ending_unseen:
+            pass  # a save that had reached its ending before: not this ending
+        elif hunt is None or have >= hunt.required:
             try:
-                await client_back_tick(ctx, step)  # first: CLIENT CONNECTED before the rest
-                await followups_tick(ctx, step)
-                await mission_tick(ctx, step)
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); trying it again later.")
-                ctx.drop_helper()
-        if step.goal and not ctx.goal_sent and not ctx.finished_game:
-            # The goal is the ending; with the OS Install Disks goal, only with enough disks.
-            have = None if hunt is None else discs.owned(hunt, codes, own_found(ctx))
-            if hunt is not None and not ctx.ending_unseen:
-                pass  # a save that had reached its ending before: not this ending
-            elif hunt is None or have >= hunt.required:
                 await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
-                ctx.goal_sent = True
-                ctx.finished_game = True
-                logger.info(
-                    "The ending began: goal sent."
-                    if hunt is None
-                    else f"The ending began with {have} of {hunt.required} OS Install Disks: "
-                    "goal sent."
-                )
-            elif not ctx.goal_withheld:
-                ctx.goal_withheld = True
-                logger.warning(
-                    f"The ending began with {have} of {hunt.required} OS Install Disks: not the "
-                    "goal."
-                )
+            except Exception as exc:  # a closing connection: sent on a later poll
+                logger.warning(f"Sending the goal failed ({exc}); trying again.")
+                return
+            ctx.goal_sent = True
+            ctx.finished_game = True
+            logger.info(
+                "The ending began: goal sent."
+                if hunt is None
+                else f"The ending began with {have} of {hunt.required} OS Install Disks: goal sent."
+            )
+        elif not ctx.goal_withheld:
+            ctx.goal_withheld = True
+            logger.warning(
+                f"The ending began with {have} of {hunt.required} OS Install Disks: not the goal."
+            )
 
 
 def launch(*args: str) -> None:
