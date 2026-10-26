@@ -56,8 +56,12 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   helper's queue (its `popups` reply), so an item received while no client ran pops up when it
   is given, a reconnect replays none, and popups still queued when the client or the game
   closes come again next time. A slot with no count stored yet counts the items it holds as
-  shown and stores that at once, so an older slot gets no flood of popups (stand-in tests,
-  helper and client 0.27.0; not yet seen live). The record of locations found is sent again
+  shown and stores that at once, so an older slot gets no flood of popups (live on
+  2026-10-26, build B1, helper and client 0.27.0 from the Launcher, in a slot played on 0.26.0
+  with no count stored: no old popups on connecting; two items sent with no client running
+  popped up on connecting; of three sent at once, the client closed after the first popup,
+  the other two came on reconnecting and the first did not repeat. A game closed with popups
+  queued: stand-in tests only). The record of locations found is sent again
   every 5 seconds until the server holds it, and a failing side task (the labels, the disk
   count, DeathLink, follow-up popups and the like) is logged once while items, checks and
   the goal go on.
