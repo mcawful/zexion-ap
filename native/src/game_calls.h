@@ -405,7 +405,6 @@ private:
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
-    BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
     MapAddresses map_at_;
     MapCursorNames map_names_;
     bool discs_told_ = true;

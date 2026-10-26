@@ -327,7 +327,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     event_table_ = f("event_table");
     event_count_ = f("event_count");
     text_table_ = f("text_table");
-    map_handler_ = f("map_handler");
     start_count_ = f("start_count");
     start_cells_ = f("start_cells");
     start_flags_ = f("start_flags");
@@ -861,8 +860,8 @@ void Game::map_after() {
 void* Game::map_original(void* child) const {
     void* handler = map_names_.original(child);
     // An object the helper did not wrap: the map's own handler, as the game holds it.
-    if (handler == nullptr && map_handler_ != nullptr) {
-        safe_read(map_handler_, &handler, sizeof(handler));
+    if (handler == nullptr && map_at_.map_handler != nullptr) {
+        safe_read(map_at_.map_handler, &handler, sizeof(handler));
     }
     return handler;
 }
