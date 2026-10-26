@@ -1018,10 +1018,10 @@ async def labels_tick(ctx: ZexionContext) -> None:
         told.labels_refused = True  # not asked again until a helper is attached again
 
 
-async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
+async def shields_tick(ctx: ZexionContext, received: list[int], step: session.Step) -> None:
     """Spawn received Energy Shields not given yet, one at a time, through the helper, and
     count each in the server's data storage once the game shows it up in play (client/
-    shields.py)."""
+    shields.py), as the poll's ``step`` read the game's state."""
     conn, game_conn, sh = ctx.conn, ctx.game_conn, ctx.shields
     if conn is None or conn.shield_key not in ctx.stored_data or game_conn is None:
         return  # no game, or the count not read from the server yet
@@ -1030,7 +1030,7 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         await send_shield_count(ctx)
     pending = sh.current(key)
     if pending is not None:
-        await confirm_shield(ctx, game_conn, pending, key)
+        await confirm_shield(ctx, game_conn, pending, key, step.state or game.CHANGING)
         return
     helper = ctx.helper
     if helper is None or time.monotonic() < sh.retry_at:
@@ -1050,18 +1050,18 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
 
 
 async def confirm_shield(
-    ctx: ZexionContext, game_conn: game.Game, pending: shields.Pending, key: str
+    ctx: ZexionContext,
+    game_conn: game.Game,
+    pending: shields.Pending,
+    key: str,
+    state_now: str,
 ) -> None:
-    """One look at the game for a spawned shield: count it, wait, or let it be spawned again."""
+    """One look at the game for a spawned shield, in the settled ``state_now`` the poll read:
+    count it, wait, or let it be spawned again."""
     sh = ctx.shields
-
-    def look() -> tuple[str, bool, str]:
-        state_now = game_conn.settled_state()
-        return (state_now, *shields.look(game_conn, state_now))
-
     try:
-        state_now, up, failed = await asyncio.to_thread(look)
-    except game.GameError:  # the state could not be read: look again; the loop sees a close
+        up, failed = await asyncio.to_thread(shields.look, game_conn, state_now)
+    except game.GameError:  # not read: look again; the loop sees a close
         state_now, up, failed = game.CHANGING, False, ""
     if failed:
         said = f"check failed: {failed}"
@@ -1353,7 +1353,8 @@ async def poll(ctx: ZexionContext) -> None:
     shield_work = ctx.shields.pending is not None or ctx.shields.given is not None
     if ctx.helper is not None or shield_work:
         with helper_failure(ctx):
-            await shields_tick(ctx, p.codes)
+            await shields_tick(ctx, p.codes, step)
+
     locations = {LOCATION_ID_BASE + i for i in step.checked & conn.kept}
     new = locations - ctx.locations_checked
     if new:

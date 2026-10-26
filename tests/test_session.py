@@ -38,7 +38,7 @@ class FakeGame:
         self.flags = bytearray(0x9C4)
         self.stamp = bytes(14)
 
-    def state(self) -> str:
+    def state(self, energy: int | None = None) -> str:
         self.reads += 1
         if self.flicker and self.reads % 2 == 0:
             return game.MENU
@@ -61,6 +61,12 @@ class FakeGame:
 
     def flag(self, number: int) -> int:
         return self.flags[number]
+
+    def flag_bytes(self, first: int, count: int) -> bytes:
+        return bytes(self.flags[first : first + count])
+
+    def player_state(self) -> game.PlayerState:
+        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], self.player_cell())
 
     def save_stamp(self) -> bytes:
         return self.stamp

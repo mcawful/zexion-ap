@@ -71,6 +71,8 @@ ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
 # supplies() returns them: energy, max energy, missiles, max missiles, bombs, max bombs.
 SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
 SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
+# One read covering the supplies, the player's cell and the inventory (player_state).
+PLAYER_SPAN = (SUPPLY_SPAN[0], INVENTORY_IN_PLAYER_STATE + len(ITEM_IDS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
 # The player's link to their Energy Shield (docs/re/memory.md, "Received Energy Shields"): a
 # pointer to the shield object, then that object's handle (a 32-bit serial number, then its
@@ -120,6 +122,16 @@ class ReadBackMismatch(GameError):
         self.read_back = read_back
 
 
+@dataclass(frozen=True)
+class PlayerState:
+    """The player state's fields a poll uses, from one read (Game.player_state)."""
+
+    inventory: bytes  # one byte per item ID 0-50
+    supplies: tuple[int, ...]  # as Game.supplies returns them
+    energy: int  # current energy, as Game.energy
+    cell: tuple[int, int]  # as Game.player_cell
+
+
 # --- pure helpers (tested without the game) ----------------------------------------------
 
 
@@ -162,6 +174,23 @@ def locate_all(code: bytes, code_rva: int, targets: Iterable[Target] = TARGETS) 
             raise PatternError(f"{target.name}: patterns disagree ({listed})")
         out[target.name] = found.pop()
     return out
+
+
+def parse_player_state(span: bytes) -> PlayerState:
+    """The fields of a read of the player state over PLAYER_SPAN."""
+    start = PLAYER_SPAN[0]
+
+    def i16(field: int) -> int:
+        return struct.unpack_from("<h", span, field - start)[0]
+
+    inv = INVENTORY_IN_PLAYER_STATE - start
+    cell = PLAYER_CELL - start
+    return PlayerState(
+        inventory=bytes(span[inv : inv + len(ITEM_IDS)]),
+        supplies=tuple(i16(f) for f in SUPPLY_FIELDS),
+        energy=i16(ENERGY_NOW),
+        cell=(span[cell], span[cell + 1]),
+    )
 
 
 def pe_header_fields(header: bytes) -> tuple[int, int]:
@@ -280,12 +309,7 @@ class Game:
             raise GameError(f"attaching to {PROCESS} failed: {exc}") from exc
 
     def _alive(self) -> bool:
-        import ctypes
-
-        still_active = 259
-        code = ctypes.c_ulong()
-        ok = ctypes.windll.kernel32.GetExitCodeProcess(self.pm.process_handle, ctypes.byref(code))
-        return bool(ok) and code.value == still_active
+        return self.pm.alive()
 
     def _check_alive(self) -> None:
         if not self._alive():
@@ -354,6 +378,12 @@ class Game:
     def inventory(self) -> bytes:
         """One byte per item ID 0-50."""
         return self._read("inventory", 0, len(ITEM_IDS))
+
+    def flag_bytes(self, first: int, count: int) -> bytes:
+        """``count`` of the loaded game's flags from ``first``, in one read (as ``flag``)."""
+        if first < 0 or count <= 0 or first + count > FLAGS:
+            raise ValueError(f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X}")
+        return self._read("flags", first, count)
 
     def flag(self, number: int) -> int:
         """One of the loaded game's flags (0 to 0x9C3; docs/re/memory.md, "Keys, the gates and
@@ -424,15 +454,23 @@ class Game:
         own = struct.unpack("<Q", self._read_pointer(pointer + OBJECT_SELF, 8))[0]
         return handle == link[8:16] and own == pointer
 
-    def state(self) -> str:
-        """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in."""
+    def state(self, energy: int | None = None) -> str:
+        """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in.
+        ``energy`` is the current energy if the caller has just read it (player_state)."""
         if self._read("save_loaded", 0, 1)[0] == NO_SAVE_LOADED:
             return NO_SAVE
         if self._read("menu_state", 0, 1)[0] != 0:
             return MENU
-        if self.energy() <= 0:
+        if (self.energy() if energy is None else energy) <= 0:
             return DEAD
         return IN_PLAY
+
+    def player_state(self) -> PlayerState:
+        """The inventory, supplies, energy and the player's cell, read at once."""
+        start, end = PLAYER_SPAN
+        return parse_player_state(
+            self._read("inventory", start - INVENTORY_IN_PLAYER_STATE, end - start)
+        )
 
     def settled_state(self, gap: float = SETTLE_SECONDS) -> str:
         """``state()`` read twice, ``gap`` seconds apart; CHANGING if the two differ."""

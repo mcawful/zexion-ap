@@ -46,3 +46,12 @@ def test_reads_and_writes_go_through_and_a_bad_address_fails() -> None:
 def test_a_missing_process_is_not_found() -> None:
     with pytest.raises(process.ProcessNotFound):
         process.Process("no-such-program-zexion.exe")
+
+
+def test_a_running_process_is_alive_until_its_handle_is_closed() -> None:
+    p = process.Process(EXE, os.getpid())
+    try:
+        assert p.alive()
+    finally:
+        p.close_process()
+    assert not p.alive()

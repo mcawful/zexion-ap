@@ -79,22 +79,30 @@ class Snapshot:
     cell: tuple[int, int] = (-1, -1)  # game.Game.player_cell
 
 
+# The flags a poll reads, in one read from the first.
+FLAGS_READ = (SCANNED_FLAG, ENDING_FLAG - SCANNED_FLAG + 1)
+
+
 def read_once(g: game.Game) -> Snapshot:
-    state = g.state()
+    """One read of what a poll uses: the player state and the flags in one read each."""
+    player = g.player_state()
+    state = g.state(player.energy)
     if state == game.NO_SAVE:
         return Snapshot(state)
+    first, count = FLAGS_READ
+    flags = g.flag_bytes(first, count)
     return Snapshot(
         state,
         g.map_grid(),
-        g.inventory(),
-        g.supplies(),
+        player.inventory,
+        player.supplies,
         g.rando_blob(),
         g.rando_marker(),
-        g.flag(ENDING_FLAG),
-        g.flag(FINALE_FLAG),
-        g.flag(SCANNED_FLAG),
+        flags[ENDING_FLAG - first],
+        flags[FINALE_FLAG - first],
+        flags[SCANNED_FLAG - first],
         save_stamp(g),
-        g.player_cell(),
+        player.cell,
     )
 
 

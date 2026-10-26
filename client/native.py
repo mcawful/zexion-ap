@@ -29,6 +29,8 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
+import process
+
 DLL_NAME = "zexion_ap.dll"
 VERSION = "0.25.3"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
@@ -159,7 +161,6 @@ def pipe_name(pid: int) -> str:
 
 # --- Windows calls -----------------------------------------------------------------------------
 
-STILL_ACTIVE = 259
 WAIT_OBJECT_0 = 0
 INVALID_HANDLE = ctypes.c_void_p(-1).value
 GENERIC_READ_WRITE = 0x80000000 | 0x40000000
@@ -178,7 +179,6 @@ def _kernel32():
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     h, b, d, p, s = wintypes.HANDLE, wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, ctypes.c_size_t
     sig = {
-        "GetExitCodeProcess": (b, [h, ctypes.POINTER(d)]),
         "VirtualAllocEx": (p, [h, p, s, d, d]),
         "VirtualFreeEx": (b, [h, p, s, d]),
         "WriteProcessMemory": (b, [h, p, p, s, ctypes.POINTER(s)]),
@@ -223,11 +223,7 @@ def _last_error() -> str:
     return ctypes.FormatError(ctypes.get_last_error()).strip()
 
 
-def alive(process_handle: int) -> bool:
-    code = wintypes.DWORD()
-    return bool(_K.GetExitCodeProcess(process_handle, ctypes.byref(code))) and (
-        code.value == STILL_ACTIVE
-    )
+alive = process.alive
 
 
 def module_names(process_handle: int, attempts: int = 5) -> list[str]:
