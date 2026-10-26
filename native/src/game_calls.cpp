@@ -640,6 +640,8 @@ void Game::restore_discs() {
 
 void Game::watch_equipment() {
     equip_screen_.tidy(at_);
+    // Every frame, before the row: a pause screen opened on a load's first frame still has it.
+    pause_row_.prepare(known_disk_row());
     pause_row_.watch(at_);
     show_glyph(disk_glyph_, !scan_line_.empty());
     if (!scan_line_.empty()) {

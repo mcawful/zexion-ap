@@ -304,6 +304,8 @@ private:
     bool other_warned_ = false;   // this load's other-seed notice queued
     bool other_mode() const { return active_ && other_save_; }
     bool section_is(const OfflineSeed& seed, const BYTE* section) const;
+    // The pause row's text for a known disk seed's loaded save, from its file ("" if none).
+    std::string known_disk_row() const;
     std::vector<OfflineSeed> offline_seeds_;
     int offline_index_ = -1;  // the seed whose save is loaded
     int offline_count_ = -1, offline_told_ = -1;
