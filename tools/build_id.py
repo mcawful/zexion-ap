@@ -11,11 +11,13 @@ import argparse
 import datetime as dt
 import hashlib
 import re
-import struct
 import sys
 from pathlib import Path
 
 from protected import STEAM_APP_ID, game_dir
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+from client import pe  # noqa: E402
 
 DATA_FILES = (
     "RandoCells",
@@ -33,26 +35,15 @@ MACHINES = {0x8664: "x64", 0x14C: "x86", 0xAA64: "ARM64"}
 DLL_FLAGS = {0x0020: "HighEntropyVA", 0x0040: "DynamicBase (ASLR)", 0x0100: "NX"}
 
 
-def _pe_offset(exe: bytes) -> int:
-    (pe_offset,) = struct.unpack_from("<I", exe, 0x3C)
-    if exe[pe_offset : pe_offset + 4] != b"PE\0\0":
-        raise ValueError("not a PE file")
-    return pe_offset
-
-
 def pe_timestamp(exe: bytes) -> dt.datetime:
-    (stamp,) = struct.unpack_from("<I", exe, _pe_offset(exe) + 8)
-    return dt.datetime.fromtimestamp(stamp, dt.UTC)
+    return dt.datetime.fromtimestamp(pe.parse(exe).timestamp, dt.UTC)
 
 
 def pe_machine_and_flags(exe: bytes) -> tuple[str, list[str]]:
     """The COFF machine type and the named DllCharacteristics bits of the optional header."""
-    pe = _pe_offset(exe)
-    (machine,) = struct.unpack_from("<H", exe, pe + 4)
-    # DllCharacteristics sits at offset 70 of the optional header, for PE32 and PE32+ alike.
-    (characteristics,) = struct.unpack_from("<H", exe, pe + 24 + 70)
-    flags = [name for bit, name in DLL_FLAGS.items() if characteristics & bit]
-    return MACHINES.get(machine, hex(machine)), flags
+    header = pe.parse(exe)
+    flags = [name for bit, name in DLL_FLAGS.items() if header.dll_characteristics & bit]
+    return MACHINES.get(header.machine, hex(header.machine)), flags
 
 
 def steam_build_id(install: Path) -> str | None:

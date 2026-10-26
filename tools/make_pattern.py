@@ -33,37 +33,24 @@ from pathlib import Path
 from capstone import CS_ARCH_X86, CS_MODE_64, CS_OP_MEM, Cs
 from capstone.x86 import X86_REG_RIP
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+from client import pe  # noqa: E402
+
 IMAGE_BASE_MIN_RVA = 0x10000  # an absolute displacement this large is taken as an RVA
-
-
-@dataclass(frozen=True)
-class Section:
-    name: str
-    va: int
-    vsize: int
-    raw: int
-    rsize: int
 
 
 class Image:
     def __init__(self, data: bytes):
         self.data = data
-        pe = struct.unpack_from("<I", data, 0x3C)[0]
-        nsec = struct.unpack_from("<H", data, pe + 6)[0]
-        optsz = struct.unpack_from("<H", data, pe + 20)[0]
-        self.sections = []
-        for i in range(nsec):
-            o = pe + 24 + optsz + 40 * i
-            name = data[o : o + 8].rstrip(b"\0").decode()
-            vsize, va, rsize, raw = struct.unpack_from("<IIII", data, o + 8)
-            self.sections.append(Section(name, va, vsize, raw, rsize))
-        self.text = next(s for s in self.sections if s.name == ".text")
+        header = pe.parse(data)
+        self.sections = header.sections
+        self.text = header.section(".text")
         self.text_bytes = data[self.text.raw : self.text.raw + self.text.rsize]
         self.md = Cs(CS_ARCH_X86, CS_MODE_64)
         self.md.detail = True
         # Function ranges from the unwind table: a linear pass over .text would stop at the
         # first byte capstone cannot decode.
-        pdata = next(s for s in self.sections if s.name == ".pdata")
+        pdata = header.section(".pdata")
         self.functions = []
         for o in range(pdata.raw, pdata.raw + pdata.vsize - 11, 12):
             begin, end, _ = struct.unpack_from("<III", data, o)

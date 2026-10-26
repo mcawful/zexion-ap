@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the client package
 
-from client import game  # noqa: E402
+from client import game, pe  # noqa: E402
 from client.patterns import KNOWN_BUILDS, TARGETS  # noqa: E402
 
 
@@ -29,16 +28,8 @@ def offline(exe: Path) -> int:
     digest = hashlib.sha256(data).hexdigest()
     build = next((b for b in KNOWN_BUILDS if b.sha256 == digest), None)
     print(f"build: {build.name if build else 'unknown'} (SHA-256 {digest[:12]})")
-    text_rva, text_size = game.code_section(data[:0x1000])
-    pe = struct.unpack_from("<I", data, 0x3C)[0]
-    nsec = struct.unpack_from("<H", data, pe + 6)[0]
-    optsz = struct.unpack_from("<H", data, pe + 20)[0]
-    raw = None
-    for i in range(nsec):
-        o = pe + 24 + optsz + 40 * i
-        if data[o : o + 8].rstrip(b"\0") == b".text":
-            raw = struct.unpack_from("<I", data, o + 20)[0]
-    code = data[raw : raw + text_size]
+    text = pe.parse(data).section(".text")
+    text_rva, code = text.va, data[text.raw : text.raw + text.vsize]
     try:
         found = game.locate_all(code, text_rva)
     except game.PatternError as exc:

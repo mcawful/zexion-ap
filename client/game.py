@@ -39,7 +39,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from . import ids, process
+from . import ids, pe, process
 from .ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
 from .patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
@@ -188,14 +188,17 @@ def parse_player_state(span: bytes) -> PlayerState:
     )
 
 
+def parse_pe(header: bytes) -> pe.Header:
+    try:
+        return pe.parse(header)
+    except pe.PEError as exc:
+        raise GameError(str(exc)) from exc
+
+
 def pe_header_fields(header: bytes) -> tuple[int, int]:
     """(TimeDateStamp, SizeOfImage) from the start of a PE image."""
-    pe = struct.unpack_from("<I", header, 0x3C)[0]
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise GameError("not a PE image")
-    stamp = struct.unpack_from("<I", header, pe + 8)[0]
-    size_of_image = struct.unpack_from("<I", header, pe + 24 + 56)[0]
-    return stamp, size_of_image
+    h = parse_pe(header)
+    return h.timestamp, h.size_of_image
 
 
 def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Build:
@@ -211,19 +214,11 @@ def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Buil
 
 def code_section(header: bytes) -> tuple[int, int]:
     """(RVA, size) of .text, from the first 4 KiB of a PE image."""
-    pe = struct.unpack_from("<I", header, 0x3C)[0]
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise GameError("not a PE image")
-    nsec = struct.unpack_from("<H", header, pe + 6)[0]
-    optsz = struct.unpack_from("<H", header, pe + 20)[0]
-    for i in range(nsec):
-        o = pe + 24 + optsz + 40 * i
-        if o + 40 > len(header):
-            break
-        if header[o : o + 8].rstrip(b"\0") == b".text":
-            vsize, va = struct.unpack_from("<II", header, o + 8)
-            return va, vsize
-    raise GameError("no .text section")
+    try:
+        text = parse_pe(header).section(".text")
+    except pe.PEError as exc:
+        raise GameError(str(exc)) from exc
+    return text.va, text.vsize
 
 
 @dataclass(frozen=True)

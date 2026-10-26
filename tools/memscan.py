@@ -39,6 +39,9 @@ import numpy as np
 
 from protected import assert_writable, lab_dir
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+from client import pe  # noqa: E402
+
 PROCESS = "Zexion.exe"
 MEM_COMMIT = 0x1000
 WRITABLE = {0x04, 0x08, 0x40, 0x80}  # READWRITE, WRITECOPY, EXECUTE_READWRITE, EXECUTE_WRITECOPY
@@ -69,13 +72,11 @@ def attach():
 
 def build_of(pm, mod_base: int) -> dict:
     """The running module's PE TimeDateStamp and SizeOfImage, which identify the build."""
-    header = pm.read_bytes(mod_base, 0x1000)
-    pe = int.from_bytes(header[0x3C:0x40], "little")
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise RuntimeError("Zexion.exe's header is not a PE header")
-    stamp = int.from_bytes(header[pe + 8 : pe + 12], "little")
-    size = int.from_bytes(header[pe + 24 + 56 : pe + 24 + 60], "little")
-    return {"timestamp": stamp, "size_of_image": size}
+    try:
+        header = pe.parse(pm.read_bytes(mod_base, 0x1000))
+    except pe.PEError as exc:
+        raise RuntimeError(f"Zexion.exe's header: {exc}") from exc
+    return {"timestamp": header.timestamp, "size_of_image": header.size_of_image}
 
 
 def regions(pm) -> list[tuple[int, int, str]]:

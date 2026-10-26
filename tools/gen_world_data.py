@@ -40,6 +40,9 @@ import randocells as rc
 from protected import assert_writable
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # the client package
+from client import pe  # noqa: E402
+
 OUT = ROOT / "worlds" / "zexion" / "data.py"
 MIN_SPHERE_ZERO = 3
 BACKUP = ROOT / "lab" / "backups" / "20261020-212018"
@@ -135,14 +138,10 @@ OBJECT_25 = 25  # a start room holding it is flagged in the menu's start table
 
 
 def rdata(exe: bytes, rva: int, size: int) -> bytes:
-    pe = struct.unpack_from("<I", exe, 0x3C)[0]
-    sections = struct.unpack_from("<H", exe, pe + 6)[0]
-    first = pe + 24 + struct.unpack_from("<H", exe, pe + 20)[0]
-    for i in range(sections):
-        size_v, va, size_raw, raw = struct.unpack_from("<IIII", exe, first + 40 * i + 8)
-        if va <= rva and rva + size <= va + max(size_v, size_raw):
-            return exe[raw + rva - va : raw + rva - va + size]
-    raise SystemExit(f"RVA {rva:#x} is in no section of the exe")
+    try:
+        return pe.read_rva(exe, rva, size)
+    except pe.PEError as exc:
+        raise SystemExit(f"{exc} of the exe") from exc
 
 
 def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
