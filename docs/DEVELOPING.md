@@ -1,0 +1,177 @@
+# Developing zexion-ap
+
+For contributors. Players start at the [README](../README.md). The project's rules (evidence,
+no hard-coded addresses, the game and save folders read-only, what never gets committed) are in
+[`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing anything.
+
+Zexion has no modding API, so everything here rests on reverse engineering, recorded with its
+evidence in [`docs/re/`](re/README.md).
+
+## Status
+
+Pre-release. The APWorld (`worlds/zexion/`) is on the local branch `apworld` and not
+published: the logic it derives from the game's data stays local until the owner decides to
+publish it, so `main` has no `worlds/`. Every in-game run was on game build B1. A release
+build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1).
+
+## How it fits together
+
+```
+Archipelago server ⇄ (websocket) ⇄ client/  (Python, outside the game)
+                                     ├─ reads Zexion.exe's memory, found by byte pattern
+                                     │  (game state, inventory, map); writes inventory bytes
+                                     │  itself only when no helper is in use
+                                     └─ named pipe \\.\pipe\zexion-ap-<pid>
+                                          ⇄ zexion_ap.dll, the helper (inside Zexion.exe)
+version.dll, the proxy (in the game's folder) → loads the helper as the game starts
+worlds/zexion/ (on apworld) → generation → slot data → client
+```
+
+- **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
+  other 4), using the game's own randomizer map and rules (`docs/re/locations.md`, on
+  `apworld`).
+- **The client** attaches to the running game. While this seed's save is loaded it sends the
+  locations the map marks as collected (again until the server holds them), gives the items
+  other worlds send, and sends the goal when the ending begins. It never counts its own grants:
+  it gives what the player should own minus what the inventory holds, so an item lost to a
+  death or a reload is given again. It keeps a few records in the server's data storage (the
+  popups shown, the Intel Chip hints made). A failing side task (labels, disk count, DeathLink,
+  follow-up popups) is logged once while items, checks and the goal go on.
+- **The helper** does what the client cannot from outside: popups, new games from the seed,
+  the look of other players' items, and the rest of the features below. It hooks the game's
+  once-per-frame call, so its work runs on the game's own thread, between frames; its own
+  thread only serves the pipe. Without a helper in use, items are written directly with no
+  popup, no seed can start, and the client tries the helper again within 30 seconds.
+- **The proxy** is a `version.dll` the player puts in the game's folder beside the helper. The
+  game loads it as it starts; it passes every call on to Windows' own `version.dll` and loads
+  the helper. A `zexion_ap.disabled` file beside them turns the mod off.
+- **The offline cache.** The client sends the helper a small file per seed it connects to and
+  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP`.
+  With no client, the helper uses them to give AP saves their look. Deleting the folder is
+  safe: the client sends the files again the next time it attaches to the game.
+
+How the helper works: [`native/README.md`](../native/README.md).
+
+## Glossary
+
+- **AP save**: a randomizer save holding a seed a client has played. The helper recognizes one
+  by its item table and start room, matched against the seed files in the offline cache.
+  **This seed's save** is an AP save of the seed the connected client plays.
+- **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
+  from `native/proxy/`. Players call the two together "the mod".
+- **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
+  item it cannot hand out itself: another player's item (48 if it is progression), or, with
+  the OS Install Disks goal, one of this world's own disks (48). The helper restyles them.
+- **Frame call**: one call the game makes, once per frame, through the hooked import; the
+  helper runs its frame function in it.
+- **B1**: the only game build supported so far (Steam build 23943567:
+  [`docs/re/builds.md`](re/builds.md)).
+- **Working in game (date, B1)**: ran in the real game on that date and build and did the right
+  thing ([`docs/re/README.md`](re/README.md) defines it). A test on synthetic data is not that.
+
+## Features, and when each was working in game
+
+All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
+
+- Received items with the game's popup, sound and HUD refresh: 2026-10-22.
+- Each received item pops up once, across reconnects and client restarts (the count in data
+  storage): 2026-10-26. Not seen in game: a game closed with popups queued.
+- ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
+  one connection: 2026-10-24.
+- `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
+  modes: 2026-10-22.
+- Other players' items (logo, name at pickup; another Zexion player's item as itself):
+  2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25.
+- Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
+- The escape skip (SKIP ESCAPE AND FINAL BATTLE?): 2026-10-23.
+- DeathLink, both ways: 2026-10-23.
+- The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
+  2026-10-23.
+- Intel Chips: hints received, up to five lines: 2026-10-24; one picked up, the INTEL CHIP
+  name and no map reveal: 2026-10-25.
+- OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the
+  file select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO):
+  2026-10-24; offered at the landing pod only: 2026-10-25. Not seen in game: the reminder's
+  current wording (ENOUGH OS INSTALL DISKS FOUND...).
+- Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
+  offline finds included: 2026-10-25.
+- The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
+- What the helper changed put back when the client goes away (item records, ASSIST, the escape
+  skip): 2026-10-25.
+- Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
+  screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
+- AP saves without the client, from a fresh start too, and another seed's save told so:
+  2026-10-25.
+
+## Setup
+
+Windows. Archipelago 0.6.8 refuses Python 3.14, so the venv is 3.13, managed by `uv`
+(`python -m uv`, as `pip install --user` does not put `uv` on `PATH`). The venv is seeded with
+`pip` because Archipelago's own updater uses it.
+
+```sh
+python -m pip install --user uv
+python -m uv python install 3.13
+python -m uv venv --seed --python 3.13 .venv
+python -m uv pip install --python .venv -r requirements-dev.txt
+.venv/Scripts/python tools/ap_checkout.py   # Archipelago at AP_VERSION into .ap/, world linked in
+```
+
+The native helper needs Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or
+later.
+
+## Checks
+
+CI runs the first three, and the native build and tests on Windows. The fourth needs the world
+(on `apworld`) and `.ap/`. The Claude Code skill `/preflight` runs all four.
+
+```sh
+.venv/Scripts/ruff format --check .
+.venv/Scripts/ruff check .
+.venv/Scripts/python -m pytest
+cd .ap/Archipelago && AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
+```
+
+```sh
+cmake -S native -B native/build -A x64
+cmake --build native/build --config Release
+ctest --test-dir native/build -C Release --output-on-failure
+```
+
+Nothing in `tests/` needs the game. What the native tests cover: `native/README.md`,
+"Building".
+
+## Running the client from source
+
+It needs `.ap/` with the world linked in (`tools/ap_checkout.py`). Running it may load the
+helper into the game: the one already there if it is this version, else
+`native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`).
+
+```sh
+.venv/Scripts/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281
+```
+
+- `--verbose` also shows what the client sets up in the game for the seed.
+- `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it in
+  the seed's mode, with no options changed, gets the seed. From the Launcher:
+  `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
+- `/unload_helper` unloads the helper as if it had failed; the client loads it again within
+  30 seconds.
+- `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
+
+## Releases
+
+On `apworld`, `.venv/Scripts/python tools/build_apworld.py` writes `dist/`: `zexion.apworld`
+(the world without its tests, with `client` as `worlds.zexion.client`), `zexion_ap.dll` and
+`version.dll`. It packs only files git tracks and refuses a release that would not match (its
+docstring): rebuild `native/` first after a checkout that touched it. The release version is
+`VERSION` in `client/native.py` and `kVersion` in `native/src/dllmain.cpp`; a cross-check test
+compares them.
+
+## Where things are
+
+- `client/`: the client. `native/`: the helper and the proxy. `tools/`: reverse-engineering
+  and save tools, and the release builder. `tests/`: pytest, host-only. `docs/re/`: the
+  reverse-engineering record. `worlds/zexion/` (on `apworld`): the APWorld and the player
+  docs. Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
+- When the game is patched: [`docs/re/new-build.md`](re/new-build.md).

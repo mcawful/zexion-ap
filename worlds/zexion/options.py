@@ -10,10 +10,12 @@ from .data import CELL_AREAS, MODES
 
 
 class Mode(Choice):
-    """The randomizer's mode, as in the game's menu: its item pool, starting items and
-    settings. Easy starts with 5 Energy Tanks and more of everything; Standard is the game's
-    default; OHKO has no Energy Tanks at all and a second teleport target, and some of its
-    locations cannot be reached, so they are left out."""
+    """The game's own randomizer mode, with its items, starting items and settings.
+    Easy: start with 5 Energy Tanks and a few more items; more Energy Tanks and Missile Boxes
+    to find, but fewer Missile Containers.
+    Standard: the game's default.
+    OHKO: no Energy Tanks at all, and a second room to teleport to; the 4 locations it can't
+    reach are left out."""
 
     display_name = "Mode"
     option_easy = 0
@@ -42,13 +44,10 @@ def _make_start_room() -> type[Choice]:
     attrs["__module__"] = __name__  # so the class pickles: it is found as options.StartRoom
     attrs["__qualname__"] = "StartRoom"
     attrs["__doc__"] = (
-        "The save room the game starts in, by its area and its map cell as the game displays "
-        "them (X then Y). Easy and "
-        "Standard accept only rooms from which their starting items reach a few locations; "
-        "OHKO accepts any, and picks a second teleport target that makes up the rest. For a "
-        "room the chosen mode does not accept, one it accepts is picked at random instead. "
-        "'automatic' takes kresezoa_16_13 when the mode accepts it, otherwise the mode's first "
-        "room; 'random' picks any of the listed rooms."
+        "Where you start: one of the game's start rooms, named by its area and its X and Y as "
+        "the pause screen shows them. Easy and Standard can start in 9 of these rooms, OHKO in "
+        "all of them. If your mode can't use the room you pick, a random one it can use is "
+        "chosen. 'automatic': kresezoa_16_13. 'random': any room."
     )
     return type("StartRoom", (Choice,), attrs)
 
@@ -57,38 +56,27 @@ StartRoom = _make_start_room()
 
 
 class AllowAssists(Toggle):
-    """Lets the game's assist menu (pause, OPTIONS, ASSIST: save states, less damage, refills,
-    longer invincibility and the like) be used. Off by default: the client's in-game helper
-    grays out ASSIST, puts a padlock after it, has the cursor skip it and keeps it from opening
-    while this seed's save is loaded, so the assists stay at their defaults. To lift the lock
-    later in a seed, send that player the Assist Unlock item from the server console, or on
-    archipelago.gg the room page's command box (/send PLAYER Assist Unlock)."""
+    """Allow the game's assist menu (pause, OPTIONS, ASSIST: save states, less damage and the
+    like). Off: ASSIST is locked in this seed's saves. The host can unlock it during the game
+    from the server console: /send PLAYER Assist Unlock."""
 
     display_name = "Allow Assists"
 
 
 class AreaMapHints(DefaultOnToggle):
-    """Makes each Area Map a hint, named Intel Chip. Every Intel Chip this player gets, found
-    in this world or sent by another player, reveals where one of this player's upgrades, keys
-    or OS Install Disks not received yet is, in any world (supplies such as Missile Containers
-    are not hinted): the client creates an Archipelago hint for it, shown in the hint lists of
-    this player and of the player whose world holds the item, and with the client's in-game
-    helper a popup names it ("HINT: SLIDE MOD IS AT GUARDIA
-    22,7", with "IN ALICE'S WORLD" after another world's location). In the game it looks like
-    the Area Map, named INTEL CHIP, and does not reveal the map. Off, an Area Map is filler
-    that counts as Scrap Metal."""
+    """Area Maps become Intel Chips: each one you get, found or sent to you, hints where one of
+    your upgrades, keys or OS Install Disks is. Intel Chips don't reveal the map. Off: Area
+    Maps work as in the normal game."""
 
     display_name = "Area Map Hints"
 
 
 class Goal(Choice):
-    """What wins the game. Core: grab Zexion in the core, behind the four keys, as in the
-    game's own randomizer. OS Install Disks: find enough OS Install Disks, shuffled into the
-    multiworld (OS Install Disks and OS Install Disks Required); the four keys are left out of
-    the item pool, and the core is not needed. The disks are counted by the client, not put in
-    the game's inventory (they are the game's Data Disc, which changes its endings). This goal
-    needs the client and its in-game helper: with enough disks, save at the landing pod the
-    seed starts at, and answer YES to RETURN HOME WITH THE DISKS? to win."""
+    """What wins the game.
+    Core: find the four keys, grab Zexion in the core and reach the ending.
+    OS Install Disks: find enough OS Install Disks (the next two options), then save at the
+    start room (your landing pod) and answer YES to RETURN HOME WITH THE DISKS?. The keys are
+    not placed."""
 
     display_name = "Goal"
     option_core = 0
@@ -97,10 +85,8 @@ class Goal(Choice):
 
 
 class OSInstallDisks(Range):
-    """With the OS Install Disks goal, how many disks are shuffled into the multiworld. Each
-    takes the place of an item in this world's pool: Scrap (the keys' places among it), then
-    Area Maps, then Energy Shields. Without taking an Area Map or an Energy Shield, 26 fit in
-    Easy, 16 in Standard and 30 in OHKO; up to 30 fit in every mode."""
+    """OS Install Disks goal only: how many disks are placed. They replace filler items; above
+    16 in Standard (26 in Easy) they also replace Area Maps, then Energy Shields."""
 
     display_name = "OS Install Disks"
     range_start = 1
@@ -109,8 +95,8 @@ class OSInstallDisks(Range):
 
 
 class OSInstallDisksRequired(Range):
-    """With the OS Install Disks goal, how many disks win the game. At most OS Install
-    Disks."""
+    """OS Install Disks goal only: how many disks you need to win (no more than OS Install
+    Disks)."""
 
     display_name = "OS Install Disks Required"
     range_start = 1
