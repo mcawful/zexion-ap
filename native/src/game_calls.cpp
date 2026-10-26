@@ -348,6 +348,106 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
     return "";
 }
 
+namespace {
+
+// The addresses configure checked, by key; null for an optional key left out.
+struct Found {
+    const std::map<std::string, BYTE*>& keys;
+    BYTE* operator()(const char* key) const {
+        auto it = keys.find(key);
+        return it == keys.end() ? nullptr : it->second;
+    }
+};
+
+MenuAddresses menu_addresses(const Found& f, const Hooks& h) {
+    MenuAddresses a;
+    a.current_menu = f("current_menu");
+    a.panel_handler = f("panel_handler_fn");
+    a.panel_hook = h.panel;
+    a.widget_handler = f("widget_handler_fn");
+    a.rando_menu = f("rando_menu_fn");
+    a.assist_menu = f("assist_menu_fn");
+    a.palette_table = f("palette_table");
+    return a;
+}
+
+EquipAddresses equip_addresses(const Found& f, const Hooks& h) {
+    EquipAddresses a;
+    a.current_menu = f("current_menu");
+    a.widget_handler = f("widget_handler_fn");
+    a.equipment_fn = f("equipment_fn");
+    a.equip_panel_fn = f("equip_panel_fn");
+    a.widget_move_fn = f("widget_move_fn");
+    a.text_place_fn = f("text_place_fn");
+    a.widget_new_fn = f("widget_new_fn");
+    a.sprite_sheet_fn = f("sprite_sheet_fn");
+    a.panel_link_fn = f("panel_link_fn");
+    a.text_set_fn = f("text_set_fn");
+    a.malloc_slot = f("malloc_slot");
+    a.free_slot = f("free_slot");
+    a.sprite_templates = f("sprite_templates");
+    a.item_records = f("item_records");
+    a.hook = h.equipment;
+    a.panel_hook = h.equipment_panel;
+    return a;
+}
+
+MissionAddresses mission_addresses(const Found& f, const Hooks& h) {
+    MissionAddresses a;
+    a.current_menu = f("current_menu");
+    a.transition_fn = f("transition_fn");
+    a.transition_timer = f("transition_timer");
+    a.routine_table = f("routine_table");
+    a.widget_handler = f("widget_handler_fn");
+    a.text_set_fn = f("text_set_fn");
+    a.open_hook = h.mission_open;
+    a.yes_hook = h.mission_yes;
+    return a;
+}
+
+PauseAddresses pause_addresses(const Found& f, const Hooks& h) {
+    PauseAddresses a;
+    a.current_menu = f("current_menu");
+    a.equipment_fn = f("equipment_fn");
+    a.equipment_hook = h.equipment;
+    a.widget_handler = f("widget_handler_fn");
+    a.sprite_templates = f("sprite_templates");
+    a.sprite_sheet_fn = f("sprite_sheet_fn");
+    a.keys_branch = f("keys_branch");
+    return a;
+}
+
+FileAddresses file_addresses(const Found& f, const Hooks& h) {
+    FileAddresses a;
+    a.current_menu = f("current_menu");
+    a.file_panel_fn = f("file_panel_fn");
+    a.entry_fns[0] = f("file_entry_fn");
+    a.entry_fns[1] = f("copy_entry_fn");
+    a.entry_fns[2] = f("delete_entry_fn");
+    a.hook = h.file_entry;
+    return a;
+}
+
+MapAddresses map_addresses(const Found& f, const Hooks& h) {
+    MapAddresses a;
+    a.current_menu = f("current_menu");
+    a.map_handler = f("map_handler");
+    a.text_set_fn = f("text_set_fn");
+    a.hook = h.map;
+    return a;
+}
+
+TitleAddresses title_addresses(const Found& f) {
+    TitleAddresses a;
+    a.draw_layer = f("draw_layer");
+    a.text_new_fn = f("text_new_fn");
+    a.text_place_fn = f("text_place_fn");
+    a.text_link_fn = f("text_link_fn");
+    return a;
+}
+
+}  // namespace
+
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                             bool active) {
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
@@ -374,102 +474,60 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         other_save_ = false;  // the new client says again, and is told again
         other_warned_ = false;
     }
-    inventory_ = found["inventory"];
-    save_loaded_ = found["save_loaded"];
-    menu_state_ = found["menu_state"];
-    item_records_ = found["item_records"];
-    last_message_ = found["last_message"];
-    weapon_strip_gate_ = found["weapon_strip_gate"];
-    sound_system_ = found["sound_system"];
-    message_fn_ = found["message_fn"];
-    sound_fn_ = found["sound_fn"];
-    hud_number_fn_ = found["hud_number_fn"];
-    hud_layout_fn_ = found["hud_layout_fn"];
-    energy_hud_fn_ = found["energy_hud_fn"];
-    weapon_strip_fn_ = found["weapon_strip_fn"];
-    suit_color_fn_ = found["suit_color_fn"];
-    rando_blob_ = found["rando_blob"];
-    rando_marker_ = found["rando_marker"];
-    map_grid_ = found["map_grid"];
-    flags_ = found["flags"];
-    slot_array_ = found["slot_array"];
-    rando_slots_ = found["rando_slots"];
-    transition_fn_ = found["transition_fn"];
-    transition_timer_ = found["transition_timer"];
-    current_slot_ = found["current_slot"];
-    newgame_fn_ = found["newgame_fn"];
-    menu_.current_menu = found["current_menu"];
-    menu_.panel_handler = found["panel_handler_fn"];
-    menu_.panel_hook = panel_hook_;
-    menu_.widget_handler = found["widget_handler_fn"];
-    menu_.rando_menu = found["rando_menu_fn"];
-    menu_.assist_menu = found["assist_menu_fn"];
-    menu_.palette_table = found["palette_table"];
-    randomizer_menu_ = found["randomizer_menu"];
-    placement_fn_ = found["placement_fn"];
-    rando_newgame_fn_ = found["rando_newgame_fn"];
-    event_table_ = found["event_table"];
-    event_count_ = found["event_count"];
-    text_table_ = found["text_table"];
-    equip_at_.current_menu = found["current_menu"];
-    equip_at_.widget_handler = found["widget_handler_fn"];
-    equip_at_.equipment_fn = found["equipment_fn"];
-    equip_at_.equip_panel_fn = found["equip_panel_fn"];
-    equip_at_.widget_move_fn = found["widget_move_fn"];
-    equip_at_.text_place_fn = found["text_place_fn"];
-    equip_at_.widget_new_fn = found["widget_new_fn"];
-    equip_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
-    equip_at_.panel_link_fn = found["panel_link_fn"];
-    equip_at_.text_set_fn = found["text_set_fn"];
-    equip_at_.malloc_slot = found["malloc_slot"];
-    equip_at_.free_slot = found["free_slot"];
-    equip_at_.sprite_templates = found["sprite_templates"];
-    equip_at_.item_records = found["item_records"];
-    equip_at_.hook = equip_hook_;
-    equip_at_.panel_hook = equip_panel_hook_;
-    mission_at_.current_menu = found["current_menu"];
-    mission_at_.transition_fn = found["transition_fn"];
-    mission_at_.transition_timer = found["transition_timer"];
-    mission_at_.routine_table = found["routine_table"];
-    mission_at_.widget_handler = found["widget_handler_fn"];
-    mission_at_.text_set_fn = found["text_set_fn"];
-    mission_at_.open_hook = mission_open_hook_;
-    pause_at_.current_menu = found["current_menu"];
-    pause_at_.equipment_fn = found["equipment_fn"];
-    pause_at_.equipment_hook = equip_hook_;
-    pause_at_.widget_handler = found["widget_handler_fn"];
-    pause_at_.sprite_templates = found["sprite_templates"];
-    pause_at_.sprite_sheet_fn = found["sprite_sheet_fn"];
-    pause_at_.keys_branch = found["keys_branch"];
-    title_at_.draw_layer = found["draw_layer"];
-    map_handler_ = found["map_handler"];
-    map_at_.current_menu = found["current_menu"];
-    map_at_.map_handler = map_handler_;
-    map_at_.text_set_fn = found["text_set_fn"];
-    map_at_.hook = map_hook_;
-    title_at_.text_new_fn = found["text_new_fn"];
-    title_at_.text_place_fn = found["text_place_fn"];
-    title_at_.text_link_fn = found["text_link_fn"];
-    files_at_.current_menu = found["current_menu"];
-    files_at_.file_panel_fn = found["file_panel_fn"];
-    files_at_.entry_fns[0] = found["file_entry_fn"];
-    files_at_.entry_fns[1] = found["copy_entry_fn"];
-    files_at_.entry_fns[2] = found["delete_entry_fn"];
-    files_at_.hook = file_hook_;
-    mission_at_.yes_hook = mission_yes_hook_;
-    start_count_ = found["start_count"];
-    start_cells_ = found["start_cells"];
-    start_flags_ = found["start_flags"];
-    sprite_texture_ = found["sprite_texture"];
-    popup_width_code_ = found["popup_width_code"];
-    item_pool_ = found["item_pool"];
-    palette_table_ = found["palette_table"];
-    frame_clock_ = found["frame_clock"];
-    sprite_templates_ = found["sprite_templates"];
-    event_handlers_ = found["event_handlers"];
-    death_fn_ = found["death_fn"];
-    object_pool_ = found["object_pool"];
-    halt_flag_ = found["halt_flag"];
+    const Found f{found};
+    // The game's state and functions Game uses itself.
+    inventory_ = f("inventory");
+    save_loaded_ = f("save_loaded");
+    menu_state_ = f("menu_state");
+    item_records_ = f("item_records");
+    last_message_ = f("last_message");
+    weapon_strip_gate_ = f("weapon_strip_gate");
+    sound_system_ = f("sound_system");
+    message_fn_ = f("message_fn");
+    sound_fn_ = f("sound_fn");
+    hud_number_fn_ = f("hud_number_fn");
+    hud_layout_fn_ = f("hud_layout_fn");
+    energy_hud_fn_ = f("energy_hud_fn");
+    weapon_strip_fn_ = f("weapon_strip_fn");
+    suit_color_fn_ = f("suit_color_fn");
+    rando_blob_ = f("rando_blob");
+    rando_marker_ = f("rando_marker");
+    map_grid_ = f("map_grid");
+    flags_ = f("flags");
+    slot_array_ = f("slot_array");
+    rando_slots_ = f("rando_slots");
+    transition_fn_ = f("transition_fn");
+    transition_timer_ = f("transition_timer");
+    current_slot_ = f("current_slot");
+    newgame_fn_ = f("newgame_fn");
+    randomizer_menu_ = f("randomizer_menu");
+    placement_fn_ = f("placement_fn");
+    rando_newgame_fn_ = f("rando_newgame_fn");
+    event_table_ = f("event_table");
+    event_count_ = f("event_count");
+    text_table_ = f("text_table");
+    map_handler_ = f("map_handler");
+    start_count_ = f("start_count");
+    start_cells_ = f("start_cells");
+    start_flags_ = f("start_flags");
+    sprite_texture_ = f("sprite_texture");
+    popup_width_code_ = f("popup_width_code");
+    item_pool_ = f("item_pool");
+    palette_table_ = f("palette_table");
+    frame_clock_ = f("frame_clock");
+    sprite_templates_ = f("sprite_templates");
+    event_handlers_ = f("event_handlers");
+    death_fn_ = f("death_fn");
+    object_pool_ = f("object_pool");
+    halt_flag_ = f("halt_flag");
+    // And each part's own, with the helper's stand-ins it points the game at.
+    menu_ = menu_addresses(f, hooks_);
+    equip_at_ = equip_addresses(f, hooks_);
+    mission_at_ = mission_addresses(f, hooks_);
+    pause_at_ = pause_addresses(f, hooks_);
+    files_at_ = file_addresses(f, hooks_);
+    map_at_ = map_addresses(f, hooks_);
+    title_at_ = title_addresses(f);
     gl_ = load_gl();
     configured_ = true;
     active_ = active;

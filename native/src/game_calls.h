@@ -180,6 +180,21 @@ std::string parse_batch(const std::string& request, Batch& out);
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
 
+// The helper's own functions the game is pointed at while a part is on (dllmain.cpp), each in
+// place of the game's: the game-mode panel's handler (menu.h), EQUIPMENT's callback and the
+// Energy Tank panel's handler (equip.h), the mission prompt's opener and YES (mission.h), the
+// save entries' handler (files.h) and the map's handler (mapmarks.h). Given before configure,
+// which hands each part its own.
+struct Hooks {
+    void* panel = nullptr;
+    void* equipment = nullptr;
+    void* equipment_panel = nullptr;
+    void* mission_open = nullptr;
+    void* mission_yes = nullptr;
+    void* file_entry = nullptr;
+    void* map = nullptr;
+};
+
 class Game {
 public:
     // Checks every key is present and lies inside `image` (functions in executable code, data
@@ -195,6 +210,8 @@ public:
     void set_active(bool active) { active_ = active; }
     // Popups not shown yet dropped (the client that sent them went away).
     void clear_popups() { popups_.clear(); }
+    // Before configure: the helper's stand-ins the game is pointed at (Hooks).
+    void set_hooks(const Hooks& hooks) { hooks_ = hooks; }
 
     // Game thread: everything the helper changed in the game put back, as far as a frame can (a
     // change held by a menu no longer open is gone with it): the new-game plan, the escape skip,
@@ -247,8 +264,6 @@ public:
                equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
                map_names_.holds_hook();
     }
-    // Before configure: the helper's stand-in for the game-mode panel's handler (menu.h).
-    void set_panel_hook(void* hook) { panel_hook_ = hook; }
     // The game's own handler for the game-mode panel, for the stand-in to call; null before
     // configure.
     void* panel_handler() const { return menu_.panel_handler; }
@@ -292,30 +307,23 @@ public:
     bool keys_branch_patched() const { return pause_row_.patched(); }
     int discs_required() const { return discs_required_; }
     const std::string& scan_line() const { return scan_line_; }
-    // The count on the equipment screen (equip.h): before configure, the helper's stand-in for
-    // EQUIPMENT's callback; every frame, the watch points EQUIPMENT at it while the count is
-    // shown (and back otherwise); the stand-in calls the game's, then equipment_built.
-    void set_equipment_hook(void* hook) { equip_hook_ = hook; }
+    // The count on the equipment screen (equip.h): every frame, the watch points EQUIPMENT at
+    // the helper's stand-in (Hooks) while the count is shown (and back otherwise); the stand-in
+    // calls the game's, then equipment_built.
     void* equipment_fn() const { return equip_at_.equipment_fn; }
     void watch_equipment();
     void equipment_built();
-    // The Energy Tank panel's handler while it shows the disk (equip.h): before configure, the
-    // helper's stand-in; it calls the game's (equip_panel_fn), then equipment_event.
-    void set_equipment_panel_hook(void* hook) { equip_panel_hook_ = hook; }
+    // The Energy Tank panel's handler while it shows the disk (equip.h): the helper's stand-in
+    // calls the game's (equip_panel_fn), then equipment_event.
     void* equip_panel_fn() const { return equip_at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
-    // RETURN HOME WITH THE DISKS? (mission.h): before configure, the helper's opener and YES; the
-    // `mission_prompt` request asks for it; the watch runs every frame; the opener and YES call
-    // mission_open and mission_yes; restore_mission puts back what it holds (before an unload).
-    void set_mission_hooks(void* open, void* yes) {
-        mission_open_hook_ = open;
-        mission_yes_hook_ = yes;
-    }
+    // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
+    // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
+    // restore_mission puts back what it holds (before an unload).
     void request_mission() { mission_.request(); }
-    // The file select's disk count (files.h): before configure, the helper's stand-in for the
-    // save entries' handler; the `disk_slots` request sets what to show; the watch runs every
-    // frame; the stand-in calls the game's handler (file_entry_original) and then file_event.
-    void set_file_entry_hook(void* hook) { file_hook_ = hook; }
+    // The file select's disk count (files.h): the `disk_slots` request sets what to show; the
+    // watch runs every frame; the helper's stand-in for the save entries' handler calls the
+    // game's (file_entry_original) and then file_event.
     void set_disk_slots(int count, std::set<int> slots) {
         client_file_counts_.clear();
         for (int slot : slots) client_file_counts_[slot] = count;
@@ -365,7 +373,6 @@ public:
     // Game thread: the map cursor's name for the stand-ins' squares (mapmarks.h): the open map's
     // handler wrapped while this save's labels are known (each frame), the name rewritten after
     // the game's handler (`map_after`, from the stand-in), and the handler put back.
-    void set_map_hook(void* hook) { map_hook_ = hook; }
     void watch_map_names();
     void map_after();
     void* map_original(void* child) const;
@@ -470,7 +477,7 @@ private:
     std::string newgame_status_ = "idle";
 
     MenuAddresses menu_;
-    void* panel_hook_ = nullptr;
+    Hooks hooks_;
     ArchipelagoChoice choice_;
     AssistLock assists_;
     bool assists_locked_ = false;
@@ -516,15 +523,9 @@ private:
     BYTE* map_handler_ = nullptr;  // holds the map screen's handler (null: not known)
     MapAddresses map_at_;
     MapCursorNames map_names_;
-    void* map_hook_ = nullptr;
-    void* file_hook_ = nullptr;
     bool discs_told_ = true;
     MissionPrompt mission_;
-    void* mission_open_hook_ = nullptr;
     int mission_save_ = -1;  // the save slot loaded when last watched (-1: none yet)
-    void* mission_yes_hook_ = nullptr;
-    void* equip_hook_ = nullptr;
-    void* equip_panel_hook_ = nullptr;
     std::string equip_status_ = "not shown yet";
     std::string scan_line_;
     int disc_count_ = 0, discs_required_ = 0;

@@ -206,15 +206,17 @@ void mission_yes(void* widget, int event) {
 // Game thread: the helper's stand-ins the game's menus are pointed at, given to the game
 // object before it is configured (by a client, or from the offline cache).
 void set_hooks() {
-    g_game.set_panel_hook(reinterpret_cast<void*>(&handler_event<&panel_original, &panel_after>));
-    g_game.set_equipment_hook(reinterpret_cast<void*>(&equipment_chosen));
-    g_game.set_equipment_panel_hook(
-        reinterpret_cast<void*>(&handler_event<&equip_panel_original, &equip_panel_after>));
-    g_game.set_mission_hooks(reinterpret_cast<void*>(&mission_open),
-                             reinterpret_cast<void*>(&mission_yes));
-    g_game.set_file_entry_hook(
-        reinterpret_cast<void*>(&handler_event<&file_entry_original, &file_entry_after>));
-    g_game.set_map_hook(reinterpret_cast<void*>(&handler_event<&map_original, &map_after>));
+    zap::Hooks hooks;
+    hooks.panel = reinterpret_cast<void*>(&handler_event<&panel_original, &panel_after>);
+    hooks.equipment = reinterpret_cast<void*>(&equipment_chosen);
+    hooks.equipment_panel =
+        reinterpret_cast<void*>(&handler_event<&equip_panel_original, &equip_panel_after>);
+    hooks.mission_open = reinterpret_cast<void*>(&mission_open);
+    hooks.mission_yes = reinterpret_cast<void*>(&mission_yes);
+    hooks.file_entry =
+        reinterpret_cast<void*>(&handler_event<&file_entry_original, &file_entry_after>);
+    hooks.map = reinterpret_cast<void*>(&handler_event<&map_original, &map_after>);
+    g_game.set_hooks(hooks);
 }
 
 // Game thread: the files read last, if new. With no client yet, the cached addresses for this
