@@ -236,7 +236,10 @@ std::string EquipmentScreen::add(const EquipAddresses& a, int count) {
     read(energy, kY, ny);
     reinterpret_cast<Place>(a.text_place_fn)(label, static_cast<int>(lx - kMove),
                                              static_cast<int>(ly));
-    if (nx != ex - kMove || ny != ey) return "the Energy Tank did not move as traced";
+    if (nx != ex - kMove || ny != ey) {
+        game_free(array);  // never handed to the panel
+        return "the Energy Tank did not move as traced";
+    }
 
     // Two children in the panel, in a row; the game frees the array and both with the menu.
     BYTE** old = children;

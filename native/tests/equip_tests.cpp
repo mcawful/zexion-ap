@@ -40,8 +40,10 @@ void other_fn(void*, int) { g_calls += 5; }
 void panel_hook() { g_calls += 6; }
 
 // The game's (widget, dx, dy, set): the offset kept if `set`, then the widget at its panel's
-// position plus the offset, its label there too (0xAA8C0).
+// position plus the offset, its label there too (0xAA8C0). With g_stuck_move, nothing moves.
+bool g_stuck_move = false;
 void widget_move(void* w, int dx, int dy, bool set) {
+    if (g_stuck_move) return;
     BYTE* widget = static_cast<BYTE*>(w);
     BYTE* panel = at<BYTE*>(widget, 0x1D8);
     if (set) {
@@ -379,6 +381,19 @@ void test_an_unexpected_screen_is_left_alone() {
               !screen.holds_hook() && at<double>(f.energy, 0x40) == 32,
           "no widget made: the panel keeps its one, the Energy Tank where it was");
     g_fail_widget = false;
+
+    // The Energy Tank not moving as traced: the new array freed, the panel keeps its own.
+    Screen m;
+    m.current = m.equip;
+    g_freed.clear();
+    g_stuck_move = true;
+    BYTE** own = m.energy_children;
+    check(screen.add(m.addresses(), 1) == "the Energy Tank did not move as traced",
+          "an Energy Tank that did not move is refused");
+    g_stuck_move = false;
+    check(g_freed.size() == 1 && g_freed[0] != own && at<BYTE**>(m.panels[3], 0x1E0) == own &&
+              at<int32_t>(m.panels[3], 0x1E8) == 1,
+          "the unused two-entry array freed, the panel's own kept");
 }
 
 void test_the_count_text() {
