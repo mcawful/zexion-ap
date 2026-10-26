@@ -31,10 +31,6 @@
 
 namespace zap {
 
-// The client's names for what it sends (client/patterns.py target names).
-extern const char* const kConfigKeys[];
-extern const size_t kConfigKeyCount;
-
 struct Cas {
     uint8_t item;  // inventory byte 0..49
     uint8_t expected;
@@ -256,7 +252,6 @@ public:
     bool assists_locked() const { return assists_locked_; }
     void watch_assists();
     void restore_assists();
-    bool assist_lock_installed() const { return assists_.installed(); }
 
     // Game thread, from ARCHIPELAGO's callback: sets the randomizer menu's state to the plan's
     // mode, writes the plan (for the AP start), runs the game's placement, checks the section
@@ -309,8 +304,7 @@ public:
     // save entries' handler; the `disk_slots` request sets what to show; the watch runs every
     // frame; the stand-in calls the game's handler (file_entry_original) and then file_event.
     void set_file_entry_hook(void* hook) { file_hook_ = hook; }
-    void set_disk_slots(int count, int required, std::set<int> slots) {
-        (void)required;  // not shown (the owner's layout)
+    void set_disk_slots(int count, std::set<int> slots) {
         client_file_counts_.clear();
         for (int slot : slots) client_file_counts_[slot] = count;
         apply_file_counts();
@@ -400,7 +394,6 @@ public:
                looks_.dressed() || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
-    void set_gl(const GlFunctions& gl) { gl_ = gl; }  // tests
 
 private:
     bool in_play() const;

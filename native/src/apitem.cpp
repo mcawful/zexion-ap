@@ -14,7 +14,8 @@ namespace {
 constexpr int16_t kOwnKind = 34, kOwnTicks = 6, kOwnFrames = 2;
 constexpr uint8_t kOwnPalette = 8;
 constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
-// What they become: one frame each, the same popup glyph, no area event at pickup.
+// What they become: one frame each and no area event at pickup; their names start with the logo
+// glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
 constexpr uint8_t kLogoGlyph = kApItemGlyph;
 constexpr char kDefaultName[] = "\xEE" "AP ITEM";
@@ -127,8 +128,7 @@ bool is_own(const BYTE* r, const StandIn& s) {
 bool is_ours(const BYTE* r, const StandIn& s) {
     return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.frame &&
            word(r, record::kFrames) == kLogoFrames &&
-           (r[record::kIcon] == 0 || r[record::kIcon] == kLogoGlyph) &&
-           word(r, record::kEvent) == kNoEvent;
+           r[record::kIcon] == 0 && word(r, record::kEvent) == kNoEvent;
 }
 
 }  // namespace
@@ -157,8 +157,7 @@ BYTE* ApItems::record(BYTE* holder, int item) const {
     if (!safe_read(holder, &records, sizeof(records)) || records == nullptr) return nullptr;
     BYTE* r = records + item * record::kSize;
     BYTE probe[record::kSize];
-    if (!safe_read(records, probe, 1) || !safe_read(r, probe, sizeof(probe)) ||
-        !writable(r, record::kSize)) {
+    if (!safe_read(r, probe, sizeof(probe)) || !writable(r, record::kSize)) {
         return nullptr;
     }
     static_assert(kStandInItem < record::kCount && kStandInProgression < record::kCount);
@@ -419,7 +418,7 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms, bool w
         // Menus draw item frames too (the equipment screen draws frame 95, empty in the game's
         // art, by the missile count): the logos come off while one is open, and go back on the
         // first frame after.
-        if (painted_ != 0 && texture_of(holder) == painted_) upload(painted_, gl, true, false);
+        if (painted_ != 0 && sprite_texture(holder) == painted_) upload(painted_, gl, true, false);
         painted_ = 0;
         frames_to_paint_ = 0;
         return;
@@ -428,22 +427,21 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, uint64_t now_ms, bool w
     if (frames_to_paint_-- <= 0) {
         frames_to_paint_ = kRepaintFrames;
         arrow_phase_ = phase;
-        unsigned texture = texture_of(holder);
+        unsigned texture = sprite_texture(holder);
         if (texture != 0 && upload(texture, gl, false, false)) painted_ = texture;
         return;
     }
     // Between full paints, only the arrow, when its color changes, into a texture already
     // checked and painted.
-    if (phase == arrow_phase_ || painted_ == 0 || texture_of(holder) != painted_) return;
+    if (phase == arrow_phase_ || painted_ == 0 || sprite_texture(holder) != painted_) return;
     arrow_phase_ = phase;
     upload(painted_, gl, false, true);
 }
 
-unsigned ApItems::texture_of(BYTE* holder) const { return sprite_texture(holder); }
 
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl) {
     release(records_holder);
-    if (painted_ != 0 && gl.loaded() && texture_of(texture_holder) == painted_) {
+    if (painted_ != 0 && gl.loaded() && sprite_texture(texture_holder) == painted_) {
         upload(painted_, gl, true, false);
     }
     painted_ = 0;
@@ -452,16 +450,13 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
 
 void ApItems::release(BYTE* records_holder) {
     // The records back to the game's own values, whether this helper restyled them or an earlier
-    // one left them so.
+    // one left them so: what watch changes, the frames, the area event and the name.
     for (int i = 0; i < kStandInCount; ++i) {
         const StandIn& s = kStandIns[i];
         BYTE* r = record(records_holder, s.item);
         if (r != nullptr && is_ours(r, s)) {
             at<int16_t>(r, record::kFrame) = s.own_frame;
-            at<int16_t>(r, record::kTicks) = kOwnTicks;
             at<int16_t>(r, record::kFrames) = kOwnFrames;
-            r[record::kIcon] = 0;
-            r[record::kPalette] = kOwnPalette;
             std::memset(r + record::kName, 0, kItemNameMax + 1);
             std::memcpy(r + record::kName, s.own_name, std::strlen(s.own_name));
             at<int16_t>(r, record::kEvent) = s.own_event;

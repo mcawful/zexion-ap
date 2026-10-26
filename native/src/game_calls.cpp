@@ -7,6 +7,9 @@
 
 namespace zap {
 
+namespace {
+
+// The client's names for what it sends (client/patterns.py target names).
 const char* const kConfigKeys[] = {
     "inventory",     "save_loaded",   "menu_state",    "item_records",   "last_message",
     "weapon_strip_gate", "sound_system", "message_fn", "sound_fn",       "hud_number_fn",
@@ -27,8 +30,6 @@ const char* const kConfigKeys[] = {
     "text_new_fn",   "text_link_fn",  "draw_layer",   "map_handler",
 };
 const size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
-
-namespace {
 
 // Player state, from the inventory (docs/re/memory.md, "Granting each kind of item").
 constexpr ptrdiff_t kInventoryInPlayer = 0x108E;
@@ -1077,8 +1078,6 @@ void Game::watch_equipment() {
     pause_row_.watch(pause_at_);
     if (!scan_line_.empty()) {
         disk_glyph_.paint(sprite_texture_, gl_);  // the disk's icon while a count is shown
-    }
-    if (!scan_line_.empty()) {
         equip_.install(equip_at_);
     } else {
         if (disk_glyph_.painted()) disk_glyph_.clear(sprite_texture_, gl_);
@@ -1127,7 +1126,7 @@ void Game::restore_files() {
     if (!configured_) return;
     client_file_counts_.clear();
     offline_file_counts_.clear();
-    files_.set(0, 0, {});
+    files_.set(0, {});
     files_.restore(files_at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(sprite_texture_, gl_);
 }
@@ -1196,7 +1195,7 @@ void Game::watch_offline() {
     offline_frames_ = kOfflineFrames;
     // A save is dressed with no client, or with a client that said the loaded save is not its
     // seed's (other_save); undressed when that stops.
-    const bool other = active_ && other_save_;
+    const bool other = other_mode();
     const bool dress = !active_ || other;
     // This seed's save loaded: the randomizer section as the game loaded it (it is the
     // previous one after a normal save, hence the marker).

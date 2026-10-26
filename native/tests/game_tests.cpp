@@ -1291,7 +1291,7 @@ void test_refused_unload_rearms() {
     game.set_assists_locked(true);
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
-    game.set_disk_slots(3, 15, {2, 5});
+    game.set_disk_slots(3, {2, 5});
     game.request_mission();
 
     zap::ClientState saved = game.snapshot();

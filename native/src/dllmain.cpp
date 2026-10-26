@@ -525,7 +525,7 @@ std::string handle(const std::string& request, bool& stop) {
                 [&] {
                     if (!g_game.configured()) return std::string("refused not configured");
                     bool on = !slots.empty();
-                    g_game.set_disk_slots(count, required, std::move(slots));
+                    g_game.set_disk_slots(count, std::move(slots));
                     return std::string(on ? "disk_slots on" : "disk_slots off");
                 },
                 kFrameWaitMs, result)) {

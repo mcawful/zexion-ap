@@ -148,7 +148,6 @@ private:
     int32_t moved_from_ = -1;  // ASSIST's place before move_out; -1 if not moved
     int32_t selectable_ = 0;   // the panel's selectable count before move_out
     int32_t frames_[kAssistLength] = {};  // ASSIST's glyphs as they were
-    BYTE* frame_ptrs_[kAssistLength] = {};
     int32_t styles_[kAssistLength] = {};
     void* palettes_[kAssistLength] = {};
     int16_t palette_numbers_[kAssistLength] = {};

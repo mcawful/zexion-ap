@@ -26,7 +26,8 @@ constexpr int kRow2 = 2 * kEntryColumns;
 // The keys' block, columns 27 and 28 of rows 2 to 4: the header, then the circles.
 constexpr int kKeysHeader[2] = {kRow2 + 27, kRow2 + 28};
 constexpr int kKeyCircles[4] = {114, 115, 143, 144};
-constexpr int kBlock[6] = {kKeysHeader[0], kKeysHeader[1], 114, 115, 143, 144};
+constexpr int kBlock[6] = {kKeysHeader[0], kKeysHeader[1], kKeyCircles[0],
+                           kKeyCircles[1], kKeyCircles[2], kKeyCircles[3]};
 constexpr int32_t kHeaderK = 0x81, kHeaderS = 0x82, kHollow = 0x83, kFilled = 0x84;
 constexpr int32_t kBlank = 0;
 // The save block an entry shows (the slot's first block, file offset - 2).
@@ -40,7 +41,7 @@ constexpr double kRowHeight = 8.0;
 // them (the owner's ask): the bracket (0xD9 over 0xDA, rows 3 and 4) is opaque over all 16
 // pixel rows, center 7.5 below row 3's top; a digit's 7 pixel rows (0 to 6), center 3, so 4.5:
 // 5, a pixel lower than 4, as the owner chose in game.
-constexpr int kCountGlyphs[2] = {114, 115};
+constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
 constexpr intptr_t kFill = 0xF;
 
@@ -106,8 +107,7 @@ std::string file_disk_digits(int value) {
            static_cast<char>('0' + value % 10);
 }
 
-void FileDisks::set(int count, int required, std::set<int> slots) {
-    (void)required;  // the number needed is not shown (the owner's layout)
+void FileDisks::set(int count, std::set<int> slots) {
     counts_.clear();
     for (int slot : slots) counts_[slot] = count;
 }

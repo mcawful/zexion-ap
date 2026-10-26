@@ -400,7 +400,6 @@ bool AssistLock::install(const MenuAddresses& a) {
     for (int i = 0; i < kAssistLength; ++i) {
         BYTE* g = glyphs[i];
         frames_[i] = at<int32_t>(g, sprite::kFrameIndex);
-        frame_ptrs_[i] = at<BYTE*>(g, sprite::kFrameShown);
         styles_[i] = at<int32_t>(g, sprite::kStyle);
         palettes_[i] = at<void*>(g, sprite::kPalette);
         palette_numbers_[i] = at<int16_t>(g, sprite::kPaletteNumber);

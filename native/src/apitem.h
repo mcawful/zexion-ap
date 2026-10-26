@@ -140,7 +140,6 @@ public:
 
 private:
     BYTE* record(BYTE* records_holder, int item) const;
-    unsigned texture_of(BYTE* texture_holder) const;
     // Paints (or clears) the logo, the first time for a texture only after reading it back:
     // the two places blank (or already the logo) and known art where the PNG has it.
     // `arrow_only`: just the progression logo's frame, for the arrow's next color.

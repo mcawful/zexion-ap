@@ -253,7 +253,6 @@ void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palett
         BYTE* item_palette = read_pointer(at.palette_table + palette * 8);
         if (item_palette == nullptr) continue;
         int wanted = first + static_cast<int>((clock / ticks) % frames);
-        BYTE* new_base = base;
         BYTE* shown = base + static_cast<ptrdiff_t>(wanted) * sprite::kFrameSize;
         std::memcpy(object + sprite::kFrameShown, &shown, sizeof(shown));
         if (field<BYTE*>(seen, sprite::kPalette) != item_palette) {
@@ -261,7 +260,7 @@ void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palett
             int16_t number = static_cast<int16_t>(palette);
             std::memcpy(object + sprite::kPaletteNumber, &number, sizeof(number));
         }
-        d = {spawn, new_base};
+        d = {spawn, base};
     }
 }
 

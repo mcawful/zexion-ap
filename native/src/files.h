@@ -52,7 +52,7 @@ class FileDisks {
 public:
     // Game thread: what to show (an empty slot set turns it off): one count for the slots the
     // client lists, or each slot's own (offline, saves of several seeds: offline.h).
-    void set(int count, int required, std::set<int> slots);
+    void set(int count, std::set<int> slots);
     void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
     bool on() const { return !counts_.empty(); }
 
