@@ -58,10 +58,10 @@ ENDING_FLAG, FINALE_FLAG = 250, 211
 # needed (docs/re/memory.md, "The scanner"); also set from the start of a game whose map is
 # revealed in full.
 SCANNED_FLAG = 39
-# Under the game's Abridged Finale (setting 32) the grab is the game's victory, and whether
-# its end reaches flag 250 is not known; for such a seed the goal is the grab. No world sets
-# it today: it is off in every mode's preset and the mode check refuses it.
-ABRIDGED_FINALE, GOAL_ITEM = 32, 31
+# The game's Abridged Finale (setting 32) would make the grab the game's victory, and whether
+# its end reaches flag 250 is not known; the world sends setting 32 as 0 in every mode
+# (worlds/zexion/data.py, checked_options), which /prepare and the new game require of the
+# game (save_patch.check_mode, newgame's expect lines), so the goal is always the ending.
 
 
 @dataclass(frozen=True)
@@ -220,10 +220,7 @@ class Session:
             return Step(left_seed=True, other_seed=True, state=snap.state)
         self._said.discard("other seed")
         collected = reconcile.collected_locations(snap.grid, self.cells)
-        if self.plan.options.get(ABRIDGED_FINALE):
-            goal = snap.inventory[GOAL_ITEM] >= 1
-        else:
-            goal = snap.ended >= 1 and snap.finale == 0
+        goal = snap.ended >= 1 and snap.finale == 0
         step = Step(
             collected,
             goal,

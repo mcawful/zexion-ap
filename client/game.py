@@ -367,11 +367,6 @@ class Game:
 
     # --- state ------------------------------------------------------------------------
 
-    def map_cell(self, x: int, y: int) -> int:
-        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
-            raise ValueError(f"cell ({x}, {y}) is off the map")
-        return self._read("map_grid", y * MAP_SIZE + x, 1)[0]
-
     def map_grid(self) -> bytes:
         return self._read("map_grid", 0, MAP_SIZE * MAP_SIZE)
 

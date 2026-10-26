@@ -196,15 +196,6 @@ def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> No
     assert session.step(g, [], gap=0).goal
 
 
-def test_under_abridged_finale_the_grab_is_the_goal() -> None:
-    p = plan(options={**PLAN.options, 32: 1})
-    session = ss.Session(p, [list(c) for c in CELLS])
-    g = FakeGame(PLAN)  # the same item table and start; the game's own settings do not matter
-    assert not session.step(g, [], gap=0).goal
-    g.inv[31] = 1
-    assert session.step(g, [], gap=0).goal
-
-
 def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
     session, g = setup
     g.flags[ss.ENDING_FLAG] = 1
