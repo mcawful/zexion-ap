@@ -120,7 +120,9 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   the weapon, which the game turns into the upgrade on a second copy, `randocells.md`; an Intel
   Chip as the Area Map, 49; this world's own Scrap Energy and Scrap Chunk as Scrap Metal), a
   stand-in where another world's item is: Scrap Energy (47), or Scrap Chunk (48) for a
-  progression item and for this world's own OS Install Disk, which the game must not hand out
+  progression item (not another Zexion player's supplies, which stay 47, minor on the map as the
+  game marks this player's own: `world.important_elsewhere`) and for this world's own OS
+  Install Disk, which the game must not hand out
   (slot data `stand_in` and `stand_in_progression`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and

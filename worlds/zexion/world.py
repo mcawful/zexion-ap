@@ -52,9 +52,9 @@ AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
-# progression), or this world's own OS Install Disk (Scrap Chunk). This world's own Scrap
-# Energy and Chunk are written as Scrap Metal, so 47 and 48 always mean a stand-in
-# (client/aplabels.py).
+# progression, but not for another Zexion player's supplies: important_elsewhere), or this
+# world's own OS Install Disk (Scrap Chunk). This world's own Scrap Energy and Chunk are written
+# as Scrap Metal, so 47 and 48 always mean a stand-in (client/aplabels.py).
 FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
 # Supplies (items.SUPPLIES) are progression for the rules' counts, but minor on the map, as the
 # game marks this player's own (important_elsewhere), and not worth an Area Map's hint. The OS

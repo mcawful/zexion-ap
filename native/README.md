@@ -283,10 +283,11 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
 
 - **Labels:** `ap_labels` names map cells (this repo's (x, y); the game shows X = y, Y = x) for
   the **stand-ins**, Scrap Energy (47) and Scrap Chunk (48), which the world puts at every
-  location holding another player's item (48 for progression). HEX is the item and whom it is
-  for, joined by a newline; or `@N` and whom it is for (another Zexion player's item N, named
-  from its record); or `@N NAME` (item N under that name: this player's own OS Install Disk, or
-  another Zexion player's disk, Area Map or Intel Chip). See `client/aplabels.py`.
+  location holding another player's item (48 for progression, but not for another Zexion
+  player's supplies). HEX is the item and whom it is for, joined by a newline; or `@N` and whom
+  it is for (another Zexion player's item N, named from its record); or `@N NAME` (item N under
+  that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
+  Intel Chip). See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of
@@ -309,7 +310,8 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
   Scrap Energy in another seed's save would look the same, so the client sends labels only while
   this seed's save is loaded.
 
-Working in game: 2026-10-23 ("Other players' items").
+Working in game: 2026-10-23 ("Other players' items"); 2026-10-26, a three-game seed: no owner
+on the map cursor, other Zexion players' supplies minor ("Map markers").
 
 ### Other Zexion players' items, as themselves
 
@@ -376,7 +378,9 @@ Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unlo
 the scanner's text or the pause screen's branch is still the helper's.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
-prompt", "The pause screen's KEYS row", "The file select").
+prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
+received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
+pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
 
 ### AP saves without the client
 
@@ -416,19 +420,22 @@ Working in game: 2026-10-25 ("AP saves without the client").
 ### The map
 
 - **What:** in an AP save holding the seed the labels are for, in play or in a menu (a plain
-  randomizer save is never touched), raises the map squares of item 48 (this player's OS Install Disks and other
-  players' progression items, but not a Zexion player's supplies: `worlds/zexion/world.py`,
-  `important_elsewhere`) from the game's basic marker to its important one
-  (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame handler writes
-  the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game writes the cursor's
-  name, in the same frame.
-- **When:** the markers every 16th frame call while labels are set; the names while the map is
-  open and this seed's save is loaded.
+  randomizer save is never touched), raises the map squares of item 48 (this player's OS
+  Install Disks and other players' progression items, but not a Zexion player's supplies:
+  `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
+  important one (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame
+  handler writes the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game
+  writes the cursor's name, in the same frame.
+- **When:** the markers every 16th frame call while labels are set, once two of those looks in a
+  row have found the seed's save loaded (during a load the section may still be the last
+  save's while the grid is the new one's); the names while the map is open and this seed's save
+  is loaded.
 - **Put back:** the markers are not: the game saves the map grid, and they stay as the game would
   have set them. The handler goes back when the names stop and before an unload, which refuses
   while an open map holds the wrapper.
 
-Working in game: 2026-10-25 ("Map markers").
+Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
+in a pause right after loading (before the two-look check, which is not yet seen in game).
 
 ### The title screen's lines
 
