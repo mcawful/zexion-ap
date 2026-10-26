@@ -55,18 +55,12 @@ zap::Mailbox g_mailbox;
 // functions the game calls (archipelago_chosen and the others below).
 zap::Game g_game;
 std::atomic_flag g_in_frame_work = ATOMIC_FLAG_INIT;
-// Whether a game structure (menu, panel, entry, map, transition routine) may still hold a helper
-// function: unload refuses while set. The frame offers ARCHIPELAGO only under g_menu_lock with
-// g_unloading clear, and only tries the lock, so it never waits on the pipe thread.
-std::atomic<bool> g_menu_installed{false};
-// Whether an item record is restyled (the stand-ins, apitem.h; the Area Map, intel.h), which
-// unload must undo first.
-std::atomic<bool> g_items_restyled{false};
-// Whether the scanner's message is still the helper's (scan.h): unload waits for it, since a
-// later helper would not take it for the game's.
-std::atomic<bool> g_scan_written{false};
-// Likewise the pause screen's KEYS-row branch while it is the helper's jmp (pause.h).
-std::atomic<bool> g_branch_patched{false};
+// What an unload must wait for (Game::unload_blocker: a game structure that may still hold a
+// helper function, a record restyled, the scanner's text or the pause screen's branch still
+// the helper's), or null: unload refuses while set. The frame offers ARCHIPELAGO only under
+// g_menu_lock with g_unloading clear, and only tries the lock, so it never waits on the pipe
+// thread.
+std::atomic<const char*> g_blocker{nullptr};
 SRWLOCK g_menu_lock = SRWLOCK_INIT;
 bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
@@ -121,12 +115,7 @@ void guarded(Work&& work) {
 }
 
 // Game thread: what an unload must wait for, published for the pipe thread.
-void publish_blockers() {
-    g_menu_installed.store(g_game.menu_installed());
-    g_items_restyled.store(g_game.ap_items_restyled());
-    g_scan_written.store(g_game.scan_written());
-    g_branch_patched.store(g_game.keys_branch_patched());
-}
+void publish_blocker() { g_blocker.store(g_game.unload_blocker()); }
 
 // ARCHIPELAGO's callback. The game calls it on its thread but outside the trampoline's count, so
 // InCallback counts it, and unload first takes it off the menu (via the mailbox) and refuses
@@ -134,7 +123,7 @@ void publish_blockers() {
 void archipelago_chosen(void*, int) {
     InCallback in;
     guarded([] { g_game.start_archipelago(&archipelago_chosen); });
-    g_menu_installed.store(g_game.menu_installed());
+    publish_blocker();
 }
 
 // A handler the helper puts in place of the game's: the game's own for the widget (`Original`,
@@ -237,13 +226,14 @@ void take_offline() {
     if (!g_game.active()) g_game.set_offline(std::move(files.seeds));
 }
 
-// Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
-bool set_unloading(bool unloading) {
+// Pipe thread: sets or clears g_unloading; returns what an unload must wait for, read under the
+// lock (so not before a frame that offered ARCHIPELAGO has published it), or null.
+const char* set_unloading(bool unloading) {
     AcquireSRWLockExclusive(&g_menu_lock);
     g_unloading = unloading;
-    bool installed = g_menu_installed.load();
+    const char* blocker = g_blocker.load();
     ReleaseSRWLockExclusive(&g_menu_lock);
-    return installed;
+    return blocker;
 }
 
 uintptr_t frame(void* argument) {
@@ -284,7 +274,7 @@ uintptr_t frame(void* argument) {
                     g_game.watch_ap_items();
                     g_game.watch_map_marks();
                 }
-                publish_blockers();
+                publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
@@ -392,31 +382,17 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config)
 
 // The requests that run on the game's thread (native/README.md lists them and their replies),
 // each matched by its whole name, or by its first word: `prefix` (the name then anything) or
-// `word` (the name alone, or the name, a space and anything).
+// `word` (the name alone, or the name, a space and anything). Most are `game`, run on the
+// game's thread (on_game) as they are; the others `run`, which parse the request on the pipe's
+// thread first, so a bad one gets its error without waiting for a frame.
 enum class Match { kName, kPrefix, kWord };
 struct Request {
     const char* name;
     Match match;
-    std::string (*run)(const std::string& request);
+    bool needs_config;  // `game` refused while nothing configured the helper
+    std::string (*game)();
+    std::string (*run)(const std::string& request) = nullptr;
 };
-
-std::string set_assists(bool lock) {
-    return on_game(
-        [lock] {
-            g_game.set_assists_locked(lock);
-            return std::string(lock ? "locked" : "free");
-        },
-        true);
-}
-
-std::string set_intel(bool on) {
-    return on_game(
-        [on] {
-            g_game.set_intel(on);
-            return std::string(on ? "intel on" : "intel off");
-        },
-        true);
-}
 
 std::string disk_slots(const std::string& request) {
     // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count for the
@@ -499,68 +475,59 @@ std::string apply(const std::string& request) {
 }
 
 const Request kRequests[] = {
-    {"shield", Match::kName,
-     [](const std::string&) {
-         return on_game([] { return g_game.spawn_shield(GetTickCount64()); }, false);
+    {"shield", Match::kName, false, [] { return g_game.spawn_shield(GetTickCount64()); }},
+    {"die", Match::kName, false, [] { return g_game.kill(GetTickCount64()); }},
+    {"assists lock", Match::kName, true,
+     [] {
+         g_game.set_assists_locked(true);
+         return std::string("locked");
      }},
-    {"die", Match::kName,
-     [](const std::string&) {
-         return on_game([] { return g_game.kill(GetTickCount64()); }, false);
+    {"assists free", Match::kName, true,
+     [] {
+         g_game.set_assists_locked(false);
+         return std::string("free");
      }},
-    {"assists lock", Match::kName, [](const std::string&) { return set_assists(true); }},
-    {"assists free", Match::kName, [](const std::string&) { return set_assists(false); }},
     // The client's session sees a randomizer save in play that is not its seed's (offline.h).
-    {"other_save", Match::kName,
-     [](const std::string&) {
-         return on_game([] { return std::string(g_game.other_save() ? "told" : "already told"); },
-                        true);
-     }},
+    {"other_save", Match::kName, true,
+     [] { return std::string(g_game.other_save() ? "told" : "already told"); }},
     // The client's session sees its seed's save in play: if it was played offline, the player is
     // told the client is back (offline.h).
-    {"client_back", Match::kName,
-     [](const std::string&) {
-         return on_game([] { return std::string(g_game.client_back() ? "shown" : "none"); }, true);
-     }},
+    {"client_back", Match::kName, true,
+     [] { return std::string(g_game.client_back() ? "shown" : "none"); }},
     // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
-    {"intel on", Match::kName, [](const std::string&) { return set_intel(true); }},
-    {"intel off", Match::kName, [](const std::string&) { return set_intel(false); }},
+    {"intel on", Match::kName, true,
+     [] {
+         g_game.set_intel(true);
+         return std::string("intel on");
+     }},
+    {"intel off", Match::kName, true,
+     [] {
+         g_game.set_intel(false);
+         return std::string("intel off");
+     }},
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
-    {"mission_prompt", Match::kName,
-     [](const std::string&) {
-         return on_game(
-             [] {
-                 g_game.request_mission();
-                 return std::string("queued");
-             },
-             true);
+    {"mission_prompt", Match::kName, true,
+     [] {
+         g_game.request_mission();
+         return std::string("queued");
      }},
-    {"mission_status", Match::kName,
-     [](const std::string&) { return on_game([] { return g_game.mission_status(); }, true); }},
-    {"disk_slots", Match::kWord, &disk_slots},
-    {"discs_status", Match::kName,
-     [](const std::string&) { return on_game([] { return g_game.equipment_status(); }, false); }},
-    {"discs", Match::kWord, &discs},
-    {"ap_labels", Match::kPrefix, &ap_labels},
-    {"ap_newgame", Match::kPrefix, &ap_newgame},
-    {"disarm", Match::kName,
-     [](const std::string&) {
-         return on_game(
-             [] {
-                 g_game.disarm_newgame();
-                 return std::string("disarmed");
-             },
-             false);
+    {"mission_status", Match::kName, true, [] { return g_game.mission_status(); }},
+    {"disk_slots", Match::kWord, false, nullptr, &disk_slots},
+    {"discs_status", Match::kName, false, [] { return g_game.equipment_status(); }},
+    {"discs", Match::kWord, false, nullptr, &discs},
+    {"ap_labels", Match::kPrefix, false, nullptr, &ap_labels},
+    {"ap_newgame", Match::kPrefix, false, nullptr, &ap_newgame},
+    {"disarm", Match::kName, false,
+     [] {
+         g_game.disarm_newgame();
+         return std::string("disarmed");
      }},
-    {"newgame_status", Match::kName,
-     [](const std::string&) { return on_game([] { return g_game.newgame_status(); }, false); }},
+    {"newgame_status", Match::kName, false, [] { return g_game.newgame_status(); }},
     // The client's popups not shown yet (from `apply`; the helper's own notices left out).
-    {"popups", Match::kName,
-     [](const std::string&) {
-         return on_game([] { return "pending " + std::to_string(g_game.pending_popups()); },
-                        false);
-     }},
-    {"config", Match::kPrefix, &config},
-    {"apply", Match::kPrefix, &apply},
+    {"popups", Match::kName, false,
+     [] { return "pending " + std::to_string(g_game.pending_popups()); }},
+    {"config", Match::kPrefix, false, nullptr, &config},
+    {"apply", Match::kPrefix, false, nullptr, &apply},
 };
 
 bool matches(const Request& r, const std::string& request) {
@@ -592,7 +559,7 @@ std::string handle(const std::string& request, bool& stop) {
     for (const Request& r : kRequests) {
         if (!matches(r, request)) continue;
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        return r.run(request);
+        return r.run != nullptr ? r.run(request) : on_game(r.game, r.needs_config);
     }
     return "error unknown request";
 }
@@ -613,7 +580,7 @@ std::string undo_for_unload() {
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
                 g_game.hide_title();  // a refused unload shows them again (its watch)
-                publish_blockers();
+                publish_blocker();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -626,15 +593,8 @@ std::string undo_for_unload() {
         if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };
-    if (set_unloading(true)) {
-        return refuse("a menu still holds the helper's callback (no frame came)");
-    }
-    if (g_items_restyled.load()) return refuse("an item record is still restyled (no frame came)");
-    if (g_scan_written.load()) {
-        return refuse("the scanner's message is still the helper's (no frame came)");
-    }
-    if (g_branch_patched.load()) {
-        return refuse("the pause screen's branch is still the helper's (no frame came)");
+    if (const char* blocker = set_unloading(true)) {
+        return refuse(std::string(blocker) + " (no frame came)");
     }
     if (!unhook()) return refuse(kHookReplaced);
     delete g_rearm.exchange(nullptr);  // one no frame took: unloading anyway

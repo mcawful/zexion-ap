@@ -268,6 +268,15 @@ public:
                looks_.dressed() || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
+    // What an unload must wait for a frame to put back, the first of those above (and the
+    // scanner's text, the pause screen's branch), as unload's refusal names it; null for none.
+    const char* unload_blocker() const {
+        if (menu_installed()) return "a menu still holds the helper's callback";
+        if (ap_items_restyled()) return "an item record is still restyled";
+        if (scan_written()) return "the scanner's message is still the helper's";
+        if (keys_branch_patched()) return "the pause screen's branch is still the helper's";
+        return nullptr;
+    }
 
 private:
     bool in_play() const;
