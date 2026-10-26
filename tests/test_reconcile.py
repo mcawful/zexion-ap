@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from collections import Counter
 
+import pytest
+
 from client import ids
 from client import reconcile as rc
 
 CELLS = [(25, 25), (29, 24), (3, 40), (50, 1)]
 TABLE = [3, 0, 46, 27]  # Machine Gun, Energy Tank, Scrap (a remote item), Alpha Key
 START = {0: 3, 1: 3, 4: 1}
+STARTED = dict(i0=3, i1=3, i4=1)  # START in the inventory
 
 
 def inv(**items: int) -> bytearray:
@@ -38,7 +41,7 @@ def test_nothing_is_given_when_the_game_is_up_to_date() -> None:
 
 
 def test_received_items_are_given_once() -> None:
-    have = inv(i0=3, i1=3, i4=1)
+    have = inv(**STARTED)
     target = rc.should_own(START, TABLE, set(), [17, 0])
     g = rc.grants(have, target)
     assert g.inventory == {17: 1, 0: 4}
@@ -47,55 +50,45 @@ def test_received_items_are_given_once() -> None:
     assert rc.grants(have, target).inventory == {}
 
 
-def test_a_native_pickup_is_not_given_again() -> None:
-    # The game handed out location 1's Energy Tank: inventory and map agree.
-    target = rc.should_own(START, TABLE, {1}, [])
-    assert rc.grants(inv(i0=4, i1=3, i4=1), target).inventory == {}
-
-
-def test_a_received_item_lost_to_a_death_is_given_again() -> None:
-    target = rc.should_own(START, TABLE, set(), [18])
-    assert rc.grants(inv(i0=3, i1=3, i4=1), target).inventory == {18: 1}
-
-
-def test_a_surplus_is_left_alone() -> None:
-    target = rc.should_own(START, TABLE, set(), [])
-    assert rc.grants(inv(i0=9, i1=3, i4=1, i22=1), target).inventory == {}
-
-
-def test_progressive_weapons_fill_the_weapon_then_the_upgrade() -> None:
-    target = rc.should_own(START, TABLE, set(), [5])
-    assert rc.grants(inv(i0=3, i1=3, i4=1), target).inventory == {5: 1}
-    target = rc.should_own(START, TABLE, set(), [5, 5])
-    assert rc.grants(inv(i0=3, i1=3, i4=1, i5=1), target).inventory == {15: 1}
-    # The starting Force Blaster plus a received one is the Pentashot (14).
-    target = rc.should_own(START, TABLE, set(), [4])
-    assert rc.grants(inv(i0=3, i1=3, i4=1), target).inventory == {14: 1}
-
-
-def test_a_native_weapon_pickup_that_became_the_upgrade_counts() -> None:
-    # Location 0 holds the Machine Gun; the player already had it from a remote copy, so the
-    # game gave the Pulse Wave (9). Nothing is owed.
-    target = rc.should_own(START, TABLE, {0}, [3])
-    assert rc.grants(inv(i0=3, i1=3, i3=1, i4=1, i9=1), target).inventory == {}
+@pytest.mark.parametrize(
+    ("collected", "received", "extra", "owed"),
+    [
+        # The game handed out location 1's Energy Tank: inventory and map agree.
+        pytest.param({1}, [], dict(i0=4), {}, id="a-native-pickup-is-not-given-again"),
+        pytest.param(set(), [18], {}, {18: 1}, id="a-received-item-lost-to-a-death-again"),
+        pytest.param(set(), [], dict(i0=9, i22=1), {}, id="a-surplus-is-left-alone"),
+        pytest.param(set(), [5], {}, {5: 1}, id="a-progressive-weapon-fills-the-weapon"),
+        pytest.param(set(), [5, 5], dict(i5=1), {15: 1}, id="then-the-upgrade"),
+        # The starting Force Blaster plus a received one is the Pentashot (14).
+        pytest.param(set(), [4], {}, {14: 1}, id="a-starting-weapon-received-again"),
+        # Location 0 holds the Machine Gun; the player already had it from a remote copy, so
+        # the game gave the Pulse Wave (9). Nothing is owed.
+        pytest.param({0}, [3], dict(i3=1, i9=1), {}, id="a-native-pickup-become-the-upgrade"),
+        # If a second pickup in play raised the weapon byte instead of setting the upgrade.
+        pytest.param({0}, [3], dict(i3=2), {9: 1}, id="a-weapon-byte-of-two-owes-the-upgrade"),
+    ],
+)
+def test_what_the_inventory_lacks_is_owed(collected, received, extra, owed) -> None:
+    target = rc.should_own(START, TABLE, collected, received)
+    assert rc.grants(inv(**{**STARTED, **extra}), target).inventory == owed
 
 
 def test_a_third_copy_of_a_weapon_is_reported() -> None:
     target = rc.should_own(START, TABLE, set(), [3, 3, 3])
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    g = rc.grants(inv(**STARTED), target)
     assert g.inventory == {3: 1, 9: 1}
     assert g.not_grantable == {3: 1}
 
 
 def test_items_that_cannot_be_written_are_reported() -> None:
     target = rc.should_own(START, TABLE, set(), [31])
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    g = rc.grants(inv(**STARTED), target)
     assert g.inventory == {} and g.not_grantable == {31: 1}
 
 
 def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     target = rc.should_own(START, TABLE, set(), [50, 50])
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    g = rc.grants(inv(**STARTED), target)
     assert g.inventory == {46: 2} and g.not_grantable == {}
 
 
@@ -129,16 +122,10 @@ def test_bomb_boxes_count_ten() -> None:
     assert (after.bombs, after.bombs_max) == (10, 10)
 
 
-def test_a_weapon_byte_of_two_still_owes_the_upgrade() -> None:
-    # If a second pickup in play raised the weapon byte instead of setting the upgrade.
-    target = rc.should_own(START, TABLE, {0}, [3])
-    assert rc.grants(inv(i0=3, i1=3, i3=2, i4=1), target).inventory == {9: 1}
-
-
 def test_scrap_pickups_count_as_scrap_metal() -> None:
     # Three scrap pickups in play raised byte 46 to 3; two received scrap items are owed on top.
     target = rc.should_own(START, [47, 49, 48, 27], {0, 1, 2}, [47, 49])
-    g = rc.grants(inv(i0=3, i1=3, i4=1, i46=3), target)
+    g = rc.grants(inv(**STARTED, i46=3), target)
     assert g.inventory == {46: 5} and g.not_grantable == {}
 
 
@@ -146,14 +133,14 @@ def test_a_stand_in_pickup_does_not_swallow_a_received_scrap_metal() -> None:
     # Another player's item (the stand-in, 47) picked up raised byte 46; a Scrap Metal received
     # afterwards is still owed.
     target = rc.should_own(START, [47], {0}, [46])
-    assert rc.grants(inv(i0=3, i1=3, i4=1, i46=1), target).inventory == {46: 2}
+    assert rc.grants(inv(**STARTED, i46=1), target).inventory == {46: 2}
 
 
 def test_a_data_disc_is_never_put_in_the_inventory() -> None:
     # Counted by the client instead (client/discs.py): received, or the secret boss's own.
     target = rc.should_own(START, TABLE, set(), [44, 44])
     assert target[44] == 0
-    g = rc.grants(inv(i0=3, i1=3, i4=1), target)
+    g = rc.grants(inv(**STARTED), target)
     assert 44 not in g.inventory and 44 not in g.not_grantable
-    g = rc.grants(inv(i0=3, i1=3, i4=1, i44=1), target)
+    g = rc.grants(inv(**STARTED, i44=1), target)
     assert 44 not in g.inventory, "the secret boss's disc is left alone"

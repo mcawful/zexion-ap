@@ -41,16 +41,47 @@ class FakeGame(game.Game):
         return self.alive
 
 
+# --- a PE header -----------------------------------------------------------------------------
+
+PE_SECTIONS = [(b".text", 0x1000, 0x2000, 0x400, 0x2000), (b".rdata", 0x3000, 0x80, 0x2400, 0x200)]
+
+
+def pe_image(
+    sections: list[tuple[bytes, int, int, int, int]] = PE_SECTIONS,
+    length: int = 0x1000,
+    stamp: int = 0x6A3F82DE,
+    size_of_image: int = 0x1204000,
+) -> bytes:
+    """A PE header at 0x80 with the given (name, va, vsize, raw, rsize) sections."""
+    data = bytearray(length)
+    data[0x3C:0x40] = struct.pack("<I", 0x80)
+    data[0x80:0x84] = b"PE\0\0"
+    data[0x84:0x8C] = struct.pack("<HHI", 0x8664, len(sections), stamp)
+    data[0x94:0x96] = struct.pack("<H", 0xF0)  # optional header size
+    data[0x80 + 24 + 56 : 0x80 + 24 + 60] = struct.pack("<I", size_of_image)
+    data[0x80 + 24 + 70 : 0x80 + 24 + 72] = struct.pack("<H", 0x0160)
+    first = 0x80 + 24 + 0xF0
+    for i, (name, va, vsize, raw, rsize) in enumerate(sections):
+        at = first + 40 * i
+        data[at : at + 8] = name.ljust(8, b"\0")
+        data[at + 8 : at + 24] = struct.pack("<IIII", vsize, va, rsize, raw)
+    return bytes(data)
+
+
 # --- a seed's plan, and a fresh save of its mode ---------------------------------------------
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
 CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by y then x
 
 
-def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
+def fresh(start_cell: tuple[int, int] | None = (13, 16), cells: bool = False) -> bytearray:
     """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
-    settings, one revealed start cell, a nonzero item table and inventory."""
+    settings, one revealed start cell, a nonzero item table and inventory; with ``cells``,
+    CELLS as its location list."""
     save = bytearray(sp.SAVE_SIZE)
+    if cells:
+        for i, (x, y) in enumerate(CELLS):
+            struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
     save[sp.RANDO_MARKER] = 1
     struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
     save[sp.OPTIONS + 42] = 2  # Safety Normal
@@ -62,6 +93,47 @@ def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
         x, y = start_cell
         save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
     return save
+
+
+ITEMS = [46] * sp.LOCATIONS
+ITEMS[3], ITEMS[9], ITEMS[12] = 47, 48, 44  # a stand-in, a progression stand-in, a disk
+
+
+def slot_data(**changes) -> dict:
+    """A seed's slot data as the world sends it, every key the client reads, the options off."""
+    slot = {
+        "location_items": ITEMS,
+        "start_items": {"0": 3},
+        "start_index": 5,
+        "start_column": 326,
+        "start_row": 449,
+        "second_start": None,
+        "amounts": list(AMOUNTS),
+        "options": {"42": 2},
+        "locations": [list(c) for c in CELLS],
+        "kept_locations": [i for i in range(sp.LOCATIONS) if i != 9],
+        "mode": "Standard",
+        "menu": {
+            "seed_text": "0123456789ABCDEF",
+            "start": [0] * 27,
+            "pool": [1] * 27,
+            "settings": [0] * 64,
+            "second_target": [0, 20, 509],
+        },
+        "stand_in": 47,
+        "stand_in_progression": 48,
+        "hints": [],
+        "allow_assists": True,
+        "intel_chip": False,
+        "death_link": False,
+        "goal": "core",
+        "discs_required": 0,
+        "discs_placed": 0,
+        "discs_start": 0,
+        "disc_locations": [],
+    }
+    slot.update(changes)
+    return slot
 
 
 def menu_setup(**changes) -> sp.MenuSetup:

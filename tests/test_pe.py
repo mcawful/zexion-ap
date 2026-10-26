@@ -7,32 +7,13 @@ import sys
 from pathlib import Path
 
 import pytest
+from fakes import pe_image
 
 from client import pe
 
 
-def image(sections: list[tuple[bytes, int, int, int, int]], length: int = 0x1000) -> bytes:
-    """A PE header at 0x80 with the given (name, va, vsize, raw, rsize) sections."""
-    data = bytearray(length)
-    data[0x3C:0x40] = struct.pack("<I", 0x80)
-    data[0x80:0x84] = b"PE\0\0"
-    data[0x84:0x8C] = struct.pack("<HHI", 0x8664, len(sections), 0x6A3F82DE)
-    data[0x94:0x96] = struct.pack("<H", 0xF0)  # optional header size
-    data[0x80 + 24 + 56 : 0x80 + 24 + 60] = struct.pack("<I", 0x1204000)
-    data[0x80 + 24 + 70 : 0x80 + 24 + 72] = struct.pack("<H", 0x0160)
-    first = 0x80 + 24 + 0xF0
-    for i, (name, va, vsize, raw, rsize) in enumerate(sections):
-        at = first + 40 * i
-        data[at : at + 8] = name.ljust(8, b"\0")
-        data[at + 8 : at + 24] = struct.pack("<IIII", vsize, va, rsize, raw)
-    return bytes(data)
-
-
-SECTIONS = [(b".text", 0x1000, 0x2000, 0x400, 0x2000), (b".rdata", 0x3000, 0x80, 0x2400, 0x200)]
-
-
 def test_the_header_fields_and_sections_are_read() -> None:
-    header = pe.parse(image(SECTIONS))
+    header = pe.parse(pe_image())
     assert (header.machine, header.timestamp, header.size_of_image) == (
         0x8664,
         0x6A3F82DE,
@@ -46,7 +27,7 @@ def test_the_header_fields_and_sections_are_read() -> None:
 
 
 def test_an_rva_maps_to_its_file_offset() -> None:
-    data = bytearray(image(SECTIONS, 0x2600))
+    data = bytearray(pe_image(length=0x2600))
     data[0x2410:0x2414] = b"abcd"
     header = pe.parse(bytes(data))
     assert header.file_offset(0x3010, 4) == 0x2410
@@ -58,7 +39,7 @@ def test_an_rva_maps_to_its_file_offset() -> None:
 
 
 def test_a_section_table_past_the_bytes_given_is_cut() -> None:
-    data = image(SECTIONS)
+    data = pe_image()
     first = 0x80 + 24 + 0xF0
     assert [s.name for s in pe.parse(data[: first + 40]).sections] == [".text"]
 

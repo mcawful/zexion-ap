@@ -43,13 +43,17 @@ def _fit(words: list[str], width: int) -> str:
     return line
 
 
+def _for(player_name: str) -> str:
+    """A label's second line: whom the item is for, as much of the name as fits."""
+    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
+    return f"FOR {player}" if player else "FOR"
+
+
 def label(progression: bool, player_name: str) -> str:
     """The stand-in's name for one location: what kind of item, a newline, then whom it is
     for."""
     item = PROGRESSION_ITEM if progression else AP_ITEM
-    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
-    who = f"FOR {player}" if player else "FOR"
-    return f"{item}\n{who}"
+    return f"{item}\n{_for(player_name)}"
 
 
 # Zexion items shown under a name of our own: the Data Disc as OS INSTALL DISK, and the Area
@@ -73,10 +77,7 @@ def zexion_label(item: int, player_name: str, name: str = "") -> str:
     """The label for another Zexion player's item: ``@N`` asks the helper for item N's own icon
     and the game's name for it (native/README.md), or ``name`` in its place (``@N NAME``,
     zexion_look), then whom it is for."""
-    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
-    who = f"FOR {player}" if player else "FOR"
-    kept = " ".join(_font_words(name))[: PER_LINE - 1]
-    return f"@{item} {kept}\n{who}" if kept else f"@{item}\n{who}"
+    return f"{own_label(item, name)}\n{_for(player_name)}"
 
 
 def own_label(item: int, name: str = "") -> str:

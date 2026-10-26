@@ -8,6 +8,7 @@ from __future__ import annotations
 import ctypes
 import functools
 import sys
+import time
 from ctypes import wintypes
 
 
@@ -25,12 +26,12 @@ class ProcessAccessDenied(ProcessError):
 
 
 PROCESS_ALL_ACCESS = 0x1F0FFF  # the helper's loader needs threads too
-TH32CS_SNAPPROCESS, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32 = 0x2, 0x8, 0x10
+TH32CS_SNAPPROCESS = 0x2
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-ERROR_ACCESS_DENIED, ERROR_BAD_LENGTH, ERROR_NO_MORE_FILES = 5, 24, 18
-SNAPSHOT_TRIES = 10  # a module snapshot can fail while the process's loader is busy
+ERROR_ACCESS_DENIED, ERROR_NO_MORE_FILES = 5, 18
+LIST_MODULES_ALL = 3  # EnumProcessModulesEx: 32-bit and 64-bit modules
+MODULE_TRIES = 10  # listing the modules can fail for a moment while the process's loader is busy
 MAX_PATH = 260
-MAX_MODULE_NAME32 = 255
 STILL_ACTIVE = 259  # GetExitCodeProcess's code for a process that has not exited
 
 
@@ -49,18 +50,11 @@ class PROCESSENTRY32W(ctypes.Structure):
     ]
 
 
-class MODULEENTRY32W(ctypes.Structure):
+class MODULEINFO(ctypes.Structure):
     _fields_ = [
-        ("dwSize", wintypes.DWORD),
-        ("th32ModuleID", wintypes.DWORD),
-        ("th32ProcessID", wintypes.DWORD),
-        ("GlblcntUsage", wintypes.DWORD),
-        ("ProccntUsage", wintypes.DWORD),
-        ("modBaseAddr", ctypes.c_void_p),
-        ("modBaseSize", wintypes.DWORD),
-        ("hModule", wintypes.HMODULE),
-        ("szModule", ctypes.c_wchar * (MAX_MODULE_NAME32 + 1)),
-        ("szExePath", ctypes.c_wchar * MAX_PATH),
+        ("lpBaseOfDll", ctypes.c_void_p),
+        ("SizeOfImage", wintypes.DWORD),
+        ("EntryPoint", ctypes.c_void_p),
     ]
 
 
@@ -71,14 +65,18 @@ def kernel32():
         raise ProcessError("reading another process needs Windows")
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     h, b, d, p, s = wintypes.HANDLE, wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, ctypes.c_size_t
+    m, text = wintypes.HMODULE, wintypes.LPWSTR
     sig = {
-        # Processes, their modules and their memory.
+        # Processes, their modules (psapi's functions, which kernel32 exports as K32*) and their
+        # memory.
         "GetExitCodeProcess": (b, [h, ctypes.POINTER(d)]),
         "CreateToolhelp32Snapshot": (h, [d, d]),
         "Process32FirstW": (b, [h, ctypes.POINTER(PROCESSENTRY32W)]),
         "Process32NextW": (b, [h, ctypes.POINTER(PROCESSENTRY32W)]),
-        "Module32FirstW": (b, [h, ctypes.POINTER(MODULEENTRY32W)]),
-        "Module32NextW": (b, [h, ctypes.POINTER(MODULEENTRY32W)]),
+        "K32EnumProcessModulesEx": (b, [h, ctypes.POINTER(m), d, ctypes.POINTER(d), d]),
+        "K32GetModuleBaseNameW": (d, [h, m, text, d]),
+        "K32GetModuleFileNameExW": (d, [h, m, text, d]),
+        "K32GetModuleInformation": (b, [h, m, ctypes.POINTER(MODULEINFO), d]),
         "OpenProcess": (h, [d, b, d]),
         "CloseHandle": (b, [h]),
         "ReadProcessMemory": (b, [h, wintypes.LPCVOID, wintypes.LPVOID, s, ctypes.POINTER(s)]),
@@ -140,31 +138,33 @@ def find_pid(name: str) -> int | None:
         k.CloseHandle(snap)
 
 
-def module_base(pid: int, name: str) -> tuple[int, int] | None:
-    """Where module ``name`` (case ignored) is loaded in process ``pid``, and its size."""
-    import time
-
+def modules(process_handle: int) -> dict[str, tuple[int, int]]:
+    """The process's loaded modules: each one's name, lower-cased, with where it is loaded and
+    its size ((0, 0) if that could not be read). Listing them can fail for a moment while the
+    process's loader is busy (it is starting, or loading or unloading a module): tried again,
+    then ProcessError, never an empty listing."""
     k = kernel32()
-    for _ in range(SNAPSHOT_TRIES):
-        snap = k.CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid)
-        if snap not in (None, INVALID_HANDLE_VALUE):
+    handles = (wintypes.HMODULE * 1024)()
+    listed = wintypes.DWORD()  # the bytes of handles listed
+    for _ in range(MODULE_TRIES):
+        if k.K32EnumProcessModulesEx(
+            process_handle, handles, ctypes.sizeof(handles), ctypes.byref(listed), LIST_MODULES_ALL
+        ):
             break
-        if ctypes.get_last_error() != ERROR_BAD_LENGTH:
-            raise _error("listing the process's modules")
-        time.sleep(0.05)  # the loader is busy (the game starting): as Windows advises
+        time.sleep(0.05)
     else:
         raise _error("listing the process's modules")
-    try:
-        entry = MODULEENTRY32W()
-        entry.dwSize = ctypes.sizeof(entry)
-        ok = k.Module32FirstW(snap, ctypes.byref(entry))
-        while ok:
-            if entry.szModule.lower() == name.lower():
-                return int(entry.modBaseAddr or 0), int(entry.modBaseSize)
-            ok = k.Module32NextW(snap, ctypes.byref(entry))
-        return None
-    finally:
-        k.CloseHandle(snap)
+    out = {}
+    name, info = ctypes.create_unicode_buffer(MAX_PATH), MODULEINFO()
+    for module in handles[: min(listed.value // ctypes.sizeof(wintypes.HMODULE), len(handles))]:
+        if not k.K32GetModuleBaseNameW(process_handle, module, name, len(name)):
+            continue  # unloaded meanwhile
+        ok = k.K32GetModuleInformation(
+            process_handle, module, ctypes.byref(info), ctypes.sizeof(info)
+        )
+        base, size = (info.lpBaseOfDll or 0, info.SizeOfImage) if ok else (0, 0)
+        out[name.value.lower()] = (int(base), int(size))
+    return out
 
 
 class Process:
@@ -183,8 +183,9 @@ class Process:
         self.process_handle = handle
 
     def module(self, name: str | None = None) -> tuple[int, int] | None:
-        """Where a module is loaded (the executable's own by default), and its size."""
-        return module_base(self.process_id, name or self.name)
+        """Where a module is loaded (the executable's own by default, case ignored), and its
+        size; None if it is not loaded."""
+        return modules(self.process_handle).get((name or self.name).lower())
 
     def alive(self) -> bool:
         """Whether the process is still running (False once the handle is closed)."""

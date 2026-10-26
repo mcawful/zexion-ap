@@ -17,6 +17,7 @@ Pure functions; client/ticks.py talks to the helper.
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -134,31 +135,35 @@ POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOM
 START_AT = save_patch.START_RECORD - save_patch.SECTION
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
-STAMP_ROW_AT, STAMP_COLUMN_AT = 4 + 6, 4 + 8
+STAMP_ROW_AT = 4 + 6
+
+
+def _start(blob: bytes) -> tuple[int, int] | None:
+    """The start record's (column, row), or None if the blob is too short to hold it."""
+    if len(blob) < START_AT + 6:
+        return None
+    return struct.unpack_from("<2H", blob, START_AT + 2)
 
 
 def start_cell(blob: bytes) -> tuple[int, int]:
     """The seed's start cell as the player state counts cells (game.PLAYER_CELL): the
     game's (X, Y), which is this repo's map cell (save_patch.cell_of) as (y, x)
     (docs/re/randocells.md, "Grid order"; save-format.md and memory.md for the formulas)."""
-    if len(blob) < START_AT + 6:
+    start = _start(blob)
+    if start is None:
         return (-1, -1)
-    column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
-    row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
-    x, y = save_patch.cell_of(column, row)
+    x, y = save_patch.cell_of(*start)
     return (y, x)
 
 
 def saved_at_start(stamp: bytes, blob: bytes) -> bool:
     """Whether the loaded save's continue point (its last save point) is the seed's start, the
     landing pod."""
-    if len(stamp) < STAMP_COLUMN_AT + 2 or len(blob) < START_AT + 6:
+    start = _start(blob)
+    if len(stamp) < STAMP_ROW_AT + 4 or start is None:
         return False
-    row = int.from_bytes(stamp[STAMP_ROW_AT : STAMP_ROW_AT + 2], "little")
-    column = int.from_bytes(stamp[STAMP_COLUMN_AT : STAMP_COLUMN_AT + 2], "little")
-    start_column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
-    start_row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
-    return (column, row) == (start_column, start_row)
+    row, column = struct.unpack_from("<2H", stamp, STAMP_ROW_AT)
+    return (column, row) == start
 
 
 @dataclass
@@ -181,7 +186,3 @@ class ReturnHome:
             self.offer = enough and at_start and in_start_cell
         if not in_start_cell:
             self.offer = False
-
-    def remind(self, enough: bool) -> bool:
-        """Whether to show the reminder now (then mark it shown with ``reminded = True``)."""
-        return enough and not self.reminded

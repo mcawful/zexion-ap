@@ -30,7 +30,7 @@ def area_maps(
 ) -> list[str]:
     """The key of every Area Map the player has: ``r<k>`` for the k-th among the received
     items ``codes``, ``l<i>`` for each checked location i of this world holding one."""
-    received = [f"r{k}" for k, _ in enumerate(i for i, c in enumerate(codes) if c == AREA_MAP)]
+    received = list(received_area_maps(codes).values())
     found = [
         f"l{i}"
         for i in sorted(set(checked))

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import struct
-
 import pytest
 from fakes import CELLS, fresh, plan
 
@@ -13,10 +11,7 @@ from client import session as ss
 
 
 def blob_for(p: sp.SeedPlan) -> bytes:
-    save = fresh()
-    for i, (x, y) in enumerate(CELLS):
-        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
-    out = sp.patch(bytes(save), p)
+    out = sp.patch(bytes(fresh(cells=True)), p)
     return out[sp.SECTION : sp.SECTION + game.RANDO_BLOB_SIZE]
 
 
@@ -261,6 +256,10 @@ class FakeHelper:
                     self.g.inv[item] = value
         return self.reply
 
+    def popups(self) -> list[str]:
+        """The popup lines of the last batch."""
+        return [line for line in self.requests[-1].splitlines() if line.startswith("popup")]
+
     def close(self) -> None:
         self.closed = True
 
@@ -270,7 +269,7 @@ def with_helper(setup):
     session, g = setup
     helper = FakeHelper(g)
     session.helper = helper
-    session.mark_announced(0)
+    session.announced = 0
     writes = []
     real = g.set_item
     g.set_item = lambda *a: (writes.append(a), real(*a))
@@ -302,17 +301,16 @@ def test_a_failed_helper_is_dropped_for_direct_writes(with_helper) -> None:
 
 def test_popups_announce_each_received_item_once(with_helper) -> None:
     session, g, helper, _ = with_helper
-    session.mark_announced(1)  # the first item came before this connection
+    session.announced = 1  # the first had its popup before this connection (received offline)
     give(session, g, [17, 36], senders=["Bob", "Alice"])
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 36 FROM Alice"]
+    assert helper.popups() == ["popup 36 FROM Alice"]
+    assert session.announced == 2
     session.step(g, [17, 36], gap=0, senders=["Bob", "Alice"])
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
 
 
 def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     session, g, helper, _ = with_helper
-    session.mark_announced(0)
     received, senders = [17, 49], ["Bob", "Alice"]
     notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
     session.step(g, received, gap=0, senders=senders, notes=notes)
@@ -328,28 +326,16 @@ def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setu
     session.helper = helper
     assert give(session, g, [17], senders=["Alice"]) == {}
     assert helper.requests == [] and g.inv[17] == 0
-    session.mark_announced(0)  # the server's count: no popup shown yet
+    session.announced = 0  # the server's count: no popup shown yet
     give(session, g, [17], senders=["Alice"])
     assert g.inv[17] == 1 and "popup 17 FROM Alice" in helper.requests[-1]
-
-
-def test_items_received_while_offline_pop_up_and_shown_ones_do_not(setup) -> None:
-    session, g = setup
-    helper = FakeHelper(g)
-    session.helper = helper
-    session.mark_announced(1)  # the first had its popup in an earlier connection
-    give(session, g, [17, 36], senders=["Alice", "Bob"])
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 36 FROM Bob"]
-    assert session.announced == 2
 
 
 def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> None:
     session, g, helper, _ = with_helper
     # The Machine Gun is a starting item; the Force Blaster is not, until the first arrives.
     give(session, g, [3, 4, 4], senders=["Alice"] * 3)
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert helper.popups() == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
 
 
 def test_lagging_supplies_are_refreshed_through_the_helper(with_helper) -> None:

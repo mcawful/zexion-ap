@@ -101,14 +101,6 @@ def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
     return out
 
 
-def owned_from_locations(ctx: ZexionContext, p: Poll) -> set[tuple[int, int]]:
-    """The (player, location) of each item the player has from a location: received from
-    another world, or found in one of this world's locations (own_found)."""
-    owned = {(item.player, item.location) for item in ctx.items_received}
-    owned |= {(ctx.slot, LOCATION_ID_BASE + i) for i in p.found}
-    return owned
-
-
 async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) -> None:
     """Received items' popups, kept across connections (client/state.py): the session starts
     from the server's count of those shown, once it has been read (a slot with none stored
@@ -123,7 +115,7 @@ async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) ->
     if current.announced is None:
         # Counted as received() counts: Zexion items only.
         queued, conn.announced_shown = state.announced_start(raw, len(p.codes), conn.queued_before)
-        current.mark_announced(queued)
+        current.announced = queued
     queued, shown = current.announced, conn.announced_shown or 0
     helper = current.helper  # None once the session gave up on it and wrote directly
     if helper is None:
@@ -191,7 +183,11 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
     if used is None:
         return  # the server's not read yet
     keys = hints.area_maps(p.codes, conn.plan.location_items, p.found)
-    new = hints.assign(conn.hint_targets, used, keys, owned_from_locations(ctx, p))
+    # The (player, location) of each item the player has from a location: received from
+    # another world, or found in one of this world's (own_found).
+    owned = {(item.player, item.location) for item in ctx.items_received}
+    owned |= {(ctx.slot, LOCATION_ID_BASE + i) for i in p.found}
+    new = hints.assign(conn.hint_targets, used, keys, owned)
     stored = stored_hints(ctx)
     if not new:
         behind = seed.hints_mine and any(k not in stored for k in seed.hints_mine)
