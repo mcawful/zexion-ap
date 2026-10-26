@@ -3,98 +3,23 @@
     .venv/Scripts/python client/zexion_client.py [archipelago://name:password@host:port]
 
 It needs Archipelago's own modules: by default the pinned checkout in .ap/Archipelago
-(tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names. It is also started from
-Archipelago's Launcher as Zexion Client (worlds/zexion/__init__.py, run_client, from the
-apworld tools/build_apworld.py builds), where Archipelago is the Launcher's own.
-``--verbose`` also shows what the client sets up in the game for the seed (the labels, the
-ASSIST lock and so on); without it the window shows only what the player acts on.
+(tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names. From Archipelago's Launcher, as
+Zexion Client (worlds/zexion/__init__.py, run_client), Archipelago is the Launcher's own.
+``--verbose`` also shows what the client sets up in the game for the seed; without it the
+window shows only what the player acts on.
 
-Once connected:
+While Zexion runs with this seed's save loaded, the client sends the locations the map marks as
+collected, gives the items other worlds send (client/session.py) and sends the goal when the
+ending begins. With the in-game helper (client/native.py, native/) items arrive with the game's
+popup, and the helper also starts new games holding the seed, labels other players' items,
+offers the escape skip, locks ASSIST, names Intel Chips, shows the OS Install Disks, deals
+DeathLinks and keeps AP saves' look without the client. ``/prepare SLOT`` writes the seed into a
+fresh save instead (client/prepare.py). The client asks the server only for items from other
+worlds: this world's own are in the save's item table, and the game hands them out itself.
 
-- ``/prepare SLOT`` writes the seed into a new game the player made in that slot
-  (client/prepare.py): start a new randomizer game in the seed's mode, save at once, close
-  Zexion, then run it.
-- While Zexion runs with that slot loaded, the client sends each location the map marks as
-  collected, gives the items other worlds send (client/session.py), and reports the goal when
-  the ending begins (flag 250 with flag 211 clear, after the final boss and the ship). With the
-  helper loaded, grabbing Zexion offers the game's SKIP ESCAPE AND FINAL BATTLE? in any game,
-  and after YES the goal comes as the player boards the ship (both live-tested 2026-10-22 and
-  2026-10-23); the client warns if the helper could not put the offer in place (with
-  --verbose it also says when it did).
-- With the helper loaded, the client also arms it with the seed (client/newgame.py), with no
-  /prepare: after the player picks an empty slot, the game-mode choice reads NORMAL /
-  ARCHIPELAGO, and ARCHIPELAGO starts a new game holding the AP seed (live-tested on
-  2026-10-22 with Standard and Easy seeds, and on 2026-10-23 with an OHKO seed). Without a
-  menu setup in the slot data, or with ``--keep-randomizer``, RANDOMIZER stays, and a
-  randomizer game started in the seed's mode gets the AP seed written in as the game builds
-  it (run in game for Standard, Easy and OHKO). Once a new game has the seed and its save is
-  loaded in play, the helper is armed again, so any further empty slot can start the seed too
-  (a player may keep several saves of one seed). A seed whose starting items a new game cannot
-  hold falls back to /prepare.
-- With the helper loaded, and slot data saying the world gives other players' items the
-  stand-ins ("stand_in": 47, and "stand_in_progression": 48 for progression items), the
-  client also asks the server what each location holding one holds and sends the helper a
-  label per map cell (client/aplabels.py): the item shows an Archipelago logo (with its up
-  arrow for progression), and its pickup pops up "PROGRESSION ITEM" or "AP ITEM" (another
-  Zexion player's item: its own icon and name, aplabels.zexion_look) over "FOR ALICE"
-  (working in the game, 2026-10-23). The helper holds the labels only while this seed's save
-  is loaded; while another save (or none) is, and on disconnect, they are taken back, so
-  Scrap Energy and Scrap Chunk are the game's own there (except the helper's offline look,
-  below, which also dresses a save of another known seed: other_save_tick). A refusal (no
-  frame yet) is retried.
-- While connected it sends the helper what it needs for this seed's saves without the client
-  (client/offline.py, ``offline_put``): the addresses and a small file per seed, which the
-  helper writes into %LOCALAPPDATA%\\ZexionAP and uses while no client is there (live-tested
-  2026-10-25).
-- When it attaches to Zexion it uses the native helper (native/, client/native.py) the game
-  loaded with the proxy in its folder, or loads it into the game, unless started with
-  ``--no-helper`` or there is none to load. Items are then sent
-  through it, to arrive between frames with the game's own popup and sound (for example
-  "MISSILE BOX FROM ALICE") and a HUD refresh; live-tested on 2026-10-22. Without
-  the helper, or if it fails, items are written directly, with no popup, and the client tries
-  the helper again every 30 seconds. ``/unload_helper`` unloads it as if it had failed, to
-  test that.
-- For a seed with DeathLink on (slot data "death_link"), the client sends the player's deaths
-  (in play, then dead) to the other players, and deals the deaths received from them, queued,
-  through the helper, one each time the player is in play (client/deathlink.py): the one thing
-  the client does that costs the player progress, as a death goes back to the last save.
-  Live-tested 2026-10-23.
-- For a seed that disallows assists (slot data "allow_assists" false, the world's default),
-  the client has the helper grey out the options menu's ASSIST entry, put a padlock after it
-  and keep it from opening while this seed's save is loaded, and unlocks it otherwise, or for
-  good once the slot receives Assist Unlock (sent from the server console as an escape hatch).
-  The lock live-tested 2026-10-23; unlocking in another save 2026-10-25.
-- For a seed with Area Map hints (slot data "hints", the world's default), each Area Map the
-  player gets, received from another world or found in one of this world's locations, hints
-  the next progression item of this player's that the player does not have (client/hints.py):
-  the client creates the Archipelago hint and names it in a popup, the received Area Map's own
-  or, for one found here, one after the game's pickup popup (followups_tick). Which item each
-  Area Map hinted is kept in the server's data storage. Received Area Maps live-tested
-  2026-10-24 (B1), one found in the player's own world 2026-10-25. Such a seed's Area Maps
-  are Intel Chips (slot data "intel_chip"): the client counts a received one as the game's
-  Area Map, and while this seed's save is loaded has the helper name the Area Map INTEL CHIP
-  and turn off its map reveal (`intel on`; live-tested 2026-10-25).
-- For a seed with the OS Install Disks goal (slot data "goal": "os_install_disks"), the client
-  counts the disks (client/discs.py): received, and found in this world (what it reported
-  from the game's map, kept in the server's data storage for every save of the seed, so a
-  release gives none). A disk is never put in the game's inventory:
-  a received one pops up as "OS INSTALL DISK 3 OF 15" ("OF 15" once the scanner has said how
-  many), one found here, a stand-in labeled as one, gets the same popup after the game's own.
-  Those follow-up popups (a found disk's count, a found Area Map's hint) are shown once for
-  each, whenever it was found, offline too: the server's data storage keeps which were shown
-  (followups_tick), and the loaded save's missing ones come when the client can show them,
-  after ARCHIPELAGO CLIENT CONNECTED. if the save was played offline (client_back_tick;
-  live-tested 2026-10-25).
-  The helper shows the count on the equipment and pause screens and in the scanner's message,
-  and, with the helper loaded, on the file select for the save slots holding the seed (read
-  from the game every SLOTS_READ_SECONDS, sent as the helper's `disk_slots` request).
-  Once the player has enough, the helper offers RETURN HOME WITH THE DISKS? (once per load,
-  until the save has reached the ending); YES starts the game's ending, and the goal is sent
-  when the ending begins with enough disks, as the core goal is. Working in game 2026-10-24
-  (B1).
-
-The client asks the server only for items from other worlds: this world's own items are in
-the save's item table, and the game hands them out itself.
+What each part does, and when it was tested in the game: CLAUDE.md (the client) and
+native/README.md; the docstrings of the ticks below and of the modules they use; the state the
+client keeps, by how long it lasts: client/state.py.
 """
 
 from __future__ import annotations
@@ -156,7 +81,7 @@ POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
 SKIP_CHECK_SECONDS = 2.0
-LABELS_RETRY_SECONDS = 5.0
+REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a request
 SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
@@ -176,21 +101,28 @@ class ZexionCommandProcessor(ClientCommandProcessor):
         if not slot.isdigit():
             self.output("Usage: /prepare SLOT, the slot number (1 to 30) of the new game.")
             return False
+        if self.ctx.preparing:
+            self.output("A /prepare is still running.")
+            return False
+        self.ctx.preparing = True
+        Utils.async_start(self._prepare_slot(int(slot), self.ctx.plan), name="prepare")
+        return True
+
+    async def _prepare_slot(self, slot: int, plan: save_patch.SeedPlan) -> None:
+        """/prepare's work, in a thread: it reads, backs up and writes save files."""
         try:
-            done = prepare.prepare(
-                int(slot),
-                self.ctx.plan,
-                Path(Utils.user_path(BACKUPS)),
-                game.game_running,
+            done = await asyncio.to_thread(
+                prepare.prepare, slot, plan, Path(Utils.user_path(BACKUPS)), game.game_running
             )
         except (prepare.PrepareError, game.GameError, OSError) as exc:
             self.output(f"Not prepared: {exc}")
-            return False
+            return
+        finally:
+            self.ctx.preparing = False
         if done.changed:
             self.output(f"Slot {done.slot} now holds this seed. Its backup: {done.backup}")
         else:
             self.output(f"Slot {done.slot} already holds this seed; nothing written.")
-        return True
 
     def _cmd_unload_helper(self) -> bool:
         """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
@@ -232,6 +164,8 @@ class ZexionContext(CommonContext):
         # The game loop, the helper's only user, is asked to disarm an armed new game.
         self.disarm_pending = False
         self.goal_withheld = False  # an ending without enough disks, said once
+        self.preparing = False  # a /prepare is running (in a thread)
+
         self.hints_failed = ""  # the last error the hints raised, said once
         self.offline_failed = False  # the last offline file failed, said once
         # The offline config file, built once per attach to the game: (the game, its text).
@@ -351,7 +285,7 @@ class ZexionContext(CommonContext):
         if conn is not None:
             conn.session.helper = None
             # A plan the lost helper held is armed again in the next one; a new game just made
-            # waits until its save is in play (game_loop), and a seed that cannot make one
+            # waits until its save is in play (poll), and a seed that cannot make one
             # stays as it is.
             if conn.newgame is state.NewGame.ARMED:
                 conn.newgame = None
@@ -777,7 +711,7 @@ async def toggle_tick(ctx: ZexionContext, toggle: state.Toggle, want: bool, spec
         if notes[want]:
             detail(notes[want])
     else:
-        toggle.retry_at = time.monotonic() + LABELS_RETRY_SECONDS
+        toggle.retry_at = time.monotonic() + REFUSED_RETRY_SECONDS
 
 
 async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -798,7 +732,7 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
     if want == told.discs_sent:
         if want != discs.OFF and time.monotonic() >= told.discs_status_at:
             # Whether the equipment screen showed the count when last opened (logged on change).
-            told.discs_status_at = time.monotonic() + LABELS_RETRY_SECONDS
+            told.discs_status_at = time.monotonic() + REFUSED_RETRY_SECONDS
             status = await asyncio.to_thread(helper.request, "discs_status")
             if helper is ctx.helper and status != told.discs_status:
                 told.discs_status = status
@@ -814,7 +748,7 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
             detail("The scanner's message names the OS Install Disks needed.")
         told.discs_sent = want
     else:
-        told.discs_retry_at = time.monotonic() + LABELS_RETRY_SECONDS
+        told.discs_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS
 
 
 async def slots_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -982,7 +916,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
             if ours:
                 detail("Not this seed's save: other players' items are Scrap Energy again.")
         else:
-            told.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # asked again later
+            told.labels_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS  # asked again later
         return
     if (
         told.labels_for is conn
@@ -1006,7 +940,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
             + (f"; this world's own OS Install Disks as themselves ({own})." if own else ".")
         )
     elif reply.startswith("refused"):
-        told.labels_retry_at = time.monotonic() + LABELS_RETRY_SECONDS  # no frame came yet
+        told.labels_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS  # no frame came yet
     else:
         logger.warning(f"The helper did not take the item labels: {reply}")
         told.labels_refused = True  # not asked again until a helper is attached again
@@ -1165,21 +1099,17 @@ async def newgame_tick(ctx: ZexionContext) -> None:
     if conn.newgame is None:
         plan = conn.plan
         build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
-        offer = plan.menu is not None and not ctx.keep_randomizer and not conn.choice_refused
-        try:
-            text = newgame.plan_text(plan, build, offer)
-        except newgame.NewGameError as exc:
-            if not offer:
-                conn.newgame = state.NewGame.UNAVAILABLE
-                logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
-                return
-            logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
-            offer = False
+        choice = plan.menu is not None and not ctx.keep_randomizer and not conn.choice_refused
+        for offer in (True, False) if choice else (False,):  # ARCHIPELAGO, else RANDOMIZER
             try:
                 text = newgame.plan_text(plan, build, offer)
-            except newgame.NewGameError as again:
+                break
+            except newgame.NewGameError as exc:
+                if offer:
+                    logger.info(f"ARCHIPELAGO cannot set up this seed ({exc}); RANDOMIZER stays.")
+                    continue
                 conn.newgame = state.NewGame.UNAVAILABLE
-                logger.info(f"This seed cannot start as a new game ({again}); use /prepare.")
+                logger.info(f"This seed cannot start as a new game ({exc}); use /prepare instead.")
                 return
         reply = await asyncio.to_thread(helper.request, text)
         if reply == "armed":
