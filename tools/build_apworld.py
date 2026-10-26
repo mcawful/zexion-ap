@@ -91,11 +91,11 @@ def manifest() -> dict:
     return {**out, **CONTAINER_KEYS}
 
 
-def tracked(folder: Path) -> set[Path]:
-    """The files git tracks under ``folder`` (the build packs only those)."""
+def tracked(*folders: Path) -> set[Path]:
+    """The files git tracks under ``folders`` (the build packs only those)."""
     try:
         listed = subprocess.run(
-            ["git", "ls-files", "-z", "--", str(folder)],
+            ["git", "ls-files", "-z", "--", *map(str, folders)],
             cwd=ROOT,
             capture_output=True,
             check=True,
@@ -107,30 +107,23 @@ def tracked(folder: Path) -> set[Path]:
     return {(ROOT / name).resolve() for name in listed.decode("utf-8").split("\0") if name}
 
 
-def only_tracked(files: list[tuple[Path, str]], folder: Path) -> list[tuple[Path, str]]:
-    known = tracked(folder)
-    untracked = [path for path, _ in files if path.resolve() not in known]
-    if untracked:
-        names = ", ".join(str(p.relative_to(ROOT)) for p in untracked)
-        raise SystemExit(f"not tracked by git, so not packed: {names} (commit or remove it)")
-    return files
-
-
-def world_files() -> list[tuple[Path, str]]:
-    out = []
+def packed_files() -> list[tuple[Path, str]]:
+    """The world's files and the client's, each with its name in the apworld; all tracked."""
+    files = []
     for path in sorted(WORLD.rglob("*")):
         rel = path.relative_to(WORLD)
         if path.is_dir() or any(part in SKIP_DIRS for part in rel.parts):
             continue
         if path.suffix in (".pyc", ".pyo") or rel.as_posix() == "archipelago.json":
             continue  # the manifest is written with its container keys (manifest)
-        out.append((path, f"zexion/{rel.as_posix()}"))
-    return only_tracked(out, WORLD)
-
-
-def client_files() -> list[tuple[Path, str]]:
-    files = [(path, f"zexion/client/{path.name}") for path in sorted(CLIENT.glob("*.py"))]
-    return only_tracked(files, CLIENT)
+        files.append((path, f"zexion/{rel.as_posix()}"))
+    files += [(path, f"zexion/client/{path.name}") for path in sorted(CLIENT.glob("*.py"))]
+    known = tracked(WORLD, CLIENT)
+    untracked = [path for path, _ in files if path.resolve() not in known]
+    if untracked:
+        names = ", ".join(str(p.relative_to(ROOT)) for p in untracked)
+        raise SystemExit(f"not tracked by git, so not packed: {names} (commit or remove it)")
+    return files
 
 
 def build(out: Path) -> Path:
@@ -141,16 +134,16 @@ def build(out: Path) -> Path:
             f"worlds/zexion/archipelago.json has world_version {info.get('world_version')!r}, "
             f"and the client is {version}: a release has one number (set both)"
         )
-    for dll in (HELPER, PROXY):
+    dlls = {HELPER: HELPER_SOURCES, PROXY: PROXY_SOURCES}
+    for dll, sources in dlls.items():
         if not dll.is_file():
             raise SystemExit(f"{dll} is missing: build native/ first (CLAUDE.md)")
-    if not helper_has_version(HELPER, version):
-        raise SystemExit(f"the built helper is not version {version}: rebuild native/")
-    for dll, sources in ((HELPER, HELPER_SOURCES), (PROXY, PROXY_SOURCES)):
         if newest_mtime(sources) > dll.stat().st_mtime:
             listed = " or ".join(str(s) for s in sources)
             raise SystemExit(f"{dll.name} is older than {listed}: rebuild native/")
-    files = world_files() + client_files()  # the guides among them: tracked
+    if not helper_has_version(HELPER, version):
+        raise SystemExit(f"the built helper is not version {version}: rebuild native/")
+    files = packed_files()  # the guides among them: tracked
     names = [name for _, name in files] + [MANIFEST]
     if len(names) != len(set(names)):
         raise SystemExit("two files would share a name in the apworld")
@@ -161,7 +154,7 @@ def build(out: Path) -> Path:
         for path, name in files:
             zf.write(path, name)
         zf.writestr(MANIFEST, json.dumps(info, indent=4))
-    for dll in (HELPER, PROXY):
+    for dll in dlls:
         shutil.copy2(dll, out / dll.name)
     for guide, name in GUIDES.items():
         shutil.copyfile(guide, out / name)
