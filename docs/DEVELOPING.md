@@ -12,7 +12,8 @@ evidence in [`docs/re/`](re/README.md).
 Pre-release. The APWorld (`worlds/zexion/`) is on the local branch `apworld` and not
 published: the logic it derives from the game's data stays local until the owner decides to
 publish it, so `main` has no `worlds/`. Every in-game run was on game build B1. A release
-build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1).
+build has run from Archipelago 0.6.8's Launcher (working in game 2026-10-25, B1:
+[`docs/re/memory.md`](re/memory.md), "The client in a live game").
 
 ## How it fits together
 
@@ -44,7 +45,8 @@ worlds/zexion/ (on apworld) → generation → slot data → client
   popup, no seed can start, and the client tries the helper again within 30 seconds.
 - **The proxy** is a `version.dll` the player puts in the game's folder beside the helper. The
   game loads it as it starts; it passes every call on to Windows' own `version.dll` and loads
-  the helper. A `zexion_ap.disabled` file beside them turns the mod off.
+  the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither
+  the proxy nor the client loads it (a client run from source still loads its own build).
 - **The offline cache.** The client sends the helper a small file per seed it connects to and
   the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP`.
   With no client, the helper uses them to give AP saves their look. Deleting the folder is

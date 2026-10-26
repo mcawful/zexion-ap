@@ -210,8 +210,8 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup.
 
-Working in game: 2026-10-24, notices up to five lines; 2026-10-25, a notice after a found Area
-Map's popup ("Game functions the helper calls").
+Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
+2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
 
 ### Received Energy Shields
 
