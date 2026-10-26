@@ -24,6 +24,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <set>
 #include <string>
 
@@ -106,24 +108,113 @@ void read_offline() {
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
-void panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9);
-void equipment_chosen(void* widget, int event);
-void equip_panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9);
-void mission_open();
-void mission_yes(void* widget, int event);
-void file_entry_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9);
-void map_handler_event(void* child, intptr_t rdx, intptr_t r8, intptr_t r9);
+// Counts a call from the game into one of the helper's functions outside the frame call (the
+// trampoline counts those inside): helper_thread waits for none before it unloads.
+class InCallback {
+public:
+    InCallback() { g_in_callback.fetch_add(1); }
+    ~InCallback() { g_in_callback.fetch_sub(1); }
+    InCallback(const InCallback&) = delete;
+    InCallback& operator=(const InCallback&) = delete;
+};
+
+// Runs the helper's part of a call from the game: nothing may unwind into the game.
+template <typename Work>
+void guarded(Work&& work) {
+    try {
+        work();
+    } catch (...) {
+        // Dropped: the game's own call goes on as if the helper had done nothing.
+    }
+}
+
+// Game thread: what an unload must wait for, published for the pipe thread.
+void publish_blockers() {
+    g_menu_installed.store(g_game.menu_installed());
+    g_items_restyled.store(g_game.ap_items_restyled());
+    g_scan_written.store(g_game.scan_written());
+    g_branch_patched.store(g_game.keys_branch_patched());
+}
+
+// ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
+// the frame call (so outside the trampoline's count). Unload therefore first takes it off the
+// menu on the game's thread, through the mailbox, refuses to unload while it may still be
+// there, and waits for a call still inside it. The helper's other functions below are called
+// the same way and handled the same way.
+void archipelago_chosen(void*, int) {
+    InCallback in;
+    guarded([] { g_game.start_archipelago(&archipelago_chosen); });
+    g_menu_installed.store(g_game.menu_installed());
+}
+
+// A handler the helper puts in place of the game's: the game's own for the widget (`Original`,
+// null for none) first, then the helper's part (`After`), with the arguments the game's widget
+// code passes (its handlers read no more than these).
+using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
+template <void* (*Original)(void* widget), void (*After)(void* widget, intptr_t event)>
+void handler_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
+    InCallback in;
+    auto handler = reinterpret_cast<Handler>(Original(widget));
+    if (handler != nullptr) handler(widget, event, r8, r9);
+    guarded([&] { After(widget, event); });
+}
+
+// The game-mode panel's handler while ARCHIPELAGO is offered (menu.h): ARCHIPELAGO's hover
+// border fitted in the frame the game lays it out.
+void* panel_original(void*) { return g_game.panel_handler(); }
+void panel_after(void*, intptr_t) { g_game.fit_archipelago_border(); }
+
+// The Energy Tank panel's handler while it shows the disk (equip.h): the disk's name and
+// description when the disk is hovered or selected.
+void* equip_panel_original(void*) { return g_game.equip_panel_fn(); }
+void equip_panel_after(void* widget, intptr_t event) { g_game.equipment_event(widget, event); }
+
+// The save entries' handler while the file select shows the disk count (files.h): the entry
+// rewritten after the game fills it (event 0xF).
+void* file_entry_original(void* widget) { return g_game.file_entry_original(widget); }
+void file_entry_after(void* widget, intptr_t event) { g_game.file_event(widget, event); }
+
+// The map's per-frame handler while the helper names the stand-ins' squares (mapmarks.h), called
+// with the map menu's first child: the cursor's name rewritten after the game writes it.
+void* map_original(void* child) { return g_game.map_original(child); }
+void map_after(void*, intptr_t) { g_game.map_after(); }
+
+// EQUIPMENT's callback while the disk count is shown (equip.h): the game's own builds the
+// screen, then the count is added in the same call, before the screen's first frame.
+void equipment_chosen(void* widget, int event) {
+    InCallback in;
+    auto game_fn = reinterpret_cast<void (*)(void*, int)>(g_game.equipment_fn());
+    if (game_fn != nullptr) game_fn(widget, event);
+    guarded([] { g_game.equipment_built(); });
+}
+
+// RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition
+// routine; it builds the game's prompt and relabels it. YES: the game's NO (closing the prompt),
+// then the ending once idle.
+void mission_open() {
+    InCallback in;
+    guarded([] { g_game.mission_open(); });
+}
+
+void mission_yes(void* widget, int event) {
+    InCallback in;
+    void* no = nullptr;
+    guarded([&] { no = g_game.mission_yes(); });
+    if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
+}
 
 // Game thread: the helper's stand-ins the game's menus are pointed at, given to the game
 // object before it is configured (by a client, or from the offline cache).
 void set_hooks() {
-    g_game.set_panel_hook(reinterpret_cast<void*>(&panel_event));
+    g_game.set_panel_hook(reinterpret_cast<void*>(&handler_event<&panel_original, &panel_after>));
     g_game.set_equipment_hook(reinterpret_cast<void*>(&equipment_chosen));
-    g_game.set_equipment_panel_hook(reinterpret_cast<void*>(&equip_panel_event));
+    g_game.set_equipment_panel_hook(
+        reinterpret_cast<void*>(&handler_event<&equip_panel_original, &equip_panel_after>));
     g_game.set_mission_hooks(reinterpret_cast<void*>(&mission_open),
                              reinterpret_cast<void*>(&mission_yes));
-    g_game.set_file_entry_hook(reinterpret_cast<void*>(&file_entry_event));
-    g_game.set_map_hook(reinterpret_cast<void*>(&map_handler_event));
+    g_game.set_file_entry_hook(
+        reinterpret_cast<void*>(&handler_event<&file_entry_original, &file_entry_after>));
+    g_game.set_map_hook(reinterpret_cast<void*>(&handler_event<&map_original, &map_after>));
 }
 
 // Game thread: the files read last, if new. With no client yet, the cached addresses for this
@@ -153,128 +244,6 @@ void take_offline() {
         }
     }
     if (!g_game.active()) g_game.set_offline(std::move(files.seeds));
-}
-
-// ARCHIPELAGO's callback. The game's own widget code calls it, on the game's thread but outside
-// the frame call (so outside the trampoline's count). Unload therefore first takes it off the
-// menu on the game's thread, through the mailbox, refuses to unload while it may still be
-// there, and waits for a call still inside it.
-void archipelago_chosen(void*, int) {
-    g_in_callback.fetch_add(1);
-    try {
-        g_game.start_archipelago(&archipelago_chosen);
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_menu_installed.store(g_game.menu_installed());
-    g_in_callback.fetch_sub(1);
-}
-
-// The game-mode panel's handler while ARCHIPELAGO is offered (menu.h): the game's own first,
-// then ARCHIPELAGO's hover border fitted in the same frame. The game's widget code calls it,
-// as ARCHIPELAGO's callback, on its thread outside the frame call, with the widget and the
-// event (the game's handler reads no more); unload takes it off the panel with the callback.
-void panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
-    g_in_callback.fetch_add(1);
-    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
-    auto handler = reinterpret_cast<Handler>(g_game.panel_handler());
-    if (handler != nullptr) handler(widget, event, r8, r9);
-    try {
-        g_game.fit_archipelago_border();
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-// EQUIPMENT's callback while the disk count is shown (equip.h): the game's own builds the
-// screen, then the count is added in the same call, before the screen's first frame. Like
-// ARCHIPELAGO's, the game's widget code calls it on its thread outside the frame call; unload
-// takes it off the pause menu first and waits for a call still inside it.
-void equipment_chosen(void* widget, int event) {
-    g_in_callback.fetch_add(1);
-    auto game_fn = reinterpret_cast<void (*)(void*, int)>(g_game.equipment_fn());
-    if (game_fn != nullptr) game_fn(widget, event);
-    try {
-        g_game.equipment_built();
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-// The Energy Tank panel's handler while it shows the disk (equip.h): the game's own first, then
-// the disk's name and description when the disk is hovered or selected. Called by the game's
-// widget code on its thread outside the frame call; unload takes it off the panel first.
-void equip_panel_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
-    g_in_callback.fetch_add(1);
-    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
-    auto handler = reinterpret_cast<Handler>(g_game.equip_panel_fn());
-    if (handler != nullptr) handler(widget, event, r8, r9);
-    try {
-        g_game.equipment_event(widget, event);
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-// RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition
-// routine, on its thread outside the frame call; it builds the game's prompt and relabels it.
-// YES: the game's NO (closing the prompt), then the ending once idle. Unload takes both off
-// first.
-void mission_open() {
-    g_in_callback.fetch_add(1);
-    try {
-        g_game.mission_open();
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-// The save entries' handler while the file select shows the disk count (files.h): the game's
-// own first (it fills the entry on event 0xF), then the entry rewritten. Called by the game's
-// widget code on its thread outside the frame call; unload puts the game's back first.
-void file_entry_event(void* widget, intptr_t event, intptr_t r8, intptr_t r9) {
-    g_in_callback.fetch_add(1);
-    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
-    auto handler = reinterpret_cast<Handler>(g_game.file_entry_original(widget));
-    if (handler != nullptr) handler(widget, event, r8, r9);
-    try {
-        g_game.file_event(widget, event);
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-// The map's per-frame handler while the helper names the stand-ins' squares (mapmarks.h): the
-// game's own first (it writes the cursor's name), then the name rewritten. Called by the game
-// with the map menu's first child, on its thread outside the frame call; unload puts the game's
-// back first.
-void map_handler_event(void* child, intptr_t rdx, intptr_t r8, intptr_t r9) {
-    g_in_callback.fetch_add(1);
-    using Handler = void (*)(void*, intptr_t, intptr_t, intptr_t);
-    auto handler = reinterpret_cast<Handler>(g_game.map_original(child));
-    if (handler != nullptr) handler(child, rdx, r8, r9);
-    try {
-        g_game.map_after();
-    } catch (...) {
-        // Nothing may unwind into the game.
-    }
-    g_in_callback.fetch_sub(1);
-}
-
-void mission_yes(void* widget, int event) {
-    g_in_callback.fetch_add(1);
-    void* no = nullptr;
-    try {
-        no = g_game.mission_yes();
-    } catch (...) {
-    }
-    if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
-    g_in_callback.fetch_sub(1);
 }
 
 // Pipe thread: sets or clears g_unloading; returns whether ARCHIPELAGO is on the menu.
@@ -320,10 +289,7 @@ uintptr_t frame(void* argument) {
                     g_game.watch_ap_items();
                     g_game.watch_map_marks();
                 }
-                g_menu_installed.store(g_game.menu_installed());
-                g_items_restyled.store(g_game.ap_items_restyled());
-                g_scan_written.store(g_game.scan_written());
-                g_branch_patched.store(g_game.keys_branch_patched());
+                publish_blockers();
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
@@ -387,265 +353,245 @@ std::string one_word(std::string text) {
     return text;
 }
 
+std::string hello() {
+    // Read on the game's thread; the defaults stand if no frame comes.
+    HelloState state;
+    if (g_slot != nullptr) {
+        std::string ignored;
+        g_mailbox.call(
+            [&state] {
+                state.configured = g_game.configured();
+                state.skip = g_game.skip_offered();
+                state.active = g_game.active();
+                state.offline = g_game.offline_state();
+                state.title = g_game.title_state();
+                return std::string();
+            },
+            kFrameWaitMs, ignored);
+    }
+    AcquireSRWLockShared(&g_offline_lock);
+    std::string error = g_offline_error;
+    ReleaseSRWLockShared(&g_offline_lock);
+    return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
+           " hooked=" + (g_slot ? "1" : "0") + " configured=" + (state.configured ? "1" : "0") +
+           " skip=" + (state.skip ? "1" : "0") + " folder=" + (g_from_game_folder ? "1" : "0") +
+           " offline=" + one_word(state.offline) + " active=" + (state.active ? "1" : "0") +
+           " title=" + one_word(state.title) + " reads=" + std::to_string(g_offline_reads.load()) +
+           "/" + std::to_string(g_offline_found.load()) +
+           (error.empty() ? "" : " read_error=" + one_word(error));
+}
+
+// Pipe thread: `work` run on the game's thread at its next frame, and its reply; "refused not
+// configured" instead, when `needs_config` and nothing configured the helper; "refused no frame"
+// if no frame took it within kFrameWaitMs (it then never runs).
+std::string on_game(const std::function<std::string()>& work, bool needs_config) {
+    std::string result;
+    bool ran = g_mailbox.call(
+        [&] {
+            if (needs_config && !g_game.configured()) return std::string("refused not configured");
+            return work();
+        },
+        kFrameWaitMs, result);
+    return ran ? result : "refused no frame";
+}
+
+// The requests that run on the game's thread (native/README.md lists them and their replies),
+// each matched by its whole name, or by its first word: `prefix` (the name then anything) or
+// `word` (the name alone, or the name, a space and anything).
+enum class Match { kName, kPrefix, kWord };
+struct Request {
+    const char* name;
+    Match match;
+    std::string (*run)(const std::string& request);
+};
+
+std::string set_assists(bool lock) {
+    return on_game(
+        [lock] {
+            g_game.set_assists_locked(lock);
+            return std::string(lock ? "locked" : "free");
+        },
+        true);
+}
+
+std::string set_intel(bool on) {
+    return on_game(
+        [on] {
+            g_game.set_intel(on);
+            return std::string(on ? "intel on" : "intel off");
+        },
+        true);
+}
+
+std::string disk_slots(const std::string& request) {
+    // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count for the
+    // slots holding the seed (files.h).
+    int count = 0, required = 0;
+    std::set<int> slots;
+    std::string error = zap::parse_disk_slots(request, count, required, slots);
+    if (!error.empty()) return "error " + error;
+    return on_game(
+        [&] {
+            bool on = !slots.empty();
+            g_game.set_disk_slots(count, std::move(slots));
+            return std::string(on ? "disk_slots on" : "disk_slots off");
+        },
+        true);
+}
+
+std::string discs(const std::string& request) {
+    // "discs": off. "discs COUNT REQUIRED HEX TOLD": the OS Install Disks goal's count and the
+    // scanner's line, its characters in hex (scan.h).
+    int count = 0, required = 0;
+    bool told = false;
+    std::string line;
+    std::string error = zap::parse_discs(request, count, required, line, told);
+    if (!error.empty()) return "error " + error;
+    return on_game(
+        [&] {
+            bool on = !line.empty();
+            g_game.set_discs(count, required, std::move(line), told);
+            return std::string(on ? "discs on" : "discs off");
+        },
+        true);
+}
+
+std::string ap_labels(const std::string& request) {
+    std::map<int, zap::Label> labels;
+    std::string error = zap::parse_labels(request, labels);
+    if (!error.empty()) return "error " + error;
+    return on_game(
+        [&] {
+            size_t n = labels.size();
+            g_game.set_labels(std::move(labels));
+            return "labeled " + std::to_string(n);
+        },
+        true);
+}
+
+std::string ap_newgame(const std::string& request) {
+    zap::NewGamePlan plan;
+    std::string error = zap::parse_newgame(request, plan);
+    if (!error.empty()) return "error " + error;
+    return on_game(
+        [&] {
+            g_game.arm_newgame(std::move(plan));
+            return std::string("armed");
+        },
+        true);
+}
+
+std::string config(const std::string& request) {
+    std::map<std::string, uint64_t> rvas;
+    std::string error = zap::parse_config(request, rvas);
+    if (!error.empty()) return "error " + error;
+    HMODULE exe = GetModuleHandleW(nullptr);
+    return on_game(
+        [&] {
+            set_hooks();
+            std::string e = g_game.configure(exe, rvas);
+            return e.empty() ? std::string("ok") : "error " + e;
+        },
+        false);
+}
+
+std::string apply(const std::string& request) {
+    zap::Batch batch;
+    std::string error = zap::parse_batch(request, batch);
+    if (!error.empty()) return "error " + error;
+    // Game::apply refuses itself while not configured; a batch no frame took is never applied.
+    return on_game([&] { return g_game.apply(batch); }, false);
+}
+
+const Request kRequests[] = {
+    {"shield", Match::kName,
+     [](const std::string&) {
+         return on_game([] { return g_game.spawn_shield(GetTickCount64()); }, false);
+     }},
+    {"die", Match::kName,
+     [](const std::string&) {
+         return on_game([] { return g_game.kill(GetTickCount64()); }, false);
+     }},
+    {"assists lock", Match::kName, [](const std::string&) { return set_assists(true); }},
+    {"assists free", Match::kName, [](const std::string&) { return set_assists(false); }},
+    // The client's session sees a randomizer save in play that is not its seed's (offline.h).
+    {"other_save", Match::kName,
+     [](const std::string&) {
+         return on_game([] { return std::string(g_game.other_save() ? "told" : "already told"); },
+                        true);
+     }},
+    // The client's session sees its seed's save in play: if it was played offline, the player is
+    // told the client is back (offline.h).
+    {"client_back", Match::kName,
+     [](const std::string&) {
+         return on_game([] { return std::string(g_game.client_back() ? "shown" : "none"); }, true);
+     }},
+    // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
+    {"intel on", Match::kName, [](const std::string&) { return set_intel(true); }},
+    {"intel off", Match::kName, [](const std::string&) { return set_intel(false); }},
+    // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
+    {"mission_prompt", Match::kName,
+     [](const std::string&) {
+         return on_game(
+             [] {
+                 g_game.request_mission();
+                 return std::string("queued");
+             },
+             true);
+     }},
+    {"mission_status", Match::kName,
+     [](const std::string&) { return on_game([] { return g_game.mission_status(); }, true); }},
+    {"disk_slots", Match::kWord, &disk_slots},
+    {"discs_status", Match::kName,
+     [](const std::string&) { return on_game([] { return g_game.equipment_status(); }, false); }},
+    {"discs", Match::kWord, &discs},
+    {"ap_labels", Match::kPrefix, &ap_labels},
+    {"ap_newgame", Match::kPrefix, &ap_newgame},
+    {"disarm", Match::kName,
+     [](const std::string&) {
+         return on_game(
+             [] {
+                 g_game.disarm_newgame();
+                 return std::string("disarmed");
+             },
+             false);
+     }},
+    {"newgame_status", Match::kName,
+     [](const std::string&) { return on_game([] { return g_game.newgame_status(); }, false); }},
+    {"config", Match::kPrefix, &config},
+    {"apply", Match::kPrefix, &apply},
+};
+
+bool matches(const Request& r, const std::string& request) {
+    switch (r.match) {
+        case Match::kName:
+            return request == r.name;
+        case Match::kPrefix:
+            return request.rfind(r.name, 0) == 0;
+        case Match::kWord:
+            return request == r.name || request.rfind(std::string(r.name) + " ", 0) == 0;
+    }
+    return false;
+}
+
 std::string handle(const std::string& request, bool& stop) {
-    if (request == "hello") {
-        // Read on the game's thread; the defaults stand if no frame comes.
-        HelloState state;
-        if (g_slot != nullptr) {
-            std::string ignored;
-            g_mailbox.call(
-                [&state] {
-                    state.configured = g_game.configured();
-                    state.skip = g_game.skip_offered();
-                    state.active = g_game.active();
-                    state.offline = g_game.offline_state();
-                    state.title = g_game.title_state();
-                    return std::string();
-                },
-                kFrameWaitMs, ignored);
-        }
-        AcquireSRWLockShared(&g_offline_lock);
-        std::string error = g_offline_error;
-        ReleaseSRWLockShared(&g_offline_lock);
-        return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
-               " hooked=" + (g_slot ? "1" : "0") +
-               " configured=" + (state.configured ? "1" : "0") + " skip=" + (state.skip ? "1" : "0") +
-               " folder=" + (g_from_game_folder ? "1" : "0") + " offline=" + one_word(state.offline) +
-               " active=" + (state.active ? "1" : "0") + " title=" + one_word(state.title) +
-               " reads=" + std::to_string(g_offline_reads.load()) + "/" +
-               std::to_string(g_offline_found.load()) +
-               (error.empty() ? "" : " read_error=" + one_word(error));
-    }
+    if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
-    if (request == "shield") {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (!g_mailbox.call([] { return g_game.spawn_shield(GetTickCount64()); }, kFrameWaitMs,
-                            result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "die") {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (!g_mailbox.call([] { return g_game.kill(GetTickCount64()); }, kFrameWaitMs,
-                            result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "assists lock" || request == "assists free") {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        bool lock = request == "assists lock";
-        std::string result;
-        if (!g_mailbox.call(
-                [lock] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    g_game.set_assists_locked(lock);
-                    return std::string(lock ? "locked" : "free");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "other_save") {
-        // The client's session sees a randomizer save in play that is not its seed's (offline.h).
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (!g_mailbox.call(
-                [] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    return std::string(g_game.other_save() ? "told" : "already told");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "client_back") {
-        // The client's session sees its seed's save in play: if it was played offline, the
-        // player is told the client is back (offline.h).
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (!g_mailbox.call(
-                [] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    return std::string(g_game.client_back() ? "shown" : "none");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
     if (request.rfind("offline_put ", 0) == 0) {
         // What the client leaves for AP saves without it (offline.h), written from here so it
         // lands where the game reads it.
         return zap::put_offline_file(zap::offline_folder(), g_build, request);
-    }
-    if (request == "intel on" || request == "intel off") {
-        // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        bool on = request == "intel on";
-        std::string result;
-        if (!g_mailbox.call(
-                [on] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    g_game.set_intel(on);
-                    return std::string(on ? "intel on" : "intel off");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "mission_prompt" || request == "mission_status") {
-        // "mission_prompt": offer RETURN HOME WITH THE DISKS? when the game is next idle in play.
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        bool ask = request == "mission_prompt";
-        std::string result;
-        if (!g_mailbox.call(
-                [ask] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    if (ask) g_game.request_mission();
-                    return ask ? std::string("queued") : g_game.mission_status();
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "disk_slots" || request.rfind("disk_slots ", 0) == 0) {
-        // "disk_slots": off. "disk_slots COUNT REQUIRED SLOTS": the file select's disk count
-        // for the slots holding the seed (files.h).
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        int count = 0, required = 0;
-        std::set<int> slots;
-        std::string error = zap::parse_disk_slots(request, count, required, slots);
-        if (!error.empty()) return "error " + error;
-        std::string result;
-        if (!g_mailbox.call(
-                [&] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    bool on = !slots.empty();
-                    g_game.set_disk_slots(count, std::move(slots));
-                    return std::string(on ? "disk_slots on" : "disk_slots off");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "discs_status") {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (!g_mailbox.call([] { return g_game.equipment_status(); }, kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request == "discs" || request.rfind("discs ", 0) == 0) {
-        // "discs": off. "discs COUNT REQUIRED HEX": the OS Install Disks goal's count and the
-        // scanner's line, its characters in hex (scan.h).
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        int count = 0, required = 0;
-        bool told = false;
-        std::string line;
-        std::string error = zap::parse_discs(request, count, required, line, told);
-        if (!error.empty()) return "error " + error;
-        std::string result;
-        if (!g_mailbox.call(
-                [&] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    bool on = !line.empty();
-                    g_game.set_discs(count, required, std::move(line), told);
-                    return std::string(on ? "discs on" : "discs off");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request.rfind("ap_labels", 0) == 0) {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::map<int, zap::Label> labels;
-        std::string error = zap::parse_labels(request, labels);
-        if (!error.empty()) return "error " + error;
-        std::string result;
-        if (!g_mailbox.call(
-                [&] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    size_t n = labels.size();
-                    g_game.set_labels(std::move(labels));
-                    return "labeled " + std::to_string(n);
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request.rfind("ap_newgame", 0) == 0 || request == "disarm" ||
-        request == "newgame_status") {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (request == "disarm") {
-            if (!g_mailbox.call([] { g_game.disarm_newgame(); return std::string("disarmed"); },
-                                kFrameWaitMs, result)) {
-                return "refused no frame";
-            }
-            return result;
-        }
-        if (request == "newgame_status") {
-            if (!g_mailbox.call([] { return g_game.newgame_status(); }, kFrameWaitMs, result)) {
-                return "refused no frame";
-            }
-            return result;
-        }
-        zap::NewGamePlan plan;
-        std::string error = zap::parse_newgame(request, plan);
-        if (!error.empty()) return "error " + error;
-        if (!g_mailbox.call(
-                [&] {
-                    if (!g_game.configured()) return std::string("refused not configured");
-                    g_game.arm_newgame(std::move(plan));
-                    return std::string("armed");
-                },
-                kFrameWaitMs, result)) {
-            return "refused no frame";
-        }
-        return result;
-    }
-    if (request.rfind("config", 0) == 0 || request.rfind("apply", 0) == 0) {
-        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        std::string result;
-        if (request.rfind("config", 0) == 0) {
-            std::map<std::string, uint64_t> rvas;
-            std::string error = zap::parse_config(request, rvas);
-            if (!error.empty()) return "error " + error;
-            HMODULE exe = GetModuleHandleW(nullptr);
-            if (!g_mailbox.call([&] {
-                    set_hooks();
-                    std::string e = g_game.configure(exe, rvas);
-                    return e.empty() ? std::string("ok") : "error " + e;
-                }, kFrameWaitMs, result)) {
-                return "refused no frame";
-            }
-            return result;
-        }
-        zap::Batch batch;
-        std::string error = zap::parse_batch(request, batch);
-        if (!error.empty()) return "error " + error;
-        if (!g_mailbox.call([&] { return g_game.apply(batch); }, kFrameWaitMs, result)) {
-            return "refused no frame";  // withdrawn: it will never be applied
-        }
-        return result;
     }
     if (request == "unload") {
         std::string why = undo_for_unload();
         if (!why.empty()) return "error " + why + "; not unloading";
         stop = true;
         return "bye";
+    }
+    for (const Request& r : kRequests) {
+        if (!matches(r, request)) continue;
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        return r.run(request);
     }
     return "error unknown request";
 }
@@ -666,10 +612,7 @@ std::string undo_for_unload() {
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
                 g_game.hide_title();  // a refused unload shows them again (its watch)
-                g_menu_installed.store(g_game.menu_installed());
-                g_items_restyled.store(g_game.ap_items_restyled());
-                g_scan_written.store(g_game.scan_written());
-                g_branch_patched.store(g_game.keys_branch_patched());
+                publish_blockers();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -683,10 +626,16 @@ std::string undo_for_unload() {
         }
         return why;
     };
-    if (set_unloading(true)) return refuse("a menu still holds the helper's callback (no frame came)");
+    if (set_unloading(true)) {
+        return refuse("a menu still holds the helper's callback (no frame came)");
+    }
     if (g_items_restyled.load()) return refuse("an item record is still restyled (no frame came)");
-    if (g_scan_written.load()) return refuse("the scanner's message is still the helper's (no frame came)");
-    if (g_branch_patched.load()) return refuse("the pause screen's branch is still the helper's (no frame came)");
+    if (g_scan_written.load()) {
+        return refuse("the scanner's message is still the helper's (no frame came)");
+    }
+    if (g_branch_patched.load()) {
+        return refuse("the pause screen's branch is still the helper's (no frame came)");
+    }
     if (!unhook()) return refuse(kHookReplaced);
     return "";
 }
