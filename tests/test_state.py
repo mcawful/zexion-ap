@@ -88,6 +88,9 @@ def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
         state.Connection.from_slot_data(slot, team=0, slot=1)
     with pytest.raises(state.UnsupportedSeed):
         state.Connection.from_slot_data(slot_data(goal="boss"), team=0, slot=1)
+    for wrong_form in ({"menu": []}, {"start_items": []}):  # a value of another kind
+        with pytest.raises(state.UnsupportedSeed):
+            state.Connection.from_slot_data(slot_data(**wrong_form), team=0, slot=1)
 
 
 def test_the_data_storage_keys_are_per_team_and_slot() -> None:

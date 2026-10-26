@@ -86,7 +86,7 @@ class Connection:
         (a key missing or of another form: a world of another version)."""
         try:
             return cls._from_slot_data(slot_data, team, slot)
-        except (KeyError, TypeError, ValueError) as exc:
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
                 f"this seed's slot data is not what this client reads ({exc!r}): the seed is "
                 "from a version of the Zexion world this client does not support"
