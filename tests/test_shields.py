@@ -7,6 +7,30 @@ from client import game, shields
 KEY, OTHER = "zexion_shields_0_1", "zexion_shields_0_2"
 
 
+def test_a_spawned_shield_counts_once_seen_up_in_play() -> None:
+    assert shields.shield_outcome(True, up=True, left_play=False, overdue=False) == shields.UP
+    # overdue does not matter once it is up
+    assert shields.shield_outcome(True, up=True, left_play=False, overdue=True) == shields.UP
+
+
+def test_a_spawned_shield_not_seen_waits_then_is_spawned_again() -> None:
+    assert shields.shield_outcome(True, up=False, left_play=False, overdue=False) == shields.WAIT
+    assert shields.shield_outcome(True, up=False, left_play=False, overdue=True) == shields.AGAIN
+
+
+def test_a_paused_game_waits_for_play_however_long_it_takes() -> None:
+    for up in (False, True):
+        for overdue in (False, True):
+            assert shields.shield_outcome(False, up, False, overdue) == shields.WAIT
+
+
+def test_a_death_or_unload_since_the_spawn_means_spawning_again() -> None:
+    # a shield up afterwards may be the reloaded save's own, not the one spawned
+    for in_play in (False, True):
+        for up in (False, True):
+            assert shields.shield_outcome(in_play, up, True, overdue=False) == shields.AGAIN
+
+
 def test_the_count_given_is_the_servers_or_this_clients_if_ahead() -> None:
     sh = shields.Shields(given=(KEY, 3))
     assert sh.given_count(KEY, 1) == 3
