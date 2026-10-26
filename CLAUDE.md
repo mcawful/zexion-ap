@@ -10,8 +10,8 @@ The rules about evidence below exist because of that.
 **Status:** Phase 1, pre-release (Phase 0's go/no-go spike passed). The APWorld is in
 development on the local-only branch `apworld` (below), not published. The client and the
 in-game helper have played seeds in the game on build B1. What each feature does and when it
-ran in the game: [`README.md`](README.md), and [`native/README.md`](native/README.md) for the
-helper. What has been measured: [`docs/re/README.md`](docs/re/README.md). When the game is
+was working in game: [`README.md`](README.md), and [`native/README.md`](native/README.md) for
+the helper. What has been measured: [`docs/re/README.md`](docs/re/README.md). When the game is
 patched: [`docs/re/new-build.md`](docs/re/new-build.md).
 
 ## Commands
@@ -40,11 +40,9 @@ Checks. CI's Python jobs run the first three; `/preflight` runs them too, and AP
 cd .ap/Archipelago && AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
 ```
 
-The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job
-builds it and runs these on Windows (the tests include grants applied in the frame calls of a
-stand-in game, and 300 loads and unloads of a test build while the function it hooks is called
-nonstop), then `tests/test_native.py` loads it into a stand-in process (that one test skips
-without a build):
+The native helper (`native/`, needs Visual Studio's C++ tools and CMake). CI's native job runs
+these on Windows, then `tests/test_native.py` (what the tests cover:
+[`native/README.md`](native/README.md), "Building"):
 
 ```sh
 cmake -S native -B native/build -A x64
@@ -76,10 +74,10 @@ save folders:
 `grant.py set` changes the running game: ask before each one, only while the person playing is
 standing still in play (it refuses unless `Game.settled_state()` reads in play), and only in a
 lab slot (the game saves the grant into the slot). It logs every attempt to `lab/grants.jsonl`
-before writing. It writes the inventory byte only; Energy Tanks, Missile Containers and Mega
-Bombs also need the player-state fields in `docs/re/memory.md` ("Granting each kind of item").
-`helper.py load` and `unload` change the running game too: ask before each one. They log to
-`lab/helper.jsonl`, and `load` refuses a build `client/game.py` does not know.
+before writing, and writes the inventory byte only (counted items need more:
+`docs/re/memory.md`, "Granting each kind of item"). `helper.py load` and `unload` change the
+running game too: ask before each one; they log to `lab/helper.jsonl`, and `load` refuses a
+build it does not know.
 
 The client, a package run from the repo root (`python client/zexion_client.py` runs the same).
 From source it needs Archipelago from `.ap/` with the world installed there (AP will not
@@ -93,32 +91,21 @@ INTEL CHIP and so on), which live tests of the client read in its log.
 ```
 
 - **The helper.** On attaching, the client uses a helper of its own version already in the
-  game: the player may put `zexion_ap.dll` and the proxy `version.dll`
-  (`native/build/proxy/Release/`) in the game's folder, which loads it as the game starts. That
-  is the player's own step, with the game closed: our tools never write the game's folder.
-  Otherwise it loads the one built from `native/` (`native/build/Release/zexion_ap.dll`, or
-  `ZEXION_DLL`), unloading a helper of another version first; with no build it loads the game
-  folder's copy, and with no build and that copy of another version it cannot use one
-  (`native/README.md`, "Getting in"). A build that loads as another version (out of date) is
-  refused until the file changes: rebuild `native/`. Ask before a run that loads it into the game, as for
-  `helper.py load`. Without a helper to use, items are written directly, with no popup
-  (received Energy Shields wait for a helper); `/unload_helper` unloads the helper as if it had failed, to test that (ask first), and the
-  client loads it again within 30 seconds. `--keep-randomizer`: README.md, "Features".
+  game (one the player put in the game's folder with the proxy: our tools never write there),
+  else loads the one built from `native/` (`native/build/Release/zexion_ap.dll`, or
+  `ZEXION_DLL`): [`native/README.md`](native/README.md), "Getting in". Ask before a run that
+  loads it into the game, as for `helper.py load`. Without a helper to use, items are written
+  directly, with no popup; `/unload_helper` unloads it as if it had failed (ask first), and
+  the client loads it again within 30 seconds. `--keep-randomizer`: README.md, "Features".
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`
   (unused from the Launcher).
 
 A release for Archipelago's own Launcher (on `apworld`, where the world is):
-`.venv/Scripts/python tools/build_apworld.py` writes `dist/`: `zexion.apworld`, `zexion_ap.dll`
-and `version.dll`. The apworld is `worlds/zexion` (without its tests) with the `client` package
-in `zexion/client/` (`worlds.zexion.client`, which the world's Zexion Client entry runs), and
-its `archipelago.json` is the world's plus Archipelago's container keys (`version`,
-`compatible_version`). It packs only files git tracks, and writes nowhere in the game's or
-the saves' folder (`tools/protected.py`). The build refuses an untracked file in
-`worlds/zexion` or `client`, a manifest that does not name the game Zexion, a
-missing DLL, a helper whose version is not the client's, and a DLL
-older than its sources (`native/src`, `native/proxy` and `native/CMakeLists.txt`; after a
-checkout that touched them, too: rebuild `native/` first). The packaged client has no helper
-build of its own, so it uses the helper the player copied into the game's folder.
+`.venv/Scripts/python tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world
+without its tests, with the `client` package as `worlds.zexion.client`), `zexion_ap.dll` and
+`version.dll`. It packs only files git tracks and refuses a release that would not match (the
+checks are in its docstring): after a checkout that touched `native/`, rebuild it first. The
+packaged client has no helper build of its own, so it uses the one in the game's folder.
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or
@@ -139,40 +126,36 @@ Nothing in `tests/` needs the game, and CI never runs it.
   data readers against it.
 - `client/`: the AP client, a package (relative imports). `zexion_client.py` (`CommonClient`
   wiring, the commands, the game loop), `ticks.py` (its side tasks with the helper),
-  `storage.py` (its records in the server's data storage, the Area Map hints), `state.py` (its state, by how long each part lasts, and the pure decisions on it: the
-  popup count to store, the found record, warnings said once), `session.py` (one
-  poll: checks, the goal, grants), `reconcile.py` (what to give: what the player should own
-  minus what the inventory holds), `shields.py` (received Energy Shields), `ids.py` (the item
-  and location codes, the game's sizes), `save_patch.py` (the seed's plan from the slot
-  data, the save's layout), `patterns.py` (each target's byte patterns, one `rip()` or `at()` line each, and in
-  `Target.rvas` its RVA on each build, for checks only; `tests/patterns_frozen.json` is a copy
-  that `tests/test_patterns.py` compares with under pytest and rewrites when run as a script),
-  `game.py` (attach, locate by pattern, read and write with checks, `state()`: in play, menu,
-  dead or no save loaded; the client attaches with `patterns.CLIENT_TARGETS`, the tools with
-  every target, the pickup counter included), `process.py` (the
-  game's memory through the Windows API, as Archipelago's release bundles no such library;
-  `tools/memscan.py` and the tests use it too), `pe.py` (the PE header fields the client and the
-  tools read). `native.py` loads the helper and talks to it; its requests come from `newgame.py`
-  (the seed as `ap_newgame`), `aplabels.py` (other players' items as `ap_labels`),
-  `deathlink.py` (when a death goes out, when a received one is dealt: `die`), `hints.py`
-  (which item each Area Map, or Intel Chip, hints, and its popup), `discs.py` (the OS Install
-  Disks count, its popups, `discs` and `disk_slots`) and `offline.py` (`offline_put`: what it
-  leaves the helper for AP saves without it).
-- `native/`: the helper, `zexion_ap.dll`, which runs inside the game: a once-per-frame hook on
-  the game's thread and a command pipe. `src/dllmain.cpp` (the hook, the pipe's requests),
-  `src/game_calls.cpp` (`Game`: configure, grants, popups, each part's watch),
-  `src/game_offline.cpp` (the offline look), `src/requests.cpp` (the requests' parsers),
-  `src/text.cpp` (popup text layout), `src/game_mem.h`/`.cpp` and `src/game_layout.h`
-  (fault-safe memory access, shared layouts), one file per part; the tests share
-  `tests/check.h`. `proxy/` is the proxy `version.dll` (built into `build/proxy/Release/`).
-  What each part does and when it ran in the game: `native/README.md`.
+  `storage.py` (its records in the server's data storage, the Area Map hints), `state.py` (its
+  state, by how long each part lasts, and the pure decisions on it: the popup count to store,
+  the found record, warnings said once), `session.py` (one poll: checks, the goal, grants),
+  `reconcile.py` (what to give: what the player should own minus what the inventory holds),
+  `shields.py` (received Energy Shields), `ids.py` (the item and location codes, the game's
+  sizes), `save_patch.py` (the seed's plan from the slot data, the save's layout),
+  `patterns.py` (each target's byte patterns, and in `Target.rvas` its RVA on each build, for
+  checks only; `tests/test_patterns.py` compares them with `tests/patterns_frozen.json`, and
+  rewrites it when run as a script), `game.py` (attach, locate by pattern, read and write with
+  checks, `state()`: in play, menu, dead or no save loaded; the client attaches with
+  `patterns.CLIENT_TARGETS`, the tools with every target), `process.py` (the game's memory
+  through the Windows API, as Archipelago's release bundles no such library), `pe.py` (the PE
+  header fields the client and the tools read). `native.py` loads the helper and talks to it;
+  its requests come from `newgame.py` (the seed as `ap_newgame`), `aplabels.py` (other
+  players' items as `ap_labels`), `deathlink.py` (when a death goes out, when a received one
+  is dealt: `die`), `hints.py` (which item each Area Map, or Intel Chip, hints, and its popup),
+  `discs.py` (the OS Install Disks count, its popups, `discs` and `disk_slots`) and
+  `offline.py` (`offline_put`: what it leaves the helper for AP saves without it).
+- `native/`: the helper, `zexion_ap.dll`, which runs inside the game (a once-per-frame hook on
+  the game's thread and a command pipe), and `proxy/`, the proxy `version.dll`. Its sources,
+  its tests, and what each part does and when it was working in game: `native/README.md`.
 - `tools/`: RE and save tooling, and `build_apworld.py`, the release builder (on `apworld`).
-  `tools/protected.py` defines the protected folders for the tools and the write-guard hook.
+  `tools/protected.py` defines the protected folders for the tools and the write-guard hook,
+  and `append_log`, the JSON-lines log `grant.py` and `helper.py` keep in `lab/`.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
 - `tests/`: pytest, host-only. `fakes.py` holds the stand-ins they share (a fake process and
-  game, a seed's plan and a fresh save). `test_cross_checks.py` reads `native/src` for what the client and
-  the helper must agree on (the helper's version, the builds, the `config` keys).
-  `test_build_apworld.py` and `test_gen_world_data.py` test tools that are on `apworld` only.
+  game, a seed's plan and a fresh save). `test_cross_checks.py` reads `native/src` for what
+  the client and the helper must agree on (the helper's version, the builds, the `config`
+  keys). `test_build_apworld.py` and `test_gen_world_data.py` test tools that are on `apworld`
+  only.
 - `lab/` (gitignored): save backups, working copies, memory snapshots. `private/` (gitignored):
   notes that must not be public, such as the draft to the developer. `.ap/` (gitignored): the
   pinned Archipelago checkout.

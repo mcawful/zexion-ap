@@ -9,10 +9,12 @@ The apworld is the world package (``worlds/zexion``, without its tests) with the
 the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
 which only the player does: no tool here writes there.
 
-The DLLs are the CMake Release builds (``native/build``). The build refuses a helper whose
-version is not the client's (``client/native.py``, ``VERSION``), so the three always match,
-and a DLL older than its sources (``native/src`` or ``native/proxy``, and
-``native/CMakeLists.txt``).
+The DLLs are the CMake Release builds (``native/build``). The build refuses a missing DLL, a
+helper whose version is not the client's (``client/native.py``, ``VERSION``, which it also
+refuses to be without), so the three always match, and a DLL older than its sources
+(``native/src`` or ``native/proxy``, and ``native/CMakeLists.txt``). It also refuses a
+manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion, and two
+files that would share a name in the apworld.
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
 builder adds (``APWorldContainer.get_manifest()`` in AP 0.6.8's ``worlds/Files.py``, merged as
