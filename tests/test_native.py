@@ -143,15 +143,8 @@ def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) 
     monkeypatch.setattr(native, "is_loaded", lambda handle: True)
     monkeypatch.setattr(native, "Helper", _OldHelper)
     _OldHelper.requests = []
-
-    class Game:
-        pid = 1
-
-        class pm:
-            process_handle = 1
-
     with pytest.raises(native.HelperError, match="copy this release's"):
-        native.attach(Game(), tmp_path / "no-build.dll")
+        native.attach(_Game(), tmp_path / "no-build.dll")
     assert "unload" not in _OldHelper.requests
 
 

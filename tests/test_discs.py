@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import struct
 
+import fakes
 import pytest
 
 from client import discs, ids
@@ -65,17 +66,7 @@ def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
 
 
 def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
-    from client import save_patch
-
-    plan = save_patch.SeedPlan(
-        location_items=[46] * 154,
-        start_items={},
-        start=(6, 191, 329),
-        second_start=None,
-        amounts=None,
-        options={},
-        menu=None,
-    )
+    plan = fakes.plan(location_items=(46,) * 154, start_items={}, start=(6, 191, 329))
     ours = bytearray(ids.SECTION_SIZE)
     ours[0x26C : 0x26C + 154] = bytes(plan.location_items)
     ours[0x310:0x316] = bytes.fromhex("0600bf004901")

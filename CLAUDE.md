@@ -169,7 +169,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - `tools/`: RE and save tooling, and `build_apworld.py`, the release builder (on `apworld`).
   `tools/protected.py` defines the protected folders for the tools and the write-guard hook.
 - `docs/re/`: the reverse-engineering record. Every fact carries its evidence (below).
-- `tests/`: pytest, host-only. `test_cross_checks.py` reads `native/src` for what the client and
+- `tests/`: pytest, host-only. `fakes.py` holds the stand-ins they share (a fake process and
+  game, a seed's plan and a fresh save). `test_cross_checks.py` reads `native/src` for what the client and
   the helper must agree on (the helper's version, the builds, the `config` keys).
   `test_build_apworld.py` and `test_gen_world_data.py` test tools that are on `apworld` only.
 - `lab/` (gitignored): save backups, working copies, memory snapshots. `private/` (gitignored):

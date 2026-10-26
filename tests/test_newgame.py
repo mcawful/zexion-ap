@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from test_save_patch import fresh, menu_setup, plan
+from fakes import fresh, menu_setup, plan
 
 from client import newgame as ng
 from client import save_patch as sp

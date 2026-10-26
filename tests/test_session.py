@@ -5,13 +5,11 @@ from __future__ import annotations
 import struct
 
 import pytest
-from test_save_patch import fresh, plan
+from fakes import CELLS, fresh, plan
 
 from client import game, native
 from client import save_patch as sp
 from client import session as ss
-
-CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by y then x
 
 
 def blob_for(p: sp.SeedPlan) -> bytes:

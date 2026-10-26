@@ -5,57 +5,10 @@ from __future__ import annotations
 import struct
 
 import pytest
+from fakes import AMOUNTS, fresh, plan
 
 from client import ids
 from client import save_patch as sp
-
-AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
-
-
-def fresh(start_cell: tuple[int, int] | None = (13, 16)) -> bytearray:
-    """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
-    settings, one revealed start cell, a nonzero item table and inventory."""
-    save = bytearray(sp.SAVE_SIZE)
-    save[sp.RANDO_MARKER] = 1
-    struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
-    save[sp.OPTIONS + 42] = 2  # Safety Normal
-    save[sp.OPTIONS + 72] = 1  # Gates Vanilla
-    save[sp.ITEM_TABLE : sp.ITEM_TABLE + sp.LOCATIONS] = bytes([7] * sp.LOCATIONS)
-    save[sp.INVENTORY + 0] = 3
-    save[sp.INVENTORY + 50] = 9  # item 50 is left alone
-    if start_cell is not None:
-        x, y = start_cell
-        save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
-    return save
-
-
-def menu_setup(**changes) -> sp.MenuSetup:
-    """A menu setup of plan()'s mode: a mode with one start."""
-    settings = bytearray(64)
-    settings[42 - 10], settings[72 - 10] = 2, 1  # as plan()'s options
-    fields = dict(
-        seed_text="0123456789ABCDEF",
-        start=bytes([0] * 4 + [1] + [0] * 22),
-        pool=bytes([1] * 4 + [0] + [1] * 22),
-        settings=bytes(settings),
-        second_target=(0, 20, 509),
-    )
-    fields.update(changes)
-    return sp.MenuSetup(**fields)
-
-
-def plan(**changes) -> sp.SeedPlan:
-    fields = dict(
-        location_items=tuple(i % 46 for i in range(sp.LOCATIONS)),
-        start_items={0: 2, 1: 3, 36: 1, 3: 1},
-        start=(5, 23 * 14 + 4, 22 * 20 + 9),
-        second_start=None,
-        amounts=AMOUNTS,
-        options={42: 2, 72: 1},
-        menu=menu_setup(),
-    )
-    fields.update(changes)
-    return sp.SeedPlan(**fields)
 
 
 def u16(save: bytes, offset: int) -> int:

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from test_save_patch import AMOUNTS
-from test_session import CELLS
+from fakes import AMOUNTS, CELLS
 
 from client import discs, state
 from client import save_patch as sp

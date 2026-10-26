@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from fakes import FakeGame, FakeProcess
 
 import grant
 from client import game
@@ -32,32 +33,6 @@ def test_items_resolve_by_id_or_by_name() -> None:
 def test_changes_lists_each_byte_that_differs() -> None:
     old, new = bytes([5, 3, 0]), bytes([6, 3, 1])
     assert grant.changes(old, new, {0: "ENERGY TANK"}) == ["0 ENERGY TANK: 5 -> 6", "2: 0 -> 1"]
-
-
-class FakeProcess:
-    def __init__(self) -> None:
-        self.memory = bytearray(0x1000)
-        self.writes = 0
-        self.fail_write = False
-        self.overwrite_with: int | None = None  # the game changes the byte straight after
-
-    def read_bytes(self, address: int, size: int) -> bytes:
-        return bytes(self.memory[address : address + size])
-
-    def write_bytes(self, address: int, data: bytes) -> None:
-        if self.fail_write:
-            raise OSError("access denied")
-        self.writes += 1
-        self.memory[address : address + len(data)] = data
-        if self.overwrite_with is not None:
-            self.memory[address] = self.overwrite_with
-
-
-class FakeGame(game.Game):
-    alive = True
-
-    def _alive(self) -> bool:
-        return self.alive
 
 
 INV = 0x400
