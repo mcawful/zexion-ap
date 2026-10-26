@@ -95,4 +95,5 @@ manifest, then backs up the current state before overwriting, so a restore can i
 
 Every finding goes into `docs/re/save-format.md` in the format from `docs/re/README.md`: value,
 status, method, build, evidence. Name the slots and lab files used and what was done in the game
-between them. The `.sav` bytes themselves never get committed.
+between them. The `.sav` bytes themselves never get committed. save-format.md is long: find the
+section with a search for `^## ` and read only that range.
