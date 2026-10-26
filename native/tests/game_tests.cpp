@@ -1126,7 +1126,7 @@ void test_stand_ins_named_by_their_own_cell() {
     game.watch_ap_items();
     check(record_text(48).find("ZEXION2") != std::string::npos, "nor a cell with no label");
 
-    // A stand-in shown by a general object (found by the scan every 30 frames) counts too.
+    // A stand-in shown by a general object (found by the scan every 31st frame) counts too.
     put_flipped(12, 501, 63, 5, 2);
     place(general_slot(12), 2995, 600);
     for (int i = 0; i < 32; ++i) game.watch_ap_items();  // through the next scan

@@ -70,7 +70,9 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
-// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &) and at most 49 bytes.
+// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &), and of each of its two
+// lines only the first line it wraps to: the item's at 23 characters (after the logo glyph),
+// whom it is for at 24.
 std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal.

@@ -77,7 +77,8 @@ struct Hooks {
 
 class Game {
 public:
-    // Checks every key is present and lies inside `image` (functions in executable code, data
+    // Checks every required key is present (the title screen's three and map_handler may be
+    // missing) and each given one lies inside `image` (functions in executable code, data
     // in writable data, with room for the whole player state around the inventory), then keeps
     // the addresses. Game thread. Returns "" or an error.
     // `active`: a client sent it (false: the offline cache, offline.h).
@@ -85,7 +86,8 @@ public:
                           bool active = true);
     bool configured() const { return configured_; }
     // Whether a client is there: set by `config`, cleared when the client goes away. Without
-    // one, nothing the helper does on its own (the escape skip) runs.
+    // one, nothing the helper does on its own (the escape skip) runs, except while the offline
+    // look dresses a save (offline_skip_).
     bool active() const { return active_; }
     void set_active(bool active) { active_ = active; }
     // Popups not shown yet dropped (the client that sent them went away).
@@ -108,7 +110,7 @@ public:
     // compare-and-set or none; then (after writes, or for "refresh") missiles, bombs and energy
     // as the pickup routine sets them from the counts, and the HUD refresh; Magnus Armor's suit
     // color if it was just gained; and the popups queued.
-    // Returns "applied", "refused ..." or "error ...".
+    // Returns "applied" or "refused ...".
     std::string apply(const Batch& batch);
 
     // Game thread, every frame: shows the next queued popup, with its sound, once the game's
@@ -168,14 +170,14 @@ public:
     // drops the plan with "refused ..." and nothing queued.
     void start_archipelago(WidgetCallback callback);
 
-    // Game thread, every frame (checked every 30th): offers the escape skip in this game
+    // Game thread, every frame (checked every 31st): offers the escape skip in this game
     // (skip.h). restore_skip puts the event back (before an unload).
     void watch_skip();
     void restore_skip();
     bool skip_offered() const { return skip_.patched(); }
 
     // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show
-    // and the scanner's line ("" turns it off); the watch runs every frame (checked every 30th),
+    // and the scanner's line ("" turns it off); the watch runs every frame (checked every 31st),
     // rewording the scanner's message while a line is set and putting it back otherwise;
     // restore_discs puts it back now (before an unload).
     void set_discs(int count, int required, std::string scan_line, bool told = true);

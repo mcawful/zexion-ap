@@ -17,7 +17,8 @@ namespace zap {
 constexpr int kMapSide = 54;
 constexpr int kMapCells = kMapSide * kMapSide;
 
-// The loaded game: `save_loaded` holds the slot loaded, 0xFF with none (docs/re/memory.md,
+// The loaded game: `save_loaded` is 0xFF with no save loaded (loading one copies the slot's
+// empty marker into it and then sets 0; docs/re/memory.md,
 // "Telling play from menus, the title screen and death"), and its flags are 0x9C4 bytes
 // (client/game.py, FLAGS).
 constexpr uint8_t kNoSaveLoaded = 0xFF;

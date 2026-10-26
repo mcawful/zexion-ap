@@ -1074,7 +1074,7 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
 
 async def skip_tick(ctx: ZexionContext) -> None:
     """Once per helper, a moment after it attaches: say whether it offers the escape skip (it
-    patches the game's event within 30 frames, or leaves an event it does not recognize)."""
+    patches the game's event within 31 frames, or leaves an event it does not recognize)."""
     helper, told = ctx.helper, ctx.told
     if helper is None or told.skip_check_at is None or time.monotonic() < told.skip_check_at:
         return

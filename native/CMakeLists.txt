@@ -1,4 +1,5 @@
-# The native helper the AP client loads into the running game (see native/README.md).
+# The native helper the AP client loads into the running game, or the proxy version.dll (also
+# built here) loads as the game starts (see native/README.md).
 cmake_minimum_required(VERSION 3.20)
 project(zexion_ap LANGUAGES CXX)
 

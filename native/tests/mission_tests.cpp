@@ -1,5 +1,6 @@
-// Host tests for END THE MISSION? (mission.h): a stand-in transition (routine, timer, routine
-// table) and a stand-in prompt builder laid out as 0x1668A0 builds the escape skip's prompt.
+// Host tests for RETURN HOME WITH THE DISKS? (mission.h): a stand-in transition (routine,
+// timer, routine table) and a stand-in prompt builder laid out as 0x1668A0 builds the escape
+// skip's prompt.
 
 #include <windows.h>
 

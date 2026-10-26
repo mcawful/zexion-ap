@@ -5,8 +5,9 @@ on the game's own thread, between frames. Either the player puts it in the game'
 the proxy `version.dll`, which loads it as the game starts (below, "The proxy"), or the AP
 client loads it when it attaches to the game (`client/native.py`, unless started with
 `--no-helper`); the client sends received items through it. `tools/helper.py` loads and unloads
-it for tests. Without a client it does nothing, unless a save of a seed a client has played is
-loaded ("AP saves without the client", below): the game is otherwise the base game.
+it for tests. Without a client it changes nothing in play, except the offline look for a save
+of a seed a client has played ("AP saves without the client", below), and it adds its lines to
+the title screen ("The title screen's lines"); the game is otherwise the base game.
 
 **Status:** helper phase 2, grants with the game's popup, sound and HUD refresh, is **working in
 game** (build B1, 2026-10-22). The AP client loaded it into the running game (slot 7) and
@@ -41,13 +42,16 @@ RANDOMIZER when the client disconnected ("New games", below).
 
 The native tests run against a stand-in game: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`), configured by RVA like the real
-game. `tests/game_tests.cpp` covers the request parsers, configuring, applying, the popup
-queue, the new-game watch, a whole ARCHIPELAGO press, the escape skip's patch and what a
-refused unload sets again; `tests/menu_tests.cpp` the
+game. `tests/tests.cpp` (the `parts` test) covers what needs no stand-in game: the
+import-table hook and the trampoline, the build check and the pipe (`src/pipe.cpp`);
+`tests/game_tests.cpp` the request parsers (the `discs` and `@N NAME` ones too), configuring,
+applying, the popup queue, the new-game watch, a whole ARCHIPELAGO press, the escape skip's
+patch, what a refused unload sets again, the received shield and death, the ASSIST watch and
+the scanner's text; `tests/menu_tests.cpp` the
 game-mode panel and the options menu (`tests/stand_in_menu.h`): relabeling, putting it back,
 closed menus and released widgets, and the ASSIST lock (its look, the cursor order, putting it
-back); `tests/game_tests.cpp` also the received shield and death, the ASSIST watch, the
-scanner's text and the `discs` and `@N NAME` parsers; `tests/equip_tests.cpp` the equipment
+back); `tests/apitem_tests.cpp` other players' items (the stand-in records restyled and named,
+the logo painted through a fake OpenGL, the label parser); `tests/equip_tests.cpp` the equipment
 screen's disk, `tests/pause_tests.cpp` the pause screen's disk row and its branch,
 `tests/files_tests.cpp` the file select's disk count, `tests/intel_tests.cpp` the Intel Chip,
 `tests/title_tests.cpp` the title screen's lines, `tests/mapmarks_tests.cpp` the map's markers and names, `tests/proxy_test.cpp` the proxy (its exports give what Windows' own give, and it loads no
@@ -55,7 +59,8 @@ helper outside Zexion), `tests/offline_tests.cpp` AP saves without the client (t
 its match and disk count, the folder, the cache check, `offline_put`, and a stand-in game dressed
 and undressed),
 `tests/mission_tests.cpp` the RETURN HOME WITH THE DISKS? prompt; `tests/apply_test.cpp` goes
-through the real pipe and hook in a busy host.
+through the real pipe and hook in a busy host. `tests/pipe_client.h` is the pipe client the
+`parts`, `apply_in_frames` and `unload_under_load` tests share.
 
 ## How it works
 
@@ -70,11 +75,14 @@ through the real pipe and hook in a busy host.
   `VERSION.dll`, which is not a KnownDLL, so Windows takes a `version.dll` in the game's folder
   first (measured on this machine, 2026-10-25). The proxy exports all 17 of Windows'
   `version.dll` functions at the same ordinals, each passing the call to the real one in the
-  system folder (loaded once, by its full path; `VerLanguageNameA/W` forwarded to KERNEL32 as
-  Windows' own does). Its DllMain only starts a thread; once the process has started, that
-  thread loads the real one, then `zexion_ap.dll` from its own folder, if the host is
-  `Zexion.exe`, no `zexion_ap.disabled` file sits beside it, and none is loaded, under the
-  client's mutex, and never frees it (the helper's own unload is its one reference).
+  system folder (loaded once, by its full path, by the thread below or the first call,
+  whichever comes first; `VerLanguageNameA/W` forwarded to KERNEL32 as Windows' own does). Its
+  DllMain only starts a thread; once the process has started, that thread pins the proxy (the
+  game holds pointers into its exports), loads the real one, then `zexion_ap.dll` from its own
+  folder, if it is there, the host is `Zexion.exe`, no `zexion_ap.disabled` file sits beside it,
+  and none is loaded, under the client's mutex (waiting at most 5 seconds for it, and loading
+  nothing if it does not get it), and never frees it (the helper's own unload is its one
+  reference).
   **Installing** is the player's step, never our tools': with Zexion closed, copy
   `version.dll` and `zexion_ap.dll` of one release next to `Zexion.exe` (Steam, Zexion, Manage,
   Browse local files). Updating: replace both with the game closed. Turning it off: create
@@ -109,11 +117,12 @@ through the real pipe and hook in a busy host.
     another process holds it. Only the current user can open it, and only locally.
   - The client opens it at the identification level only, so the server can't act as the
     user, and checks that the process serving it is the game.
-  - Requests longer than 64 KB drop the connection.
+  - Requests longer than 64 KB drop the connection, which counts as the client going away
+    ("A client going away", below).
   - Requests:
     - `hello` → `zexion-ap <version> build=<B1|unknown> hooked=<0|1> configured=<0|1> skip=<0|1> folder=<0|1> offline=<-|N[:FILE]> active=<0|1> title=<0|1|why> reads=<R/S>`
       and ` read_error=<why>` after a failed read (`folder`: loaded from the game's own
-      folder, by the proxy; `offline`: the seeds read for AP saves without the client, and the
+      folder, by the proxy or by a client with no build of its own; `offline`: the seeds read for AP saves without the client, and the
       file of the one whose save is dressed; `active`: a client is there; `title`: the title
       screen's lines up (1), not (0), or why they could not be made; `reads`: the reads a
       frame has taken, and the seeds the last one found; each field one word, the spaces in
@@ -133,21 +142,22 @@ through the real pipe and hook in a busy host.
       has that save's seed file, gives the save that seed's offline look until it goes
       ("AP saves without the client", below).
     - `ping` → `pong frames=<calls since load>`
-    - `config name=rva …` → `ok`: the addresses the client resolved by byte pattern
+    - `config name=rva …` → `ok`, or `error <why>` (`missing NAME`, say): the addresses the client resolved by byte pattern
       (`client/patterns.py`; the names are `CONFIG_KEYS` in `client/native.py`). Each must lie
       inside the game's image, functions in its code and data outside it (writable, except the
       C runtime's `malloc` and `free` import slots, which are only read), or the whole
-      configuration is refused. Every name is required except the title screen's three and `map_handler`
-      (`text_new_fn`, `text_link_fn`, `draw_layer`), so an offline cache from an older
-      helper still configures it, without the title screen's lines and the map cursor's names (the map's markers need only
-      `map_grid`).
+      configuration is refused. Every name is required except four, the title screen's three
+      (`text_new_fn`, `text_link_fn`, `draw_layer`) and `map_handler`, so an offline cache from
+      an older helper still configures it, without the title screen's lines or the map
+      cursor's names (the map's markers need only `map_grid`).
     - `apply` and then lines, one batch → `applied`, or `refused <why>` with nothing written:
       - `cas ITEM EXPECTED VALUE`, an inventory byte from 0 to 49;
       - `refresh`;
       - `popup ITEM SUFFIX`;
       - `notice ITEM TEXT`, a popup of the text alone (an Area Map's hint).
-    - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`, or
-      `refused not configured` or `refused no frame`:
+    - `ap_newgame` and then lines, the AP seed for the next new game (below) → `armed`,
+      `refused not configured` or `refused no frame`, or `error <why>` for a bad line or for
+      none to write (`error nothing to write`):
       - `expect OFFSET HEX`, bytes the randomizer section must hold (the seed's mode);
       - `write OFFSET HEX`, the AP seed's edits to the section;
       - `menu OFFSET HEX`, the randomizer menu's state as the seed's mode, for ARCHIPELAGO.
@@ -169,7 +179,8 @@ through the real pipe and hook in a busy host.
     - `discs COUNT REQUIRED HEX TOLD` → `discs on`, `discs` → `discs off`, or `refused
       <why>`: the OS Install Disks goal (below): the count, the number needed, the scanner's
       line in hex (one line of the game's font, under 32 characters), and whether the player
-      has been told the number (1, from the scanner's flag 39) or not (0, "OF ?").
+      has been told the number (1, from the scanner's flag 39) or not (0, "OF ?"); TOLD may be
+      left out, meaning 1.
     - `disk_slots COUNT REQUIRED SLOTS` → `disk_slots on`, `disk_slots` (or no slot) →
       `disk_slots off`, or `refused <why>`: the file select's disk count (below) for the save
       slots holding the seed, SLOTS a comma list (1 to 30) or `-`. REQUIRED is checked but
@@ -179,15 +190,19 @@ through the real pipe and hook in a busy host.
     - `discs_status` → what the equipment screen last did: `shown N`, `not shown: <why>` or
       `not shown yet`.
     - `mission_prompt` → `queued`: offer RETURN HOME WITH THE DISKS? when the game is next idle
-      in play; `mission_status` → `asked`, `opening`, `asked again: another transition came
+      in play; `mission_status` → `not asked` (none yet, or the prompt called off), `asked`,
+      `opening`, `asked again: another transition came
       first`, `shown`, `yes: ending when idle`, `ending started` or what was not as traced.
     - `disarm` → `disarmed`: drops the plan and puts RANDOMIZER back.
     - `newgame_status` → `armed`, `idle`, `applied slot N` or `refused <why>`.
     - `unload` → `bye` (see below).
-    - Anything else → `error unknown request`. Errors always start with `error `.
+    - Anything else → `error unknown request`. Errors always start with `error `. A request
+      run on the game's thread (the list below) while the helper is not hooked →
+      `error not hooked, so nothing runs on the game's thread`.
 - **Grants, in the frame call.** `config`, `apply`, `ap_newgame`, `ap_labels`, `shield`, `die`, `assists`,
   `intel`, `discs`, `disk_slots`, `discs_status`, `mission_prompt`, `mission_status`,
-  `client_back`, `other_save`, `disarm`, `newgame_status` and `hello`'s `configured`, `skip`, `active` and `offline` are handed to the game's thread through a one-slot mailbox
+  `client_back`, `other_save`, `disarm`, `newgame_status` and `hello`'s `configured`, `skip`,
+  `active`, `offline` and `title` are handed to the game's thread through a one-slot mailbox
   (`src/mailbox.cpp`) and run at its next frame call. If no frame takes one
   within a second (the game paused in the background, say), it is withdrawn, the reply is
   `refused no frame`, and it is never run afterwards. An apply (`src/game_calls.cpp`):
@@ -355,7 +370,7 @@ through the real pipe and hook in a busy host.
   palette 8, or that it dressed itself (the same spawn), and puts them back without the
   label and on unload. Some rooms show an item through an object in the game's general
   object pool instead (type 2026 in the reversed-gravity rooms, 715 elsewhere; their cell at
-  `+0x210`): a scan of that pool every 30 frames finds any live object drawing a stand-in's
+  `+0x210`): a scan of that pool every 31st frame call finds any live object drawing a stand-in's
   logo (the item sprites' frame list at frame 63 or 95), whatever its type, and it is dressed
   by its frame shown (`+0x1B0`, which those objects' updates do not recompute) and palette,
   its frame list left as the game's. Working in the game since 2026-10-23, both kinds too
@@ -371,7 +386,7 @@ through the real pipe and hook in a busy host.
 - **The OS Install Disks goal.** While the client has sent `discs` (this seed's save loaded,
   the seed's goal the OS Install Disks), the helper:
   - rewrites the scanner's message, Text entry 12 in the loaded table, ENERGY KEYS DETECTED!,
-    to the client's line, COLLECT 15 OS INSTALL DISKS! (`src/scan.cpp`, every 30th frame
+    to the client's line, COLLECT 15 OS INSTALL DISKS! (`src/scan.cpp`, every 31st frame
     call; only over the game's text or its own; put back when off and before an unload);
   - paints the disk glyph, a ring round a hub, into font glyph 0xFB (empty in the game's art),
     and clears it when off;
@@ -421,7 +436,7 @@ through the real pipe and hook in a busy host.
   repo's tests run it from the Claude desktop app, has its own writes under AppData redirected
   to a folder only it sees (inferred: the game, started by Steam, got error 3, path not found, opening a folder the client had just written and could read back; the redirect itself was not traced). It
   reads them when it starts and each time a client goes away (on the pipe's thread, handed to
-  a frame). With no client yet, the cached addresses configure it if they are for its own
+  a frame), at most 256 seed files, the most recently written first. With no client yet, the cached addresses configure it if they are for its own
   build and the game holds every checked function's bytes (at least 8), inactive. Then, with
   no client, or with a client that said the loaded save is another seed's (`other_save`;
   its own notice then stands for the not-connected one), every 16th frame call: a save of one of the seeds (a save loaded, the randomizer
@@ -442,7 +457,7 @@ through the real pipe and hook in a busy host.
   disk counted offline, a fresh start with no client, and the two disks picked up offline
   sent once the client connected; `docs/re/memory.md`, "AP saves without the client"). The
   CLIENT CONNECTED. notice: live-tested 2026-10-25 (0.21.8), asked for by the client.
-- **The map.** In an Archipelago save (labels known), every 15th frame call raises the
+- **The map.** In an Archipelago save (labels known), every 16th frame call raises the
   map squares of the progression stand-in (item 48: this player's OS Install Disks and
   other players' progression items) from the game's basic marker to its important one
   (`src/mapmarks.cpp`; the marker is the square's value in the saved grid, the game's
@@ -453,7 +468,7 @@ through the real pipe and hook in a busy host.
   an unload, which refuses while an open map holds the stand-in. Working in game
   (2026-10-25, helpers 0.24.0 and 0.25.1; `docs/re/memory.md`, "Map markers").
 - **The title screen's lines.** While configured (by a client, or with none from the
-  cached addresses) and no save is loaded, every 8th frame call looks through the
+  cached addresses) and no save is loaded, every 9th frame call looks through the
   game's draw list for the
   title's copyright line; when it is up without them, the helper adds ARCHIPELAGO MOD
   and its version, and ©2026 MCAWFUL, centered under the copyright line, and above them,
@@ -468,14 +483,15 @@ through the real pipe and hook in a busy host.
   or `tools/helper.py` was done), the next frame call, before it serves any request, puts back
   everything the helper changed, as unload does (`Game::put_back_all` in `src/game_calls.cpp`: the
   new-game plan, the escape skip, the OS Install Disks goal's changes, the Area Map's name, the
-  stand-in items and their looks, ARCHIPELAGO and the ASSIST lock; a change held by a menu no
+  stand-in items and their looks, the map's handler, ARCHIPELAGO, the ASSIST lock and the
+  offline look; a change held by a menu no
   longer open is gone with it), drops the popups not shown yet, and goes inactive: nothing comes
   back until a client sends `config` again (the client resends every request after it
   attaches), except the offline look for a save of a seed the client left a file for
   (above). The helper stays loaded and hooked. Working in game (2026-10-25, above: what was
   seen is the stand-in and Area Map records, ASSIST and the escape skip put back; ARCHIPELAGO
   and the OS Install Disks goal's screens going back on a disconnect not looked at).
-- **The escape skip.** While a client is there (configured, not gone), or with none (or a client of another seed) while a save is dressed offline ("AP saves without the client"), every 30th frame call checks area event 3665 in the
+- **The escape skip.** While a client is there (configured, not gone), or with none (or a client of another seed) while a save is dressed offline ("AP saves without the client"), every 31st frame call checks area event 3665 in the
   game's loaded event table (`src/skip.cpp`): "if flag 250, offer SKIP ESCAPE AND FINAL
   BATTLE?". Flag 250 is set only by the ending, so a first playthrough never gets the offer.
   If every field of the record is as traced, the helper points its other branch at the offer
@@ -507,8 +523,8 @@ through the real pipe and hook in a busy host.
   points the slot back at SDL, and only if it still holds the
   trampoline; otherwise it replies `error the frame hook was replaced by something else; not
   unloading` and stays loaded. It then points the trampoline at SDL too, waits until no call is
-  counted inside (and for a call still inside ARCHIPELAGO's callback, a panel's handler,
-  EQUIPMENT's callback, the prompt's opener or its YES),
+  counted inside (and for a call still inside ARCHIPELAGO's callback, a panel's handler, a file
+  entry's handler, the map's handler, EQUIPMENT's callback, the prompt's opener or its YES),
   and unloads the DLL. A call can then be in the trampoline (which is never
   freed) or in SDL, but not in the helper, so a rebuilt helper can be loaded without
   restarting the game. If the pipe cannot be created, or breaks, the helper puts the game
@@ -538,7 +554,8 @@ runs `tests/test_native.py` against the build on Windows.
 The sources: `src/dllmain.cpp` (the hook, the pipe's requests, the stand-ins the game calls),
 `src/game_calls.cpp` (Game: configure, grants, popups and each part's watch),
 `src/game_offline.cpp` (Game's offline look), `src/requests.cpp` (the requests' parsers),
-`src/text.cpp` (the popups' text layout), `src/game_mem.cpp` and `src/game_layout.h` (fault-safe
+`src/text.cpp` (the popups' text layout), `src/pipe.cpp` (the pipe's server),
+`src/game_mem.cpp` and `src/game_layout.h` (fault-safe
 memory access and the layouts several parts share), and one file per part, as named above.
 
 The frame call never waits on anything the pipe thread can hold. It takes the mailbox's work

@@ -13,7 +13,7 @@
 // 0x5C8 bytes) instead: type 2026 in the reversed-gravity rooms, type 715 elsewhere, each with
 // the same sprite fields as an item object and its map cell at +0x210 and +0x211
 // (docs/re/memory.md, "Live item objects"). Any live one drawing a stand-in's logo (the item
-// sprites' frame list, a logo frame) is found by a scan of the pool every 30 frames and dressed
+// sprites' frame list, a logo frame) is found by a scan of the pool every 31st frame and dressed
 // by the frame shown (+0x1B0) and the palette only, its frame list left as the game's.
 #pragma once
 
@@ -45,7 +45,7 @@ public:
     // item sprites' frame list (item_frame_base), both taken once a frame by the caller.
     void apply(const Places& at, const BYTE* pool, BYTE* base);
 
-    // Game thread, every frame while the stand-ins are restyled, before apply: every 30 frames,
+    // Game thread, every frame while the stand-ins are restyled, before apply: every 31st frame,
     // finds the general objects showing a stand-in's logo (flipped_slots), and puts back any it
     // dressed that no longer shows one.
     void scan(const Places& at, BYTE* base);

@@ -28,7 +28,8 @@ middle of a load, and a write made then reads back fine and is overwritten a mom
 IN_PLAY when both do; a caller writes only then, and afterwards waits as long again and checks
 that the state is still IN_PLAY and the byte still holds what it wrote. Even that only says
 the write was not undone at once: the save is the final word. Room transitions and saving kept
-the in-play values in a recording of the bytes; cutscenes and endings are untested.
+the in-play values in a recording of the bytes; the ending's cutscenes read as play at times
+(docs/re/memory.md, "The ending: flag 250").
 """
 
 from __future__ import annotations

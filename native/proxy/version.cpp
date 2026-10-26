@@ -3,11 +3,13 @@
 //
 // The game's SDL2.dll imports version.dll, and Windows looks for it in the game's folder first
 // (it is not a KnownDLL on the machines checked), so this one loads in its place. Every export
-// passes the call on to the real version.dll in the system folder, loaded on the first call
-// (never while the loader lock is held by our own DllMain). DllMain only starts a thread: once
-// the process has started, it loads zexion_ap.dll from this DLL's own folder, if the host is
-// Zexion.exe and the player has not turned it off (zexion_ap.disabled beside it), under the
-// same named lock the AP client takes to load the helper, so the two never load it twice.
+// passes the call on to the real version.dll in the system folder, loaded by the thread below
+// as the process starts or on the first call, whichever comes first (never while the loader
+// lock is held by our own DllMain). DllMain only starts a thread: once the process has started,
+// it pins this DLL, loads the real one, then zexion_ap.dll from this DLL's own folder, if it is
+// there, the host is Zexion.exe and the player has not turned it off (zexion_ap.disabled beside
+// it), under the same named lock the AP client takes to load the helper (waiting at most 5 s),
+// so the two never load it twice.
 #include <windows.h>
 
 #include <cstdint>

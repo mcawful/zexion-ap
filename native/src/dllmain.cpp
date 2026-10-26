@@ -1,4 +1,5 @@
-// zexion_ap.dll: the native helper the AP client loads into the running game.
+// zexion_ap.dll: the native helper the AP client loads into the running game, or the proxy
+// version.dll loads as the game starts (native/proxy/).
 //
 // On load it starts one thread of its own. If the game is a build it knows, that thread points
 // the game's import-table slot for SDL_GL_SwapWindow at a trampoline (iat.h), which calls the
@@ -85,8 +86,8 @@ std::atomic<int> g_in_callback{0};
 // request, so a reconnected client's `config` and requests come after it. Without a client the
 // game is the base game (the helper may have been loaded with the game, by the proxy).
 std::atomic<bool> g_client_gone{false};
-// Whether the helper was loaded from the game's own folder (by the proxy, native/proxy/)
-// rather than injected by a client: `hello` reports it.
+// Whether the helper was loaded from the game's own folder (by the proxy, native/proxy/, or by
+// a client with no build of its own) rather than from elsewhere: `hello` reports it.
 bool g_from_game_folder = false;
 // What the client left for AP saves without it (offline.h), read by the helper's thread when it
 // starts and by the pipe thread each time a client goes away, and handed to the next frame.
