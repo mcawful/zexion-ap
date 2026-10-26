@@ -82,6 +82,8 @@ For each finding, give the concrete scenario: "Player receives item 12 while the
 running; the write at client/x.py:80 lands, the game reloads inventory from the save during the
 load, and the popup count has already advanced, so its popup never shows." Check `docs/re/memory.md`
 and `docs/re/save-format.md` for what is actually known before saying something is undocumented.
+Both are long: find the section with a search for `^## ` (memory.md's "Lookup: targets" maps each
+target to its heading) and read only that range.
 
 ## Reporting
 
