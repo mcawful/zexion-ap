@@ -4,7 +4,9 @@ The APWorld's locations and rules are not written by hand: `tools/gen_world_data
 `worlds/zexion/data.py` from the game's `RandoCells` file, and `worlds/zexion/logic.py` checks
 the requirement lists the way the game does. This page records how that data is derived and
 what backs it. The format of `RandoCells` and the meaning of every code are in
-[`randocells.md`](randocells.md); the save fields in [`save-format.md`](save-format.md).
+[`randocells.md`](randocells.md); the save fields in [`save-format.md`](save-format.md). Cells
+are this repo's (x, y), or as the game shows them (X26 Y22, "Machinus 27,24"); axes and
+directions per `randocells.md`, "Grid order". Format and statuses per [`README.md`](README.md).
 
 ## The 154 locations are the game's own list
 
@@ -20,8 +22,8 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | A location, start room or second teleport target is named "*Area* *X*,*Y*", as in "Guardia 22,7": the area the pause screen names after REGION:, then the cell's X and Y as the pause screen shows them (this repo's cell (x, y) is X = y, Y = x: `randocells.md`, "Grid order"). Start-room options are the same in lower case with underscores, as in `kresezoa_16_13`. The area comes from the pause screen's own lookup (`0x16CD7B`): the cell's area is the 16-bit value at `+0x361C58` + (X × 54 + Y) × `0x9A`, and the region's text is entry `[+0xCDE231 + area × 2]` of the `Text` file (32-byte entries after a 6-byte header). Both tables are loaded from the `MapData` file: the cell records start at file offset `0x3E5749` (the same `0x9A`-byte records; their area equal to the loaded table's, read from the running game, in all 2,916 cells) and the area table at `0x45F94D`, the region the second byte of each 2-byte entry. `tools/gen_world_data.py` reads them for every location and start room (`CELL_AREAS` in `data.py`), after checking both files' hashes. The 154 locations lie in 11 areas (Kresezoa, Machinus, Crysmoon, Guardia, Pulsava, Phobyss, Vulknor, Fijedar, Vallahar, Exodia, R'Talva: text entries 0 to 7, 18, 19 and 22), and the names are unique. |
-| Status | from disassembly (the lookup) and measured (the file offsets); two of the 11 areas, Pulsava and Guardia, checked against the pause screen, the other nine from the lookup alone |
+| Value | A location, start room or second teleport target is named "*Area* *X*,*Y*", as in "Guardia 22,7": the area the pause screen names after REGION:, then the cell's X and Y as the pause screen shows them (this repo's cell (x, y) is X = y, Y = x: `randocells.md`, "Grid order"). Start-room options are the same in lower case with underscores, as in `kresezoa_16_13`. The area comes from the pause screen's own lookup (`0x16CD7B`): the cell's area is the 16-bit value at `+0x361C58` + (X × 54 + Y) × `0x9A`, and the region's text is entry `[+0xCDE231 + area × 2]` of the `Text` file (32-byte entries after a 6-byte header). Both tables are loaded from the `MapData` file: the cell records (the same `0x9A`-byte records) start at file offset `0x3E5701` (`save-format.md`, "The continue point and the seed's start"), so a cell's area is at `0x3E5749` + index × `0x9A` (equal to the loaded table's, read from the running game, in all 2,916 cells), and the area table at `0x45F94D`, the region the second byte of each 2-byte entry. `tools/gen_world_data.py` reads them for every location and start room (`CELL_AREAS` in `data.py`), after checking both files' hashes. The 154 locations lie in 11 areas (Kresezoa, Machinus, Crysmoon, Guardia, Pulsava, Phobyss, Vulknor, Fijedar, Vallahar, Exodia, R'Talva: text entries 0 to 7, 18, 19 and 22), and the names are unique. |
+| Status | measured (the lookup, by disassembly; the file offsets; two of the 11 areas, Pulsava and Guardia, against the pause screen, the other nine from the lookup alone) |
 | Method | disassembly of the pause screen's REGION: line; the file offsets by matching the loaded tables to `MapData`; the owner's readings of the pause screen: X37 Y18 in Pulsava, and X22 Y7 in Guardia, both what the lookup gives |
 | Build | B1 (`MapData` sha256 `79a0510f4dbbee0f…`, `Text` `3bf8cd5e07ede18f…`) |
 | Evidence | `lab/data/6d8a94bd4d64/MapData` and `Text`; the owner's readings in the `live15` seed, 2026-10-23 |
@@ -60,7 +62,7 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 
 | Field | |
 |---|---|
-| Value | Neither the world nor the game's own flood fill checks that a player can get back from where they go. Some passages lead into pockets whose way out needs an item: from the default start (13, 16), the open passage east from (22, 26) into (23, 26) has an empty requirement list on the way back, and the pocket's only other exit, past location "Machinus 27,24", needs Slide Mod. Collecting that location without Slide Mod would cut the player off from the start's other early locations. With only the starting items, 3 to 204 reachable cells per start are such pockets; with every item, 23 cells still have no way back (for example (21, 8) and (24, 6)). The game's own seeds have the same pockets, and the game provides the escape: the pause menu offers a teleport back to the start from anywhere (the owner's report). So the pockets are not soft-locks, and the logic needs no change: the teleport only adds a way back to the start, which is already reachable. It goes to the seed's start as the save records it, a patched start included: in the patched slot 26 (start moved to (23, 22)), teleporting from a few rooms away put the owner back in that save room. |
+| Value | Neither the world nor the game's own flood fill checks that a player can get back from where they go. Some passages lead into pockets whose way out needs an item: from the default start (13, 16), the open passage from (22, 26) to (23, 26) (x + 1: from X26 Y22 one cell down on screen) has an empty requirement list on the way back, and the pocket's only other exit, past location "Machinus 27,24", needs Slide Mod. Collecting that location without Slide Mod would cut the player off from the start's other early locations. With only the starting items, 3 to 204 reachable cells per start are such pockets; with every item, 23 cells still have no way back (for example (21, 8) and (24, 6), X8 Y21 and X6 Y24). The game's own seeds have the same pockets, and the game provides the escape: the pause menu offers a teleport back to the start from anywhere (the owner's report). So the pockets are not soft-locks, and the logic needs no change: the teleport only adds a way back to the start, which is already reachable. It goes to the seed's start as the save records it, a patched start included: in the patched slot 26 (start moved to (23, 22)), teleporting from a few rooms away put the owner back in that save room. |
 | Status | measured (the pockets, from the data); working in game (the teleport from the pause menu, from anywhere, and to a patched start: slot 26, 2026-10-21) |
 | Method | the `logic-reviewer` subagent's route search over `worlds/zexion/data.py` and the cell-by-cell flood fill; the owner's account of using the teleport |
 | Build | B1 |
@@ -71,30 +73,35 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
 | Field | |
 |---|---|
 | Value | With the Goal option's default, core (the OS Install Disks goal is below), the world's goal is an event at map cell (32, 45), the core, needing all four keys: the game's main ending starts when Zexion is grabbed there, and the keys open the core (`memory.md`, "The goal: Zexion's inventory byte at the grab"). `RandoCells` reaches (32, 45) without the keys, so the key rule is the world's own addition, from the owner's account. The client sends the goal when the ending that follows the grab begins: flag 250 set with flag 211 clear, with this seed's section loaded (`client/session.py`, `ENDING_FLAG` and `FINALE_FLAG`; `memory.md`, "The ending: flag 250"). |
-| Status | measured (the cell, the grab's byte; the ending's flag, `memory.md`); reported by the owner (the keys) |
+| | **The escape soft-lock.** The escape after the grab needs items no rule asks for (the owner: one of several combinations, the Zenith Thrusters alone being one; `memory.md`, "The goal: Zexion's inventory byte at the grab"), so a seed could trap the player in the core after the grab. The helper's escape skip avoids it: grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? in any game, and YES goes to the ship, whose ending sends the goal (`memory.md`, "The escape skip"). It needs the helper, which every seed needs (the mode's new game comes from it), and Abridged Finale off, which every mode's settings have. |
+| Status | measured (the cell, the grab's byte; the ending's flag, `memory.md`); measured, the owner's report (the keys; the escape's combinations of items); working in game (the goal on flag 250, 2026-10-22; through the escape skip, from a first playthrough, 2026-10-23) |
 | Method | as in `memory.md` |
 | Build | B1 |
-| Evidence | 2026-10-21: the grab's recording and saves named in `memory.md`, "The goal: Zexion's inventory byte at the grab" (`lab/grants.jsonl`, `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav`); the ending's flag, "The ending: flag 250"; the keys, the owner's account (no file). |
+| Evidence | 2026-10-21: the grab's recording and saves named in `memory.md`, "The goal: Zexion's inventory byte at the grab" (`lab/grants.jsonl`, `lab/work/slot1-for-core.sav`, `slot25-after-zexion.sav`); the ending's flag, "The ending: flag 250" (`lab/ap/live6/`, 2026-10-22); the escape skip, "The escape skip" (`lab/ap/live7/`, 2026-10-23); the keys and the escape, the owner's account (no file). |
 
 ## The OS Install Disks goal: the disks, then the ending
 
 | Field | |
 |---|---|
 | Value | With the Goal option's OS Install Disks, the world has no core event: the keys are left out of the pool (their places become Scrap Metal), OS Install Disks (the game's Data Disc, item 44) are added in their number, each taking the place of, in order, Scrap Metal, Scrap Energy, Scrap Chunk, Area Map, Energy Shield, and the completion condition is having the number required. No location or passage rule reads any of these items or the keys (codes 27 to 30, 44, 46 to 50 and the Intel Chip's 101 among item codes; rule codes from 50 up are derived ones, `logic.derive`), so the pool's logic is unchanged. Room per mode (after left-out locations): Easy 31, Standard 31, OHKO 41, more being an `OptionError`; the options stop at 30 (the owner's cap), with defaults of 16 placed and 12 required, which fit Standard without taking an Area Map. Nothing places an item behind the game's secret boss: its passage (cell (22, 48)) leads to a map of its own, and none of the 154 locations is there. The client sends the goal when the game's ending begins with the player holding enough disks (`memory.md`, "The mission prompt"): once they have them and save at the landing pod (the seed's start), the helper offers RETURN HOME WITH THE DISKS?, whose YES starts the ending. With the Area Map Hints option on (the default), each Area Map left after those replacements becomes an Intel Chip (code 101, `worlds/zexion/items.py`): an Archipelago-only item, filler as the Area Map is, which `location_items` gives the game as the Area Map (49, `DRAWN_AS`); no rule reads it either. |
-| Status | from the world's data (the rule codes, the pools, the room); generated and filled by Archipelago's tests in all three modes; working in game (2026-10-24, B1: a Standard seed of 3 of 20 disks, the goal sent at the ending reached from the prompt's YES, its question then END THE MISSION?; then with RETURN HOME WITH THE DISKS?, NO and the question again on the next load, helper 0.17.1). The goal needs the client's helper: without it nothing offers the ending, and with no keys the core is closed for good under Gates Vanilla (OHKO); whether Gates Unlocked (Easy, Standard) opens it without keys is not traced (`randocells.md`). |
+| | **The goal needs the helper:** without it nothing offers the ending, and with no keys the core is closed for good under Gates Vanilla (OHKO); whether Gates Unlocked (Easy, Standard) opens it without keys is not traced (`memory.md`, "Keys, the gates and the key markers"). |
+| Status | measured (from the world's data: the rule codes, the pools, the room; generated and filled by Archipelago's tests in all three modes); working in game (a Standard seed of 3 of 20 disks: the goal sent at the ending reached from the prompt's YES, NO and the question again on the next load, 2026-10-24; the offer after a save at the landing pod, and YES to the goal, 2026-10-25) |
 | Method | `worlds/zexion/test/test_world.py`; Archipelago's general tests; the live runs |
 | Build | B1 |
-| Evidence | `lab/ap/live22/`, `lab/ap/live23/` (the seeds, their spoilers, the client and server logs), 2026-10-24 |
+| Evidence | `lab/ap/live22/`, `lab/ap/live23/` (the seeds, their spoilers, the client and server logs; the question first worded END THE MISSION?, then RETURN HOME WITH THE DISKS?, helper 0.17.1), 2026-10-24; `lab/ap/live26/` (the landing pod, helpers 0.22.1 and 0.23.1: `memory.md`, "The mission prompt"), 2026-10-25 |
 
 ## OHKO: two starts, and only the locations they reach
 
 | Field | |
 |---|---|
-| Value | An OHKO seed starts in one room and can teleport to a second (`save-format.md`, "The continue point and the seed's start"), and some of its locations are unreachable (`randocells.md`, "The randomizer's modes"). For OHKO the generator records every one of the 34 candidates with the locations every item reaches from it alone and those its starting items (3 Missile Containers and the Machine Gun) reach: every candidate reaches the same 150 locations with every item, and 0 to 9 with the starting items. The world takes the first room from the Start Room option and picks the second at random among those that, together with the first, let the starting items reach at least 3 locations; both connect to the start of the logic. It creates only the locations every item reaches from one of the two, and removes as many filler items from the pool (Scrap Metal first), as the game fills unreachable locations with Scrap. Combining the two rooms' single-start results is exact for the locations and regions, as every candidate reaches the same 443 regions and 150 locations with every item (so `worlds/zexion/data.py` holds them once for the mode, as it holds Easy's and Standard's regions, which every start of each shares too); for the starting items it can only undercount what the pair reaches together. That the second target can be used from the first moment is from the game's own text (`LargeText.txt` entry 283, OHKO: "No energy tanks at all. Can teleport to two locations.") and from the real OHKO seed, whose first start alone reaches no location. Gates Vanilla does not loosen anything: the gates can be switched off entirely (entries 349 to 352) while `RandoCells` stays the same file, so the logic does not count on gate travel; and the goal's key rule matches Vanilla's "require the four keys". Twelve OHKO games with random start rooms (seeds 400 to 411), replayed through `randocells.sweep` from both their starts with the left-out locations as Scrap, reached all 150 placed locations and all four keys. |
-| Status | computed with the evaluator (the 150 locations; the 12 replays); working in game: a second target written at `0x12EE0` (a patched OHKO save in slot 6 teleported the owner to the patched room, 2026-10-21; `save-format.md`). Not yet tried: a whole OHKO game written by the client. |
+| Value | **Which locations.** An OHKO seed starts in one room and can teleport to a second (`save-format.md`, "The continue point and the seed's start"), and some of its locations are unreachable (`randocells.md`, "The randomizer's modes"). For OHKO the generator records every one of the 34 candidates with the locations every item reaches from it alone and those its starting items (3 Missile Containers and the Machine Gun) reach: every candidate reaches the same 150 locations with every item, and 0 to 9 with the starting items. The world creates only the locations every item reaches from one of its two rooms, and removes as many filler items from the pool (Scrap Metal first), as the game fills unreachable locations with Scrap. |
+| | **Which second room.** The world takes the first room from the Start Room option and picks the second at random among those that, together with the first, let the starting items reach at least 3 locations; both connect to the start of the logic. That the second target can be used from the first moment is from the game's own text (`LargeText.txt` entry 283, OHKO: "No energy tanks at all. Can teleport to two locations.") and from the real OHKO seed, whose first start alone reaches no location. |
+| | **Why combining two single-start results is exact** for the locations and regions: every candidate reaches the same 443 regions and 150 locations with every item (so `worlds/zexion/data.py` holds them once for the mode, as it holds Easy's and Standard's regions, which every start of each shares too); for the starting items it can only undercount what the pair reaches together. |
+| | **Gates Vanilla** does not loosen anything: the gates can be switched off entirely (entries 349 to 352) while `RandoCells` stays the same file, so the logic does not count on gate travel; and the goal's key rule matches Vanilla's "require the four keys". |
+| Status | measured (computed with `tools/randocells.py`: the 150 locations; twelve OHKO games with random start rooms, seeds 400 to 411, replayed through `randocells.sweep` from both their starts with the left-out locations as Scrap, reaching all 150 placed locations and all four keys); working in game (a second target written at `0x12EE0`: a patched OHKO save in slot 6 teleported the owner to the patched room, 2026-10-21, `save-format.md`; an OHKO seed started from ARCHIPELAGO, its second target found on the pause screen at Pulsava 29,17, 2026-10-23, `memory.md`, "The game-mode panel: NORMAL / RANDOMIZER"); open (an OHKO seed played through) |
 | Method | `tools/gen_world_data.py` with the fresh OHKO save; `Generate.py --spoiler 1`, the start rooms read from the spoiler header the world writes |
 | Build | B1 |
-| Evidence | `lab/work/slot5-ohko-fresh.sav`; generator output and replays, 2026-10-21. |
+| Evidence | `lab/work/slot5-ohko-fresh.sav`; generator output and replays, 2026-10-21; the OHKO start, `lab/ap/live8/`, 2026-10-23. |
 
 ## What the world needs from the client
 
@@ -103,9 +110,11 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   as permanent once received, so the client must give items again after a reload.
 - **The starting inventory and settings.** The world's logic assumes the chosen mode's
   starting inventory and settings (`worlds/zexion/data.py`, `MODES`, sent as `mode` in the slot
-  data). The new game the client starts must hold exactly those, or sphere 0 is wrong; in OHKO
-  also the second teleport target (`second_start`), and Scrap at every location the world left
-  out (those not in `kept_locations`).
+  data). The new game must hold exactly those, or sphere 0 is wrong; in OHKO also the second
+  teleport target (`second_start`), and Scrap at every location the world left out (those not
+  in `kept_locations`). The helper writes the seed into a new game only after checking that its
+  randomizer section holds the seed's mode (`expect`, `client/newgame.py`; `memory.md`,
+  "Starting a new game"; `native/README.md`, "New games").
 - **What the slot data gives the client for that.** `location_items`: for each of the 154
   locations, the game's item ID to place there: this world's own item (a progressive weapon as
   the weapon, which the game turns into the upgrade on a second copy, `randocells.md`; an Intel
@@ -116,10 +125,8 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` (a second copy of a progressive weapon as its upgrade). The world
-  refuses a `start_inventory` the client could not give through a new game
-  (`worlds/zexion/starting.py`: no Scrap, Area Map, Intel Chip, Energy Shield, bombs or Assist
-  Unlock; at most 9 Missile Containers with the mode's own, one of each upgrade, two of a
-  progressive weapon, keys from the Alpha Key on; disks only with their goal). `amounts` and
+  refuses a `start_inventory` the client does not give through a new game (the limits and
+  their reasons: `worlds/zexion/starting.py`). `amounts` and
   `options`: the mode's six Energy, missile and bomb amounts and the settings the logic depends
   on (code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43, Gates 72 and 73),
   as the mode's fresh save holds them, for the client to compare with the player's new game.
@@ -133,5 +140,4 @@ what backs it. The format of `RandoCells` and the meaning of every code are in
   that mode had it: its settings, its item pool and its starting items (in Standard, the Force
   Blaster that "Random Gun" gave that seed). The individual settings (`randocells.md`,
   "Where each setting is stored") are not separate options yet.
-- **Missile and Bomb Boxes in groups.** As in `randocells.md`, a box adding 10 to a group's
-  count is not modeled.
+- **Missile and Bomb Boxes in groups:** not modeled (`randocells.md`, "Not yet found").
