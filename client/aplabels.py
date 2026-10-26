@@ -28,8 +28,9 @@ from __future__ import annotations
 import string
 from collections.abc import Iterable, Mapping, Sequence
 
-STAND_IN = 47  # Scrap Energy: other players' items
-STAND_IN_PROGRESSION = 48  # Scrap Chunk: other players' progression items, and own disks
+import ids
+from ids import STAND_IN, STAND_IN_PROGRESSION
+
 PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
 AP_ITEM = "AP ITEM"
@@ -70,7 +71,11 @@ def label(progression: bool, player_name: str) -> str:
 # player's own seed may have the helper rename INTEL CHIP (Area Map Hints), and the Intel Chip,
 # an item that is not the game's (code 101, worlds/zexion/items.py), drawn as the Area Map.
 # Each is its record's look under the name given here.
-ZEXION_LOOKS = {44: (44, "OS INSTALL DISK"), 49: (49, "AREA MAP"), 101: (49, "INTEL CHIP")}
+ZEXION_LOOKS = {
+    ids.DATA_DISC: (ids.DATA_DISC, "OS INSTALL DISK"),
+    ids.AREA_MAP: (ids.AREA_MAP, "AREA MAP"),
+    ids.INTEL_CHIP: (ids.DRAWN_AS[ids.INTEL_CHIP], "INTEL CHIP"),
+}
 
 
 def zexion_look(code: int) -> tuple[int, str] | None:
@@ -78,7 +83,7 @@ def zexion_look(code: int) -> tuple[int, str] | None:
     name: the record's own), or None for a code that is not a Zexion item."""
     if code in ZEXION_LOOKS:
         return ZEXION_LOOKS[code]
-    return (code, "") if 0 <= code <= 50 else None
+    return (code, "") if code in ids.GAME_ITEMS else None
 
 
 def zexion_label(item: int, player_name: str, name: str = "") -> str:

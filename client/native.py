@@ -29,81 +29,15 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
+import patterns
 import process
 
 DLL_NAME = "zexion_ap.dll"
 VERSION = "0.25.3"  # the helper's, in its hello (native/src/dllmain.cpp)
-# The addresses the helper needs, by client/patterns.py target name (native/src/game_calls.cpp).
-CONFIG_KEYS = (
-    "inventory",
-    "save_loaded",
-    "menu_state",
-    "item_records",
-    "last_message",
-    "weapon_strip_gate",
-    "sound_system",
-    "message_fn",
-    "sound_fn",
-    "hud_number_fn",
-    "hud_layout_fn",
-    "energy_hud_fn",
-    "weapon_strip_fn",
-    "suit_color_fn",
-    "rando_blob",
-    "rando_marker",
-    "transition_fn",
-    "transition_timer",
-    "current_slot",
-    "newgame_fn",
-    "current_menu",
-    "randomizer_menu",
-    "widget_handler_fn",
-    "panel_handler_fn",
-    "rando_menu_fn",
-    "placement_fn",
-    "rando_newgame_fn",
-    "event_table",
-    "event_count",
-    "start_count",
-    "start_cells",
-    "start_flags",
-    "sprite_texture",
-    "popup_width_code",
-    "item_pool",
-    "palette_table",
-    "frame_clock",
-    "sprite_templates",
-    "event_handlers",
-    "death_fn",
-    "halt_flag",
-    "assist_menu_fn",
-    "object_pool",
-    "text_table",
-    "equipment_fn",
-    "equip_panel_fn",
-    "widget_move_fn",
-    "text_place_fn",
-    "malloc_slot",
-    "free_slot",
-    "widget_new_fn",
-    "sprite_sheet_fn",
-    "panel_link_fn",
-    "text_set_fn",
-    "routine_table",
-    "keys_branch",
-    "file_panel_fn",
-    "file_entry_fn",
-    "copy_entry_fn",
-    "delete_entry_fn",
-    "map_grid",
-    "flags",
-    "slot_array",
-    "rando_slots",
-    "text_new_fn",
-    "text_link_fn",
-    "draw_layer",
-    "map_handler",
-)
+# The addresses the helper needs: every target client/patterns.py locates but those only the
+# client reads (native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
+CLIENT_ONLY = frozenset({"pickup_counter"})
+CONFIG_KEYS = tuple(t.name for t in patterns.TARGETS if t.name not in CLIENT_ONLY)
 APPLY_SECONDS = 3.0  # the helper waits up to a second for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0

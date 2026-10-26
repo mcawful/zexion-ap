@@ -39,12 +39,13 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+import ids
 import process
+from ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
 from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
-SLOT_COPY = 0x908  # a slot's copy of its randomizer section
 # The loaded slot's block from +0x9354 (file 0x9356): a 16-bit value that changed with each
 # save (play time, assumed), then the continue point's row (+0x935A) and column (+0x935C). The
 # game rewrites the block on every save (measured, docs/re/save-format.md).
@@ -52,16 +53,11 @@ SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
 PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
 
 PROCESS = "Zexion.exe"
-MAP_SIZE = 54
-COLLECTED = 0x1B  # map cell value once its item is collected
+COLLECTED = ids.COLLECTED  # (tools/ use these two by these names)
+ITEM_IDS = ids.GAME_ITEMS  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
-ITEM_IDS = range(0, 51)  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
-# A collected Energy Shield (item 50) left its byte at 0 in a live game: its pickup counts as
-# Scrap Metal (docs/re/memory.md, "Other players' items"), so the module never writes byte 50.
-WRITABLE_ITEMS = range(0, 50)
-LOCATIONS = 154
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
-RANDO_BLOB_SIZE = 0x908
+RANDO_BLOB_SIZE = SECTION_SIZE
 ITEM_TABLE_AT = 0x26C  # file 0x12A80 - 0x12814
 # Player state fields, by offset from the player state, which starts 0x108E before the
 # inventory (docs/re/memory.md).
@@ -513,9 +509,9 @@ class Game:
         return raw[0], raw[1]
 
     def rando_slot_copies(self) -> bytes:
-        """The game's copy of each slot's randomizer section (30 of SLOT_COPY bytes, in the
-        loaded section's layout; docs/re/memory.md, "The file select")."""
-        return self._read("rando_slots", 0, SLOTS * SLOT_COPY)
+        """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in
+        the loaded section's layout; docs/re/memory.md, "The file select")."""
+        return self._read("rando_slots", 0, SLOTS * SECTION_SIZE)
 
     def rando_blob(self) -> bytes:
         """The loaded save's randomizer section, as from file offset 0x12814."""

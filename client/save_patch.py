@@ -21,8 +21,9 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-LOCATIONS = 154
-MAP_W = 54
+import ids
+from ids import ENERGY_TANK, KEYS, LOCATIONS, MISSILE_BOX, MISSILE_CONTAINER, WRITABLE_ITEMS
+
 SAVE_SIZE = 78108  # a randomizer save
 RANDO_MARKER = 0x9402  # 16-bit: 1 in a randomizer save, 0 in a normal one or a cleared slot
 
@@ -32,7 +33,6 @@ MAP_GRID = 0x877F  # 54 x 54, row-major
 # The four keys' map markers: flags 40 to 47, a (y, x) cell per key (Alpha, Beta, Gamma,
 # Omega), 0xFF for none; the seed's own key cells in a fresh save (docs/re/save-format.md).
 KEY_MARKERS = 0x2A
-KEYS = (27, 28, 29, 30)
 NO_MARKER = 0xFF
 PICKUP_COUNTER = 0x935A  # 16-bit
 ENERGY_NOW = 0x9350  # 16-bit; a fresh save holds Energy Tanks x 16
@@ -47,10 +47,8 @@ OPTIONS = 0x1308F  # setting t at OPTIONS + t
 
 SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
-WRITABLE_ITEMS = range(0, 50)  # not byte 50: an Energy Shield counts as Scrap Metal (game.py)
-ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
 # Where the save keeps current bombs is not known, so a seed cannot start with bombs.
-BOMB_ITEMS = (2, 37)  # Mega Bomb, Bomb Box
+BOMB_ITEMS = (ids.MEGA_BOMB, ids.BOMB_BOX)
 
 
 class PatchError(ValueError):
@@ -126,7 +124,7 @@ def check_fresh(save: bytes) -> None:
         raise PatchError("not a randomizer save (its randomizer marker is not set)")
     if struct.unpack_from("<H", save, PICKUP_COUNTER)[0] != 0:
         raise PatchError("something has been picked up in this save: start a new game")
-    revealed = sum(1 for v in save[MAP_GRID : MAP_GRID + MAP_W * MAP_W] if v)
+    revealed = sum(1 for v in save[MAP_GRID : MAP_GRID + ids.MAP_SIZE * ids.MAP_SIZE] if v)
     if revealed > 1:
         raise PatchError(f"{revealed} map rooms are explored: start a new game and save at once")
 
@@ -163,11 +161,11 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
     struct.pack_into("<2H", out, CONTINUE, row, column)
     # A fresh Easy or Standard save reveals its start cell as SAVE_ROOM; a fresh OHKO save
     # reveals none. Keep whichever the game wrote, at the seed's start.
-    revealed = any(save[MAP_GRID : MAP_GRID + MAP_W * MAP_W])
-    grid = bytearray(MAP_W * MAP_W)
+    revealed = any(save[MAP_GRID : MAP_GRID + ids.MAP_SIZE * ids.MAP_SIZE])
+    grid = bytearray(ids.MAP_SIZE * ids.MAP_SIZE)
     if revealed:
         x, y = cell_of(column, row)
-        grid[y * MAP_W + x] = SAVE_ROOM
+        grid[y * ids.MAP_SIZE + x] = SAVE_ROOM
     out[MAP_GRID : MAP_GRID + len(grid)] = grid
     # The key markers must show where this seed puts the keys, not where the fresh game's own
     # seed did; a key that is in another world, or owned from the start, has none.

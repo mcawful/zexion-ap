@@ -42,6 +42,7 @@ from dataclasses import astuple, dataclass, field
 
 import discs
 import game
+import ids
 import native
 import reconcile
 import save_patch
@@ -148,8 +149,8 @@ class Step:
 
 class Session:
     def __init__(self, plan: save_patch.SeedPlan, cells: list):
-        if len(cells) != save_patch.LOCATIONS or len(plan.location_items) != len(cells):
-            raise ValueError("the slot data does not list 154 locations")
+        if len(cells) != ids.LOCATIONS or len(plan.location_items) != len(cells):
+            raise ValueError(f"the slot data does not list {ids.LOCATIONS} locations")
         self.plan = plan
         self.cells = [tuple(c) for c in cells]
         self._said: set[str] = set()
@@ -317,12 +318,13 @@ class Session:
         start = self._announced if self._announced is not None else len(received)
         # A progressive weapon received while its weapon is owned arrives as the upgrade, so
         # its popup names the upgrade.
-        weapons = {w for w in reconcile.PROGRESSIVE if snap.inventory[w]}
+        weapons = {w for w in ids.PROGRESSIVE if snap.inventory[w]}
         for index in range(start, len(received)):
             item = received[index]
-            if item in reconcile.PROGRESSIVE:
+            if item in ids.PROGRESSIVE:
                 if item in weapons:
-                    item = reconcile.PROGRESSIVE[item]
+                    item = ids.PROGRESSIVE[item]
+
                 weapons.add(received[index])
             sender = senders[index] if senders and index < len(senders) else ""
             note = (notes or {}).get(index)

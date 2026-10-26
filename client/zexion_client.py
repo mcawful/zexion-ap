@@ -129,6 +129,7 @@ import aplabels  # noqa: E402
 import discs  # noqa: E402
 import game  # noqa: E402
 import hints  # noqa: E402
+import ids  # noqa: E402
 import native  # noqa: E402
 import newgame  # noqa: E402
 import offline  # noqa: E402
@@ -138,6 +139,7 @@ import save_patch  # noqa: E402
 import session  # noqa: E402
 import shields  # noqa: E402
 import state  # noqa: E402
+from ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 
 GAME = "Zexion"
 # The client's window shows what the player acts on (the connection, the helper, ARCHIPELAGO,
@@ -150,9 +152,6 @@ def detail(message: str) -> None:
     (logger.info if VERBOSE else logger.debug)(message)
 
 
-ITEM_ID_BASE = 3392510_000  # worlds/zexion/items.py
-ASSIST_UNLOCK = 100  # worlds/zexion/items.py: lifts the assist lock; not an item of the game's
-LOCATION_ID_BASE = ITEM_ID_BASE + 500  # worlds/zexion/locations.py
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
 NEWGAME_POLL_SECONDS = 1.0
@@ -373,9 +372,8 @@ class ZexionContext(CommonContext):
             code = item.item - ITEM_ID_BASE
             if code == ASSIST_UNLOCK:
                 continue  # not for the inventory: see assists_unlocked
-            if code == hints.INTEL_CHIP:
-                code = hints.AREA_MAP  # the game holds it as the Area Map
-            if 0 <= code <= 50:
+            code = ids.DRAWN_AS.get(code, code)  # the Intel Chip: the game holds an Area Map
+            if code in ids.GAME_ITEMS:
                 codes.append(code)
                 senders.append(
                     "" if item.player == self.slot else self.player_names.get(item.player, "")
@@ -430,11 +428,7 @@ def stored_indices(ctx: ZexionContext, key: str | None) -> set[int]:
     stored = ctx.stored_data.get(key) if key else None
     if not isinstance(stored, dict):
         return set()
-    return {
-        int(k)
-        for k in stored
-        if isinstance(k, str) and k.isdigit() and int(k) < save_patch.LOCATIONS
-    }
+    return {int(k) for k in stored if isinstance(k, str) and k.isdigit() and int(k) < ids.LOCATIONS}
 
 
 def hints_used(ctx: ZexionContext) -> dict[str, tuple[int, int]] | None:
@@ -500,7 +494,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     if done is None or any(i in hunt.locations for i in ctx.load.save_collected - done):
         return
     if home.remind(enough):
-        note = [(discs.DATA_DISC, discs.POD_NOTE, True)]
+        note = [(ids.DATA_DISC, discs.POD_NOTE, True)]
         reply = await asyncio.to_thread(helper.apply, native.batch_text([], note))
         if helper is not ctx.helper or reply != "applied":
             return
@@ -618,7 +612,7 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         return
     hunt, plan = conn.hunt, conn.plan
     disks = [i for i in waiting if hunt is not None and i in hunt.locations]
-    maps = [i for i in waiting if plan.location_items[i] == hints.AREA_MAP and conn.hint_targets]
+    maps = [i for i in waiting if plan.location_items[i] == ids.AREA_MAP and conn.hint_targets]
     used = hints_used(ctx) or {}
     maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
     if not disks and not maps:
@@ -630,9 +624,9 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         first = have - len(disks) + 1
         told_count = hunt.required if conn.discs_told else None
         popups += [
-            (discs.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))
+            (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))
         ]
-    popups += [(hints.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
+    popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
     reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
     if helper is not ctx.helper or reply != "applied":
         return  # not shown: tried again
@@ -870,7 +864,7 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         player = ctx.player_names.get(info.player, "")
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
-        if info.player == ctx.slot and 0 <= code <= 50:
+        if info.player == ctx.slot and code in ids.GAME_ITEMS:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
         elif slot is not None and slot.game == GAME and aplabels.zexion_look(code) is not None:

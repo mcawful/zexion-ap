@@ -38,7 +38,9 @@ from __future__ import annotations
 
 import struct
 
+import ids
 import save_patch as sp
+from ids import BOMB_BOX, ENERGY_TANK, KEYS, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
 
 # The start-with array's items, in order (the new-game routine at 0xA0570 copies entry i to
 # that item's inventory byte; docs/re/memory.md, "Starting a new game").
@@ -48,8 +50,7 @@ START_WITH_ORDER = (
 )  # fmt: skip
 START_WITH = 0x12E9D  # file offset of the start-with array
 START_KEY_OPTIONS = (34, 35, 36)  # settings bits: keys count = bit0 + 2*bit1 + 4*bit2
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
-KEYS = (27, 28, 29, 30)
+
 # The randomizer menu's state: seed text, start-with and pool arrays, amounts, setting t at
 # MENU_SETTINGS + t (docs/re/memory.md, "The game-mode panel").
 MENU_SEED, MENU_START, MENU_POOL, MENU_AMOUNTS, MENU_SETTINGS = 0x0, 0x51, 0x6C, 0x88, 0xCA
@@ -92,7 +93,7 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     """The helper's ``ap_newgame`` request for this seed, in the game build whose exe has the
     SHA-256 ``build_sha256``. With ``offer_choice`` and a menu setup it carries the
     ARCHIPELAGO choice's lines too; without, the seed is started from RANDOMIZER."""
-    if len(plan.location_items) != sp.LOCATIONS:
+    if len(plan.location_items) != ids.LOCATIONS:
         raise NewGameError(f"the seed lists {len(plan.location_items)} locations")
     array, start = start_with(plan.start_items)
     table = start_table(plan, build_sha256)
@@ -133,7 +134,10 @@ def start_table(plan: sp.SeedPlan, build_sha256: str) -> tuple[tuple[int, int, i
         return None  # measured on another build: the game's own may differ
     table = menu.start_table
     if len(table) > START_TABLE_MAX or not all(
-        len(room) == 3 and 0 <= room[0] < sp.MAP_W and 0 <= room[1] < sp.MAP_W and room[2] in (0, 1)
+        len(room) == 3
+        and 0 <= room[0] < ids.MAP_SIZE
+        and 0 <= room[1] < ids.MAP_SIZE
+        and room[2] in (0, 1)
         for room in table
     ):
         raise NewGameError("the start table is not up to 64 rooms of (x, y, flag)")

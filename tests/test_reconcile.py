@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+import ids
 import reconcile as rc
 
 CELLS = [(25, 25), (29, 24), (3, 40), (50, 1)]
@@ -12,17 +13,17 @@ START = {0: 3, 1: 3, 4: 1}
 
 
 def inv(**items: int) -> bytearray:
-    out = bytearray(rc.ITEMS)
+    out = bytearray(len(ids.GAME_ITEMS))
     for name, n in items.items():
         out[int(name[1:])] = n
     return out
 
 
 def grid(*collected: tuple[int, int]) -> bytes:
-    g = bytearray(rc.MAP_W * rc.MAP_W)
-    g[24 * rc.MAP_W + 29] = 0x1A  # about to be collected: not yet
+    g = bytearray(ids.MAP_SIZE * ids.MAP_SIZE)
+    g[24 * ids.MAP_SIZE + 29] = 0x1A  # about to be collected: not yet
     for x, y in collected:
-        g[y * rc.MAP_W + x] = rc.COLLECTED
+        g[y * ids.MAP_SIZE + x] = ids.COLLECTED
     return bytes(g)
 
 

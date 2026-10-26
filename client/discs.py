@@ -25,8 +25,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 import save_patch
+from ids import DATA_DISC, SECTION_SIZE
 
-DATA_DISC = 44  # the game's item ID, its Data Disc (worlds/zexion/items.py)
 NAME = "OS INSTALL DISK"  # what the game's record calls DATA DISC is called here
 
 
@@ -89,7 +89,6 @@ def request(count: int, required: int, told: bool = True) -> str:
 
 OFF = "discs"  # the request taking it all back
 
-SLOT_COPY = 0x908  # a slot's copy of its randomizer section (client/game.py)
 SLOTS_OFF = "disk_slots"  # the file select's count taken back
 
 
@@ -101,11 +100,11 @@ def seed_slots(
     deleted or given a normal game, hence the marker."""
     out = []
     for n, (marker, used) in enumerate(markers, start=1):
-        copy = copies[(n - 1) * SLOT_COPY : n * SLOT_COPY]
+        copy = copies[(n - 1) * SECTION_SIZE : n * SECTION_SIZE]
         if (
             marker == 1
             and used
-            and len(copy) == SLOT_COPY
+            and len(copy) == SECTION_SIZE
             and save_patch.section_matches(copy, plan)
         ):
             out.append(n)
@@ -131,21 +130,22 @@ POD_NOTE = "ALL OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
 
 # The randomizer section's start record (docs/re/save-format.md, "The continue point and the
 # seed's start"): the start-candidate index less 1, then the start's tile column and row.
-START_AT = 0x310
+START_AT = save_patch.START_RECORD - save_patch.SECTION
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
 STAMP_ROW_AT, STAMP_COLUMN_AT = 4 + 6, 4 + 8
 
 
 def start_cell(blob: bytes) -> tuple[int, int]:
-    """The seed's start cell as the player state counts cells (game.Game.player_cell): the start
-    record's row (20 tiles a cell) along x, its column (14 a cell) along y. Derived from the
-    record's tile formula and the player update's (docs/re/save-format.md, memory.md)."""
+    """The seed's start cell as the player state counts cells (game.Game.player_cell): the
+    game's (X, Y), which is this repo's map cell (save_patch.cell_of) as (y, x)
+    (docs/re/randocells.md, "Grid order"; save-format.md and memory.md for the formulas)."""
     if len(blob) < START_AT + 6:
         return (-1, -1)
     column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
     row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
-    return (row // 20, column // 14)
+    x, y = save_patch.cell_of(column, row)
+    return (y, x)
 
 
 def saved_at_start(stamp: bytes, blob: bytes) -> bool:
