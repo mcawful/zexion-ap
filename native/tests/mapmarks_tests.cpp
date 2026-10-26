@@ -201,12 +201,12 @@ void fake_text_set(void* text, const char* s, int first, int count) {
 int g_hook = 0;
 
 // The helper's addresses for `m`, the map's handler held at `handler_slot`.
-zap::MapAddresses addresses(MapMenu& m, void*& handler_slot) {
-    zap::MapAddresses a;
+zap::GameAddresses addresses(MapMenu& m, void*& handler_slot) {
+    zap::GameAddresses a;
     a.current_menu = m.current_menu();
     a.map_handler = reinterpret_cast<BYTE*>(&handler_slot);
-    a.text_set_fn = reinterpret_cast<void*>(&fake_text_set);
-    a.hook = &g_hook;
+    a.text_set_fn = reinterpret_cast<BYTE*>(&fake_text_set);
+    a.hooks.map = &g_hook;
     return a;
 }
 
@@ -216,7 +216,7 @@ void test_the_cursor_square() {
     for (double scale : {40.0, 20.0}) {
         MapMenu m(scale);
         void* handler_slot = &m.handler;
-        zap::MapAddresses a = addresses(m, handler_slot);
+        zap::GameAddresses a = addresses(m, handler_slot);
         zap::MapCursorNames names;
         names.watch(a, true);
         g_set_target = &m;
@@ -237,7 +237,7 @@ void test_the_cursor_square() {
     MapMenu m(40.0);
     int other = 0;
     void* handler_slot = &other;  // the top menu is not the map
-    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::GameAddresses a = addresses(m, handler_slot);
     zap::MapCursorNames names;
     names.watch(a, true);
     check(!names.holds_hook() && m.slot() == &m.handler, "another menu");
@@ -250,8 +250,8 @@ void test_the_cursor_square() {
 void test_no_stand_in_wraps_nothing() {
     MapMenu m(40.0);
     void* handler_slot = &m.handler;
-    zap::MapAddresses a = addresses(m, handler_slot);
-    a.hook = nullptr;
+    zap::GameAddresses a = addresses(m, handler_slot);
+    a.hooks.map = nullptr;
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &m.handler && !names.holds_hook(), "no wrapper: the game's handler");
@@ -265,7 +265,7 @@ void test_no_stand_in_wraps_nothing() {
 void test_one_slot_and_a_read_only_child() {
     MapMenu m(40.0);
     void* handler_slot = &m.handler;
-    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::GameAddresses a = addresses(m, handler_slot);
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &g_hook, "both slots wrapped");
@@ -302,7 +302,7 @@ void test_one_slot_and_a_read_only_child() {
 void test_the_handler_wrapped_and_the_name_rewritten() {
     MapMenu m(40.0);
     void* handler_slot = &m.handler;  // what map_handler holds: the game's handler
-    zap::MapAddresses a = addresses(m, handler_slot);
+    zap::GameAddresses a = addresses(m, handler_slot);
     zap::MapCursorNames names;
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off: the game's handler");

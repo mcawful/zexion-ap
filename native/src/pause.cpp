@@ -50,7 +50,7 @@ std::string pause_row_text(int count, int required) {
     return out;
 }
 
-bool PauseDiskRow::patch(const PauseAddresses& a, uint8_t from, uint8_t to) {
+bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
     BYTE now[2] = {};
     if (a.keys_branch == nullptr || !safe_read(a.keys_branch, now, sizeof(now)) ||
         now[1] != kSkip || now[0] != from) {
@@ -65,7 +65,7 @@ bool PauseDiskRow::patch(const PauseAddresses& a, uint8_t from, uint8_t to) {
     return true;
 }
 
-void PauseDiskRow::watch(const PauseAddresses& a) {
+void PauseDiskRow::watch(const GameAddresses& a) {
     if (text_.empty()) {
         restore(a);
         return;
@@ -75,7 +75,7 @@ void PauseDiskRow::watch(const PauseAddresses& a) {
     if (read(a.current_menu, 0, top) && top != nullptr) turn(a, top);
 }
 
-void PauseDiskRow::restore(const PauseAddresses& a) {
+void PauseDiskRow::restore(const GameAddresses& a) {
     if (!patched_) return;
     patch(a, kJmp, kJne);  // only where it still reads as written
     BYTE now = 0;
@@ -83,7 +83,7 @@ void PauseDiskRow::restore(const PauseAddresses& a) {
     if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
 }
 
-void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
+void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu) {
     // The text fills the row's cells (pause_row_text), read by index below.
     if (text_.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
@@ -108,7 +108,7 @@ void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
     for (int i = 0; i < entry_count; ++i) {
         void* cb = nullptr;
         if (read(list[i], widget::kCallback, cb) &&
-            (cb == a.equipment_fn || (a.equipment_hook != nullptr && cb == a.equipment_hook))) {
+            (cb == a.equipment_fn || (a.hooks.equipment != nullptr && cb == a.hooks.equipment))) {
             equipment = true;
         }
     }
@@ -123,7 +123,7 @@ void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
         !read(row, panel::kChildren, row_children) ||
         !read(reinterpret_cast<BYTE*>(row_children), 0, keys) ||
         !read(keys, sprite::kReleased, released) ||
-        released != 0 || !read(keys, widget::kHandler, handler) || handler != a.widget_handler ||
+        released != 0 || !read(keys, widget::kHandler, handler) || handler != a.widget_handler_fn ||
         !read(keys, widget::kLabel, label) || !read(label, label::kLength, glyphs_n) ||
         glyphs_n != kKeysGlyphs || !read(label, label::kGlyphs, glyph_list) ||
         !read(row, kPanelSprites, sprite_list)) {

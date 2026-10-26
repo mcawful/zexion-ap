@@ -15,13 +15,13 @@ namespace {
 constexpr int32_t kPromptChildren = 3;
 constexpr int kMinQuestionGlyphs = static_cast<int>(sizeof(kMissionQuestion) - 1);
 
-void* routine(const MissionAddresses& a, int index) {
+void* routine(const GameAddresses& a, int index) {
     void* fn = nullptr;
     read(a.routine_table, index * 8, fn);
     return fn;
 }
 
-bool writable_fields(const MissionAddresses& a) {
+bool writable_fields(const GameAddresses& a) {
     return writable(a.transition_fn, sizeof(void*)) &&
            writable(a.transition_timer, sizeof(int32_t));
 }
@@ -43,7 +43,7 @@ void MissionPrompt::resume(bool asked, bool ending) {
     }
 }
 
-void MissionPrompt::watch(const MissionAddresses& a, bool idle_in_play) {
+void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
     void* fn = nullptr;
     int32_t timer = -1;
     BYTE* top = nullptr;
@@ -55,7 +55,7 @@ void MissionPrompt::watch(const MissionAddresses& a, bool idle_in_play) {
         yes_child_ = nullptr;  // closed (NO): the game freed it
         menu_ = nullptr;
     }
-    if (armed_ && fn != a.open_hook) {
+    if (armed_ && fn != a.hooks.mission_open) {
         // Not ours any more and not run (open() clears armed_): another transition took the
         // place (a door, a death). Asked again once idle.
         armed_ = false;
@@ -75,8 +75,8 @@ void MissionPrompt::watch(const MissionAddresses& a, bool idle_in_play) {
         status_ = "ending started";
         return;
     }
-    if (requested_ && a.open_hook != nullptr && routine(a, kPromptRoutine) != nullptr) {
-        put(a.transition_fn, 0, a.open_hook);
+    if (requested_ && a.hooks.mission_open != nullptr && routine(a, kPromptRoutine) != nullptr) {
+        put(a.transition_fn, 0, a.hooks.mission_open);
         put<int32_t>(a.transition_timer, 0, 1);
         requested_ = false;
         armed_ = true;
@@ -84,7 +84,7 @@ void MissionPrompt::watch(const MissionAddresses& a, bool idle_in_play) {
     }
 }
 
-std::string MissionPrompt::open(const MissionAddresses& a) {
+std::string MissionPrompt::open(const GameAddresses& a) {
     armed_ = false;
     auto builder = reinterpret_cast<void (*)()>(routine(a, kPromptRoutine));
     if (builder == nullptr) return status_ = "no prompt builder";
@@ -116,7 +116,7 @@ std::string MissionPrompt::open(const MissionAddresses& a) {
         int32_t released = 1;
         void* handler = nullptr;
         if (!read(child[i], sprite::kReleased, released) || released != 0 ||
-            !read(child[i], widget::kHandler, handler) || handler != a.widget_handler ||
+            !read(child[i], widget::kHandler, handler) || handler != a.widget_handler_fn ||
             !read(child[i], widget::kCallback, callbacks[i])) {
             return status_ = "not the prompt as traced";
         }
@@ -124,7 +124,7 @@ std::string MissionPrompt::open(const MissionAddresses& a) {
     int32_t yes_released = 1;
     void* yes_handler = nullptr;
     if (!read(child[0], sprite::kReleased, yes_released) || yes_released != 0 ||
-        !read(child[0], widget::kHandler, yes_handler) || yes_handler != a.widget_handler) {
+        !read(child[0], widget::kHandler, yes_handler) || yes_handler != a.widget_handler_fn) {
         return status_ = "not the prompt as traced";
     }
     BYTE* question = nullptr;
@@ -139,7 +139,7 @@ std::string MissionPrompt::open(const MissionAddresses& a) {
     }
     reinterpret_cast<void (*)(void*, const char*, int, int)>(a.text_set_fn)(
         question, kMissionQuestion, 0, glyphs);
-    if (a.yes_hook != nullptr) put(child[0], widget::kCallback, a.yes_hook);
+    if (a.hooks.mission_yes != nullptr) put(child[0], widget::kCallback, a.hooks.mission_yes);
     no_fn_ = no;
     yes_child_ = child[0];
     menu_ = menu;
@@ -156,12 +156,12 @@ void* MissionPrompt::yes() {
     return no;
 }
 
-void MissionPrompt::cancel(const MissionAddresses& a) {
+void MissionPrompt::cancel(const GameAddresses& a) {
     requested_ = false;
     ending_ = false;
     void* fn = nullptr;
     if (armed_ && read(a.transition_fn, 0, fn)) {
-        if (fn != a.open_hook) {
+        if (fn != a.hooks.mission_open) {
             armed_ = false;  // not ours any more
         } else if (writable_fields(a)) {
             put(a.transition_fn, 0, routine(a, kIdleRoutine));
@@ -172,11 +172,11 @@ void MissionPrompt::cancel(const MissionAddresses& a) {
     if (!armed_ && yes_child_ == nullptr) status_ = "not asked";
 }
 
-void MissionPrompt::restore(const MissionAddresses& a) {
+void MissionPrompt::restore(const GameAddresses& a) {
     cancel(a);  // an opener it could not take off stays armed_: still held
     void* cb = nullptr;
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
-        read(yes_child_, widget::kCallback, cb) && cb == a.yes_hook) {
+        read(yes_child_, widget::kCallback, cb) && cb == a.hooks.mission_yes) {
         put(yes_child_, widget::kCallback, no_fn_);
     }
     yes_child_ = nullptr;

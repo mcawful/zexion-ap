@@ -99,14 +99,14 @@ struct Screen {
         }
         current = menu;
     }
-    zap::FileAddresses addresses() {
-        zap::FileAddresses a;
+    zap::GameAddresses addresses() {
+        zap::GameAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
-        a.file_panel_fn = reinterpret_cast<void*>(&file_panel);
-        a.entry_fns[0] = reinterpret_cast<void*>(&file_entry);
-        a.entry_fns[1] = reinterpret_cast<void*>(&copy_entry);
-        a.entry_fns[2] = reinterpret_cast<void*>(&delete_entry);
-        a.hook = reinterpret_cast<void*>(&hook);
+        a.file_panel_fn = reinterpret_cast<BYTE*>(&file_panel);
+        a.file_entry_fn = reinterpret_cast<BYTE*>(&file_entry);
+        a.copy_entry_fn = reinterpret_cast<BYTE*>(&copy_entry);
+        a.delete_entry_fn = reinterpret_cast<BYTE*>(&delete_entry);
+        a.hooks.file_entry = reinterpret_cast<void*>(&hook);
         return a;
     }
 };
@@ -124,7 +124,7 @@ bool cells(Entry& e, std::vector<int> want) {
 
 void test_this_seeds_slots_show_the_disks() {
     Screen s;
-    zap::FileAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.e[0].fill(false);             // slot 4: this seed, before the scanner
     s.e[1].fill(true);              // slot 5: this seed (with keys, say)
     s.e[2].fill(true);              // slot 6: another save, with keys
@@ -140,7 +140,7 @@ void test_this_seeds_slots_show_the_disks() {
     check(s.e[0].y(114) == 53 && s.e[0].y(115) == 53 && s.e[0].boxed(114),
           "the count 5 pixels down from its row");
     check(s.e[0].y(143) == 56 && s.e[0].y(85) == 40 && s.e[2].y(114) == 48, "nothing else moved");
-    check(at<void*>(s.e[0].widget, 0x2C8) == a.hook && f.holds_hook(), "the handlers wrapped");
+    check(at<void*>(s.e[0].widget, 0x2C8) == a.hooks.file_entry && f.holds_hook(), "the handlers wrapped");
     check(f.original(s.e[0].widget) == reinterpret_cast<void*>(&file_entry), "the game's kept");
 
     // The game fills the entry again (paging): the helper's handler rewrites it after event 0xF.
@@ -177,7 +177,7 @@ void test_this_seeds_slots_show_the_disks() {
 
 void test_only_what_it_moved_goes_back() {
     Screen s;
-    zap::FileAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.e[0].fill(false);
     at<double>(s.e[0].g(114), 0x48) = 51;  // not where the game's layout puts it
     zap::FileDisks f;
@@ -197,7 +197,7 @@ void test_only_what_it_moved_goes_back() {
 
 void test_an_entry_not_wrapped_is_not_written() {
     Screen s;
-    zap::FileAddresses a = s.addresses();
+    zap::GameAddresses a = s.addresses();
     s.e[0].fill(false);
     at<void*>(s.e[0].widget, 0x2C8) = reinterpret_cast<void*>(&file_panel);  // another handler
     zap::FileDisks f;

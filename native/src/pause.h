@@ -16,17 +16,9 @@
 #include <cstdint>
 #include <string>
 
-namespace zap {
+#include "addresses.h"
 
-struct PauseAddresses {
-    BYTE* current_menu = nullptr;      // holds the top menu
-    void* equipment_fn = nullptr;      // EQUIPMENT's callback (the pause screen's entry)
-    void* equipment_hook = nullptr;    // or the helper's, while it shows the disk on that screen
-    void* widget_handler = nullptr;    // the generic widget handler
-    BYTE* sprite_templates = nullptr;  // holds the pointer to the sprite definitions' templates
-    void* sprite_sheet_fn = nullptr;   // (object, template): gives it a sprite definition's frames
-    BYTE* keys_branch = nullptr;       // the `jne` (75 2E) that skips the KEYS panel
-};
+namespace zap {
 
 constexpr int kRowCells = 8;  // the characters the row can show: "41 OF 41"
 
@@ -41,16 +33,16 @@ public:
 
     // Game thread, each frame: the branch while on (or put back while off), and the row turned
     // on a pause screen that has not been.
-    void watch(const PauseAddresses& addresses);
+    void watch(const GameAddresses& addresses);
 
     // Game thread: the branch put back (before an unload).
-    void restore(const PauseAddresses& addresses);
+    void restore(const GameAddresses& addresses);
 
     bool patched() const { return patched_; }
 
 private:
-    bool patch(const PauseAddresses& addresses, uint8_t from, uint8_t to);
-    void turn(const PauseAddresses& addresses, BYTE* menu);
+    bool patch(const GameAddresses& addresses, uint8_t from, uint8_t to);
+    void turn(const GameAddresses& addresses, BYTE* menu);
 
     std::string text_;
     bool patched_ = false;

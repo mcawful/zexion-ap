@@ -131,7 +131,7 @@ bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
     return text == kStandInNames[0] || text == kStandInNames[1];
 }
 
-void MapCursorNames::watch(const MapAddresses& a, bool on) {
+void MapCursorNames::watch(const GameAddresses& a, bool on) {
     void* handler = nullptr;
     if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;
     if (child_ != nullptr && !still_wrapped(a)) {
@@ -141,7 +141,7 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
         child_ = nullptr;
         menu_ = nullptr;
     }
-    if (on && child_ == nullptr && a.hook != nullptr) {
+    if (on && child_ == nullptr && a.hooks.map != nullptr) {
         BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
         constexpr size_t kBothSlots = kChildHandlers[1] - kChildHandlers[0] + sizeof(void*);
         if (map_menu(a.current_menu, handler, menu, panel, child) &&
@@ -149,7 +149,7 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
             for (ptrdiff_t at : kChildHandlers) {
                 void* slot = nullptr;
                 if (read(child, at, slot) && slot == handler) {
-                    std::memcpy(child + at, &a.hook, sizeof(void*));
+                    std::memcpy(child + at, &a.hooks.map, sizeof(void*));
                 }
             }
             child_ = child;
@@ -161,7 +161,7 @@ void MapCursorNames::watch(const MapAddresses& a, bool on) {
     }
 }
 
-bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
+bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
     if (!is_open(a.current_menu, menu_)) return false;
     BYTE *panels = nullptr, *panel = nullptr, *children = nullptr, *first = nullptr;
     if (!read(menu_, menu::kPanels, panels) || !read(panels, 0, panel) ||
@@ -170,15 +170,15 @@ bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
     }
     for (ptrdiff_t at : kChildHandlers) {
         void* slot = nullptr;
-        if (a.hook != nullptr && read(child_, at, slot) && slot == a.hook) return true;
+        if (a.hooks.map != nullptr && read(child_, at, slot) && slot == a.hooks.map) return true;
     }
     return false;
 }
 
-void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::string>& labels) {
+void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
-    if (!map_menu(a.current_menu, a.hook, menu, panel, child)) return;
+    if (!map_menu(a.current_menu, a.hooks.map, menu, panel, child)) return;
     auto it = labels.find(cursor_cell(panel));
     if (it == labels.end()) return;
     BYTE* info = info_panel(panel);
@@ -205,12 +205,12 @@ void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::strin
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
 }
 
-void MapCursorNames::restore(const MapAddresses& a) {
+void MapCursorNames::restore(const GameAddresses& a) {
     if (child_ == nullptr) return;
     if (still_wrapped(a)) {
         for (ptrdiff_t at : kChildHandlers) {
             void* slot = nullptr;
-            if (!read(child_, at, slot) || slot != a.hook) continue;
+            if (!read(child_, at, slot) || slot != a.hooks.map) continue;
             if (!writable(child_ + at, sizeof(void*))) {
                 return;  // could not put it back: kept, so the unload refuses
             }

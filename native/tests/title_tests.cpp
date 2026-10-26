@@ -116,12 +116,12 @@ BYTE* reset_title() {
     return line;
 }
 
-zap::TitleAddresses addresses() {
-    zap::TitleAddresses a;
+zap::GameAddresses addresses() {
+    zap::GameAddresses a;
     a.draw_layer = reinterpret_cast<BYTE*>(&g_layer);
-    a.text_new_fn = reinterpret_cast<void*>(&text_new);
-    a.text_place_fn = reinterpret_cast<void*>(&text_place);
-    a.text_link_fn = reinterpret_cast<void*>(&text_link);
+    a.text_new_fn = reinterpret_cast<BYTE*>(&text_new);
+    a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
+    a.text_link_fn = reinterpret_cast<BYTE*>(&text_link);
     return a;
 }
 

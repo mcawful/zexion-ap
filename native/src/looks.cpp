@@ -96,8 +96,8 @@ void ItemLooks::undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palett
     d = {};
 }
 
-void ItemLooks::apply(const Places& at, const BYTE* pool, BYTE* base) {
-    if (at.pool == nullptr) return;
+void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
+    if (at.item_pool == nullptr) return;
     // Without the template's base, the stand-ins' palette, the records or the clock, nothing is
     // dressed.
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
@@ -121,7 +121,7 @@ void ItemLooks::apply(const Places& at, const BYTE* pool, BYTE* base) {
     bool ours[2] = {restyled(kStandInItem), restyled(kStandInProgression)};
     for (int slot = 0; slot < kSlots; ++slot) {
         const BYTE* seen = pool + slot * obj::kItemSize;
-        BYTE* object = at.pool + slot * obj::kItemSize;
+        BYTE* object = at.item_pool + slot * obj::kItemSize;
         Dressed& d = dressed_[slot];
         int32_t spawn = field<int32_t>(seen, obj::kSpawn);
         int16_t record = field<int16_t>(seen, obj::kRecord);
@@ -179,7 +179,7 @@ void ItemLooks::undress_flipped(BYTE* object, int slot, BYTE* base, BYTE* standi
     d = {};
 }
 
-BYTE* ItemLooks::item_frame_base(const Places& at) {
+BYTE* ItemLooks::item_frame_base(const GameAddresses& at) {
     BYTE* templates = read_pointer(at.sprite_templates);
     BYTE* item_template =
         templates != nullptr ? read_pointer(templates + sprite::kItemTemplate) : nullptr;
@@ -192,7 +192,7 @@ bool ItemLooks::shows_stand_in(const BYTE* o, const BYTE* base) {
            (frame == logo_frame(kStandInItem) || frame == logo_frame(kStandInProgression));
 }
 
-void ItemLooks::scan(const Places& at, BYTE* base) {
+void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     if (at.object_pool == nullptr || frames_to_scan_-- > 0) return;
     frames_to_scan_ = kScanFrames;
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
@@ -217,7 +217,7 @@ void ItemLooks::scan(const Places& at, BYTE* base) {
     }
 }
 
-void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palette, BYTE* records,
+void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                               int64_t clock, const bool (&ours)[2]) {
     if (at.object_pool == nullptr) return;
     auto shows_logo = [&](const BYTE* o) { return shows_stand_in(o, base); };
@@ -265,7 +265,7 @@ void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palett
     }
 }
 
-void ItemLooks::restore_flipped(const Places& at, BYTE* base, BYTE* standin_palette) {
+void ItemLooks::restore_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette) {
     for (int slot = 0; slot < kObjectSlots; ++slot) {
         if (flipped_dressed_[slot].spawn == 0) continue;
         if (at.object_pool == nullptr) {
@@ -278,8 +278,8 @@ void ItemLooks::restore_flipped(const Places& at, BYTE* base, BYTE* standin_pale
     frames_to_scan_ = 0;
 }
 
-void ItemLooks::restore(const Places& at) {
-    if (at.pool == nullptr || !dressed()) {
+void ItemLooks::restore(const GameAddresses& at) {
+    if (at.item_pool == nullptr || !dressed()) {
         flipped_slots_.clear();  // found again by the next scan
         frames_to_scan_ = 0;
         for (Dressed& d : dressed_) d = {};
@@ -290,7 +290,7 @@ void ItemLooks::restore(const Places& at) {
     BYTE* standin_palette = read_pointer(at.palette_table + kStandInPalette * 8);
     for (int slot = 0; slot < kSlots; ++slot) {
         if (dressed_[slot].spawn == 0) continue;
-        BYTE* object = at.pool + slot * obj::kItemSize;
+        BYTE* object = at.item_pool + slot * obj::kItemSize;
         BYTE probe[obj::kItemSize];
         if (!safe_read(object, probe, sizeof(probe))) {
             dressed_[slot] = {};

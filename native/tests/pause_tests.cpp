@@ -111,13 +111,13 @@ struct Pause {
         current = menu;
     }
 
-    zap::PauseAddresses addresses() {
-        zap::PauseAddresses a;
+    zap::GameAddresses addresses() {
+        zap::GameAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
-        a.equipment_fn = reinterpret_cast<void*>(&equipment_fn);
-        a.widget_handler = reinterpret_cast<void*>(&widget_handler);
+        a.equipment_fn = reinterpret_cast<BYTE*>(&equipment_fn);
+        a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler);
         a.sprite_templates = reinterpret_cast<BYTE*>(&templates_holder);
-        a.sprite_sheet_fn = reinterpret_cast<void*>(&sprite_sheet);
+        a.sprite_sheet_fn = reinterpret_cast<BYTE*>(&sprite_sheet);
         a.keys_branch = g_branch;
         return a;
     }
@@ -127,7 +127,7 @@ struct Pause {
 void test_the_row_shows_the_disks() {
     Pause p;
     zap::PauseDiskRow row;
-    zap::PauseAddresses a = p.addresses();
+    zap::GameAddresses a = p.addresses();
     row.set(zap::pause_row_text(2, 0));
     row.watch(a);
     check(branch() == 0xEB && row.patched(), "the panel always built (jne to jmp)");

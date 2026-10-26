@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "addresses.h"
 #include "game_mem.h"
 #include "menu.h"
 #include "apitem.h"
@@ -53,18 +54,6 @@ struct ClientState {
     bool mission_ending = false;  // its YES pressed, the ending not started yet
 };
 
-// The helper's wrappers the game is pointed at while a part is on (dllmain.cpp); set before
-// configure, which hands each part its own.
-struct Hooks {
-    void* panel = nullptr;
-    void* equipment = nullptr;
-    void* equipment_panel = nullptr;
-    void* mission_open = nullptr;
-    void* mission_yes = nullptr;
-    void* file_entry = nullptr;
-    void* map = nullptr;
-};
-
 class Game {
 public:
     // Game thread. Checks every kConfigKeys entry is present and placed right in `image` (code
@@ -80,7 +69,7 @@ public:
     // Popups not shown yet dropped (the client that sent them went away).
     void clear_popups() { popups_.clear(); }
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
-    void set_hooks(const Hooks& hooks) { hooks_ = hooks; }
+    void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
 
     // Game thread: puts back everything the helper changed (unload, a client going away); a
     // change held by a menu no longer open is gone with it. `callback`: ARCHIPELAGO's, to
@@ -134,10 +123,10 @@ public:
     }
     // The game's own handler for the game-mode panel, for the wrapper to call; null before
     // configure.
-    void* panel_handler() const { return menu_.panel_handler; }
+    void* panel_handler() const { return at_.panel_handler_fn; }
     // Game thread, from the wrapper after the game's handler: fits ARCHIPELAGO's hover border.
     void fit_archipelago_border() {
-        if (configured_ && choice_.installed()) choice_.fit_border(menu_);
+        if (configured_ && choice_.installed()) choice_.fit_border(at_);
     }
 
     // The options menu's ASSIST entry (menu.h, AssistLock): set_assists_locked arms it (the
@@ -175,12 +164,12 @@ public:
     const std::string& scan_line() const { return scan_line_; }
     // EQUIPMENT wrapped while discs are on (equip.h); the wrapper calls the game's, then
     // equipment_built.
-    void* equipment_fn() const { return equip_at_.equipment_fn; }
+    void* equipment_fn() const { return at_.equipment_fn; }
     void watch_equipment();
     void equipment_built();
     // The Energy Tank panel's handler while it shows the disk (equip.h): the helper's wrapper
     // calls the game's (equip_panel_fn), then equipment_event.
-    void* equip_panel_fn() const { return equip_at_.equip_panel_fn; }
+    void* equip_panel_fn() const { return at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
     // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
@@ -289,6 +278,8 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
+    GameAddresses at_;  // configure's; the hooks from set_hooks
+    BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
     void leave_offline_seed();
     void drop_offline_warning();
@@ -308,40 +299,13 @@ private:
     // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
-    BYTE* map_grid_ = nullptr;
-    BYTE* flags_ = nullptr;
-    BYTE* slot_array_ = nullptr;
-    BYTE* rando_slots_ = nullptr;
-    BYTE* base_ = nullptr;
-    BYTE* inventory_ = nullptr;
-    BYTE* save_loaded_ = nullptr;
-    BYTE* menu_state_ = nullptr;
-    BYTE* item_records_ = nullptr;  // holds a pointer to the records
-    BYTE* last_message_ = nullptr;  // holds a pointer; the sequence number follows at +8
-    BYTE* weapon_strip_gate_ = nullptr;
-    void* sound_system_ = nullptr;
-    void* message_fn_ = nullptr;
-    void* sound_fn_ = nullptr;
-    void* hud_number_fn_ = nullptr;
-    void* hud_layout_fn_ = nullptr;
-    void* energy_hud_fn_ = nullptr;
-    void* weapon_strip_fn_ = nullptr;
-    void* suit_color_fn_ = nullptr;
     std::deque<Popup> popups_;
     int frames_since_popup_ = 1 << 20;
 
-    BYTE* rando_blob_ = nullptr;
-    BYTE* rando_marker_ = nullptr;
-    BYTE* transition_fn_ = nullptr;     // holds the routine the game runs when its timer ends
-    BYTE* transition_timer_ = nullptr;  // 32-bit frames left
-    BYTE* current_slot_ = nullptr;      // 32-bit, 0-based
-    void* newgame_fn_ = nullptr;
     bool newgame_armed_ = false;
     NewGamePlan newgame_;
     std::string newgame_status_ = "idle";
 
-    MenuAddresses menu_;
-    Hooks hooks_;
     ArchipelagoChoice choice_;
     AssistLock assists_;
     bool assists_locked_ = false;
@@ -349,32 +313,18 @@ private:
     FontGlyph disk_glyph_{kDiskGlyph, kDiskRows};  // the disk's popup icon (equip.h)
     FontGlyph disk_header_[2] = {{kDiskHeaderGlyphs[0], kDiskHeaderRows[0]},
                                  {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
-    BYTE* randomizer_menu_ = nullptr;
-    void* placement_fn_ = nullptr;
-    void* rando_newgame_fn_ = nullptr;
     bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 
-    BYTE* event_table_ = nullptr;  // holds the pointer to the loaded area events
-    BYTE* event_count_ = nullptr;
-    BYTE* start_count_ = nullptr;  // 16-bit
-    BYTE* start_cells_ = nullptr;  // (x, y) 16-bit each
-    BYTE* start_flags_ = nullptr;
     // The start table: filled from the plan if the game has not built it, or checked against
     // it. Returns "" or why not.
     std::string ensure_start_table();
     EscapeSkip skip_;
-    BYTE* text_table_ = nullptr;  // holds the pointer to the loaded Text table
     ScanText scan_;
-    EquipAddresses equip_at_;
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;
-    MissionAddresses mission_at_;
-    PauseAddresses pause_at_;
     PauseDiskRow pause_row_;
-    FileAddresses files_at_;
     FileDisks files_;
     IntelChip intel_;
-    TitleAddresses title_at_;
     TitleLines title_;
     std::string title_error_;
     int map_frames_ = 0;  // frames until the next map look
@@ -384,37 +334,23 @@ private:
     std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
     bool labels_seed_loaded(bool in_play_only) const;
-    MapAddresses map_at_;
     MapCursorNames map_names_;
     bool discs_told_ = true;
     MissionPrompt mission_;
-    int mission_save_ = -1;  // *save_loaded_ when last watched (0 or 0xFF; -1: not yet)
+    int mission_save_ = -1;  // *save_loaded when last watched (0 or 0xFF; -1: not yet)
     std::string equip_status_ = "not shown yet";
     std::string scan_line_;
     int disc_count_ = 0, discs_required_ = 0;
     int scan_frames_ = 0;  // frames until the next scanner check
-    BYTE* sprite_texture_ = nullptr;  // holds the pointer to the sprite data
     ApItems ap_items_;
-    // The mov edx, 24 that sets the pickup popup's width for items with no icon (the stand-ins);
-    // set to the named label's width (docs/re/memory.md, "Other players' items").
-    BYTE* popup_width_code_ = nullptr;
-    BYTE* item_pool_ = nullptr;
-    BYTE* object_pool_ = nullptr;  // the general objects (items in reversed-gravity rooms)
-    BYTE* palette_table_ = nullptr;
-    BYTE* frame_clock_ = nullptr;
-    BYTE* sprite_templates_ = nullptr;
-    BYTE* event_handlers_ = nullptr;  // the area-event handlers, by event type
     // Runs a received item's pickup event (the Energy Shield's): "" or why not.
     std::string run_item_event(uint8_t item);
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
-    void* death_fn_ = nullptr;
-    BYTE* halt_flag_ = nullptr;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
     ItemLooks looks_;  // other Zexion players' items shown as themselves
-    ItemLooks::Places looks_places() const;
     // The item pool copied into pool_copy_, once a frame; null if it could not be read.
     const BYTE* read_item_pool();
     std::vector<BYTE> pool_copy_;

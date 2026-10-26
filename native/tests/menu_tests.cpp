@@ -34,7 +34,7 @@ struct Stand : stand_in::ModePanel {
 void test_install_and_restore() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     check(choice.install(a, &archipelago), "installs on the game-mode panel");
     check(stand.text() == "ARCHIPELAGO", "relabeled, each glyph's frame from its table");
     check(stand.callback() == reinterpret_cast<void*>(&archipelago), "points at the callback");
@@ -49,7 +49,7 @@ void test_install_and_restore() {
 void test_the_border_under_the_mouse_fits_archipelago() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     // The border as the game lays it out around a label at x = 160: eight pieces 8 long, but the
     // top and bottom edges (1, 5) 80.1, the right-hand ones at 240.1.
     BYTE pieces[8][0x160] = {};
@@ -110,16 +110,16 @@ void other_handler() { g_hook_calls += 5; }
 void test_the_panel_handler_is_the_helpers_while_installed() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
-    a.panel_hook = reinterpret_cast<void*>(&panel_hook);
+    zap::GameAddresses a = stand.addresses();
+    a.hooks.panel = reinterpret_cast<void*>(&panel_hook);
     void*& handler = *reinterpret_cast<void**>(stand.panel + 0x2F8);
-    check(choice.install(a, &archipelago) && handler == a.panel_hook,
+    check(choice.install(a, &archipelago) && handler == a.hooks.panel,
           "installing makes the panel's handler the helper's");
     check(!choice.install(a, &archipelago), "and the panel is still taken for the game-mode one");
-    check(choice.restore(a, &archipelago) && handler == a.panel_handler,
+    check(choice.restore(a, &archipelago) && handler == a.panel_handler_fn,
           "restoring puts the game's handler back");
     choice.install(a, &archipelago);
-    check(choice.release(a, &archipelago) && handler == a.panel_handler,
+    check(choice.release(a, &archipelago) && handler == a.panel_handler_fn,
           "and so does releasing after ARCHIPELAGO was chosen");
     handler = reinterpret_cast<void*>(&other_handler);  // a handler that is neither
     check(!choice.install(a, &archipelago) && handler == reinterpret_cast<void*>(&other_handler),
@@ -129,49 +129,49 @@ void test_the_panel_handler_is_the_helpers_while_installed() {
 void test_the_panel_handler_goes_back_whatever_became_of_the_choice() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
-    a.panel_hook = reinterpret_cast<void*>(&panel_hook);
+    zap::GameAddresses a = stand.addresses();
+    a.hooks.panel = reinterpret_cast<void*>(&panel_hook);
     void*& handler = *reinterpret_cast<void**>(stand.panel + 0x2F8);
     choice.install(a, &archipelago);
     // The choice no longer looks like the one relabeled: its callback is not the helper's.
     *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
     check(!choice.restore(a, &archipelago), "the choice is not written");
-    check(handler == a.panel_handler && !choice.holds_hook(),
+    check(handler == a.panel_handler_fn && !choice.holds_hook(),
           "but the game's handler is back on the panel");
 
     // Released likewise.
     *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
     choice.install(a, &archipelago);
     *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
-    check(!choice.release(a, &archipelago) && handler == a.panel_handler && !choice.holds_hook(),
+    check(!choice.release(a, &archipelago) && handler == a.panel_handler_fn && !choice.holds_hook(),
           "released: the game's handler back too");
 
     // A menu closed: freed with its panel, which is not written; the hook is forgotten.
     choice.install(a, &archipelago);
     BYTE file_screen[0x80] = {};
     stand.current = file_screen;
-    check(!choice.restore(a, &archipelago) && handler == a.panel_hook && !choice.holds_hook(),
+    check(!choice.restore(a, &archipelago) && handler == a.hooks.panel && !choice.holds_hook(),
           "a closed menu's panel is left as it is, and forgotten");
 
     // Another panel in the open menu's place: the old one is not known to be alive, so the hook
     // stays remembered (and the helper loaded) until the menu closes.
     stand.current = stand.menu;
-    handler = a.panel_handler;
+    handler = a.panel_handler_fn;
     *reinterpret_cast<void**>(stand.child + 0x2C0) = reinterpret_cast<void*>(&rando_menu);
     choice.install(a, &archipelago);
     BYTE replacement[0x300] = {};
     stand.panels[3] = replacement;
     choice.restore(a, &archipelago);
-    check(choice.holds_hook() && handler == a.panel_hook, "a panel swapped out: still held");
+    check(choice.holds_hook() && handler == a.hooks.panel, "a panel swapped out: still held");
     stand.panels[3] = stand.panel;
     choice.restore(a, &archipelago);
-    check(!choice.holds_hook() && handler == a.panel_handler, "put back once it is in place again");
+    check(!choice.holds_hook() && handler == a.panel_handler_fn, "put back once it is in place again");
 }
 
 void test_restore_when_another_menu_is_up() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     BYTE above[0x80] = {};
     Stand::at<BYTE*>(above, 0x78) = stand.menu;  // a menu opened on top; ours still open below
@@ -191,7 +191,7 @@ void test_restore_when_another_menu_is_up() {
 void test_a_closed_menu_is_forgotten_unwritten() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     // The game closed the menu: freed with its widgets, whose contents still look like ours.
     BYTE file_screen[0x80] = {};
@@ -204,7 +204,7 @@ void test_a_closed_menu_is_forgotten_unwritten() {
     choice.install(a, &archipelago);  // another menu on top: nothing to install
     stand.current = stand.menu;
     Stand fresh;
-    zap::MenuAddresses b = fresh.addresses();
+    zap::GameAddresses b = fresh.addresses();
     choice.install(b, &archipelago);
     fresh.current = nullptr;  // no menu at all (in play)
     check(!choice.restore(b, &archipelago) && fresh.text() == "ARCHIPELAGO",
@@ -214,7 +214,7 @@ void test_a_closed_menu_is_forgotten_unwritten() {
 void test_a_released_widget_is_left_alone() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     Stand::at<int32_t>(stand.child, 0x1C8) = 2;  // released, on the game's dead list
     check(!choice.restore(a, &archipelago), "a released widget is not written");
@@ -225,7 +225,7 @@ void test_a_released_widget_is_left_alone() {
 void test_the_callback_goes_back_even_if_the_label_changed() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     Stand::at<int32_t>(stand.label, 0x1D8) = 10;
     check(choice.restore(a, &archipelago), "restored");
@@ -235,7 +235,7 @@ void test_the_callback_goes_back_even_if_the_label_changed() {
 void test_release_keeps_the_label_and_returns_the_callback() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     check(choice.release(a, &archipelago), "released");
     check(stand.text() == "ARCHIPELAGO", "the label still reads ARCHIPELAGO");
@@ -244,7 +244,7 @@ void test_release_keeps_the_label_and_returns_the_callback() {
     check(stand.text() == "ARCHIPELAGO", "and nothing written after");
 
     Stand closed;
-    zap::MenuAddresses b = closed.addresses();
+    zap::GameAddresses b = closed.addresses();
     choice.install(b, &archipelago);
     BYTE file_screen[0x80] = {};
     closed.current = file_screen;  // the menu closed before the release
@@ -255,7 +255,7 @@ void test_release_keeps_the_label_and_returns_the_callback() {
 void test_a_label_left_as_archipelago_is_not_taken_for_the_original() {
     Stand stand;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = stand.addresses();
+    zap::GameAddresses a = stand.addresses();
     choice.install(a, &archipelago);
     choice.release(a, &archipelago);  // the menu outlived the new game, against expectation
     check(choice.install(a, &archipelago), "offered again on the same panel");
@@ -266,7 +266,7 @@ void test_a_label_left_as_archipelago_is_not_taken_for_the_original() {
 void test_a_new_panel_replaces_the_old() {
     Stand first, second;
     zap::ArchipelagoChoice choice;
-    zap::MenuAddresses a = first.addresses();
+    zap::GameAddresses a = first.addresses();
     choice.install(a, &archipelago);
     Stand::at<BYTE*>(second.menu, 0x78) = first.menu;  // a new menu on top of the old one
     first.current = second.menu;
@@ -326,7 +326,7 @@ struct Options : stand_in::OptionsMenu {
 void test_assist_lock_and_unlock() {
     Options options;
     zap::AssistLock lock;
-    zap::MenuAddresses a = options.addresses();
+    zap::GameAddresses a = options.addresses();
     check(lock.install(a), "locks ASSIST in the options menu's second panel");
     check(options.callback() == nullptr &&
               options.text() == "ASSIST" && options.code(6) == 0 &&
@@ -352,7 +352,7 @@ void test_assist_lock_and_unlock() {
 void test_assist_lock_moves_assist_past_the_selectable_entries() {
     Options options;
     zap::AssistLock lock;
-    zap::MenuAddresses a = options.addresses();
+    zap::GameAddresses a = options.addresses();
     BYTE* back = options.children[7];
     Options::at<int32_t>(options.second, 0x2DC) = 7;  // the cursor on BACK
     lock.install(a);
@@ -373,7 +373,7 @@ void test_assist_lock_moves_assist_past_the_selectable_entries() {
 void test_assist_lock_leaves_an_unexpected_order_alone() {
     Options options;
     zap::AssistLock lock;
-    zap::MenuAddresses a = options.addresses();
+    zap::GameAddresses a = options.addresses();
     Options::at<int32_t>(options.children[7], 0x1E0) = 3;  // not numbered by its place
     lock.install(a);
     check(lock.installed() && options.callback() == nullptr &&
@@ -387,7 +387,7 @@ void test_assist_lock_leaves_an_unexpected_order_alone() {
 void test_assist_lock_follows_the_menu() {
     Options options;
     zap::AssistLock lock;
-    zap::MenuAddresses a = options.addresses();
+    zap::GameAddresses a = options.addresses();
     lock.install(a);
     BYTE above[0x80] = {};
     Options::at<BYTE*>(above, 0x78) = options.menu;  // VIDEO, say, opened on top
@@ -412,7 +412,7 @@ void test_assist_lock_follows_the_menu() {
 void test_assist_lock_comes_off_even_if_the_label_changed() {
     Options options;
     zap::AssistLock lock;
-    zap::MenuAddresses a = options.addresses();
+    zap::GameAddresses a = options.addresses();
     lock.install(a);
     Options::at<int32_t>(options.glyphs[0], 0x1C4) = 'Z';  // relabeled while locked
     check(!lock.install(a) && lock.installed(),
@@ -438,8 +438,8 @@ void test_assist_lock_leaves_anything_else_alone() {
     {
         Options options;
         zap::AssistLock lock;
-        zap::MenuAddresses a = options.addresses();
-        a.assist_menu = nullptr;  // not configured
+        zap::GameAddresses a = options.addresses();
+        a.assist_menu_fn = nullptr;  // not configured
         check(!lock.install(a), "no ASSIST callback known: nothing found");
     }
     {

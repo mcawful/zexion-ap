@@ -40,8 +40,9 @@ constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
 constexpr intptr_t kFill = 0xF;
 
-bool is_entry_fn(const FileAddresses& a, void* fn) {
-    for (void* f : a.entry_fns) {
+// One of the entry handlers: the file select's, COPY FILE's or DELETE FILE's.
+bool is_entry_fn(const GameAddresses& a, void* fn) {
+    for (BYTE* f : {a.file_entry_fn, a.copy_entry_fn, a.delete_entry_fn}) {
         if (f != nullptr && fn == f) return true;
     }
     return false;
@@ -107,14 +108,14 @@ void* FileDisks::original(void* widget) const {
     return it == wrapped_.end() ? nullptr : it->second.original;
 }
 
-void FileDisks::on_event(const FileAddresses&, void* widget, intptr_t event) {
+void FileDisks::on_event(const GameAddresses&, void* widget, intptr_t event) {
     // The game's handlers take the event as 32 bits (cmp edx at 0xE1F3F).
     if (static_cast<int32_t>(event) != kFill || !on()) return;
     auto it = wrapped_.find(static_cast<BYTE*>(widget));
     if (it != wrapped_.end()) update(it->first, it->second);
 }
 
-void FileDisks::watch(const FileAddresses& a) {
+void FileDisks::watch(const GameAddresses& a) {
     // Entries whose menu has closed went with it.
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         it = is_open(a.current_menu, it->second.menu) ? std::next(it) : wrapped_.erase(it);
@@ -145,15 +146,15 @@ void FileDisks::watch(const FileAddresses& a) {
                     !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
-                if (h != a.hook && is_entry_fn(a, h) && a.hook != nullptr &&
+                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr &&
                     writable(entry + widget::kHandler, sizeof(void*))) {
                     wrapped_[entry] = Wrapped{menu, h};
-                    put(entry, widget::kHandler, a.hook);
-                    h = a.hook;
+                    put(entry, widget::kHandler, a.hooks.file_entry);
+                    h = a.hooks.file_entry;
                 }
                 // Only the entries it has wrapped, whose state it keeps.
                 auto it = wrapped_.find(entry);
-                if (h == a.hook && it != wrapped_.end()) update(entry, it->second);
+                if (h == a.hooks.file_entry && it != wrapped_.end()) update(entry, it->second);
             }
         }
         if (!read(menu, menu::kBelow, menu)) break;
@@ -249,7 +250,7 @@ void FileDisks::put_back(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     w.written = false;
 }
 
-void FileDisks::restore(const FileAddresses& a) {
+void FileDisks::restore(const GameAddresses& a) {
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         BYTE* entry = it->first;
         Wrapped& w = it->second;
@@ -269,7 +270,7 @@ void FileDisks::restore(const FileAddresses& a) {
             place_count(g, false);
         }
         void* h = nullptr;
-        if (read(entry, widget::kHandler, h) && h == a.hook) {
+        if (read(entry, widget::kHandler, h) && h == a.hooks.file_entry) {
             if (!writable(entry + widget::kHandler, sizeof(void*))) {
                 ++it;  // still the helper's: kept, so an unload refuses
                 continue;

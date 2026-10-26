@@ -112,7 +112,7 @@ void show(BYTE* object, size_t length, bool visible) {
 
 // Makes one line as the title routine makes the copyright line, styled as `model` (the game's
 // line). Returns "" or why not.
-std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const std::string& text,
+std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std::string& text,
                       bool copyright, int y, BYTE*& made) {
     BYTE* mg[kGameLineLength] = {};
     BYTE* palette = nullptr;
@@ -179,7 +179,7 @@ std::string make_line(const TitleAddresses& a, BYTE* list, BYTE* model, const st
 
 }  // namespace
 
-std::string TitleLines::watch(const TitleAddresses& a, bool client) {
+std::string TitleLines::watch(const GameAddresses& a, bool client) {
     if (mod_line_.empty() || frames_-- > 0) return "";
     frames_ = kLookFrames;
     Look l = look(a.draw_layer, mod_line_);
@@ -213,7 +213,7 @@ std::string TitleLines::watch(const TitleAddresses& a, bool client) {
     return why;
 }
 
-void TitleLines::hide(const TitleAddresses& a) {
+void TitleLines::hide(const GameAddresses& a) {
     Look l = look(a.draw_layer, mod_line_);
     if (l.mod_line != nullptr) show(l.mod_line, mod_line_.size(), false);
     if (l.credit != nullptr) show(l.credit, sizeof(kTitleCredit) - 1, false);

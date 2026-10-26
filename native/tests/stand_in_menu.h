@@ -74,12 +74,12 @@ struct ModePanel {
         }
     }
 
-    zap::MenuAddresses addresses() {
-        zap::MenuAddresses a;
+    zap::GameAddresses addresses() {
+        zap::GameAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
-        a.panel_handler = panel_handler_ptr;
-        a.widget_handler = widget_handler_ptr;
-        a.rando_menu = rando_menu_ptr;
+        a.panel_handler_fn = static_cast<BYTE*>(panel_handler_ptr);
+        a.widget_handler_fn = static_cast<BYTE*>(widget_handler_ptr);
+        a.rando_menu_fn = static_cast<BYTE*>(rando_menu_ptr);
         return a;
     }
 
@@ -163,11 +163,11 @@ struct OptionsMenu {
     // rest empty, so a lookup reads the table and nothing past it.
     BYTE* palettes[65] = {palette_objects[0]};
 
-    zap::MenuAddresses addresses() {
-        zap::MenuAddresses a;
+    zap::GameAddresses addresses() {
+        zap::GameAddresses a;
         a.current_menu = reinterpret_cast<BYTE*>(&current);
-        a.widget_handler = widget_handler_ptr;
-        a.assist_menu = assist_menu_ptr;
+        a.widget_handler_fn = static_cast<BYTE*>(widget_handler_ptr);
+        a.assist_menu_fn = static_cast<BYTE*>(assist_menu_ptr);
         a.palette_table = reinterpret_cast<BYTE*>(palettes);
         return a;
     }

@@ -22,14 +22,9 @@
 #include <cstdint>
 #include <string>
 
-namespace zap {
+#include "addresses.h"
 
-struct TitleAddresses {
-    BYTE* draw_layer = nullptr;      // holds the draw list new screen objects join
-    void* text_new_fn = nullptr;     // (characters, length, 32): a text object and its glyphs
-    void* text_place_fn = nullptr;   // (text, x, y)
-    void* text_link_fn = nullptr;    // (text): its glyphs into its list
-};
+namespace zap {
 
 // The version and the credit (the credit's first character becomes the © glyph, as the game's
 // own line's).
@@ -51,9 +46,9 @@ public:
     // is up without them, and shows them as the game shows its line's ©. Returns "" or why the
     // lines could not be made on this title. `client`: a client is connected (the hint is
     // hidden).
-    std::string watch(const TitleAddresses& a, bool client);
+    std::string watch(const GameAddresses& a, bool client);
     // Game thread: the lines hidden, if up (before an unload).
-    void hide(const TitleAddresses& a);
+    void hide(const GameAddresses& a);
     // Whether the lines were in the list at the last look (for `hello`).
     bool shown() const { return shown_; }
 

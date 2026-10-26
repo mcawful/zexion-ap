@@ -499,6 +499,7 @@ They share `tests/check.h`; `tests/pipe_client.h` is the pipe client of `parts`,
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout |

@@ -132,7 +132,7 @@ bool live_run(BYTE** children, int32_t from, int32_t to, BYTE* (&run)[kMaxChildr
 
 }  // namespace
 
-BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* expected_callback) {
+BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const GameAddresses& a, void* expected_callback) {
     BYTE* panel = panel_of(menu);
     void* handler = nullptr;
     int32_t capacity = 0;
@@ -142,24 +142,24 @@ BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* exp
     void* callback = nullptr;
     void* child_handler = nullptr;
     if (!read(panel, panel::kHandler, handler) ||
-        (handler != a.panel_handler && (a.panel_hook == nullptr || handler != a.panel_hook)) ||
+        (handler != a.panel_handler_fn && (a.hooks.panel == nullptr || handler != a.hooks.panel)) ||
         !read(panel, panel::kCapacity, capacity) || capacity != 4 ||
         !read(panel, panel::kChildren, children) ||
         !read(reinterpret_cast<BYTE*>(children), 8, child) ||
         !read(child, sprite::kReleased, released) ||
         released != 0 || !read(child, widget::kCallback, callback) ||
         callback != expected_callback || !read(child, widget::kHandler, child_handler) ||
-        child_handler != a.widget_handler) {
+        child_handler != a.widget_handler_fn) {
         return nullptr;
     }
     return child;
 }
 
-bool ArchipelagoChoice::menu_open(const MenuAddresses& a) const {
+bool ArchipelagoChoice::menu_open(const GameAddresses& a) const {
     return is_open(a.current_menu, menu_);
 }
 
-bool ArchipelagoChoice::put_back(const MenuAddresses& a, WidgetCallback callback) {
+bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback) {
     // Only into a widget whose menu is still open, still holding this helper's callback.
     if (!menu_open(a) || choice_in(menu_, a, reinterpret_cast<void*>(callback)) != child_) {
         return false;
@@ -173,7 +173,7 @@ bool ArchipelagoChoice::put_back(const MenuAddresses& a, WidgetCallback callback
     }
     // The callback goes back even if the label changed shape: the widget is alive and would
     // otherwise keep pointing into the helper.
-    at<void*>(child_, widget::kCallback) = a.rando_menu;
+    at<void*>(child_, widget::kCallback) = a.rando_menu_fn;
     return true;
 }
 
@@ -187,7 +187,7 @@ BYTE* ArchipelagoChoice::panel_of(BYTE* menu) {
     return panel;
 }
 
-void ArchipelagoChoice::put_handler_back(const MenuAddresses& a) {
+void ArchipelagoChoice::put_handler_back(const GameAddresses& a) {
     if (hook_panel_ == nullptr) return;
     if (!is_open(a.current_menu, hook_menu_)) {
         // Closed: its panels were freed with it (docs/re/memory.md, "The game-mode panel").
@@ -198,13 +198,13 @@ void ArchipelagoChoice::put_handler_back(const MenuAddresses& a) {
     // to be alive, so it stays remembered (and the helper loaded) until the menu closes.
     void* handler = nullptr;
     if (panel_of(hook_menu_) != hook_panel_ || !read(hook_panel_, panel::kHandler, handler)) return;
-    if (handler == a.panel_hook) {
-        at<void*>(hook_panel_, panel::kHandler) = a.panel_handler;
+    if (handler == a.hooks.panel) {
+        at<void*>(hook_panel_, panel::kHandler) = a.panel_handler_fn;
     }
     hook_menu_ = hook_panel_ = nullptr;
 }
 
-bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback) {
+bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback) {
     BYTE* top = nullptr;
     if (!read(a.current_menu, 0, top)) top = nullptr;
     if (child_ != nullptr) {
@@ -217,7 +217,7 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     }
     put_handler_back(a);
     if (top == nullptr || hook_panel_ != nullptr) return false;
-    BYTE* child = choice_in(top, a, a.rando_menu);
+    BYTE* child = choice_in(top, a, a.rando_menu_fn);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
     // A label already reading ARCHIPELAGO (left by `release`) saves RANDOMIZER as its original.
@@ -248,9 +248,9 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     // out (only over the game's own; checked by choice_in on the way).
     BYTE* panel = panel_of(top);
     void* handler = nullptr;
-    if (panel != nullptr && a.panel_hook != nullptr && read(panel, panel::kHandler, handler) &&
-        handler == a.panel_handler) {
-        at<void*>(panel, panel::kHandler) = a.panel_hook;
+    if (panel != nullptr && a.hooks.panel != nullptr && read(panel, panel::kHandler, handler) &&
+        handler == a.panel_handler_fn) {
+        at<void*>(panel, panel::kHandler) = a.hooks.panel;
         hook_menu_ = top;
         hook_panel_ = panel;
     }
@@ -259,7 +259,7 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
     return true;
 }
 
-bool ArchipelagoChoice::fit_border(const MenuAddresses& a) {
+bool ArchipelagoChoice::fit_border(const GameAddresses& a) {
     if (child_ == nullptr || !menu_open(a)) return false;
     BYTE* panel = panel_of(menu_);
     BYTE** children = nullptr;
@@ -302,17 +302,17 @@ bool ArchipelagoChoice::fit_border(const MenuAddresses& a) {
     return true;
 }
 
-bool ArchipelagoChoice::release(const MenuAddresses& a, WidgetCallback callback) {
+bool ArchipelagoChoice::release(const GameAddresses& a, WidgetCallback callback) {
     put_handler_back(a);
     if (child_ == nullptr) return false;
     bool put = menu_open(a) && choice_in(menu_, a, reinterpret_cast<void*>(callback)) == child_;
-    if (put) at<void*>(child_, widget::kCallback) = a.rando_menu;
+    if (put) at<void*>(child_, widget::kCallback) = a.rando_menu_fn;
     child_ = nullptr;
     menu_ = nullptr;
     return put;
 }
 
-bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback) {
+bool ArchipelagoChoice::restore(const GameAddresses& a, WidgetCallback callback) {
     put_handler_back(a);
     if (child_ == nullptr) return false;
     bool put = put_back(a, callback);
@@ -321,7 +321,7 @@ bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback)
     return put;
 }
 
-BYTE* AssistLock::assist_in(BYTE* menu, const MenuAddresses& a, void* expected_callback,
+BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_callback,
                             BYTE** panel_out, int32_t* index_out) {
     if (expected_callback == nullptr) return nullptr;
     BYTE* found = nullptr;
@@ -331,7 +331,7 @@ BYTE* AssistLock::assist_in(BYTE* menu, const MenuAddresses& a, void* expected_c
         void* handler = nullptr;
         if (!read(child, sprite::kReleased, released) || released != 0 ||
             !read(child, widget::kCallback, callback) || callback != expected_callback ||
-            !read(child, widget::kHandler, handler) || handler != a.widget_handler) {
+            !read(child, widget::kHandler, handler) || handler != a.widget_handler_fn) {
             return false;
         }
         BYTE* glyphs[kAssistLength] = {};
@@ -351,17 +351,17 @@ BYTE* AssistLock::assist_in(BYTE* menu, const MenuAddresses& a, void* expected_c
     return found;
 }
 
-bool AssistLock::still_locked(const MenuAddresses& a) const {
+bool AssistLock::still_locked(const GameAddresses& a) const {
     if (child_ == nullptr) return false;
     bool locked = false;
     for_each_child(menu_, [&](BYTE*, int32_t, BYTE* child) {
         if (child != child_) return false;
         int32_t released = 1;
-        void* held = a.assist_menu;
+        void* held = a.assist_menu_fn;
         void* handler = nullptr;
         locked = read(child, sprite::kReleased, released) && released == 0 &&
                  read(child, widget::kCallback, held) && held == nullptr &&
-                 read(child, widget::kHandler, handler) && handler == a.widget_handler;
+                 read(child, widget::kHandler, handler) && handler == a.widget_handler_fn;
         return true;  // found: the first holding it decides
     });
     return locked;
@@ -371,7 +371,7 @@ namespace {
 
 // The locked look: every glyph in the locked style under the locked palette (when the palette
 // table gives it), the padlock in the eighth.
-void draw_locked(BYTE* (&glyphs)[kAssistLength], const MenuAddresses& a) {
+void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
     BYTE* palette = nullptr;
     BYTE probe = 0;
     if (!read(a.palette_table, kLockedPalette * 8, palette) || !read(palette, 0, probe)) {
@@ -396,7 +396,7 @@ void draw_locked(BYTE* (&glyphs)[kAssistLength], const MenuAddresses& a) {
 
 }  // namespace
 
-bool AssistLock::install(const MenuAddresses& a) {
+bool AssistLock::install(const GameAddresses& a) {
     BYTE* top = nullptr;
     if (!read(a.current_menu, 0, top)) top = nullptr;
     if (child_ != nullptr) {
@@ -413,7 +413,7 @@ bool AssistLock::install(const MenuAddresses& a) {
     if (top == nullptr) return false;
     BYTE* panel = nullptr;
     int32_t index = -1;
-    BYTE* child = assist_in(top, a, a.assist_menu, &panel, &index);
+    BYTE* child = assist_in(top, a, a.assist_menu_fn, &panel, &index);
     BYTE* glyphs[kAssistLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
     for (int i = 0; i < kAssistLength; ++i) {
@@ -490,7 +490,7 @@ void AssistLock::move_back() {
     if (selected >= index && selected < selectable - 1) ++selected;
 }
 
-bool AssistLock::restore(const MenuAddresses& a) {
+bool AssistLock::restore(const GameAddresses& a) {
     if (child_ == nullptr) return false;
     // The callback goes back even if the label changed meanwhile: the widget is alive, and ASSIST
     // would otherwise stay shut.
@@ -520,7 +520,7 @@ bool AssistLock::restore(const MenuAddresses& a) {
                 }
             }
         }
-        at<void*>(child_, widget::kCallback) = a.assist_menu;
+        at<void*>(child_, widget::kCallback) = a.assist_menu_fn;
         move_back();
     }
     child_ = nullptr;
