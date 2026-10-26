@@ -26,7 +26,50 @@ BYTE* read_pointer(const BYTE* at) {
     return p;
 }
 
+// How item `item` looks at `clock`: the frame its record's animation is on, and its palette.
+struct Look {
+    int frame = 0;
+    int16_t palette = 0;
+    BYTE* palette_object = nullptr;
+};
+
+// The look of item `item` (its record in `records`) for an object whose frame list holds
+// `count` frames: false if the record does not read, its frames do not lie in the list, or its
+// palette is not in the table.
+bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t clock,
+             int32_t count, Look& out) {
+    BYTE r[record::kSize];
+    if (!safe_read(records + item * record::kSize, r, sizeof(r))) return false;
+    int16_t first = field<int16_t>(r, record::kFrame);
+    int16_t ticks = field<int16_t>(r, record::kTicks);
+    int16_t frames = field<int16_t>(r, record::kFrames);
+    int palette = static_cast<int8_t>(r[record::kPalette]);
+    if (ticks <= 0 || frames <= 0 || first < 0 || first + frames > count || palette < 0 ||
+        palette >= kPalettes) {
+        return false;
+    }
+    out.palette_object = read_pointer(palette_table + palette * 8);
+    if (out.palette_object == nullptr) return false;
+    out.frame = first + static_cast<int>((clock / ticks) % frames);
+    out.palette = static_cast<int16_t>(palette);
+    return true;
+}
+
+// The object drawn in the look's palette, if it is not already (`seen`: its copy).
+void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
+    if (field<BYTE*>(seen, sprite::kPalette) == look.palette_object) return;
+    put(object, sprite::kPalette, look.palette_object);
+    put(object, sprite::kPaletteNumber, look.palette);
+}
+
 }  // namespace
+
+int ItemLooks::item_at(uint8_t row, uint8_t column) const {
+    if (row >= kMapSide || column >= kMapSide) return -1;
+    auto it = items_.find(row * kMapSide + column);
+    if (it == items_.end() || it->second < 0 || it->second >= record::kCount) return -1;
+    return it->second;
+}
 
 bool ItemLooks::dressed() const {
     for (const Dressed& d : dressed_) {
@@ -92,9 +135,8 @@ void ItemLooks::apply(const Places& at) {
             undress(object, slot, base, standin_palette);  // put back while still ours
             continue;
         }
-        uint8_t row = seen[obj::kItemRow], column = seen[obj::kItemColumn];
-        auto it = row < 54 && column < 54 ? items_.find(row * 54 + column) : items_.end();
-        if (it == items_.end() || it->second < 0 || it->second >= record::kCount) {
+        int item = item_at(seen[obj::kItemRow], seen[obj::kItemColumn]);
+        if (item < 0) {
             if (d.spawn != 0) undress(object, slot, base, standin_palette);
             continue;
         }
@@ -104,32 +146,14 @@ void ItemLooks::apply(const Places& at) {
         const bool expected =
             d.spawn == 0 ? now_base == base && field<BYTE*>(seen, sprite::kPalette) == standin_palette
                          : now_base == d.base || now_base == base;
-        if (!expected) {
+        Look look;
+        if (!expected || !look_of(at.palette_table, records, item, clock,
+                                  field<int32_t>(seen, sprite::kFrameCount), look)) {
             continue;
         }
-        BYTE record_bytes[record::kSize];
-        if (!safe_read(records + it->second * record::kSize, record_bytes, sizeof(record_bytes))) {
-            continue;
-        }
-        int16_t first = field<int16_t>(record_bytes, record::kFrame);
-        int16_t ticks = field<int16_t>(record_bytes, record::kTicks);
-        int16_t frames = field<int16_t>(record_bytes, record::kFrames);
-        int palette = static_cast<int8_t>(record_bytes[record::kPalette]);
-        int32_t count = field<int32_t>(seen, sprite::kFrameCount);
-        if (ticks <= 0 || frames <= 0 || first < 0 || first + frames > count || palette < 0 ||
-            palette >= kPalettes) {
-            continue;
-        }
-        BYTE* item_palette = read_pointer(at.palette_table + palette * 8);
-        if (item_palette == nullptr) continue;
-        int frame = first + static_cast<int>((clock / ticks) % frames);
-        BYTE* new_base = base + (frame - logo_frame(record)) * sprite::kFrameSize;
+        BYTE* new_base = base + (look.frame - logo_frame(record)) * sprite::kFrameSize;
         if (now_base != new_base) put(object, sprite::kFrameList, new_base);
-        if (field<BYTE*>(seen, sprite::kPalette) != item_palette) {
-            std::memcpy(object + sprite::kPalette, &item_palette, sizeof(item_palette));
-            int16_t number = static_cast<int16_t>(palette);
-            std::memcpy(object + sprite::kPaletteNumber, &number, sizeof(number));
-        }
+        put_palette(object, seen, look);
         d = {spawn, new_base};
     }
     apply_flipped(at, base, standin_palette, records, clock, ours);
@@ -227,9 +251,8 @@ void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palett
             undress_flipped(object, slot, base, standin_palette);
             continue;
         }
-        uint8_t row = seen[obj::kGeneralRow], column = seen[obj::kGeneralColumn];
-        auto it = row < 54 && column < 54 ? items_.find(row * 54 + column) : items_.end();
-        if (it == items_.end() || it->second < 0 || it->second >= record::kCount) {
+        int item = item_at(seen[obj::kGeneralRow], seen[obj::kGeneralColumn]);
+        if (item < 0) {
             undress_flipped(object, slot, base, standin_palette);
             continue;
         }
@@ -237,29 +260,14 @@ void ItemLooks::apply_flipped(const Places& at, BYTE* base, BYTE* standin_palett
         // palette are written, so whatever frame its own code sets, nothing points outside the
         // list.
         if (d.spawn == 0 && field<BYTE*>(seen, sprite::kPalette) != standin_palette) continue;
-        BYTE record_bytes[record::kSize];
-        if (!safe_read(records + it->second * record::kSize, record_bytes, sizeof(record_bytes))) {
-            continue;
-        }
-        int16_t first = field<int16_t>(record_bytes, record::kFrame);
-        int16_t ticks = field<int16_t>(record_bytes, record::kTicks);
-        int16_t frames = field<int16_t>(record_bytes, record::kFrames);
-        int palette = static_cast<int8_t>(record_bytes[record::kPalette]);
         int32_t count = field<int32_t>(seen, sprite::kFrameCount);
-        if (ticks <= 0 || frames <= 0 || first < 0 || first + frames > count || palette < 0 ||
-            palette >= kPalettes || frame < 0 || frame >= count) {
+        Look look;
+        if (frame < 0 || frame >= count ||
+            !look_of(at.palette_table, records, item, clock, count, look)) {
             continue;
         }
-        BYTE* item_palette = read_pointer(at.palette_table + palette * 8);
-        if (item_palette == nullptr) continue;
-        int wanted = first + static_cast<int>((clock / ticks) % frames);
-        BYTE* shown = base + static_cast<ptrdiff_t>(wanted) * sprite::kFrameSize;
-        std::memcpy(object + sprite::kFrameShown, &shown, sizeof(shown));
-        if (field<BYTE*>(seen, sprite::kPalette) != item_palette) {
-            std::memcpy(object + sprite::kPalette, &item_palette, sizeof(item_palette));
-            int16_t number = static_cast<int16_t>(palette);
-            std::memcpy(object + sprite::kPaletteNumber, &number, sizeof(number));
-        }
+        put(object, sprite::kFrameShown, base + look.frame * sprite::kFrameSize);
+        put_palette(object, seen, look);
         d = {spawn, base};
     }
 }

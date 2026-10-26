@@ -72,11 +72,71 @@ bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
     return true;
 }
 
+// A live menu's panel list and its count (1 to kMaxPanels), or false.
+bool panels_of(const BYTE* menu, BYTE**& panels, int32_t& count) {
+    return read(menu, menu::kPanels, panels) && read(menu, menu::kPanelCount, count) &&
+           count > 0 && count <= kMaxPanels;
+}
+
+// Whether `wanted` is one of `menu`'s panels.
+bool lists_panel(const BYTE* menu, const BYTE* wanted) {
+    BYTE** panels = nullptr;
+    int32_t count = 0;
+    if (!panels_of(menu, panels, count)) return false;
+    for (int32_t p = 0; p < count; ++p) {
+        BYTE* panel = nullptr;
+        if (read(reinterpret_cast<BYTE*>(panels), p * 8, panel) && panel == wanted) return true;
+    }
+    return false;
+}
+
+// Calls fn(panel, index, child) for each child of each of `menu`'s panels whose children read
+// (1 to kMaxChildren of them), skipping slots that do not read or hold none, until fn returns
+// true; returns whether one did.
+template <typename Fn>
+bool for_each_child(const BYTE* menu, Fn&& fn) {
+    BYTE** panels = nullptr;
+    int32_t count = 0;
+    if (!panels_of(menu, panels, count)) return false;
+    for (int32_t p = 0; p < count; ++p) {
+        BYTE* panel = nullptr;
+        int32_t capacity = 0;
+        BYTE** children = nullptr;
+        if (!read(reinterpret_cast<BYTE*>(panels), p * 8, panel) || panel == nullptr ||
+            !read(panel, panel::kCapacity, capacity) || capacity <= 0 ||
+            capacity > kMaxChildren || !read(panel, panel::kChildren, children)) {
+            continue;
+        }
+        for (int32_t c = 0; c < capacity; ++c) {
+            BYTE* child = nullptr;
+            if (!read(reinterpret_cast<BYTE*>(children), c * 8, child) || child == nullptr) {
+                continue;
+            }
+            if (fn(panel, c, child)) return true;
+        }
+    }
+    return false;
+}
+
+// Children `from` to `to` - 1 of a panel's list into `run`, each live and numbered by its place
+// (widget::kIndex); false if any is not.
+bool live_run(BYTE** children, int32_t from, int32_t to, BYTE* (&run)[kMaxChildren]) {
+    if (to > kMaxChildren) return false;
+    for (int32_t k = from; k < to; ++k) {
+        int32_t released = 1, place = -1;
+        if (!read(reinterpret_cast<BYTE*>(children), k * 8, run[k]) || run[k] == nullptr ||
+            !read(run[k], sprite::kReleased, released) || released != 0 ||
+            !read(run[k], widget::kIndex, place) || place != k) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* expected_callback) {
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
+    BYTE* panel = panel_of(menu);
     void* handler = nullptr;
     int32_t capacity = 0;
     BYTE** children = nullptr;
@@ -84,9 +144,7 @@ BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const MenuAddresses& a, void* exp
     int32_t released = 1;
     void* callback = nullptr;
     void* child_handler = nullptr;
-    if (!read(menu, 0, panels) ||
-        !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel) ||
-        !read(panel, panel::kHandler, handler) ||
+    if (!read(panel, panel::kHandler, handler) ||
         (handler != a.panel_handler && (a.panel_hook == nullptr || handler != a.panel_hook)) ||
         !read(panel, panel::kCapacity, capacity) || capacity != 4 ||
         !read(panel, panel::kChildren, children) ||
@@ -125,7 +183,8 @@ bool ArchipelagoChoice::put_back(const MenuAddresses& a, WidgetCallback callback
 BYTE* ArchipelagoChoice::panel_of(BYTE* menu) {
     BYTE** panels = nullptr;
     BYTE* panel = nullptr;
-    if (!read(menu, 0, panels) || !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel)) {
+    if (!read(menu, menu::kPanels, panels) ||
+        !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel)) {
         return nullptr;
     }
     return panel;
@@ -206,16 +265,13 @@ bool ArchipelagoChoice::install(const MenuAddresses& a, WidgetCallback callback)
 
 bool ArchipelagoChoice::fit_border(const MenuAddresses& a) {
     if (child_ == nullptr || !menu_open(a)) return false;
-    BYTE** panels = nullptr;
-    BYTE* panel = nullptr;
+    BYTE* panel = panel_of(menu_);
     BYTE** children = nullptr;
     BYTE* child = nullptr;
     int32_t selected = -1, width = 0;
     BYTE* label = nullptr;
     double label_x = 0;
-    if (!read(menu_, 0, panels) ||
-        !read(reinterpret_cast<BYTE*>(panels), kPanelIndex * 8, panel) ||
-        !read(panel, panel::kChildren, children) ||
+    if (!read(panel, panel::kChildren, children) ||
         !read(reinterpret_cast<BYTE*>(children), 8, child) || child != child_ ||
         !read(panel, kPanelSelected, selected) || selected != 1 ||
         !read(panel, kPanelBorderWidth, width) || width != kGameBorderWidth ||
@@ -271,82 +327,48 @@ bool ArchipelagoChoice::restore(const MenuAddresses& a, WidgetCallback callback)
 
 BYTE* AssistLock::assist_in(BYTE* menu, const MenuAddresses& a, void* expected_callback,
                             BYTE** panel_out, int32_t* index_out) {
-    BYTE** panels = nullptr;
-    int32_t count = 0;
-    if (expected_callback == nullptr || !read(menu, 0, panels) ||
-        !read(menu, menu::kPanelCount, count) || count <= 0 || count > kMaxPanels) {
-        return nullptr;
-    }
-    for (int32_t p = 0; p < count; ++p) {
-        BYTE* panel = nullptr;
-        int32_t capacity = 0;
-        BYTE** children = nullptr;
-        if (!read(reinterpret_cast<BYTE*>(panels), p * 8, panel) || panel == nullptr ||
-            !read(panel, panel::kCapacity, capacity) || capacity <= 0 ||
-            capacity > kMaxChildren || !read(panel, panel::kChildren, children)) {
-            continue;
+    if (expected_callback == nullptr) return nullptr;
+    BYTE* found = nullptr;
+    for_each_child(menu, [&](BYTE* panel, int32_t index, BYTE* child) {
+        int32_t released = 1;
+        void* callback = nullptr;
+        void* handler = nullptr;
+        if (!read(child, sprite::kReleased, released) || released != 0 ||
+            !read(child, widget::kCallback, callback) || callback != expected_callback ||
+            !read(child, widget::kHandler, handler) || handler != a.widget_handler) {
+            return false;
         }
-        for (int32_t c = 0; c < capacity; ++c) {
-            BYTE* child = nullptr;
-            int32_t released = 1;
-            void* callback = nullptr;
-            void* handler = nullptr;
-            if (!read(reinterpret_cast<BYTE*>(children), c * 8, child) || child == nullptr ||
-                !read(child, sprite::kReleased, released) || released != 0 ||
-                !read(child, widget::kCallback, callback) || callback != expected_callback ||
-                !read(child, widget::kHandler, handler) || handler != a.widget_handler) {
-                continue;
-            }
-            BYTE* glyphs[kAssistLength] = {};
-            if (!glyphs_of(child, glyphs)) continue;
-            bool reads_assist = true;
-            for (int i = 0; i < kAssistLength; ++i) {
-                int32_t ch = 0;
-                if (!read(glyphs[i], sprite::kFrameIndex, ch) ||
-                    ch != static_cast<unsigned char>(kAssist[i])) {
-                    reads_assist = false;
-                }
-            }
-            if (reads_assist) {
-                if (panel_out != nullptr) *panel_out = panel;
-                if (index_out != nullptr) *index_out = c;
-                return child;
+        BYTE* glyphs[kAssistLength] = {};
+        if (!glyphs_of(child, glyphs)) return false;
+        for (int i = 0; i < kAssistLength; ++i) {
+            int32_t ch = 0;
+            if (!read(glyphs[i], sprite::kFrameIndex, ch) ||
+                ch != static_cast<unsigned char>(kAssist[i])) {
+                return false;
             }
         }
-    }
-    return nullptr;
+        if (panel_out != nullptr) *panel_out = panel;
+        if (index_out != nullptr) *index_out = index;
+        found = child;
+        return true;
+    });
+    return found;
 }
 
 bool AssistLock::still_locked(const MenuAddresses& a) const {
-    BYTE** panels = nullptr;
-    int32_t count = 0;
-    if (child_ == nullptr || !read(menu_, 0, panels) || !read(menu_, menu::kPanelCount, count) ||
-        count <= 0 || count > kMaxPanels) {
-        return false;
-    }
-    for (int32_t p = 0; p < count; ++p) {
-        BYTE* panel = nullptr;
-        int32_t capacity = 0;
-        BYTE** children = nullptr;
-        if (!read(reinterpret_cast<BYTE*>(panels), p * 8, panel) || panel == nullptr ||
-            !read(panel, panel::kCapacity, capacity) || capacity <= 0 ||
-            capacity > kMaxChildren || !read(panel, panel::kChildren, children)) {
-            continue;
-        }
-        for (int32_t c = 0; c < capacity; ++c) {
-            BYTE* child = nullptr;
-            if (!read(reinterpret_cast<BYTE*>(children), c * 8, child) || child != child_) {
-                continue;
-            }
-            int32_t released = 1;
-            void* held = a.assist_menu;
-            void* handler = nullptr;
-            return read(child, sprite::kReleased, released) && released == 0 &&
-                   read(child, widget::kCallback, held) && held == nullptr &&
-                   read(child, widget::kHandler, handler) && handler == a.widget_handler;
-        }
-    }
-    return false;
+    if (child_ == nullptr) return false;
+    bool locked = false;
+    for_each_child(menu_, [&](BYTE*, int32_t, BYTE* child) {
+        if (child != child_) return false;
+        int32_t released = 1;
+        void* held = a.assist_menu;
+        void* handler = nullptr;
+        locked = read(child, sprite::kReleased, released) && released == 0 &&
+                 read(child, widget::kCallback, held) && held == nullptr &&
+                 read(child, widget::kHandler, handler) && handler == a.widget_handler;
+        return true;  // found: the first holding it decides
+    });
+    return locked;
 }
 
 namespace {
@@ -426,24 +448,17 @@ void AssistLock::move_out(BYTE* panel, int32_t index) {
     }
     // Every child from ASSIST to the last selectable one live and numbered by its place.
     BYTE* moved[kMaxChildren] = {};
-    for (int32_t k = index; k < selectable; ++k) {
-        int32_t released = 1, place = -1;
-        if (!read(reinterpret_cast<BYTE*>(children), k * 8, moved[k]) || moved[k] == nullptr ||
-            !read(moved[k], sprite::kReleased, released) || released != 0 ||
-            !read(moved[k], widget::kIndex, place) || place != k) {
-            return;
-        }
-    }
+    if (!live_run(children, index, selectable, moved)) return;
     for (int32_t k = index; k + 1 < selectable; ++k) {
         children[k] = moved[k + 1];
-        *reinterpret_cast<int32_t*>(moved[k + 1] + widget::kIndex) = k;
+        at<int32_t>(moved[k + 1], widget::kIndex) = k;
     }
     children[selectable - 1] = moved[index];
     at<int32_t>(moved[index], widget::kIndex) = selectable - 1;
     at<int32_t>(panel, panel::kSelectable) = selectable - 1;
     // The cursor stays on the entry it was on (ASSIST's place goes to the entry after it).
-    int32_t* selected = reinterpret_cast<int32_t*>(panel + kPanelSelected);
-    if (*selected > index && *selected < selectable) --*selected;
+    int32_t& selected = at<int32_t>(panel, kPanelSelected);
+    if (selected > index && selected < selectable) --selected;
     moved_from_ = index;
     selectable_ = selectable;
 }
@@ -451,17 +466,7 @@ void AssistLock::move_out(BYTE* panel, int32_t index) {
 void AssistLock::move_back() {
     if (moved_from_ < 0 || panel_ == nullptr) return;
     // The panel it moved must still be one of its menu's panels.
-    BYTE** panels = nullptr;
-    int32_t count = 0;
-    bool listed = false;
-    if (read(menu_, 0, panels) && read(menu_, menu::kPanelCount, count) && count > 0 &&
-        count <= kMaxPanels) {
-        for (int32_t p = 0; p < count && !listed; ++p) {
-            BYTE* panel = nullptr;
-            listed = read(reinterpret_cast<BYTE*>(panels), p * 8, panel) && panel == panel_;
-        }
-    }
-    if (!listed) {
+    if (!lists_panel(menu_, panel_)) {
         moved_from_ = -1;
         return;
     }
@@ -476,24 +481,17 @@ void AssistLock::move_back() {
         return;
     }
     BYTE* moved[kMaxChildren] = {};
-    for (int32_t k = index; k < selectable; ++k) {
-        int32_t released = 1, place = -1;
-        if (!read(reinterpret_cast<BYTE*>(children), k * 8, moved[k]) || moved[k] == nullptr ||
-            !read(moved[k], sprite::kReleased, released) || released != 0 ||
-            !read(moved[k], widget::kIndex, place) || place != k) {
-            return;
-        }
-    }
+    if (!live_run(children, index, selectable, moved)) return;
     if (moved[selectable - 1] != child_) return;  // not as move_out left it
     for (int32_t k = selectable - 1; k > index; --k) {
         children[k] = moved[k - 1];
-        *reinterpret_cast<int32_t*>(moved[k - 1] + widget::kIndex) = k;
+        at<int32_t>(moved[k - 1], widget::kIndex) = k;
     }
     children[index] = child_;
     at<int32_t>(child_, widget::kIndex) = index;
     at<int32_t>(panel_, panel::kSelectable) = selectable;
-    int32_t* selected = reinterpret_cast<int32_t*>(panel_ + kPanelSelected);
-    if (*selected >= index && *selected < selectable - 1) ++*selected;
+    int32_t& selected = at<int32_t>(panel_, kPanelSelected);
+    if (selected >= index && selected < selectable - 1) ++selected;
 }
 
 bool AssistLock::restore(const MenuAddresses& a) {

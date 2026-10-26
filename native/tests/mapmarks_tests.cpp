@@ -85,11 +85,11 @@ void test_the_stand_in_names() {
     int32_t frames[17] = {};
     const char* chunk = "SCRAP CHUNK";
     for (int i = 0; chunk[i]; ++i) frames[i] = chunk[i];
-    check(zap::shows_stand_in(frames), "SCRAP CHUNK");
+    check(zap::cursor_shows_stand_in(frames), "SCRAP CHUNK");
     frames[0] = 'X';
-    check(!zap::shows_stand_in(frames), "something else");
+    check(!zap::cursor_shows_stand_in(frames), "something else");
     int32_t blank[17] = {};
-    check(!zap::shows_stand_in(blank), "blank");
+    check(!zap::cursor_shows_stand_in(blank), "blank");
 }
 
 // The map's menu as the helper walks it: the menu, its first panel, the panel's children (the

@@ -68,6 +68,8 @@ private:
         int32_t spawn = 0;  // the object's +0x1D8 when dressed; 0 for none
         BYTE* base = nullptr;  // the frame-list base it was given
     };
+    // The Zexion item to show at map cell (row, column), or -1.
+    int item_at(uint8_t row, uint8_t column) const;
     // Puts the object back if it is still the spawn this helper dressed with the base it gave
     // it; forgets it only if put back, or if it is no longer that spawn.
     void undress(BYTE* object, int slot, BYTE* base, BYTE* standin_palette);

@@ -86,16 +86,15 @@ BYTE* info_panel(BYTE* panel) {
 
 }  // namespace
 
-MapCursor map_cursor(BYTE* current_menu, void* map_handler) {
-    MapCursor out;
-    BYTE *menu = nullptr, *panel = nullptr, *first = nullptr, *children = nullptr;
-    BYTE* cursor = nullptr;
-    if (!map_menu(current_menu, map_handler, menu, panel, first)) return out;
-    out.open = true;
+namespace {
+
+// The cursor's cell on the open map whose first panel is `panel`, or -1.
+int cursor_cell(BYTE* panel) {
+    BYTE *children = nullptr, *cursor = nullptr;
     int16_t cx = 0, cy = 0;
     if (!read(panel, panel::kChildren, children) || !read(children, kCursorChild, cursor) ||
         !read(cursor, kCursorX, cx) || !read(cursor, kCursorY, cy)) {
-        return out;
+        return -1;
     }
     // [[[[[panel + 0x300]] + 8] + 0x1F0]] + 0x158 (read live 40.0 zoomed in, 2026-10-25).
     BYTE* info = info_panel(panel);
@@ -105,9 +104,18 @@ MapCursor map_cursor(BYTE* current_menu, void* map_handler) {
                       scale == kFineScale;
     const int row = fine ? (cx + 5) / 10 : (cx + 11) / 23;   // the cell's y
     const int column = fine ? (cy + 4) / 8 : (cy + 8) / 17;  // the cell's x
-    if (row >= 0 && row < kMapSide && column >= 0 && column < kMapSide) {
-        out.cell = row * kMapSide + column;
-    }
+    if (row < 0 || row >= kMapSide || column < 0 || column >= kMapSide) return -1;
+    return row * kMapSide + column;
+}
+
+}  // namespace
+
+MapCursor map_cursor(BYTE* current_menu, void* map_handler) {
+    MapCursor out;
+    BYTE *menu = nullptr, *panel = nullptr, *first = nullptr;
+    if (!map_menu(current_menu, map_handler, menu, panel, first)) return out;
+    out.open = true;
+    out.cell = cursor_cell(panel);
     return out;
 }
 
@@ -127,7 +135,7 @@ std::string map_name(const std::string& label) {
     return part;
 }
 
-bool shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
+bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
     std::string text;
     for (int32_t f : frames) text += f > 0 && f < 0x80 ? static_cast<char>(f) : ' ';
     while (!text.empty() && text.back() == ' ') text.pop_back();
@@ -179,11 +187,10 @@ bool MapCursorNames::still_wrapped(const MapAddresses& a) const {
 
 void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::string>& labels) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
-    MapCursor cursor = map_cursor(a.current_menu, a.hook);
-    auto it = cursor.open ? labels.find(cursor.cell) : labels.end();
-    if (it == labels.end()) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
     if (!map_menu(a.current_menu, a.hook, menu, panel, child)) return;
+    auto it = labels.find(cursor_cell(panel));
+    if (it == labels.end()) return;
     BYTE* info = info_panel(panel);
     BYTE *children = nullptr, *widget = nullptr, *text = nullptr;
     BYTE** glyphs = nullptr;
@@ -201,7 +208,8 @@ void MapCursorNames::after(const MapAddresses& a, const std::map<int, std::strin
             return;
         }
     }
-    if (!shows_stand_in(frames)) return;  // another text (the player's room, a marker, unknown)
+    // Another text (the player's room, a marker, unknown) is left alone.
+    if (!cursor_shows_stand_in(frames)) return;
     const std::string name = map_name(it->second);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
