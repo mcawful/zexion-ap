@@ -1,0 +1,319 @@
+{
+ "builds": [["B1", "6d8a94bd4d641ee2125b4f966b099e2d58530ddfb20531d1d619fc54edde469b", 1782547166, 18890752]],
+ "targets": [
+  {"name": "map_grid", "description": "the live 54 x 54 map grid (one byte per cell; 0x1B = item collected)", "b1_rva": 4081309, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 41 FF C7 49 03 C2 42 0F B6 14 00 80 FA 18 7C 0B 8D 43 01 80 FA 32 0F 4F C3 8B D8 48 8D 05 ?? ?? ?? ??", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 84 24 A8 00 00 00 48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 74 24 40", 3, "rip", 7, 0]
+  ]},
+  {"name": "inventory", "description": "the live inventory, one byte per item ID (inside the player state)", "b1_rva": 4117630, "patterns": [
+   ["C6 05 ?? ?? ?? ?? 01 44 89 25 ?? ?? ?? ?? 44 88 25 ?? ?? ?? ?? C7 05 ?? ?? ?? ?? 00 00 03 00", 2, "rip", 7, -2],
+   ["48 8B 05 ?? ?? ?? ?? 48 89 90 30 01 00 00 48 8B 05 ?? ?? ?? ?? 48 89 88 38 01 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 80 40 01 00 00", 3, "rip", 7, 1822]
+  ]},
+  {"name": "pickup_counter", "description": "the pickup counter shown as ITEMS: x/150 (16-bit)", "b1_rva": 3998056, "patterns": [
+   ["66 FF 0D ?? ?? ?? ?? EB 55 66 83 F8 07 75 4F 66 C7 83 2C 0D 00 00 01 00", 3, "rip", 7, 0],
+   ["0F BF 05 ?? ?? ?? ?? F3 0F 11 74 24 40 F3 0F 11 74 24 38 48 8B 4C D1 F8", 3, "rip", 7, 0]
+  ]},
+  {"name": "rando_blob", "description": "the loaded save's randomizer section: location list, item table, settings", "b1_rva": 13489872, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 44 0F B7 74 24 44 88 94 08 6C 02 00 00 41 0F BF D1 44 0F B7 C3 66 44 3B CB 7D 1C", 3, "rip", 7, 0],
+   ["4C 8D 3D ?? ?? ?? ?? 44 0F B7 8D 90 00 00 00 0F 1F 40 00 66 45 85 C9 0F 8E ?? ?? ?? ?? 4D 6B DB C5", 3, "rip", 7, 0],
+   ["0F BF 05 ?? ?? ?? ?? 83 F8 09 7E 31 8B C8 B8 67 66 66 66 F7 E9 C1 FA 02 8B C2 C1 E8 1F 03 D0 0F B6 C2 42 88 94 2F 15 93 00 00", 3, "rip", 7, -1732]
+  ]},
+  {"name": "slot_array", "description": "the in-memory copy of every save slot's first block (stride 0x9408)", "b1_rva": 2295296, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 48 03 C1 48 8D 4D 67 48 89 4C 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 01 00 00 00", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 4C 89 64 24 30 48 8D 0D ?? ?? ?? ?? 48 89 44 24 28 4C 8B C3 41 8B D5", 3, "rip", 7, 0]
+  ]},
+  {"name": "menu_state", "description": "nonzero while a menu is open (pause, map, quit or file-select menus); 0 otherwise", "b1_rva": 3432195, "patterns": [
+   ["C6 05 ?? ?? ?? ?? 02 48 8B 07 33 F6 44 8B C6 48 8B 78 10 48 8B 87 E0 01 00 00 48 8B 08 48 8B 91 F0 01 00 00 8B CE 39 8A D8 01 00 00", 2, "rip", 7, 0],
+   ["C6 05 ?? ?? ?? ?? 00 C6 80 20 01 00 00 00 75 ?? E8 ?? ?? ?? ?? 33 C9 FF 15 ?? ?? ?? ??", 2, "rip", 7, 0]
+  ]},
+  {"name": "save_loaded", "description": "the loaded slot's empty marker (file 0x9360): 0xFF when no save is loaded", "b1_rva": 3998058, "patterns": [
+   ["80 3D ?? ?? ?? ?? FF 74 0D 48 8B 40 38 C6 80 20 01 00 00 01 EB 0B 48 8B 40 38 C6 80 20 01 00 00 00 48 8B 87 F0 01 00 00", 2, "rip", 7, 0],
+   ["C6 05 ?? ?? ?? ?? 00 80 3E 02 75 ?? C6 06 03 48 0F BE 0D ?? ?? ?? ?? 33 DB", 2, "rip", 7, 0],
+   ["C6 05 ?? ?? ?? ?? FF 66 89 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 33 C0 48 89 0D ?? ?? ?? ?? 66 89 05 ?? ?? ?? ??", 2, "rip", 7, 0]
+  ]},
+  {"name": "rando_marker", "description": "the loaded save's randomizer marker (file 0x9402, 16-bit): 1 for a randomizer save, 0 for a normal one; the randomizer section is copied in only when it is 1", "b1_rva": 4074968, "patterns": [
+   ["0F B7 83 00 94 00 00 66 89 05 ?? ?? ?? ?? 8B 83 04 94 00 00 89 05 ?? ?? ?? ?? 66 89 2D ?? ?? ?? ??", 10, "rip", 14, 0],
+   ["0F B7 05 ?? ?? ?? ?? 4C 8D 9B B1 7B 00 00 66 89 84 1F 00 94 00 00", 3, "rip", 7, 0],
+   ["B8 01 00 00 00 33 DB 66 89 05 ?? ?? ?? ?? 0F 11 05 ?? ?? ?? ?? 0F 11 0D ?? ?? ?? ??", 10, "rip", 14, 0]
+  ]},
+  {"name": "message_fn", "description": "the game message function: shows a popup (memory.md, Game functions the helper calls)", "b1_rva": 1582704, "patterns": [
+   ["E8 ?? ?? ?? ?? 44 38 3D ?? ?? ?? ?? 48 8B D8 66 44 89 BC 24 90 00 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 85 C0 74 48 80 3D ?? ?? ?? ?? 00 74 3F 48 8B 0D ?? ?? ?? ??", 1, "rip", 5, 0],
+   ["89 54 24 10 48 89 4C 24 08 57 41 56 48 83 EC 48", 0, "at", 0, 0]
+  ]},
+  {"name": "sound_fn", "description": "the game's play-a-sound function", "b1_rva": 482816, "patterns": [
+   ["E8 ?? ?? ?? ?? F2 0F 10 93 08 02 00 00 48 8D 35 ?? ?? ?? ?? F2 0F 10 83 10 02 00 00 0F 28 CA F2 0F 58 47 18 F2 0F 58 8B 00 02 00 00 66 41 FF C7", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 8B 86 E0 01 00 00 48 8B 8B 00 03 00 00 89 83 DC 02 00 00 8B 83 E4 02 00 00 89 41 48 80 BF 5E 93 00 00 FF", 1, "rip", 5, 0],
+   ["4C 8B DC 55 41 54 41 57 49 8D 6B C1", 0, "at", 0, 0]
+  ]},
+  {"name": "sound_system", "description": "the static sound-system object the sound function takes first", "b1_rva": 2290544, "patterns": [
+   ["F3 0F 10 44 11 5C 0F B7 54 11 5A 48 8D 0D ?? ?? ?? ?? F3 0F 11 44 24 20 E8 ?? ?? ?? ??", 14, "rip", 18, 0],
+   ["48 8D 0D ?? ?? ?? ?? F2 0F 10 97 00 11 00 00 0F 57 C0 66 89 74 24 38 BA 65 00 00 00 66 89 6C 24 30 F3 44 0F 11 7C 24 28 66 0F 5A DB 66 0F 5A D2", 3, "rip", 7, 0]
+  ]},
+  {"name": "hud_number_fn", "description": "sets a HUD number object's value (a double in xmm1)", "b1_rva": 2054928, "patterns": [
+   ["E8 ?? ?? ?? ?? 0F BF 87 BE 0C 00 00 48 8D 8F B8 0B 00 00 66 0F 6E C8 F3 0F E6 C9 E8 ?? ?? ?? ?? 48 8B 87 E8 09 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 0F BF 87 BE 0C 00 00 48 8D 8F B8 0B 00 00 66 0F 6E C8 F3 0F E6 C9 E8 ?? ?? ?? ?? 48 8B CF", 1, "rip", 5, 0],
+   ["48 89 6C 24 18 57 48 83 EC 60 0F 29 74 24 50", 0, "at", 0, 0]
+  ]},
+  {"name": "hud_layout_fn", "description": "lays out the missile and bomb HUD (icons and digits) from the player state", "b1_rva": 1922160, "patterns": [
+   ["E8 ?? ?? ?? ?? 44 0F BF 87 BC 0C 00 00 48 8D 8F 30 0B 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 45 0F BF 86 BC 0C 00 00 66 41 0F 6E C8", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 0F BF 83 EA 0C 00 00 F2 0F 10 83 F0 0C 00 00", 1, "rip", 5, 0]
+  ]},
+  {"name": "energy_hud_fn", "description": "redraws the energy-tank HUD from the player state", "b1_rva": 1929408, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 44 0F BF 87 BC 0C 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? F2 0F 10 9F 08 11 00 00 48 8D 0D ?? ?? ?? ?? F2 0F 10 97 00 11 00 00 BA 46 00 00 00", 1, "rip", 5, 0],
+   ["40 53 56 41 56 48 81 EC 90 00 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "weapon_strip_fn", "description": "redraws the weapon-switch icon strip while it is on screen", "b1_rva": 1820576, "patterns": [
+   ["E8 ?? ?? ?? ?? 44 38 BF A7 10 00 00 75 06 41 0F B7 D7", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 01 2D ?? ?? ?? ?? 0F 88 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? 00 48 BA 00 00 00 00 00 00 28 40", 1, "rip", 5, 0],
+   ["48 83 EC 18 45 33 D2 4C 8B C1 44 38 15 ?? ?? ?? ??", 0, "at", 0, 0]
+  ]},
+  {"name": "suit_color_fn", "description": "sets the suit's palette (Magnus Armor's color), through OpenGL", "b1_rva": 2022400, "patterns": [
+   ["E8 ?? ?? ?? ?? 49 8B 84 24 F0 01 00 00 48 8B 88 28 02 00 00 48 8B 01 40 38 B8 20 01 00 00 0F 84 ?? ?? ?? ??", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? BA FF FF FF FF 0F B6 CB E8 ?? ?? ?? ?? FF C3 83 FB 05 7C DF E8 ?? ?? ?? ?? 48 B8 01 01 01 01 01 01 01 01", 1, "rip", 5, 0],
+   ["40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 4C 0F BE 35 ?? ?? ?? ?? 48 8D 1D ?? ?? ?? ??", 0, "at", 0, 0]
+  ]},
+  {"name": "item_records", "description": "holds a pointer to the item records (100 bytes each, indexed by item ID)", "b1_rva": 13488232, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 41 0F 28 C7 0F B6 5C 01 08 48 8B 0D ?? ?? ?? ?? 48 83 C1 08 F3 0F 10 5C 24 60", 3, "rip", 7, 0],
+   ["48 8B 15 ?? ?? ?? ?? BB 08 00 00 00 48 0F BF 86 E8 01 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "last_message", "description": "holds a pointer to the last popup message, with its sequence number at +8", "b1_rva": 4073968, "patterns": [
+   ["4C 89 15 ?? ?? ?? ?? EB 40 41 C7 80 EC 01 00 00 01 00 00 00", 3, "rip", 7, 0],
+   ["4C 8B 05 ?? ?? ?? ?? 4D 85 C0 0F 84 ?? ?? ?? ?? 66 83 F9 02 7F 28", 3, "rip", 7, 0]
+  ]},
+  {"name": "weapon_strip_gate", "description": "a byte that is set while the weapon strip may be redrawn", "b1_rva": 13501117, "patterns": [
+   ["44 38 3D ?? ?? ?? ?? 74 12 66 44 39 BF 4C 0A 00 00", 3, "rip", 7, 0],
+   ["44 38 35 ?? ?? ?? ?? 75 5A 48 8B 83 E8 09 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "transition_fn", "description": "holds the routine the game runs when the transition timer ends (a new game: newgame_fn)", "b1_rva": 13504336, "patterns": [
+   ["48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 42 C6 04 37 00", 3, "rip", 7, 0],
+   ["48 89 05 ?? ?? ?? ?? BA 25 00 00 00 B8 01 00 00 00 66 C7 44 24 38 10 00 66 89 05 ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? 83 C0 70 C6 04 3B 00", 3, "rip", 7, 0],
+   ["48 39 3D ?? ?? ?? ?? 75 05 E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 4C 8D 0D ?? ?? ?? ?? 48 8B 08 83 81 30 02 00 00 03", 3, "rip", 7, 0]
+  ]},
+  {"name": "transition_timer", "description": "frames left before the game runs transition_fn (32-bit)", "b1_rva": 14641264, "patterns": [
+   ["C7 05 ?? ?? ?? ?? 01 00 00 00 66 0F 6E D0 0F 5B D2 F3 0F 11 4C 24 20 E8 ?? ?? ?? ?? 8B 8F 30 02 00 00", 2, "rip", 10, 0],
+   ["C7 05 ?? ?? ?? ?? 01 00 00 00 C6 05 ?? ?? ?? ?? 02 48 C7 05 ?? ?? ?? ?? FF FF FF FF E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 33 D2", 2, "rip", 10, 0]
+  ]},
+  {"name": "flags", "description": "the loaded game's flags, one byte each (0x9C4 of them; flag 250: the ending began)", "b1_rva": 3995533, "patterns": [
+   ["48 8D 0D ?? ?? ?? ?? 48 3B C1 72 1C 33 C9 41 0F B6 84 0E ED 00 00 00", 3, "rip", 7, 0],
+   ["48 8D 0D ?? ?? ?? ?? C6 05 ?? ?? ?? ?? 00 89 2D ?? ?? ?? ?? 40 88 2D ?? ?? ?? ?? C6 80 20 01 00 00 00", 3, "rip", 7, 0],
+   ["48 8D 0D ?? ?? ?? ?? 48 3B C1 72 17 41 B8 C4 09 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "event_table", "description": "holds a pointer to the loaded area events, 0x28 bytes each (the AreaEvents file)", "b1_rva": 14641280, "patterns": [
+   ["4C 8B 05 ?? ?? ?? ?? 33 D2 49 81 C0 E0 23 01 00 41 0F B6 CF 49 0F BE 00 FF 94 C6 ?? ?? ?? ?? 0F B6 54 24 7C", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 8D 0C 89 44 0F B6 4C C8 22 4C 8D 14 C8 45 84 C9 0F 84 ?? ?? ?? ?? 41 80 F9 01 75 47", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 8D 0C 89 44 0F B6 4C C8 22 4C 8D 14 C8 45 84 C9 0F 84 ?? ?? ?? ?? 41 80 F9 01 75 45", 3, "rip", 7, 0]
+  ]},
+  {"name": "event_count", "description": "the number of loaded area events (16-bit)", "b1_rva": 15395240, "patterns": [
+   ["48 8D 15 ?? ?? ?? ?? 41 B8 02 00 00 00 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 85 C0 75 1A 48 0F BF 0D ?? ?? ?? ?? BA 28 00 00 00", 3, "rip", 7, 0],
+   ["0F BF 05 ?? ?? ?? ?? 3B C8 0F 8D ?? ?? ?? ?? 48 63 C1 0F B6 93 11 02 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "text_table", "description": "holds a pointer to the loaded Text table, 32 bytes an entry (the Text file)", "b1_rva": 3995272, "patterns": [
+   ["48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 00 74 32 0F BE 05 ?? ?? ?? ?? 33 C9", 3, "rip", 7, 0],
+   ["48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 00 74 34", 3, "rip", 7, 0],
+   ["48 03 15 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 87 F0 01 00 00 80 B8 30 02 00 00 00 74 32 0F BE 05 ?? ?? ?? ?? 41 B9 8F 01 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "equipment_fn", "description": "the pause menu's EQUIPMENT callback, which builds the equipment screen", "b1_rva": 1227408, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 4C 89 6C 24 30 4C 89 6C 24 28 48 89 44 24 20 E8 ?? ?? ?? ?? F3 0F 10 35 ?? ?? ?? ?? 48 8B C8 48 8B 07 48 89 48 08", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 4C 89 6C 24 30 4C 89 6C 24 28 48 89 44 24 20 E8 ?? ?? ?? ?? 48 8B C8", 3, "rip", 7, 0],
+   ["48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC C8 00 00 00 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 44 0F 29 90 78 FF FF FF 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 45 C7 48 8B 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 48 68", 0, "at", 0, 0]
+  ]},
+  {"name": "equip_panel_fn", "description": "the equipment screen's panel handler", "b1_rva": 729440, "patterns": [
+   ["4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 4C 8D 0D ?? ?? ?? ?? 48 8D 45 A7", 3, "rip", 7, 0],
+   ["4C 8D 05 ?? ?? ?? ?? 33 D2 B9 0A 00 00 00 E8 ?? ?? ?? ?? 48 8B F8 41 8B F5", 3, "rip", 7, 0],
+   ["40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 B8 EE FF FF", 0, "at", 0, 0]
+  ]},
+  {"name": "widget_move_fn", "description": "places a widget at its panel's position plus an offset, with its label", "b1_rva": 698560, "patterns": [
+   ["E8 ?? ?? ?? ?? 41 8B FF 4C 89 A3 E8 02 00 00 44 89 A3 C6 02 00 00 44 88 BB C3 02 00 00 44 89 BB D8 01 00 00 44 39 BB E8 01 00 00 7E 2B", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 44 89 64 24 40 48 8D 93 60 02 00 00 C7 44 24 38 30 00 00 00 41 B9 06 00 00 00 C7 44 24 30 18 00 00 00 41 B8 02 00 00 00", 1, "rip", 5, 0],
+   ["48 89 5C 24 08 57 48 83 EC 20 48 8B B9 D8 01 00 00 48 8B D9 45 84 C9", 0, "at", 0, 0]
+  ]},
+  {"name": "text_place_fn", "description": "places a text object's glyphs from (x, y), 8 pixels apart", "b1_rva": 686560, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 41 BF 01 00 00 00 41 0F BF 96 C0 0C 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 48 8B 48 08 B8 02 00 00 00", 1, "rip", 5, 0],
+   ["48 83 EC 58 66 41 0F 6E C0 45 8B D0", 0, "at", 0, 0]
+  ]},
+  {"name": "widget_new_fn", "description": "makes a menu widget: its label, panel, handler, callback, record and index", "b1_rva": 697872, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 48 89 01 48 8B 87 E0 01 00 00 48 8B 08 48 8B 81 F0 01 00 00 C7 80 DC 01 00 00 1D 00 00 00 B8 56 55 55 55", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 45 8B C6 48 89 41 20 48 8B 8F E0 01 00 00 48 8B 41 20 4C 8B 88 F0 01 00 00 45 39 B1 D8 01 00 00 7E 54", 1, "rip", 5, 0],
+   ["40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 28 48 8B E9", 0, "at", 0, 0]
+  ]},
+  {"name": "sprite_sheet_fn", "description": "gives an object a sprite definition's frames (the item icons for the equipment screen)", "b1_rva": 477056, "patterns": [
+   ["E8 ?? ?? ?? ?? 4D 8B 16 49 8B 42 20 48 8B 88 E0 01 00 00 48 8B 01 48 8B 88 F0 01 00 00 48 8B 81 38 02 00 00 48 8B 08 44 39 B9 BC 01 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 49 FF C2 49 83 FA 17 75 CE 48 8B 8F E0 01 00 00 0F 28 DF 44 89 7C 24 28 41 B8 95 00 00 00 F3 0F 11 7C 24 20 48 8B 49 20", 1, "rip", 5, 0]
+  ]},
+  {"name": "panel_link_fn", "description": "links a panel's widgets, their labels and glyphs into its menu's draw list", "b1_rva": 703280, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 45 33 C0 48 8B 93 F0 01 00 00 48 8B 89 F8 01 00 00 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 08 4C 39 29", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 45 33 C0 48 8B 93 F0 01 00 00 48 8B 89 D0 02 00 00 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 08 4C 39 21", 1, "rip", 5, 0],
+   ["48 89 5C 24 08 57 48 83 EC 20 33 DB", 0, "at", 0, 0]
+  ]},
+  {"name": "text_set_fn", "description": "writes a string into a text object's glyphs from one glyph on, blanking the rest", "b1_rva": 680384, "patterns": [
+   ["E8 ?? ?? ?? ?? 44 38 25 ?? ?? ?? ?? 48 8B 85 E0 01 00 00 48 8B 50 10 74 23 C6 44 24 30 01 0F 28 DE 44 89 64 24 28 44 8B C6", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 8B 8B E0 01 00 00 45 33 C0 48 8B 01 4C 8B 88 F0 01 00 00 45 39 81 D8 01 00 00 7E 54", 1, "rip", 5, 0],
+   ["40 53 55 56 57 48 83 EC 28 48 8B F9", 0, "at", 0, 0]
+  ]},
+  {"name": "routine_table", "description": "the transition routines: 2 the pause (idle), 4 the ending, 15 the escape skip's prompt", "b1_rva": 3995120, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 48 0F 4F 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 C7 05 ?? ?? ?? ?? 00 00 00 00", 3, "rip", 7, -64],
+   ["48 8B 05 ?? ?? ?? ?? 33 F6 48 89 05 ?? ?? ?? ?? 66 89 35 ?? ?? ?? ?? EB 11", 3, "rip", 7, -40]
+  ]},
+  {"name": "keys_branch", "description": "the pause screen's jne past its KEYS panel when flag 39 is set (75 2E)", "b1_rva": 1477757, "patterns": [
+   ["80 3D ?? ?? ?? ?? 00 ?? 2E 80 BB A9 10 00 00 00 75 25 80 BB AA 10 00 00 00 75 1C", 0, "at", 0, 7],
+   ["80 3D ?? ?? ?? ?? 00 ?? 2E 80 BB A9 10 00 00 00 75 25 80 BB AA 10 00 00 00 75 1C 80 BB AB 10 00 00 00 75 13 80 BB AC 10 00 00 00 75 0A 40 32 FF", 0, "at", 0, 7],
+   ["4C 8D 0D ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? 4C 8B 05 ?? ?? ?? ?? 48 89 B4 24 A0 00 00 00", 3, "rip", 7, 173]
+  ]},
+  {"name": "rando_slots", "description": "every slot's copy of its randomizer section, 0x908 bytes each (the section's layout)", "b1_rva": 3438640, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 8C 24 E8 01 00 00", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 85 00 03 00 00", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 7C 24 50", 3, "rip", 7, 0]
+  ]},
+  {"name": "text_new_fn", "description": "(characters, length, 32): makes a text object and its glyphs, from the game's heap", "b1_rva": 598784, "patterns": [
+   ["E8 ?? ?? ?? ?? BA 58 00 00 00 41 B8 78 00 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 89 87 D8 01 00 00 F2 0F 11 B3 48 01 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? EB 03 49 8B C5 48 89 83 F0 01 00 00", 1, "rip", 5, 0],
+   ["40 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 28 4C 8B E1", 0, "at", 0, 0]
+  ]},
+  {"name": "text_link_fn", "description": "(text): puts a text object's glyphs in its draw list, right after it", "b1_rva": 689696, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 89 83 98 01 00 00 66 89 B3 A0 01 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 8B 86 D8 01 00 00 8B D5 89 86 EC 01 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 44 89 B3 80 00 00 00 4C 89 73 78", 1, "rip", 5, 0]
+  ]},
+  {"name": "draw_layer", "description": "holds the draw list new screen objects join (head +0x18, tail +0x20)", "b1_rva": 13504376, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 48 8B 48 20 48 85 C9 74 06 48 89 59 10 EB 04 48 89 58 18 48 89 4B 18 48 89 53 10 48 89 58 20 48 89 03 41 8D 46 FF", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 8B 48 20 48 85 C9 74 06 48 89 59 10 EB 04 48 89 58 18 48 89 4B 18 48 C7 43 10 00 00 00 00", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 8B 48 18 48 8B 41 18 48 8B 11 48 85 C0 74 04 4C 89 70 10 48 8B 41 18 48 89 44 2F 18", 3, "rip", 7, 0]
+  ]},
+  {"name": "map_handler", "description": "holds the map screen's per-frame handler (0x169E50), the map menu's mark", "b1_rva": 13489632, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 44 89 81 70 01 00 00 48 8B 82 E0 01 00 00", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 89 91 70 01 00 00 48 8B 87 E0 01 00 00", 3, "rip", 7, 0]
+  ]},
+  {"name": "file_panel_fn", "description": "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)", "b1_rva": 747808, "patterns": [
+   ["4C 8D 05 ?? ?? ?? ?? 41 8B D5 B9 04 00 00 00 49 89 46 68", 3, "rip", 7, 0],
+   ["48 8B C4 56 57 48 83 EC 58 48 8B B9 F8 01 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "file_entry_fn", "description": "the file select's save entry handler (event 0xF fills the entry)", "b1_rva": 925392, "patterns": [
+   ["4C 8D 0D ?? ?? ?? ?? F7 2D ?? ?? ?? ?? 4C 8B C7 8B C2 C1 E8 1F 03 D0 8D 04 52 BA 91 00 00 00 48 63 C8 48 83 C1 02", 3, "rip", 7, 0],
+   ["4C 8D 0D ?? ?? ?? ?? F7 2D ?? ?? ?? ?? 4C 8B C7 8B C2 C1 E8 1F 03 D0 8D 04 52 BA 91 00 00 00 48 63 C8 48 FF C1", 3, "rip", 7, 0],
+   ["48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 81 EC D0 00 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "copy_entry_fn", "description": "COPY FILE's save entry handler", "b1_rva": 1013072, "patterns": [
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 42 80 BC 29 5E 93 00 00 FF", 3, "rip", 7, 0],
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 10 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 42 80 BC 29 5E 93 00 00 FF", 3, "rip", 7, 0],
+   ["48 89 5C 24 10 48 89 6C 24 18 56 41 54 41 55 41 56 41 57 48 83 EC 60 48 8B 99 D8 01 00 00 8B F2 0F 29 74 24 50 48 8B E9 F3 0F 10 35 ?? ?? ?? ?? 41 BC 10 00 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "delete_entry_fn", "description": "DELETE FILE's save entry handler", "b1_rva": 1009648, "patterns": [
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 08 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 49 8D 85 ?? ?? ?? ??", 3, "rip", 7, 0],
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 91 00 00 00 48 8B 48 10 48 63 81 30 02 00 00 48 FF C8 48 69 C8 08 94 00 00 49 8D 85 ?? ?? ?? ??", 3, "rip", 7, 0],
+   ["48 89 5C 24 10 48 89 6C 24 18 56 57 41 55 41 56 41 57 48 83 EC 60 48 8B 99 D8 01 00 00 8B EA 0F 29 74 24 50 4C 8B F1 F3 0F 10 35 ?? ?? ?? ?? 48 8D 3D ?? ?? ?? ??", 0, "at", 0, 0]
+  ]},
+  {"name": "malloc_slot", "description": "the import slot of the C runtime's malloc, the game's heap", "b1_rva": 2135968, "patterns": [
+   ["FF 15 ?? ?? ?? ?? 45 33 DB 48 85 C0 0F 84 ?? ?? ?? ?? 4C 8B F8 EB 03 4C 8B F9 49 8B CF 49 8B C6 BA 03 00 00 00 66 0F 1F 84 00 00 00 00 00", 2, "rip", 6, 0],
+   ["FF 15 ?? ?? ?? ?? 48 8B D0 41 B9 FF FF FF FF 48 85 C0 0F 84 ?? ?? ?? ?? 48 8B CA 48 8B C3 4D 8B C4 66 66 0F 1F 84 00 00 00 00 00", 2, "rip", 6, 0]
+  ]},
+  {"name": "free_slot", "description": "the import slot of the C runtime's free, which a closing menu frees its arrays with", "b1_rva": 2135960, "patterns": [
+   ["FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 49 8B DE 4D 85 F6 74 0D 49 8B 7E 18 39 6F 18 0F 84 ?? ?? ?? ?? 48 8B 74 24 68 4C 8B 64 24 40", 2, "rip", 6, 0],
+   ["FF 15 ?? ?? ?? ?? 49 8B DE 4D 85 F6 74 0D 49 8B 7E 18 39 6F 18 0F 84 ?? ?? ?? ?? 48 8B 74 24 68 4C 8B 64 24 40", 2, "rip", 6, 0]
+  ]},
+  {"name": "start_count", "description": "the start table's count (16-bit): the randomizer menu's start rooms, 0 until it opens", "b1_rva": 15398860, "patterns": [
+   ["0F BF 0D ?? ?? ?? ?? FF C1 41 83 FE 01 73 11 B8 01 00 00 00", 3, "rip", 7, 0],
+   ["66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36", 3, "rip", 7, 0]
+  ]},
+  {"name": "start_cells", "description": "the start table's map cells, (x, y) as two 16-bit values each", "b1_rva": 15409264, "patterns": [
+   ["4C 8B 15 ?? ?? ?? ?? 49 0F BF C1 48 6B C8 36 49 0F BF C2 48 03 C8 C6 85 40 01 00 00 00", 3, "rip", 7, 0],
+   ["66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36", 3, "rip", 7, 10404]
+  ]},
+  {"name": "start_flags", "description": "the start table's flags, one byte per room: 1 if it holds object 25", "b1_rva": 15399968, "patterns": [
+   ["40 38 35 ?? ?? ?? ?? 89 B5 38 01 00 00 75 17 33 C0", 3, "rip", 7, 0],
+   ["66 89 1D ?? ?? ?? ?? 66 43 89 BC 87 ?? ?? ?? ?? 41 FF C3 41 83 FB 36", 3, "rip", 7, 1108]
+  ]},
+  {"name": "sprite_texture", "description": "holds a pointer to the sprite data; its +0x40 is the Sprites.png texture object", "b1_rva": 13488224, "patterns": [
+   ["48 8B 0D ?? ?? ?? ?? 32 DB 48 89 41 40 48 8B 05 ?? ?? ?? ??", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 C0 F2 0F 11 80 A8 00 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 A8 B0 00 00 00", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 0F BF 48 02 48 8B 05 ?? ?? ?? ?? 66 0F 6E C1 F3 0F E6 C0 F2 0F 11 80 B8 00 00 00 48 8B 05 ?? ?? ?? ?? 0F BF 08 66 0F 6E C1", 3, "rip", 7, 0]
+  ]},
+  {"name": "current_slot", "description": "the save slot being played or started, 0-based (32-bit)", "b1_rva": 13488256, "patterns": [
+   ["8B 0D ?? ?? ?? ?? F7 E9 8B C2 C1 E8 1F 03 D0 8D 04 52 2B C8 B8 80 00 00 00 66 89 86 DA 01 00 00 44 8D 2C 49", 2, "rip", 6, 0],
+   ["48 63 05 ?? ?? ?? ?? 48 69 C8 08 94 00 00 66 83 BC 39 00 94 00 00 01 75 4C 41 B9 01 00 00 00 66 89 74 24 20", 3, "rip", 7, 0],
+   ["48 63 05 ?? ?? ?? ?? 48 69 D0 08 94 00 00 41 B9 01 00 00 00 41 B8 08 94 00 00 48 03 D6 48 8B CB", 3, "rip", 7, 0]
+  ]},
+  {"name": "newgame_fn", "description": "the new-game routine: builds a new game from the randomizer section and saves it", "b1_rva": 656752, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? F3 0F 10 0D ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? BA 25 00 00 00 0F BF 05 ?? ?? ?? ??", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 0F BF 05 ?? ?? ?? ?? BA 25 00 00 00", 3, "rip", 7, 0],
+   ["4C 8B DC 53 55 56 57 48 81 EC 28 02 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "current_menu", "description": "holds the most recently opened menu (its panels at [menu]; the file screen's panel 3)", "b1_rva": 14648056, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? BA 05 00 00 00 48 8B 08 48 8B 19 48 8B 83 E0 01 00 00 4C 8B 00 49 8B C8 41 FF 90 C8 02 00 00 48 8B 83 E0 01 00 00", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? BA 05 00 00 00 48 8B 08 48 8B 01 48 8B 88 E0 01 00 00 48 8B 01 48 8B C8 FF 90 C8 02 00 00 0F B6 05 ?? ?? ?? ??", 3, "rip", 7, 0]
+  ]},
+  {"name": "randomizer_menu", "description": "the randomizer menu's state: seed text, item arrays, amounts, settings at fixed offsets", "b1_rva": 14644032, "patterns": [
+   ["48 8D 0D ?? ?? ?? ?? 41 0F 45 D3 0F 44 DF 48 63 C2 44 8D 5A 01 0F BE 8C 08 94 00 00 00 44 8D 04 1B 23 CB F7 D9 66 45 1B C9", 3, "rip", 7, 0],
+   ["48 8D 05 ?? ?? ?? ?? 42 80 7C 00 6C 00 0F 84 ?? ?? ?? ?? 42 80 7C 00 51 00 74 37", 3, "rip", 7, 0]
+  ]},
+  {"name": "widget_handler_fn", "description": "the generic menu-widget input handler (calls a widget's callback on select)", "b1_rva": 852544, "patterns": [
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 18 00 00 00 48 89 41 18 48 8D 45 67 48 89 44 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 04 00 00 00 4C 89 6C 24 30", 3, "rip", 7, 0],
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8B C7 BA 0D 00 00 00 48 89 41 08 48 8D 45 67 48 89 44 24 40 48 8D 0D ?? ?? ?? ?? C7 44 24 38 02 00 00 00 4C 89 7C 24 30", 3, "rip", 7, 0],
+   ["48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B B1 D8 01 00 00 8B FA", 0, "at", 0, 0]
+  ]},
+  {"name": "panel_handler_fn", "description": "the menu-panel handler", "b1_rva": 713936, "patterns": [
+   ["4C 8D 05 ?? ?? ?? ?? 33 D2 41 8B CF E8 ?? ?? ?? ?? 48 8B D8 C7 45 67 F4 FF FC FF 48 8D 45 67 C7 45 6B 28 00 0C 00", 3, "rip", 7, 0],
+   ["4C 8D 05 ?? ?? ?? ?? 33 D2 B9 03 00 00 00 48 8B F0 E8 ?? ?? ?? ?? 48 8B D8 C7 84 24 80 00 00 00 F4 FF FB FF", 3, "rip", 7, 0],
+   ["48 89 5C 24 08 57 48 83 EC 40 48 8B 99 D8 01 00 00 48 8B F9 85 D2 0F 85 ?? ?? ?? ?? 48 8B 89 F0 01 00 00", 0, "at", 0, 0]
+  ]},
+  {"name": "rando_menu_fn", "description": "the RANDOMIZER choice's callback: opens the randomizer menu", "b1_rva": 1358096, "patterns": [
+   ["E8 ?? ?? ?? ?? 48 8B 35 ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 06 48 8D 3D ?? ?? ?? ?? BA 0F 00 00 00", 1, "rip", 5, 0],
+   ["B8 58 00 00 00 4C 8D 0D ?? ?? ?? ?? 66 89 45 6B 48 8D 0D ?? ?? ?? ?? 48 8D 45 67 41 BD 01 00 00 00 48 89 44 24 40 4C 8B C7 44 89 6C 24 38 48 8D 05 ?? ?? ?? ?? 4C 89 7C 24 30 BA 0B 00 00 00 4C 89 7C 24 28 48 89 44 24 20 E8 ?? ?? ?? ??", 49, "rip", 53, 0],
+   ["48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8B EC", 0, "at", 0, 0]
+  ]},
+  {"name": "placement_fn", "description": "the randomizer's placement: the item table, starting items and amounts", "b1_rva": 987552, "patterns": [
+   ["E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 0F 84 ?? ?? ?? ?? 48 63 05 ?? ?? ?? ?? 48 69 F8 08 94 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 45 33 C0 0F B6 CB 84 C0 44 0F 45 C1", 1, "rip", 5, 0]
+  ]},
+  {"name": "rando_newgame_fn", "description": "queues a randomizer new game in the current slot (the play-anyway path)", "b1_rva": 1003872, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 48 89 6C 24 30 48 89 6C 24 28 48 89 44 24 20 E8 ?? ?? ?? ?? 48 8B 8B E0 01 00 00 4C 8D 0D ?? ?? ?? ?? 4C 8B C3 BA 37 00 00 00", 3, "rip", 7, 0],
+   ["48 89 5C 24 08 57 48 81 EC C0 00 00 00 48 8B 05 ?? ?? ?? ??", 0, "at", 0, 0]
+  ]},
+  {"name": "popup_width_code", "description": "the pickup popup's `mov edx, 24` (its line width) on the path items with no icon take; the helper changes the 24 for other players' items", "b1_rva": 129270, "patterns": [
+   ["BA ?? ?? ?? ?? C7 44 24 30 B4 00 00 00 41 B9 58 00 00 00 41 B8 A0 00 00 00 E8 ?? ?? ?? ?? 44 38 3D", 0, "at", 0, 0],
+   ["48 0F BF 86 E8 01 00 00 48 6B C8 64 48 8D 69 0A 48 03 EB 44 38 7C 19 08 48 8B CD 0F 84 ?? ?? ?? ?? E8 ?? ?? ?? ?? 41", 29, "rip", 33, 0],
+   ["48 8D 8C 24 92 00 00 00 4A 8D 14 40 41 B8 6A 00 00 00 E8 ?? ?? ?? ?? EB ?? BA ?? ?? ?? ??", 0, "at", 0, 25]
+  ]},
+  {"name": "item_pool", "description": "the pool of 128 live item objects, 0x3B0 bytes each (memory.md, Live item objects)", "b1_rva": 11984944, "patterns": [
+   ["66 89 15 ?? ?? ?? ?? 0F 1F 40 00 48 0F BF C2 48 69 C8 B0 03 00 00", 3, "rip", 7, -120832],
+   ["0F B7 15 ?? ?? ?? ?? 45 33 DB 41 B9 80 00 00 00 66 83 FA FF", 3, "rip", 7, -120832]
+  ]},
+  {"name": "palette_table", "description": "the palette objects by number, eight bytes each (an object's +0x198 is one of them)", "b1_rva": 13497792, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 48 8B 11 48 89 82 98 01 00 00 33 C0 66 89 82 A0 01 00 00 48 8B 83 E0 01 00 00 48 8B 96 E8 02 00 00 48 8B 88 80 00 00 00", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 89 81 98 01 00 00 66 89 B1 A0 01 00 00 48 8B 83 F0 01 00 00 48 8B 48 10 44 39 B9 BC 01 00 00", 3, "rip", 7, -16]
+  ]},
+  {"name": "frame_clock", "description": "the 64-bit count item animations follow (the item update at 0x19e2e0 divides it)", "b1_rva": 3995472, "patterns": [
+   ["48 8B 0D ?? ?? ?? ?? 48 8B C1 48 F7 D8 48 0F 48 C1 48 99 48 2B C2 48 D1 F8 48 99 83 E0 01 48 33 C2 48 2B C2 66 83 C0 45", 3, "rip", 7, 0],
+   ["48 8B 05 ?? ?? ?? ?? 48 99 49 0F BF 4C 38 04 48 F7 F9 49 0F BF 4C 38 06", 3, "rip", 7, 0]
+  ]},
+  {"name": "sprite_templates", "description": "holds the pointer to the sprite definitions' object templates; +0x110 is the items'", "b1_rva": 14643472, "patterns": [
+   ["48 8B 05 ?? ?? ?? ?? 4C 8D 15 ?? ?? ?? ?? 48 8B B0 10 01 00 00 4D 85 C0 75 2D B9 D8 01 00 00", 3, "rip", 7, 0],
+   ["48 8B 0D ?? ?? ?? ?? 48 8B 93 F0 01 00 00 48 81 C2 10 01 00 00 48 8B 49 08 E8 ?? ?? ?? ?? 48 8B 83 F0 01 00 00 48 8B 88 10 01 00 00 4C 39 29", 3, "rip", 7, 0]
+  ]},
+  {"name": "event_handlers", "description": "the area-event handlers, a function pointer per event type (the pickup calls one)", "b1_rva": 13488272, "patterns": [
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CE 49 0F BE 00 41 FF 14 C1 48 8B 5C 24 50 48 8B 74 24 58 48 83 C4 40 5F C3 48 89 5C 24 10", 3, "rip", 7, 0],
+   ["4C 8D 0D ?? ?? ?? ?? 4C 8D 04 C8 40 0F B6 CD 49 0F BE 00 41 FF 14 C1 48 8B 5C 24 58", 3, "rip", 7, 0]
+  ]},
+  {"name": "death_fn", "description": "the player's death: death_fn(player, 0), called once energy is 0 or below (DeathLink)", "b1_rva": 1941408, "patterns": [
+   ["E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 66 83 F8 03 0F 85 ?? ?? ?? ?? 49 8B B6 40 01 00 00", 1, "rip", 5, 0],
+   ["E8 ?? ?? ?? ?? 80 BB FE 0C 00 00 00 0F 28 7C 24 40", 1, "rip", 5, 0],
+   ["40 53 48 81 EC 90 00 00 00 80 3D ?? ?? ?? ?? 00", 0, "at", 0, 0]
+  ]},
+  {"name": "assist_menu_fn", "description": "ASSIST's callback in the options menu with a save loaded: opens the assist menu", "b1_rva": 1391904, "patterns": [
+   ["48 8D 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 44 24 20 E8 ?? ?? ?? ?? 48 8B 8F E0 01 00 00 45 8B C6 48 89 04 D9 4C 8B 97 E0 01 00 00", 3, "rip", 7, 0],
+   ["40 55 53 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 68", 0, "at", 0, 0]
+  ]},
+  {"name": "object_pool", "description": "the general objects, 1000 of 0x5C8 bytes (items in reversed-gravity rooms among them)", "b1_rva": 7701568, "patterns": [
+   ["66 89 15 ?? ?? ?? ?? 0F 1F 84 00 00 00 00 00 48 0F BF C2 48 69 C8 C8 05 00 00", 3, "rip", 7, -1480000],
+   ["0F B7 15 ?? ?? ?? ?? 41 B8 E8 03 00 00 66 41 3B D3", 3, "rip", 7, -1480000]
+  ]},
+  {"name": "halt_flag", "description": "a byte the death routine (and much of the game) returns early on while it is set", "b1_rva": 3432180, "patterns": [
+   ["80 3D ?? ?? ?? ?? 00 75 1E 33 C9 FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 33 C9 C6 80 20 01 00 00 00 FF 15 ?? ?? ?? ?? 48 8B 83 E0 01 00 00", 2, "rip", 7, 0],
+   ["80 3D ?? ?? ?? ?? 00 75 10 66 FF 8B BE 0C 00 00 33 C0 66 89 83 8C 10 00 00 FF 05 ?? ?? ?? ?? B9 CC 01 00 00", 2, "rip", 7, 0]
+  ]}
+ ]
+}
