@@ -204,6 +204,15 @@ def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_
     assert other_seed.before is None
 
 
+def test_reload_mod_says_whether_the_mod_unloaded() -> None:
+    unloaded, line = state.reload_reply("bye")
+    assert unloaded and "loading it again" in line
+    unloaded, line = state.reload_reply("error the map is open; not unloading")
+    assert not unloaded and "(the map is open)" in line and "/reload_mod" in line
+    unloaded, line = state.reload_reply("error no frame came within 1 s")
+    assert not unloaded and "(no frame came within 1 s)" in line
+
+
 def test_connects_own_disconnect_keeps_the_connection_a_disconnect_left() -> None:
     # Disconnect, then Connect: Archipelago's connect disconnects first, with no connection.
     conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)

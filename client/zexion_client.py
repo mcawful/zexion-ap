@@ -70,6 +70,7 @@ from .ticks import (  # noqa: E402
 GAME = "Zexion"
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
+RELOAD_SECONDS = 3.0  # /reload_mod: the wait before loading it again, while it unloads
 HELPER_LOST = (
     f"The Zexion mod stopped responding; trying again in {HELPER_RETRY_SECONDS:.0f} seconds. "
     "Until then items arrive without popups."
@@ -78,23 +79,15 @@ HELPER_LOST = (
 
 class ZexionCommandProcessor(ClientCommandProcessor):
     ctx: ZexionContext
-    HIDDEN = ("unload_helper",)  # for testing the client: they work, but /help leaves them out
 
-    def get_help_text(self) -> str:
-        self.commands = {k: v for k, v in type(self).commands.items() if k not in self.HIDDEN}
-        try:
-            return super().get_help_text()
-        finally:
-            del self.commands  # the class's again
-
-    def _cmd_unload_helper(self) -> bool:
-        """Unload the in-game helper, as if it failed: items then arrive with no popup, and the
-        client loads the helper again within 30 seconds. For testing; it changes the game."""
+    def _cmd_reload_mod(self) -> bool:
+        """Reload the Zexion mod in the game, if it misbehaves (popups still waiting are lost;
+        items are not)."""
         if self.ctx.helper is None:
-            self.output("The helper is not loaded.")
+            self.output("The Zexion mod isn't loaded; the client loads it as soon as it can.")
             return False
-        self.ctx.unload_helper_pending = True
-        self.output("Unloading the helper at the next poll.")
+        self.ctx.reload_mod_pending = True
+        self.output("Reloading the Zexion mod.")
         return True
 
 
@@ -122,9 +115,8 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
-        # /unload_helper: the game loop unloads it but keeps the dead connection, so the
-        # next request fails the way a helper failing mid-session does.
-        self.unload_helper_pending = False
+        # /reload_mod: the game loop unloads it and loads it again (RELOAD_SECONDS).
+        self.reload_mod_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
         self.disarm_pending = False
         # Warnings and failures that would repeat each poll or retry: each said once.
@@ -348,13 +340,17 @@ async def game_loop(ctx: ZexionContext) -> None:
 async def poll(ctx: ZexionContext) -> None:
     """One pass of the game loop."""
     p = Poll(ctx)
-    if ctx.helper is not None and ctx.unload_helper_pending:
-        ctx.unload_helper_pending = False
+    if ctx.helper is not None and ctx.reload_mod_pending:
+        ctx.reload_mod_pending = False
         try:
             reply = await asyncio.to_thread(ctx.helper.request, "unload")
-            logger.info(f"The helper was asked to unload: {reply}")
         except native.HelperError as exc:
-            logger.warning(f"Unloading the helper failed: {exc}")
+            reply = f"error {exc}"
+        unloaded, line = state.reload_reply(reply)
+        (logger.info if unloaded else logger.warning)(line)
+        if unloaded:
+            ctx.drop_helper()
+            ctx.helper_retry_at = time.monotonic() + RELOAD_SECONDS
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("escape skip check", lambda: skip_tick(ctx)),

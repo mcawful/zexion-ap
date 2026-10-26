@@ -38,7 +38,7 @@ Where things are:
   writes it.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
-  the helper, the client's `/unload_helper`, and `save_lab.py install` and `restore`. Grants and
+  the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
   memory writes go only into a lab slot; grants only while the player stands still in play.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
@@ -107,8 +107,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   RANDOMIZER on the menu instead of offering ARCHIPELAGO.
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. `/unload_helper` (hidden from `/help`)
-  unloads it as if it had failed; the client loads it again within 30 seconds.
+  directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
+  again a few seconds later (for a misbehaving mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads).

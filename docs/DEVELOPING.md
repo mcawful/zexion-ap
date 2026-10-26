@@ -167,8 +167,8 @@ helper into the game: the one already there if it is this version, else
 - `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it in
   the seed's mode, with no options changed, gets the seed. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/unload_helper` unloads the helper as if it had failed; the client loads it again within
-  30 seconds.
+- `/reload_mod` unloads the helper and loads it again a few seconds later (popups still
+  queued are lost; items are not); with a menu or the map open it refuses and says why.
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
 ## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub
