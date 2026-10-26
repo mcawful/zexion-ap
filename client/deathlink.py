@@ -13,7 +13,7 @@ Pure logic; client/zexion_client.py reads the game and talks to the server and t
 
 from __future__ import annotations
 
-import game
+from . import game
 
 # A death seen this soon after the helper was asked to deal one is that one.
 DEALT_SECONDS = 5.0

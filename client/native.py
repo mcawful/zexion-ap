@@ -29,8 +29,7 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
-import patterns
-import process
+from . import patterns, process
 
 DLL_NAME = "zexion_ap.dll"
 VERSION = "0.25.3"  # the helper's, in its hello (native/src/dllmain.cpp)

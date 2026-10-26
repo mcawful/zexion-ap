@@ -21,8 +21,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-import ids
-from ids import ENERGY_TANK, KEYS, LOCATIONS, MISSILE_BOX, MISSILE_CONTAINER, WRITABLE_ITEMS
+from . import ids
+from .ids import ENERGY_TANK, KEYS, LOCATIONS, MISSILE_BOX, MISSILE_CONTAINER, WRITABLE_ITEMS
 
 SAVE_SIZE = 78108  # a randomizer save
 RANDO_MARKER = 0x9402  # 16-bit: 1 in a randomizer save, 0 in a normal one or a cleared slot

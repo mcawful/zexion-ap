@@ -23,7 +23,7 @@ from __future__ import annotations
 import string
 from collections.abc import Iterable, Mapping, Sequence
 
-from ids import AREA_MAP
+from .ids import AREA_MAP
 
 # With the world's Area Map Hints on, the Area Maps are Intel Chips (ids.INTEL_CHIP), an item
 # that is not the game's: the client counts a received one as the Area Map the game holds

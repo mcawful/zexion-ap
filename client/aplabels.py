@@ -28,8 +28,8 @@ from __future__ import annotations
 import string
 from collections.abc import Iterable, Mapping, Sequence
 
-import ids
-from ids import STAND_IN, STAND_IN_PROGRESSION
+from . import ids
+from .ids import STAND_IN, STAND_IN_PROGRESSION
 
 PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")

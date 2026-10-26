@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import offline
+from client import offline
 
 
 def test_the_seed_file_name() -> None:

@@ -18,11 +18,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-import aplabels
-import deathlink
-import discs
-import save_patch
-import session
+from . import aplabels, deathlink, discs, save_patch, session
 
 
 class NewGame(enum.Enum):

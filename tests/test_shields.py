@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import game
-import shields
+from client import game, shields
 
 KEY, OTHER = "zexion_shields_0_1", "zexion_shields_0_2"
 

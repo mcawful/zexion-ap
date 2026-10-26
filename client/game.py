@@ -39,10 +39,9 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-import ids
-import process
-from ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
-from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from . import ids, process
+from .ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
+from .patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array

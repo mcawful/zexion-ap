@@ -40,12 +40,7 @@ import logging
 import time
 from dataclasses import astuple, dataclass, field
 
-import discs
-import game
-import ids
-import native
-import reconcile
-import save_patch
+from . import discs, game, ids, native, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
 

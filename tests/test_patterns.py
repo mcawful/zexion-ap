@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 
 if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "client"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from patterns import KNOWN_BUILDS, TARGETS, Pattern, at, rip  # noqa: E402
+from client.patterns import KNOWN_BUILDS, TARGETS, Pattern, at, rip  # noqa: E402
 
 FROZEN_PATH = Path(__file__).parent / "patterns_frozen.json"
 

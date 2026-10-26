@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import struct
 
-import discs
-import ids
+from client import discs, ids
 
 SLOT = {
     "goal": "os_install_disks",
@@ -56,7 +55,7 @@ def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
 
 
 def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
-    import save_patch
+    from client import save_patch
 
     plan = save_patch.SeedPlan(
         location_items=[46] * 154,

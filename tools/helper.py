@@ -21,10 +21,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "client"))
+sys.path.insert(0, str(ROOT))  # the client package
 
-import game  # noqa: E402
-import native  # noqa: E402
+from client import (  # noqa: E402
+    game,
+    native,
+)
 from protected import assert_writable, lab_dir  # noqa: E402
 
 

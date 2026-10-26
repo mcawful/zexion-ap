@@ -38,9 +38,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "client"))
+sys.path.insert(0, str(ROOT))  # the client package
 
-import game  # noqa: E402
+from client import game  # noqa: E402
 from protected import assert_writable, game_dir, lab_dir  # noqa: E402
 
 ITEM_NAMES = Path("Files/Translations/English(HD)/ItemNames.txt")

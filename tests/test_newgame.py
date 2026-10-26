@@ -7,8 +7,8 @@ import struct
 import pytest
 from test_save_patch import fresh, plan
 
-import newgame as ng
-import save_patch as sp
+from client import newgame as ng
+from client import save_patch as sp
 
 MENU_SIZE = 0x114  # the randomizer menu's state (native/src/game_calls.h, kMenuSize)
 

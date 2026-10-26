@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hints
+from client import hints
 
 TARGETS = [[2, 900, 16], [1, 501, 26], [2, 905, 27], [3, 77, 19]]  # player, location, item
 

@@ -6,8 +6,8 @@ import struct
 
 import pytest
 
-import game
-from patterns import TARGETS, Build, Pattern, Target
+from client import game
+from client.patterns import TARGETS, Build, Pattern, Target
 
 # lea rax, [rip + disp32] ; add rax, rdx ; ret  -- a stand-in for a referring instruction
 LEA = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 C3", disp_at=3, kind="rip", rip_end=7, addend=0)

@@ -14,8 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import game
-import reconcile
+from . import game, reconcile
 
 GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield

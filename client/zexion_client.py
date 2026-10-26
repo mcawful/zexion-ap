@@ -1,6 +1,8 @@
 """The Zexion Archipelago client.
 
-    .venv/Scripts/python client/zexion_client.py [archipelago://name:password@host:port]
+    .venv/Scripts/python -m client.zexion_client [archipelago://name:password@host:port]
+
+(``python client/zexion_client.py`` runs the same: it runs this module of the package.)
 
 It needs Archipelago's own modules: by default the pinned checkout in .ap/Archipelago
 (tools/ap_checkout.py), or the folder ``ZEXION_AP_DIR`` names. From Archipelago's Launcher, as
@@ -33,6 +35,15 @@ from collections.abc import Iterator
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+if __name__ == "__main__" and not __package__:
+    # Run as a script (client/zexion_client.py): run it as the package's module instead, with
+    # the repo root on the path in place of this folder.
+    import runpy
+
+    sys.path[0] = str(HERE.parent)
+    runpy.run_module("client.zexion_client", run_name="__main__", alter_sys=True)
+    sys.exit()
+
 AP_DIR = Path(os.environ.get("ZEXION_AP_DIR", HERE.parent / ".ap" / "Archipelago"))
 if AP_DIR.is_dir() and str(AP_DIR) not in sys.path:  # from the Launcher, its own is in use
     sys.path.insert(0, str(AP_DIR))
@@ -50,21 +61,23 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-import aplabels  # noqa: E402
-import discs  # noqa: E402
-import game  # noqa: E402
-import hints  # noqa: E402
-import ids  # noqa: E402
-import native  # noqa: E402
-import newgame  # noqa: E402
-import offline  # noqa: E402
-import prepare  # noqa: E402
-import reconcile  # noqa: E402
-import save_patch  # noqa: E402
-import session  # noqa: E402
-import shields  # noqa: E402
-import state  # noqa: E402
-from ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
+from . import (  # noqa: E402
+    aplabels,
+    discs,
+    game,
+    hints,
+    ids,
+    native,
+    newgame,
+    offline,
+    prepare,
+    reconcile,
+    save_patch,
+    session,
+    shields,
+    state,
+)
+from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 
 GAME = "Zexion"
 # The client's window shows what the player acts on (the connection, the helper, ARCHIPELAGO,

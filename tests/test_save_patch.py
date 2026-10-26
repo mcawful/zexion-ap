@@ -6,8 +6,8 @@ import struct
 
 import pytest
 
-import ids
-import save_patch as sp
+from client import ids
+from client import save_patch as sp
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
 

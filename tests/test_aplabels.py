@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import aplabels as al
+from client import aplabels as al
 
 
 def lines(text: str) -> list[str]:

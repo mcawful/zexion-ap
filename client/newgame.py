@@ -38,9 +38,9 @@ from __future__ import annotations
 
 import struct
 
-import ids
-import save_patch as sp
-from ids import BOMB_BOX, ENERGY_TANK, KEYS, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
+from . import ids
+from . import save_patch as sp
+from .ids import BOMB_BOX, ENERGY_TANK, KEYS, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
 
 # The start-with array's items, in order (the new-game routine at 0xA0570 copies entry i to
 # that item's inventory byte; docs/re/memory.md, "Starting a new game").

@@ -18,10 +18,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "client"))
+sys.path.insert(0, str(ROOT))  # the client package
 
-import game  # noqa: E402
-from patterns import KNOWN_BUILDS, TARGETS  # noqa: E402
+from client import game  # noqa: E402
+from client.patterns import KNOWN_BUILDS, TARGETS  # noqa: E402
 
 
 def offline(exe: Path) -> int:

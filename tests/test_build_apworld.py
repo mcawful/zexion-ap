@@ -45,6 +45,7 @@ def test_the_apworld_carries_archipelagos_manifest_keys(
     assert "zexion/__init__.py" in names
     assert "zexion/data.py" in names
     assert "zexion/docs/setup_en.md" in names
+    assert "zexion/client/__init__.py" in names  # the subpackage worlds.zexion.client
     assert "zexion/client/zexion_client.py" in names
     assert not [n for n in names if "/test/" in n or n.endswith(".pyc")]
     assert sorted(names).count("zexion/archipelago.json") == 1

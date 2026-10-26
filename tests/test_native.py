@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-import native
+from client import native
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()

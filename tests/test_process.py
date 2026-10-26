@@ -11,7 +11,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the Windows API")
 
-import process  # noqa: E402
+from client import process  # noqa: E402
 
 EXE = Path(sys.executable).name
 

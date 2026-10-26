@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-import ids
-import reconcile as rc
+from client import ids
+from client import reconcile as rc
 
 CELLS = [(25, 25), (29, 24), (3, 40), (50, 1)]
 TABLE = [3, 0, 46, 27]  # Machine Gun, Energy Tank, Scrap (a remote item), Alpha Key

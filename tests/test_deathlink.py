@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import deathlink
-import game
+from client import deathlink, game
 
 
 def test_a_death_in_play_is_sent() -> None:

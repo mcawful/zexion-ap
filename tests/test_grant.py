@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-import game
 import grant
-from patterns import Build
+from client import game
+from client.patterns import Build
 
 ITEM_NAMES = "0) ENERGY TANK\r\n\r\nEnergy Tank\r\n\r\n----\r\n27) ALPHA KEY\r\n\r\nAlpha Key\r\n"
 NAMES = grant.parse_item_names(ITEM_NAMES)

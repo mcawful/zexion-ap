@@ -5,9 +5,8 @@ from __future__ import annotations
 from test_save_patch import AMOUNTS
 from test_session import CELLS
 
-import discs
-import save_patch as sp
-import state
+from client import discs, state
+from client import save_patch as sp
 
 ITEMS = [46] * sp.LOCATIONS
 ITEMS[3], ITEMS[9], ITEMS[12] = 47, 48, 44  # a stand-in, a progression stand-in, a disk

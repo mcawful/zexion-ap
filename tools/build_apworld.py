@@ -2,11 +2,12 @@
 
     .venv/Scripts/python tools/build_apworld.py [--out dist]
 
-The apworld is the world package (``worlds/zexion``, without its tests) with the client's
-modules (``client/*.py``) in ``zexion/client/``; the world's launcher entry, Zexion Client,
-starts it from there (``worlds/zexion/__init__.py``, ``run_client``). Archipelago's launcher
-installs the apworld; the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's
-folder (the setup guide), which only the player does: no tool here writes there.
+The apworld is the world package (``worlds/zexion``, without its tests) with the client package
+(``client/*.py``, its ``__init__.py`` included) in ``zexion/client/``, so it is the subpackage
+``worlds.zexion.client``; the world's launcher entry, Zexion Client, starts it from there
+(``worlds/zexion/__init__.py``, ``run_client``). Archipelago's launcher installs the apworld;
+the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
+which only the player does: no tool here writes there.
 
 The DLLs are the CMake Release builds (``native/build``). The build refuses a helper whose
 version is not the client's (``client/native.py``, ``VERSION``), so the three always match,

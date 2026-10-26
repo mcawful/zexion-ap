@@ -29,7 +29,7 @@ import re
 import struct
 from collections.abc import Iterable, Sequence
 
-from ids import MAP_SIZE
+from .ids import MAP_SIZE
 
 CHECK_BYTES = 16  # of each function, for the helper's check (native/src/offline.cpp)
 MAX_FILE = 48 * 1024  # the helper's kMaxFile: the pipe takes no message much over 64 KB

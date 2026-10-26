@@ -25,7 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import save_patch
+from . import save_patch
 
 SLOT_NAME = "Save Game {}.sav"
 SLOTS = range(1, 31)

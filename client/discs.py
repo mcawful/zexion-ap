@@ -24,8 +24,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-import save_patch
-from ids import DATA_DISC, SECTION_SIZE
+from . import save_patch
+from .ids import DATA_DISC, SECTION_SIZE
 
 NAME = "OS INSTALL DISK"  # what the game's record calls DATA DISC is called here
 

@@ -7,23 +7,27 @@ __all__ = ["ZexionWorld"]
 
 
 def run_client(*args: str) -> None:
-    """The Zexion client (client/zexion_client.py): from this repo's client/ folder when the
-    world is run from source, else from the copy tools/build_apworld.py bundles into the
-    apworld beside this file (zipimport reads it from there). Its modules import one another by
-    plain name, so their folder goes on the path; this runs in the launcher's own process for
-    the client."""
-    import os
-    import sys
+    """The Zexion client (client/zexion_client.py), in the launcher's own process for it: the
+    subpackage ``client`` that tools/build_apworld.py bundles into the apworld beside this file
+    (zipimport reads it from there), or, with the world run from source (this folder linked
+    into an Archipelago checkout), this repo's ``client`` package, its root added to the end of
+    the path. The client's modules import one another relatively, so none of their names lands
+    on the path."""
+    try:
+        from .client.zexion_client import launch
+    except ModuleNotFoundError as error:
+        if error.name != f"{__name__}.client":
+            raise
+        import os
+        import sys
 
-    here = os.path.dirname(os.path.realpath(__file__))  # through .ap's link to this repo
-    source = os.path.normpath(os.path.join(here, os.pardir, os.pardir, "client"))
-    if os.path.isfile(os.path.join(source, "zexion_client.py")):
-        folder = source
-    else:
-        folder = os.path.join(here, "client")
-    if folder not in sys.path:
-        sys.path.insert(0, folder)
-    from zexion_client import launch
+        here = os.path.dirname(os.path.realpath(__file__))  # through .ap's link to this repo
+        root = os.path.normpath(os.path.join(here, os.pardir, os.pardir))
+        if not os.path.isfile(os.path.join(root, "client", "zexion_client.py")):
+            raise
+        if root not in sys.path:
+            sys.path.append(root)
+        from client.zexion_client import launch
 
     launch(*args)
 

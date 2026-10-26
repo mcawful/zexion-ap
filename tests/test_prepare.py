@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from test_save_patch import fresh, plan
 
-import prepare as pr
-import save_patch as sp
+from client import prepare as pr
+from client import save_patch as sp
 
 
 @pytest.fixture
