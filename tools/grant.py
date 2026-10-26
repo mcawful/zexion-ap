@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import re
 import sys
 import time
@@ -42,7 +41,7 @@ sys.path.insert(0, str(ROOT))  # the client package
 
 from client import game, ids  # noqa: E402
 from client.patterns import TARGETS  # noqa: E402
-from protected import assert_writable, game_dir, lab_dir  # noqa: E402
+from protected import append_log, game_dir, lab_dir  # noqa: E402
 
 ITEM_NAMES = Path("Files/Translations/English(HD)/ItemNames.txt")
 
@@ -100,11 +99,7 @@ def changes(old: bytes, new: bytes, names: dict[int, str]) -> list[str]:
 
 def log(entry: dict) -> None:
     """Append to lab/grants.jsonl; a failure here stops the write it describes."""
-    path = assert_writable(lab_dir() / "grants.jsonl")
-    entry = {"time": dt.datetime.now().isoformat(timespec="milliseconds"), **entry}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    append_log(lab_dir() / "grants.jsonl", entry)
 
 
 def cmd_show(args: argparse.Namespace, names: dict[int, str]) -> int:
