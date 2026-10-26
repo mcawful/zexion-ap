@@ -126,7 +126,7 @@ def scan_line(required: int) -> str:
 
 # What the player is told once they have enough disks: RETURN HOME WITH THE DISKS? is offered
 # only after a save at the landing pod, the seed's start (the owner's design, 2026-10-25).
-POD_NOTE = "ALL OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
+POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
 
 # The randomizer section's start record (docs/re/save-format.md, "The continue point and the
 # seed's start"): the start-candidate index less 1, then the start's tile column and row.

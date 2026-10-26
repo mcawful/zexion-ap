@@ -96,12 +96,13 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   disk count. The file select shows the count in place of the keys for the seed's saves
   (nothing with no disk), and the game's own again once the client disconnects (live-tested
   2026-10-24 and 2026-10-25), or, with the helper loaded with the game, each save's own count
-  from the offline look below. Once the player has enough, the client pops up ALL OS INSTALL
+  from the offline look below. Once the player has enough, the client pops up ENOUGH OS INSTALL
   DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME. (once per load), and after each save at
   the landing pod (the seed's start, seen in the slot's block the game rewrites on a save, with
   the player in the start cell) the helper offers RETURN HOME WITH THE DISKS?, whose YES starts
-  the game's ending, which sends the goal (YES and NO live-tested 2026-10-24; the reminder and
-  the offer after a save at the pod, not elsewhere, 2026-10-25). This goal needs the helper:
+  the game's ending, which sends the goal (YES and NO live-tested 2026-10-24; the reminder,
+  then worded ALL OS INSTALL DISKS FOUND., and the offer after a save at the pod, not elsewhere,
+  2026-10-25; the ENOUGH wording not yet seen in the game). This goal needs the helper:
   without it nothing offers the ending.
 - **Popups for this world's finds, once each**: the popup after the game's own for each of
   this world's finds that has one (an OS Install Disk's count, an Intel Chip's hint) is shown
