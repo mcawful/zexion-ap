@@ -266,7 +266,8 @@ def game_running() -> bool:
 
 @dataclass
 class Game:
-    """An attached Zexion process with every target located."""
+    """An attached Zexion process with the targets it was attached with located (the
+    client's, patterns.CLIENT_TARGETS, by default)."""
 
     pm: object
     base: int

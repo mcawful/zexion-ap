@@ -58,20 +58,14 @@ class FakeGame:
     def rando_marker(self) -> int:
         return self.marker
 
-    def flag(self, number: int) -> int:
-        return self.flags[number]
-
     def flag_bytes(self, first: int, count: int) -> bytes:
         return bytes(self.flags[first : first + count])
 
     def player_state(self) -> game.PlayerState:
-        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], self.player_cell())
+        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], (0, 0))
 
     def save_stamp(self) -> bytes:
         return self.stamp
-
-    def player_cell(self) -> tuple[int, int]:
-        return (0, 0)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:

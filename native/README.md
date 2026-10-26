@@ -71,7 +71,9 @@ client had set armed again). `tests/pipe_client.h` is the pipe client the
   unless one is loaded already: the proxy's (below), or an earlier client's, which it uses. One
   of another version is unloaded and the built one loaded; a copy in the game's folder with no
   build to replace it is refused (the player updates it there), and with no build the client
-  loads the game folder's copy (reading it only). The client never writes the game's files.
+  loads the game folder's copy (reading it only). A file that loads as another version (an
+  out-of-date build) is not loaded again until it changes: the client says to rebuild
+  `native/` or copy this release's DLLs. The client never writes the game's files.
 - **The proxy** (`proxy/`, built as `build/proxy/Release/version.dll`). Zexion's `SDL2.dll`
   imports `GetFileVersionInfoA`, `GetFileVersionInfoSizeA` and `VerQueryValueA` from
   `VERSION.dll`, which is not a KnownDLL, so Windows takes a `version.dll` in the game's folder

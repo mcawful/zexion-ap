@@ -57,7 +57,10 @@ Each says when it ran in the game. A test on synthetic data is not that, and say
   is given, a reconnect replays none, and popups still queued when the client or the game
   closes come again next time. A slot with no count stored yet counts the items it holds as
   shown and stores that at once, so an older slot gets no flood of popups (stand-in tests,
-  helper and client 0.27.0; not yet seen live).
+  helper and client 0.27.0; not yet seen live). The record of locations found is sent again
+  every 5 seconds until the server holds it, and a failing side task (the labels, the disk
+  count, DeathLink, follow-up popups and the like) is logged once while items, checks and
+  the goal go on.
 - **New games from the seed** (helper phase 3). With the helper, the client arms it with the
   seed, and again once each new game holding it is in play, so one seed can start several
   saves. For a seed whose slot data carries the menu setup (from the world on `apworld`),
