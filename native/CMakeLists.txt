@@ -13,8 +13,8 @@ if(NOT MSVC)
 endif()
 get_property(ZAP_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(NOT ZAP_MULTI_CONFIG)
-  message(FATAL_ERROR "zexion_ap needs a multi-config generator: Visual Studio (CMake's default "
-                      "on Windows with Visual Studio installed) or Ninja Multi-Config")
+  message(FATAL_ERROR "zexion_ap needs a multi-config generator: Visual Studio, CMake's default "
+                      "on Windows with Visual Studio installed")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)

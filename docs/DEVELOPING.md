@@ -150,7 +150,11 @@ Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, par
 without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.
 
 The commands below are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
-Windows installs. They also work in PowerShell 7, except `VAR=value command`: set
+Windows installs. Claude Code needs Git Bash on Windows here too: the hook commands in
+`.claude/settings.json` are written for a POSIX shell. With Git Bash (and with `sh` on Linux and
+macOS), a hook that fails with an exit code other than 2 lets the call through; without it,
+Claude Code runs them in PowerShell, and a failing hook blocks the call instead (Claude Code's
+hooks reference; not tried here). They also work in PowerShell 7, except `VAR=value command`: set
 `$env:AP_TEST_WORLDS = "zexion"` first instead. The venv's programs are in `.venv/Scripts/` on
 Windows and `.venv/bin/` on Linux and macOS: change the folder in each command to match.
 
@@ -206,8 +210,8 @@ Nothing in `tests/` needs the game. What the native tests cover: `native/README.
 
 ## Running the client from source
 
-On Windows, with the game. It needs `.ap/` with the world linked in (`tools/ap_checkout.py`). Running it may load the
-helper into the game: the one already there if it is this version, else
+On Windows, with the game. It needs `.ap/` with the world linked in (`tools/ap_checkout.py`).
+Running it may load the helper into the game: the one already there if it is this version, else
 `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`).
 
 ```sh

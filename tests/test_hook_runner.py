@@ -1,5 +1,5 @@
-"""The hooks run on any machine: ``.claude/hooks/run_python.sh`` finds a Python 3 (or fails
-closed where it matters), and the hook scripts read their payload as UTF-8."""
+"""The hooks run on any machine: ``.claude/hooks/run_python.sh`` finds a Python 3.11+ (or
+fails closed where it matters), and the hook scripts read their payload as UTF-8."""
 
 from __future__ import annotations
 
@@ -17,35 +17,47 @@ import guard_protected
 import ruff_on_edit
 
 HOOKS = Path(guard_protected.__file__).parent
+ROOT = HOOKS.parent.parent
 RUNNER = HOOKS / "run_python.sh"
 SH = shutil.which("sh")
 needs_sh = pytest.mark.skipif(SH is None, reason="no sh on PATH (on Windows, Git Bash's)")
+REAL = Path(sys.executable).as_posix()
 
 SAVES = "C:/Users/someone/AppData/Roaming/Gallant Leaf/Zexion"
 PROBE = """\
 import json, sys
 data = json.loads(sys.stdin.buffer.read())
+print("probe out")
 print("probe ran", file=sys.stderr)
 sys.exit(data["code"])
 """
 
 
-def _sh(runner: Path, script: str, payload: str, path_first: Path | None = None):
+def _sh(repo: Path, script: str, payload: str, bin_dir: Path | None = None):
     env = dict(os.environ)
-    if path_first is not None:
-        env["PATH"] = f"{path_first}{os.pathsep}{env.get('PATH', '')}"
+    if bin_dir is not None:
+        env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     return subprocess.run(
-        [SH, str(runner), script],
+        [SH, str(repo / ".claude" / "hooks" / "run_python.sh"), script],
         input=payload.encode("utf-8"),
         capture_output=True,
         env=env,
     )
 
 
-def _fake(bin_dir: Path, name: str, body: str) -> None:
-    path = bin_dir / name
+def _fake(path: Path, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(f"#!/bin/sh\n{body}\n".encode())
     path.chmod(0o755)
+
+
+def _works(path: Path, name: str) -> None:
+    """A Python that runs (the real one), saying which candidate it is."""
+    _fake(path, f'echo "via {name}" >&2; exec "{REAL}" "$@"')
+
+
+def _payload(command: str, code: int = 0) -> str:
+    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "code": code})
 
 
 @pytest.fixture
@@ -60,71 +72,108 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fake_bin(tmp_path: Path) -> Path:
-    """python3 and py that cannot run anything (a Store stub, say), ahead of the real ones."""
+    """python3, python and py ahead of the real ones, none able to run anything: a Store
+    stub, Python 2's SyntaxError, the launcher with no Python."""
     bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    _fake(bin_dir, "python3", 'echo "Python was not found" >&2; exit 49')
-    _fake(bin_dir, "py", "exit 9009")
+    _fake(bin_dir / "python3", 'echo "Python was not found" >&2; exit 49')
+    _fake(bin_dir / "python", 'echo "SyntaxError (Python 2)" >&2; exit 1')
+    _fake(bin_dir / "py", "exit 9009")
     return bin_dir
 
 
 @needs_sh
 @pytest.mark.parametrize("code", [0, 2])
 def test_the_first_python_that_runs_the_hook_decides(repo, fake_bin, code: int) -> None:
-    real = Path(sys.executable).as_posix()
-    _fake(fake_bin, "python", f'exec "{real}" "$@"')
-    result = _sh(
-        repo / ".claude/hooks/run_python.sh", "probe.py", json.dumps({"code": code}), fake_bin
-    )
+    _works(fake_bin / "python", "python")
+    result = _sh(repo, "probe.py", _payload("ls", code), fake_bin)
     assert result.returncode == code
-    stderr = result.stderr.decode()
-    assert "probe ran" in stderr
-    assert "not found" not in stderr  # the stub's complaint is dropped
-
-
-@needs_sh
-def test_the_repos_venv_comes_first(repo, fake_bin) -> None:
-    real = Path(sys.executable).as_posix()
-    venv = repo / ".venv" / "bin"
-    venv.mkdir(parents=True)
-    _fake(venv, "python", f'echo venv >&2; exec "{real}" "$@"')
-    _fake(fake_bin, "python", "exit 1")
-    result = _sh(
-        repo / ".claude/hooks/run_python.sh", "probe.py", json.dumps({"code": 0}), fake_bin
-    )
-    assert result.returncode == 0
-    assert result.stderr.decode().split() == ["venv", "probe", "ran"]
+    assert result.stdout.decode().split() == ["probe", "out"]  # stdout passes through
+    # The stub's complaint is dropped; the hook's own stderr is kept.
+    assert result.stderr.decode().split() == ["via", "python", "probe", "ran"]
 
 
 @needs_sh
 @pytest.mark.parametrize(
-    ("command", "code"),
+    ("working", "chosen"),
     [
-        (f"cp lab/a '{SAVES}/x.sav'", 2),  # near the saves: blocked
-        ("ls", 1),  # elsewhere: goes ahead, with a hook error notice
+        ([".venv/Scripts/python.exe", ".venv/bin/python", "python3"], ".venv/Scripts/python.exe"),
+        ([".venv/bin/python", "python3"], ".venv/bin/python"),
+        (["python3", "python"], "python3"),
+        (["py"], "py"),
     ],
 )
-def test_with_no_python_it_fails_closed_near_the_saves(repo, fake_bin, command, code) -> None:
-    _fake(fake_bin, "python", 'echo "SyntaxError (Python 2)" >&2; exit 1')
-    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
-    result = _sh(repo / ".claude/hooks/run_python.sh", "probe.py", payload, fake_bin)
+def test_candidates_in_order(repo, fake_bin, working: list[str], chosen: str) -> None:
+    for name in working:
+        if name == "py":  # the launcher, which must be asked for Python 3
+            _fake(
+                fake_bin / "py",
+                f'[ "$1" = -3 ] || exit 9; shift; echo "via py" >&2; exec "{REAL}" "$@"',
+            )
+        else:
+            _works(repo / name if name.startswith(".venv") else fake_bin / name, name)
+    result = _sh(repo, "probe.py", _payload("ls"), fake_bin)
+    assert result.returncode == 0
+    assert result.stderr.decode().split()[:2] == ["via", chosen]
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    ("script", "command", "code"),
+    [
+        ("guard_protected.py", f"cp lab/a '{SAVES}/x.sav'", 2),  # near the saves: blocked
+        ("guard_protected.py", "rm STEAMAPPS/x", 2),
+        ("guard_protected.py", "rm SteamApps/x", 2),
+        ("guard_protected.py", "rm userdata/1/3392510/x", 2),
+        ("guard_protected.py", "rm gAlLaNt/x", 2),
+        ("guard_protected.py", "ls", 1),  # elsewhere: goes ahead, with a hook error notice
+        ("ruff_on_edit.py", f"cp lab/a '{SAVES}/x.sav'", 1),  # after the call: never "blocked"
+    ],
+)
+def test_with_no_python_it_fails_closed_near_the_saves(repo, fake_bin, script, command, code):
+    result = _sh(repo, script, _payload(command), fake_bin)
     assert result.returncode == code
     stderr = result.stderr.decode()
-    assert "No Python 3 could run .claude/hooks/probe.py" in stderr
-    assert "SyntaxError" not in stderr
+    assert f"No Python 3.11 or later could run .claude/hooks/{script}" in stderr
+    assert "SyntaxError" not in stderr and "not found" not in stderr
+    assert ("so it is blocked" in stderr) == (code == 2)
+
+
+@needs_sh
+def test_a_script_python_cannot_open_is_no_verdict(repo, fake_bin) -> None:
+    # Python exits 2 itself for a file it can't open (a Windows .venv seen from WSL, say);
+    # through the runner that is a traceback instead, so the call is not blocked or let
+    # through on Python's word.
+    _works(fake_bin / "python", "python")
+    result = _sh(repo, "missing.py", _payload("ls"), fake_bin)
+    assert result.returncode == 1
+    assert "No Python 3.11 or later could run" in result.stderr.decode()
 
 
 @needs_sh
 @pytest.mark.parametrize(("file_path", "code"), [(f"{SAVES}/x.sav", 2), ("lab/x.sav", 0)])
-def test_the_guard_through_the_runner(file_path: str, code: int) -> None:
+def test_the_guard_as_claude_code_runs_it(tmp_path: Path, file_path: str, code: int) -> None:
+    # The hook command as settings.json would give it, in a folder whose name has a space,
+    # with the Pythons this machine has.
+    repo = tmp_path / "a repo"
+    (repo / ".claude" / "hooks").mkdir(parents=True)
+    (repo / "tools").mkdir()
+    for name in ("run_python.sh", "guard_protected.py"):
+        shutil.copy(HOOKS / name, repo / ".claude" / "hooks" / name)
+    shutil.copy(ROOT / "tools" / "protected.py", repo / "tools" / "protected.py")
     payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": file_path}})
-    result = _sh(RUNNER, "guard_protected.py", payload)
+    result = subprocess.run(
+        [SH, "-c", 'sh "${CLAUDE_PROJECT_DIR}/.claude/hooks/run_python.sh" guard_protected.py'],
+        input=payload.encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo)},
+    )
     assert result.returncode == code
-    assert (code == 0) == (guard_protected.BLOCK_HINT not in result.stderr.decode())
+    assert (code == 2) == (guard_protected.BLOCK_HINT in result.stderr.decode())
 
 
 def test_the_guard_reads_and_answers_in_utf8() -> None:
-    # A name whose UTF-8 bytes a Windows code page reads as other characters (or none).
+    # A name whose UTF-8 bytes a Windows code page reads as other characters. Where the
+    # locale is UTF-8 (Linux, macOS) this passes either way; it guards Windows.
     command = f"cp lab/a '{SAVES}/\u00c1\u0436.sav'"
     payload = json.dumps(
         {"tool_name": "Bash", "tool_input": {"command": command}}, ensure_ascii=False
@@ -152,9 +201,10 @@ def test_ruff_on_edit_reads_its_payload_as_utf8(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(ruff_on_edit, "find_ruff", lambda: "ruff")
     monkeypatch.setattr(ruff_on_edit.subprocess, "run", run)
     payload = json.dumps({"tool_input": {"file_path": str(source)}}, ensure_ascii=False)
-    # A stdin whose text layer is a code page that cannot read the name's bytes.
-    monkeypatch.setattr(
-        sys, "stdin", io.TextIOWrapper(io.BytesIO(payload.encode("utf-8")), encoding="cp1252")
-    )
+    # A stdin whose text layer is a code page that cannot read the name's bytes, and a
+    # stderr of its own (main reconfigures it).
+    stdin = io.TextIOWrapper(io.BytesIO(payload.encode("utf-8")), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stderr", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
     assert ruff_on_edit.main() == 0
     assert [args[-1] for args in calls] == [str(source.resolve())] * 2
