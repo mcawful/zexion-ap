@@ -181,7 +181,8 @@ the pause screen open: working in game 2026-10-26, the Launcher's client log
 after it, from 5681ed6, took any refusal for a failed request and dropped the helper, which by
 the code then put things back under the open screen as for a client going away, not seen in
 game; fixed since, `native.Helper.unload`, on stand-in tests only). It also refuses (`error
-<why>; not unloading`) while the game may still call into the helper, or hold something of the helper's.
+<why>; not unloading`) while the game may still call into the helper, or hold something of the
+helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
 of its wrappers, or the scanner's text, the pause screen's branch, an item record or the
 ending's patch still the helper's.

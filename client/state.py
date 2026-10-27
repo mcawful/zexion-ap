@@ -14,7 +14,7 @@ received items' popups handed over, kept on the server (``announced_start``), th
 server's count of Energy Shields given (``shield_count``), the locations found to record there
 (``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
 lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``,
-``reload_reply``, ``feats_unguarded``). No
+``reload_reply``, ``FeatsCheck``). No
 Archipelago imports, so the tests build them from slot data.
 """
 
@@ -130,7 +130,9 @@ class Connection:
 def left_connection(conn: Connection | None, left: Connection | None) -> Connection | None:
     """The connection to keep for the next one (carry_over) when the client disconnects: the
     one just ended, or, with none (Archipelago's connect disconnects first, after a Disconnect
-    already ended it), the one kept before."""
+    already ended it), the one kept before. The same pick names the connection a reconnect
+    carries from (connected), and the one kept meanwhile (away_tick: a dropped one is still
+    ``conn``)."""
     return conn if conn is not None else left
 
 
@@ -302,6 +304,54 @@ class SeedState:
     death_retry_at: float = 0.0
 
 
+FEATS_ASK_SECONDS = 5.0  # between asks whether the Feats guard is on for this load
+# This seed's save in play this long with the guard still off: it is not coming (the helper
+# turns it on two frame calls into an AP save's load).
+FEATS_OFF_SECONDS = 10.0
+
+
+@dataclass
+class FeatsCheck:
+    """Whether the helper keeps Feats and Steam achievements out of the loaded save of this
+    seed (its hello's ``feats``; native/README.md, "Feats and achievements in AP saves"), for
+    one load and one helper (ticks.feats_tick asks; this decides)."""
+
+    known: bool = False  # on, or on with why not all of it: not asked again
+    ask_at: float = 0.0  # when to ask next
+    off_since: float | None = None  # first read off with the save in play
+
+    def due(self, now: float) -> bool:
+        """Whether to ask the helper now (and if so, not again for FEATS_ASK_SECONDS)."""
+        if self.known or now < self.ask_at:
+            return False
+        self.ask_at = now + FEATS_ASK_SECONDS
+        return True
+
+    def seen(self, feats: str, in_play: bool, now: float, said: SayOnce) -> tuple[str, str] | None:
+        """The helper's ``feats`` read now (``in_play``: this seed's save in play): the
+        player's line and the log's detail to say, or None. Each warning is said once, and
+        again only after a load where the guard was all in place."""
+        if feats == "on" or feats.startswith("on:"):
+            self.known = True
+            why = feats_unguarded(feats)
+            if why is None:
+                said.clear("feats")
+                return None
+            line, detail = FEATS_UNGUARDED, f"not all in place: {why}"
+        else:  # off: not yet, or not for this save (the helper does not take it for an AP save)
+            if not in_play:
+                return None
+            if self.off_since is None:
+                self.off_since = now
+            if now - self.off_since < FEATS_OFF_SECONDS:
+                return None
+            line, detail = (
+                FEATS_OFF,
+                f"still {feats or 'not reported'} after {now - self.off_since:.0f} s in play",
+            )
+        return (line, detail) if said("feats", line) else None
+
+
 @dataclass
 class LoadState:
     """What the polls found of the loaded save of this seed."""
@@ -315,10 +365,8 @@ class LoadState:
     intel_want: bool = False
     # An ending without enough OS Install Disks (yet), said once a load.
     goal_withheld: bool = False
-    # Whether the helper said its Feats guard is on for this load (ticks.feats_tick), and when
-    # to ask it next until it does.
-    feats_known: bool = False
-    feats_ask_at: float = 0.0
+    # The helper's Feats guard for this load (ticks.feats_tick).
+    feats: FeatsCheck = field(default_factory=FeatsCheck)
 
     def leave(self) -> None:
         """No save of this seed is loaded: the next load starts afresh (every field as new)."""
@@ -356,6 +404,11 @@ def attach_failed(exc: game.GameError) -> str:
 FEATS_UNGUARDED = (
     "The Zexion mod couldn't fully turn off Feats and Steam achievements for this Archipelago "
     "save (details in the log): achievements may be earned in this save."
+)
+FEATS_OFF = (
+    "The Zexion mod doesn't recognize this save as an Archipelago save, so Feats and Steam "
+    "achievements aren't turned off (details in the log): achievements may be earned in this "
+    "save."
 )
 
 

@@ -154,7 +154,7 @@ class ZexionContext(CommonContext):
             return
         conn.session.helper = self.helper
         # The connection before: one that dropped (kept), or one a disconnect ended.
-        old = self.conn or self.left_conn
+        old = state.left_connection(self.conn, self.left_conn)
         self.left_conn = None
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
         state.carry_over(conn, old, identity == self.seed_state.identity)
@@ -235,7 +235,7 @@ class ZexionContext(CommonContext):
         self.helper = None
         self.told = None
         self.reload_mod_pending = False  # a request for the helper gone, not the next one
-        self.load.feats_known = False  # the next helper is asked about its own Feats guard
+        self.load.feats = state.FeatsCheck()  # the next helper is asked about its own guard
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         if conn is not None:
@@ -358,7 +358,7 @@ async def away_tick(ctx: ZexionContext) -> None:
     """While no connection steps a session (disconnected, or dropped): the one kept for the
     next connection (connected, state.carry_over) still sees its save leave, so the ending's
     hold it carries is one of the load still loaded (Session.look_away)."""
-    kept = ctx.conn or ctx.left_conn
+    kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
     if kept is None or ctx.game_conn is None:
         return
     try:
