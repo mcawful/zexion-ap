@@ -44,10 +44,12 @@ the player's". B1 shows no way to set No Guarantee or "?????", whose text exists
 
 ## The YAML
 
-`mode` keeps its three presets, each exactly as today: the item pool and starting items of one
-fresh save of that mode, and its settings. A new `custom` value turns on every other option
-below. While `mode` is a preset, the Custom options are not read, as the game's presets fix
-every setting; the world logs a warning for each one set to something other than `preset`.
+**Decided (the owner, 2026-10-27): the presets are shortcuts, and every setting is Custom's.**
+`mode` keeps Easy, Standard and OHKO for players who want a short YAML, each exactly the game's
+preset, as today: the item pool and starting items of one fresh save of that mode, and its
+settings. None of a preset's settings can be changed, as in the game, where changing one makes
+the mode Custom. A new `custom` value is the only way to set the options below: with a preset,
+any of them set to something other than `preset` is refused (an `OptionError` naming it).
 
 ```yaml
 Zexion:
@@ -92,9 +94,7 @@ Zexion:
   obscure_minors: preset
   obscure_class: preset
   show_obtainable: preset
-
-  # In every mode, not only Custom (below):
-  abridged_finale: false      # the game's own: victory when Zexion is first grabbed
+  abridged_finale: preset     # the game's own: victory when Zexion is first grabbed
 
   # Unchanged: goal, os_install_disks, os_install_disks_required, area_map_hints,
   # allow_assists, death_link
@@ -115,15 +115,15 @@ Tanks", "Item Pool Missiles"; ":Starting Item", ":Random", ":Excluded") and its 
 world."). `preset` is each option's default, so a Custom YAML that sets nothing is
 `custom_base` exactly.
 
-**Abridged Finale in every mode.** The game's Abridged Finale ("Victory is achieved when you
-first grab Zexion in the core.") does what an `escape_skip` option the owner has discussed (not
-in the repo) was for: no SKIP ESCAPE prompt (measured by disassembly) and, assumed from the code
-and not run, the ending soon after the grab with no escape and no final battle. So it would
-replace `escape_skip`, as the game's own setting. It is offered with the presets too: the game
-would then call the mode Custom, but the preset's pool and every other setting stay, and the
-logic only gains code 68's Abridged Finale entries, which the world works out with the rest
-at generation time. Whether the helper keeps offering its escape skip when Abridged Finale is
-off (today's behavior) is the owner's call. Colorizer stays out of the YAML: the game treats it as the player's
+**Abridged Finale.** The game's Abridged Finale ("Victory is achieved when you first grab
+Zexion in the core.") does what an `escape_skip` option the owner has discussed (not in the
+repo) was for: no SKIP ESCAPE prompt (measured by disassembly) and, assumed from the code and
+not run, the ending soon after the grab with no escape and no final battle. It is a Custom
+setting like the rest: no preset has it, and turning it on in the game's menu makes the mode
+Custom. So a Custom player gets the game's own version, and a preset player keeps what the
+helper does today (it offers the escape skip in any game, `native/README.md`, "The escape
+skip"). Whether `escape_skip` is still wanted for the presets is open. Colorizer stays out of
+the YAML: the game treats it as the player's
 own (the mode ignores it, the mode buttons leave it), and the client leaves it as the menu has
 it, as it does today.
 
@@ -198,7 +198,7 @@ risk (the same `logic.py`, checked against the presets' precomputed data in test
 | 5 | Safety | low | low | `logic.Settings.mode69` already; the rest is the prerequisite. |
 | 6 | Start Keys | low | low | Start with the first *k* keys from the Alpha Key; the pool drops the Omega Key first. The client already writes keys as a count (`client/newgame.py`, `start_with`). |
 | 7 | X Crystals, X Blocks | low | medium | Code 68 already in `logic.py`; pass through. The removal runs in the new game's event chain from the section's settings, so it comes with the menu's settings. Assumed: the slot state 4 means "gone". Check in game, and that the core's 2095 object under X Blocks changes nothing for the goal. |
-| 8 | Abridged Finale | low | medium | Code 68; pass through; in every mode, in place of the discussed `escape_skip`. Assumed, not run: the ending starts after the grab with flag 250 and flag 211 clear, which is the client's goal. Run it once first. With the OS Install Disks goal it would end the game at the grab without the disks: refuse the pair, or let it be (the owner's call). |
+| 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Assumed, not run: the ending starts after the grab with flag 250 and flag 211 clear, which is the client's goal. Run it once first. With the OS Install Disks goal it would end the game at the grab without the disks: refuse the pair, or let it be (the owner's call). |
 | 9 | Box Compression, Bulk Missiles, Bulk Bombs, the amounts | medium | low | The pool rules above, in the world, with tests from fresh saves of new seeds (Box Compression off, each Bulk on, both amounts 20 or more): generate them in the menu and read the saves, read-only. Starting missiles are given as the new game splits them, tens as Missile Boxes and the rest as up to 9 containers (`client/newgame.py`, `start_with`), so the world must hand them out in that form; starting Mega Bombs need the client's new-game bombs (`worlds/zexion/starting.py`: not supported yet). |
 | 10 | The 27 items, Random Gun | medium | low | The four states and Random Gun's draw in the world; the start-with array already carries any of the 27. An excluded item is simply absent. |
 | 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as a new entrance rule. The start table stays B1-only (`client/newgame.py`). |
@@ -208,6 +208,23 @@ risk (the same `logic.py`, checked against the presets' precomputed data in test
 | — | No Guarantee | none | none | Not offered (not on B1's menu). |
 
 ## The new game
+
+**The principle (decided, the owner, 2026-10-27): the game's menu holds the seed's settings, and
+AP changes only what is AP's.** A new file is made by the game's own placement from a menu state
+that is exactly the seed's: a preset's, or the Custom settings. So everything the game derives
+from its settings comes out as the game makes it: the settings code and the view of it in the
+pause menu (OPTION MENU, RANDO, RANDO SETTINGS), the Hints' map rectangles, the blocks X Crystals
+and X Blocks remove, Abridged Finale's events, Revealed's map, the Colorizer's colors, the key
+markers. Then AP writes only its own part, as the client does today (`client/newgame.py`): the
+item table (this world's items, and stand-ins for other worlds' items and for the OS Install
+Disks), the start room and the second teleport target the world chose, the starting items and
+amounts (the coin flips and Random Gun as the world resolved them, and any `start_inventory`),
+and the starting keys; and the client checks that the settings the logic reads came out as the
+seed's. In play, the client and the helper add what AP needs on top: received items, the OS
+Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the escape skip's
+offer. One small addition would help: setting the menu's Starting Location to the world's start
+room, so the pause menu's view names the room instead of reading Random Start (seen in an AP
+save: `re/randocells.md`, "The settings code").
 
 **ARCHIPELAGO** already sets the whole menu state (seed text, both item arrays, the six amounts
 and settings t10 to t73 but Colorizer) from the slot data, runs the game's placement, checks
@@ -228,7 +245,8 @@ that on the clipboard, or print it, for the player to paste.
 
 ## Open questions for the owner
 
-- Refuse a preset with Custom options set, or only warn (this draft: warn)?
+- With a preset, keep offering the helper's escape skip (today), or add `escape_skip` as an
+  option for the presets? (Custom players have the game's Abridged Finale.)
 - Abridged Finale with the OS Install Disks goal: refuse, or allow?
 - `start_room: random_start` (and Archipelago's own `random`): the game's Random Start rule
   (this draft), or today's rule (any room every item reaches all locations from, with at least
