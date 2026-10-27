@@ -10,7 +10,8 @@ Code that relies on a fact cites the page and heading it comes from.
 - [`new-build.md`](new-build.md): what to do when the game is patched.
 - [`save-format.md`](save-format.md): the `.sav` files.
 - [`memory.md`](memory.md): where the running game keeps its state.
-- [`randocells.md`](randocells.md): the randomizer's logic file.
+- [`randocells.md`](randocells.md): the randomizer's logic file, its menu's settings, and how
+  the game builds a seed from them.
 - [`locations.md`](locations.md): how the APWorld's locations and rules are derived from it,
   and what backs them; the `logic-reviewer` subagent checks the APWorld against it.
 
