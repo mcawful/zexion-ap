@@ -192,10 +192,59 @@ starts, the placement and the winnability check. Format and statuses per
 | Value | **The start table** is built when the randomizer menu opens: 34 rooms on B1, in map order (`memory.md`, "The game-mode panel: NORMAL / RANDOMIZER"; `lab/data/6d8a94bd4d64/start-candidates.json`). Starting Location value *n* (1 to 34) is room *n* − 1, named by SmallText 26 + *n* (Random Start is 26): the pause menu's teleport option names its target the same way (text `0x1B` + index, `0x165731`), and the names fit the rooms' areas (30 of 34 name the area the room is in; the others lie at an area's edge). Room 0 is Exodia X25 Y1, room 6 Landing Pod X16 Y13 (Easy's start in its fresh save), room 33 Waste Zone X18 Y52. Eight rooms hold object `0x19` and are flagged: 0, 2, 25, 27, 29, 30, 32 and 33. The menu wraps the value at the table's count (`0x112120`, the count at `+0xEAF7CC`); before each step it builds the location list from the current settings (`0xF0E80`). |
 | | **START GAME's first step** (`0xF2F30`) hashes the seed text, builds the location list and, by Starting Location: **a fixed start** (*n* ≥ 1) writes room *n* − 1 as the start record (section `+0x310`: the index, then column = x × 14 + the first object's x / 16, row = y × 20 + its y / 16), with no bound check (values above 34 only come from a patched save), then the second target, and returns: START GAME runs the placement and the winnability check once. **Random Start** (*n* = 0) first builds the starting items as the placement will (coin flips, Random Gun, amounts; `0xE5450`) and a score, starting Energy + starting missiles + starting bombs + the number of starting upgrades. The rooms it draws from are all 34 when the score is 27 or more, else the unflagged ones only (so Easy, Standard and OHKO never start in a flagged room). Then, until one passes or none is left (`0xF4661`): draw a room, write the start (and the second target), flood from it with the starting items and skip it if no location is collectible, else run the placement and the winnability check; with Safety not Light, a passing room in rows 41 to 43 of the grid (rooms 1, 4, 11 and 14, Upper Tower, Tower Gauntlet, Guardia Tower and Lower Tower) is kept only one time in three, once per START GAME. The placement restarts its random numbers from the seed's hash each time, so only the room changes between tries. |
 | | **The second target** (Double Teleport, t33): one random room of all 34 other than the start, flagged rooms included (34 is a constant here, not the table's count), written to section `+0x6CC` (index, column, row) with the room's flag at `+0x6D2`. With Double Teleport off: room 0's column and row, and flag 0. The logic counts the second target only when the "useful item" score at `+0xEB2170` is at least 27 or the room is unflagged (`0xE6D20`, `0xE8850`; the map's `0x16DB41` too). The score is recounted with the items (`0xE5680`, `0xE57AB` onward): the Energy count (doubled with the Magnus Armor) + the missile and bomb counts + 10 per Missile Box and Bomb Box + one for each of the 27 menu items owned but the Navcore and the Magnus Armor. With Random Start and Double Teleport both on, the second target's list is built in the buffer that holds the start's list and its draw replaces the start's index, so the first flood, the rows 41 to 43 rule and later tries use the second target in place of the start (read in code; a bug, by its look; not tried). The pause menu offers the teleport only with t33 on (`0x16561F`, `0x165F46`). |
-| Status | measured (by disassembly: `0xF2F30` and its loop, the second target, the logic's rule, the names' order; the table's count and the menu's wrap, live: Waste Zone stored as 34); assumed (the names' order is also from their areas; the Random Start with Double Teleport behavior, from the code only) |
+| Status | measured (by disassembly: `0xF2F30` and its loop, the second target, the logic's rule, the names' order; the table's count and the menu's wrap, live: Waste Zone stored as 34; every value's name on screen, in order, with the bytes recorded, 2026-10-27); assumed (the Random Start with Double Teleport behavior, from the code only) |
 | Method | capstone over the B1 exe copy; the candidates file against MapData's areas; `memscan.py record` of the menu block |
 | Build | B1 |
-| Evidence | `lab/rando-options/agentC/f2f30.asm`, `f2f30_tail.asm`, `start_candidates_named.txt`, `notes.md`, 2026-10-27; `lab/mem/opts-step.log` (16:30:09: t23 and t27 set, 34), 2026-10-27. |
+| Evidence | `lab/rando-options/agentC/f2f30.asm`, `f2f30_tail.asm`, `start_candidates_named.txt`, `notes.md`, 2026-10-27; `lab/mem/opts-step.log` (16:30:09: t23 and t27 set, 34; from 17:0x, Claude stepping the value 1 to 34 and back to 0 on screen, each name read from a screenshot), 2026-10-27. |
+
+**Each Starting Location value**, as the menu names it (read on screen, stepping from Random
+Start through all 34 and back; the names are the game's `Text` labels 27 to 60, and the
+translation's `SmallText.txt` has the same but for "Guadia Lab"). The cell is this repo's
+(x, y), shown in game as X = y, Y = x ("Grid order"); the area is MapData's; flagged rooms hold
+object `0x19` (Random Start leaves them out below a starting score of 27); with Safety other
+than Light, Random Start keeps values 2, 5, 12 and 15 one time in three.
+
+| Value | Name | Key | Shown at | Cell | Area | Flagged |
+|---|---|---|---|---|---|---|
+| 0 | Random Start | `random_start` | | | | |
+| 1 | Exodia | `exodia` | X25 Y1 | (1, 25) | Exodia | yes |
+| 2 | Upper Tower | `upper_tower` | X41 Y6 | (6, 41) | Guardia | |
+| 3 | Below Junkyard | `below_junkyard` | X0 Y9 | (9, 0) | Kresezoa | yes |
+| 4 | Below Arena | `below_arena` | X23 Y10 | (10, 23) | Guardia | |
+| 5 | Tower Gauntlet | `tower_gauntlet` | X43 Y10 | (10, 43) | Guardia | |
+| 6 | Top of Pulsava | `top_of_pulsava` | X30 Y11 | (11, 30) | Pulsava | |
+| 7 | Landing Pod | `landing_pod` | X16 Y13 | (13, 16) | Kresezoa | |
+| 8 | Guardia Lab | `guardia_lab` | X50 Y13 | (13, 50) | Pulsava | |
+| 9 | Ocean Cliff | `ocean_cliff` | X1 Y14 | (14, 1) | Kresezoa | |
+| 10 | Vallahar | `vallahar` | X8 Y14 | (14, 8) | Vallahar | |
+| 11 | Jungle Entry | `jungle_entry` | X40 Y16 | (16, 40) | Pulsava | |
+| 12 | Guardia Tower | `guardia_tower` | X41 Y16 | (16, 41) | Guardia | |
+| 13 | Kresezoa Cave | `kresezoa_cave` | X24 Y17 | (17, 24) | Kresezoa | |
+| 14 | Tarazor's Nest | `tarazors_nest` | X29 Y17 | (17, 29) | Pulsava | |
+| 15 | Lower Tower | `lower_tower` | X43 Y21 | (21, 43) | Guardia | |
+| 16 | K'tarel Sub | `ktarel_sub` | X8 Y22 | (22, 8) | Kresezoa | |
+| 17 | Spider Caves | `spider_caves` | X45 Y22 | (22, 45) | Pulsava | |
+| 18 | Open Cave | `open_cave` | X22 Y23 | (23, 22) | Kresezoa | |
+| 19 | Machinus Entry | `machinus_entry` | X29 Y23 | (23, 29) | Machinus | |
+| 20 | Upper Machinus | `upper_machinus` | X33 Y23 | (23, 33) | Machinus | |
+| 21 | Near Colossus | `near_colossus` | X51 Y24 | (24, 51) | Crysmoon | |
+| 22 | Near Orballus | `near_orballus` | X36 Y28 | (28, 36) | Machinus | |
+| 23 | Crysmoon Entry | `crysmoon_entry` | X49 Y28 | (28, 49) | Crysmoon | |
+| 24 | Lower Machinus | `lower_machinus` | X33 Y31 | (31, 33) | Machinus | |
+| 25 | White Crysmoon | `white_crysmoon` | X53 Y32 | (32, 53) | Crysmoon | |
+| 26 | Below Machinus | `below_machinus` | X25 Y35 | (35, 25) | R'Talva | yes |
+| 27 | Fijedar Lab | `fijedar_lab` | X6 Y38 | (38, 6) | Fijedar | |
+| 28 | Fijedar Entry | `fijedar_entry` | X18 Y38 | (38, 18) | Fijedar | yes |
+| 29 | Deep Crysmoon | `deep_crysmoon` | X49 Y38 | (38, 49) | Crysmoon | |
+| 30 | R'talva | `rtalva` | X32 Y43 | (43, 32) | R'Talva | yes |
+| 31 | Phobyss Entry | `phobyss_entry` | X2 Y46 | (46, 2) | Phobyss | yes |
+| 32 | Magma Chamber | `magma_chamber` | X52 Y49 | (49, 52) | Vulknor | |
+| 33 | Vulknor Entry | `vulknor_entry` | X36 Y50 | (50, 36) | R'Talva | yes |
+| 34 | Waste Zone | `waste_zone` | X18 Y52 | (52, 18) | Phobyss | yes |
+
+The key is the name in lower case, words joined by `_`, apostrophes dropped: a proposal for the
+YAML ([`../custom-mode.md`](../custom-mode.md)), not something the game uses.
+
 
 ## The pool
 

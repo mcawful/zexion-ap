@@ -78,7 +78,10 @@ Zexion:
   hints: preset               # none | vanilla | vanilla_plus | small | normal | large |
                               # full_map | revealed
   gates: preset               # off | vanilla | unlocked | open
-  start_room: automatic       # the existing option; 'random' becomes the game's Random Start
+  start_room: automatic       # random_start | exodia | upper_tower | ... | waste_zone: the
+                              # game's 34 room names (randocells.md, "Starting Location and
+                              # the second teleport target"); today's names (kresezoa_16_13)
+                              # kept as aliases; automatic: Landing Pod
   double_teleport: preset
   start_keys: preset          # 0..4
   x_crystals: preset
@@ -165,10 +168,10 @@ them out at generation time with `logic.py` over the region graph `data.py` alre
 - A named room: any of the 34, as in the game, which checks nothing more than its winnability
   check. The world refuses one from which the starting items reach no location: Archipelago's
   fill cannot start there (the game would offer PLAY ANYWAY).
-- `random`: the game's rule: the unflagged rooms unless the starting score (starting Energy +
-  missiles + bombs + starting items) is 27 or more; a room from which the starting items reach
-  at least one location; with Safety other than Light, rooms 1, 4, 11 and 14 kept one time in
-  three.
+- `random_start` (and `random`): the game's rule: the unflagged rooms unless the starting
+  score (starting Energy + missiles + bombs + starting items) is 27 or more; a room from which
+  the starting items reach at least one location; with Safety other than Light, Upper Tower,
+  Tower Gauntlet, Guardia Tower and Lower Tower kept one time in three.
 - `automatic`: Landing Pod, as today, when the rules allow it.
 - Double Teleport: the second target is any room but the start, at random; the logic connects
   it at once if it is unflagged, and for a flagged room only once the "useful item" score
@@ -221,8 +224,9 @@ that on the clipboard, or print it, for the player to paste.
 
 - Refuse a preset with Custom options set, or only warn (this draft: warn)?
 - Abridged Finale with the OS Install Disks goal: refuse, or allow?
-- `start_room: random`: the game's Random Start rule (this draft), or today's rule (any room
-  every item reaches all locations from, with at least three for the starting items)?
+- `start_room: random_start` (and Archipelago's own `random`): the game's Random Start rule
+  (this draft), or today's rule (any room every item reaches all locations from, with at least
+  three for the starting items)?
 - Which settings to build first: this draft would start with Abridged Finale's in-game run,
   then the prerequisite and ranks 2 to 10.
 - With Abridged Finale off, keep the helper's escape skip offer, or drop it to follow the game?
