@@ -487,6 +487,30 @@ TARGETS = (
         ),
     ),
     Target(
+        "fade",
+        "the fade of the global level: its target +0x93, step +0x9F and countdown +0xAB",
+        {"B1": 0x3E2AE8},
+        (
+            # from the instruction at RVA 0x7ba2e on B1 (the main loop hands it to the stepper)
+            rip("48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 44 0F 28 4C 24 30 44 0F 28 44 24 40", 3, 7),
+            # from the instruction at RVA 0x92f0d on B1 (a menu's close puts it back)
+            rip("48 8D 15 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 38 99 A7 10 00 00", 3, 7),
+            # from the instruction at RVA 0x16693a on B1 (the prompt builder sets the target)
+            rip("C6 05 ?? ?? ?? ?? 04 74 0E C6 05 ?? ?? ?? ?? 00 44 88 35 ?? ?? ?? ?? 8B 05 ?? ?? ?? ??", 2, 7, -0x93),
+        ),
+    ),
+    Target(
+        "fade_level",
+        "the global level the fade moves (a signed byte: 4 normal, below 0 black)",
+        {"B1": 0x3E2F43},
+        (
+            # from the instruction at RVA 0x1ecc38 on B1 (0x1ECC20 sets it)
+            rip("44 88 0D ?? ?? ?? ?? 84 D2 79 04 32 C0 EB 54 41 80 F9 08", 3, 7),
+            # from the instruction at RVA 0x1f7bcb on B1 (the stepper reads it against the target)
+            rip("0F B6 05 ?? ?? ?? ?? 38 87 93 00 00 00 7E 04 FE C0", 3, 7),
+        ),
+    ),
+    Target(
         "keys_branch",
         "the pause screen's jne past its KEYS panel when flag 39 is set (75 2E)",
         {"B1": 0x168C7D},

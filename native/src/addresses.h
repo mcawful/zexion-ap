@@ -82,6 +82,8 @@ struct GameAddresses {
     BYTE* panel_link_fn = nullptr;    // (panel): links its widgets into the menu's draw list
     BYTE* text_set_fn = nullptr;      // (text, string, first glyph, glyphs)
     BYTE* routine_table = nullptr;    // the transition routines (0x3CF5F0)
+    BYTE* fade = nullptr;             // the global level's fade (mission.h, fade_state)
+    BYTE* fade_level = nullptr;       // the global level, a signed byte
     BYTE* keys_branch = nullptr;      // the `jne` (75 2E) that skips the pause screen's KEYS
     BYTE* file_panel_fn = nullptr;    // the save entries' panel handler
     // The save entries' handlers: the file select's, COPY FILE's and DELETE FILE's.

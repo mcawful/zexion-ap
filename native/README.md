@@ -402,11 +402,17 @@ the helper:
   in, as the escape skip's NO does. If event 3667 or its handler is not as traced, the prompt opens
   at once with no fade, as before. An opener the helper takes back before it runs (the save left,
   `discs` off, an unload), or one the game runs with the player not in play (a death during the
-  fade: asked again), turns the fade back to the normal level; one another transition (a door, a
-  death) took the place of is asked again once idle. The fade turned back: stand-in tests only. Not
-  handled: a save at the save point again during the fade (its transition takes the opener's place
-  and brings no fade) leaves the screen black until the prompt is asked again and fades out anew;
-  turning the fade back there needs the fade's own state read, which the helper has no pattern for.
+  fade: asked again), turns the fade back to the normal level. One another transition took the
+  place of (a save at the save point again, which sets the pause opener back and brings no fade; a
+  door; a death) is asked again once idle, and its fade is turned back only while the game's fade
+  (the `fade` and `fade_level` targets) is still event 3667's: target −1, a step every 8 frames
+  from level 4, or done at −1, and no further back than the helper last saw it with its opener in
+  place, nor the transition timer higher (a save leaves it counting). Anything else, another
+  transition's fade even with 3667's own values (it starts again from level 4, its timer at 70),
+  is left alone. The same when `discs` turns off after such a save. Working in game: the fade
+  turned back after saves at the pod during it, 2026-10-27 (the owner's report). Stand-in tests
+  only: the fade turned back when the helper takes its opener back, another transition's fade
+  left alone, and `discs` turned off after such a save.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -421,7 +427,8 @@ prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the remi
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
 pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"); 2026-10-27,
 the fade before RETURN HOME WITH THE DISKS?, the offer again after each save at the pod and
-YES to the goal ("The mission prompt"; NO from the owner's report).
+YES to the goal ("The mission prompt"; NO from the owner's report); later that day, the fade
+turned back after a save at the pod during it (the owner's report).
 
 ### AP saves on the file select
 

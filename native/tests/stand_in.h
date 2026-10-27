@@ -47,12 +47,26 @@ inline void spawn_handler(char row, char column, BYTE* event) {
     g_spawn_column = column;
     g_spawn_event = event;
 }
-// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given.
+// The game's fade (mission.h, fade_state) and the global level it moves.
+inline BYTE g_fade[0xAC] = {};
+inline int8_t g_fade_level = 4;
+inline void reset_fade() {
+    std::memset(g_fade, 0, sizeof(g_fade));
+    g_fade[zap::fade_state::kTarget] = 4;  // the normal level, the fade done
+    g_fade_level = 4;
+}
+// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given, and
+// sets the fade as 0x1F6C40 does for layer 0: the level (unless 0xFE), the step, the countdown
+// (the step) and the target.
 inline int g_fade_calls = 0;
 inline BYTE* g_fade_event = nullptr;
 inline void fade_handler(char, char, BYTE* event) {
     ++g_fade_calls;
     g_fade_event = event;
+    if (event[6] != 0xFE) g_fade_level = static_cast<int8_t>(event[6]);
+    g_fade[zap::fade_state::kStep] = event[8];
+    g_fade[zap::fade_state::kCountdown] = event[8];
+    g_fade[zap::fade_state::kTarget] = event[4];
 }
 inline void* g_event_handlers[32];
 struct LastMessage {
@@ -396,6 +410,8 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"malloc_slot", rva(&g_malloc_slot)},
         {"free_slot", rva(&g_free_slot)},
         {"routine_table", rva(g_routine_table)},
+        {"fade", rva(g_fade)},
+        {"fade_level", rva(&g_fade_level)},
         {"keys_branch", rva(g_keys_branch)},
         {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
@@ -443,6 +459,7 @@ inline void reset_game() {
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
     g_fade_calls = 0;
     g_fade_event = nullptr;
+    reset_fade();
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;
