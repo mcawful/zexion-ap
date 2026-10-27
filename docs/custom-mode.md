@@ -102,7 +102,7 @@ Zexion:
   abridged_finale: preset     # the game's own: victory when Zexion is first grabbed
 
   # Unchanged: goal, os_install_disks, os_install_disks_required, area_map_hints,
-  # allow_assists, death_link
+  # death_link; and allow_assists, shown as "Enable Assist Options", off by default
 ```
 
 **The game's own words.** Each option is named as the game labels it (its `display_name` is
@@ -125,10 +125,13 @@ Zexion in the core.") does what an `escape_skip` option the owner has discussed 
 repo) was for: no SKIP ESCAPE prompt (measured by disassembly) and, assumed from the code and
 not run, the ending soon after the grab with no escape and no final battle. It is a Custom
 setting like the rest: no preset has it, and turning it on in the game's menu makes the mode
-Custom. So a Custom player gets the game's own version, and a preset player keeps what the
-helper does today (it offers the escape skip in any game, `native/README.md`, "The escape
-skip"). Decided (the owner, 2026-10-27): no `escape_skip` option; Abridged Finale is the
-game's form of it. Which other features of the world, the client and the helper the game's
+Custom. Decided (the owner, 2026-10-27): Abridged Finale is the only way to skip the escape.
+There is no `escape_skip` option, and the helper's escape skip offer (it offers SKIP ESCAPE AND
+FINAL BATTLE? in any game today, `native/README.md`, "The escape skip") is retired. A preset
+seed with the core goal is then played as the game's own randomizer plays it: the escape and
+the final battle are the player's to finish, and the world's logic, like the game's
+winnability check, makes sure only that Zexion and the four keys can be reached. What the
+escape needs is to be measured, so the Goal option can tell players ("The build plan"). Which other features of the world, the client and the helper the game's
 Custom settings make redundant: "What the settings make redundant in zexion-ap". Colorizer
 stays out of the YAML: the game treats it as the player's own (the mode ignores it, the mode
 buttons leave it), and the client leaves it as the menu has it, as it does today.
@@ -230,8 +233,7 @@ Disks), the start room and the second teleport target the world chose, the start
 amounts (the coin flips and Random Gun as the world resolved them, and any `start_inventory`),
 and the starting keys; and the client checks that the settings the logic reads came out as the
 seed's. In play, the client and the helper add what AP needs on top: received items, the OS
-Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the escape skip's
-offer. One small addition would help: setting the menu's Starting Location to the world's start
+Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the assist lock. One small addition would help: setting the menu's Starting Location to the world's start
 room, so the pause menu's view names the room instead of reading Random Start (seen in an AP
 save: `re/randocells.md`, "The settings code").
 
@@ -308,13 +310,14 @@ game do it and the AP feature stays out of the way, as it already does:
 4. **Obscure** passed through; the helper's markers follow Obscure Majors while Minors is on,
    and the Majors-on, Minors-off case still needs handling (`re/memory.md`, "Map markers").
 
-Two decisions belong to the owner, under the principle:
+The owner's decisions on the two left to them (2026-10-27):
 
-- **The escape skip with Abridged Finale off** (the open question below): keeping it is
-  recommended until the escape's and the final battle's needs are measured, since without it a
-  core-goal seed can be one the player cannot finish. Following the game strictly would mean
-  adding those needs to the goal's rule first.
-- **Allow Assists**: a protection the game does not have. Not made redundant by any setting.
+- **The escape skip is retired.** Abridged Finale is the only way to skip the escape; a preset
+  seed's escape and final battle are the player's, as in the game's own randomizer ("The
+  YAML", Abridged Finale). This review's caution stands as the reason to measure the escape's
+  needs first and say them in the Goal option's text.
+- **Allow Assists stays**, off by default, shown as "Enable Assist Options": ASSIST is locked in
+  a seed's saves unless the YAML enables it or the host sends Assist Unlock from the server.
 
 The largest simplification on offer is not a feature but the per-preset data: once the world
 works out reachability at generation time for Custom, the presets can use the same path, with
@@ -326,7 +329,8 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
 `logic-reviewer` and `re-auditor` subagents where they apply) and run in game before the next:
 
 1. **Measure first, at the game, with the owner's OK for each new game:** Abridged Finale's
-   ending and the client's goal; X Crystals and X Blocks removing their blocks; one seed's pool
+   ending and the client's goal; what the escape and the final battle need (for the Goal
+   option's text, once the escape skip is retired); X Crystals and X Blocks removing their blocks; one seed's pool
    with Box Compression off and with a Bulk setting on; and, for Obscure Majors on with Minors
    off, the map values of a square a hint reveals and of one seen directly. (The menu-only
    checks are done: `re/randocells.md`, "The randomizer menu's first screen: items and
@@ -337,7 +341,10 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
 3. **B. `mode: custom`:** the options in the game's words, refusing what the game's menu cannot
    hold, the game's pool rules, the game's Random Start rule, `start_room` and `safety` with the
    presets, the slot data carrying the seed's settings, and the client's checks of them in the
-   new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open).
+   new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, the
+   escape skip offer retired (the helper's patch, its offline part, the client's check of it,
+   their tests, and the Goal option's text) and Allow Assists shown as "Enable Assist
+   Options".
 4. **C. The helper's markers** read all three Obscure settings and handle Majors on with Minors
    off (alongside B: the helper only).
 5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.
@@ -345,6 +352,4 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
 
 ## Open questions for the owner
 
-- With Abridged Finale off, keep the helper's escape skip offer, or drop it to follow the game?
-  ("What the settings make redundant in zexion-ap" recommends keeping it.)
-- Allow Assists, a protection the game does not have: keep it, or drop it?
+None open (2026-10-27).
