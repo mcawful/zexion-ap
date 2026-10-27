@@ -130,8 +130,10 @@ There is no `escape_skip` option, and the helper's escape skip offer (it offers 
 FINAL BATTLE? in any game today, `native/README.md`, "The escape skip") is retired. A preset
 seed with the core goal is then played as the game's own randomizer plays it: the escape and
 the final battle are the player's to finish, and the world's logic, like the game's
-winnability check, makes sure only that Zexion and the four keys can be reached. What the
-escape needs is to be measured, so the Goal option can tell players ("The build plan"). Which other features of the world, the client and the helper the game's
+winnability check, makes sure only that Zexion and the four keys can be reached: a seed can
+reach Zexion before the player has what the escape needs. Logged as a known consequence; the
+player is expected to know it going in, and the world says nothing more about it (decided, the
+owner, 2026-10-27). Which other features of the world, the client and the helper the game's
 Custom settings make redundant: "What the settings make redundant in zexion-ap". Colorizer
 stays out of the YAML: the game treats it as the player's own (the mode ignores it, the mode
 buttons leave it), and the client leaves it as the menu has it, as it does today.
@@ -314,8 +316,7 @@ The owner's decisions on the two left to them (2026-10-27):
 
 - **The escape skip is retired.** Abridged Finale is the only way to skip the escape; a preset
   seed's escape and final battle are the player's, as in the game's own randomizer ("The
-  YAML", Abridged Finale). This review's caution stands as the reason to measure the escape's
-  needs first and say them in the Goal option's text.
+  YAML", Abridged Finale). This review's caution is logged there as a known consequence.
 - **Allow Assists stays**, off by default, shown as "Enable Assist Options": ASSIST is locked in
   a seed's saves unless the YAML enables it or the host sends Assist Unlock from the server.
 
@@ -329,8 +330,7 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
 `logic-reviewer` and `re-auditor` subagents where they apply) and run in game before the next:
 
 1. **Measure first, at the game, with the owner's OK for each new game:** Abridged Finale's
-   ending and the client's goal; what the escape and the final battle need (for the Goal
-   option's text, once the escape skip is retired); X Crystals and X Blocks removing their blocks; one seed's pool
+   ending and the client's goal; X Crystals and X Blocks removing their blocks; one seed's pool
    with Box Compression off and with a Bulk setting on; and, for Obscure Majors on with Minors
    off, the map values of a square a hint reveals and of one seen directly. (The menu-only
    checks are done: `re/randocells.md`, "The randomizer menu's first screen: items and
@@ -343,7 +343,7 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    presets, the slot data carrying the seed's settings, and the client's checks of them in the
    new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, the
    escape skip offer retired (the helper's patch, its offline part, the client's check of it,
-   their tests, and the Goal option's text) and Allow Assists shown as "Enable Assist
+   their tests, and the Goal option's mention of SKIP ESCAPE) and Allow Assists shown as "Enable Assist
    Options".
 4. **C. The helper's markers** read all three Obscure settings and handle Majors on with Minors
    off (alongside B: the helper only).
