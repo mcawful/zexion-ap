@@ -132,10 +132,11 @@ seed with the core goal is then played as the game's own randomizer plays it: th
 the final battle are the player's to finish, and the world's logic makes sure only that
 Zexion and the four keys can be reached: a seed can reach Zexion before the player has what the
 escape needs. (The game's own winnability check, without Abridged Finale, asks instead for the
-ship's cell, (1, 42), whose lists may stand for the escape's needs: assumed, `re/locations.md`, "The core goal is Zexion's cell in the core".) Logged as a known consequence; the
-player is expected to know it going in, and the world says nothing more about it (decided, the
-owner, 2026-10-27). Which other features of the world, the client and the helper the game's
-Custom settings make redundant: "What the settings make redundant in zexion-ap". Colorizer
+ship's cell, (1, 42), whose lists may stand for the escape's needs: assumed,
+`re/locations.md`, "The core goal is Zexion's cell in the core".) Logged as a known
+consequence; the player is expected to know it going in, and the world says nothing more
+about it (decided, the owner, 2026-10-27). Which other features of the world, the client and
+the helper the game's Custom settings make redundant: "What the settings make redundant in zexion-ap". Colorizer
 stays out of the YAML: the game treats it as the player's own (the mode ignores it, the mode
 buttons leave it), and the client leaves it as the menu has it, as it does today.
 
@@ -194,10 +195,11 @@ them out at generation time with `logic.py` over the region graph `data.py` alre
 **The goal.** The game's winnability check needs a cell holding Zexion and the four keys:
 without Abridged Finale only the ship's, (1, 42), since its logic enters the core only with it;
 with it the core's, (36, 42), too. The world's core goal needs the keys and the core's cell,
-entered as the game's logic enters it under Abridged Finale (`re/locations.md`, "The core goal is Zexion's cell in the core"). Abridged Finale ends the game at the grab, with
-no escape and no escape skip. With the OS Install Disks goal it would end the run at the grab
-without the disks, so the world refuses Abridged Finale with that goal (an `OptionError` naming
-both; decided, the owner, 2026-10-27).
+entered as the game's logic enters it under Abridged Finale (`re/locations.md`, "The core
+goal is Zexion's cell in the core"). Abridged Finale ends the game at the grab, with no escape
+and no escape skip. With the OS Install Disks goal it would end the run at the grab without the
+disks, so the world refuses Abridged Finale with that goal (an `OptionError` naming both;
+decided, the owner, 2026-10-27).
 
 ## What each setting takes, ranked by cost and risk
 
@@ -215,7 +217,7 @@ risk (the same `logic.py`, checked against the presets' precomputed data in test
 | 5 | Safety | low | low | `logic.Settings.mode69` already; the rest is the prerequisite. |
 | 6 | Start Keys | low | low | Start with the first *k* keys from the Alpha Key; the pool drops the Omega Key first. The client already writes keys as a count (`client/newgame.py`, `start_with`). Start Keys 4 gave all four keys in a seed made in the game's menu (2026-10-27). |
 | 7 | X Crystals, X Blocks | low | medium | Code 68 already in `logic.py`; pass through. The removal runs in the new game's event chain from the section's settings, so it comes with the menu's settings. Measured in game (2026-10-27): the slot state 4 is "gone" (two rooms seen clear), and with X Blocks on, Abridged Finale's goal came as usual; its object of type 2095 at (32, 45), a Crysmoon room, changed nothing the owner saw. |
-| 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Run in game (2026-10-27, a seed made in the game's menu, no client): no escape and no prompt; the ending starts 8 s after the grab with flag 250 set and flag 211 clear, which is the client's goal (`re/randocells.md`, "What each setting does in the game"). The player's cell at the grab read (36, 42), Zexion's cell in the core, where the world's goal now is (`re/locations.md`, "The core goal is Zexion's cell in the core"); with Abridged Finale the game's logic enters the core by the passage the world opens with the keys. Refused with the OS Install Disks goal (decided, the owner, 2026-10-27). |
+| 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Run in game (2026-10-27, a seed made in the game's menu, no client): no escape and no prompt; the ending starts 8 s after the grab with flag 250 set and flag 211 clear, which is the client's goal (`re/randocells.md`, "What each setting does in the game"). The player's cell at the grab read (36, 42), Zexion's cell in the core, where the world's goal now is (`re/locations.md`, "The core goal is Zexion's cell in the core"); the game's own logic enters the core only with Abridged Finale on. Refused with the OS Install Disks goal (decided, the owner, 2026-10-27). |
 | 9 | Box Compression, Bulk Missiles, Bulk Bombs, the amounts | medium | low | The pool rules above, in the world, with tests from fresh saves of new seeds (Box Compression off, each Bulk on, both amounts 20 or more): generate them in the menu and read the saves, read-only. Starting missiles are given as the new game splits them, tens as Missile Boxes and the rest as up to 9 containers (`client/newgame.py`, `start_with`), so the world must hand them out in that form; starting Mega Bombs need the client's new-game bombs (`worlds/zexion/starting.py`: not supported yet). |
 | 10 | The 27 items, Random Gun | medium | low | The four states and Random Gun's draw in the world; the start-with array already carries any of the 27. An excluded item is simply absent. |
 | 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as a new entrance rule. The start table stays B1-only (`client/newgame.py`). |

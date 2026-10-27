@@ -559,6 +559,8 @@ class TestDiscHuntStandard(ZexionTestBase):
 
     def test_no_core_event_and_the_discs_win(self) -> None:
         self.assertNotIn("Zexion", [loc.name for loc in self.multiworld.get_locations(self.player)])
+        regions = [r.name for r in self.multiworld.get_regions(self.player)]
+        self.assertNotIn(CORE_REGION, regions)
         self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state))
         discs = self.get_items_by_name("OS Install Disk")
         self.collect(discs[:14])
