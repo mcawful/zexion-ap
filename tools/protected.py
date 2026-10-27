@@ -93,7 +93,9 @@ def mentions_protected(text: str) -> bool:
     """
     norm = normalize(text)
     joined = re.sub(r"([\"'])\s*\1", "", norm)
-    joined = re.sub(r"[\"'\s,+/]*[,+/][\"'\s,+/]*", "/", joined)
+    joined = re.sub(  # one pass over each run, so long runs of spaces stay linear
+        r"[\"'\s,+/]+", lambda m: "/" if re.search(r"[,+/]", m.group()) else m.group(), joined
+    )
     readings = (norm, _plain(norm), _plain(joined))
     return any(p.search(t) for t in readings for p in _PROTECTED)
 
