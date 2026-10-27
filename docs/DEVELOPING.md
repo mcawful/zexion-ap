@@ -317,6 +317,15 @@ rebuild `native/` first after a checkout that touched it.
 Players download the latest release from the
 [Releases page](https://github.com/mcawful/zexion-ap/releases).
 
+## Reviewing a change
+
+A review covers the branch's own work, diffed against the branch it was cut from: on a topic
+branch, `git diff develop...HEAD` (`origin/develop` if the local `develop` is behind); on
+`develop`, `git diff main...develop`. On `main`, or when the base is unclear, ask for the range
+rather than review a whole branch's history. For uncommitted work, `git diff HEAD`, and `git
+status --short` for new untracked files. A target named instead (a branch, a pull request, a
+path) is reviewed as named. The review subagents in `.claude/agents/` follow this.
+
 ## Where things are
 
 - `client/`: the client. `native/`: the helper and the proxy. `tools/`: reverse-engineering

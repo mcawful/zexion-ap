@@ -10,12 +10,10 @@ documentation, or the APWorld's logic. Report only these problems.
 
 ## Get the diff
 
-Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use `git diff
-develop...HEAD` (`origin/develop` if the local `develop` is behind); on `develop` itself, `git diff
-main...develop`. On `main`, or when the base is unclear, ask for the range rather than review a
-whole branch's history. Use `git diff HEAD` when uncommitted. If a target was named, review that.
-Read the whole functions the diff touches, not just the changed lines; most of these bugs live in
-the path around the change.
+On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
+target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives. Read the whole
+functions the diff touches, not just the changed lines; most of these bugs live in the path
+around the change.
 
 ## Findings to report
 

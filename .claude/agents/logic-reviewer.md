@@ -11,12 +11,10 @@ logic problems.
 
 ## Get the diff
 
-Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use `git diff
-develop...HEAD` (`origin/develop` if the local `develop` is behind); on `develop` itself, `git diff
-main...develop`. On `main`, or when the base is unclear, ask for the range rather than review a
-whole branch's history. Use `git diff HEAD` when uncommitted. If a target was named, review that.
-When the diff touches rules, also read the regions and rules it did not touch that lead to or from
-the changed ones: a rule is only as good as the path to it.
+On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
+target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives. When the diff touches
+rules, also read the regions and rules it did not touch that lead to or from the changed ones: a
+rule is only as good as the path to it.
 
 ## What you check against
 

@@ -12,12 +12,8 @@ delivery safety). Report only documentation problems.
 
 ## Get the diff
 
-Diff against the branch this one was cut from: on a topic branch (cut from `develop`), use `git diff
-develop...HEAD` (`origin/develop` if the local `develop` is behind); on `develop` itself, `git diff
-main...develop`. On `main`, or when the base is unclear, ask for the range rather than review a
-whole branch's history. Use `git diff HEAD` when the work is uncommitted (add `git status --short`
-to catch new untracked files). If a target was named (a branch, a PR number, a path), review that
-instead.
+On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
+target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives.
 
 ## The rules you are enforcing
 
