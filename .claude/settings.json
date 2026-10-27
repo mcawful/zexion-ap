@@ -13,6 +13,12 @@
       "Bash(.venv/Scripts/python tools/build_id.py *)",
       "Bash(.venv/Scripts/python tools/save_lab.py slots *)",
       "Bash(.venv/Scripts/python tools/save_lab.py diff *)",
+      "Bash(.venv/bin/python -m pytest *)",
+      "Bash(.venv/bin/ruff check *)",
+      "Bash(.venv/bin/ruff format --check *)",
+      "Bash(.venv/bin/python tools/build_id.py *)",
+      "Bash(.venv/bin/python tools/save_lab.py slots *)",
+      "Bash(.venv/bin/python tools/save_lab.py diff *)",
       "PowerShell(git status *)",
       "PowerShell(git diff *)",
       "PowerShell(git log *)",
@@ -35,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_protected.py\""
+            "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/run_python.sh\" guard_protected.py"
           }
         ]
       }
@@ -46,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/ruff_on_edit.py\""
+            "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/run_python.sh\" ruff_on_edit.py"
           }
         ]
       }
