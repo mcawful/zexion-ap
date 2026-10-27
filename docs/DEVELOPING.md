@@ -79,6 +79,15 @@ How the helper works: [`native/README.md`](../native/README.md).
 
 All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 
+Rechecked on 575edbf (0.30.0, after the footprint pass of #20 to #22), 2026-10-27, in a three-game
+seed (`lab/ap/live35`) with the client run from source: a new ARCHIPELAGO game and the AP logo,
+received items with popups, checks sent (another Zexion player's item as itself, another game's as
+an AP item), the map's markers and names, the pause row and the file select's count, a reload,
+Disconnect then Connect, `/reload_mod` in play and refused in the pause screen, RETURN HOME with
+its fade (NO and YES), and the ending with the goal sent and no Feats. All as listed below; one
+fault found later that day, the Feats screen's note missing when the assist menu is unlocked
+(fixed in d451e6b, below).
+
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
   storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
@@ -127,9 +136,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   after that run (5681ed6) made the client take any refusal for a failed request (it dropped
   the helper and attached to it again); fixed since (`native.Helper.unload`, then
   `state.reload_reply`): refused with the pause screen open, the client keeping the helper and
-  the screen unchanged, then reloaded in play, 2026-10-27. Not seen in game: the refusal while
-  RETURN HOME WITH THE DISKS?'s ending is on its way (a few frames after YES; stand-in tests
-  only).
+  the screen unchanged, then reloaded in play, 2026-10-27. Refused while RETURN HOME WITH THE
+  DISKS?'s ending was on its way (after YES, with received items' popups holding it), the helper
+  kept and the ending run: 2026-10-27.
 - What the helper changed put back when the client goes away (item records, ASSIST, the escape
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
@@ -140,13 +149,17 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   ending. An achievement reaching Steam at the title after an AP save was quit (13SecretCode,
   with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
   client connected:
-  2026-10-27. Not seen in game: Steam's stand-in stopping an achievement left to earn (it was in
-  place; stand-in tests only; the one left that is cheap to earn, 13SecretCode, is taken at the
-  title only), no 15Explorer when a fully explored AP save loads (by disassembly and stand-in
-  tests), and an AP ending with no client or with a client of another seed (`native/README.md`,
-  "Feats and achievements in AP saves"). The client's warnings, the guard on without all of it
-  or still off in play: their decisions on stand-in tests (`state.FeatsCheck`), the asking
-  itself (`ticks.feats_tick`) not under test, none run in game.
+  2026-10-27. AP endings through the escape skip with no client, and with a client of another
+  seed, no Feat earned: 2026-10-27; the first, with the assist menu unlocked, showed no note
+  (MISSION COMPLETE then has ASSISTS USED under it, which the screen check refused), fixed in
+  d451e6b, and the second, with that fix, showed it. Not seen in game: Steam's stand-in stopping
+  an achievement left to earn (it was in place; stand-in tests only; the one left that is cheap
+  to earn, 13SecretCode, is taken at the title only), and no 15Explorer when a fully explored AP
+  save loads (by disassembly and stand-in tests) (`native/README.md`, "Feats and achievements in
+  AP saves"). The client's warnings, the guard on without all of it or still off in play: their
+  decisions on stand-in tests (`state.FeatsCheck`), the asking itself (`ticks.feats_tick`) not
+  under test, none run in game. They could not be arranged in game on 2026-10-27: a connected
+  client leaves the helper its seed's file, so the guard turns on in this seed's save.
 - AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
   NN; normal and plain randomizer saves unmarked), with and without the client, through
   paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new

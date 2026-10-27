@@ -193,7 +193,11 @@ started is on its way; not unloading`), before putting anything back, from RETUR
 THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
 game's transition with the ending's patch in place: an unload would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
-a few frames, not tried in game (stand-in tests only).
+a few frames, longer while received items' popups or a message hold the ending after YES.
+Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
+`reload_spam.txt`): `/reload_mod` sent every half second from the open prompt through YES,
+refused as a menu open while the prompt showed, then twice as the ending on its way while five
+received items' popups held it; the helper stayed, and the ending ran and sent the goal.
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -450,10 +454,11 @@ the helper:
   (the owner's report). A request lapsing outside the start cell, 2026-10-27 (0.30.0, the owner's
   report, `lab/ap/live34/client1.log`): saved at the pod with twelve received items' popups
   still to show, then walked a few rooms away during them, and left during GAME SAVED with no
-  popup queued; no prompt either time, and offered again after the next save there. Stand-in
-  tests only: the fade turned back when the helper takes its opener back, another transition's
-  fade left alone, a death's own fade left alone, `discs` turned off after such a save, and the
-  ending after YES waiting for the last message to end.
+  popup queued; no prompt either time, and offered again after the next save there. The ending
+  after YES waiting for the popups of five items received while the prompt was open, then
+  starting, 2026-10-27 (575edbf, the owner's report, `lab/ap/live35/`). Stand-in tests only: the
+  fade turned back when the helper takes its opener back, another transition's fade left alone, a
+  death's own fade left alone, and `discs` turned off after such a save.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -635,7 +640,8 @@ Working in game: 2026-10-23 ("The escape skip").
     blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
     only on that screen as it follows an ending: the top menu with 4 panels, two rows of 7
     Feats, a live title widget whose label is three equal lines (the middle one naming NATU),
-    and MISSION COMPLETE's statistics under it. It writes the whole line or nothing, only over a
+    and MISSION COMPLETE's statistics under it (a panel of 10 lines and, after an ending with the
+    assist menu unlocked, ASSISTS USED's 8 as a second; read live on B1, 2026-10-27). It writes the whole line or nothing, only over a
     line that is blank or already its note, and only if every glyph of it is writable and has
     the font's frames.
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
@@ -704,8 +710,20 @@ achievements" in `docs/re/memory.md`):
 - a plain randomizer save in play with a client connected: Steam's slot back on steam_api64 and
   the ending's call the game's own (read from memory), no notice and no look.
 
+Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `lab/ap/live35` and
+`lab/ap/live36`, "Feats and achievements" in `docs/re/memory.md`):
+- with 575edbf, an AP ending through RETURN HOME WITH THE DISKS? with the client connected: the
+  goal sent, nothing lit on the screen, the note shown, `GameUnlocks.sav` rewritten and
+  unchanged;
+- with 575edbf, an AP ending through the escape skip with no client (a core-goal seed with the
+  assist menu unlocked): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
+  MISSION COMPLETE had ASSISTS USED under it as a second panel, which the screen check refused;
+  fixed in d451e6b;
+- with d451e6b, the same save's ending through the escape skip with a client of another seed
+  connected: flag 251 clear, `GameUnlocks.sav` unchanged, nothing lit, and the note shown over
+  ASSISTS USED.
+
 Not seen in game:
-- an AP ending with no client, or with a client of another seed;
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
