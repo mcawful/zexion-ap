@@ -56,7 +56,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 
 | Field | |
 |---|---|
-| Value | `Save Game 1.sav` to `Save Game 30.sav` (all 30 exist, used or not), `GameUnlocks.sav`, `PreferencesSynced.sav`, `PreferencesLocal`, `steam_autocloud.vdf`, and `Mods/{Local,Workshop}/{Sprites,Translations}/`. |
+| Value | `Save Game 1.sav` to `Save Game 30.sav` (all 30 exist, used or not), `GameUnlocks.sav`, `PreferencesSynced.sav`, `PreferencesLocal`, `steam_autocloud.vdf`, and `Mods/{Local,Workshop}/{Sprites,Translations}/`. `GameUnlocks.sav` holds the game-wide database unlocks and Feats; its layout and when the game writes it: `memory.md`, "Feats and achievements". |
 | Status | measured |
 | Method | file inspection (directory listing) |
 | Build | B1 installed; files written by older builds |
