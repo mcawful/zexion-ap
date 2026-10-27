@@ -217,6 +217,11 @@ ctest --test-dir native/build -C Release --output-on-failure
 Nothing in `tests/` needs the game. What the native tests cover: `native/README.md`,
 "Building".
 
+Some tests skip without what they need: the hook runner's without `sh`, and
+`worlds/zexion/test/test_client_agrees.py` without the repo's `client` beside the world (the
+link `ap_checkout.py` makes). CI sets `ZEXION_REQUIRE` (a comma-separated list: `sh`, `client`)
+in the jobs that have them, and there a missing one fails a test as well.
+
 ## Running the client from source
 
 On Windows, with the game. It needs `.ap/` with the world linked in (`tools/ap_checkout.py`).
@@ -239,14 +244,18 @@ Running it may load the helper into the game: the one already there if it is thi
 ## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub
 shows its README); `develop` holds code ready for the next release. Work happens on short-lived
 topic branches cut from `develop`, merged into `develop` by pull request, then deleted. `develop`
-and `main` take changes only through pull requests with every CI check passing (branch protection).
+and `main` take changes only through pull requests with every CI check passing. Branch
+protection requires every check but `ruff and pytest (macos-latest)`, which a pull request must
+still pass.
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
-`develop` or `main`. A pull request into `main` also runs the release gate: it must come from
-this repo's `develop` and raise the version above every release's tag and above the version
-on `main` (`tools/release_check.py`). The second matters while a merged release waits for
-approval: it has no tag yet, but `main` already holds its number. If GitHub can't list the
-releases or `main`'s version can't be read, the gate fails.
+`develop` or `main`. A pull request into `main` also runs the release gate
+(`.github/workflows/release-gate.yml`): it must come from this repo's `develop` and raise the
+version above every release's tag and above the version on `main` (`tools/release_check.py`).
+The second matters while a merged release waits for approval: it has no tag yet, but `main`
+already holds its number. If GitHub can't list the releases or `main`'s version can't be read,
+the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
+`develop` to `main` is checked too.
 
 A release has one version number, in three places: `VERSION` in `client/native.py`,
 `kVersion` in `native/src/dllmain.cpp` and `world_version` in

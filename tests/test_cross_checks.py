@@ -105,13 +105,14 @@ def client_only_keys() -> set[str]:
 
 
 # Where the client's parts read the client-only members, by file: the definitions there that may
-# (a function, or "Class::" for its methods; "" for the whole file).
+# (a function, or "Class::" for its methods).
 # - game_calls.cpp: the grants (apply, refresh_hud), DeathLink (kill), the Energy Shield
 #   (run_item_event) and the new game (watch_newgame, start_archipelago, ensure_start_table).
 # - game_calls.h: panel_handler, for the wrapper ARCHIPELAGO's choice installs.
 # - menu.cpp: ARCHIPELAGO's choice, installed only with a new game armed.
-# - mission.cpp: RETURN HOME, which reads them only once a prompt is asked for; with none asked,
-#   its cancel and restore read nothing of them.
+# - mission.cpp: RETURN HOME's fade (fade_frames, MissionPrompt::fade), reached only once a
+#   prompt is asked for, and the game's routines (routine), which MissionPrompt::watch reads every
+#   frame: a null table gives no routine, so nothing runs (offline_tests.cpp drives it null).
 CLIENT_READERS = {
     "game_calls.cpp": (
         "Game::apply",
@@ -122,42 +123,69 @@ CLIENT_READERS = {
         "Game::start_archipelago",
         "Game::ensure_start_table",
     ),
-    "game_calls.h": ("",),
+    "game_calls.h": ("panel_handler",),
     "menu.cpp": ("ArchipelagoChoice::",),
-    "mission.cpp": ("",),
+    "mission.cpp": ("fade_frames", "routine", "MissionPrompt::fade"),
 }
 # Where a client's state comes into Game (game_calls.cpp): each refuses until every key is set
-# (Game::client_ready), and the readers above run only on what these set.
-CLIENT_GATES = (
-    "Game::apply",
-    "Game::kill",
-    "Game::spawn_shield",
-    "Game::arm_newgame",
-    "Game::request_mission",
-    "Game::rearm",
-)
+# (Game::client_ready), and the readers above run only on what these set. rearm, which puts a
+# reloaded helper's state back, takes the armed new game and the asked prompt only with every key.
+_REFUSES = r"if \(!client_ready\(\)\) return\b"
+CLIENT_GATES = {
+    "Game::apply": (_REFUSES,),
+    "Game::kill": (_REFUSES,),
+    "Game::spawn_shield": (_REFUSES,),
+    "Game::arm_newgame": (_REFUSES,),
+    "Game::request_mission": (_REFUSES,),
+    "Game::rearm": (
+        r"if \(s\.newgame_armed && client_ready\(\)\) \{",
+        r"if \(client_ready\(\)\) mission_\.resume\(",
+    ),
+}
 
 _DEFINITION = re.compile(
     r"^(?!//|#|namespace|using|struct|class|enum|template|\}|\s)[^;=]*?((?:\w+::)*~?\w+)\("
 )
 
 
+# In a header, a member function defined in its class: indented, its body opened on its line.
+_MEMBER = re.compile(
+    r"^\s+(?=\S)(?!(?:return|if|else|for|while|switch|case|do)\b)"
+    r"[\w:<>,*&\s~]*?\b(~?\w+)\([^;{}=]*\)[^;{}=]*\{"
+)
+# A comment, or a string or character literal (kept, so a "//" or "/*" in one is no comment).
+_COMMENT_OR_LITERAL = re.compile(
+    r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/|//[^\n]*', re.DOTALL
+)
+
+
+def without_comments(text: str) -> str:
+    """The source with every comment, // or /* */, blanked to spaces (its line breaks kept)."""
+
+    def blank(m: re.Match[str]) -> str:
+        found = m.group(0)
+        return found if found[0] in "\"'" else re.sub(r"[^\n]", " ", found)
+
+    return _COMMENT_OR_LITERAL.sub(blank, text)
+
+
 def code_lines(name: str) -> list[tuple[str, int, str]]:
-    """Each line of a helper source, its comment stripped, with the column-0 definition it lies
-    in ("" before the first)."""
+    """Each line of a helper source, its comments blanked, with the definition it lies in: the
+    last at column 0, or in a header a member function defined in its class ("" before the
+    first)."""
     out = []
     current = ""
-    for number, line in enumerate(source(name).splitlines(), 1):
-        m = _DEFINITION.match(line)
+    for number, line in enumerate(without_comments(source(name)).splitlines(), 1):
+        m = _DEFINITION.match(line) or (name.endswith(".h") and _MEMBER.match(line))
         if m:
             current = m.group(1)
-        out.append((current, number, line.split("//", 1)[0]))
+        out.append((current, number, line))
     return out
 
 
 def reads_allowed(name: str, function: str) -> bool:
     return any(
-        rule in ("", function) or (rule.endswith("::") and function.startswith(rule))
+        rule == function or (rule.endswith("::") and function.startswith(rule))
         for rule in CLIENT_READERS.get(name, ())
     )
 
@@ -182,8 +210,9 @@ def test_the_clients_parts_wait_for_every_key() -> None:
     bodies: dict[str, str] = {}
     for function, _, code in code_lines("game_calls.cpp"):
         bodies[function] = bodies.get(function, "") + code + "\n"
-    for gate in CLIENT_GATES:
-        assert "client_ready()" in bodies.get(gate, ""), f"{gate} is not gated"
+    for gate, forms in CLIENT_GATES.items():
+        for form in forms:
+            assert re.search(r"^\s*" + form, bodies.get(gate, ""), re.M), f"{gate} is not gated"
 
 
 def test_the_native_test_lists_the_client_only_keys() -> None:

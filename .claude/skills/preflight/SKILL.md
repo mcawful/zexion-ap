@@ -19,7 +19,9 @@ Archipelago's world tests (below, on Ubuntu), and a Windows `native` job (the CM
 `tests/test_native.py` against the built DLL) that preflight does not run. Locally,
 `tests/test_native.py` skips its load test unless `native/build/Release/zexion_ap.dll` exists (or
 `ZEXION_DLL` names a build); build it as `CLAUDE.md` ("Checks") shows when `native/` or
-`client/native.py` changed.
+`client/native.py` changed. Without `sh` the hook runner's tests skip, and without the world
+linked into `.ap/` so do `test_client_agrees.py`'s; CI fails on either (`ZEXION_REQUIRE`,
+`docs/DEVELOPING.md`, "Checks"), so name any such skip in the report.
 
 ## Before you start
 
