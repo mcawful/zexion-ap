@@ -23,7 +23,14 @@ SH = shutil.which("sh")
 needs_sh = pytest.mark.skipif(SH is None, reason="no sh on PATH (on Windows, Git Bash's)")
 # CI's ruff and pytest job sets ZEXION_REQUIRE=sh: there a missing sh fails
 # test_sh_is_on_path_where_ci_requires_it, where the cases that need it would only skip.
-REQUIRED = os.environ.get("ZEXION_REQUIRE", "").split(",")
+
+
+def required(value: str) -> set[str]:
+    """ZEXION_REQUIRE's entries: comma-separated, spaces around them ignored."""
+    return {entry.strip() for entry in value.split(",")} - {""}
+
+
+REQUIRED = required(os.environ.get("ZEXION_REQUIRE", ""))
 REAL = Path(sys.executable).as_posix()
 
 SAVES = "C:/Users/someone/AppData/Roaming/Gallant Leaf/Zexion"
@@ -51,6 +58,12 @@ def _sh(repo: Path, script: str, payload: str, bin_dir: Path | None = None):
 @pytest.mark.skipif("sh" not in REQUIRED, reason="ZEXION_REQUIRE does not list sh")
 def test_sh_is_on_path_where_ci_requires_it() -> None:
     assert SH is not None, "no sh on PATH, so the runner's cases skipped"
+
+
+def test_zexion_require_ignores_spaces_around_entries() -> None:
+    assert required("client, sh") == {"client", "sh"}
+    assert required(" sh ,client,") == {"client", "sh"}
+    assert required("") == set()
 
 
 def _fake(path: Path, body: str) -> None:

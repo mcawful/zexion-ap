@@ -110,9 +110,9 @@ def client_only_keys() -> set[str]:
 #   (run_item_event) and the new game (watch_newgame, start_archipelago, ensure_start_table).
 # - game_calls.h: panel_handler, for the wrapper ARCHIPELAGO's choice installs.
 # - menu.cpp: ARCHIPELAGO's choice, installed only with a new game armed.
-# - mission.cpp: RETURN HOME's fade (fade_frames, MissionPrompt::fade) and the game's routines
-#   (routine), reached only once a prompt is asked for; with none asked, its cancel and restore
-#   read nothing of them.
+# - mission.cpp: RETURN HOME's fade (fade_frames, MissionPrompt::fade), reached only once a
+#   prompt is asked for, and the game's routines (routine), which MissionPrompt::watch reads every
+#   frame: a null table gives no routine, so nothing runs (offline_tests.cpp drives it null).
 CLIENT_READERS = {
     "game_calls.cpp": (
         "Game::apply",

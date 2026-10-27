@@ -40,13 +40,25 @@ else:
         state = None
 # CI's world tests set ZEXION_REQUIRE=client: there a client that does not import (the world
 # copied rather than linked) fails this test, where the tests below would only skip.
-REQUIRED = os.environ.get("ZEXION_REQUIRE", "").split(",")
+
+
+def required(value: str) -> set[str]:
+    """ZEXION_REQUIRE's entries: comma-separated, spaces around them ignored."""
+    return {entry.strip() for entry in value.split(",")} - {""}
+
+
+REQUIRED = required(os.environ.get("ZEXION_REQUIRE", ""))
 
 
 class TestTheClientIsThereWhereRequired(unittest.TestCase):
     @unittest.skipUnless("client" in REQUIRED, "ZEXION_REQUIRE does not list client")
     def test_the_client_imports(self) -> None:
         self.assertIsNotNone(CLIENT, WHY)
+
+    def test_zexion_require_ignores_spaces_around_entries(self) -> None:
+        self.assertEqual(required("sh, client"), {"client", "sh"})
+        self.assertEqual(required(" client ,sh,"), {"client", "sh"})
+        self.assertEqual(required(""), set())
 
 
 @unittest.skipIf(CLIENT is None, WHY)
