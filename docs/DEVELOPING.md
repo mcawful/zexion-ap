@@ -107,12 +107,15 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO): 2026-10-24; offered
   at the landing pod only: 2026-10-25; the fade before it: 2026-10-27 (timed to the escape skip's by
   disassembly, not compared in game); the fade turned back after a save at the pod during it:
-  2026-10-27. Not seen in game: the fade turned back when the helper takes back a prompt it had
-  not opened yet, and a request held by popups lapsing once the player leaves the pod's cell
+  2026-10-27. A request held by popups lapsing once the player left the pod's room, and one
+  left during GAME SAVED alone, then offered again after the next save there: 2026-10-27. Not
+  seen in game: the fade turned back when the helper takes back a prompt it had not opened yet
   (stand-in tests only).
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
-  client opened after the ending began: 2026-10-26.
+  client opened after the ending began: 2026-10-26. Received items held over the ending's
+  cutscenes across a Disconnect then Connect during them (the goal's collect, then two items
+  sent after the Connect: no popup until the save was loaded again): 2026-10-27.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
@@ -122,28 +125,35 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   menu open: refused with the pause screen open, then reloaded in play, 2026-10-26. A cleanup
   after that run (5681ed6) made the client take any refusal for a failed request (it dropped
   the helper and attached to it again); fixed since (`native.Helper.unload`, then
-  `state.reload_reply`, on stand-in tests), not run in game.
+  `state.reload_reply`): refused with the pause screen open, the client keeping the helper and
+  the screen unchanged, then reloaded in play, 2026-10-27. Not seen in game: the refusal while
+  RETURN HOME WITH THE DISKS?'s ending is on its way (a few frames after YES; stand-in tests
+  only).
 - What the helper changed put back when the client goes away (item records, ASSIST, the escape
   skip): 2026-10-25.
-- Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
-  screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
+- Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
+  CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27.
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
   SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
-  2026-10-26, with the client connected. Not seen in game: Steam's stand-in stopping an
-  achievement left to earn (it was in place; stand-in tests only), no 15Explorer when a fully
-  explored AP save loads (by disassembly and stand-in tests), an AP ending with no client or
-  with a client of another seed, and a plain randomizer save left alone (`native/README.md`,
+  2026-10-26, with the client connected; again 2026-10-27, `GameUnlocks.sav` unchanged by the
+  ending. An achievement reaching Steam at the title after an AP save was quit (13SecretCode,
+  with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
+  client connected:
+  2026-10-27. Not seen in game: Steam's stand-in stopping an achievement left to earn (it was in
+  place; stand-in tests only; the one left that is cheap to earn, 13SecretCode, is taken at the
+  title only), no 15Explorer when a fully explored AP save loads (by disassembly and stand-in
+  tests), and an AP ending with no client or with a client of another seed (`native/README.md`,
   "Feats and achievements in AP saves"). The client's warnings, the guard on without all of it
   or still off in play: their decisions on stand-in tests (`state.FeatsCheck`), the asking
   itself (`ticks.feats_tick`) not under test, none run in game.
 - AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
   NN; normal and plain randomizer saves unmarked), with and without the client, through
-  paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. Not seen in
-  game: a new ARCHIPELAGO game's own save getting the logo.
+  paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new
+  ARCHIPELAGO game's own save getting the logo: 2026-10-27.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
-  attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)
-  randomizer game left alone with a client connected (no notice, no look).
+  attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
+  with a client connected (no notice, no look): 2026-10-27.
 
 ## Platforms
 

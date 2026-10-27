@@ -181,7 +181,9 @@ the pause screen open: working in game 2026-10-26, the Launcher's client log
 `ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47, with the client of that run; the client
 after it, from 5681ed6, took any refusal for a failed request and dropped the helper, which by
 the code then put things back under the open screen as for a client going away, not seen in
-game; fixed since, `native.Helper.unload`, on stand-in tests only). It also refuses (`error
+game; fixed since, `native.Helper.unload`: working in game 2026-10-27, 0.30.0, the refusal with
+the pause screen open, the client keeping the helper and the screen unchanged, then a reload in
+play, `lab/ap/live34/client1.log` at 11:35:53 and 11:36:02). It also refuses (`error
 <why>; not unloading`) while the game may still call into the helper, or hold something of the
 helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
@@ -190,7 +192,8 @@ ending's patch still the helper's. It refuses (`error the ending RETURN HOME WIT
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
 game's transition with the ending's patch in place: an unload would drop the ending, or put
-the patch back before the ending runs ("Feats and achievements in AP saves").
+the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
+a few frames, not tried in game (stand-in tests only).
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -443,10 +446,13 @@ the helper:
   leaves it counting). Anything else, another transition's fade even with 3667's own values (it
   starts again from level 4, its timer at 70), is left alone. The same when `discs` turns off after
   such a save. Working in game: the fade turned back after saves at the pod during it, 2026-10-27
-  (the owner's report). Stand-in tests only: the fade turned back when the helper takes its opener
-  back, another transition's fade left alone, a death's own fade left alone, `discs` turned off
-  after such a save, a request lapsing outside the start cell, and the ending after YES waiting for
-  the last message to end.
+  (the owner's report). A request lapsing outside the start cell, 2026-10-27 (0.30.0, the owner's
+  report, `lab/ap/live34/client1.log`): saved at the pod with twelve received items' popups
+  still to show, then walked a few rooms away during them, and left during GAME SAVED with no
+  popup queued; no prompt either time, and offered again after the next save there. Stand-in
+  tests only: the fade turned back when the helper takes its opener back, another transition's
+  fade left alone, a death's own fade left alone, `discs` turned off after such a save, and the
+  ending after YES waiting for the last message to end.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -489,8 +495,9 @@ turned back after a save at the pod during it (the owner's report).
 
 Working in game: 2026-10-26, helper 0.30.0 with this change, with no client and with one: the
 file select through paging, COPY FILE, DELETE FILE, a copy of an AP save and its delete, and the
-fade to white of a new game started beside an AP save ("The file select"). Not seen in game: a
-new ARCHIPELAGO game's own save getting the logo.
+fade to white of a new game started beside an AP save ("The file select"). A new ARCHIPELAGO
+game's own save getting the logo, and a plain randomizer save beside it none: working in game
+2026-10-27 (0.30.0, the owner's report).
 
 ### AP saves without the client
 
@@ -566,8 +573,9 @@ after a save, a return to the title and a load.
 - **Put back:** a client going away leaves them; an unload hides them (stand-in tests only).
 
 Working in game: 2026-10-25, the two lines under the copyright, with a client and from the cache
-("The title screen"). The client line was only reported up by `hello` (`title=1`); its final
-layout has not been seen on screen.
+("The title screen"). The client line: working in game 2026-10-27 (0.30.0, the owner's
+screenshots), START THE AP CLIENT TO PLAY A SEED centered above the two lines with the client
+closed, gone with it open.
 
 ### The escape skip
 
@@ -683,16 +691,24 @@ through RETURN HOME WITH THE DISKS? with the client connected, and a normal endi
 endings the ending was jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav`
 was unchanged; the second showed the note. In the normal ending the Feats were earned as usual.
 The guard also went on in an AP save with no client connected, before the client connected.
-Those runs had the Steam stub as it was before the load test (feats.h); the stub as it is now,
-rewritten for that test, has run in the stand-in tests only.
+Those runs had the Steam stub as it was before the load test (feats.h).
+
+Working in game 2026-10-27 (0.30.0, the stub as it is now; `lab/ap/live34`, "Feats and
+achievements" in `docs/re/memory.md`):
+- an AP ending through RETURN HOME WITH THE DISKS?, the client disconnected and connected again
+  during its cutscenes: the note shown, `GameUnlocks.sav` rewritten and unchanged;
+- after an AP save was quit to the title, with AP saves in their slots, an achievement reaching
+  Steam (13SecretCode, typed at the title; Steam's record), Steam's slot read on the stub at that
+  title just after;
+- a plain randomizer save in play with a client connected: Steam's slot back on steam_api64 and
+  the ending's call the game's own (read from memory), no notice and no look.
 
 Not seen in game:
 - an AP ending with no client, or with a client of another seed;
-- a plain randomizer save left alone;
-- Steam's stand-in stopping an achievement. It was in place in the AP save, but no unearned
-  achievement was tried there, so this is tested only with the stand-in;
+- Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
+  play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
-  (by disassembly and the stand-in only), and the rewritten stub at all.
+  (by disassembly and the stand-in only; the owner's 15Explorer is earned already).
 
 ## Building
 
