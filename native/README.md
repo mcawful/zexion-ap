@@ -406,6 +406,34 @@ prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the remi
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
 pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
 
+### AP saves on the file select
+
+- **What:** on the file select, COPY FILE and DELETE FILE, each AP save's entry shows
+  Archipelago's logo, the world's AP item logo in its colors, right of FILE NN
+  (`src/files.cpp`, with the disk count). The logo is one 16 x 16 image painted over four font
+  glyphs empty in the game's art (`0x8C`, `0x8D`, `0x9C`, `0x9D`, two by two in the font), set
+  in the entry's blank cells at columns 16 and 17 of rows 0 and 1 and raised 4 px.
+- **Which saves:** every 16th frame call, each slot in use that is a randomizer save and whose
+  own copy of the section is a known seed's: one the helper has a seed file for, or one a client
+  has put (the Feats guard's test, `Game::known_section`, on the slot's copy). So it works with
+  no client, and normal and plain randomizer saves are never marked.
+- **Colors:** written only over blank cells in palette 26 at style `0x15` (white), which draw
+  a glyph in its own colors; anything else (another palette, style or frame there) is left
+  alone.
+- **No flash:** the same handler wrapper as the disk count rewrites the entry after the game's
+  fill, and the frame-call watch catches fills it does not see (a copy, a delete).
+- **A new game's fade to white:** it leaves the logo's own colors alone, so while a new game's
+  transition runs (`newgame_fn` queued, its 40-frame timer counting down) the helper repaints
+  the image whiter each frame, all white on the last, and in its colors again after. A load's
+  fade to black darkens the logo with the rest.
+- **Put back:** the cells' frames and rows when a save stops being marked, when nothing is
+  marked any more, and before an unload; the image is cleared from the texture.
+
+Working in game: 2026-10-26, helper 0.30.0 with this change, with no client and with one: the
+file select through paging, COPY FILE, DELETE FILE, a copy of an AP save and its delete, and the
+fade to white of a new game started beside an AP save ("The file select"). Not seen in game: a
+new ARCHIPELAGO game's own save getting the logo.
+
 ### AP saves without the client
 
 `src/offline.cpp`, `src/game_offline.cpp`; the client side is `client/offline.py`.
@@ -434,7 +462,8 @@ pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
   save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
-  The file select shows each such save's count, from its map in the game's copy of the slot.
+  The file select shows each such save's count, from its map in the game's copy of the slot,
+  and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
   ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed.
@@ -607,11 +636,13 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
   again, the received shield and death, the ASSIST watch and the scanner's text.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
-- `apitem`: the stand-in records restyled and named, the logo, the font glyphs and the pause
-  row's disc painted through a fake OpenGL, the label parser.
+- `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
+  row's disc and the file select's logo in its colors painted through a fake OpenGL, the label
+  parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
-  that name (`offline`: the seed file, its match and disk count, the folder, the cache check,
-  `offline_put`, a stand-in game dressed and undressed).
+  that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
+  disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
+  undressed, the AP saves' slots).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no
   config, a plain randomizer save, a normal save, a put seed, a seed file with no client and
   with a client of another seed, the labels' seed), the guard on and off, and a stand-in ending

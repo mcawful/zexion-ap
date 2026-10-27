@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 
 #include "check.h"
@@ -18,6 +19,7 @@ using namespace stand_in;
 namespace {
 
 uint8_t g_table[154];
+void no_callback(void*, int) {}  // ARCHIPELAGO's callback: none here
 const uint8_t g_start[6] = {6, 0, 191, 0, 0x49, 1};
 
 std::string seed_text(const std::string& discs = "discs 3 12 434F4C4C454354",
@@ -326,6 +328,57 @@ void test_a_save_of_the_seed_dressed_offline() {
           "the client's taken back: the offline one stays");
 }
 
+void test_the_ap_saves_slots() {
+    // Which slots get the file select's AP logo: a randomizer save in use whose own copy of the
+    // section is a known seed's, from a seed file (no client) or a client's put.
+    reset_game();
+    std::memset(g_slot_array, 0, sizeof(g_slot_array));
+    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
+    auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
+    auto copy = [](int n) { return g_rando_slots + (n - 1) * 0x908; };
+    for (int n = 1; n <= 30; ++n) block(n)[0x935E] = 0xFF;  // all empty
+    for (int n : {3, 4, 6, 7}) block(n)[0x935E] = 0;
+    for (int n : {3, 4, 5, 7}) put<uint16_t>(block(n), 0x9400, 1);  // 6 a normal save
+    for (int n : {3, 5, 6}) put_seed(copy(n));  // 5 deleted, 6 given a normal game: copies kept
+    put_seed(copy(4));
+    copy(4)[0x26C] ^= 1;  // 4: a plain randomizer game
+    put_seed(copy(7));
+    copy(7)[0x26C] ^= 2;  // 7: a seed only a client has put
+
+    zap::Game game;
+    check(configure(game, false).empty(), "configured from the cache");
+    check(game.ap_file_slots().empty(), "no seed known: no AP save");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+    check(game.ap_file_slots() == std::set<int>{3},
+          "the seed file's save; not a plain randomizer game, a deleted slot or a normal save");
+    game.add_known_seeds({zap::offline_seed_of(copy(7))});
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "and a seed a client put");
+    check(configure(game).empty() && game.active() &&
+              game.ap_file_slots() == std::set<int>{3, 7},
+          "with a client too");
+
+    // The frame call gives them to the file select's entries; putting back takes them away.
+    check(game.files().ap_slots().empty(), "not before a frame");
+    game.watch_all(&no_callback);
+    check(game.files().ap_slots() == std::set<int>{3, 7}, "the first frame sets them");
+    game.put_back_all(&no_callback);
+    check(game.files().ap_slots().empty() && !game.files().holds_hook(), "put back: none");
+
+    // A seed known only as the labels' (the loaded save's when a client set them).
+    zap::Game labeled;
+    check(configure(labeled).empty(), "a client's config");
+    put_seed(g_section);
+    g_section[0x26C] ^= 2;  // slot 7's seed
+    g_rando_marker = 1;
+    g_save_loaded = 7;
+    std::map<int, zap::Label> labels;
+    check(zap::parse_labels("ap_labels\nlabel 5 2 41", labels).empty(), "a label parses");
+    labeled.set_labels(labels);
+    check(labeled.ap_file_slots() == std::set<int>{7}, "the labels' seed's save");
+}
+
 }  // namespace
 
 int main() {
@@ -334,5 +387,6 @@ int main() {
     test_the_cache_must_fit_the_game();
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
+    test_the_ap_saves_slots();
     return report("offline tests");
 }

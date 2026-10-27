@@ -41,6 +41,10 @@ constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 constexpr uint8_t kApItemGlyph = 0xEE;
 constexpr char kApItemName[] = "AP ITEM";
 
+// Font glyph `code`'s place in the sprite texture: 16 a row of 8 x 8, from (0, 976).
+constexpr int font_x(uint8_t code) { return (code % 16) * 8; }
+constexpr int font_y(uint8_t code) { return 976 + (code / 16) * 8; }
+
 // The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (or a test's fakes).
 struct GlFunctions {
     void(WINAPI* BindTexture)(unsigned target, unsigned texture) = nullptr;
@@ -119,16 +123,22 @@ private:
     std::vector<uint8_t> alpha_;  // the kept rectangle's alpha, as read
 };
 
+// A pixel's color: '#' white, or the logo's: k its outline, r y g b p o its circles. False for
+// anything else ('.', transparent).
+bool glyph_rgb(char c, uint8_t (&rgb)[3]);
+
 // One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
-// game's art (the AP logo glyph, the padlock, the disk glyphs), or any one-color image of its own
-// placed in the texture check's kept rectangle (the pause row's disc, pause.h). Painted while
-// wanted, again now and then and whenever the texture changes, and cleared when no longer wanted.
+// game's art (the AP logo glyph, the padlock, the disk glyphs), or any image of its own placed in
+// the texture check's kept rectangle (the pause row's disc, pause.h; the file select's AP logo
+// over four font glyphs, files.h). Painted while wanted, again now and then and whenever the
+// texture changes, and cleared when no longer wanted.
 class FontGlyph {
 public:
     // `rows`: 8 strings of 8, '#' for an opaque white pixel.
     FontGlyph(uint8_t code, const char (*rows)[9])
-        : x_((code % 16) * 8), y_(976 + (code / 16) * 8), w_(8), h_(8), rows_(rows[0]) {}
-    // An image of H rows of W - 1 at (x, y) in the sprite texture, '#' for an opaque white pixel.
+        : x_(font_x(code)), y_(font_y(code)), w_(8), h_(8), rows_(rows[0]) {}
+    // An image of H rows of W - 1 at (x, y) in the sprite texture, each pixel as glyph_rgb reads
+    // it.
     template <size_t H, size_t W>
     FontGlyph(int x, int y, const char (&rows)[H][W])
         : x_(x), y_(y), w_(static_cast<int>(W - 1)), h_(static_cast<int>(H)), rows_(rows[0]) {}
@@ -137,6 +147,9 @@ public:
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     bool painted() const { return painted_ != 0; }
+    // How far toward white the image is painted: 0 its colors, 255 all white. A change is
+    // painted at once (the file select's logo through a new game's fade to white, files.h).
+    void set_white(int level) { white_ = level < 0 ? 0 : level > 255 ? 255 : level; }
 
     // Inside on_texture: whether its place may be painted, and the place painted (or cleared).
     bool fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const;
@@ -144,12 +157,17 @@ public:
 
 private:
     bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear);
-    bool opaque(int px, int py) const { return rows_[py * (w_ + 1) + px] == '#'; }
+    char pixel(int px, int py) const { return rows_[py * (w_ + 1) + px]; }
+    bool opaque(int px, int py) const {
+        uint8_t rgb[3];
+        return glyph_rgb(pixel(px, py), rgb);
+    }
     int x_, y_, w_, h_;
     const char* rows_;  // h_ NUL-terminated strings of w_, back to back
     unsigned painted_ = 0;
     unsigned failed_ = 0;  // a texture it could not paint into: tried again only now and then
     int frames_to_paint_ = 0;
+    int white_ = 0, painted_white_ = 0;
 };
 
 // The logo glyph's ring of dots (kApItemGlyph).

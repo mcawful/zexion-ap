@@ -124,6 +124,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   achievement left to earn (it was in place; stand-in tests only), an AP ending with no client
   or with a client of another seed, and a plain randomizer save left alone (`native/README.md`,
   "Feats and achievements in AP saves").
+- AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
+  NN; normal and plain randomizer saves unmarked), with and without the client, through
+  paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. Not seen in
+  game: a new ARCHIPELAGO game's own save getting the logo.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)

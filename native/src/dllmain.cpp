@@ -151,8 +151,8 @@ void panel_after(void*, intptr_t) { g_game.fit_archipelago_border(); }
 void* equip_panel_original(void*) { return g_game.equip_panel_fn(); }
 void equip_panel_after(void* widget, intptr_t event) { g_game.equipment_event(widget, event); }
 
-// The save entries' handler while the file select shows the disk count (files.h): the entry
-// rewritten after the game fills it (event 0xF).
+// The save entries' handler while the file select shows the disk count or the AP logo (files.h):
+// the entry rewritten after the game fills it (event 0xF).
 void* file_entry_original(void* widget) { return g_game.file_entry_original(widget); }
 void file_entry_after(void* widget, intptr_t event) { g_game.file_event(widget, event); }
 

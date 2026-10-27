@@ -149,12 +149,9 @@ void Game::watch_offline() {
     // client (whose own counts win for its seed's saves: apply_file_counts).
     std::map<int, int> counts;
     for (int n = 1; n <= slot::kCount; ++n) {
+        const BYTE* copy = slot_section(n);
+        if (copy == nullptr) continue;
         const BYTE* block = at_.slot_array + static_cast<ptrdiff_t>(n - 1) * slot::kStride;
-        if (block[slot::kEmpty] == slot::kEmptyMark ||
-            field<uint16_t>(block, slot::kRandoMarker) != 1) {
-            continue;
-        }
-        const BYTE* copy = at_.rando_slots + static_cast<ptrdiff_t>(n - 1) * kSectionSize;
         for (const OfflineSeed& sd : offline_seeds_) {
             if (sd.discs && section_is(sd, copy)) {
                 // This save's own count, from its map grid (docs/re/save-format.md, "The map

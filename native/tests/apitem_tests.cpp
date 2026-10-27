@@ -12,6 +12,7 @@
 
 #include "check.h"
 #include "apitem.h"
+#include "files.h"
 #include "game_calls.h"
 #include "pause.h"  // the pause row's disc
 #include "stand_in.h"  // the item records and the sprite data
@@ -416,6 +417,60 @@ void test_an_image_of_its_own() {
     check(!blocked.painted() && g_uploads.empty(), "a place not blank is left alone");
 }
 
+// An image in colors over four font glyphs: the file select's AP logo (files.h).
+void test_an_image_in_colors() {
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::FontGlyph logo(zap::kApLogoX, zap::kApLogoY, zap::kApLogoRows);
+    zap::TextureCheck check_logo;
+    logo.paint(sprites(), gl, check_logo);
+    check(logo.painted() && g_uploads.size() == 1 && g_uploads[0].x == 96 &&
+              g_uploads[0].y == 1040 && g_uploads[0].w == 16 && g_uploads[0].h == 16,
+          "the logo goes to glyphs 0x8C, 0x8D, 0x9C and 0x9D: (96, 1040), 16 x 16");
+    bool same = true;
+    for (int py = 0; py < 16; ++py) {
+        for (int px = 0; px < 16; ++px) {
+            const uint8_t* p = &g_uploads[0].pixels[(py * 16 + px) * 4];
+            uint8_t rgb[3] = {};
+            const bool opaque = zap::glyph_rgb(zap::kApLogoRows[py][px], rgb);
+            same = same && (opaque ? p[3] == 0xFF && std::memcmp(p, rgb, 3) == 0 : p[3] == 0);
+        }
+    }
+    check(same, "each pixel in its color, opaque; transparent where '.'");
+    uint8_t red[3];
+    zap::glyph_rgb('r', red);
+    check(red[0] == 246 && red[1] == 26 && red[2] == 46,
+          "the logo's red as the world's items show it");
+    // Through a new game's fade to white: repainted at once, whiter, then its colors again.
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 1, "not painted again every frame");
+    auto pixel_at = [&](int px, int py) { return &g_uploads.back().pixels[(py * 16 + px) * 4]; };
+    int red_x = static_cast<int>(std::strchr(zap::kApLogoRows[1], 'r') - zap::kApLogoRows[1]);
+    logo.set_white(128);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 2 && pixel_at(red_x, 1)[0] == 246 + (255 - 246) * 128 / 255 &&
+              pixel_at(red_x, 1)[1] == 26 + (255 - 26) * 128 / 255 && pixel_at(red_x, 1)[3] == 0xFF,
+          "half way to white, repainted at once");
+    check(pixel_at(0, 0)[3] == 0, "transparent stays transparent");
+    logo.set_white(255);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 3 && pixel_at(red_x, 1)[0] == 255 && pixel_at(red_x, 1)[1] == 255 &&
+              pixel_at(red_x, 1)[2] == 255,
+          "all white");
+    logo.set_white(0);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 4 && pixel_at(red_x, 1)[0] == 246 && pixel_at(red_x, 1)[1] == 26,
+          "its colors again");
+    // A repaint that fails (a pixel buffer bound) leaves the image there: still cleared after.
+    g_unpack_buffer = 9;
+    logo.set_white(64);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 4 && logo.painted(), "a failed repaint: the image kept as painted");
+    g_unpack_buffer = 0;
+    logo.clear(sprites(), gl, check_logo);
+    check(!logo.painted() && g_uploads.size() == 5 && all_blank({g_uploads.back()}), "cleared");
+}
+
 // Everything painted into the sprite texture shares one read of it (16 MB), until the game
 // makes the texture again.
 void test_one_readback_for_every_painter() {
@@ -454,6 +509,7 @@ void test_one_readback_for_every_painter() {
 int main() {
     test_font_glyph();
     test_an_image_of_its_own();
+    test_an_image_in_colors();
     test_one_readback_for_every_painter();
     test_restyle_and_names();
     test_one_record_not_as_expected_leaves_the_other_restyled();

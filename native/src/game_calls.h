@@ -10,6 +10,7 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -181,17 +182,21 @@ public:
     // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
     // put_back_all puts back what it holds (before an unload).
     void request_mission() { mission_.request(); }
-    // The file select's disk count (files.h): the `disk_slots` request sets what to show, a
-    // count by slot; the watch runs every frame; the helper's wrapper of the save entries'
-    // handler calls the game's (file_entry_original) and then file_event.
+    // The file select's entries (files.h): the disk count, which the `disk_slots` request sets
+    // (a count by slot), and the AP logo on AP saves (ap_file_slots); the watch runs every
+    // frame; the helper's wrapper of the save entries' handler calls the game's
+    // (file_entry_original) and then file_event.
     void set_disk_slots(std::map<int, int> counts) {
         client_file_counts_ = std::move(counts);
         apply_file_counts();
     }
     void* file_entry_original(void* widget) const { return files_.original(widget); }
-    const FileDisks& files() const { return files_; }
+    const FileEntries& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
     void restore_files();
+    // The slots holding AP saves: a randomizer save in use whose own copy of the section is a
+    // known seed's (known_section, as ap_save_loaded tests the loaded one).
+    std::set<int> ap_file_slots() const;
 
     // Game thread: the Area Map named INTEL CHIP, its map reveal off, while on (`intel`,
     // intel.h), and put back.
@@ -334,6 +339,10 @@ private:
     bool other_warned_ = false;   // this load's other-seed notice queued
     bool other_mode() const { return active_ && other_save_; }
     bool section_is(const OfflineSeed& seed, const BYTE* section) const;
+    // Slot n's copy of its randomizer section, if it holds a randomizer save (else null); and
+    // whether a section is a known seed's (the labels' or known_seeds_).
+    const BYTE* slot_section(int n) const;
+    bool known_section(const BYTE* section) const;
     // The index of the known seed whose save is loaded, or -1.
     int loaded_seed() const;
     // The pause row's text for a known disk seed's loaded save, from its file ("" if none).
@@ -361,6 +370,8 @@ private:
     FontGlyph pause_disc_{kDiscX, kDiscY, kDiscRows};  // the pause row's disc (pause.h)
     FontGlyph disk_header_[2] = {{kDiskHeaderGlyphs[0], kDiskHeaderRows[0]},
                                  {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
+    FontGlyph ap_logo_{kApLogoX, kApLogoY, kApLogoRows};  // the file select's AP logo (files.h)
+    int file_slot_frames_ = 0;  // frames until the next look for the AP saves' slots
     bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
 
     // The start table: filled from the plan if the game has not built it, or checked against
@@ -371,7 +382,7 @@ private:
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;
     PauseDiskRow pause_row_;
-    FileDisks files_;
+    FileEntries files_;
     IntelChip intel_;
     TitleLines title_;
     std::string title_error_;
