@@ -28,7 +28,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | `0x935A` | the ITEMS counter | Counters |
 | `0x935C`, `0x935E` | the continue point (row, column) | The continue point and the seed's start |
 | `0x9360` | the empty marker (`0xFF`) | Clearing a slot in the game sets two bytes and keeps the rest |
-| `0x9362` | unknown, changes on saves | Clearing a slot in the game sets two bytes and keeps the rest |
+| `0x9362` | the run's session count, + 1 when the save is loaded | Counters |
 | `0x9402` | the randomizer marker | Clearing a slot in the game sets two bytes and keeps the rest |
 | `0x12812` | the randomizer section's `E8 03` | Randomizer data is appended after the two blocks |
 | `0x12814` (`+0x000`) | the location list | Randomizer data is appended after the two blocks |
@@ -194,10 +194,11 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | Field | |
 |---|---|
 | Value | `0x935A` (16-bit) is the pause screen's `ITEMS` counter (`memory.md`, "A pickup counter updates the instant an item is collected"): 0 with no pickup, 1 after one, 2 after two, 150 in the owner's far-along slot 1 (ITEMS 150/150), and equal to the live counter. `0x9321` went 0 → 1 with one Scrap pickup, was 2 after two Scrap and 0 after one normal item in slot 28: it is Scrap metal's inventory byte (item 46, "Inventory: one byte per item ID at 0x92F3"). |
-| Status | measured |
-| Method | fork test and earlier saves |
+| | **The session count.** `0x9362` (8-bit) is the run's SESSIONS, shown by the pause screen's OPTION MENU, RANDO stats, and the game writes it to the file without a save point being used: slots 2 and 3, each loaded from the file screen and left through the pause menu without saving, were rewritten with `0x9362` up by one (slot 3 33 → 34, its stats reading SESSIONS: 34 after the load; slot 2 13 → 14, with `0x9356`, play time, assumed, changed too) and nothing else changed. That a load adds one and writes the file is inferred from those two; when in the load or exit the write happens was not pinned down (the files' times did not follow the order of the loads). |
+| Status | measured (the session count's place and its rise by one in two saves, against the backups and the stats page); assumed (one per load, and the moment of the write) |
+| Method | fork test and earlier saves; the session count, `save_lab.py copy` of slots 2 and 3 after loading each once (and leaving through the pause menu without saving), `save_lab.py diff` against the backups |
 | Build | B1 |
-| Evidence | The fork run, `lab/backups/20261020-221347/` (slots 27 and 30), and the two-pickup save, `lab/backups/20261020-215709/` ("The map grid marks collected locations"); slot 30 after one Scrap pickup, `lab/backups/20261020-213055/`, and slot 28 after one normal item, `lab/backups/20261020-213828/` ("The game loads and keeps a patched placement table"), 2026-10-20. Which save gave slot 1's 150 is not recorded. |
+| Evidence | The fork run, `lab/backups/20261020-221347/` (slots 27 and 30), and the two-pickup save, `lab/backups/20261020-215709/` ("The map grid marks collected locations"); slot 30 after one Scrap pickup, `lab/backups/20261020-213055/`, and slot 28 after one normal item, `lab/backups/20261020-213828/` ("The game loads and keeps a patched placement table"), 2026-10-20. Which save gave slot 1's 150 is not recorded. The session count: `lab/backups/20261027-151329/Save Game 2.sav` and `Save Game 3.sav` against `lab/work/slot2-after-view.sav` and `slot3-after-view.sav`, both files dated 17:22 after Claude loaded the saves to read their randomizer settings, 2026-10-27 (`randocells.md`, "The settings code"). |
 
 ## Current energy and missiles
 
