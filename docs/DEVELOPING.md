@@ -92,8 +92,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
   2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
   three-game seed (other games' items, no owner on the map, other Zexion players' supplies
-  minor, markers right in a pause just after loading): 2026-10-26. Not seen in game: the
-  markers' wait for a settled load (two looks in a row, `native/README.md`, "The map").
+  minor, markers right in a pause just after loading): 2026-10-26. A second three-game seed,
+  with the markers' wait for a settled load (two looks in a row, `native/README.md`, "The
+  map"): unseen squares named as the game names its own, markers kept after a save, a return to
+  the title and a load: 2026-10-26.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
 - The escape skip (SKIP ESCAPE AND FINAL BATTLE?): 2026-10-23.
 - DeathLink, both ways: 2026-10-23.

@@ -71,9 +71,9 @@ or Assist Unlock, stops generation with an error that names it.
 - Another Zexion player's item looks like the item itself.
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
-  Missile and Bomb Boxes, stay minor, as yours do), and the cursor says what each one is
-  (PROGRESSION ITEM, AP ITEM, or a Zexion item's name). Whose it is shows only when you pick it
-  up.
+  Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
+  what it is (PROGRESSION ITEM, AP ITEM, or a Zexion item's name); before that, ADVANCED TECH
+  or UNKNOWN ITEM, as for the game's own items. Whose it is shows only when you pick it up.
 - Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
   around you.
 
