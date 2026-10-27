@@ -15,7 +15,9 @@ Reads (all copies in lab/, never the game folder):
   of the randomizer menu (docs/re/memory.md, "The game-mode panel"), which the client's
   ARCHIPELAGO choice sets up; each preset is checked against the mode's fresh save;
 - MapData and Text (``game_data.py MapData Text``), for the area each location and start room
-  is in, as the pause screen's REGION: names it (docs/re/locations.md, "Location names").
+  is in, as the pause screen's REGION: names it (docs/re/locations.md, "Location names"), and
+  MapData for the cells holding Zexion (the core goal, ``CORE``: docs/re/locations.md, "The
+  core goal is Zexion's cell in the core").
 
 Cells joined by always-open passages are merged into one region (strongly connected
 components of the open passages); each conditional passage between two regions becomes an
@@ -237,12 +239,16 @@ def area_name(text: str) -> str:
     return "'".join(part.capitalize() for part in text.split("'"))
 
 
+def check_b1(name: str, data: bytes, want: str) -> None:
+    got = hashlib.sha256(data).hexdigest()[:16]
+    if got != want:
+        raise SystemExit(f"{name} is not build B1's ({got}); its area offsets are B1's")
+
+
 def cell_areas(map_data: bytes, text: bytes, cells) -> dict[tuple, str]:
     """The area name of each cell (a, b) given, from MapData and Text of build B1."""
-    for name, data, want in (("MapData", map_data, MAP_DATA_SHA256), ("Text", text, TEXT_SHA256)):
-        got = hashlib.sha256(data).hexdigest()[:16]
-        if got != want:
-            raise SystemExit(f"{name} is not build B1's ({got}); its area offsets are B1's")
+    check_b1("MapData", map_data, MAP_DATA_SHA256)
+    check_b1("Text", text, TEXT_SHA256)
     out = {}
     for a, b in cells:
         area = struct.unpack_from("<h", map_data, MAP_CELLS + (b * 54 + a) * MAP_CELL_SIZE)[0]
@@ -250,6 +256,75 @@ def cell_areas(map_data: bytes, text: bytes, cells) -> dict[tuple, str]:
         start = TEXT_HEADER + index * TEXT_ENTRY
         out[(a, b)] = area_name(text[start : start + TEXT_ENTRY].split(b"\0")[0].decode("latin1"))
     return out
+
+
+# The core goal (docs/re/locations.md, "The core goal is Zexion's cell in the core"). MapData's
+# per-cell item byte, field 0x3A of the same records (docs/re/randocells.md, "The pool"), is 31
+# (Zexion) in two cells: the core's, and the ship's. RandoCells lets its flood into the core only
+# through one passage whose list is code 68 with Abridged Finale's tier, so with the modes'
+# settings no start reaches the core and it has no region. The world puts its goal there,
+# entered from the last cell it keeps, with the lists RandoCells has inside the core.
+MAP_ITEM, ZEXION = 0x3E5701 + 0x3A, 31
+ABRIDGED_FINALE = (68, 32)  # the code-68 entry that passes only with Abridged Finale on
+
+
+def zexion_cells(map_data: bytes) -> list[tuple[int, int]]:
+    """The cells (a, b) whose item is Zexion, from MapData of build B1."""
+    check_b1("MapData", map_data, MAP_DATA_SHA256)
+    return [
+        (i % 54, i // 54)
+        for i in range(54 * 54)
+        if map_data[MAP_ITEM + i * MAP_CELL_SIZE] == ZEXION
+    ]
+
+
+def core_goal(grid, kept: set, zexion: list) -> dict:
+    """The core: Zexion's cell that no start reaches (``kept`` is every cell with a region), the
+    kept cell whose passage leads in (needing only Abridged Finale), and the requirement lists on
+    the way from there to Zexion, as ENTRANCES writes a way. Refuses a map where that is not one
+    door and one way through, which a new build would need looked at by hand."""
+    inside = [c for c in zexion if c not in kept]
+    if len(inside) != 1:
+        raise SystemExit(f"expected one Zexion cell outside the kept cells, got {inside}")
+    goal = inside[0]
+    doors = []
+    for x, y in sorted(kept):
+        for d, (dx, dy) in rc.STEP.items():
+            n = (x + dx, y + dy)
+            if n not in kept and grid[y][x].lists[d] == [ABRIDGED_FINALE]:
+                doors.append(((x, y), n))
+    if len(doors) != 1:
+        raise SystemExit(f"expected one passage into the core needing Abridged Finale: {doors}")
+    door, first = doors[0]
+    came = {first: None}
+    todo = [first]
+    inner = []  # every conditional passage among the core's cells
+    while todo:
+        x, y = todo.pop(0)
+        for d, (dx, dy) in rc.STEP.items():
+            n = (x + dx, y + dy)
+            passage = grid[y][x].passage[d]
+            if n in kept or passage == rc.WALL or not (0 <= n[0] < 54 and 0 <= n[1] < 54):
+                continue
+            if passage == rc.CONDITIONAL:
+                inner.append(((x, y), n))
+            if n not in came:
+                came[n] = ((x, y), passage)
+                todo.append(n)
+    if goal not in came:
+        raise SystemExit(f"the core's door {door} does not lead to Zexion's cell {goal}")
+    needs, step = [], goal
+    while came[step] is not None:
+        (x, y), passage = came[step]
+        if passage == rc.CONDITIONAL:
+            d = next(d for d, (dx, dy) in rc.STEP.items() if (x + dx, y + dy) == step)
+            entries = tuple(grid[y][x].lists[d])
+            inner.remove(((x, y), step))
+            needs.insert(0, (entries, (x, y) if any(c >= 64 for c, _ in entries) else None))
+        step = (x, y)
+    if inner:
+        raise SystemExit(f"the core has conditional passages off the way to Zexion: {inner}")
+    return {"door": door, "cell": goal, "needs": needs}
 
 
 def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_path: Path) -> dict:
@@ -416,6 +491,11 @@ def render(d: dict, source: str) -> str:
         "# it (from MapData and Text), for the names players see.",
         f"CELL_AREAS = {d['cell_areas']!r}",
         "",
+        "# The core goal: Zexion's cell in the core, which no start reaches here (RandoCells",
+        "# opens the core only with Abridged Finale); the kept cell whose passage leads in; and",
+        "# the ways on from there to Zexion's cell, all needed, each as ENTRANCES writes a way.",
+        f"CORE = {d['core']!r}",
+        "",
     ]
     return "\n".join(out)
 
@@ -450,9 +530,10 @@ def main(argv: list[str] | None = None) -> int:
     map_path = args.map_data or cells_path.parent / "MapData"
     text_path = args.text or cells_path.parent / "Text"
     named = {tuple(c) for c in d["locations"]} | {(x, y) for x, y, _ in d["start_table"]}
-    d["cell_areas"] = dict(
-        sorted(cell_areas(map_path.read_bytes(), text_path.read_bytes(), named).items())
-    )
+    map_data = map_path.read_bytes()
+    d["cell_areas"] = dict(sorted(cell_areas(map_data, text_path.read_bytes(), named).items()))
+    grid = rc.parse(cells_path.read_bytes())
+    d["core"] = core_goal(grid, set(d["cell_region"]), zexion_cells(map_data))
     saves = ", ".join(
         f"{name}: {path.name} (SHA-256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]})"
         for name, path in mode_saves.items()
@@ -467,7 +548,8 @@ def main(argv: list[str] | None = None) -> int:
     per_mode = ", ".join(f"{n}: {len(m['starts'])} starts" for n, m in d["modes"].items())
     print(
         f"{len(set(d['cell_region'].values()))} regions, {len(d['entrances'])} region links "
-        f"({n_ways} ways), {len(d['location_rules'])} gated locations; {per_mode} -> {out}"
+        f"({n_ways} ways), {len(d['location_rules'])} gated locations; {per_mode}; "
+        f"Zexion at {d['core']['cell']}, the core entered from {d['core']['door']} -> {out}"
     )
     return 0
 

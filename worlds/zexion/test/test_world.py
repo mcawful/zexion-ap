@@ -16,10 +16,10 @@ from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS, Goal, Mode, StartRoom
 from ..world import (
+    CORE_REGION,
     DISC_REPLACES,
     FOREIGN,
     FOREIGN_PROGRESSION,
-    GOAL_CELL,
     NOT_HINTED,
     ZexionWorld,
 )
@@ -108,9 +108,30 @@ class TestDefaultStart(ZexionTestBase):
         self.collect_by_name("Omega Key")
         self.assertTrue(self.can_reach_location("Zexion"))
 
-    def test_goal_is_in_the_core(self) -> None:
+    def test_goal_is_in_the_core_entered_from_the_door(self) -> None:
         core = self.multiworld.get_location("Zexion", self.player).parent_region
-        self.assertIn(rules.region_name(data.CELL_REGION[GOAL_CELL]), core.name)
+        self.assertEqual(core.name, CORE_REGION)
+        self.assertNotIn(data.CORE["cell"], data.CELL_REGION)  # RandoCells needs Abridged Finale
+        door = rules.region_name(data.CELL_REGION[data.CORE["door"]])
+        self.assertEqual([e.parent_region.name for e in core.entrances], [door])
+
+    def test_the_way_into_the_core_needs_its_lists(self) -> None:
+        # B1's core: (27, 42) to (28, 42) needs code 51 (Wall Jump Boots with G-Diffuser or
+        # Gravity Harness, or Zenith Thrusters) or the Jump Booster.
+        self.assertEqual(data.CORE["needs"], [(((51, 1), (22, 1)), None)])
+        entrance = self.multiworld.get_entrance("Into the core", self.player)
+        for names, expected in (
+            ((), False),
+            (("Wall Jump Boots",), False),
+            (("Jump Booster",), True),
+            (("Wall Jump Boots", "G-Diffuser"), True),
+            (("Zenith Thrusters",), True),
+        ):
+            state = CollectionState(self.multiworld)
+            for name in names:
+                state.collect(self.world.create_item(name), True)
+            with self.subTest(names=names):
+                self.assertEqual(entrance.access_rule(state), expected)
 
     def test_slot_data_says_death_link_is_off_and_assists_are_locked(self) -> None:
         slot = self.world.fill_slot_data()
