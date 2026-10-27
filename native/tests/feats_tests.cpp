@@ -537,20 +537,27 @@ void test_the_screen_note() {
     const std::string theirs = screen.line(2);
     check(zap::feats_screen_note(a, true) && screen.line(2) == theirs, "other text left alone");
 
-    // MISSION COMPLETE with ASSISTS USED under it, as after an ending with assists unlocked.
-    FeatsScreen assists("FEATS OF NATU!", true);
-    current = assists.menu;
-    check(zap::feats_screen_note(a, true) && assists.line(2) == noted_line(),
-          "with ASSISTS USED under it too", assists.line(2));
-    FeatsScreen odd("FEATS OF NATU!", true);
-    at<int32_t>(odd.stats_panel[1], 0x1E8) = 7;
-    current = odd.menu;
-    check(!zap::feats_screen_note(a, true) && odd.line(2) == blank,
-          "a second panel under it that is not ASSISTS USED's 8 lines");
-    FeatsScreen three("FEATS OF NATU!", true);
-    at<int32_t>(three.stats, 8) = 3;
-    current = three.menu;
-    check(!zap::feats_screen_note(a, true) && three.line(2) == blank, "3 panels under it");
+    {
+        // MISSION COMPLETE with ASSISTS USED under it, as after an ending with assists unlocked.
+        FeatsScreen assists("FEATS OF NATU!", true);
+        current = assists.menu;
+        check(zap::feats_screen_note(a, true) && assists.line(2) == noted_line(),
+              "with ASSISTS USED under it too", assists.line(2));
+        FeatsScreen odd("FEATS OF NATU!", true);
+        at<int32_t>(odd.stats_panel[1], 0x1E8) = 7;
+        current = odd.menu;
+        check(!zap::feats_screen_note(a, true) && odd.line(2) == blank,
+              "a second panel under it that is not ASSISTS USED's 8 lines");
+        FeatsScreen short_stats("FEATS OF NATU!", true);
+        at<int32_t>(short_stats.stats_panel[0], 0x1E8) = 9;
+        current = short_stats.menu;
+        check(!zap::feats_screen_note(a, true) && short_stats.line(2) == blank,
+              "two panels under it, the first not 10 lines");
+        FeatsScreen three("FEATS OF NATU!", true);
+        at<int32_t>(three.stats, 8) = 3;
+        current = three.menu;
+        check(!zap::feats_screen_note(a, true) && three.line(2) == blank, "3 panels under it");
+    }
 
     // Other screens: not this one.
     FeatsScreen other("OPTIONS");
