@@ -119,16 +119,16 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - every name is there. An offline cache ("AP saves without the client") may lack the client-only
   ones, marked `client_only` in `kConfigKeys` (`src/game_calls.cpp`): those only the grants, new
   games, DeathLink, Energy Shields and RETURN HOME WITH THE DISKS? read. The helper then
-  configures with those unset (`hello` lists them as `cache_missing`), and those parts, and
-  every frame request that needs a config, get `refused not configured` until a client's
+  configures with those unset (`hello` lists them as `cache_missing`), and `apply`, `shield`,
+  `die`, `ap_newgame` and `mission_prompt` get `refused not configured` until a client's
   `config` sets every key. A cache lacking any other key is refused
   (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds a key
   only the client's parts read keeps working offline with the older cache (working in game
   2026-10-27, B1: a cache without `fade` and `fade_level`, no client,
   `cache_missing=fade,fade_level`; the title line, the file select's AP logos and a dressed AP
   save as usual); one that adds a key the offline look reads does not, until the client has run
-  once. `tests/test_cross_checks.py` checks that no part the offline look uses reads a
-  client-only key, and that the client's parts wait for every key;
+  once. `tests/test_cross_checks.py` checks that only the client's parts read a client-only key,
+  and that each way a client's state comes in waits for every key;
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is

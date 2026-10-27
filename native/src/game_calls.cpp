@@ -61,11 +61,8 @@ using DeathFn = void (*)(void* player, char kind);
 // GameAddresses it fills. Each lies in the image with kKeyBytes there (the offline cache checks a
 // function's first 16 bytes): functions in code, data in writable data, the CRT's import slots
 // (only read) outside code. room/before: what must also fit in the key's section. A client's
-// config needs every key. The offline cache (inactive) needs only the keys the parts that run
-// without a client read; one of the others missing there is left null (client_only: read only
-// by the client's parts, which run only once every key is set, Game::client_ready). A key is
-// needed offline unless marked: the cache of a client from before a release that added one has
-// it missing.
+// config needs every key; the offline cache (inactive) may lack the client_only ones, which are
+// then left null (Game::client_ready). A key is needed offline unless marked so.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -76,7 +73,7 @@ struct ConfigKey {
     uint64_t room;         // bytes from the address that must lie in its section, if not 0
     const char* room_for;  // what they hold, for the error
     uint64_t before;       // and bytes before it
-    bool offline = true;   // needed by the offline cache's config too
+    bool client_only = false;  // read only by the client's parts: the cache may lack it
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, nullptr, 0};
@@ -90,7 +87,7 @@ constexpr ConfigKey import_slot(const char* name, Member member) {
 }
 // Read only by the client's parts: grants, new games, DeathLink, Energy Shields and RETURN HOME.
 constexpr ConfigKey client_only(ConfigKey key) {
-    key.offline = false;
+    key.client_only = true;
     return key;
 }
 // transition_fn is data: it holds the address of the routine the game runs next.
@@ -206,11 +203,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     std::string left_out;  // the client-only keys an offline cache lacks, left null
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
-        if (it == rvas.end() && !active && !key.offline) {
+        if (it == rvas.end()) {
+            if (active || !key.client_only) return std::string("missing ") + key.name;
             left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
             continue;
         }
-        if (it == rvas.end()) return std::string("missing ") + key.name;
         std::string why = check_key(image, image_size, key, it->second);
         if (!why.empty()) return why;
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
@@ -456,10 +453,12 @@ std::string Game::run_item_event(uint8_t item) {
     return "";
 }
 
-void Game::arm_newgame(NewGamePlan plan) {
+bool Game::arm_newgame(NewGamePlan plan) {
+    if (!client_ready()) return false;
     newgame_ = std::move(plan);
     newgame_armed_ = true;
     newgame_status_ = "armed";
+    return true;
 }
 
 void Game::disarm_newgame() {
@@ -472,7 +471,7 @@ void Game::disarm_newgame() {
 std::string Game::newgame_status() const { return newgame_status_; }
 
 void Game::watch_newgame() {
-    if (!client_ready() || !newgame_armed_) return;
+    if (!configured_ || !newgame_armed_) return;
     if (at<void*>(at_.transition_fn, 0) != at_.newgame_fn) return;  // no new game queued
     if (at<int32_t>(at_.transition_timer, 0) <= 1) return;       // too close to being built
     if (at<uint16_t>(at_.rando_marker, 0) != 1) return;          // a normal new game: not ours
@@ -491,7 +490,7 @@ void Game::watch_newgame() {
 }
 
 void Game::watch_menu(WidgetCallback callback) {
-    if (!client_ready()) return;
+    if (!configured_) return;
     if (newgame_armed_ && !newgame_.menu.empty() && !starting_) {
         choice_.install(at_, callback);
         if (choice_.installed()) choice_.fit_border(at_);
@@ -606,7 +605,7 @@ std::string Game::ensure_start_table() {
 void Game::start_archipelago(WidgetCallback callback) {
     // The game calls the choice's callback once per press; a press after the plan was dropped,
     // or while a new game is queued, does nothing.
-    if (!client_ready() || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
+    if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
     if (at<void*>(at_.transition_fn, 0) == at_.newgame_fn) return;
     starting_ = true;
     // Refused: RANDOMIZER back, the plan dropped, nothing queued.
@@ -720,7 +719,6 @@ void Game::equipment_built() {
 }
 
 void Game::watch_mission() {
-    if (!client_ready()) return;
     // A save loaded or closed (save_loaded flips between 0 and 0xFF): a prompt asked for drops.
     int save = *at_.save_loaded;
     if (save != mission_save_) {
@@ -936,12 +934,14 @@ void Game::restore_intel() {
     intel_.restore(at_.item_records);
 }
 
-void Game::request_mission() {
-    if (client_ready()) mission_.request();
+bool Game::request_mission() {
+    if (!client_ready()) return false;
+    mission_.request();
+    return true;
 }
 
 void Game::mission_open() {
-    if (!client_ready()) return;
+    if (!configured_) return;
     // Not in play when the opener runs (the player died during the fade): asked again later.
     if (!in_play()) {
         mission_.put_off(at_);
@@ -1201,13 +1201,15 @@ void Game::rearm(ClientState s) {
         set_labels(std::move(s.labels));
         labels_seed_ = std::move(s.labels_seed);  // the seed they were set for
     }
-    if (s.newgame_armed) {
+    // The new game and the prompt only with every key, as when asked for (arm_newgame,
+    // request_mission).
+    if (s.newgame_armed && client_ready()) {
         newgame_ = std::move(s.newgame);
         newgame_armed_ = true;
         starting_ = s.starting;
         newgame_status_ = std::move(s.newgame_status);
     }
-    mission_.resume(s.mission_asked, s.mission_ending);
+    if (client_ready()) mission_.resume(s.mission_asked, s.mission_ending);
 }
 
 }  // namespace zap

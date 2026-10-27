@@ -374,16 +374,13 @@ std::string hello() {
 }
 
 // Pipe thread: `work` run on the game's thread at its next frame, and its reply; "refused not
-// configured" instead, when `needs_config` and no config with every key set the helper (only an
-// offline cache lacking client-only keys, or none: Game::client_ready); "refused no frame" if no
-// frame took it within kFrameWaitMs (it then never runs).
+// configured" instead, when `needs_config` and nothing configured the helper; "refused no frame"
+// if no frame took it within kFrameWaitMs (it then never runs).
 std::string on_game(const std::function<std::string()>& work, bool needs_config) {
     std::string result;
     bool ran = g_mailbox.call(
         [&] {
-            if (needs_config && !g_game.client_ready()) {
-                return std::string("refused not configured");
-            }
+            if (needs_config && !g_game.configured()) return std::string("refused not configured");
             return work();
         },
         kFrameWaitMs, result);
@@ -399,7 +396,7 @@ enum class Match { kName, kPrefix, kWord };
 struct Request {
     const char* name;
     Match match;
-    bool needs_config;  // `game` refused until a config with every key (on_game)
+    bool needs_config;  // `game` refused while nothing configured the helper
     std::string (*game)();
     std::string (*run)(const std::string& request) = nullptr;
 };
@@ -455,8 +452,8 @@ std::string ap_newgame(const std::string& request) {
     if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
-            g_game.arm_newgame(std::move(plan));
-            return std::string("armed");
+            return std::string(g_game.arm_newgame(std::move(plan)) ? "armed"
+                                                                   : "refused not configured");
         },
         true);
 }
@@ -479,8 +476,8 @@ std::string apply(const std::string& request) {
     zap::Batch batch;
     std::string error = zap::parse_batch(request, batch);
     if (!error.empty()) return "error " + error;
-    // Game::apply refuses itself until every key is set (client_ready); a batch no frame took
-    // is never applied.
+    // Game::apply refuses itself without every key (client_ready); a batch no frame took is
+    // never applied.
     return on_game([&] { return g_game.apply(batch); }, false);
 }
 
@@ -518,8 +515,7 @@ const Request kRequests[] = {
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
     {"mission_prompt", Match::kName, true,
      [] {
-         g_game.request_mission();
-         return std::string("queued");
+         return std::string(g_game.request_mission() ? "queued" : "refused not configured");
      }},
     {"mission_status", Match::kName, true, [] { return g_game.mission_status(); }},
     {"disk_slots", Match::kWord, false, nullptr, &disk_slots},

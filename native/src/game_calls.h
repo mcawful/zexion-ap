@@ -60,14 +60,14 @@ public:
     // Game thread. Checks every kConfigKeys entry is present and placed right in `image` (code
     // in code, data in writable data, the CRT import slots outside code, room where a key needs
     // it), then keeps the addresses. "" or an error. `active`: false for the offline cache, which
-    // may lack the keys only the client's parts read (game_calls.cpp, client_only): those are
-    // left null, and the client's parts refuse until a client's config sets them.
+    // may lack the client_only keys (game_calls.cpp): those are left null (client_ready).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }
     // Configured with every key, as a client's config is (or an offline cache that has them
-    // all). The client's parts (grants, new games, DeathLink, Energy Shields, RETURN HOME) run
-    // only then; the others, which the offline look also uses, once configured.
+    // all). The client's parts (grants, new games, DeathLink, Energy Shields, RETURN HOME) are
+    // taken only then: apply, kill, spawn_shield, arm_newgame, request_mission and rearm refuse
+    // otherwise, and the rest of those parts run only on what these set.
     bool client_ready() const { return configured_ && left_out_.empty(); }
     // The client-only keys the offline cache lacked ("" if none), for `hello`.
     const std::string& left_out() const { return left_out_; }
@@ -109,8 +109,9 @@ public:
     size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to
-    // build (its new-game routine queued, the randomizer marker set) gets `plan`, once.
-    void arm_newgame(NewGamePlan plan);
+    // build (its new-game routine queued, the randomizer marker set) gets `plan`, once. False,
+    // nothing armed, unless client_ready.
+    bool arm_newgame(NewGamePlan plan);
     void disarm_newgame();
     // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
     std::string newgame_status() const;
@@ -188,8 +189,9 @@ public:
     void equipment_event(void* widget, intptr_t event);
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
     // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
-    // put_back_all puts back what it holds (before an unload).
-    void request_mission();
+    // put_back_all puts back what it holds (before an unload). False, nothing asked, unless
+    // client_ready.
+    bool request_mission();
     // The file select's entries (files.h): the disk count, which the `disk_slots` request sets
     // (a count by slot), and the AP logo on AP saves (ap_file_slots); the watch runs every
     // frame; the helper's wrapper of the save entries' handler calls the game's
@@ -336,7 +338,7 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
-    std::string left_out_;  // configure's client-only keys left null (client_ready)
+    std::string left_out_;  // the client-only keys configure left null (client_ready)
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).

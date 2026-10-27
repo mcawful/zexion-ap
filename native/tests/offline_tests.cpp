@@ -177,6 +177,16 @@ void put_seed(BYTE* section) {
     std::memcpy(section + 0x310, g_start, sizeof(g_start));
 }
 
+// Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
+BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
+BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
+// Every slot empty.
+void clear_slots() {
+    std::memset(g_slot_array, 0, sizeof(g_slot_array));
+    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
+    for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
+}
+
 void test_a_save_of_the_seed_dressed_offline() {
     reset_game();
     zap::Game game;
@@ -223,20 +233,19 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty (its section
     // still the seed's).
-    auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
     for (int n : {3, 4, 5}) {
-        put<uint16_t>(block(n), 0x9400, 1);
-        block(n)[0x935E] = 0;
+        put<uint16_t>(slot_block(n), 0x9400, 1);
+        slot_block(n)[0x935E] = 0;
     }
-    block(5)[0x935E] = 0xFF;
-    put_seed(g_rando_slots + 2 * 0x908);
-    put_seed(g_rando_slots + 4 * 0x908);
+    slot_block(5)[0x935E] = 0xFF;
+    put_seed(rando_copy(3));
+    put_seed(rando_copy(5));
     g_save_loaded = 0xFF;
     for (int i = 0; i < 16; ++i) game.watch_offline();
     auto counts = game.files().counts();
     check(counts.size() == 1 && counts.count(3) == 1 && counts[3] == 3,
           "the file select: the seed's save with its count");
-    block(3)[0x877F - 2 + 1312] = 0x1B;  // a disk this save found offline, on its own map
+    slot_block(3)[0x877F - 2 + 1312] = 0x1B;  // a disk this save found offline, on its own map
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.files().counts().at(3) == 4, "counted for that save on the file select");
 
@@ -332,18 +341,15 @@ void test_the_ap_saves_slots() {
     // Which slots get the file select's AP logo: a randomizer save in use whose own copy of the
     // section is a known seed's, from a seed file (no client) or a client's put.
     reset_game();
-    std::memset(g_slot_array, 0, sizeof(g_slot_array));
-    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
-    auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
-    auto copy = [](int n) { return g_rando_slots + (n - 1) * 0x908; };
-    for (int n = 1; n <= 30; ++n) block(n)[0x935E] = 0xFF;  // all empty
-    for (int n : {3, 4, 6, 7}) block(n)[0x935E] = 0;
-    for (int n : {3, 4, 5, 7}) put<uint16_t>(block(n), 0x9400, 1);  // 6 a normal save
-    for (int n : {3, 5, 6}) put_seed(copy(n));  // 5 deleted, 6 given a normal game: copies kept
-    put_seed(copy(4));
-    copy(4)[0x26C] ^= 1;  // 4: a plain randomizer game
-    put_seed(copy(7));
-    copy(7)[0x26C] ^= 2;  // 7: a seed only a client has put
+    clear_slots();
+    for (int n : {3, 4, 6, 7}) slot_block(n)[0x935E] = 0;
+    for (int n : {3, 4, 5, 7}) put<uint16_t>(slot_block(n), 0x9400, 1);  // 6 a normal save
+    // 5 deleted, 6 given a normal game: their copies kept.
+    for (int n : {3, 5, 6}) put_seed(rando_copy(n));
+    put_seed(rando_copy(4));
+    rando_copy(4)[0x26C] ^= 1;  // 4: a plain randomizer game
+    put_seed(rando_copy(7));
+    rando_copy(7)[0x26C] ^= 2;  // 7: a seed only a client has put
 
     zap::Game game;
     check(configure(game, false).empty(), "configured from the cache");
@@ -353,7 +359,7 @@ void test_the_ap_saves_slots() {
     game.set_offline({s});
     check(game.ap_file_slots() == std::set<int>{3},
           "the seed file's save; not a plain randomizer game, a deleted slot or a normal save");
-    game.add_known_seeds({zap::offline_seed_of(copy(7))});
+    game.add_known_seeds({zap::offline_seed_of(rando_copy(7))});
     check(game.ap_file_slots() == std::set<int>{3, 7}, "and a seed a client put");
     check(configure(game).empty() && game.active() &&
               game.ap_file_slots() == std::set<int>{3, 7},
@@ -425,13 +431,10 @@ void test_a_cache_without_the_client_only_keys() {
     game.set_offline({s});
 
     // The title and the file select: slot 3 holds the seed's save.
-    std::memset(g_slot_array, 0, sizeof(g_slot_array));
-    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
-    auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
-    for (int n = 1; n <= 30; ++n) block(n)[0x935E] = 0xFF;
-    block(3)[0x935E] = 0;
-    put<uint16_t>(block(3), 0x9400, 1);
-    put_seed(g_rando_slots + 2 * 0x908);
+    clear_slots();
+    slot_block(3)[0x935E] = 0;
+    put<uint16_t>(slot_block(3), 0x9400, 1);
+    put_seed(rando_copy(3));
     g_save_loaded = 0xFF;
     g_rando_marker = 1;
     std::memset(g_section, 0, sizeof(g_section));
@@ -439,18 +442,12 @@ void test_a_cache_without_the_client_only_keys() {
     check(game.files().ap_slots() == std::set<int>{3} && game.files().counts().at(3) == 3,
           "the file select: the AP save's mark and its count");
 
-    // A new game queued meanwhile (ARCHIPELAGO needs a client): not touched.
+    // ARCHIPELAGO's new game needs a client.
     zap::NewGamePlan plan;
     zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B", plan);
-    game.arm_newgame(plan);
-    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
-    g_transition_timer = 40;
+    check(!game.arm_newgame(plan) && game.newgame_status() != "armed", "no new game armed");
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
-    check(game.newgame_status() == "armed" && !game.menu_installed(),
-          "no ARCHIPELAGO choice, no plan written");
-    game.disarm_newgame();
-    g_transition_fn = nullptr;
-    g_transition_timer = 0;
+    check(!game.menu_installed(), "no ARCHIPELAGO choice");
 
     // The seed's save in play: dressed, the warning shown.
     put_seed(g_section);
@@ -477,9 +474,20 @@ void test_a_cache_without_the_client_only_keys() {
     check(game.apply(batch) == "refused not configured" && g_inventory[1] == 3, "no grant");
     check(game.kill(5000) == "refused not configured", "no DeathLink death");
     check(game.spawn_shield(5000) == "refused not configured", "no Energy Shield");
-    game.request_mission();
+    check(!game.request_mission(), "no RETURN HOME asked");
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
-    check(game.mission_status() == "not asked" && g_fade_calls == 0, "no RETURN HOME");
+    check(game.mission_status() == "not asked" && g_fade_calls == 0, "none shown");
+    {
+        // A refused unload's state (as a client's would be) taken back: still no new game or
+        // prompt.
+        zap::ClientState state = game.snapshot();
+        state.newgame_armed = true;
+        state.newgame = plan;
+        state.mission_asked = true;
+        game.rearm(state);
+        check(game.newgame_status() != "armed" && game.mission_status() == "not asked",
+              "rearm sets neither");
+    }
 
     // A client's short first connection going away, or an unload: everything put back (the
     // prompt's, the choice's and the map's too) with those members null, then dressed again.
