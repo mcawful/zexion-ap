@@ -47,9 +47,14 @@ the player's". B1 shows no way to set No Guarantee or "?????", whose text exists
 **Decided (the owner, 2026-10-27): the presets are shortcuts, and every setting is Custom's.**
 `mode` keeps Easy, Standard and OHKO for players who want a short YAML, each exactly the game's
 preset, as today: the item pool and starting items of one fresh save of that mode, and its
-settings. None of a preset's settings can be changed, as in the game, where changing one makes
-the mode Custom. A new `custom` value is the only way to set the options below: with a preset,
-any of them set to something other than `preset` is refused (an `OptionError` naming it).
+settings. A preset's settings cannot be changed, as in the game, where changing one makes the
+mode Custom, but for the two the game itself leaves out when it tells a preset (`0x90260`, the
+masks at `0x905A5`; `re/randocells.md`, "The randomizer's modes"): `start_room` and `safety`
+work with every mode (decided, the owner, 2026-10-27), Safety any value with Easy and Standard
+and Light or Off with OHKO, as the game accepts. Colorizer, the third it leaves out, stays the
+player's menu choice. A new `custom` value is the only way to set the other options below:
+with a preset, any of them set to something other than `preset` is refused (an `OptionError`
+naming it), and so is a Safety OHKO does not accept.
 
 ```yaml
 Zexion:
@@ -80,7 +85,7 @@ Zexion:
   hints: preset               # none | vanilla | vanilla_plus | small | normal | large |
                               # full_map | revealed
   gates: preset               # off | vanilla | unlocked | open
-  start_room: automatic       # random_start | exodia | upper_tower | ... | waste_zone: the
+  start_room: automatic       # any mode. random_start | exodia | ... | waste_zone: the
                               # game's 34 room names (randocells.md, "Starting Location and
                               # the second teleport target"); today's names (kresezoa_16_13)
                               # kept as aliases; automatic: Landing Pod
@@ -89,7 +94,7 @@ Zexion:
   x_crystals: preset
   x_blocks: preset
   secret_shuffle: preset
-  safety: preset              # light | early | normal | off
+  safety: preset              # any mode (OHKO: light | off). light | early | normal | off
   obscure_majors: preset
   obscure_minors: preset
   obscure_class: preset
@@ -169,7 +174,8 @@ them out at generation time with `logic.py` over the region graph `data.py` alre
 - A named room: any of the 34, as in the game, which checks nothing more than its winnability
   check. The world refuses one from which the starting items reach no location: Archipelago's
   fill cannot start there (the game would offer PLAY ANYWAY).
-- `random_start` (and `random`): the game's rule: the unflagged rooms unless the starting
+- `random_start` (and `random`; decided, the owner, 2026-10-27): the game's rule: the
+  unflagged rooms unless the starting
   score (starting Energy + missiles + bombs + starting items) is 27 or more; a room from which
   the starting items reach at least one location; with Safety other than Light, Upper Tower,
   Tower Gauntlet, Guardia Tower and Lower Tower kept one time in three.
@@ -181,7 +187,9 @@ them out at generation time with `logic.py` over the region graph `data.py` alre
 
 **The goal.** The game's winnability check needs Zexion's cell and the four keys; the world's
 core goal already needs the keys and the core. Abridged Finale ends the game at the grab, with
-no escape and no escape skip.
+no escape and no escape skip. With the OS Install Disks goal it would end the run at the grab
+without the disks, so the world refuses Abridged Finale with that goal (an `OptionError` naming
+both; decided, the owner, 2026-10-27).
 
 ## What each setting takes, ranked by cost and risk
 
@@ -199,7 +207,7 @@ risk (the same `logic.py`, checked against the presets' precomputed data in test
 | 5 | Safety | low | low | `logic.Settings.mode69` already; the rest is the prerequisite. |
 | 6 | Start Keys | low | low | Start with the first *k* keys from the Alpha Key; the pool drops the Omega Key first. The client already writes keys as a count (`client/newgame.py`, `start_with`). |
 | 7 | X Crystals, X Blocks | low | medium | Code 68 already in `logic.py`; pass through. The removal runs in the new game's event chain from the section's settings, so it comes with the menu's settings. Assumed: the slot state 4 means "gone". Check in game, and that the core's 2095 object under X Blocks changes nothing for the goal. |
-| 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Assumed, not run: the ending starts after the grab with flag 250 and flag 211 clear, which is the client's goal. Run it once first. With the OS Install Disks goal it would end the game at the grab without the disks: refuse the pair, or let it be (the owner's call). |
+| 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Assumed, not run: the ending starts after the grab with flag 250 and flag 211 clear, which is the client's goal. Run it once first. Refused with the OS Install Disks goal (decided, the owner, 2026-10-27). |
 | 9 | Box Compression, Bulk Missiles, Bulk Bombs, the amounts | medium | low | The pool rules above, in the world, with tests from fresh saves of new seeds (Box Compression off, each Bulk on, both amounts 20 or more): generate them in the menu and read the saves, read-only. Starting missiles are given as the new game splits them, tens as Missile Boxes and the rest as up to 9 containers (`client/newgame.py`, `start_with`), so the world must hand them out in that form; starting Mega Bombs need the client's new-game bombs (`worlds/zexion/starting.py`: not supported yet). |
 | 10 | The 27 items, Random Gun | medium | low | The four states and Random Gun's draw in the world; the start-with array already carries any of the 27. An excluded item is simply absent. |
 | 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as a new entrance rule. The start table stays B1-only (`client/newgame.py`). |
@@ -312,14 +320,31 @@ The largest simplification on offer is not a feature but the per-preset data: on
 works out reachability at generation time for Custom, the presets can use the same path, with
 `data.py`'s lists kept as test oracles.
 
+## The build plan
+
+Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, and the
+`logic-reviewer` and `re-auditor` subagents where they apply) and run in game before the next:
+
+1. **Measure first, at the game, with the owner's OK for each new game:** Abridged Finale's
+   ending and the client's goal; X Crystals and X Blocks removing their blocks; one seed's pool
+   with Box Compression off and with a Bulk setting on; and, for Obscure Majors on with Minors
+   off, the map values of a square a hint reveals and of one seen directly. (The menu-only
+   checks are done: `re/randocells.md`, "The randomizer menu's first screen: items and
+   amounts".)
+2. **A. Reachability at generation time:** the reachable locations and the start rooms worked
+   out when a seed is generated, not per preset in `data.py`; tests show the same results for
+   Easy, Standard and OHKO.
+3. **B. `mode: custom`:** the options in the game's words, refusing what the game's menu cannot
+   hold, the game's pool rules, the game's Random Start rule, `start_room` and `safety` with the
+   presets, the slot data carrying the seed's settings, and the client's checks of them in the
+   new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open).
+4. **C. The helper's markers** read all three Obscure settings and handle Majors on with Minors
+   off (alongside B: the helper only).
+5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.
+6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14).
+
 ## Open questions for the owner
 
-- Abridged Finale with the OS Install Disks goal: refuse, or allow?
-- `start_room: random_start` (and Archipelago's own `random`): the game's Random Start rule
-  (this draft), or today's rule (any room every item reaches all locations from, with at least
-  three for the starting items)?
-- Which settings to build first: this draft would start with Abridged Finale's in-game run,
-  then the prerequisite and ranks 2 to 10.
 - With Abridged Finale off, keep the helper's escape skip offer, or drop it to follow the game?
   ("What the settings make redundant in zexion-ap" recommends keeping it.)
 - Allow Assists, a protection the game does not have: keep it, or drop it?
