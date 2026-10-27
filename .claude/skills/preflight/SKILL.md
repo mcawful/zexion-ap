@@ -5,7 +5,8 @@ description: Run the checks CI runs (ruff format, ruff check, pytest, and Archip
 
 # Pre-flight
 
-Run these in order and stop at the first failure.
+Run these in order and stop at the first failure. On Linux and macOS the venv's programs are
+in `.venv/bin/`, not `.venv/Scripts/`, here and below.
 
 ```sh
 .venv/Scripts/ruff format --check .

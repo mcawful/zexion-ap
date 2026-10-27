@@ -23,8 +23,11 @@ def find_ruff() -> str | None:
 
 
 def main() -> int:
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
-        data = json.loads(sys.stdin.read())
+        # UTF-8, as Claude Code sends it, whatever this machine's locale (a path's non-ASCII
+        # name would otherwise not be found, and the file left unformatted).
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     except json.JSONDecodeError:
         return 0
     path_text = (data.get("tool_input") or {}).get("file_path") or ""

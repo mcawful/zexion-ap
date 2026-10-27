@@ -575,7 +575,9 @@ Not seen in game:
 
 ## Building
 
-Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later. From the repo root:
+Windows only: Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later, with a
+multi-config generator (the default Visual Studio one; `CMakeLists.txt` refuses others, and
+another compiler than MSVC). From the repo root:
 
 ```sh
 cmake -S native -B native/build -A x64

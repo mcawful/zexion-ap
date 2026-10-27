@@ -2,6 +2,8 @@
 .venv/
 .ap/
 __pycache__/
+# Crash dumps Git Bash's programs (MSYS) leave on Windows
+*.stackdump
 *.py[cod]
 .pytest_cache/
 .ruff_cache/

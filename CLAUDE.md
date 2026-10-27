@@ -59,20 +59,31 @@ Where things are:
 
 ## Setup
 
+Windows, Linux or macOS, with git and uv. Commands here are for a POSIX shell: bash or zsh, Git
+Bash on Windows (PowerShell differs only in `VAR=value command`). `.venv/Scripts/` is the
+venv's folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file.
+The game, the client against it, the live tools and the helper are Windows-only
+([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
+
+uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
+(`--user` leaves it off `PATH`); or uv's own installer
+([docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/)), which puts `uv`
+on `PATH`. On Linux and macOS the installer is the way: Debian's, Ubuntu's and Homebrew's
+Pythons refuse `pip install --user`.
+
 ```sh
-python -m pip install --user uv                # --user leaves uv off PATH: hence `python -m uv`
-python -m uv python install 3.13               # AP 0.6.8 refuses 3.14
-python -m uv venv --seed --python 3.13 .venv   # --seed: AP's updater uses pip
-python -m uv pip install --python .venv -r requirements-dev.txt
-.venv/Scripts/python tools/ap_checkout.py      # AP at AP_VERSION into .ap/ (gitignored), with its
-                                               # and the worlds' requirements; links worlds/zexion
+uv python install 3.13                # AP 0.6.8 refuses 3.14
+uv venv --seed --python 3.13 .venv    # --seed: AP's updater uses pip
+uv pip install --python .venv -r requirements-dev.txt
+.venv/Scripts/python tools/ap_checkout.py   # AP at AP_VERSION into .ap/ (gitignored), with its
+                                            # and the worlds' requirements; links worlds/zexion
 ```
 
 ## Checks
 
 CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
-on Windows and Ubuntu), and the native build below. `/preflight` runs the four locally; the
-fourth needs `.ap/`.
+on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native build below.
+`/preflight` runs the four locally; the fourth needs `.ap/`.
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -81,7 +92,8 @@ fourth needs `.ap/`.
 cd .ap/Archipelago && AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
 ```
 
-The helper (Visual Studio's C++ tools and CMake). CI's native job runs these on Windows, then
+The helper, on Windows only (Visual Studio 2022 or later with its C++ tools, and CMake 3.20 or
+later; CMake's default Visual Studio generator). CI's native job runs these, then
 `tests/test_native.py`; what the tests cover: [`native/README.md`](native/README.md), "Building".
 
 ```sh
@@ -137,9 +149,11 @@ game or save folders.
 | `build_apworld.py` | a release into `dist/` | no |
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
 
-The tools find the game through Steam's library list and the saves through `%APPDATA%`.
-`ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or `save_lab.py
---save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the last two.
+The tools find the game through Steam's library list (on Windows, from the registry) and the
+saves through `%APPDATA%`. `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
+(or `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the
+last two. `memscan.py`, `grant.py`, `helper.py` and `check_patterns.py --live` work on the
+running game, so on Windows only; the rest run anywhere given those folders.
 
 ## Releases and versions
 
@@ -218,7 +232,16 @@ Committed under `.claude/`, so they apply to anyone working here:
   `tests/test_guard_hook.py`). `deny` rules for Edit and Write back it up; only the
   game-install one has been seen to fire. `ruff_on_edit.py` formats and lints each edited
   `.py`. An allowlist covers read-only git, ruff, pytest, `build_id.py` and `save_lab.py
-  slots`/`diff`.
+  slots`/`diff` (its venv commands in their `.venv/Scripts/` spelling only, so Linux and macOS
+  get asked).
+- The hook commands run `python` from `PATH`. Where that is not Python 3 (missing, as on
+  Debian, Ubuntu and macOS; the Microsoft Store stub; Python 2), the hook exits with an error
+  and Claude Code lets the call through: the guard is off, with only a hook error notice.
+  `.claude/hooks/run_python.sh` (`sh` on Linux and macOS, Git Bash on Windows, which run hook
+  commands) runs a hook with the first Python that can (the repo's `.venv`, then `python3`,
+  `python`, `py -3`) and, with none, blocks a call whose payload mentions the saves or a Steam
+  folder, as the guard does when it breaks (cases: `tests/test_hook_runner.py`). The hook
+  commands do not call it yet.
 - Skills: `/preflight` (the checks; without the toolchain a change is unverified), `/save-lab`
   (Steam Cloud, backups, copies, diffs, patches, install, restore), `/find-address` (a value in
   memory to a byte pattern, recorded with evidence).
