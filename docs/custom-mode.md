@@ -215,6 +215,12 @@ the section and writes the seed over it (`memory.md`, "The game-mode panel"). A 
 slot data carries its own settings there instead of a preset's; the checks (`expect` lines)
 grow to every setting the logic reads: t30 to t33, t37, Safety, Gates and the amounts.
 
+**The seed's settings in game.** The pause menu's OPTION MENU, RANDO, RANDO SETTINGS shows a
+save's seed, mode, items, amounts and settings, decoded from the settings code the save keeps
+(`re/randocells.md`, "The settings code"). The game's placement writes that code from the menu
+state it ran with, so a Custom seed started through ARCHIPELAGO shows its own settings there
+with nothing more to build; today's AP seeds show their preset.
+
 **RANDOMIZER**, the fallback, has the player set the menu by hand: easy for a preset, slow for
 Custom (20 settings, 27 items, six amounts). The game's Paste←Clipboard takes the seed text and
 the settings code ("The settings code"), whose format is known exactly, so the client could put
