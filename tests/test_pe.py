@@ -14,11 +14,8 @@ from client import pe
 
 def test_the_header_fields_and_sections_are_read() -> None:
     header = pe.parse(pe_image())
-    assert (header.machine, header.timestamp, header.size_of_image) == (
-        0x8664,
-        0x6A3F82DE,
-        0x1204000,
-    )
+    assert (header.machine, header.timestamp) == (0x8664, 0x6A3F82DE)
+    assert header.size_of_image == 0x1204000
     assert header.dll_characteristics == 0x0160
     assert header.section(".text") == pe.Section(".text", 0x1000, 0x2000, 0x400, 0x2000)
     assert [s.name for s in header.sections] == [".text", ".rdata"]

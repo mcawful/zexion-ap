@@ -22,9 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("Client")  # CommonClient's: the client's window shows it
 log = logging.getLogger("Zexion")  # the log only (client/ticks.py, log)
 
-HINTS_RESEND_SECONDS = 5.0  # before storing the Area Map hints again if the server lacks them
-FOUND_RESEND_SECONDS = 5.0  # likewise for the locations found (store_found)
-POPPED_RESEND_SECONDS = 5.0  # and the follow-up popups shown (store_popped)
+RESEND_SECONDS = 5.0  # before storing a record's entries again that the server still lacks
 
 
 def server_open(ctx: ZexionContext) -> bool:
@@ -66,6 +64,26 @@ async def store(
     return True
 
 
+async def store_missing(
+    ctx: ZexionContext,
+    key: str,
+    missing: dict[str, object],
+    sent_at: float,
+    what: str,
+    new: bool = False,
+    reply: bool = False,
+) -> float:
+    """Store this client's entries that the server's record at ``key`` lacks, as the caller
+    reads it (``missing``, by ``update``): at once when some are ``new``, else once
+    RESEND_SECONDS have passed since ``sent_at``, as one sent before may have been lost with a
+    closing connection. Returns when this was stored: ``sent_at`` if nothing was, 0.0 if the
+    send failed (sent again on the next poll)."""
+    if not missing or not (new or time.monotonic() >= sent_at + RESEND_SECONDS):
+        return sent_at
+    stored = await store(ctx, key, "update", missing, {}, what, reply=reply)
+    return time.monotonic() if stored else 0.0
+
+
 def stored_indices(ctx: ZexionContext, key: str | None) -> set[int]:
     """The location indices a data storage dict holds as its keys. The key is open to any
     client in the room: anything but an index is skipped."""
@@ -80,7 +98,7 @@ def hints_used(ctx: ZexionContext) -> dict[str, tuple[int, int]] | None:
     client's on top until the server has them; None until the server's have been read."""
     if ctx.conn is None or ctx.conn.hints_key not in ctx.stored_data:
         return None
-    return stored_hints(ctx) | (ctx.seed_state.hints_mine or {})
+    return stored_hints(ctx) | ctx.seed_state.hints_mine
 
 
 def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
@@ -133,17 +151,19 @@ def popped(ctx: ZexionContext) -> set[int] | None:
 
 
 async def store_popped(ctx: ZexionContext, conn: state.Connection, due_only: bool = False) -> None:
-    """Record the follow-up popups this client showed (popped) that the server's record lacks;
-    with ``due_only``, only when POPPED_RESEND_SECONDS have passed since the last store (one sent
-    may have been lost with a closing connection, and a new connection must not show it again)."""
+    """Record the follow-up popups this client showed (popped) that the server's record lacks:
+    at once, or with ``due_only`` only when one sent before is due again (store_missing), as a
+    new connection must not show it again."""
     seed = ctx.seed_state
-    missing = seed.popped_mine - stored_indices(ctx, conn.popped_key)
-    if not missing or (due_only and time.monotonic() < seed.popped_sent_at + POPPED_RESEND_SECONDS):
-        return
-    seed.popped_sent_at = time.monotonic()
-    value = {str(i): 1 for i in sorted(missing)}
-    if not await store(ctx, conn.popped_key, "update", value, {}, "Recording the popups shown"):
-        seed.popped_sent_at = 0.0  # sent again on the next poll
+    missing = {str(i): 1 for i in seed.popped_mine - stored_indices(ctx, conn.popped_key)}
+    seed.popped_sent_at = await store_missing(
+        ctx,
+        conn.popped_key,
+        missing,
+        seed.popped_sent_at,
+        "Recording the popups shown",
+        not due_only,
+    )
 
 
 def own_found(ctx: ZexionContext) -> list[int]:
@@ -161,20 +181,14 @@ async def store_found(
     ctx: ZexionContext, conn: state.Connection, in_game: set[int], new: set[int]
 ) -> None:
     """Record this world's locations found in the game (indices: the loaded save's, ``new``
-    just found) in the server's data storage (own_found). Once the server's record has been
-    read, every one found that it lacks is sent, again every FOUND_RESEND_SECONDS while it
-    lacks them: a store lost with a closing connection heals without a restart (the server's
-    checked locations, which a reconnect starts from, are never reported again)."""
-    key = conn.found_key
-    stored = stored_indices(ctx, key) if key in ctx.stored_data else None
-    due = time.monotonic() >= conn.found_sent_at + FOUND_RESEND_SECONDS
-    locations = state.found_to_store(in_game, stored, new, due)
-    if not locations:
-        return
-    conn.found_sent_at = time.monotonic()
-    value = {str(i): 1 for i in sorted(locations)}
-    if not await store(ctx, key, "update", value, {}, "Recording the locations found"):
-        conn.found_sent_at = 0.0  # sent again on the next poll
+    just found) in the server's data storage (own_found): every one its record lacks, again
+    while it lacks them (store_missing), so a store lost with a closing connection heals
+    without a restart (the server's checked locations, which a reconnect starts from, are never
+    reported again)."""
+    missing = {str(i): 1 for i in in_game - stored_indices(ctx, conn.found_key)}
+    conn.found_sent_at = await store_missing(
+        ctx, conn.found_key, missing, conn.found_sent_at, "Recording the locations found", bool(new)
+    )
 
 
 async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -198,16 +212,16 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
     owned = {(item.player, item.location) for item in ctx.items_received}
     owned |= {(ctx.slot, LOCATION_ID_BASE + i) for i in p.found}
     new = hints.assign(conn.hint_targets, used, keys, owned)
-    stored = stored_hints(ctx)
-    if not new:
-        behind = seed.hints_mine and any(k not in stored for k in seed.hints_mine)
-        if behind and time.monotonic() >= seed.hints_sent_at + HINTS_RESEND_SECONDS:
-            await store_hints(ctx, conn)  # the server has not taken the last ones yet
-        return
-    if not await create_hints(ctx, new.values()):
+    if new and not await create_hints(ctx, new.values()):
         return  # tried again once connected
-    seed.hints_mine = (seed.hints_mine or {}) | new
-    await store_hints(ctx, conn)
+    seed.hints_mine |= new
+    # Stored again until the server has them (store_missing).
+    stored = stored_hints(ctx)
+    missing = {k: list(v) for k, v in seed.hints_mine.items() if k not in stored}
+    what = "Storing the Area Map hints"
+    seed.hints_sent_at = await store_missing(
+        ctx, conn.hints_key, missing, seed.hints_sent_at, what, bool(new), reply=True
+    )
 
 
 async def create_hints(ctx: ZexionContext, entries) -> bool:
@@ -225,14 +239,6 @@ async def create_hints(ctx: ZexionContext, entries) -> bool:
         log.warning(f"Creating the Area Map hints failed ({exc}).")
         return False
     return True
-
-
-async def store_hints(ctx: ZexionContext, conn: state.Connection) -> None:
-    seed = ctx.seed_state
-    seed.hints_sent_at = time.monotonic()
-    value = {k: list(v) for k, v in (seed.hints_mine or {}).items()}
-    # Sent again until the server echoes them back (hints_tick).
-    await store(ctx, conn.hints_key, "update", value, {}, "Storing the Area Map hints", reply=True)
 
 
 def hint_note(ctx: ZexionContext, entry: tuple[int, int]) -> str:

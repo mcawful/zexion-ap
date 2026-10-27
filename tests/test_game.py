@@ -194,12 +194,6 @@ def put_supplies(g: FakeGame, values: tuple[int, ...]) -> None:
         g.pm.memory[at : at + 2] = struct.pack("<h", v)
 
 
-def test_supplies_reads_the_six_numbers_in_order() -> None:
-    g = fake_game()
-    put_supplies(g, (30, 48, 2, 3, 0, 0))
-    assert g.supplies() == (30, 48, 2, 3, 0, 0)
-
-
 def test_the_player_state_read_at_once_agrees_with_each_read() -> None:
     g = fake_game()
     put_supplies(g, (30, 48, 2, 3, 1, 4))

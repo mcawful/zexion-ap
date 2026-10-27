@@ -69,10 +69,8 @@ def config_keys() -> dict[str, str]:
     # Every quoted name in the table is some entry's first argument: none was missed.
     first_args = re.findall(r'\(\s*"(\w+)"', table)
     assert [name for _, name in entries] == first_args
-    out = {}
-    for kind, name in entries:
-        assert name not in out, f"{name} is listed twice"
-        out[name] = kind
+    out = {name: kind for kind, name in entries}
+    assert len(out) == len(entries), "a key is listed twice"
     return out
 
 

@@ -65,7 +65,7 @@ def test_the_data_storage_keys_are_per_team_and_slot() -> None:
 def test_a_new_helper_is_told_everything_again() -> None:
     told = state.HelperState()
     assert told.assists.sent is None and told.intel.sent is None
-    assert told.discs_sent is None and told.slots_sent is None and told.offline_sent == {}
+    assert told.discs.sent is None and told.slots.sent is None and told.offline_sent == {}
     # It may hold an earlier client's labels: taken back unless this seed's are sent.
     assert told.labels_held and told.labels_for is None and not told.labels_refused
     assert not told.client_back_sent and not told.other_save_sent
@@ -74,15 +74,9 @@ def test_a_new_helper_is_told_everything_again() -> None:
 def test_leaving_the_seeds_save_starts_the_next_load_afresh() -> None:
     load = state.LoadState(seed_loaded=True, save_collected={1, 2}, goal_withheld=True)
     load.return_home.reminded = True
-    load.assists_want = load.intel_want = True
-    load.leave()
+    load.assists_want = load.intel_want = load.feats.known = True
+    load.leave()  # the goal withheld is said again; the feats guard asked afresh
     assert load == state.LoadState()
-
-
-def test_the_goal_withheld_is_said_again_on_the_next_load() -> None:
-    load = state.LoadState(goal_withheld=True)
-    load.leave()
-    assert not load.goal_withheld
 
 
 # --- received items' popups -----------------------------------------------------------------
@@ -127,15 +121,7 @@ def test_new_popups_handed_over_are_stored_and_a_failed_store_is_sent_again() ->
     assert state.announced_to_store(4, 5, None) is None, "another client of the slot is ahead"
 
 
-# --- the locations found, and what is said once ------------------------------------------------
-
-
-def test_the_found_record_heals_once_read() -> None:
-    assert state.found_to_store({1, 2, 3}, None, {3}, due=False) == {3}, "not read: the new"
-    assert state.found_to_store({1, 2, 3}, {1}, {3}, due=False) == {2, 3}
-    assert state.found_to_store({1, 2, 3}, {1}, set(), due=False) == set(), "not due yet"
-    assert state.found_to_store({1, 2, 3}, {1}, set(), due=True) == {2, 3}
-    assert state.found_to_store({1, 2}, {1, 2}, {2}, due=True) == set(), "the record has them"
+# --- what is said once ------------------------------------------------------------------------
 
 
 def test_a_message_is_said_once_until_it_changes() -> None:
@@ -159,7 +145,6 @@ def test_the_save_loaded_line_names_the_games_slot() -> None:
 
 
 def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
-
     unknown = state.attach_failed(game.UnknownBuild("timestamp 0x1234 and image size 0x5678"))
     assert "isn't supported yet" in unknown and "0x" not in unknown
     assert state.REPORT in state.attach_failed(game.PatternError("pattern matched 2 times"))
@@ -169,7 +154,6 @@ def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
 
 
 def test_the_mod_failing_is_said_plainly_unless_the_player_can_fix_it() -> None:
-
     fixable = state.helper_failed(native.ModFixable("it isn't installed; copy the two files"))
     assert "it isn't installed; copy the two files" in fixable
     off = native.ModDisabled("The mod is turned off.")
@@ -234,15 +218,6 @@ def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
     assert not state.goal_reached(False, 3, 9), "no ending"
 
 
-def test_a_feats_guard_not_all_in_place_is_read_from_hello() -> None:
-    assert state.feats_unguarded("on") is None
-    assert state.feats_unguarded("off") is None, "not on for this save, or not yet"
-    assert state.feats_unguarded("") is None, "no field"
-    why = "on:the_ending's_call_reads_otherwise;_steam_api64_is_not_loaded"
-    assert state.feats_unguarded(why) == why.removeprefix("on:")
-    assert "achievements may be earned in this save" in state.FEATS_UNGUARDED
-
-
 def test_the_feats_guard_is_asked_every_few_seconds_until_it_is_on() -> None:
     check, said = state.FeatsCheck(), state.SayOnce()
     assert check.due(0.0) and not check.due(4.9) and check.due(5.0)
@@ -256,6 +231,7 @@ def test_a_guard_on_without_all_of_it_is_said_once() -> None:
     check = state.FeatsCheck()
     line, detail = check.seen("on:the_slot_could_not_be_written", True, 0.0, said)
     assert line == state.FEATS_UNGUARDED and "the_slot_could_not_be_written" in detail
+    assert "achievements may be earned in this save" in line
     assert check.known and not check.due(10.0)
     # The next load (a new check), the same again: not said twice.
     assert state.FeatsCheck().seen("on:the_slot_could_not_be_written", True, 0.0, said) is None
@@ -282,13 +258,6 @@ def test_a_guard_still_off_in_play_is_said_once() -> None:
     later.seen("off", True, 0.0, said)
     assert later.seen("off", True, 10.0, said) is not None
     assert state.FeatsCheck().seen("", True, 0.0, said) is None, "no field: as off"
-
-
-def test_a_new_load_or_helper_asks_afresh() -> None:
-    load = state.LoadState()
-    load.feats.known = True
-    load.leave()
-    assert not load.feats.known and load.feats.due(0.0)
 
 
 def test_a_load_ended_while_a_reconnect_carried_it_ends_for_both() -> None:

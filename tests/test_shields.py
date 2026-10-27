@@ -108,7 +108,5 @@ class ShieldGame:
 def test_the_look_reads_the_shield_in_play_only_and_a_failed_read_is_not_seen() -> None:
     assert shields.look(ShieldGame(up=True), game.IN_PLAY) == (True, "")
     assert shields.look(ShieldGame(up=True), game.MENU) == (False, "")
-    assert shields.look(ShieldGame(error=game.GameError("bad link")), game.IN_PLAY) == (
-        False,
-        "bad link",
-    )
+    broken = ShieldGame(error=game.GameError("bad link"))
+    assert shields.look(broken, game.IN_PLAY) == (False, "bad link")

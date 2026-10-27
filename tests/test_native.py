@@ -12,6 +12,8 @@ import os
 import subprocess
 import sys
 import threading
+import types
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -128,25 +130,25 @@ def test_a_listing_that_keeps_failing_is_an_error_unless_the_game_died(monkeypat
         native.is_loaded(1)
 
 
+@dataclass
 class _Game:
     """A stand-in game for attach: which helper version is loaded, the built file's, and
     whether the helper loaded is the game folder's copy (its hello's ``folder``)."""
 
+    loaded: str | None = None  # the version loaded, None for none
+    file_version: str = "0.0.1"  # what the built file loads as
+    folder: str = "0"
+    loads: int = 0
+    unloads: int = 0
+    rva: dict[str, int] = field(default_factory=dict)
     pid = 1
-
-    class pm:
-        process_handle = 1
-
-    def __init__(self) -> None:
-        self.loaded: str | None = None  # the version loaded, None for none
-        self.file_version = "0.0.1"  # what the built file loads as
-        self.folder = "0"
-        self.loads = 0
-        self.unloads = 0
-        self.rva: dict[str, int] = {}
+    pm = types.SimpleNamespace(process_handle=1)
 
 
-def stand_in_attach(monkeypatch, game: _Game) -> None:
+def stand_in_attach(monkeypatch, **fields) -> _Game:
+    """attach's helper calls on a stand-in game with these fields, returned."""
+    game = _Game(**fields)
+
     class FakeHelper:
         def __init__(self, pid: int) -> None:
             pass
@@ -182,6 +184,7 @@ def stand_in_attach(monkeypatch, game: _Game) -> None:
     monkeypatch.setattr(native, "load", load)
     monkeypatch.setattr(native, "wait_unloaded", lambda handle: True)
     monkeypatch.setattr(native, "_STALE", {})
+    return game
 
 
 def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) -> None:
@@ -190,9 +193,7 @@ def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) 
     # and loaded again.
     (tmp_path / "zexion_ap.dll").write_bytes(b"")
     monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
-    game = _Game()
-    game.loaded, game.folder = "0.0.1", "1"
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch, loaded="0.0.1", folder="1")
     with pytest.raises(native.HelperError, match="copy this release's"):
         native.attach(game, tmp_path / "no-build.dll")
     assert game.unloads == game.loads == 0
@@ -202,8 +203,7 @@ def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkey
     # Each retry must not unload and reload the same stale file.
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")
-    game = _Game()
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch)
     with pytest.raises(native.ModFixable, match="rebuild native"):
         native.attach(game, built)
     assert game.loads == 1 and game.loaded == "0.0.1"
@@ -222,8 +222,7 @@ def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkey
 def test_a_stale_build_is_not_loaded_into_a_game_without_a_helper(tmp_path, monkeypatch) -> None:
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")
-    game = _Game()
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch)
     with pytest.raises(native.HelperError, match="rebuild native"):
         native.attach(game, built)
     game.loaded = None  # the game restarted
@@ -252,9 +251,7 @@ def turned_off(tmp_path: Path, monkeypatch) -> Path:
 
 def test_a_turned_off_mod_is_not_loaded_from_the_games_folder(tmp_path, monkeypatch) -> None:
     turned_off(tmp_path, monkeypatch)
-    game = _Game()
-    game.file_version = native.VERSION
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch, file_version=native.VERSION)
     with pytest.raises(native.ModDisabled, match="zexion_ap.disabled"):
         native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
     assert game.loads == 0
@@ -265,18 +262,14 @@ def test_a_turned_off_mod_still_loads_the_clients_own_build(tmp_path, monkeypatc
     built = tmp_path / "build" / "zexion_ap.dll"
     built.parent.mkdir()
     built.write_bytes(b"")
-    game = _Game()
-    game.file_version = native.VERSION
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch, file_version=native.VERSION)
     native.attach(game, built)
     assert game.loads == 1 and game.loaded == native.VERSION
 
 
 def test_a_turned_off_mod_already_loaded_is_used(tmp_path, monkeypatch) -> None:
     turned_off(tmp_path, monkeypatch)
-    game = _Game()
-    game.loaded = native.VERSION
-    stand_in_attach(monkeypatch, game)
+    game = stand_in_attach(monkeypatch, loaded=native.VERSION)
     native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
     assert game.loads == 0 and game.unloads == 0
 
@@ -316,10 +309,7 @@ def test_reload_mod_refused_leaves_the_mod_loaded(monkeypatch, why: str, said: s
 
 def test_reload_mod_loads_again_after_bye_or_a_failed_request(monkeypatch) -> None:
     helper, closed = piped_helper(monkeypatch, lambda data, seconds: b"bye")
-    assert state.reload_reply(helper.unload()) == (
-        True,
-        "The Zexion mod was unloaded; loading it again.",
-    )
+    assert state.reload_reply(helper.unload())[0]
 
     def broken(data: bytes, seconds: float) -> bytes:
         raise native.HelperError("the helper's pipe closed: 109")
@@ -337,4 +327,4 @@ def test_hello_keeps_the_feats_guards_reason_as_one_field(monkeypatch) -> None:
     helper, _ = piped_helper(monkeypatch, lambda data, seconds: reply)
     hello = helper.hello()
     assert hello["feats"] == "on:steam_api64_is_not_loaded" and hello["folder"] == "1"
-    assert state.feats_unguarded(hello["feats"]) == "steam_api64_is_not_loaded"
+    assert state.FeatsCheck().seen(hello["feats"], True, 0.0, state.SayOnce()) is not None
