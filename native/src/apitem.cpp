@@ -316,7 +316,7 @@ void TextureCheck::read(const GlFunctions& gl) {
     };
     // Known art, from Sprites.png: Scrap Energy's frame 134 is opaque at (6, 0), and the font's
     // glyph 0xC0 at (2, 1); a flipped or other image would not be.
-    constexpr int kIconX = (0xC0 % 16) * 8, kIconY = 976 + (0xC0 / 16) * 8;
+    constexpr int kIconX = font_x(0xC0), kIconY = font_y(0xC0);
     if (alpha_at(frame_x(134) + 6, frame_y(134)) != 0xFF ||
         alpha_at(kIconX + 2, kIconY + 1) != 0xFF) {
         return;
@@ -336,12 +336,39 @@ bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& g
                           [&](int px, int py) { return opaque(px, py); });
 }
 
+bool glyph_rgb(char c, uint8_t (&rgb)[3]) {
+    // The logo's colors as the world's AP items show them (palette 8's entries in kLogo: 1, 2,
+    // 3, 5, 8, 9, from the Palettes file; docs/re/memory.md, "Other players' items"), and its
+    // outline.
+    struct Color {
+        char c;
+        uint8_t rgb[3];
+    };
+    static constexpr Color kColors[] = {
+        {'#', {255, 255, 255}}, {'k', {0, 0, 0}},     {'g', {22, 113, 41}},
+        {'b', {53, 181, 255}},  {'r', {246, 26, 46}}, {'p', {249, 47, 237}},
+        {'o', {212, 82, 19}},   {'y', {251, 213, 127}},
+    };
+    for (const Color& k : kColors) {
+        if (k.c == c) {
+            std::memcpy(rgb, k.rgb, sizeof(rgb));
+            return true;
+        }
+    }
+    return false;
+}
+
 void FontGlyph::upload_pixels(const GlFunctions& gl, bool clear) const {
     std::vector<uint8_t> rgba(static_cast<size_t>(w_) * h_ * 4, 0);
     for (int py = 0; py < h_ && !clear; ++py) {
         for (int px = 0; px < w_; ++px) {
-            if (!opaque(px, py)) continue;
-            std::memset(&rgba[(static_cast<size_t>(py) * w_ + px) * 4], 0xFF, 4);
+            uint8_t rgb[3];
+            if (!glyph_rgb(pixel(px, py), rgb)) continue;
+            uint8_t* out = &rgba[(static_cast<size_t>(py) * w_ + px) * 4];
+            for (int c = 0; c < 3; ++c) {
+                out[c] = static_cast<uint8_t>(rgb[c] + (255 - rgb[c]) * white_ / 255);
+            }
+            out[3] = 0xFF;
         }
     }
     gl.TexSubImage2D(kTexture2D, 0, x_, y_, w_, h_, kRgba, kUnsignedByte, rgba.data());
@@ -359,11 +386,21 @@ void FontGlyph::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check) 
     if (texture == 0) return;
     // Painted (or found not as expected) at most once every kRepaintFrames frames for the same
     // texture.
-    if ((texture == painted_ || texture == failed_) && frames_to_paint_-- > 0) return;
+    if ((texture == painted_ || texture == failed_) && white_ == painted_white_ &&
+        frames_to_paint_-- > 0) {
+        return;
+    }
     frames_to_paint_ = kRepaintFrames;
     bool ok = upload(texture, gl, check, false);
-    painted_ = ok ? texture : 0;
-    failed_ = ok ? 0 : texture;
+    if (ok) {
+        painted_ = texture;
+        painted_white_ = white_;
+        failed_ = 0;
+    } else {
+        // A repaint that failed leaves the earlier image in that texture, still to be cleared.
+        if (texture != painted_) painted_ = 0;
+        failed_ = texture;
+    }
 }
 
 void FontGlyph::clear(BYTE* holder, const GlFunctions& gl, TextureCheck& check) {

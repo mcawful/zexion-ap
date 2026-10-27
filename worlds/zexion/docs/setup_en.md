@@ -54,7 +54,8 @@ version: the mod is in.
    (your landing pod) with its starting items, and the game saves at once.
 
 To continue later, connect the client and load that save. You can start more saves of the
-same seed the same way; they all count.
+same seed the same way; they all count. On the file select, Archipelago saves show the
+Archipelago logo beside the file number.
 
 - Keep the client open while you play.
 - Locations you check are sent at once.

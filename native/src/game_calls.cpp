@@ -28,6 +28,7 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 // frames between two of the helper's popups.
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
+constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
 // Frames between two looks at the escape skip's event and at the scanner's text.
 constexpr int kSkipFrames = 30, kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
@@ -697,8 +698,49 @@ void Game::watch_mission() {
 }
 
 void Game::watch_files() {
+    // The AP saves' slots every 16th frame call (the screen's entries follow at once): a copy
+    // or a delete shows on the next look.
+    if (file_slot_frames_-- <= 0) {
+        file_slot_frames_ = kFileSlotFrames;
+        std::set<int> slots = ap_file_slots();
+        if (slots != files_.ap_slots()) files_.set_ap_slots(std::move(slots));
+    }
     files_.watch(at_);
-    for (FontGlyph& glyph : disk_header_) show_glyph(glyph, files_.on());
+    for (FontGlyph& glyph : disk_header_) show_glyph(glyph, files_.disks_on());
+    // The game's fade to white leaves the logo's own colors alone: the logo is painted whiter
+    // with each of its frames instead.
+    ap_logo_.set_white(new_game_white(at<void*>(at_.transition_fn, 0) == at_.newgame_fn,
+                                      at<int32_t>(at_.transition_timer, 0)));
+    show_glyph(ap_logo_, files_.marks_on());
+}
+
+std::set<int> Game::ap_file_slots() const {
+    std::set<int> slots;
+    for (int n = 1; n <= slot::kCount; ++n) {
+        const BYTE* section = slot_section(n);
+        if (section != nullptr && known_section(section)) slots.insert(n);
+    }
+    return slots;
+}
+
+const BYTE* Game::slot_section(int n) const {
+    // Valid only for a randomizer save in use: deleting a slot or giving it a normal game leaves
+    // the copy (docs/re/memory.md, "The file select").
+    const BYTE* block = at_.slot_array + static_cast<ptrdiff_t>(n - 1) * slot::kStride;
+    if (block[slot::kEmpty] == slot::kEmptyMark ||
+        field<uint16_t>(block, slot::kRandoMarker) != 1) {
+        return nullptr;
+    }
+    return at_.rando_slots + static_cast<ptrdiff_t>(n - 1) * kSectionSize;
+}
+
+bool Game::known_section(const BYTE* section) const {
+    if (labels_seed_ && section_is(*labels_seed_, section)) return true;
+    // The offline look's seeds are among the known ones (set_offline adds them).
+    for (const OfflineSeed& seed : known_seeds_) {
+        if (section_is(seed, section)) return true;
+    }
+    return false;
 }
 
 void Game::file_event(void* widget, intptr_t event) {
@@ -710,8 +752,11 @@ void Game::restore_files() {
     client_file_counts_.clear();
     offline_file_counts_.clear();
     files_.set_counts({});
+    files_.set_ap_slots({});
     files_.restore(at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(at_.sprite_texture, gl_, texture_check_);
+    ap_logo_.clear(at_.sprite_texture, gl_, texture_check_);
+    file_slot_frames_ = 0;
 }
 
 bool Game::rando_save_loaded() const {
@@ -719,13 +764,7 @@ bool Game::rando_save_loaded() const {
 }
 
 bool Game::ap_save_loaded() const {
-    if (!configured_ || !rando_save_loaded()) return false;
-    if (labels_seed_ && section_is(*labels_seed_, at_.rando_blob)) return true;
-    // The offline look's seeds are among the known ones (set_offline adds them).
-    for (const OfflineSeed& seed : known_seeds_) {
-        if (section_is(seed, at_.rando_blob)) return true;
-    }
-    return false;
+    return configured_ && rando_save_loaded() && known_section(at_.rando_blob);
 }
 
 void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {

@@ -97,6 +97,13 @@ Assist Unlock item from the server console, with your player name:
 `/send YOURNAME Assist Unlock`. On archipelago.gg, the console is the command box on the room
 page, which only whoever created the room sees.
 
+## How do I tell Archipelago saves apart?
+
+On the file select, COPY FILE and DELETE FILE, each Archipelago save shows the Archipelago
+logo to the right of its file number. Normal saves and plain randomizer saves don't. The mod
+knows a save once you have connected to its seed at least once, and the logo shows with the
+client closed too.
+
 ## Do Archipelago saves earn Feats and Steam achievements?
 
 No Feats: the mod keeps Zexion's Feats for the game as it ships, so an Archipelago save's
