@@ -1315,7 +1315,7 @@ void test_popups_wait_for_their_save() {
 
 // RETURN HOME WITH THE DISKS? (mission.h) once idle in play: event 3667's fade with event
 // 3666's delay, popups waiting until the game runs the opener; not before the game's last
-// message is down to its last 70 frames, as Zexion's popup is when the escape skip fades.
+// message is down to its last kFadeMessageLeft frames (GAME SAVED's, half a second in).
 // Bodies of their own: the linker folds identical functions into one address.
 int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
@@ -1334,11 +1334,11 @@ void test_popups_wait_for_the_mission_fade() {
     g_transition_fn = g_routine_table[zap::kIdleRoutine];
     g_transition_timer = 0;
     game.request_mission();
-    message_showing(71);  // GAME SAVED, 180 frames: 109 in
+    message_showing(zap::kFadeMessageLeft + 1);  // GAME SAVED, 180 frames: 29 in
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_fade_calls == 0,
-          "not before the message is as far in as Zexion's popup at the escape skip's fade");
-    message_showing(70);  // 110 in
+          "not before the message is kFadeMessageLeft frames from its end");
+    message_showing(zap::kFadeMessageLeft);  // 30 in
     game.watch_all(&chosen);
     check(g_transition_timer == zap::kFadeDelay && g_fade_calls == 1 &&
               g_fade_event == event_3667() && g_transition_fn == reinterpret_cast<void*>(&opener) &&
@@ -1367,9 +1367,9 @@ void test_popups_wait_for_the_mission_fade() {
     game.pump_popups();
     check(g_messages == 1, "the helper's popup shows");
     for (int i = 0; i < 30; ++i) game.pump_popups();  // past the gap between popups
-    message_showing(70);
+    message_showing(zap::kFadeMessageLeft);
     game.watch_all(&chosen);
-    check(g_fade_calls == 0, "not with 70 frames of the helper's popup left");
+    check(g_fade_calls == 0, "not with kFadeMessageLeft frames of the helper's popup left");
     message_showing(1);
     game.watch_all(&chosen);
     check(g_fade_calls == 1, "once it has ended");
@@ -1410,7 +1410,7 @@ void test_a_save_during_the_mission_fade() {
         g_transition_fn = g_routine_table[zap::kIdleRoutine];
         g_transition_timer = 0;
         game.request_mission();
-        message_showing(70);
+        message_showing(zap::kFadeMessageLeft);
         game.watch_all(&chosen);
         check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener) &&
                   g_fade[zap::fade_state::kStep] == 8,
@@ -1539,7 +1539,8 @@ void test_return_home_lapses_away_from_the_pod() {
     field<int16_t>(0xCEA) = 48;
     game.put_back_all(&chosen);
 
-    // YES: the ending waits for the game's last message to end, not just its last 70 frames.
+    // YES: the ending waits for the game's last message to end, not just its last
+    // kFadeMessageLeft frames.
     reset_events();
     idle();
     game.set_hooks(hooks);
@@ -1550,11 +1551,11 @@ void test_return_home_lapses_away_from_the_pod() {
     game.mission_yes();
     check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
           "YES: the ending pending, and an unload refuses");
-    message_showing(70);
+    message_showing(zap::kFadeMessageLeft);
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
               game.mission_status() == "yes: ending when idle",
-          "not with 70 frames of a message left");
+          "not with kFadeMessageLeft frames of a message left");
     message_showing(1);
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&

@@ -105,9 +105,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   name and no map reveal: 2026-10-25.
 - OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the file
   select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO): 2026-10-24; offered
-  at the landing pod only: 2026-10-25; the fade before it: 2026-10-27 (timed to the escape skip's by
-  disassembly, not compared in game); the fade turned back after a save at the pod during it:
-  2026-10-27. A request held by popups lapsing once the player left the pod's room, and one
+  at the landing pod only: 2026-10-25; the fade before it: 2026-10-27, first timed to the escape
+  skip's by disassembly (not compared in game), then started half a second after GAME SAVED
+  appears (the owner's pick, 2026-10-27); the fade turned back after a save at the pod during
+  it: 2026-10-27. A request held by popups lapsing once the player left the pod's room, and one
   left during GAME SAVED alone, then offered again after the next save there: 2026-10-27. Not
   seen in game: the fade turned back when the helper takes back a prompt it had not opened yet
   (stand-in tests only).

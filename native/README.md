@@ -419,11 +419,12 @@ the helper:
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in play
-  with no popup of its own to show and the game's last message (GAME SAVED) down to its last 70
-  frames (as far into it as the escape skip's fade is into Zexion's popup, by disassembly with one
-  assumption: `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut
-  short), opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way
-  the escape skip's opens: it runs the game's fade to black (area event 3667, checked byte for byte,
+  with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
+  its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
+  until then 70, as far into it as the escape skip's fade is into Zexion's popup:
+  `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut short),
+  opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way the
+  escape skip's opens: it runs the game's fade to black (area event 3667, checked byte for byte,
   through the game's handler for its type) and sets its opener as the transition 60 frames away (the
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
   through the game's NO and then starts the ending once no message shows; NO fades the screen back
