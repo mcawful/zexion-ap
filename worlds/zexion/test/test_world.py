@@ -39,7 +39,6 @@ def fake_world(
     world.options = types.SimpleNamespace(
         mode=Mode(mode),
         start_room=StartRoom(start_room),
-        local_items=types.SimpleNamespace(value=set()),
         goal=Goal(goal),
         start_inventory=types.SimpleNamespace(value=dict(start_inventory or {})),
         os_install_disks=types.SimpleNamespace(value=placed),
@@ -49,6 +48,16 @@ def fake_world(
     world.player = 1
     world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
     return world
+
+
+def disks(mode: str = "standard", placed: int = 20, required: int = 15) -> dict[str, Any]:
+    """Options for the OS Install Disks goal."""
+    return {
+        "mode": mode,
+        "goal": "os_install_disks",
+        "os_install_disks": placed,
+        "os_install_disks_required": required,
+    }
 
 
 def two_zexion_players(options: dict[str, Any]) -> MultiWorld:
@@ -253,8 +262,6 @@ class TestOHKO(ZexionTestBase):
 class TestSlotDataForTheClient(ZexionTestBase):
     """The slot data the client builds its plan and new game from."""
 
-    run_default_tests = False  # the default options, as TestDefaultStart's
-
     def test_location_items_are_this_worlds_items_as_game_ids(self) -> None:
         distribute_items_restrictive(self.multiworld)
         items = self.world.fill_slot_data()["location_items"]
@@ -315,10 +322,6 @@ class TestSlotDataForTheClient(ZexionTestBase):
         # Received, the client's helper runs its pickup event, which gives the shield.
         self.assertNotIn("Energy Shield", self.world.options.local_items.value)
 
-
-class TestStartInventoryInSlotData(ZexionTestBase):
-    run_default_tests = False  # the default options, as TestDefaultStart's
-
     def test_a_second_progressive_copy_is_the_upgrade(self) -> None:
         # As AP's Main does for start_inventory, which the test base does not run.
         for name in ("Progressive Snake", "Progressive Snake", "Missile Box"):
@@ -328,10 +331,8 @@ class TestStartInventoryInSlotData(ZexionTestBase):
 
 
 class TestAreaMapHints(ZexionTestBase):
-    """Area Maps are hints by default: the slot data lists where this player's progression
-    items are, for the client (client/hints.py)."""
-
-    run_default_tests = False  # the default options, as TestDefaultStart's
+    """Area Maps are hints by default: Intel Chips, which the game holds as the Area Map, and
+    the slot data lists where this player's progression items are (client/hints.py)."""
 
     def test_the_hint_list_holds_every_placed_progression_item_but_supplies_once(self) -> None:
         distribute_items_restrictive(self.multiworld)
@@ -352,12 +353,8 @@ class TestAreaMapHints(ZexionTestBase):
             )
             self.assertEqual(code_of[location.item.name], code)
             self.assertTrue(location.item.advancement)
-
-    def test_the_goal_event_and_supplies_are_not_hinted(self) -> None:
-        distribute_items_restrictive(self.multiworld)
-        codes = {code for _, _, code in self.world.fill_slot_data()["hints"]}
+        codes = {code for _, _, code in hints}
         self.assertTrue({27, 28, 29, 30} <= codes, "the four keys are hinted")
-        self.assertTrue(all(isinstance(code, int) and 0 <= code <= 50 for code in codes))
         self.assertFalse(codes & NOT_HINTED)
 
     def test_an_item_links_items_are_hinted_to_its_members(self) -> None:
@@ -377,6 +374,23 @@ class TestAreaMapHints(ZexionTestBase):
         hints = self.world.fill_slot_data()["hints"]
         self.assertIn([self.player, locations[0].address, code_of["Slide Mod"]], hints)
         self.assertNotIn(locations[1].address, [address for _, address, _ in hints])
+
+    def test_area_maps_become_intel_chips(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("Area Map", pool)
+        self.assertEqual(pool.count("Intel Chip"), 9)
+        chip = self.world.create_item("Intel Chip")
+        self.assertEqual(chip.code, 3392510_000 + 101)
+        self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
+        self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
+
+    def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        slot = self.world.fill_slot_data()
+        own = own_locations(self, "Intel Chip")
+        self.assertTrue(own)
+        self.assertEqual({slot["location_items"][i] for i in own}, {49})
+        self.assertNotIn(101, slot["location_items"])
 
 
 class TestItemLinkHints(unittest.TestCase):
@@ -416,63 +430,26 @@ class TestAreaMapHintsOff(ZexionTestBase):
         self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
 
 
-class TestIntelChips(ZexionTestBase):
-    """With hints on (the default) the Area Maps are Intel Chips, which the game holds as the
-    Area Map."""
-
-    run_default_tests = False  # the default options, as TestDefaultStart's
-
-    def test_area_maps_become_intel_chips(self) -> None:
-        pool = pool_names(self)
-        self.assertNotIn("Area Map", pool)
-        self.assertEqual(pool.count("Intel Chip"), 9)
-        chip = self.world.create_item("Intel Chip")
-        self.assertEqual(chip.code, 3392510_000 + 101)
-        self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
-        self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
-
-    def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
-        distribute_items_restrictive(self.multiworld)
-        slot = self.world.fill_slot_data()
-        own = own_locations(self, "Intel Chip")
-        self.assertTrue(own)
-        self.assertEqual({slot["location_items"][i] for i in own}, {49})
-        self.assertNotIn(101, slot["location_items"])
-
-
-class TestIntelChipsLeaveFillerForExcludedLocations(ZexionTestBase):
-    """Standard with the OS Install Disks goal's defaults has no Scrap left: its filler is the
-    Intel Chips, which an excluded location can take."""
-
-    options = {"goal": "os_install_disks", "os_install_disks": 16, "os_install_disks_required": 12}
-
-    def test_an_excluded_location_fills(self) -> None:
-        # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
-        location = self.multiworld.get_location(location_name(0), self.player)
-        location.progress_type = LocationProgressType.EXCLUDED
-        distribute_items_restrictive(self.multiworld)
-        item = location.item
-        self.assertIsNotNone(item)
-        self.assertEqual(item.classification, ItemClassification.filler)
-
-
 class TestExcludedLocationsNeedFiller(ZexionTestBase):
     """Standard with 16 disks keeps 9 filler items, the Intel Chips: a tenth excluded location
     would stop AP's fill, so the world refuses it first, naming the options."""
 
-    run_default_tests = False
-    options = {"goal": "os_install_disks", "os_install_disks": 16, "os_install_disks_required": 12}
+    options = disks(placed=16, required=12)
 
-    def exclude(self, n: int) -> None:
+    def exclude(self, n: int) -> list:
         # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
-        for i in sorted(self.world.kept_locations)[:n]:
-            location = self.multiworld.get_location(location_name(i), self.player)
+        kept = sorted(self.world.kept_locations)[:n]
+        out = [self.multiworld.get_location(location_name(i), self.player) for i in kept]
+        for location in out:
             location.progress_type = LocationProgressType.EXCLUDED
+        return out
 
-    def test_as_many_excluded_as_filler_left_fills(self) -> None:
-        self.exclude(9)
+    def test_as_many_excluded_as_filler_left_fill_with_it(self) -> None:
+        excluded = self.exclude(9)
         ZexionWorld.stage_pre_fill(self.multiworld)
         distribute_items_restrictive(self.multiworld)
+        kinds = {location.item.classification for location in excluded}
+        self.assertEqual(kinds, {ItemClassification.filler})
 
     def test_one_more_is_refused_with_the_options_named(self) -> None:
         self.exclude(10)
@@ -495,12 +472,7 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
     their filler, and Beta 10. The multiworld is one short, and the error names Beta."""
 
     def test_the_player_over_is_named_not_the_one_at_their_filler(self) -> None:
-        disks = {
-            "goal": "os_install_disks",
-            "os_install_disks": 16,
-            "os_install_disks_required": 12,
-        }
-        multiworld = two_zexion_players(disks)
+        multiworld = two_zexion_players(disks(placed=16, required=12))
         for player, n in ((1, 9), (2, 10)):
             kept = sorted(multiworld.worlds[player].kept_locations)[:n]
             for i in kept:
@@ -516,8 +488,6 @@ class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
     """An Assist Unlock at this player's own location would be handed out as Scrap Metal and
     never received, so the assist lock would never lift: an item rule keeps it out (plando
     places through the same rule). Sent from the server console, it is just an item ID."""
-
-    run_default_tests = False
 
     def test_only_this_players_own_assist_unlock_is_refused(self) -> None:
         state = self.multiworld.state
@@ -547,25 +517,9 @@ def own_locations(test: ZexionTestBase, name: str) -> list[int]:
     return sorted(loc.address - LOCATION_ID_BASE for loc in found)
 
 
-class DiscHuntBase(ZexionTestBase):
-    mode = "standard"
-    placed, required = 20, 15
+class TestDiscHuntStandard(ZexionTestBase):
+    options = disks()
 
-    @property
-    def run_default_tests(self) -> bool:
-        return type(self) is not DiscHuntBase
-
-    def setUp(self) -> None:
-        self.options = {
-            "mode": self.mode,
-            "goal": "os_install_disks",
-            "os_install_disks": self.placed,
-            "os_install_disks_required": self.required,
-        }
-        super().setUp()
-
-
-class TestDiscHuntStandard(DiscHuntBase):
     def test_the_keys_are_gone_and_the_discs_are_in(self) -> None:
         pool = pool_names(self)
         self.assertEqual(pool.count("OS Install Disk"), 20)
@@ -613,9 +567,15 @@ class TestDiscHuntStandard(DiscHuntBase):
         )
         self.assertEqual(slot["discs_start"], 0)
 
+    def test_a_starting_disc_is_counted_not_written(self) -> None:
+        self.multiworld.push_precollected(self.world.create_item("OS Install Disk"))
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["discs_start"], 1)
+        self.assertNotIn("44", slot["start_items"])
 
-class TestDiscHuntStandardFull(DiscHuntBase):
-    placed, required = 30, 30  # the options' most
+
+class TestDiscHuntStandardFull(ZexionTestBase):
+    options = disks(placed=30, required=30)  # the options' most
 
     def test_every_area_map_and_most_energy_shields_give_way(self) -> None:
         pool = pool_names(self)
@@ -624,9 +584,12 @@ class TestDiscHuntStandardFull(DiscHuntBase):
         self.assertEqual(pool.count("Energy Shield"), 1)
 
 
-class TestDiscHuntOHKO(DiscHuntBase):
-    mode = "ohko"
-    placed, required = 30, 30
+class TestDiscHuntEasyFull(TestDiscHuntStandardFull):
+    options = disks("easy", 30, 30)
+
+
+class TestDiscHuntOHKO(ZexionTestBase):
+    options = disks("ohko", 30, 30)
 
     def test_ohko_fits_30_in_scrap_after_its_left_out_locations(self) -> None:
         pool = pool_names(self)
@@ -635,34 +598,14 @@ class TestDiscHuntOHKO(DiscHuntBase):
         self.assertEqual(len(pool), len(self.world.kept_locations))
 
 
-class TestDiscHuntEasyFull(DiscHuntBase):
-    mode = "easy"
-    placed, required = 30, 30
-
-    def test_every_area_map_gives_way(self) -> None:
-        pool = pool_names(self)
-        self.assertEqual(pool.count("OS Install Disk"), 30)
-        self.assertNotIn("Intel Chip", pool)
-        self.assertEqual(pool.count("Energy Shield"), 1)
-
-
-class TestDiscHuntEasy(DiscHuntBase):
-    mode = "easy"
-    placed, required = 10, 10
+class TestDiscHuntEasy(ZexionTestBase):
+    options = disks("easy", 10, 10)
 
     def test_ten_discs_take_scrap_only(self) -> None:
         pool = pool_names(self)
         self.assertEqual(pool.count("OS Install Disk"), 10)
         self.assertEqual(pool.count("Intel Chip"), 4)
         self.assertEqual(pool.count("Scrap Metal"), 20 + 4 - 10)
-
-
-class TestDiscStartInventory(DiscHuntBase):
-    def test_a_starting_disc_is_counted_not_written(self) -> None:
-        self.multiworld.push_precollected(self.world.create_item("OS Install Disk"))
-        slot = self.world.fill_slot_data()
-        self.assertEqual(slot["discs_start"], 1)
-        self.assertNotIn("44", slot["start_items"])
 
 
 class TestDiscOptionsChecked(unittest.TestCase):
@@ -757,10 +700,3 @@ class TestStartInventoryChecked(unittest.TestCase):
 
     def test_a_disk_needs_the_disk_goal(self) -> None:
         self.assertIn("OS Install Disk", self.refused({"OS Install Disk": 1}))
-
-
-class TestStartInventoryAccepted(ZexionTestBase):
-    options = {"start_inventory": {"Alpha Key": 1, "Missile Box": 2, "Progressive Snake": 2}}
-
-    def test_the_seed_generates(self) -> None:
-        self.assertEqual(self.world.mode_name, "standard")

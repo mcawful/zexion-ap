@@ -88,6 +88,26 @@ def give(
     return session.step(g, received, gap=0, senders=senders).granted
 
 
+def begin_ending(session: ss.Session, g: FakeGame) -> ss.Step:
+    """A poll before the ending, then the poll that sees it begin."""
+    session.step(g, [], gap=0)
+    g.flags[ss.ENDING_FLAG] = 1
+    return session.step(g, [], gap=0)
+
+
+def look_away(session: ss.Session, g: FakeGame) -> None:
+    """What the client does with Session.look_away while disconnected (state.end_kept_load)."""
+    if session.look_away(g, gap=0):
+        session.leave()
+
+
+def reconnect(before: ss.Session) -> ss.Session:
+    """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
+    after = ss.Session(PLAN, [list(c) for c in CELLS])
+    after.keep_ending(before)
+    return after
+
+
 @pytest.fixture
 def setup():
     return ss.Session(PLAN, [list(c) for c in CELLS]), FakeGame(PLAN)
@@ -120,10 +140,13 @@ def test_a_half_recorded_pickup_is_not_taken_for_an_item_owed(setup) -> None:
     assert g.inv[0] == 3
 
 
-def test_a_native_pickup_is_not_given_again(setup) -> None:
+def test_a_received_copy_of_a_native_pickup_is_still_given(setup) -> None:
+    # The cells collected count toward what is owned (reconcile.should_own): the pickup at
+    # location 0 (an Energy Tank) and the one received are both owed, on top of the start's 2.
     session, g = setup
-    g.collect(0)  # location 0 holds item 0, an Energy Tank
-    assert session.step(g, [], gap=0).granted == {}
+    g.collect(0)
+    give(session, g, [0])
+    assert g.inv[0] == 4
 
 
 def test_an_energy_tank_raises_max_and_current_energy(setup) -> None:
@@ -151,9 +174,8 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
 
 def test_items_received_once_the_ending_begins_wait_for_the_next_load(setup) -> None:
     session, g = setup
-    assert not session.step(g, [], gap=0).goal
-    g.flags[ss.ENDING_FLAG] = 1  # the ending begins; some of its cutscenes read as play
-    assert session.step(g, [], gap=0).goal and session.holding
+    # The ending begins; some of its cutscenes read as play.
+    assert begin_ending(session, g).goal and session.holding
     for _ in range(3):  # a release or collect on the goal sends items now
         assert session.step(g, [17], gap=0).granted == {}
     assert g.inv[17] == 0
@@ -362,11 +384,8 @@ def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
 
 def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
     session, g = setup
-    session.step(g, [], gap=0)
-    g.flags[ss.ENDING_FLAG] = 1
-    assert session.step(g, [], gap=0).goal and session.holding
-    after = ss.Session(PLAN, [list(c) for c in CELLS])  # the next connection's
-    after.keep_ending(session)
+    assert begin_ending(session, g).goal and session.holding
+    after = reconnect(session)
     for _ in range(3):
         assert after.step(g, [17], gap=0).granted == {}
     assert g.inv[17] == 0
@@ -375,24 +394,9 @@ def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
     assert not after.holding and g.inv[17] == 1, "the hold was the ending's load's alone"
 
 
-def look_away(session: ss.Session, g: FakeGame) -> None:
-    """What the client does with Session.look_away while disconnected (state.end_kept_load)."""
-    if session.look_away(g, gap=0):
-        session.leave()
-
-
-def reconnect(before: ss.Session) -> ss.Session:
-    """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
-    after = ss.Session(PLAN, [list(c) for c in CELLS])
-    after.keep_ending(before)
-    return after
-
-
 def test_the_endings_hold_carries_over_while_its_load_stays(setup) -> None:
     session, g = setup
-    session.step(g, [], gap=0)
-    g.flags[ss.ENDING_FLAG] = 1
-    session.step(g, [], gap=0)
+    begin_ending(session, g)
     # Disconnected: the ending's cutscenes go on, read as play.
     look_away(session, g)
     after = reconnect(session)
@@ -432,10 +436,7 @@ def test_an_ending_played_while_disconnected_holds_nothing_on_the_next_load(setu
 def test_a_hold_ends_with_its_load_while_disconnected(setup) -> None:
     # Scenario B: the ending began (held), then the title and the ended save loaded again.
     session, g = setup
-    session.step(g, [], gap=0)
-    g.flags[ss.ENDING_FLAG] = 1
-    session.step(g, [], gap=0)
-    assert session.holding
+    assert begin_ending(session, g).goal and session.holding
     g.state_value = game.NO_SAVE
     look_away(session, g)
     assert not session.holding
@@ -449,9 +450,7 @@ def test_looking_away_needs_two_reads_and_reads_nothing_with_nothing_carried(set
     session, g = setup
     look_away(session, g)
     assert g.reads == 0, "a session that has not read a load carries nothing"
-    session.step(g, [], gap=0)
-    g.flags[ss.ENDING_FLAG] = 1
-    session.step(g, [], gap=0)
+    begin_ending(session, g)
     reads = iter([game.NO_SAVE, game.IN_PLAY])
     g.state = lambda energy=None: next(reads)
     assert not session.look_away(g, gap=0), "a read the next does not agree with: not the title"

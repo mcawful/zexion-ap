@@ -58,6 +58,21 @@ def test_a_follow_up_record_lost_with_a_connection_is_stored_again() -> None:
     assert len(ctx.sent) == 1, "the server has them all: nothing to send"
 
 
+def test_the_locations_found_are_stored_until_the_server_has_them() -> None:
+    ctx = FakeContext(connection())
+    conn = ctx.conn
+    asyncio.run(storage.store_found(ctx, conn, {1, 2, 3}, {3}))
+    assert stored(ctx) == [{"1": 1, "2": 1, "3": 1}], "the record not read yet: every one"
+    ctx.stored_data[conn.found_key] = {"1": 1}  # the server lacks 2 and 3: a store was lost
+    asyncio.run(storage.store_found(ctx, conn, {1, 2, 3}, set()))
+    assert len(ctx.sent) == 1, "not again before the resend time"
+    conn.found_sent_at -= storage.RESEND_SECONDS
+    asyncio.run(storage.store_found(ctx, conn, {1, 2, 3}, set()))
+    assert stored(ctx)[-1] == {"2": 1, "3": 1}, "due: the ones it lacks"
+    asyncio.run(storage.store_found(ctx, conn, {1, 2, 3, 4}, {4}))
+    assert stored(ctx)[-1] == {"2": 1, "3": 1, "4": 1}, "a new find: at once"
+
+
 def test_the_follow_ups_shown_carry_over_a_reconnect() -> None:
     ctx = FakeContext(connection())
     ctx.seed_state.popped_mine = {5}

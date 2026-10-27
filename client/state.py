@@ -10,12 +10,11 @@ each, or None).
   when no save of the seed is loaded, or when the game closes.
 
 Also the decisions the game loop makes from that state, as pure functions: the count of
-received items' popups handed over, kept on the server (``announced_start``), the
-server's count of Energy Shields given (``shield_count``), the locations found to record there
-(``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
-lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``,
-``reload_reply``, ``FeatsCheck``). No
-Archipelago imports, so the tests build them from slot data.
+received items' popups handed over, kept on the server (``announced_start``), the server's
+count of Energy Shields given (``shield_count``), ``SayOnce`` for messages that would repeat
+each poll, and the player's lines when the game or the mod can't be used (``attach_failed``,
+``helper_failed``, ``reload_reply``, ``FeatsCheck``). No Archipelago imports, so the tests
+build them from slot data.
 """
 
 from __future__ import annotations
@@ -217,19 +216,6 @@ def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None
     return None
 
 
-def found_to_store(
-    in_game: set[int], stored: set[int] | None, new: set[int], due: bool
-) -> set[int]:
-    """The locations found (indices) to record in the server's data storage now: those just
-    found (``new``) until the server's record (``stored``) has been read; then every one found
-    in the game that the record lacks, when one was just found or a resend is ``due`` (one sent
-    before may have been dropped with a closing connection)."""
-    if stored is None:
-        return set(new)
-    missing = in_game - stored
-    return missing if missing and (new & missing or due) else set()
-
-
 class SayOnce:
     """Messages said once each until they change, by topic."""
 
@@ -251,10 +237,10 @@ class SayOnce:
 
 @dataclass
 class Toggle:
-    """A setting the helper is told to turn on or off: what it was last told (None: nothing
-    yet, and a helper may hold an earlier client's), and when to ask again after a refusal."""
+    """A request the helper is kept told (ticks.tell): what it last took (None: nothing yet,
+    and a helper may hold an earlier client's), and when to ask again after a refusal."""
 
-    sent: bool | None = None
+    sent: object = None
     retry_at: float = 0.0
 
 
@@ -264,14 +250,13 @@ class HelperState:
 
     assists: Toggle = field(default_factory=Toggle)  # the ASSIST lock
     intel: Toggle = field(default_factory=Toggle)  # the Area Map named INTEL CHIP
-    # The OS Install Disks: the discs request last taken (discs.request or discs.OFF), and when
-    # to ask again; what the equipment screen last showed, and when it is asked.
-    discs_sent: str | None = None
-    discs_retry_at: float = 0.0
+    # The OS Install Disks: the discs request (discs.request or discs.OFF); what the equipment
+    # screen last showed, and when it is asked.
+    discs: Toggle = field(default_factory=Toggle)
     discs_status: str = ""
     discs_status_at: float = 0.0
     # The file select's count (discs.slots_request), and when the slots are read again.
-    slots_sent: str | None = None
+    slots: Toggle = field(default_factory=Toggle)
     slots_read_at: float = 0.0
     # The labels: whether it may hold some (this client's, or an earlier client's), the
     # connection whose labels it holds, whether it refused them (not asked again).
@@ -294,7 +279,7 @@ class SeedState:
     identity: tuple | None = None  # (seed name, team, slot)
     # The entry each Area Map used that this client stored (ahead of the server's until it is
     # echoed back), and when it was last stored.
-    hints_mine: dict[str, tuple[int, int]] | None = None
+    hints_mine: dict[str, tuple[int, int]] = field(default_factory=dict)
     hints_sent_at: float = 0.0
     # The follow-up popups this client showed for this world's own finds, by location index
     # (ahead of the server's record until it has them), and when they were last stored.
@@ -331,13 +316,13 @@ class FeatsCheck:
         """The helper's ``feats`` read now (``in_play``: this seed's save in play): the
         player's line and the log's detail to say, or None. Each warning is said once, and
         again only after a load where the guard was all in place."""
-        if feats == "on" or feats.startswith("on:"):
+        if feats == "on":
             self.known = True
-            why = feats_unguarded(feats)
-            if why is None:
-                said.clear("feats")
-                return None
-            line, detail = FEATS_UNGUARDED, f"not all in place: {why}"
+            said.clear("feats")
+            return None
+        if feats.startswith("on:"):  # on, and why not all of it, its spaces as underscores
+            self.known = True
+            line, detail = FEATS_UNGUARDED, f"not all in place: {feats.removeprefix('on:')}"
         else:  # off: not yet, or not for this save (the helper does not take it for an AP save)
             if not in_play:
                 return None
@@ -410,16 +395,6 @@ FEATS_OFF = (
     "achievements aren't turned off (details in the log): achievements may be earned in this "
     "save."
 )
-
-
-def feats_unguarded(feats: str) -> str | None:
-    """From the ``feats`` field of the helper's hello (native/README.md, "Feats and
-    achievements in AP saves"): why it could not keep Feats and Steam achievements out of the
-    AP save loaded, as the helper wrote it (``on:<why>``, its spaces written as underscores),
-    or None: ``on`` (in place), ``off`` (not on for this save, or not yet), or no field."""
-    if not feats.startswith("on:"):
-        return None
-    return feats.removeprefix("on:")
 
 
 def reload_reply(reply: str | None) -> tuple[bool, str]:

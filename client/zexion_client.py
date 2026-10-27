@@ -14,7 +14,7 @@ import contextlib
 import os
 import sys
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -224,9 +224,11 @@ class ZexionContext(CommonContext):
             )
 
     def lose_helper(self) -> None:
-        """The helper failed: said unless the game closed with it (game_alive), and dropped."""
-        if game_alive(self):
-            logger.warning(HELPER_LOST)
+        """The helper failed: said unless the game closed with it (no news for the player, as
+        the next read says the game closed), and dropped."""
+        with contextlib.suppress(Exception):
+            if self.game_conn is not None and self.game_conn.pm.alive():
+                logger.warning(HELPER_LOST)
         self.drop_helper()
 
     def drop_helper(self) -> None:
@@ -288,32 +290,15 @@ class Poll:
         self.found = own_found(ctx)
 
 
-def game_alive(ctx: ZexionContext) -> bool:
-    """Whether the attached game is still running: a helper lost with its game is no news for
-    the player, as the next read says the game closed."""
+async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
+    """Run a tick that the items, the checks and the goal must not wait on: a helper that fails
+    is dropped, to be tried again later, and any other failure is logged, once for each
+    distinct one, and the poll goes on."""
     try:
-        return ctx.game_conn is not None and ctx.game_conn.pm.alive()
-    except Exception:
-        return False
-
-
-@contextlib.contextmanager
-def helper_failure(ctx: ZexionContext) -> Iterator[None]:
-    """Around requests to the helper: one that fails drops it, to be tried again later."""
-    try:
-        yield
+        await tick()
     except native.HelperError as exc:
         log.warning(f"The in-game helper failed ({exc}); trying it again later.")
         ctx.lose_helper()
-
-
-async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
-    """Run a tick that the items, the checks and the goal must not wait on: a helper that fails
-    is dropped (helper_failure), and any other failure is logged, once for each distinct one,
-    and the poll goes on."""
-    try:
-        with helper_failure(ctx):
-            await tick()
     except Exception as exc:
         if ctx.said(f"tick {name}", repr(exc)):
             logger.warning(
