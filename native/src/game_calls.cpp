@@ -29,6 +29,10 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
+// Grabbing Zexion shows its 180-frame popup, and its object's states 2284 (60 frames) and 2286
+// (50) come before 3674 runs event 3665, the escape skip's fade: 70 of the popup's frames left
+// (docs/re/memory.md, "The mission prompt").
+constexpr int32_t kFadeMessageLeft = kPopupFrames - 60 - 50;
 // Frames between two looks at the escape skip's event and at the scanner's text.
 constexpr int kSkipFrames = 30, kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
@@ -299,11 +303,15 @@ size_t Game::pending_popups() const {
         std::count_if(popups_.begin(), popups_.end(), [](const Popup& p) { return p.counted; }));
 }
 
-bool Game::popup_busy() const {
+bool Game::popup_busy() const { return popup_frames_left() > 1; }
+
+int32_t Game::popup_frames_left() const {
     BYTE* last = at<BYTE*>(at_.last_message, 0);
-    if (last == nullptr) return false;
-    return at<int32_t>(last, kMessageSequence) == at<int32_t>(at_.last_message, 8) &&
-           at<int32_t>(last, kMessageFramesLeft) > 1;
+    if (last == nullptr ||
+        at<int32_t>(last, kMessageSequence) != at<int32_t>(at_.last_message, 8)) {
+        return 0;
+    }
+    return at<int32_t>(last, kMessageFramesLeft);
 }
 
 void Game::pump_popups() {
@@ -691,11 +699,14 @@ void Game::watch_mission() {
         if (mission_save_ != -1) mission_.cancel(at_);
         mission_save_ = save;
     }
-    // Idle: no popup showing or to show here (one held for another save does not count), the
-    // last one kPopupGapFrames ago.
+    // Idle: no popup to show here (one held for another save does not count), the helper's
+    // last one kPopupGapFrames ago, and the game's last message (GAME SAVED: 180 frames,
+    // 0x1FC876) down to kFadeMessageLeft frames: the fade starts as far into it as the escape
+    // skip's into Zexion's popup, and the prompt cuts its last frames short as that one does.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
-    bool idle = in_play() && !waiting && !popup_busy() && frames_since_popup_ >= kPopupGapFrames;
+    bool idle = in_play() && !waiting && popup_frames_left() <= kFadeMessageLeft &&
+                frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle);
 }
 

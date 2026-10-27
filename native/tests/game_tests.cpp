@@ -1315,7 +1315,8 @@ void test_popups_wait_for_their_save() {
 }
 
 // RETURN HOME WITH THE DISKS? (mission.h) once idle in play: event 3667's fade with event
-// 3666's delay, popups waiting until the game runs the opener; none of it while a popup shows.
+// 3666's delay, popups waiting until the game runs the opener; not before the game's last
+// message is down to its last 70 frames, as Zexion's popup is when the escape skip fades.
 int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
 void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
@@ -1333,11 +1334,11 @@ void test_popups_wait_for_the_mission_fade() {
     g_transition_fn = g_routine_table[zap::kIdleRoutine];
     g_transition_timer = 0;
     game.request_mission();
-    message_showing(100);  // the game's save message
+    message_showing(71);  // GAME SAVED, 180 frames: 109 in
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_fade_calls == 0,
-          "not while a message shows");
-    message_showing(1);
+          "not before the message is as far in as Zexion's popup at the escape skip's fade");
+    message_showing(70);  // 110 in
     game.watch_all(&chosen);
     check(g_transition_timer == zap::kFadeDelay && g_fade_calls == 1 &&
               g_fade_event == event_3667() && g_transition_fn == reinterpret_cast<void*>(&opener) &&
@@ -1347,6 +1348,7 @@ void test_popups_wait_for_the_mission_fade() {
     for (int i = 0; i < 60; ++i) game.pump_popups();
     check(g_messages == 0 && game.queued_popups() == 1, "a popup waits through the fade");
     game.mission_open();  // the game runs the opener
+    message_showing(1);   // and GAME SAVED has ended
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 1, "then shows");
     game.put_back_all(&chosen);

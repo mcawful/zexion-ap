@@ -320,6 +320,8 @@ private:
     BYTE* player() const;
     BYTE* record(uint8_t item) const;
     bool popup_busy() const;
+    // Frames left of the game's last message while it still shows, else 0.
+    int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
     void refresh_hud();

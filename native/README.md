@@ -390,7 +390,8 @@ the helper:
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
-  play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
+  play with no popup of its own to show and the game's last message (GAME SAVED) down to its
+  last 70 frames (as far into it as the escape skip's fade is into Zexion's popup), opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
   (`src/mission.cpp`) the way the escape skip's opens: it runs the game's fade to black (area
   event 3667, checked byte for byte, through the game's handler for its type) and sets its
   opener as the transition 60 frames away (the pause is blocked while that counts; popups
@@ -399,7 +400,7 @@ the helper:
   traced, the prompt opens at once with no fade, as before. An opener the helper takes back
   before it runs (the save left, `discs` off, an unload) turns the fade back to the normal
   level; one another transition (a door, a death) took the place of is asked again once idle.
-  The fade and its fade back: stand-in tests only, not yet run in game.
+  The fade turned back: stand-in tests only.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -412,9 +413,9 @@ the scanner's text or the pause screen's branch is still the helper's.
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
-pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"). Not yet run
-in game: the fade before RETURN HOME WITH THE DISKS? and its fade back (stand-in tests,
-2026-10-26).
+pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"); 2026-10-27,
+the fade before RETURN HOME WITH THE DISKS?, then NO, the offer again and YES to the goal
+("The mission prompt").
 
 ### AP saves on the file select
 
