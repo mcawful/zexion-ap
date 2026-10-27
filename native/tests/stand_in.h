@@ -162,6 +162,9 @@ inline BYTE* g_draw_layer = nullptr;
 inline void* g_map_handler = nullptr;  // no map open
 inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
+// The game's fade (mission.h, fade_state) and the global level it moves.
+inline BYTE g_fade[0xAC] = {};
+inline int8_t g_fade_level = 4;
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
 __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
 inline void* g_free_slot = nullptr;
@@ -396,6 +399,8 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"malloc_slot", rva(&g_malloc_slot)},
         {"free_slot", rva(&g_free_slot)},
         {"routine_table", rva(g_routine_table)},
+        {"fade", rva(g_fade)},
+        {"fade_level", rva(&g_fade_level)},
         {"keys_branch", rva(g_keys_branch)},
         {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},

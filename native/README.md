@@ -402,11 +402,15 @@ the helper:
   in, as the escape skip's NO does. If event 3667 or its handler is not as traced, the prompt opens
   at once with no fade, as before. An opener the helper takes back before it runs (the save left,
   `discs` off, an unload), or one the game runs with the player not in play (a death during the
-  fade: asked again), turns the fade back to the normal level; one another transition (a door, a
-  death) took the place of is asked again once idle. The fade turned back: stand-in tests only. Not
-  handled: a save at the save point again during the fade (its transition takes the opener's place
-  and brings no fade) leaves the screen black until the prompt is asked again and fades out anew;
-  turning the fade back there needs the fade's own state read, which the helper has no pattern for.
+  fade: asked again), turns the fade back to the normal level. One another transition took the
+  place of (a save at the save point again, which sets the pause opener back and brings no fade; a
+  door; a death) is asked again once idle, and its fade is turned back only while the game's fade
+  (the `fade` and `fade_level` targets) is still event 3667's: target −1, a step every 8 frames
+  from level 4, or done at −1, and no further back than the helper last saw it with its opener in
+  place, nor the transition timer higher (a save leaves it counting). Anything else, another
+  transition's fade even with 3667's own values (it starts again from level 4, its timer at 70),
+  is left alone. The same when `discs` turns off after such a save. The fade turned
+  back: stand-in tests only.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys

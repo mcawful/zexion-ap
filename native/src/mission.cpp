@@ -31,6 +31,27 @@ constexpr ptrdiff_t kFadeSide = 0xC;
 constexpr int16_t kNoSide = 1;
 using EventFn = void (*)(char, char, BYTE*);
 
+// Event 3667's fade as the stepper (0x1F7900, once each pass of the main loop) runs it: from
+// level 4 (the record's), the countdown from 8 (its step) down; at 0 the level one lower and the
+// countdown 8 again, until the level is the target, -1, and the stepper turns the step off
+// (0x1F7BFF): 40 frames. How many of them it has run, or -1 if the fade holds anything else.
+constexpr int8_t kFadeFrom = 4, kFadeTo = -1, kFadeEvery = 8;
+constexpr int kFadeFrames = (kFadeFrom - kFadeTo) * kFadeEvery;
+int fade_frames(const GameAddresses& a) {
+    int8_t target = 0, step = 0, countdown = 0, level = 0;
+    if (!read(a.fade, fade_state::kTarget, target) || !read(a.fade, fade_state::kStep, step) ||
+        !read(a.fade, fade_state::kCountdown, countdown) || !read(a.fade_level, 0, level) ||
+        target != kFadeTo) {
+        return -1;
+    }
+    if (step == 0) return countdown == 0 && level == kFadeTo ? kFadeFrames : -1;
+    if (step != kFadeEvery || level < 0 || level > kFadeFrom || countdown < 1 ||
+        countdown > kFadeEvery) {
+        return -1;
+    }
+    return (kFadeFrom - level) * kFadeEvery + (kFadeEvery - countdown);
+}
+
 void* routine(const GameAddresses& a, int index) { return pointer_at(a.routine_table, index * 8); }
 
 bool writable_fields(const GameAddresses& a) {
@@ -69,11 +90,14 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
     }
     if (armed_ && fn != a.hooks.mission_open) {
         // Not ours any more and not run (open() clears armed_): another transition took the
-        // place (a door, a death), and its own fade with it. Asked again once idle.
-        armed_ = false;
-        faded_ = false;
+        // place (a save, a door, a death). Asked again once idle.
+        bool back = taken_over(a);
         requested_ = true;
-        status_ = "asked again: another transition came first";
+        status_ = back ? "asked again: another transition came first, the fade turned back"
+                       : "asked again: another transition came first";
+    } else if (armed_ && faded_) {
+        fade_seen_ = fade_frames(a);  // the opener still in place: how far the fade has got
+        timer_seen_ = timer;
     }
     void* idle_fn = routine(a, kIdleRoutine);
     bool idle = idle_in_play && timer == 0 && fn != nullptr && fn == idle_fn && top == nullptr &&
@@ -97,6 +121,8 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
         armed_ = true;
         std::string why = fade(a, true);
         faded_ = why.empty();
+        fade_seen_ = faded_ ? fade_frames(a) : -1;
+        timer_seen_ = kFadeDelay;
         if (faded_) put<int32_t>(a.transition_timer, 0, kFadeDelay);
         status_ = faded_ ? "opening after the fade" : "opening without the fade: " + why;
     }
@@ -134,6 +160,22 @@ std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
 void MissionPrompt::fade_back(const GameAddresses& a) {
     if (faded_) fade(a, false);  // the record checked again: skipped if it changed since
     faded_ = false;
+    fade_seen_ = -1;
+}
+
+bool MissionPrompt::fade_still_ours(const GameAddresses& a) const {
+    int32_t timer = 0;
+    if (!faded_ || fade_seen_ < 0 || !read(a.transition_timer, 0, timer)) return false;
+    return fade_frames(a) >= fade_seen_ && timer <= timer_seen_;
+}
+
+bool MissionPrompt::taken_over(const GameAddresses& a) {
+    armed_ = false;
+    // Another fade, or none ran: left alone. The record checked again before it runs.
+    bool back = fade_still_ours(a) && fade(a, false).empty();
+    faded_ = false;
+    fade_seen_ = -1;
+    return back;
 }
 
 void MissionPrompt::take_back(const GameAddresses& a) {
@@ -223,8 +265,7 @@ void MissionPrompt::cancel(const GameAddresses& a) {
     void* fn = nullptr;
     if (armed_ && read(a.transition_fn, 0, fn)) {
         if (fn != a.hooks.mission_open) {
-            armed_ = false;  // not ours any more, nor the fade
-            faded_ = false;
+            taken_over(a);  // not ours any more; the fade turned back if it still is
         } else if (writable_fields(a)) {
             take_back(a);
         }

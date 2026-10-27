@@ -119,7 +119,9 @@ constexpr ConfigKey kConfigKeys[] = {
     import_slot("malloc_slot", &G::malloc_slot), import_slot("free_slot", &G::free_slot),
     code("widget_new_fn", &G::widget_new_fn), code("sprite_sheet_fn", &G::sprite_sheet_fn),
     code("panel_link_fn", &G::panel_link_fn), code("text_set_fn", &G::text_set_fn),
-    data("routine_table", &G::routine_table), code("keys_branch", &G::keys_branch),
+    data("routine_table", &G::routine_table),
+    data("fade", &G::fade, fade_state::kSize, "the fade's fields"),
+    data("fade_level", &G::fade_level), code("keys_branch", &G::keys_branch),
     code("file_panel_fn", &G::file_panel_fn), code("file_entry_fn", &G::file_entry_fn),
     code("copy_entry_fn", &G::copy_entry_fn), code("delete_entry_fn", &G::delete_entry_fn),
     // What the offline look reads whole (offline.h): the map grid, the flags, the save slots

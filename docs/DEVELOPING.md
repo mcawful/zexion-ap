@@ -105,9 +105,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO): 2026-10-24; offered
   at the landing pod only: 2026-10-25; the fade before it: 2026-10-27 (timed to the escape skip's by
   disassembly, not compared in game). Not seen in game: the fade turned back when the helper takes
-  back a prompt it had not opened yet. The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the
-  received disks' popups, and the pause row on a pause right after loading: 2026-10-26. Starting
-  disks counted, and the goal sent by a client opened after the ending began: 2026-10-26.
+  back a prompt it had not opened yet, or when a save at the save point takes its opener's place.
+  The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
+  row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
+  client opened after the ending began: 2026-10-26.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
