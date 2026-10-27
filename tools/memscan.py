@@ -237,18 +237,12 @@ def classify(groups: dict[str, list[np.ndarray]], target: str) -> tuple[np.ndarr
     every other group's, with each group's value there."""
     if target not in groups:
         raise ValueError(f"target {target!r} is not one of the groups")
-    stable = None
-    first = {}
+    first = {label: arrays[0] for label, arrays in groups.items()}
+    mask = np.ones(len(first[target]), dtype=bool)
     for label, arrays in groups.items():
-        same = np.ones(len(arrays[0]), dtype=bool)
-        for a in arrays[1:]:
-            same &= a == arrays[0]
-        stable = same if stable is None else stable & same
-        first[label] = arrays[0]
-    mask = stable
-    for label, values in first.items():
+        mask &= (np.stack(arrays) == arrays[0]).all(axis=0)  # stable within the group
         if label != target:
-            mask &= first[target] != values
+            mask &= first[label] != first[target]
     idx = np.flatnonzero(mask)
     return idx, {label: np.asarray(v[idx]) for label, v in first.items()}
 

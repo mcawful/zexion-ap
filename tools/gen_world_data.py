@@ -40,9 +40,8 @@ from collections import Counter
 from pathlib import Path
 
 import randocells as rc
-from protected import assert_writable
+from protected import ROOT, assert_writable
 
-ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the client package
 from client import newgame, pe  # noqa: E402
 from client import save_patch as sp  # noqa: E402
@@ -455,9 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     d = build(cells_path, mode_saves, starts_path, exe_path)
     map_path = args.map_data or cells_path.parent / "MapData"
     text_path = args.text or cells_path.parent / "Text"
-    named = {tuple(c) for c in d["locations"]} | {
-        tuple(c["cell"]) for c in json.loads(starts_path.read_text(encoding="utf-8"))
-    }
+    named = {tuple(c) for c in d["locations"]} | {(x, y) for x, y, _ in d["start_table"]}
     d["cell_areas"] = dict(
         sorted(cell_areas(map_path.read_bytes(), text_path.read_bytes(), named).items())
     )

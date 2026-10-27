@@ -62,12 +62,16 @@ MANIFEST = "zexion/archipelago.json"
 CONTAINER_KEYS = {"version": 7, "compatible_version": 7}
 
 
-def client_version() -> str:
-    text = (CLIENT / "native.py").read_text(encoding="utf-8")
+def version_in(text: str, where: str) -> str:
+    """The ``VERSION`` that ``text``, client/native.py here or at a commit (``where``), sets."""
     match = re.search(r'^VERSION = "([0-9.]+)"', text, re.M)
     if not match:
-        raise SystemExit("client/native.py has no VERSION")
+        raise SystemExit(f"{where} has no VERSION")
     return match.group(1)
+
+
+def client_version() -> str:
+    return version_in((CLIENT / "native.py").read_text(encoding="utf-8"), "client/native.py")
 
 
 def helper_has_version(dll: Path, version: str) -> bool:

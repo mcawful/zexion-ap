@@ -19,6 +19,10 @@ SAVES = "C:/Users/someone/AppData/Roaming/Gallant Leaf/Zexion"
 GAME = "E:/Program Files (x86)/Steam/steamapps/common/Zexion"
 CLOUD = "C:/Program Files (x86)/Steam/userdata/123/3392510/remote"
 REPO = protected.ROOT.as_posix()  # a real checkout: after a cd, tools/ must be the repo's
+PS_SAVES = "$env:APPDATA\\Gallant Leaf\\Zexion"
+RM_SAVE = f"import os; os.remove(r'{SAVES}/Save Game 2.sav')"
+RM_X = f"rm -f '{SAVES}/x'"
+GL_ZX = "'Gallant Leaf', 'Zexion'"
 
 
 def run(tool: str, **tool_input) -> str | None:
@@ -91,6 +95,98 @@ BASH_ALLOWED = [
     "git log --oneline -5",
     "cp lab/a worlds/zexion/x.py",
     "cd lab && rm -r work",
+    # Everyday work that names the folders without writing to them.
+    # Commit and PR text is data.
+    'git commit -m "Guard: block steamapps/common/Zexion and Gallant Leaf/Zexion writes"',
+    "git commit -m \"$(cat <<'EOF'\nGuard: protect %APPDATA%/Gallant Leaf/Zexion\n\n"
+    'Co-Authored-By: Claude\nEOF\n)"',
+    "git commit -F - <<'EOF'\nGuard: protect steamapps/common/Zexion\nEOF",
+    'git commit -m "$(cat <<EOF\nGuard: protect $USER Gallant Leaf/Zexion\nEOF\n)" && git push',
+    'gh pr create --title "Guard" --body "$(cat <<\'EOF\'\n- blocks `cp` into '
+    'steamapps/common/Zexion\nEOF\n)"',
+    'git add worlds/zexion && git commit -m "Docs: the Gallant Leaf save folder"',
+    'git commit -am "Docs: Steam app 3392510"',
+    'git stash push -m "wip Gallant Leaf/Zexion paths"',
+    'gh pr create --base develop --title "Guard" --body "Blocks steamapps/common/Zexion writes"',
+    "gh pr create --title \"Zexion: Gallant Leaf saves\" --body-file - <<'EOF'\n"
+    "steamapps/common/Zexion\nEOF",
+    # Tool runs piped, with an env prefix, or after a cd into the repo.
+    f'.venv/Scripts/python tools/save_lab.py diff "{SAVES}/Save Game 1.sav" lab/w/x.sav | head -40',
+    f'.venv/Scripts/python tools/check_patterns.py "{GAME}/Zexion.exe" 2>&1 | tail -5',
+    f'ZEXION_SAVE_DIR="{SAVES}" .venv/Scripts/python tools/save_lab.py slots',
+    f'cd "{REPO}" && .venv/Scripts/python tools/save_lab.py slots --save-dir "{SAVES}"',
+    # A scratch script that only names the saves; reads with read, less, sed -n, grep.
+    f"cat > lab/probe.py <<'EOF'\nSAVES = r'{SAVES}'\nprint(SAVES)\nEOF",
+    f'while read f; do echo "$f"; done < <(ls "{SAVES}")',
+    f'less "{SAVES}/log.txt"',
+    "sed -n '/Gallant Leaf\\/Zexion/,+5p' docs/re/saves.md",
+    f"sed -n '1,4p;s/a/b/g' \"{SAVES}/log.txt\"",
+    'grep -rn "steamapps/common/Zexion" docs/ CLAUDE.md',
+    # Heredocs that only feed data, and reads that name the folders.
+    f"cat <<'EOF' | grep -c Save | head -1\n{SAVES}/Save Game 2.sav\nEOF",
+    f"cat <<'EOF' >&2\n{SAVES}\nEOF",
+    f"cat <<EOF.x\n{SAVES}\nEOF.x",
+    f"git -c user.name=x commit -F - <<'EOF'\nGuard: {SAVES}\nEOF",
+    f"gh pr create --title x --body=\"$(cat <<'EOF'\nBlocks {GAME}\nEOF\n)\"",
+    f"git commit -m\"$(cat <<'EOF'\nGuard: {SAVES}\nEOF\n)\" && git push",
+    f"echo $((1<<4)); cat <<'EOF'\n{SAVES}\nEOF",
+    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\ngit status",
+    'grep -n "<<EOF" .claude/hooks/guard_protected.py',
+    f'git diff --no-index "{SAVES}/Save Game 1.sav" lab/work/x.sav',
+    f'git log --oneline -3 && ls "{SAVES}"',
+    f'git show HEAD:docs/re/saves.md | grep "{SAVES}"',
+    f'ls "{SAVES}" && git push -u origin claude/steam-achievements',
+    "git commit -m \"Docs: os.path.join(appdata, 'Gallant Leaf', 'Zexion')\"",
+    # Saved by a heredoc, then only read, posted or removed.
+    f"cat > \"$TEMP/pr.md\" <<'EOF'\n## Summary\nBlocks {SAVES} and {GAME}\nEOF\n"
+    'gh pr create --base develop --title x --body-file "$TEMP/pr.md"',
+    f"cat > \"$TEMP/msg.txt\" <<'EOF'\nGuard: {SAVES}\nEOF\n"
+    'git commit -F "$TEMP/msg.txt" && rm "$TEMP/msg.txt"',
+    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\nwc -l lab/notes.md",
+    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\ncat lab/notes.md | head -3",
+    f"cat <<'EOF' | git commit -F -\nGuard: {SAVES}\nEOF",
+    f"cat <<'EOF' | gh pr create --title x --body-file -\nBlocks {SAVES}\nEOF",
+    f"gh api repos/o/r/issues/1/comments -f body=\"$(cat <<'EOF'\nBlocks {SAVES}\nEOF\n)\"",
+    # Reads of a parent folder; cleaning build folders.
+    'ls -la "$APPDATA/Gallant Leaf"',
+    "du -sh E:/SteamLibrary/steamapps/common",
+    "rm -rf native/build/* lab/ap/*",
+    "rm -rf native/build lab/work/*",
+]
+
+PS_ALLOWED = [
+    f'Get-ChildItem "{SAVES}"',
+    f'Get-FileHash "{GAME}/Zexion.exe" | Format-List',
+    f'Format-Hex -Path "{SAVES}/Save Game 2.sav" | Select-Object -First 4',
+    '$s = "$env:APPDATA\\Gallant Leaf\\Zexion"; Get-ChildItem $s',
+    f'& .venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{SAVES}"',
+    f'Get-ChildItem "{SAVES}" | Where-Object {{ $_.Length -gt 0 }} | ForEach-Object {{ $_.Name }}',
+    f'(Get-Item "{SAVES}/Save Game 2.sav").Length',
+    f'Get-Content "{SAVES}/x" -TotalCount 5',
+    f'$s = "{SAVES}"; foreach ($f in Get-ChildItem $s) {{ $f.Name.ToUpper() }}',
+    f'Get-FileHash "{GAME}/Zexion.exe" 2>&1',
+    f'Get-ChildItem "{SAVES}" | Select-Object Name, Length | Sort-Object Name',
+    "Get-ChildItem $env:APPDATA/Gallant*/Zexion",
+    "git status",
+    ".venv\\Scripts\\python.exe -m pytest -q",
+    'git commit -m "Guard: block steamapps/common/Zexion writes"',
+    "git commit -m @'\nGuard: protect Gallant Leaf/Zexion\n'@",
+    f'.venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{PS_SAVES}" | Select -Fi 9',
+    f'Get-ChildItem "{PS_SAVES}" | ForEach-Object {{ "{{0,-24}} {{1,8}}" -f $_.Name, $_.Size }}',
+    f'Get-ChildItem "{PS_SAVES}" | Select-Object Name, @{{n="KB";e={{$_.Length/1KB}}}}',
+    f'Get-ChildItem "{PS_SAVES}" | Format-Table Name, @{{n="KB";e={{[math]::Round($_.Length)}}}}',
+    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").LastWriteTime.ToString("o")',
+    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").Name.Substring(0, 4)',
+    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").Name.Split(" ")',
+    f'$b = [IO.File]::ReadAllBytes("{PS_SAVES}\\Save Game 2.sav"); $b.Length',
+    f'$b = Get-Content "{PS_SAVES}\\x.sav" -AsByteStream; [BitConverter]::ToUInt32($b, 16)',
+    f'Get-ChildItem "{PS_SAVES}" | Out-Null',
+    f'Get-ChildItem "{PS_SAVES}" | ConvertTo-Json',
+    f'Get-ChildItem "{PS_SAVES}" | Group-Object Extension',
+    f'Get-ChildItem "{PS_SAVES}" | Get-Member',
+    f'Get-ChildItem "{PS_SAVES}" | Format-Wide',
+    f'Get-ChildItem "{PS_SAVES}" | Out-Host',
+    f'if (Test-Path "{PS_SAVES}") {{ Get-ChildItem "{PS_SAVES}" }}',
 ]
 
 BASH_BLOCKED = [
@@ -146,112 +242,6 @@ BASH_BLOCKED = [
     'cd "C:/Program Files (x86)/Steam" && cp lab/a userdata/123/3392510/remote/x',
     'cd "$APPDATA/Gallant Leaf" && cp lab/a Zexion/x.sav',
     "cd ~/AppData/Roaming/Gall* && cp lab/a Zexion/x.sav",
-]
-
-PS_ALLOWED = [
-    f'Get-ChildItem "{SAVES}"',
-    f'Get-FileHash "{GAME}/Zexion.exe" | Format-List',
-    f'Format-Hex -Path "{SAVES}/Save Game 2.sav" | Select-Object -First 4',
-    '$s = "$env:APPDATA\\Gallant Leaf\\Zexion"; Get-ChildItem $s',
-    f'& .venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{SAVES}"',
-    f'Get-ChildItem "{SAVES}" | Where-Object {{ $_.Length -gt 0 }} | ForEach-Object {{ $_.Name }}',
-    f'(Get-Item "{SAVES}/Save Game 2.sav").Length',
-    f'Get-Content "{SAVES}/x" -TotalCount 5',
-    f'$s = "{SAVES}"; foreach ($f in Get-ChildItem $s) {{ $f.Name.ToUpper() }}',
-    f'Get-FileHash "{GAME}/Zexion.exe" 2>&1',
-    f'Get-ChildItem "{SAVES}" | Select-Object Name, Length | Sort-Object Name',
-    "Get-ChildItem $env:APPDATA/Gallant*/Zexion",
-    "git status",
-    ".venv\\Scripts\\python.exe -m pytest -q",
-]
-
-PS_BLOCKED = [
-    f'Copy-Item lab/a "{SAVES}/Save Game 30.sav"',
-    f'Remove-Item "{SAVES}/Save Game 2.sav"',
-    f'Set-Content -Path "{GAME}/Files/Flags" -Value x',
-    f'Get-Content lab/a | Out-File "{SAVES}/x"',
-    f'"x" > "{SAVES}/x"',
-    f'[IO.File]::WriteAllBytes("{SAVES}/x", $b)',
-    'Copy-Item lab/a "$env:APPDATA\\Gallant Leaf\\Zexion\\x.sav"',
-    'Copy-Item lab/a "${env:APPDATA}\\Gallant Leaf\\Zexion\\x.sav"',
-    f'New-Item -ItemType File "{GAME}/x"',
-    f'Invoke-Expression "rm {SAVES}/x"',
-    # Method calls on items.
-    f'$f = Get-Item "{SAVES}/Save Game 2.sav"; $f.Delete()',
-    f'(Get-Item "{SAVES}/Save Game 2.sav").Delete()',
-    f'$f = Get-Item "{SAVES}/x"; $f.MoveTo("lab/x.sav")',
-    f'Get-Item "{SAVES}/x" | % {{ $_.Delete() }}',
-    f'Get-ChildItem "{SAVES}" | foreach Delete',
-    f'Get-ChildItem "{SAVES}" | ForEach-Object -MemberName Delete',
-    f'$f = Get-Item "{SAVES}/x"; $f.IsReadOnly = $false',
-    # Script blocks after a read-only verb.
-    f'Get-ChildItem "{SAVES}" | foreach {{ Remove-Item $_ }}',
-    f'Get-ChildItem "{SAVES}" | Where-Object {{ Remove-Item $_.FullName }}',
-    f'Get-ChildItem "{SAVES}" | Sort-Object {{ Remove-Item $_ }}',
-    f'(Get-ChildItem "{SAVES}").ForEach{{ Remove-Item $_ }}',
-    # The call operator on a variable.
-    f'$s = "{SAVES}"; & $cmd "$s/x"',
-    # Path spellings.
-    "$p = Join-Path $env:APPDATA 'Gallant Leaf' 'Zexion'; Copy-Item lab/a $p",
-    'Copy-Item lab/a "E:/Steam/steamapps/common/./Zexion/x.dll"',
-    'Remove-Item "$env:APPDATA/Gallant*/Zexion/x.sav"',
-    "Set-Location $env:APPDATA/Gallant*; Remove-Item Zexion/x.sav",
-]
-
-PS_SAVES = "$env:APPDATA\\Gallant Leaf\\Zexion"
-
-# Everyday work that names the folders without writing to them.
-BASH_DAILY = [
-    # Commit and PR text is data.
-    'git commit -m "Guard: block steamapps/common/Zexion and Gallant Leaf/Zexion writes"',
-    "git commit -m \"$(cat <<'EOF'\nGuard: protect %APPDATA%/Gallant Leaf/Zexion\n\n"
-    'Co-Authored-By: Claude\nEOF\n)"',
-    "git commit -F - <<'EOF'\nGuard: protect steamapps/common/Zexion\nEOF",
-    'git commit -m "$(cat <<EOF\nGuard: protect $USER Gallant Leaf/Zexion\nEOF\n)" && git push',
-    'gh pr create --title "Guard" --body "$(cat <<\'EOF\'\n- blocks `cp` into '
-    'steamapps/common/Zexion\nEOF\n)"',
-    'git add worlds/zexion && git commit -m "Docs: the Gallant Leaf save folder"',
-    'git commit -am "Docs: Steam app 3392510"',
-    'git stash push -m "wip Gallant Leaf/Zexion paths"',
-    'gh pr create --base develop --title "Guard" --body "Blocks steamapps/common/Zexion writes"',
-    "gh pr create --title \"Zexion: Gallant Leaf saves\" --body-file - <<'EOF'\n"
-    "steamapps/common/Zexion\nEOF",
-    # Tool runs piped, with an env prefix, or after a cd into the repo.
-    f'.venv/Scripts/python tools/save_lab.py diff "{SAVES}/Save Game 1.sav" lab/w/x.sav | head -40',
-    f'.venv/Scripts/python tools/check_patterns.py "{GAME}/Zexion.exe" 2>&1 | tail -5',
-    f'ZEXION_SAVE_DIR="{SAVES}" .venv/Scripts/python tools/save_lab.py slots',
-    f'cd "{REPO}" && .venv/Scripts/python tools/save_lab.py slots --save-dir "{SAVES}"',
-    # A scratch script that only names the saves; reads with read, less, sed -n, grep.
-    f"cat > lab/probe.py <<'EOF'\nSAVES = r'{SAVES}'\nprint(SAVES)\nEOF",
-    f'while read f; do echo "$f"; done < <(ls "{SAVES}")',
-    f'less "{SAVES}/log.txt"',
-    "sed -n '/Gallant Leaf\\/Zexion/,+5p' docs/re/saves.md",
-    f"sed -n '1,4p;s/a/b/g' \"{SAVES}/log.txt\"",
-    'grep -rn "steamapps/common/Zexion" docs/ CLAUDE.md',
-]
-
-PS_DAILY = [
-    'git commit -m "Guard: block steamapps/common/Zexion writes"',
-    "git commit -m @'\nGuard: protect Gallant Leaf/Zexion\n'@",
-    f'.venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{PS_SAVES}" | Select -Fi 9',
-    f'Get-ChildItem "{PS_SAVES}" | ForEach-Object {{ "{{0,-24}} {{1,8}}" -f $_.Name, $_.Size }}',
-    f'Get-ChildItem "{PS_SAVES}" | Select-Object Name, @{{n="KB";e={{$_.Length/1KB}}}}',
-    f'Get-ChildItem "{PS_SAVES}" | Format-Table Name, @{{n="KB";e={{[math]::Round($_.Length)}}}}',
-    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").LastWriteTime.ToString("o")',
-    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").Name.Substring(0, 4)',
-    f'(Get-Item "{PS_SAVES}\\Save Game 2.sav").Name.Split(" ")',
-    f'$b = [IO.File]::ReadAllBytes("{PS_SAVES}\\Save Game 2.sav"); $b.Length',
-    f'$b = Get-Content "{PS_SAVES}\\x.sav" -AsByteStream; [BitConverter]::ToUInt32($b, 16)',
-    f'Get-ChildItem "{PS_SAVES}" | Out-Null',
-    f'Get-ChildItem "{PS_SAVES}" | ConvertTo-Json',
-    f'Get-ChildItem "{PS_SAVES}" | Group-Object Extension',
-    f'Get-ChildItem "{PS_SAVES}" | Get-Member',
-    f'Get-ChildItem "{PS_SAVES}" | Format-Wide',
-    f'Get-ChildItem "{PS_SAVES}" | Out-Host',
-    f'if (Test-Path "{PS_SAVES}") {{ Get-ChildItem "{PS_SAVES}" }}',
-]
-
-BASH_BLOCKED_MORE = [
     # Text that the shell runs is not data.
     f'git commit -m "$(rm -rf {SAVES})"',
     f'git commit -m "$(cat <<EOF\n$(rm -rf "{SAVES}")\nEOF\n)"',
@@ -276,37 +266,7 @@ BASH_BLOCKED_MORE = [
     # Links to a parent folder.
     'cmd //c mklink //J lab\\gl "%APPDATA%\\Gallant Leaf"',
     'ln -s "E:/SteamLibrary/steamapps/common" lab/common',
-]
-
-PS_BLOCKED_MORE = [
-    '$d = "$env:APPDATA\\Gallant Leaf"; Copy-Item lab\\a "$d\\Zexion\\Save Game 30.sav"',
-    "$d = Join-Path $env:APPDATA 'Gallant Leaf'; Remove-Item \"$d\\Zexion\\x.sav\"",
-    '$g = "E:\\SteamLibrary\\steamapps\\common"; Copy-Item lab\\x.dll "$g\\Zexion\\zlib.dll"',
-    'Copy-Item lab\\a ("$env:APPDATA\\Gallant" + " Leaf\\Zexion\\x.sav")',
-    'New-Item -ItemType Junction -Path lab\\gl -Target "$env:APPDATA\\Gallant Leaf"',
-    'cmd /c mklink /J lab\\common "E:\\SteamLibrary\\steamapps\\common"',
-    # Trailing dots and spaces on a parent folder.
-    'Copy-Item lab\\a "$env:APPDATA\\Gallant Leaf.\\Zexion\\x"',
-    'Copy-Item lab\\a "$env:APPDATA\\Gallant Leaf \\Zexion\\x"',
-    'Copy-Item lab\\a "E:\\SteamLibrary\\steamapps\\common.\\Zexion\\x"',
-    # Quoted or computed method names; static calls that write.
-    f"$f = Get-Item \"{SAVES}/x\"; $f.'Delete'()",
-    f'Get-Item "{SAVES}/x" | % {{ $_."Delete"() }}',
-    f'$m = "Delete"; (Get-Item "{SAVES}/x").$m()',
-    f'[IO.File]::Delete("{SAVES}/x")',
-    f'[System.IO.Directory]::Delete("{SAVES}", $true)',
-    # Text that the shell runs; calls through & and assignments.
-    f'git commit -m "$(Remove-Item {SAVES}/x)"',
-    f'& "Remove-Item" "{SAVES}/x"',
-    f'(Get-Item "{SAVES}/x").Attributes += "Hidden"',
-]
-
-
-RM_SAVE = f"import os; os.remove(r'{SAVES}/Save Game 2.sav')"
-RM_X = f"rm -f '{SAVES}/x'"
-
-# Heredoc bodies that end up run, and lexer differences that would hide a command.
-BASH_HEREDOC_RUN = [
+    # Heredoc bodies that end up run, and lexer differences that would hide a command.
     # Piped into an interpreter, xargs, or anything that is not a plain reader.
     f"cat <<'EOF' | .venv/Scripts/python -\n{RM_SAVE}\nEOF",
     f"cat <<'EOF' | python3\n{RM_SAVE}\nEOF",
@@ -348,6 +308,13 @@ BASH_HEREDOC_RUN = [
     f"cat <<'EOF' | less -o lab/x.sh\n{RM_X}\nEOF\nsh lab/x.sh",
     f"cat <<'EOF' | rg --pre bash .\n{RM_X}\nEOF",
     f"cat <<'EOF' | git apply\n--- a/x\n+++ b/{SAVES}/x\nEOF",
+    # The heredoc's own reader writes a file that is then run.
+    f"sort -o lab/x.sh <<'EOF'\n{RM_X}\nEOF\nsh lab/x.sh",
+    f"sort --output=lab/x.sh <<'EOF'\n{RM_X}\nEOF\nsh lab/x.sh",
+    f"uniq - lab/x.sh <<'EOF'\n{RM_X}\nEOF\nsh lab/x.sh",
+    f"xxd -r - lab/x.sh <<'EOF'\n{RM_X}\nEOF\nsh lab/x.sh",
+    f"less -o lab/x.sh <<'EOF'\n{RM_X}\nEOF\nsh lab/x.sh",
+    f"rg --pre bash . <<'EOF'\n{RM_X}\nEOF",
     # Saved, then run in ways that name the file only in passing.
     f"cat > lab/x.sh <<'EOF'\n{RM_X}\nEOF\ncat lab/x.sh | sh",
     f"cat > lab/x.sh <<'EOF'\n{RM_X}\nEOF\nbash -c \"$(< lab/x.sh)\"",
@@ -374,33 +341,7 @@ BASH_HEREDOC_RUN = [
     f'BROWSER=x git show; ls "{SAVES}"',
     f'GIT_PROXY_COMMAND=x git show; ls "{SAVES}"',
     f'PYTHONSTARTUP=x git show; ls "{SAVES}"',
-]
-
-# Writing into, moving or deleting a parent of a protected folder.
-BASH_PARENTS = [
-    'cp -r lab/Zexion "$APPDATA/Gallant Leaf/"',
-    'cp -r lab/backup/Zexion "C:/Users/someone/AppData/Roaming/Gallant Leaf"',
-    'mv lab/Zexion "$APPDATA/Gallant Leaf/"',
-    'rsync -a --delete lab/Zexion "$APPDATA/Gallant Leaf/"',
-    "cp -r lab/Zexion E:/SteamLibrary/steamapps/common/",
-    'rm -rf "$APPDATA/Gallant Leaf"',
-    'mv "$APPDATA/Gallant Leaf" lab/old',
-    "rm -rf E:/SteamLibrary/steamapps/common",
-    'rm -rf "C:/Program Files (x86)/Steam/userdata/123"',
-    'rm -rf "C:/Program Files (x86)/Steam/userdata/"*',
-    'cd "$APPDATA" && rm -r "Gallant Leaf"',
-    'cp -r --target-directory="$APPDATA/Gallant Leaf" lab/Zexion',
-    'git -C "$APPDATA/Gallant Leaf" clean -fdx',
-]
-PS_PARENTS = [
-    'Copy-Item -Recurse lab\\Zexion "$env:APPDATA\\Gallant Leaf"',
-    "Copy-Item -Recurse -Force lab\\Zexion E:\\SteamLibrary\\steamapps\\common\\",
-    'Remove-Item -Recurse "$env:APPDATA\\Gallant Leaf"',
-]
-
-# Paths joined from quoted pieces inside one word of code.
-GL_ZX = "'Gallant Leaf', 'Zexion'"
-BASH_JOINED = [
+    # Paths joined from quoted pieces inside one word of code.
     f".venv/Scripts/python -c \"import os,shutil; shutil.copy2('lab/a', "
     f"os.path.join(os.environ['APPDATA'], {GL_ZX}, 'Save Game 30.sav'))\"",
     f".venv/Scripts/python -c \"import os; os.remove(os.path.join(os.environ['APPDATA'], {GL_ZX}, "
@@ -436,8 +377,73 @@ BASH_JOINED = [
     "python - <<'EOF'\nimport os, shutil\n"
     "base = os.path.join(os.environ['APPDATA'], 'Gallant Leaf')\n"
     "shutil.copy2('lab/a', os.path.join(base, 'Zexion', 'x.sav'))\nEOF",
+    # Writing into, moving or deleting a parent of a protected folder.
+    'cp -r lab/Zexion "$APPDATA/Gallant Leaf/"',
+    'cp -r lab/backup/Zexion "C:/Users/someone/AppData/Roaming/Gallant Leaf"',
+    'mv lab/Zexion "$APPDATA/Gallant Leaf/"',
+    'rsync -a --delete lab/Zexion "$APPDATA/Gallant Leaf/"',
+    "cp -r lab/Zexion E:/SteamLibrary/steamapps/common/",
+    'rm -rf "$APPDATA/Gallant Leaf"',
+    'mv "$APPDATA/Gallant Leaf" lab/old',
+    "rm -rf E:/SteamLibrary/steamapps/common",
+    'rm -rf "C:/Program Files (x86)/Steam/userdata/123"',
+    'rm -rf "C:/Program Files (x86)/Steam/userdata/"*',
+    'cd "$APPDATA" && rm -r "Gallant Leaf"',
+    'cp -r --target-directory="$APPDATA/Gallant Leaf" lab/Zexion',
+    'git -C "$APPDATA/Gallant Leaf" clean -fdx',
 ]
-PS_JOINED = [
+
+PS_BLOCKED = [
+    f'Copy-Item lab/a "{SAVES}/Save Game 30.sav"',
+    f'Remove-Item "{SAVES}/Save Game 2.sav"',
+    f'Set-Content -Path "{GAME}/Files/Flags" -Value x',
+    f'Get-Content lab/a | Out-File "{SAVES}/x"',
+    f'"x" > "{SAVES}/x"',
+    f'[IO.File]::WriteAllBytes("{SAVES}/x", $b)',
+    'Copy-Item lab/a "$env:APPDATA\\Gallant Leaf\\Zexion\\x.sav"',
+    'Copy-Item lab/a "${env:APPDATA}\\Gallant Leaf\\Zexion\\x.sav"',
+    f'New-Item -ItemType File "{GAME}/x"',
+    f'Invoke-Expression "rm {SAVES}/x"',
+    # Method calls on items.
+    f'$f = Get-Item "{SAVES}/Save Game 2.sav"; $f.Delete()',
+    f'(Get-Item "{SAVES}/Save Game 2.sav").Delete()',
+    f'$f = Get-Item "{SAVES}/x"; $f.MoveTo("lab/x.sav")',
+    f'Get-Item "{SAVES}/x" | % {{ $_.Delete() }}',
+    f'Get-ChildItem "{SAVES}" | foreach Delete',
+    f'Get-ChildItem "{SAVES}" | ForEach-Object -MemberName Delete',
+    f'$f = Get-Item "{SAVES}/x"; $f.IsReadOnly = $false',
+    # Script blocks after a read-only verb.
+    f'Get-ChildItem "{SAVES}" | foreach {{ Remove-Item $_ }}',
+    f'Get-ChildItem "{SAVES}" | Where-Object {{ Remove-Item $_.FullName }}',
+    f'Get-ChildItem "{SAVES}" | Sort-Object {{ Remove-Item $_ }}',
+    f'(Get-ChildItem "{SAVES}").ForEach{{ Remove-Item $_ }}',
+    # The call operator on a variable.
+    f'$s = "{SAVES}"; & $cmd "$s/x"',
+    # Path spellings.
+    "$p = Join-Path $env:APPDATA 'Gallant Leaf' 'Zexion'; Copy-Item lab/a $p",
+    'Copy-Item lab/a "E:/Steam/steamapps/common/./Zexion/x.dll"',
+    'Remove-Item "$env:APPDATA/Gallant*/Zexion/x.sav"',
+    "Set-Location $env:APPDATA/Gallant*; Remove-Item Zexion/x.sav",
+    '$d = "$env:APPDATA\\Gallant Leaf"; Copy-Item lab\\a "$d\\Zexion\\Save Game 30.sav"',
+    "$d = Join-Path $env:APPDATA 'Gallant Leaf'; Remove-Item \"$d\\Zexion\\x.sav\"",
+    '$g = "E:\\SteamLibrary\\steamapps\\common"; Copy-Item lab\\x.dll "$g\\Zexion\\zlib.dll"',
+    'Copy-Item lab\\a ("$env:APPDATA\\Gallant" + " Leaf\\Zexion\\x.sav")',
+    'New-Item -ItemType Junction -Path lab\\gl -Target "$env:APPDATA\\Gallant Leaf"',
+    'cmd /c mklink /J lab\\common "E:\\SteamLibrary\\steamapps\\common"',
+    # Trailing dots and spaces on a parent folder.
+    'Copy-Item lab\\a "$env:APPDATA\\Gallant Leaf.\\Zexion\\x"',
+    'Copy-Item lab\\a "$env:APPDATA\\Gallant Leaf \\Zexion\\x"',
+    'Copy-Item lab\\a "E:\\SteamLibrary\\steamapps\\common.\\Zexion\\x"',
+    # Quoted or computed method names; static calls that write.
+    f"$f = Get-Item \"{SAVES}/x\"; $f.'Delete'()",
+    f'Get-Item "{SAVES}/x" | % {{ $_."Delete"() }}',
+    f'$m = "Delete"; (Get-Item "{SAVES}/x").$m()',
+    f'[IO.File]::Delete("{SAVES}/x")',
+    f'[System.IO.Directory]::Delete("{SAVES}", $true)',
+    # Text that the shell runs; calls through & and assignments.
+    f'git commit -m "$(Remove-Item {SAVES}/x)"',
+    f'& "Remove-Item" "{SAVES}/x"',
+    f'(Get-Item "{SAVES}/x").Attributes += "Hidden"',
     f"Copy-Item lab\\a ([IO.Path]::Combine($env:APPDATA, {GL_ZX}, 'x.sav'))",
     "Copy-Item lab\\a ([IO.Path]::Combine($env:APPDATA,'Gallant Leaf','Zexion','x.sav'))",
     "Copy-Item lab\\a (Join-Path $env:APPDATA 'Gallant Leaf' "
@@ -445,46 +451,15 @@ PS_JOINED = [
     "Copy-Item lab\\a (Join-Path -Path $env:APPDATA -ChildPath 'Gallant Leaf' "
     "-AdditionalChildPath Zexion,x.sav)",
     "$g = Join-Path $env:APPDATA 'Gallant Leaf'; Copy-Item lab\\a (Join-Path $g 'Zexion','x.sav')",
-]
-
-# Heredocs that only feed data, and reads that name the folders.
-BASH_DATA = [
-    f"cat <<'EOF' | grep -c Save | head -1\n{SAVES}/Save Game 2.sav\nEOF",
-    f"cat <<'EOF' >&2\n{SAVES}\nEOF",
-    f"cat <<EOF.x\n{SAVES}\nEOF.x",
-    f"git -c user.name=x commit -F - <<'EOF'\nGuard: {SAVES}\nEOF",
-    f"gh pr create --title x --body=\"$(cat <<'EOF'\nBlocks {GAME}\nEOF\n)\"",
-    f"git commit -m\"$(cat <<'EOF'\nGuard: {SAVES}\nEOF\n)\" && git push",
-    f"echo $((1<<4)); cat <<'EOF'\n{SAVES}\nEOF",
-    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\ngit status",
-    'grep -n "<<EOF" .claude/hooks/guard_protected.py',
-    f'git diff --no-index "{SAVES}/Save Game 1.sav" lab/work/x.sav',
-    f'git log --oneline -3 && ls "{SAVES}"',
-    f'git show HEAD:docs/re/saves.md | grep "{SAVES}"',
-    f'ls "{SAVES}" && git push -u origin claude/steam-achievements',
-    "git commit -m \"Docs: os.path.join(appdata, 'Gallant Leaf', 'Zexion')\"",
-    # Saved by a heredoc, then only read, posted or removed.
-    f"cat > \"$TEMP/pr.md\" <<'EOF'\n## Summary\nBlocks {SAVES} and {GAME}\nEOF\n"
-    'gh pr create --base develop --title x --body-file "$TEMP/pr.md"',
-    f"cat > \"$TEMP/msg.txt\" <<'EOF'\nGuard: {SAVES}\nEOF\n"
-    'git commit -F "$TEMP/msg.txt" && rm "$TEMP/msg.txt"',
-    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\nwc -l lab/notes.md",
-    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\ncat lab/notes.md | head -3",
-    f"cat <<'EOF' | git commit -F -\nGuard: {SAVES}\nEOF",
-    f"cat <<'EOF' | gh pr create --title x --body-file -\nBlocks {SAVES}\nEOF",
-    f"gh api repos/o/r/issues/1/comments -f body=\"$(cat <<'EOF'\nBlocks {SAVES}\nEOF\n)\"",
-    # Reads of a parent folder; cleaning build folders.
-    'ls -la "$APPDATA/Gallant Leaf"',
-    "du -sh E:/SteamLibrary/steamapps/common",
-    "rm -rf native/build/* lab/ap/*",
-    "rm -rf native/build lab/work/*",
+    'Copy-Item -Recurse lab\\Zexion "$env:APPDATA\\Gallant Leaf"',
+    "Copy-Item -Recurse -Force lab\\Zexion E:\\SteamLibrary\\steamapps\\common\\",
+    'Remove-Item -Recurse "$env:APPDATA\\Gallant Leaf"',
 ]
 
 
 @pytest.mark.parametrize(
     ("tool", "command"),
-    [("Bash", c) for c in BASH_ALLOWED + BASH_DAILY + BASH_DATA]
-    + [("PowerShell", c) for c in PS_ALLOWED + PS_DAILY],
+    [("Bash", c) for c in BASH_ALLOWED] + [("PowerShell", c) for c in PS_ALLOWED],
 )
 def test_read_only_commands_allowed(tool: str, command: str) -> None:
     assert run(tool, command=command) is None
@@ -492,11 +467,7 @@ def test_read_only_commands_allowed(tool: str, command: str) -> None:
 
 @pytest.mark.parametrize(
     ("tool", "command"),
-    [
-        ("Bash", c)
-        for c in BASH_BLOCKED + BASH_BLOCKED_MORE + BASH_HEREDOC_RUN + BASH_JOINED + BASH_PARENTS
-    ]
-    + [("PowerShell", c) for c in PS_BLOCKED + PS_BLOCKED_MORE + PS_JOINED + PS_PARENTS],
+    [("Bash", c) for c in BASH_BLOCKED] + [("PowerShell", c) for c in PS_BLOCKED],
 )
 def test_writing_commands_blocked(tool: str, command: str) -> None:
     assert run(tool, command=command)

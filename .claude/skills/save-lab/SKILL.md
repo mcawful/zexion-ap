@@ -29,22 +29,12 @@ the game has been closed.
 ```
 
 Lists every slot with size, date, hash and its state. Never assume a slot number is free; read
-this.
-
-- **empty**: the unused-slot template the game writes into slots never used.
-- **empty (deleted, data kept)**: a save deleted in the game. Deleting does not clear the file:
-  the game keeps all its data and only sets two bytes, the empty marker `0x9360` to `0xFF` and
-  the randomizer marker `0x9402` to 0. That marks the slot empty for the game (a file-select
-  entry takes `0xFF` at `0x9360` as an empty slot), and this tool counts it empty too. So 30
-  files full of save data do not mean the folder is full: count the slots this command calls
-  empty.
-- **IN USE**: anything else, including a file too short or of an odd size.
-- **IN USE (unreadable)**: a file that can't be read; its hash shows as question marks.
-
-Both bytes, the facts behind them and what is still assumed (that the file select reads
-nothing else; that a normal-mode save is deleted the same way, only randomizer saves having
-been seen): `docs/re/save-format.md`, "Clearing a slot in the game sets two bytes and keeps the
-rest".
+this. A slot is **empty** (the unused-slot template), **empty (deleted, data kept)** (a save
+deleted in the game, which keeps its data but marks the slot empty), or **IN USE**. So 30 files
+full of save data do not mean the folder is full: count the slots this command calls empty.
+Each state: `tools/save_lab.py --help`. The two bytes a deletion sets, the evidence and what is
+still assumed: `docs/re/save-format.md`, "Clearing a slot in the game sets two bytes and keeps
+the rest".
 
 ## 3. Back up
 
