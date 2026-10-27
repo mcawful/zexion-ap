@@ -5,7 +5,7 @@
     save_lab.py copy SLOT [--out FILE]        copy one slot into lab/work/
     save_lab.py diff A B [--merge-gap N] [--max-runs N]   changed byte runs (200 shown by default)
     save_lab.py patch FILE SPEC [--out FILE]  apply a JSON patch to a copy
-    save_lab.py install FILE SLOT --yes       put a lab file into an EMPTY slot (after a backup)
+    save_lab.py install FILE SLOT --yes       put a lab file into an empty slot (after a backup)
     save_lab.py restore BACKUP [--slot N] --yes   put a backup back (after backing up the present)
 
 A save is named by slot number (``2``), ``slot:2``, or a file path. Everything except ``install``
@@ -13,6 +13,14 @@ and ``restore`` only reads the save folder. ``install`` fills only an empty slot
 backup from the last 12 hours holds that slot as it is now. ``restore`` may overwrite slots in
 use; it refuses a backup of another save folder, checks the backup against its manifest, and
 backs up the present state first.
+
+A slot is empty in two ways, and ``slots`` names both. "empty" holds the unused-slot template.
+"empty (deleted, data kept)" holds a save deleted in the game: deleting keeps the file and all
+its data, and only sets the empty marker (``0x9360``) to ``0xFF`` and the randomizer marker
+(``0x9402``) to 0, so the game marks the slot empty. Anything else, including a file of an odd
+size or one that can't be read ("IN USE (unreadable)", its hash shown as ``?``), is in use.
+``install`` fills either kind of empty slot; over a deleted save it says the data it replaced is
+in the backup it required, and ``lab/installs.log`` records which kind it filled (``was=``).
 
 ``--save-dir`` (or ``ZEXION_SAVE_DIR``) points at another save folder, and ``ZEXION_LAB_DIR`` at
 another lab folder; the tests use both.
@@ -39,8 +47,24 @@ SLOT_NAME = "Save Game {}.sav"
 BACKUP_MAX_AGE_HOURS = 12
 # An unused slot is not all zeros: the game writes one fixed template into every unused slot
 # (docs/re/save-format.md, "Unused slots hold a fixed template"). The template is recognized
-# as the content at least this many slots share, which no slot in use would.
+# by the content that page records (``unused_template``), or as the content at least this many
+# slots share, which no slot in use would.
 EMPTY_TEMPLATE_MIN_COPIES = 3
+# Deleting a save in the game keeps the file and its data and sets two bytes: the empty marker
+# to 0xFF and the 16-bit randomizer marker to 0 (docs/re/save-format.md, "Clearing a slot in the
+# game sets two bytes and keeps the rest"). A slot counts as deleted only with both, as every
+# deletion seen left it, in a file of a size a save has been seen to have ("Save sizes": a
+# normal game, and a randomizer save with its section) that starts with the save's E8 03.
+SAVE_SIZES = (75_794, 78_108)
+SAVE_HEADER = b"\xe8\x03"
+EMPTY_MARKER = 0x9360
+RANDO_MARKER = 0x9402
+
+# What ``slot_state`` says of a slot.
+TEMPLATE = "empty"
+DELETED = "empty (deleted, data kept)"
+IN_USE = "IN USE"
+UNREADABLE = "IN USE (unreadable)"
 
 
 def slot_path(slot: int) -> Path:
@@ -59,21 +83,68 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _read(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def slot_files() -> list[Path]:
     return sorted(save_dir().glob("Save Game *.sav"), key=lambda p: int(p.stem.split()[-1]))
 
 
 def empty_template_hash() -> str | None:
     """SHA-256 of the unused-slot template: the content shared by the most slots, if enough."""
-    counts = Counter(sha256(p) for p in slot_files())
+    contents = (_read(p) for p in slot_files())
+    counts = Counter(hashlib.sha256(data).hexdigest() for data in contents if data is not None)
     if not counts:
         return None
     digest, copies = counts.most_common(1)[0]
     return digest if copies >= EMPTY_TEMPLATE_MIN_COPIES else None
 
 
+def is_deleted_save(data: bytes) -> bool:
+    """A save deleted in the game: a save's size and header, the empty marker, no randomizer."""
+    return (
+        len(data) in SAVE_SIZES
+        and data[: len(SAVE_HEADER)] == SAVE_HEADER
+        and data[EMPTY_MARKER] == 0xFF
+        and data[RANDO_MARKER : RANDO_MARKER + 2] == b"\x00\x00"
+    )
+
+
+def unused_template() -> bytes:
+    """The unused-slot template, built from its description in save-format.md."""
+    data = bytearray(SAVE_SIZES[0])
+    data[: len(SAVE_HEADER)] = SAVE_HEADER
+    data[0x7BAE:0x877F] = bytes([0xFF]) * (0x877F - 0x7BAE)
+    data[EMPTY_MARKER] = 0xFF
+    data[0x9364:0x93D4] = bytes.fromhex("ffffffff 00000000 3000 0200 0000") * 8
+    return bytes(data)
+
+
+UNUSED_TEMPLATE = unused_template()
+
+
+def slot_state(path: Path, template: str | None) -> str:
+    """``TEMPLATE``, ``DELETED``, ``IN_USE`` or ``UNREADABLE``. Only the first two are empty.
+
+    The known template is checked before the deleted test, which it also passes, so a template
+    slot is never called deleted even when too few slots share it for ``empty_template_hash``.
+    """
+    data = _read(path)
+    if data is None:
+        return UNREADABLE
+    if data == UNUSED_TEMPLATE:
+        return TEMPLATE
+    if template is not None and hashlib.sha256(data).hexdigest() == template:
+        return TEMPLATE
+    return DELETED if is_deleted_save(data) else IN_USE
+
+
 def is_empty_slot(path: Path, template: str | None) -> bool:
-    return path.exists() and template is not None and sha256(path) == template
+    return slot_state(path, template) in (TEMPLATE, DELETED)
 
 
 def _now() -> str:
@@ -86,11 +157,11 @@ def _now() -> str:
 def cmd_slots(_: argparse.Namespace) -> int:
     template = empty_template_hash()
     for path in slot_files():
-        digest = sha256(path)
-        state = "empty" if digest == template else "IN USE"
+        state = slot_state(path, template)
+        digest = "?" * 12 if state == UNREADABLE else sha256(path)[:12]
         stat = path.stat()
         mtime = dt.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-        print(f"{path.stem:<14} {stat.st_size:>7} bytes  {mtime}  {digest[:12]}  {state}")
+        print(f"{path.stem:<14} {stat.st_size:>7} bytes  {mtime}  {digest}  {state}")
     return 0
 
 
@@ -299,7 +370,8 @@ def cmd_install(args: argparse.Namespace) -> int:
     if not target.exists():
         print(f"{target.name} does not exist; install only fills an existing empty slot.")
         return 1
-    if not is_empty_slot(target, empty_template_hash()):
+    state = slot_state(target, empty_template_hash())
+    if state not in (TEMPLATE, DELETED):
         print(f"{target.name} is in use. install only fills empty slots; pick another slot.")
         return 1
     found = latest_backup_covering(target)
@@ -310,8 +382,14 @@ def cmd_install(args: argparse.Namespace) -> int:
     data = source.read_bytes()
     _write_into_save_dir(target, data)
     digest = hashlib.sha256(data).hexdigest()
-    _log(f"install {source} -> {target.name} sha256={digest} backup={found.name}")
+    was = "deleted" if state == DELETED else "template"
+    _log(f"install {source} -> {target.name} sha256={digest} backup={found.name} was={was}")
     print(f"Installed {source} into {target.name}. Backup: {found}")
+    if state == DELETED:
+        print(
+            f"{target.name} held a save deleted in the game, whose data the game had kept; "
+            f"that data is now only in the backup ({found / target.name})."
+        )
     return 0
 
 

@@ -134,8 +134,8 @@ game or save folders.
 | Command (`.venv/Scripts/python tools/...`) | What | Changes the game? |
 |---|---|---|
 | `build_id.py` | which build is installed | no |
-| `save_lab.py slots`, `backup`, `copy`, `diff`, `patch` | saves, on copies (`/save-lab`) | no |
-| `save_lab.py install`, `restore` | write the save folder | **yes: ask** |
+| `save_lab.py slots`, `backup`, `copy`, `diff`, `patch` | saves, on copies (`/save-lab`); `slots` lists a save deleted in the game as empty: it keeps its data, but the game marks it empty | no |
+| `save_lab.py install`, `restore` | write the save folder; `install` fills an empty slot, a deleted save's too | **yes: ask** |
 | `memscan.py find`, `snap`, `cmp`, `read`, `classify`, `record` | search live memory (`/find-address`) | no |
 | `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |

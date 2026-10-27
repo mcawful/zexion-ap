@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -243,3 +244,141 @@ def test_append_log_stamps_each_line_and_refuses_protected_folders(tmp_path: Pat
     with pytest.raises(ProtectedPathError):
         append_log(bad, {"event": "a"})
     assert not bad.parent.exists()
+
+
+# --- saves deleted in the game ------------------------------------------------------------
+
+RANDO_SIZE = 78_108  # a randomizer save (docs/re/save-format.md, "Save sizes")
+
+
+def deleted_save(size: int = RANDO_SIZE, header: bytes = b"\xe8\x03") -> bytes:
+    """A randomizer save as the game leaves it on a delete: its data kept, two bytes set."""
+    data = bytearray(header + bytes(range(256)) * (size // 256))
+    data.extend(b"\x5a" * (size - len(data)))
+    data[save_lab.EMPTY_MARKER] = 0xFF
+    data[save_lab.RANDO_MARKER : save_lab.RANDO_MARKER + 2] = b"\x00\x00"
+    return bytes(data[:size])
+
+
+def in_use_save() -> bytes:
+    data = bytearray(deleted_save())
+    data[save_lab.EMPTY_MARKER] = 0
+    data[save_lab.RANDO_MARKER] = 1
+    return bytes(data)
+
+
+def _slot_lines(capsys: pytest.CaptureFixture[str]) -> dict[str, str]:
+    assert save_lab.main(["slots"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    return {" ".join(line.split()[:3]): line for line in lines}
+
+
+def test_slots_shows_a_deleted_save_as_empty(
+    saves: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (saves / "Save Game 5.sav").write_bytes(deleted_save())
+    (saves / "Save Game 6.sav").write_bytes(in_use_save())
+    lines = _slot_lines(capsys)
+    assert lines["Save Game 5"].endswith("  empty (deleted, data kept)")
+    assert lines["Save Game 2"].endswith("  empty")
+    assert lines["Save Game 1"].endswith("  IN USE")
+    assert lines["Save Game 6"].endswith("  IN USE")
+    assert save_lab.is_empty_slot(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+
+
+@pytest.mark.parametrize("size", [RANDO_SIZE, 75_794], ids=["randomizer", "normal"])
+def test_install_fills_a_deleted_slot_after_a_backup(
+    saves: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], size: int
+) -> None:
+    patched = _patched(tmp_path)
+    old = deleted_save(size)
+    (saves / "Save Game 5.sav").write_bytes(old)
+    assert save_lab.main(["install", str(patched), "5", "--yes"]) == 1  # no backup yet
+    assert (saves / "Save Game 5.sav").read_bytes() == old
+    backup = save_lab.backup()
+    capsys.readouterr()
+    assert save_lab.main(["install", str(patched), "5", "--yes"]) == 0
+    assert (saves / "Save Game 5.sav").read_bytes() == patched.read_bytes()
+    out = capsys.readouterr().out
+    assert "deleted in the game" in out and str(backup / "Save Game 5.sav") in out
+    assert (backup / "Save Game 5.sav").read_bytes() == old  # the game's kept data
+    assert "was=deleted" in (tmp_path / "lab" / "installs.log").read_text(encoding="utf-8")
+
+
+def test_install_still_refuses_a_save_in_use(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
+    marked_rando = bytearray(deleted_save())
+    marked_rando[save_lab.RANDO_MARKER] = 1  # empty marker set, randomizer marker not cleared
+    normal = bytearray(deleted_save(size=75_794))
+    normal[save_lab.EMPTY_MARKER] = 0  # a normal game in use: its randomizer marker is 0 too
+    high_marker = bytearray(deleted_save())
+    high_marker[save_lab.RANDO_MARKER + 1] = 1  # the 16-bit marker's high byte
+    cases = {5: in_use_save(), 6: bytes(marked_rando), 7: bytes(normal), 8: bytes(high_marker)}
+    for slot, data in cases.items():
+        (saves / f"Save Game {slot}.sav").write_bytes(data)
+    save_lab.backup()
+    for slot, data in cases.items():
+        assert save_lab.main(["install", str(patched), str(slot), "--yes"]) == 1
+        assert (saves / f"Save Game {slot}.sav").read_bytes() == data
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        deleted_save()[: save_lab.RANDO_MARKER + 2],  # cut short, with both markers in it
+        deleted_save() + b"\x00",  # not a save's size
+        deleted_save(size=75_794, header=b"\x00\x00"),  # a save's size, not its header
+    ],
+    ids=["short", "odd-size", "odd-header"],
+)
+def test_a_short_or_odd_file_is_never_empty(saves: Path, tmp_path: Path, data: bytes) -> None:
+    patched = _patched(tmp_path)
+    (saves / "Save Game 5.sav").write_bytes(data)
+    save_lab.backup()
+    assert not save_lab.is_empty_slot(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+    assert save_lab.main(["install", str(patched), "5", "--yes"]) == 1
+    assert (saves / "Save Game 5.sav").read_bytes() == data
+
+
+def test_an_unreadable_slot_is_in_use(
+    saves: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (saves / "Save Game 7.sav").mkdir()  # matched by the glob, but reading it fails
+    lines = _slot_lines(capsys)
+    assert lines["Save Game 7"].endswith("  IN USE (unreadable)")
+    assert lines["Save Game 2"].endswith("  empty")  # the others still listed
+    assert not save_lab.is_empty_slot(saves / "Save Game 7.sav", save_lab.empty_template_hash())
+    save_lab.backup()
+    assert save_lab.main(["install", str(_patched(tmp_path)), "7", "--yes"]) == 1
+    assert (saves / "Save Game 7.sav").is_dir()
+
+
+def test_install_refuses_a_save_deleted_after_the_backup(saves: Path, tmp_path: Path) -> None:
+    (saves / "Save Game 5.sav").write_bytes(in_use_save())
+    save_lab.backup()  # holds the save in use, not as it is after the delete
+    (saves / "Save Game 5.sav").write_bytes(deleted_save())  # deleted in the game
+    assert save_lab.main(["install", str(_patched(tmp_path)), "5", "--yes"]) == 1
+    assert (saves / "Save Game 5.sav").read_bytes() == deleted_save()
+
+
+def test_the_built_template_is_the_measured_one() -> None:
+    # The SHA-256 prefix docs/re/save-format.md records for the template of slots 3 to 30.
+    assert hashlib.sha256(save_lab.UNUSED_TEMPLATE).hexdigest().startswith("8c9868d64c45")
+    assert save_lab.is_deleted_save(save_lab.UNUSED_TEMPLATE)  # why it is checked first
+
+
+def test_a_template_slot_is_never_called_deleted(
+    saves: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for slot in range(2, 5):
+        (saves / f"Save Game {slot}.sav").write_bytes(bytes([slot]) * SIZE)
+    for slot in (5, 6):  # too few copies for empty_template_hash
+        (saves / f"Save Game {slot}.sav").write_bytes(save_lab.UNUSED_TEMPLATE)
+    assert save_lab.empty_template_hash() is None
+    lines = _slot_lines(capsys)
+    assert lines["Save Game 5"].endswith("  empty")
+    save_lab.backup()
+    capsys.readouterr()
+    assert save_lab.main(["install", str(_patched(tmp_path)), "5", "--yes"]) == 0
+    assert "deleted" not in capsys.readouterr().out
+    assert "was=template" in (tmp_path / "lab" / "installs.log").read_text(encoding="utf-8")

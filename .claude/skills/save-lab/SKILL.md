@@ -28,8 +28,23 @@ the game has been closed.
 .venv/Scripts/python tools/save_lab.py slots
 ```
 
-Lists every slot with size, date, hash and whether it is **empty** (the unused-slot template,
-see `docs/re/save-format.md`) or **IN USE**. Never assume a slot number is free; read this.
+Lists every slot with size, date, hash and its state. Never assume a slot number is free; read
+this.
+
+- **empty**: the unused-slot template the game writes into slots never used.
+- **empty (deleted, data kept)**: a save deleted in the game. Deleting does not clear the file:
+  the game keeps all its data and only sets two bytes, the empty marker `0x9360` to `0xFF` and
+  the randomizer marker `0x9402` to 0. That marks the slot empty for the game (a file-select
+  entry takes `0xFF` at `0x9360` as an empty slot), and this tool counts it empty too. So 30
+  files full of save data do not mean the folder is full: count the slots this command calls
+  empty.
+- **IN USE**: anything else, including a file too short or of an odd size.
+- **IN USE (unreadable)**: a file that can't be read; its hash shows as `?`.
+
+Both bytes, the facts behind them and what is still assumed (that the file select reads
+nothing else; that a normal-mode save is deleted the same way, only randomizer saves having
+been seen): `docs/re/save-format.md`, "Clearing a slot in the game sets two bytes and keeps the
+rest".
 
 ## 3. Back up
 
@@ -69,16 +84,19 @@ up one item, open one door), save again in another slot, then diff.
 ## 5. Install into the game
 
 Only with the user's explicit yes, for this install. Say which lab file, which slot, and that
-the slot is empty.
+the slot is empty; for a deleted save, also that the data the game kept there will be
+overwritten, and that the backup keeps it.
 
 ```sh
 .venv/Scripts/python tools/save_lab.py install lab/work/a-patched.sav 30 --yes
 ```
 
-It refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
-backup. It writes through a temporary file (removed if the write fails), reads the result
-back, and logs to `lab/installs.log`. The game may cache saves; have the user return to the
-title screen or restart before loading the slot.
+It fills either kind of empty slot. It refuses a slot that is in use, a slot number that doesn't
+exist, and a missing or stale backup. Over a deleted save it says that the old data is in the
+backup, and names the file there. It writes through a temporary file (removed if the write
+fails), reads the result back, and logs to `lab/installs.log`, with `was=template` or
+`was=deleted` for the kind of slot it filled. The game may cache saves; have the user return to
+the title screen or restart before loading the slot.
 
 ## 6. Put things back
 
