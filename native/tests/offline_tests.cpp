@@ -379,6 +379,117 @@ void test_the_ap_saves_slots() {
     check(labeled.ap_file_slots() == std::set<int>{7}, "the labels' seed's save");
 }
 
+// The keys only the client's parts read (game_calls.cpp, client_only), in the table's order.
+const char* const kClientOnly[] = {
+    "weapon_strip_gate", "hud_number_fn",   "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn",
+    "suit_color_fn",     "current_slot",    "randomizer_menu", "panel_handler_fn",
+    "rando_menu_fn",     "placement_fn",    "rando_newgame_fn", "start_count", "start_cells",
+    "start_flags",       "event_handlers",  "death_fn",      "halt_flag",     "routine_table",
+    "fade",              "fade_level",
+};
+
+// The cache of a client from before a release that added client-only keys (here: all of them).
+// The helper configures from it, inactive, with those members null: every part the offline look
+// uses runs (a null one read would fault here), and the client's parts refuse until a client's
+// config sets every key. A cache missing any other key still refuses.
+void test_a_cache_without_the_client_only_keys() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto partial = stand_in_config();
+    std::string named;
+    for (const char* key : kClientOnly) {
+        check(partial.erase(key) == 1, "a client-only key of the stand-in's config");
+        named += (named.empty() ? "" : ",") + std::string(key);
+    }
+    for (const auto& [key, rva] : partial) {
+        auto older = partial;
+        older.erase(key);
+        zap::Game refused;
+        if (refused.configure(self, older, false) != "missing " + key || refused.configured()) {
+            check(false, ("a cache missing " + key + " (needed offline) refuses").c_str());
+        }
+    }
+    {
+        zap::Game client;
+        check(client.configure(self, partial) == "missing weapon_strip_gate" &&
+                  !client.configured(),
+              "a client's config needs every key");
+    }
+
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, partial, false).empty() && game.configured() && !game.active(),
+          "the cache without them configures, inactive");
+    check(!game.client_ready() && game.left_out() == named, "and says which it lacks");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+
+    // The title and the file select: slot 3 holds the seed's save.
+    std::memset(g_slot_array, 0, sizeof(g_slot_array));
+    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
+    auto block = [](int n) { return g_slot_array + (n - 1) * 0x9408; };
+    for (int n = 1; n <= 30; ++n) block(n)[0x935E] = 0xFF;
+    block(3)[0x935E] = 0;
+    put<uint16_t>(block(3), 0x9400, 1);
+    put_seed(g_rando_slots + 2 * 0x908);
+    g_save_loaded = 0xFF;
+    g_rando_marker = 1;
+    std::memset(g_section, 0, sizeof(g_section));
+    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
+    check(game.files().ap_slots() == std::set<int>{3} && game.files().counts().at(3) == 3,
+          "the file select: the AP save's mark and its count");
+
+    // A new game queued meanwhile (ARCHIPELAGO needs a client): not touched.
+    zap::NewGamePlan plan;
+    zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B", plan);
+    game.arm_newgame(plan);
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
+    g_transition_timer = 40;
+    for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
+    check(game.newgame_status() == "armed" && !game.menu_installed(),
+          "no ARCHIPELAGO choice, no plan written");
+    game.disarm_newgame();
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+
+    // The seed's save in play: dressed, the warning shown.
+    put_seed(g_section);
+    g_save_loaded = 3;
+    g_menu = 0;
+    g_flags[39] = 0;
+    std::memset(g_map_grid, 0, sizeof(g_map_grid));
+    for (int i = 0; i < 64; ++i) {
+        game.watch_all(&no_callback);
+        game.pump_popups();
+    }
+    check(game.intel_on() && game.assists_locked() && game.scan_line() == "COLLECT" &&
+              game.disc_count() == 3 && !game.label_names().empty(),
+          "the save dressed: INTEL CHIP, ASSIST locked, the disks, the labels");
+    check(g_messages == 1 && game.queued_popups() == 0, "the not-connected warning shown");
+    g_menu = 1;  // paused: the map's marks, the pause row
+    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
+    g_menu = 0;
+
+    // The client's parts refuse.
+    game.note_play(1000);
+    zap::Batch batch;
+    zap::parse_batch("apply\ncas 1 3 4", batch);
+    check(game.apply(batch) == "refused not configured" && g_inventory[1] == 3, "no grant");
+    check(game.kill(5000) == "refused not configured", "no DeathLink death");
+    check(game.spawn_shield(5000) == "refused not configured", "no Energy Shield");
+    game.request_mission();
+    for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
+    check(game.mission_status() == "not asked" && g_fade_calls == 0, "no RETURN HOME");
+
+    // A client's config sets every key: its parts run.
+    check(configure(game).empty() && game.client_ready() && game.left_out().empty(),
+          "a client's config: every key");
+    check(game.apply(batch) == "applied" && g_inventory[1] == 4, "a grant");
+    game.put_back_all(&no_callback);
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
 }  // namespace
 
 int main() {
@@ -388,5 +499,6 @@ int main() {
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
     test_the_ap_saves_slots();
+    test_a_cache_without_the_client_only_keys();
     return report("offline tests");
 }

@@ -332,6 +332,7 @@ struct HelloState {
     bool active = false;
     std::string offline = "-";
     std::string title = "0";
+    std::string left_out;  // the client-only keys the offline cache lacked (Game::left_out)
 };
 
 // A hello field kept to one word: spaces (a seed file's name, a reason) as underscores.
@@ -353,6 +354,7 @@ std::string hello() {
                 state.active = g_game.active();
                 state.offline = g_game.offline_state();
                 state.title = g_game.title_state();
+                state.left_out = g_game.left_out();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -367,17 +369,21 @@ std::string hello() {
            " offline=" + one_word(state.offline) + " active=" + (state.active ? "1" : "0") +
            " title=" + one_word(state.title) + " reads=" + std::to_string(g_offline_reads.load()) +
            "/" + std::to_string(g_offline_found.load()) +
+           (state.left_out.empty() ? "" : " cache_missing=" + state.left_out) +
            (error.empty() ? "" : " read_error=" + one_word(error));
 }
 
 // Pipe thread: `work` run on the game's thread at its next frame, and its reply; "refused not
-// configured" instead, when `needs_config` and nothing configured the helper; "refused no frame"
-// if no frame took it within kFrameWaitMs (it then never runs).
+// configured" instead, when `needs_config` and no config with every key set the helper (only an
+// offline cache lacking client-only keys, or none: Game::client_ready); "refused no frame" if no
+// frame took it within kFrameWaitMs (it then never runs).
 std::string on_game(const std::function<std::string()>& work, bool needs_config) {
     std::string result;
     bool ran = g_mailbox.call(
         [&] {
-            if (needs_config && !g_game.configured()) return std::string("refused not configured");
+            if (needs_config && !g_game.client_ready()) {
+                return std::string("refused not configured");
+            }
             return work();
         },
         kFrameWaitMs, result);
@@ -393,7 +399,7 @@ enum class Match { kName, kPrefix, kWord };
 struct Request {
     const char* name;
     Match match;
-    bool needs_config;  // `game` refused while nothing configured the helper
+    bool needs_config;  // `game` refused until a config with every key (on_game)
     std::string (*game)();
     std::string (*run)(const std::string& request) = nullptr;
 };

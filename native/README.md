@@ -85,7 +85,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= skip= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= skip= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only keys, ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
@@ -110,12 +110,22 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `reads`: the reads a frame has taken, and the seeds the last one found.
+- `cache_missing`: the client-only keys (below) the offline cache lacked, comma-separated.
 
 `config` carries the addresses the client resolved by byte pattern (`CONFIG_KEYS` in
 `client/native.py`). The whole configuration is refused unless:
 
-- every name is there, in an offline cache too (an older helper's cache lacking one reads
-  `read_error=cache:_missing_NAME` until a client rewrites it);
+- every name is there. An offline cache ("AP saves without the client") may lack the client-only
+  ones, marked `client_only` in `kConfigKeys` (`src/game_calls.cpp`): those only the grants, new
+  games, DeathLink, Energy Shields and RETURN HOME WITH THE DISKS? read. The helper then
+  configures with those unset (`hello` lists them as `cache_missing`), and those parts, and
+  every frame request that needs a config, get `refused not configured` until a client's
+  `config` sets every key. A cache lacking any other key is refused
+  (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds a key
+  only the client's parts read keeps working offline with the older cache; one that adds a key
+  the offline look reads does not, until the client has run once. `tests/test_cross_checks.py`
+  checks that no part the offline look uses reads a client-only key, and that the client's parts
+  wait for every key;
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -475,8 +485,9 @@ new ARCHIPELAGO game's own save getting the logo.
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
 - **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
   first. With no client yet, the cached addresses configure it if they are for its build and the
-  game holds every checked function's bytes. So the offline look, the escape skip, the map
-  markers and the title lines all run with no client once the cache checks out.
+  game holds every checked function's bytes, even if the cache lacks the client-only keys (a
+  cache from before a release that added one: "The pipe"). So the offline look, the escape skip,
+  the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock, the escape skip, the disk count
