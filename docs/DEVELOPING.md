@@ -111,7 +111,7 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - `/reload_mod` in play: the mod back 3 s later, the ASSIST lock and the map's items the game's
   for those seconds: 2026-10-26. With the pause or equipment screen open it unloaded, and the
   open screen showed the disk wrong until reopened (2026-10-26), so an unload now refuses with a
-  menu open; not seen in game yet.
+  menu open: refused with the pause screen open, then reloaded in play, 2026-10-26.
 - What the helper changed put back when the client goes away (item records, ASSIST, the escape
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
