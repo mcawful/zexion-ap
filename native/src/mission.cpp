@@ -89,16 +89,16 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
         return;
     }
     if (requested_ && a.hooks.mission_open != nullptr && routine(a, kPromptRoutine) != nullptr) {
-        // As event 3666: the routine and its delay, then event 3667's fade.
-        // Held from the moment the game holds the opener, before anything that may throw.
+        // As event 3666: the routine and its delay, then event 3667's fade. armed_ is set
+        // before the fade runs game code, so a fault there still counts the opener as held.
         put(a.transition_fn, 0, a.hooks.mission_open);
-        put<int32_t>(a.transition_timer, 0, kFadeDelay);
+        put<int32_t>(a.transition_timer, 0, 1);  // no fade: at once
         requested_ = false;
         armed_ = true;
         std::string why = fade(a, true);
         faded_ = why.empty();
-        if (!faded_) put<int32_t>(a.transition_timer, 0, 1);  // no fade: at once, as before
-        status_ =faded_ ? "opening after the fade" : "opening without the fade: " + why;
+        if (faded_) put<int32_t>(a.transition_timer, 0, kFadeDelay);
+        status_ = faded_ ? "opening after the fade" : "opening without the fade: " + why;
     }
 }
 
@@ -131,12 +131,24 @@ std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
     return "";
 }
 
+void MissionPrompt::fade_back(const GameAddresses& a) {
+    if (faded_) fade(a, false);  // the record checked again: skipped if it changed since
+    faded_ = false;
+}
+
 void MissionPrompt::take_back(const GameAddresses& a) {
     put(a.transition_fn, 0, routine(a, kIdleRoutine));
     put<int32_t>(a.transition_timer, 0, 0);
     armed_ = false;
-    if (faded_) fade(a, false);  // checked when it faded out: the same table
-    faded_ = false;
+    fade_back(a);
+}
+
+void MissionPrompt::put_off(const GameAddresses& a) {
+    armed_ = false;
+    if (writable_fields(a)) take_back(a);
+    fade_back(a);
+    requested_ = true;
+    status_ = "asked again: not in play when it opened";
 }
 
 std::string MissionPrompt::open(const GameAddresses& a) {
@@ -144,12 +156,8 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     auto builder = reinterpret_cast<void (*)()>(routine(a, kPromptRoutine));
     if (builder == nullptr) {
         // Not built: the idle routine back, and the screen out of the fade.
-        if (writable_fields(a)) {
-            put(a.transition_fn, 0, routine(a, kIdleRoutine));
-            put<int32_t>(a.transition_timer, 0, 0);
-        }
-        if (faded_) fade(a, false);
-        faded_ = false;
+        if (writable_fields(a)) take_back(a);
+        fade_back(a);
         return status_ = "no prompt builder";
     }
     faded_ = false;  // the builder sets the level and the fade back in itself

@@ -1,6 +1,7 @@
 // RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
 // Disks (docs/re/memory.md, "The mission prompt"). When idle in play (timer 0, routine table
-// entry 2 the pause opener, no menu), the helper opens it as the escape skip's prompt opens:
+// entry 2 the pause opener, no menu; the game's last message far enough in, game_calls.cpp,
+// kFadeMessageLeft), the helper opens it as the escape skip's prompt opens:
 // event 3666 sets the transition routine (its opener here, routine 15 0x1668A0 there) with
 // timer 60, and runs event 3667, the game's fade to black, through the area-event handlers.
 // If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
@@ -35,14 +36,20 @@ public:
     void request();
 
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
-    // state, and no popup showing or queued. Sets the opener (or, after YES, the ending) once the
-    // game is idle, and gives up on an opener another transition took the place of (asked again).
+    // state, no popup of the helper's to show, and the game's last message down to its last
+    // kFadeMessageLeft frames (game_calls.cpp; for the ending, ended). Sets the opener (or, after
+    // YES, the ending) once the game is idle, and gives up on an opener another transition took
+    // the place of (asked again).
     void watch(const GameAddresses& addresses, bool idle_in_play);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
     // and wraps YES. Returns "" or what was not as traced; once the three children are read,
     // YES points at NO (if NO's callback reads) whatever else fails.
     std::string open(const GameAddresses& addresses);
+
+    // Game thread, from the opener when not in play (a death during the fade): the opener
+    // taken off, the fade turned back, and the prompt asked for again.
+    void put_off(const GameAddresses& addresses);
 
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
     // ending asked for.
@@ -71,6 +78,8 @@ private:
     // Runs event 3667 (`out`), or a copy of it aimed back at the normal level, through the
     // type 1 handler: "" or what was not as traced (nothing run).
     std::string fade(const GameAddresses& addresses, bool out);
+    // Turns the fade back to the normal level, if it ran for the opener.
+    void fade_back(const GameAddresses& addresses);
     // Takes the opener off before it runs: the idle routine, timer 0, the fade turned back.
     void take_back(const GameAddresses& addresses);
 

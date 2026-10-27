@@ -213,7 +213,7 @@ void test_unload_puts_back() {
     zap::GameAddresses a = addresses();
     m.request();
     m.watch(a, true);
-    check(m.holds_hook(), "while it fades, the game holds the opener: an unload refuses");
+    check(m.holds_hook(), "while it fades, the game holds the opener");
     m.restore(a);
     check(g_fn == kIdle && g_timer == 0 && !m.holds_hook(),
           "an opener not run: the idle routine back");
@@ -227,6 +227,7 @@ void test_unload_puts_back() {
     check(at<void*>(prompt.child[0], 0x2C0) == reinterpret_cast<void*>(&game_no),
           "a prompt up: YES is NO, never the escape skip's YES");
     check(!m.holds_hook(), "nothing held");
+    check(g_fades.size() == 1, "no fade back once the prompt is up: NO's close does that");
 }
 
 void test_an_unexpected_prompt_never_keeps_the_escape_skip() {

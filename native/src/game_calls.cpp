@@ -29,10 +29,12 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
-// Grabbing Zexion shows its 180-frame popup, and its object's states 2284 (60 frames) and 2286
-// (50) come before 3674 runs event 3665, the escape skip's fade: 70 of the popup's frames left
+// RETURN HOME's fade starts with this many frames of the game's last message (GAME SAVED, 180
+// frames, 0x1FC876) left. Grabbing Zexion shows its 180-frame popup, and its object's states
+// 2284 (60 frames) and 2286 (50) come before 3674 runs event 3665, the escape skip's fade:
+// 180 - 60 - 50 = 70 left, assuming the popup and state 2284 start on the same frame
 // (docs/re/memory.md, "The mission prompt").
-constexpr int32_t kFadeMessageLeft = kPopupFrames - 60 - 50;
+constexpr int32_t kFadeMessageLeft = 70;
 // Frames between two looks at the escape skip's event and at the scanner's text.
 constexpr int kSkipFrames = 30, kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
@@ -390,6 +392,8 @@ std::string Game::kill(uint64_t now_ms) {
     }
     if (*at_.halt_flag != 0) return "refused halted";
     if (popup_busy()) return "refused message showing";
+    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death.
+    if (mission_.opening()) return "refused RETURN HOME WITH THE DISKS? opening";
     BYTE* p = player();
     at<int16_t>(p, kEnergy) = 0;
     reinterpret_cast<DeathFn>(at_.death_fn)(p, 0);
@@ -700,12 +704,14 @@ void Game::watch_mission() {
         mission_save_ = save;
     }
     // Idle: no popup to show here (one held for another save does not count), the helper's
-    // last one kPopupGapFrames ago, and the game's last message (GAME SAVED: 180 frames,
-    // 0x1FC876) down to kFadeMessageLeft frames: the fade starts as far into it as the escape
-    // skip's into Zexion's popup, and the prompt cuts its last frames short as that one does.
+    // last one kPopupGapFrames ago, and the game's last message down to kFadeMessageLeft
+    // frames; one of the helper's own popups (shown under kPopupFrames ago) is never cut short,
+    // nor any message by the ending after YES.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
-    bool idle = in_play() && !waiting && popup_frames_left() <= kFadeMessageLeft &&
+    bool whole = frames_since_popup_ < kPopupFrames || mission_.ending();
+    int32_t left = whole ? 1 : kFadeMessageLeft;
+    bool idle = in_play() && !waiting && popup_frames_left() <= left &&
                 frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle);
 }
@@ -907,7 +913,13 @@ void Game::restore_intel() {
 }
 
 void Game::mission_open() {
-    if (configured_) mission_.open(at_);
+    if (!configured_) return;
+    // Not in play when the opener runs (the player died during the fade): asked again later.
+    if (!in_play()) {
+        mission_.put_off(at_);
+        return;
+    }
+    mission_.open(at_);
 }
 
 void Game::equipment_event(void* widget, intptr_t event) {

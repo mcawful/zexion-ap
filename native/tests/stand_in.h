@@ -47,14 +47,12 @@ inline void spawn_handler(char row, char column, BYTE* event) {
     g_spawn_column = column;
     g_spawn_event = event;
 }
-// Type 1's (the fade, mission.h) records each record it was given, as it was then.
+// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given.
 inline int g_fade_calls = 0;
 inline BYTE* g_fade_event = nullptr;
-inline BYTE g_fade_record[0x28];
 inline void fade_handler(char, char, BYTE* event) {
     ++g_fade_calls;
     g_fade_event = event;
-    std::memcpy(g_fade_record, event, sizeof(g_fade_record));
 }
 inline void* g_event_handlers[32];
 struct LastMessage {
