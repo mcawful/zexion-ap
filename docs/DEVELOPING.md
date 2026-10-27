@@ -244,8 +244,9 @@ Running it may load the helper into the game: the one already there if it is thi
   the seed's mode, with no options changed, gets the seed. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
-  meanwhile (popups still queued are lost; items are not); with a menu or the map open it
-  refuses and says why, and the mod stays loaded.
+  meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
+  while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
+  and the mod stays loaded.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its
