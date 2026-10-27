@@ -65,3 +65,40 @@ def test_a_mode_holds_what_its_starts_share_and_refuses_what_they_do_not() -> No
     assert gwd.shared([[1, 2], [1, 2]], "ohko", "regions") == [1, 2]
     with pytest.raises(SystemExit, match="ohko: its starts differ in regions"):
         gwd.shared([[1], [2]], "ohko", "regions")
+
+
+def core_map(extra_conditional: bool = False):
+    """A synthetic map: a kept cell (0, 0), a door east into (1, 0) needing Abridged Finale,
+    then (1, 0) to (2, 0) needing the Jump Booster, Zexion at (2, 0); optionally a second
+    conditional passage in the core, off the way, (2, 0) to (2, 1)."""
+    wall = {d: gwd.rc.WALL for d in "NSWE"}
+
+    def cell(passage=None, lists=None):
+        return gwd.rc.Cell(
+            lists={d: (lists or {}).get(d, []) for d in "NSWE"},
+            passage={**wall, **(passage or {})},
+            item_gated=False,
+            item_needs=[],
+        )
+
+    grid = [[cell() for _ in range(54)] for _ in range(54)]
+    c = gwd.rc.CONDITIONAL
+    grid[0][0] = cell({"E": c}, {"E": [gwd.ABRIDGED_FINALE]})
+    grid[0][1] = cell({"W": gwd.rc.OPEN, "E": c}, {"E": [(22, 1)]})
+    grid[0][2] = cell({"W": gwd.rc.OPEN, **({"S": c} if extra_conditional else {})})
+    return grid
+
+
+def test_the_core_is_the_unkept_zexion_cell_behind_the_abridged_finale_door() -> None:
+    core = gwd.core_goal(core_map(), {(0, 0), (5, 5)}, [(5, 5), (2, 0)])
+    assert core == {"door": (0, 0), "cell": (2, 0), "needs": [(((22, 1),), None)]}
+
+
+def test_a_core_with_another_way_through_is_refused() -> None:
+    with pytest.raises(SystemExit, match="off the way to Zexion"):
+        gwd.core_goal(core_map(extra_conditional=True), {(0, 0)}, [(2, 0)])
+
+
+def test_a_core_without_its_door_is_refused() -> None:
+    with pytest.raises(SystemExit, match="one passage into the core"):
+        gwd.core_goal(core_map(), {(0, 0), (1, 0)}, [(2, 0)])

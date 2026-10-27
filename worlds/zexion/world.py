@@ -49,7 +49,7 @@ from .locations import (
 )
 from .options import AUTOMATIC, START_CELLS, Goal, ZexionOptions
 
-GOAL_CELL = (32, 45)  # the core, where Zexion is grabbed
+CORE_REGION = "The Core"  # where Zexion is grabbed: data.CORE
 AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
@@ -208,13 +208,24 @@ class ZexionWorld(World):
                 location.access_rule = rules.requirement(self, entries, cell)
             region.locations.append(location)
 
-        # The core goal is the grab of Zexion behind the four keys (RandoCells does not model
-        # the keys); the client sends the goal at the ending (docs/re/memory.md, "The ending:
-        # flag 250"), reached through the helper's escape skip or the escape itself. The OS
-        # Install Disks goal has no event.
+        # The core goal is the grab of Zexion in the core, behind the four keys (RandoCells
+        # does not model the keys); the client sends the goal at the ending (docs/re/memory.md,
+        # "The ending: flag 250"), reached through the helper's escape skip or the escape
+        # itself. RandoCells opens the core only with Abridged Finale, so it has no region of its
+        # own: it is entered from the last cell the world keeps, with the requirement lists on
+        # the way to Zexion (data.CORE; docs/re/locations.md, "The core goal is Zexion's cell in
+        # the core"). The OS Install Disks goal has no event.
         if self.disc_hunt:
             return
-        core = by_index[cells[GOAL_CELL]]
+        core = Region(CORE_REGION, self.player, self.multiworld)
+        self.multiworld.regions.append(core)
+        ways = [rules.requirement(self, *way) for way in data.CORE["needs"]]
+        entrance = by_index[cells[data.CORE["door"]]].connect(
+            core, "Into the core", lambda state: all(way(state) for way in ways)
+        )
+        for way in data.CORE["needs"]:
+            for r in rules.neighbor_regions(*way) & self.created_regions:
+                self.multiworld.register_indirect_condition(by_index[r], entrance)
         goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(
             ZexionItem("Victory", ItemClassification.progression, None, self.player)
