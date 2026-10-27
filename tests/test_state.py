@@ -3,49 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from fakes import AMOUNTS, CELLS
+from fakes import slot_data
 
-from client import discs, state
-from client import save_patch as sp
-
-ITEMS = [46] * sp.LOCATIONS
-ITEMS[3], ITEMS[9], ITEMS[12] = 47, 48, 44  # a stand-in, a progression stand-in, a disk
-
-
-def slot_data(**changes) -> dict:
-    slot = {
-        "location_items": ITEMS,
-        "start_items": {"0": 3},
-        "start_index": 5,
-        "start_column": 326,
-        "start_row": 449,
-        "second_start": None,
-        "amounts": list(AMOUNTS),
-        "options": {"42": 2},
-        "locations": [list(c) for c in CELLS],
-        "kept_locations": [i for i in range(sp.LOCATIONS) if i != 9],
-        "mode": "Standard",
-        "menu": {
-            "seed_text": "0123456789ABCDEF",
-            "start": [0] * 27,
-            "pool": [1] * 27,
-            "settings": [0] * 64,
-            "second_target": [0, 20, 509],
-        },
-        "stand_in": 47,
-        "stand_in_progression": 48,
-        "hints": [],
-        "allow_assists": True,
-        "intel_chip": False,
-        "death_link": False,
-        "goal": "core",
-        "discs_required": 0,
-        "discs_placed": 0,
-        "discs_start": 0,
-        "disc_locations": [],
-    }
-    slot.update(changes)
-    return slot
+from client import discs, game, native, state
 
 
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
@@ -86,11 +46,13 @@ def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
     del slot[key]
     with pytest.raises(state.UnsupportedSeed, match="version of the Zexion world"):
         state.Connection.from_slot_data(slot, team=0, slot=1)
+
+
+@pytest.mark.parametrize("changes", [{"goal": "boss"}, {"menu": []}, {"start_items": []}])
+def test_slot_data_values_this_client_cannot_read_are_an_unsupported_seed(changes) -> None:
+    # A goal it does not know, or a value of another kind.
     with pytest.raises(state.UnsupportedSeed):
-        state.Connection.from_slot_data(slot_data(goal="boss"), team=0, slot=1)
-    for wrong_form in ({"menu": []}, {"start_items": []}):  # a value of another kind
-        with pytest.raises(state.UnsupportedSeed):
-            state.Connection.from_slot_data(slot_data(**wrong_form), team=0, slot=1)
+        state.Connection.from_slot_data(slot_data(**changes), team=0, slot=1)
 
 
 def test_the_data_storage_keys_are_per_team_and_slot() -> None:
@@ -140,6 +102,13 @@ def test_a_stored_count_starts_the_session_capped_at_the_items_held() -> None:
     assert state.announced_to_store(3, 3, None) is None, "nothing new: nothing stored"
 
 
+def test_a_shield_count_that_is_not_a_count_pauses_shields_rather_than_reading_as_none() -> None:
+    assert state.shield_count(None) == 0, "none stored: none given"
+    assert state.shield_count(0) == 0 and state.shield_count(4) == 4
+    for bad in ("x", -1, True, 2.5, [1]):
+        assert state.shield_count(bad) is None, "every received shield would be given again"
+
+
 def test_a_reconnect_does_not_queue_again_what_the_same_helper_holds() -> None:
     assert state.announced_start(3, 5, queued_before=5) == (5, 3)
     assert state.announced_start(3, 5, queued_before=9) == (5, 3)
@@ -171,7 +140,7 @@ def test_a_lost_helper_queues_again_what_it_had_not_shown() -> None:
     conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
     conn.helper_lost()
     assert conn.session.announced is None, "nothing known yet: nothing to queue again"
-    conn.session.mark_announced(5)
+    conn.session.announced = 5
     conn.announced_shown, conn.queued_before = 3, 5
     conn.helper_lost()
     assert conn.session.announced == 3 and conn.queued_before is None
@@ -209,7 +178,6 @@ def test_the_save_loaded_line_names_the_games_slot() -> None:
 
 
 def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
-    from client import game
 
     unknown = state.attach_failed(game.UnknownBuild("timestamp 0x1234 and image size 0x5678"))
     assert "isn't supported yet" in unknown and "0x" not in unknown
@@ -220,7 +188,6 @@ def test_a_game_the_client_cannot_use_is_said_plainly() -> None:
 
 
 def test_the_mod_failing_is_said_plainly_unless_the_player_can_fix_it() -> None:
-    from client import native
 
     fixable = state.helper_failed(native.ModFixable("it isn't installed; copy the two files"))
     assert "it isn't installed; copy the two files" in fixable

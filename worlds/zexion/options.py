@@ -26,7 +26,7 @@ class Mode(Choice):
 
 # Every start room valid in some mode, in a fixed order; which ones a mode accepts is in
 # data.MODES[mode]["starts"].
-START_CELLS = sorted({tuple(s["cell"]) for m in MODES.values() for s in m["starts"]})
+START_CELLS = sorted({s["cell"] for m in MODES.values() for s in m["starts"]})
 AUTOMATIC = len(START_CELLS)
 MODE_NAMES = {"easy": "Easy", "standard": "Standard", "ohko": "OHKO"}
 
@@ -41,7 +41,7 @@ def _rooms_by_mode() -> str:
     """Which rooms each mode can start in, by option name, for the description."""
     groups: dict[tuple, list[str]] = {}
     for mode, m in MODES.items():
-        cells = tuple(sorted(tuple(s["cell"]) for s in m["starts"]))
+        cells = tuple(sorted(s["cell"] for s in m["starts"]))
         groups.setdefault(cells, []).append(MODE_NAMES[mode])
     parts = []
     for cells, modes in groups.items():

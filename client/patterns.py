@@ -37,7 +37,9 @@ KNOWN_BUILDS = (
 class Pattern:
     text: str  # hex bytes, "??" for wildcards
     disp_at: int  # offset in the match of the 32-bit field leading to the address
-    kind: str  # "rip": match + rip_end + field; "at": the match itself (a function start)
+    # "rip": match + rip_end + field; "at": the match itself (a function start); "rva": printed
+    # by tools/make_pattern.py only, refused by the client.
+    kind: str
     rip_end: int  # offset of the end of the referring instruction
     addend: int  # added to what the field leads to
 
@@ -918,7 +920,6 @@ TARGETS = (
 )
 # fmt: on
 
-BY_NAME = {t.name: t for t in TARGETS}
 # Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
 # locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
 TOOL_TARGETS = frozenset({"pickup_counter"})

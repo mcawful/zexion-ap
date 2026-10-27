@@ -14,14 +14,9 @@
 #include <map>
 #include <string>
 
-namespace zap {
+#include "addresses.h"
 
-struct FileAddresses {
-    BYTE* current_menu = nullptr;  // holds the top menu
-    void* file_panel_fn = nullptr;  // the entries' panel handler
-    void* entry_fns[3] = {};        // the entry handlers: the file select's, COPY's and DELETE's
-    void* hook = nullptr;           // the helper's wrapper of an entry's handler
-};
+namespace zap {
 
 // The squashed DISK: "DI" and "SK", drawn as the game's KEYS (0x81 "KE", 0x82 "YS"), into font
 // glyphs empty in the game's art (found by their alpha in Sprites.png, as 0xFB), painted while
@@ -41,16 +36,16 @@ public:
 
     // Game thread, each frame: wraps the entries' handlers on the open file screens (while
     // on, else puts them back), and rewrites entries still showing keys.
-    void watch(const FileAddresses& addresses);
+    void watch(const GameAddresses& addresses);
 
     // Game thread, from the helper's entry handler: the game's handler for `widget` (null if
     // not one this wrapped), to call first.
     void* original(void* widget) const;
     // ...then, after event 0xF (the fill), the entry rewritten.
-    void on_event(const FileAddresses& addresses, void* widget, intptr_t event);
+    void on_event(const GameAddresses& addresses, void* widget, intptr_t event);
 
     // Game thread: every wrapped handler put back, in menus still open (before an unload).
-    void restore(const FileAddresses& addresses);
+    void restore(const GameAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
     // Each listed slot's count.

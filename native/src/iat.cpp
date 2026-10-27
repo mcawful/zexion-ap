@@ -3,17 +3,14 @@
 #include <cstdint>
 #include <cstring>
 
+#include "game_mem.h"  // nt_headers
+
 namespace zap {
 
 void** find_import_slot(HMODULE module, const char* dll, const char* function) {
     auto* base = reinterpret_cast<BYTE*>(module);
-    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE ||
-        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-        return nullptr;
-    }
+    const IMAGE_NT_HEADERS64* nt = nt_headers(module);
+    if (nt == nullptr || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return nullptr;
     const auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
     if (dir.VirtualAddress == 0) return nullptr;
     for (auto* desc = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + dir.VirtualAddress);

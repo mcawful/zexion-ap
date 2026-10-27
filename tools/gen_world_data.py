@@ -23,8 +23,10 @@ entrance carrying the requirement list of the cell it leaves from. The map is sh
 modes; a mode's settings only change how the rules evaluate. Only cells reachable with every
 item from some mode's valid start are kept. A start is valid for a mode when, with every item
 of that mode, all 154 locations are reachable from it, and with only that mode's starting
-inventory at least ``MIN_SPHERE_ZERO`` are. The output is a Python module of plain data;
-worlds/zexion turns it into regions and rules with worlds/zexion/logic.py.
+inventory at least ``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions
+and locations with every item, which the mode then holds once; the generator refuses data where
+they differ. The output is a Python module of plain data; worlds/zexion turns it into regions
+and rules with worlds/zexion/logic.py.
 """
 
 from __future__ import annotations
@@ -106,14 +108,6 @@ def components(cells: set, grid) -> dict:
     return comp
 
 
-def location_ok(grid, cell, have, settings, reached: set) -> bool:
-    x, y = cell
-    rec = grid[y][x]
-    return not rec.item_gated or rc.satisfied(
-        rec.item_needs, have, settings, rc.Where(x, y, reached)
-    )
-
-
 # The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
 # Double Teleport, Safety (code 69's mode) and Gates. The helper refuses a new game whose
 # settings differ (client/newgame.py, expect lines).
@@ -156,7 +150,7 @@ def menu_preset(exe: bytes, build: str, name: str, save: bytes) -> dict:
     settings = rdata(exe, settings_at, 64)
     if not set(start) <= {0, 1} or not set(pool) <= {0, 1} or not set(settings) <= {0, 1}:
         raise SystemExit(f"{name}'s preset at {start_at:#x} is not 0/1 entries")
-    saved = save[rc.OPTIONS_IN_SAVE + 10 : rc.OPTIONS_IN_SAVE + 74]
+    saved = save[sp.OPTIONS + 10 : sp.OPTIONS + 74]
     wrong = [t + 10 for t in range(64) if t + 10 != COLOR and settings[t] != saved[t]]
     if wrong:
         raise SystemExit(f"{name}'s preset settings {wrong} differ from its fresh save")
@@ -187,57 +181,43 @@ def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
     found = [
         i
         for i, c in enumerate(locations)
-        if c in cells and location_ok(grid, c, have, settings, cells)
+        if c in cells and rc.collectible(grid, c, have, settings, cells)
     ]
     return cells, found
 
 
-def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list[dict]:
-    """The candidates valid for one mode, each with the cells every item reaches from it."""
+def mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double) -> list:
+    """A mode's starts, each with the cells and locations every item reaches from it alone, and
+    the locations its starting inventory reaches: the valid candidates, or for a mode with a
+    second teleport target (``double``) every candidate. The world picks a pair there and
+    combines two of these; flooding from both at once can only reach more (codes 64-67 look at
+    reached cells), so the combination is on the safe side."""
     full = full_inventory(start_inv, pool)
     starts = []
     for cand in candidates:
         start = tuple(cand["cell"])
         reach_all, every = reach(grid, locations, full, settings, start)
         _, sphere0 = reach(grid, locations, start_inv, settings, start)
-        whole = len(every) == len(locations)
-        valid = whole and len(sphere0) >= MIN_SPHERE_ZERO
-        print(
-            f"{name}: start {cand['index']:2d} {start}: all items reach "
-            f"{'all' if whole else 'NOT all'} locations; sphere 0 has {len(sphere0)}"
-            f"{'' if valid else '  -> left out'}"
-        )
-        if valid:
-            starts.append({**cand, "cells": reach_all})
-    return starts
-
-
-def pair_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list[dict]:
-    """For a mode with a second teleport target: every candidate, with the cells and locations
-    every item reaches from it alone, and the locations its starting inventory reaches. The
-    world picks a pair and combines two of these; flooding from both at once can only reach
-    more (codes 64-67 look at reached cells), so the combination is on the safe side."""
-    full = full_inventory(start_inv, pool)
-    out = []
-    for cand in candidates:
-        start = tuple(cand["cell"])
-        reach_all, every = reach(grid, locations, full, settings, start)
-        _, sphere0 = reach(grid, locations, start_inv, settings, start)
-        out.append(
-            {**cand, "cells": reach_all, "location_indices": every, "sphere0_indices": sphere0}
-        )
+        valid = len(every) == len(locations) and len(sphere0) >= MIN_SPHERE_ZERO
         print(
             f"{name}: start {cand['index']:2d} {start}: every item reaches {len(every)} "
             f"locations, the starting items {len(sphere0)}"
+            f"{'' if valid or double else '  -> left out'}"
         )
-    return out
+        if valid or double:
+            starts.append(
+                {**cand, "cells": reach_all, "location_indices": every, "sphere0_indices": sphere0}
+            )
+    if not starts:
+        raise SystemExit(f"{name}: no start room is valid")
+    return starts
 
 
-def shared(starts: list[dict], key: str) -> list | None:
-    """The value of ``key`` when every start has the same one (then held once by the mode)."""
-    values = [st[key] for st in starts if key in st]
-    if not values or len(values) < len(starts) or any(v != values[0] for v in values):
-        return None
+def shared(values: list, name: str, what: str) -> list:
+    """The one value every start of mode ``name`` has for ``what``, which the mode holds once
+    (every start has the same, on build B1)."""
+    if any(v != values[0] for v in values):
+        raise SystemExit(f"{name}: its starts differ in {what}; the world needs them the same")
     return values[0]
 
 
@@ -288,14 +268,13 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             raise SystemExit(f"{save_path.name}: its location list differs from the others")
         start_inv = rc.inventory_from_save(data)
         settings = rc.settings_from_save(data)
-        double = bool(data[rc.OPTIONS_IN_SAVE + rc.DOUBLE_TELEPORT])
-        pick = pair_starts if double else mode_starts
-        starts = pick(grid, locations, pool, start_inv, settings, candidates, name)
+        double = bool(data[sp.OPTIONS + rc.DOUBLE_TELEPORT])
+        starts = mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double)
         for st in starts:
             union |= st["cells"]
         modes[name] = {
             "amounts": struct.unpack_from("<6h", data, sp.AMOUNTS),
-            "checked_options": {t: data[rc.OPTIONS_IN_SAVE + t] for t in CHECKED_OPTIONS},
+            "checked_options": {t: data[sp.OPTIONS + t] for t in CHECKED_OPTIONS},
             "double_teleport": double,
             "settings": settings,
             "pool": pool,
@@ -306,8 +285,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         }
 
     comp = components(union, grid)
-    regions = sorted(set(comp.values()))
-    region_cells = {r: sorted(c for c in union if comp[c] == r) for r in regions}
+    cell_region = {c: comp[c] for c in sorted(union)}
 
     entrances = {}
     for x, y in union:
@@ -336,30 +314,27 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         if grid[y][x].item_gated:
             location_rules[i] = tuple(grid[y][x].item_needs)
 
-    for mode in modes.values():
-        starts = [
+    for name, mode in modes.items():
+        starts = mode["starts"]
+        regions = [sorted({comp[c] for c in st["cells"]}) for st in starts]
+        mode["regions"] = shared(regions, name, "regions")
+        locations_of = [st["location_indices"] for st in starts]
+        mode["location_indices"] = shared(locations_of, name, "locations")
+        mode["starts"] = [
             {
                 "index": st["index"],
                 "cell": tuple(st["cell"]),
                 "column": st["column"],
                 "row": st["row"],
-                "regions": sorted({comp[c] for c in st["cells"]}),
-                **{k: st[k] for k in ("location_indices", "sphere0_indices") if k in st},
+                # Only a mode with a second teleport target picks a pair by these.
+                **({"sphere0_indices": st["sphere0_indices"]} if mode["double_teleport"] else {}),
             }
-            for st in mode["starts"]
+            for st in starts
         ]
-        # What every start agrees on is held once by the mode (it is, on build B1).
-        for key in ("regions", "location_indices"):
-            value = shared(starts, key)
-            mode[key] = value
-            if value is not None:
-                for st in starts:
-                    del st[key]
-        mode["starts"] = starts
     return {
         "locations": locations,
         "modes": modes,
-        "region_cells": region_cells,
+        "cell_region": cell_region,
         "entrances": entrances,
         "location_rules": location_rules,
         "build": cells_path.parent.name,
@@ -391,8 +366,9 @@ def render(d: dict, source: str) -> str:
         f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
         "",
         "# Per mode ('checked_options': the settings a new game must match). 'regions' and",
-        "# 'location_indices' are None when starts differ (each start then has its own); a mode",
-        "# with a second teleport target lists every candidate with 'sphere0_indices'.",
+        "# 'location_indices': what every item reaches from each of the mode's starts, the same",
+        "# from all of them. A mode with a second teleport target lists every candidate, with",
+        "# 'sphere0_indices'.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
@@ -419,11 +395,11 @@ def render(d: dict, source: str) -> str:
             f"        'second_target': {m['second_target']!r},",
             "    },",
         ]
-    out += ["}", "", "# Region index -> its cells.", "REGION_CELLS = {"]
-    for r, cells in d["region_cells"].items():
-        out.append(f"    {r}: {cells!r},")
     out += [
         "}",
+        "",
+        "# Cell -> the index of its region.",
+        f"CELL_REGION = {d['cell_region']!r}",
         "",
         "# (from region, to region) -> ways through: None (always open) or (entries, cell),",
         "# where cell is set when the entries hold a code 64-69, which is checked at a cell.",
@@ -498,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     n_ways = sum(len(w) for w in d["entrances"].values())
     per_mode = ", ".join(f"{n}: {len(m['starts'])} starts" for n, m in d["modes"].items())
     print(
-        f"{len(d['region_cells'])} regions, {len(d['entrances'])} region links "
+        f"{len(set(d['cell_region'].values()))} regions, {len(d['entrances'])} region links "
         f"({n_ways} ways), {len(d['location_rules'])} gated locations; {per_mode} -> {out}"
     )
     return 0

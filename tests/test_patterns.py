@@ -1,10 +1,11 @@
-"""client/patterns.py against patterns_frozen.json, a copy of every build and pattern. A change
-to the patterns updates the copy in the same change, so it shows in review:
-``.venv/Scripts/python tests/test_patterns.py`` rewrites it.
+"""client/patterns.py against a digest of every build and pattern (FROZEN_SHA256), so a change to
+the patterns, accidental or not, fails here until the digest is updated in the same change:
+``.venv/Scripts/python tests/test_patterns.py`` prints the new one.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -14,15 +15,13 @@ if __name__ == "__main__":
 
 from client.patterns import KNOWN_BUILDS, TARGETS, Pattern, at, rip  # noqa: E402
 
-FROZEN_PATH = Path(__file__).parent / "patterns_frozen.json"
+FROZEN_SHA256 = "efb7cf92b6150277175aa6153a706dfc3067eff3a01d8e113abd0aae357caa68"
 
 
-def builds() -> list[list]:
-    return [[b.name, b.sha256, b.timestamp, b.size_of_image] for b in KNOWN_BUILDS]
-
-
-def targets() -> list[dict]:
-    return [
+def digest() -> str:
+    """The SHA-256 of every build, and every target's name, description, RVAs and patterns."""
+    builds = [[b.name, b.sha256, b.timestamp, b.size_of_image] for b in KNOWN_BUILDS]
+    targets = [
         {
             "name": t.name,
             "description": t.description,
@@ -31,31 +30,12 @@ def targets() -> list[dict]:
         }
         for t in TARGETS
     ]
+    text = json.dumps({"builds": builds, "targets": targets}, sort_keys=True)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def frozen_text() -> str:
-    """The copy as written: one line per build, target and pattern."""
-    lines = ["{", f' "builds": [{", ".join(json.dumps(b) for b in builds())}],', ' "targets": [']
-    listed = targets()
-    for i, t in enumerate(listed):
-        head = {k: t[k] for k in ("name", "description", "rvas")}
-        lines.append(f"  {json.dumps(head)[:-1]}, " + '"patterns": [')
-        pats = [f"   {json.dumps(p)}" for p in t["patterns"]]
-        lines.append(",\n".join(pats))
-        lines.append("  ]}" + ("," if i < len(listed) - 1 else ""))
-    return "\n".join(lines + [" ]", "}"]) + "\n"
-
-
-def test_the_builds_are_the_frozen_ones() -> None:
-    assert builds() == json.loads(FROZEN_PATH.read_text(encoding="utf-8"))["builds"]
-
-
-def test_every_target_and_pattern_is_the_frozen_one() -> None:
-    frozen = json.loads(FROZEN_PATH.read_text(encoding="utf-8"))["targets"]
-    got = targets()
-    assert [t["name"] for t in got] == [t["name"] for t in frozen]
-    for mine, theirs in zip(got, frozen, strict=True):
-        assert mine == theirs, mine["name"]
+def test_the_builds_and_patterns_are_the_frozen_ones() -> None:
+    assert digest() == FROZEN_SHA256, "patterns.py changed: update FROZEN_SHA256 (module doc)"
 
 
 def test_the_constructors_build_each_kind() -> None:
@@ -72,5 +52,4 @@ def test_every_target_has_an_rva_for_each_known_build_and_no_other() -> None:
 
 
 if __name__ == "__main__":
-    FROZEN_PATH.write_bytes(frozen_text().encode("utf-8"))
-    print(f"wrote {FROZEN_PATH}")
+    print(digest())

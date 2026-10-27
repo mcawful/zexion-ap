@@ -4,7 +4,6 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
 #include <map>
 #include <string>
@@ -24,6 +23,7 @@ void escape_yes(void*, int) { g_calls += 5; }
 void game_no(void*, int) { g_calls += 6; }
 void open_hook() { g_calls += 7; }
 void yes_hook(void*, int) { g_calls += 8; }
+void* const kIdle = reinterpret_cast<void*>(&pause_routine);  // the routine idle in play
 
 std::map<BYTE*, std::string> g_set;
 void text_set(void* text, const char* str, int, int) { g_set[static_cast<BYTE*>(text)] = str; }
@@ -34,7 +34,21 @@ int32_t g_timer = 0;
 BYTE* g_current = nullptr;
 void* g_table[16] = {};
 
-// The prompt as built: a menu, one panel of YES, NO and the question (30 glyphs).
+void builder();
+void reset() {
+    g_table[zap::kIdleRoutine] = kIdle;
+    g_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&ending_routine);
+    g_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&builder);
+    g_fn = kIdle;  // idle in play
+    g_timer = 0;
+    g_current = nullptr;
+    g_set.clear();
+}
+
+// The prompt as built: a menu, one panel of YES, NO and the question (30 glyphs). Made, it is
+// the one the builder shows, the game idle in play.
+struct Prompt;
+Prompt* g_prompt = nullptr;
 struct Prompt {
     BYTE menu[0x80] = {};
     BYTE* panels[1] = {};
@@ -43,6 +57,8 @@ struct Prompt {
     BYTE child[3][0x2D0] = {};
     BYTE question[0x268] = {};
     Prompt() {
+        g_prompt = this;
+        reset();
         at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
         panels[0] = panel;
         at<BYTE**>(panel, 0x1E0) = children;
@@ -58,7 +74,6 @@ struct Prompt {
         at<int32_t>(question, 0x1D8) = 30;
     }
 };
-Prompt* g_prompt = nullptr;
 // The game's builder (0x1668A0): the prompt on top, the transition cleared.
 void builder() {
     g_current = g_prompt->menu;
@@ -66,52 +81,39 @@ void builder() {
     g_timer = 0;
 }
 
-zap::MissionAddresses addresses() {
-    zap::MissionAddresses a;
+zap::GameAddresses addresses() {
+    zap::GameAddresses a;
     a.current_menu = reinterpret_cast<BYTE*>(&g_current);
     a.transition_fn = reinterpret_cast<BYTE*>(&g_fn);
     a.transition_timer = reinterpret_cast<BYTE*>(&g_timer);
     a.routine_table = reinterpret_cast<BYTE*>(g_table);
-    a.widget_handler = reinterpret_cast<void*>(&widget_handler);
-    a.text_set_fn = reinterpret_cast<void*>(&text_set);
-    a.open_hook = reinterpret_cast<void*>(&open_hook);
-    a.yes_hook = reinterpret_cast<void*>(&yes_hook);
+    a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler);
+    a.text_set_fn = reinterpret_cast<BYTE*>(&text_set);
+    a.hooks.mission_open = reinterpret_cast<void*>(&open_hook);
+    a.hooks.mission_yes = reinterpret_cast<void*>(&yes_hook);
     return a;
-}
-
-void reset() {
-    g_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&pause_routine);
-    g_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&ending_routine);
-    g_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&builder);
-    g_fn = reinterpret_cast<void*>(&pause_routine);  // idle in play
-    g_timer = 0;
-    g_current = nullptr;
-    g_set.clear();
 }
 
 void test_offered_when_idle_then_yes_ends() {
     Prompt prompt;
-    g_prompt = &prompt;
-    reset();
     zap::MissionPrompt m;
-    zap::MissionAddresses a = addresses();
+    zap::GameAddresses a = addresses();
     m.watch(a, true);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine), "not asked: nothing set");
+    check(g_fn == kIdle, "not asked: nothing set");
     m.request();
     m.watch(a, false);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine), "not idle in play: nothing set");
+    check(g_fn == kIdle, "not idle in play: nothing set");
     g_timer = 5;  // a transition pending
     m.watch(a, true);
-    check(g_timer == 5 && g_fn == reinterpret_cast<void*>(&pause_routine),
-          "a transition pending: nothing set");
+    check(g_timer == 5 && g_fn == kIdle, "a transition pending: nothing set");
     g_timer = 0;
     m.watch(a, true);
-    check(g_fn == a.open_hook && g_timer == 1 && m.holds_hook(), "the opener set, timer 1");
+    check(g_fn == a.hooks.mission_open && g_timer == 1 && m.holds_hook(), "the opener set, timer 1");
 
     // The game runs the opener: the prompt built, the question relabeled, YES the helper's.
     check(m.open(a).empty(), m.status().c_str());
     check(g_set[prompt.question] == zap::kMissionQuestion, "the question relabeled");
-    check(at<void*>(prompt.child[0], 0x2C0) == a.yes_hook, "YES the helper's");
+    check(at<void*>(prompt.child[0], 0x2C0) == a.hooks.mission_yes, "YES the helper's");
     check(at<void*>(prompt.child[1], 0x2C0) == reinterpret_cast<void*>(&game_no),
           "NO the game's");
 
@@ -120,7 +122,7 @@ void test_offered_when_idle_then_yes_ends() {
     m.watch(a, true);
     check(g_fn == nullptr, "not while the prompt is still up");
     g_current = nullptr;  // closed: the game's close sets the pause routine back
-    g_fn = reinterpret_cast<void*>(&pause_routine);
+    g_fn = kIdle;
     m.watch(a, true);
     check(g_fn == reinterpret_cast<void*>(&ending_routine) && g_timer == 1,
           "the ending, as the ship's event starts it");
@@ -129,32 +131,28 @@ void test_offered_when_idle_then_yes_ends() {
 
 void test_another_transition_first_is_asked_again() {
     Prompt prompt;
-    g_prompt = &prompt;
-    reset();
     zap::MissionPrompt m;
-    zap::MissionAddresses a = addresses();
+    zap::GameAddresses a = addresses();
     m.request();
     m.watch(a, true);
     g_fn = reinterpret_cast<void*>(&door_routine);  // a door took the routine
     g_timer = 30;
     m.watch(a, true);
     check(!m.holds_hook(), "given up");
-    g_fn = reinterpret_cast<void*>(&pause_routine);
+    g_fn = kIdle;
     g_timer = 0;
     m.watch(a, true);
-    check(g_fn == a.open_hook, "asked again once idle");
+    check(g_fn == a.hooks.mission_open, "asked again once idle");
 }
 
 void test_unload_puts_back() {
     Prompt prompt;
-    g_prompt = &prompt;
-    reset();
     zap::MissionPrompt m;
-    zap::MissionAddresses a = addresses();
+    zap::GameAddresses a = addresses();
     m.request();
     m.watch(a, true);
     m.restore(a);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine) && g_timer == 0 && !m.holds_hook(),
+    check(g_fn == kIdle && g_timer == 0 && !m.holds_hook(),
           "an opener not run: the idle routine back");
 
     reset();
@@ -169,11 +167,9 @@ void test_unload_puts_back() {
 
 void test_an_unexpected_prompt_never_keeps_the_escape_skip() {
     Prompt prompt;
-    g_prompt = &prompt;
-    reset();
     at<int32_t>(prompt.question, 0x1D8) = 10;  // a question too short for ours
     zap::MissionPrompt m;
-    zap::MissionAddresses a = addresses();
+    zap::GameAddresses a = addresses();
     m.request();
     m.watch(a, true);
     check(!m.open(a).empty(), "reported");
@@ -184,20 +180,17 @@ void test_an_unexpected_prompt_never_keeps_the_escape_skip() {
 
 void test_cancel_drops_it_for_another_save() {
     Prompt prompt;
-    g_prompt = &prompt;
-    reset();
     zap::MissionPrompt m;
-    zap::MissionAddresses a = addresses();
+    zap::GameAddresses a = addresses();
     m.request();
     m.cancel(a);  // the save changed before it was idle
     m.watch(a, true);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine), "asked, then cancelled: never set");
+    check(g_fn == kIdle, "asked, then cancelled: never set");
 
     m.request();
     m.watch(a, true);  // the opener set
     m.cancel(a);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine) && g_timer == 0 && !m.holds_hook(),
-          "an opener not run: taken off");
+    check(g_fn == kIdle && g_timer == 0 && !m.holds_hook(), "an opener not run: taken off");
 
     m.request();
     m.watch(a, true);
@@ -205,9 +198,9 @@ void test_cancel_drops_it_for_another_save() {
     m.yes();
     m.cancel(a);  // YES, then the save changed before the ending
     g_current = nullptr;
-    g_fn = reinterpret_cast<void*>(&pause_routine);
+    g_fn = kIdle;
     m.watch(a, true);
-    check(g_fn == reinterpret_cast<void*>(&pause_routine), "no ending in another save");
+    check(g_fn == kIdle, "no ending in another save");
 }
 
 }  // namespace
@@ -218,6 +211,5 @@ int main() {
     test_another_transition_first_is_asked_again();
     test_unload_puts_back();
     test_an_unexpected_prompt_never_keeps_the_escape_skip();
-    if (g_failures == 0) std::printf("mission tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("mission tests");
 }

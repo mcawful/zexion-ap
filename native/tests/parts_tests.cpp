@@ -134,6 +134,5 @@ int main() {
     test_trampoline();
     test_build_check();
     test_pipe();
-    if (g_failures == 0) std::printf("all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("parts tests");
 }

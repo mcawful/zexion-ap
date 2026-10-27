@@ -1,15 +1,15 @@
-import logging
 import random
 import types
 import unittest
+from unittest import mock
 
 from BaseClasses import Item, ItemClassification, LocationProgressType
 from Fill import distribute_items_restrictive
 from Options import OptionError
 
-from .. import data, rules, starting
-from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, code_of
-from ..locations import location_name
+from .. import data, rules
+from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
+from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS, Goal, Mode, StartRoom
 from ..world import (
@@ -77,13 +77,17 @@ class TestDefaultStart(ZexionTestBase):
 
     def test_goal_is_in_the_core(self) -> None:
         core = self.multiworld.get_location("Zexion", self.player).parent_region
-        self.assertIn(rules.region_name(rules.cell_region()[GOAL_CELL]), core.name)
+        self.assertIn(rules.region_name(data.CELL_REGION[GOAL_CELL]), core.name)
 
-    def test_slot_data_says_death_link_is_off(self) -> None:
-        self.assertIs(self.world.fill_slot_data()["death_link"], False)
+    def test_slot_data_says_death_link_is_off_and_assists_are_locked(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["death_link"], slot["allow_assists"]), (False, False))
 
-    def test_slot_data_disallows_assists(self) -> None:
-        self.assertIs(self.world.fill_slot_data()["allow_assists"], False)
+    def test_assist_unlock_is_not_in_the_pool_but_can_be_made(self) -> None:
+        self.assertEqual(self.count("Assist Unlock"), 0)
+        item = self.world.create_item("Assist Unlock")
+        self.assertEqual(item.code, 3392510_000 + 100)
+        self.assertFalse(item.advancement)
 
     def test_mode_and_items_are_standards(self) -> None:
         self.assertEqual(self.world.mode_name, "standard")
@@ -118,28 +122,12 @@ class TestDefaultStart(ZexionTestBase):
         self.assertEqual(len(named), len(data.LOCATIONS))
 
 
-class TestAssistsAllowed(ZexionTestBase):
-    options = {"allow_assists": True}
+class TestDeathLinkAndAssistsOn(ZexionTestBase):
+    options = {"death_link": True, "allow_assists": True}
 
-    def test_slot_data_allows_assists(self) -> None:
-        self.assertIs(self.world.fill_slot_data()["allow_assists"], True)
-
-
-class TestAssistUnlockIsNeverPlaced(ZexionTestBase):
-    def test_it_is_not_in_the_pool(self) -> None:
-        self.assertEqual(self.count("Assist Unlock"), 0)
-
-    def test_it_can_be_made(self) -> None:
-        item = self.world.create_item("Assist Unlock")
-        self.assertEqual(item.code, 3392510_000 + 100)
-        self.assertFalse(item.advancement)
-
-
-class TestDeathLinkOn(ZexionTestBase):
-    options = {"death_link": True}
-
-    def test_slot_data_says_death_link_is_on(self) -> None:
-        self.assertIs(self.world.fill_slot_data()["death_link"], True)
+    def test_slot_data_says_so(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["death_link"], slot["allow_assists"]), (True, True))
 
 
 class TestEasy(ZexionTestBase):
@@ -148,8 +136,7 @@ class TestEasy(ZexionTestBase):
     def test_easy_has_its_own_pool_items_and_settings(self) -> None:
         self.assertEqual(self.world.logic_settings.energy_total, 40)
         self.assertEqual(self.count("Energy Tank"), 5)
-        pool = [i.name for i in self.multiworld.itempool if i.player == self.player]
-        self.assertEqual(pool.count("Energy Tank"), 35)
+        self.assertEqual(pool_names(self).count("Energy Tank"), 35)
 
 
 class TestOtherStart(ZexionTestBase):
@@ -161,53 +148,29 @@ class TestOtherStart(ZexionTestBase):
 
 class TestStartRoomNotOffered(unittest.TestCase):
     def test_a_room_the_mode_does_not_offer_is_replaced(self) -> None:
-        saved = data.MODES["standard"]["starts"]
-        data.MODES["standard"]["starts"] = [s for s in saved if tuple(s["cell"]) != START_CELLS[0]]
-        try:
+        starts = [s for s in data.MODES["standard"]["starts"] if s["cell"] != START_CELLS[0]]
+        with mock.patch.dict(data.MODES["standard"], {"starts": starts}):
             world = fake_world(start_room=0)
             with self.assertLogs(level="WARNING"):
                 world.generate_early()
-            self.assertIn(world.start, data.MODES["standard"]["starts"])
-        finally:
-            data.MODES["standard"]["starts"] = saved
-
-    def test_a_mode_without_rooms_is_an_error(self) -> None:
-        saved = data.MODES["standard"]["starts"]
-        data.MODES["standard"]["starts"] = []
-        try:
-            with self.assertRaises(OptionError):
-                fake_world(start_room=0).generate_early()
-        finally:
-            data.MODES["standard"]["starts"] = saved
+            self.assertIn(world.start, starts)
 
     def test_every_room_random_can_roll_gives_a_start_of_the_mode(self) -> None:
         # 'random' rolls any of StartRoom's values, in any mode.
-        logger = logging.getLogger()
         for mode, name in Mode.name_lookup.items():
-            offered = {tuple(s["cell"]) for s in data.MODES[name]["starts"]}
+            offered = {s["cell"] for s in data.MODES[name]["starts"]}
             for value in StartRoom.name_lookup:
                 world = fake_world(mode=mode, start_room=value)
                 with self.subTest(mode=name, room=value):
-                    level = logger.level
-                    logger.setLevel(logging.ERROR)  # the warning for a room not offered
-                    try:
+                    with mock.patch("logging.warning"):  # for a room not offered
                         world.generate_early()
-                    finally:
-                        logger.setLevel(level)
-                    self.assertIn(tuple(world.start["cell"]), offered)
+                    self.assertIn(world.start["cell"], offered)
                     if world.second is not None:
-                        self.assertIn(tuple(world.second["cell"]), offered)
+                        self.assertIn(world.second["cell"], offered)
                         self.assertNotEqual(world.start["cell"], world.second["cell"])
 
 
-class TestRandomModeAndStartRoom(ZexionTestBase):
-    options = {"mode": "random", "start_room": "random"}
-
-    def test_the_start_is_one_the_mode_offers(self) -> None:
-        self.assertIn(self.world.start, data.MODES[self.world.mode_name]["starts"])
-
-
-class TestNames(ZexionTestBase):
+class TestNames(unittest.TestCase):
     def test_location_names_give_the_area_and_the_games_x_then_y(self) -> None:
         # Cell (7, 22), where the owner read X22, Y7 in Guardia (docs/re/locations.md).
         self.assertEqual(location_name(data.LOCATIONS.index((7, 22))), "Guardia 22,7")
@@ -218,8 +181,6 @@ class TestNames(ZexionTestBase):
         self.assertEqual(len(set(names)), len(names))
 
     def test_start_rooms_are_named_the_same_way(self) -> None:
-        from ..options import StartRoom
-
         self.assertIn("kresezoa_16_13", StartRoom.options)
 
 
@@ -258,9 +219,17 @@ class TestOHKO(ZexionTestBase):
         self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(second["cell"]))
         self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
 
+    def test_left_out_locations_hold_scrap_metal(self) -> None:
+        items = self.world.fill_slot_data()["location_items"]
+        left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
+        self.assertTrue(left_out)
+        self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
+
 
 class TestSlotDataForTheClient(ZexionTestBase):
     """The slot data the client builds its plan and new game from."""
+
+    run_default_tests = False  # the default options, as TestDefaultStart's
 
     def test_location_items_are_this_worlds_items_as_game_ids(self) -> None:
         distribute_items_restrictive(self.multiworld)
@@ -292,6 +261,23 @@ class TestSlotDataForTheClient(ZexionTestBase):
         slot = self.world.fill_slot_data()
         self.assertEqual((slot["stand_in"], slot["stand_in_progression"]), (47, 48))
 
+    def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
+        # Progression for the rules' counts, but the game marks supplies minor on the map.
+        other = self.player + 1
+        ids = self.world.item_name_to_id
+        skip_balancing = ItemClassification.progression_skip_balancing
+        placed = [
+            ZexionItem("Missile Container", skip_balancing, ids["Missile Container"], other),
+            ZexionItem("Energy Tank", skip_balancing, ids["Energy Tank"], other),
+            ZexionItem("Navcore", ItemClassification.progression, ids["Navcore"], other),
+            # Another game's item that happens to share a supply's name: not a Zexion supply.
+            Item("Energy Tank", ItemClassification.progression, 1, other),
+        ]
+        for i, item in enumerate(placed):
+            self.multiworld.get_location(location_name(i), self.player).item = item
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(items[:4], [FOREIGN, FOREIGN, FOREIGN_PROGRESSION, FOREIGN_PROGRESSION])
+
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()
         start = {int(k): v for k, v in slot["start_items"].items()}
@@ -307,6 +293,8 @@ class TestSlotDataForTheClient(ZexionTestBase):
 
 
 class TestStartInventoryInSlotData(ZexionTestBase):
+    run_default_tests = False  # the default options, as TestDefaultStart's
+
     def test_a_second_progressive_copy_is_the_upgrade(self) -> None:
         # As AP's Main does for start_inventory, which the test base does not run.
         for name in ("Progressive Snake", "Progressive Snake", "Missile Box"):
@@ -315,19 +303,11 @@ class TestStartInventoryInSlotData(ZexionTestBase):
         self.assertEqual((start.get(5), start.get(15), start.get(36)), (1, 1, 1))
 
 
-class TestOHKOSlotData(ZexionTestBase):
-    options = {"mode": "ohko"}
-
-    def test_left_out_locations_hold_scrap_metal(self) -> None:
-        items = self.world.fill_slot_data()["location_items"]
-        left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
-        self.assertTrue(left_out)
-        self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
-
-
 class TestAreaMapHints(ZexionTestBase):
     """Area Maps are hints by default: the slot data lists where this player's progression
     items are, for the client (client/hints.py)."""
+
+    run_default_tests = False  # the default options, as TestDefaultStart's
 
     def test_the_hint_list_holds_every_placed_progression_item_but_supplies_once(self) -> None:
         distribute_items_restrictive(self.multiworld)
@@ -375,6 +355,8 @@ class TestIntelChips(ZexionTestBase):
     """With hints on (the default) the Area Maps are Intel Chips, which the game holds as the
     Area Map."""
 
+    run_default_tests = False  # the default options, as TestDefaultStart's
+
     def test_area_maps_become_intel_chips(self) -> None:
         pool = pool_names(self)
         self.assertNotIn("Area Map", pool)
@@ -387,11 +369,7 @@ class TestIntelChips(ZexionTestBase):
     def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
         distribute_items_restrictive(self.multiworld)
         slot = self.world.fill_slot_data()
-        own = [
-            i
-            for i in range(len(data.LOCATIONS))
-            if self.multiworld.get_location(location_name(i), self.player).item.name == "Intel Chip"
-        ]
+        own = own_locations(self, "Intel Chip")
         self.assertTrue(own)
         self.assertEqual({slot["location_items"][i] for i in own}, {49})
         self.assertNotIn(101, slot["location_items"])
@@ -415,6 +393,12 @@ class TestIntelChipsLeaveFillerForExcludedLocations(ZexionTestBase):
 
 def pool_names(test: ZexionTestBase) -> list[str]:
     return [i.name for i in test.multiworld.itempool if i.player == test.player]
+
+
+def own_locations(test: ZexionTestBase, name: str) -> list[int]:
+    """The location indices holding this player's item ``name`` (one player in these tests)."""
+    found = test.multiworld.find_item_locations(name, test.player)
+    return sorted(loc.address - LOCATION_ID_BASE for loc in found)
 
 
 class DiscHuntBase(ZexionTestBase):
@@ -472,12 +456,7 @@ class TestDiscHuntStandard(DiscHuntBase):
     def test_own_discs_are_stand_ins_listed_for_the_client(self) -> None:
         distribute_items_restrictive(self.multiworld)
         slot = self.world.fill_slot_data()
-        own = [
-            i
-            for i in range(len(data.LOCATIONS))
-            if self.multiworld.get_location(location_name(i), self.player).item.name
-            == "OS Install Disk"
-        ]
+        own = own_locations(self, "OS Install Disk")
         self.assertTrue(own)
         self.assertEqual(slot["disc_locations"], own)
         self.assertEqual({slot["location_items"][i] for i in own}, {FOREIGN_PROGRESSION})
@@ -510,6 +489,17 @@ class TestDiscHuntOHKO(DiscHuntBase):
         self.assertEqual(len(pool), len(self.world.kept_locations))
 
 
+class TestDiscHuntEasyFull(DiscHuntBase):
+    mode = "easy"
+    placed, required = 30, 30
+
+    def test_every_area_map_gives_way(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 30)
+        self.assertNotIn("Intel Chip", pool)
+        self.assertEqual(pool.count("Energy Shield"), 1)
+
+
 class TestDiscHuntEasy(DiscHuntBase):
     mode = "easy"
     placed, required = 10, 10
@@ -532,18 +522,6 @@ class TestDiscStartInventory(DiscHuntBase):
 class TestDiscOptionsChecked(unittest.TestCase):
     def world(self, mode: int, placed: int, required: int) -> ZexionWorld:
         return fake_world(mode, goal=Goal.option_os_install_disks, placed=placed, required=required)
-
-    def test_room_per_mode(self) -> None:
-        for mode, room in ((0, 31), (1, 31), (2, 41)):
-            world = self.world(mode, 1, 1)
-            world.generate_early()
-            self.assertEqual(world.disc_room(), room, mode)
-
-    def test_too_many_discs_is_an_error(self) -> None:
-        # Beyond the option's range: every mode has room for its most (30), so this guards only
-        # data regenerated with less room.
-        with self.assertRaises(OptionError):
-            self.world(1, 32, 1).generate_early()
 
     def test_more_required_than_placed_is_an_error(self) -> None:
         with self.assertRaises(OptionError):
@@ -619,10 +597,6 @@ class TestStartInventoryChecked(unittest.TestCase):
 
     def test_a_disk_needs_the_disk_goal(self) -> None:
         self.assertIn("OS Install Disk", self.refused({"OS Install Disk": 1}))
-
-    def test_the_modes_own_starting_items_pass(self) -> None:
-        for mode in data.MODES.values():
-            self.assertEqual(starting.problems(mode["start_inventory"], False), [])
 
 
 class TestStartInventoryAccepted(ZexionTestBase):

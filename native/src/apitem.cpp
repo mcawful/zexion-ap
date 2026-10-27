@@ -17,10 +17,10 @@ const char kApItemRows[8][9] = {
 
 namespace {
 
-// What Scrap Energy and Scrap Chunk share as the game loads them (B1).
-constexpr int16_t kOwnKind = 34, kOwnTicks = 6, kOwnFrames = 2;
-constexpr uint8_t kOwnPalette = 8;
-constexpr int16_t kOwnInventory = 46, kOwnClass = 1;
+// What Scrap Energy and Scrap Chunk share as the game loads them (B1); the frame is each one's
+// own (StandIn).
+constexpr RecordShape kOwnShape = {.kind = 34, .ticks = 6, .frames = 2, .icon = 0, .palette = 8,
+                                   .inventory = 46, .redirect = 0, .pickup_class = 1};
 // What they become: one frame each and no area event at pickup; their names start with the logo
 // glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
@@ -114,16 +114,14 @@ constexpr uint8_t kEntryRgb[19][3] = {
 };
 
 bool is_own(const BYTE* r, const StandIn& s) {
-    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.own_frame &&
-           word(r, record::kTicks) == kOwnTicks && word(r, record::kFrames) == kOwnFrames &&
-           r[record::kIcon] == 0 && r[record::kPalette] == kOwnPalette &&
-           std::memcmp(r + record::kName, s.own_name, std::strlen(s.own_name) + 1) == 0 &&
-           word(r, record::kInventory) == kOwnInventory && word(r, record::kEvent) == s.own_event &&
-           word(r, record::kRedirect) == 0 && word(r, record::kPickupClass) == kOwnClass;
+    RecordShape own = kOwnShape;
+    own.frame = s.own_frame;
+    return matches(r, own) && record_named(r, s.own_name) &&
+           word(r, record::kEvent) == s.own_event;
 }
 
 bool is_ours(const BYTE* r, const StandIn& s) {
-    return word(r, record::kKind) == kOwnKind && word(r, record::kFrame) == s.frame &&
+    return word(r, record::kKind) == kOwnShape.kind && word(r, record::kFrame) == s.frame &&
            word(r, record::kFrames) == kLogoFrames &&
            r[record::kIcon] == 0 && word(r, record::kEvent) == kNoEvent;
 }
@@ -134,32 +132,22 @@ GlFunctions load_gl() {
     GlFunctions gl;
     HMODULE m = GetModuleHandleW(L"opengl32.dll");
     if (m == nullptr) return gl;
-    gl.BindTexture = reinterpret_cast<decltype(gl.BindTexture)>(GetProcAddress(m, "glBindTexture"));
-    gl.GetIntegerv = reinterpret_cast<decltype(gl.GetIntegerv)>(GetProcAddress(m, "glGetIntegerv"));
-    gl.GetTexLevelParameteriv = reinterpret_cast<decltype(gl.GetTexLevelParameteriv)>(
-        GetProcAddress(m, "glGetTexLevelParameteriv"));
-    gl.PixelStorei = reinterpret_cast<decltype(gl.PixelStorei)>(GetProcAddress(m, "glPixelStorei"));
-    gl.TexSubImage2D =
-        reinterpret_cast<decltype(gl.TexSubImage2D)>(GetProcAddress(m, "glTexSubImage2D"));
-    gl.GetTexImage = reinterpret_cast<decltype(gl.GetTexImage)>(GetProcAddress(m, "glGetTexImage"));
-    gl.IsTexture = reinterpret_cast<decltype(gl.IsTexture)>(GetProcAddress(m, "glIsTexture"));
-    gl.GetError = reinterpret_cast<decltype(gl.GetError)>(GetProcAddress(m, "glGetError"));
+    auto get = [m]<typename Fn>(Fn& fn, const char* name) {
+        fn = reinterpret_cast<Fn>(GetProcAddress(m, name));
+    };
+    get(gl.BindTexture, "glBindTexture");
+    get(gl.GetIntegerv, "glGetIntegerv");
+    get(gl.GetTexLevelParameteriv, "glGetTexLevelParameteriv");
+    get(gl.PixelStorei, "glPixelStorei");
+    get(gl.TexSubImage2D, "glTexSubImage2D");
+    get(gl.GetTexImage, "glGetTexImage");
+    get(gl.IsTexture, "glIsTexture");
+    get(gl.GetError, "glGetError");
     return gl;
 }
 
 void ApItems::set_labels(std::map<int, std::string> labels) { labels_ = std::move(labels); }
 
-BYTE* ApItems::record(BYTE* holder, int item) const {
-    BYTE* records = nullptr;
-    if (!safe_read(holder, &records, sizeof(records)) || records == nullptr) return nullptr;
-    BYTE* r = records + item * record::kSize;
-    BYTE probe[record::kSize];
-    if (!safe_read(r, probe, sizeof(probe)) || !writable(r, record::kSize)) {
-        return nullptr;
-    }
-    static_assert(kStandInItem < record::kCount && kStandInProgression < record::kCount);
-    return r;
-}
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
                int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]) {
@@ -167,7 +155,7 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
     int touching = -1;
     double touching_d = 0;
     for (int i = 0; i < kStandInCount; ++i) {
-        const int item = i == 0 ? kStandInItem : kStandInProgression;
+        const int item = kStandInRecords[i];
         double best = 0;
         int best_cell = -1;
         for (const StandInSeen& s : seen) {
@@ -200,23 +188,20 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
     for (int i = 0; i < kStandInCount; ++i) {
         auto it = labels_.find(cells[i]);
         const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
-        char want[kItemNameMax + 1] = {};
-        std::memcpy(want, name.data(), (std::min)(name.size(), kItemNameMax));
         const StandIn& s = kStandIns[i];
-        BYTE* r = record(holder, s.item);
+        BYTE copy[record::kSize];
+        BYTE* r = writable_record(holder, s.item, copy);
         records_[i] = nullptr;
         if (r == nullptr) continue;
-        if (!is_ours(r, s)) {
-            if (!is_own(r, s)) continue;  // neither the game's own nor ours: leave it alone
+        if (!is_ours(copy, s)) {
+            if (!is_own(copy, s)) continue;  // neither the game's own nor ours: leave it alone
             at<int16_t>(r, record::kFrame) = s.frame;
             at<int16_t>(r, record::kFrames) = kLogoFrames;
             at<int16_t>(r, record::kEvent) = kNoEvent;
         }
         // Ours now, or already (an earlier watch, or a helper unloaded without a frame).
         records_[i] = r;
-        if (std::memcmp(r + record::kName, want, sizeof(want)) != 0) {
-            std::memcpy(r + record::kName, want, sizeof(want));
-        }
+        set_record_name(r, name);
     }
 }
 
@@ -274,14 +259,8 @@ bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& w
 
 // The texture behind the sprite data's holder, or 0.
 unsigned sprite_texture(BYTE* holder) {
-    BYTE* sprites = nullptr;
-    BYTE* object = nullptr;
     unsigned texture = 0;
-    if (!safe_read(holder, &sprites, sizeof(sprites)) ||
-        !safe_read(sprites + kSpritesTexture, &object, sizeof(object)) ||
-        !safe_read(object, &texture, sizeof(texture))) {
-        return 0;
-    }
+    read(pointer_at(pointer_at(holder), kSpritesTexture), 0, texture);
     return texture;
 }
 
@@ -351,23 +330,21 @@ void TextureCheck::read(const GlFunctions& gl) {
     good_ = true;
 }
 
-int FontGlyph::y() const { return 976 + (code_ / 16) * 8; }
-
 bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const {
-    // The slot blank in the game's art, or already this glyph.
-    return check.place_ok(texture, gl, x(), y(), 8, 8,
-                          [&](int px, int py) { return rows_[py][px] == '#'; });
+    // The place blank in the game's art, or already this image.
+    return check.place_ok(texture, gl, x_, y_, w_, h_,
+                          [&](int px, int py) { return opaque(px, py); });
 }
 
 void FontGlyph::upload_pixels(const GlFunctions& gl, bool clear) const {
-    uint8_t glyph[8][8][4] = {};
-    for (int py = 0; py < 8 && !clear; ++py) {
-        for (int px = 0; px < 8; ++px) {
-            if (rows_[py][px] != '#') continue;
-            glyph[py][px][0] = glyph[py][px][1] = glyph[py][px][2] = glyph[py][px][3] = 0xFF;
+    std::vector<uint8_t> rgba(static_cast<size_t>(w_) * h_ * 4, 0);
+    for (int py = 0; py < h_ && !clear; ++py) {
+        for (int px = 0; px < w_; ++px) {
+            if (!opaque(px, py)) continue;
+            std::memset(&rgba[(static_cast<size_t>(py) * w_ + px) * 4], 0xFF, 4);
         }
     }
-    gl.TexSubImage2D(kTexture2D, 0, x(), y(), 8, 8, kRgba, kUnsignedByte, glyph);
+    gl.TexSubImage2D(kTexture2D, 0, x_, y_, w_, h_, kRgba, kUnsignedByte, rgba.data());
 }
 
 bool FontGlyph::upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear) {
@@ -463,12 +440,12 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
 void ApItems::release(BYTE* records_holder) {
     for (int i = 0; i < kStandInCount; ++i) {
         const StandIn& s = kStandIns[i];
-        BYTE* r = record(records_holder, s.item);
-        if (r != nullptr && is_ours(r, s)) {
+        BYTE copy[record::kSize];
+        BYTE* r = writable_record(records_holder, s.item, copy);
+        if (r != nullptr && is_ours(copy, s)) {
             at<int16_t>(r, record::kFrame) = s.own_frame;
-            at<int16_t>(r, record::kFrames) = kOwnFrames;
-            std::memset(r + record::kName, 0, kItemNameMax + 1);
-            std::memcpy(r + record::kName, s.own_name, std::strlen(s.own_name));
+            at<int16_t>(r, record::kFrames) = kOwnShape.frames;
+            set_record_name(r, s.own_name);
             at<int16_t>(r, record::kEvent) = s.own_event;
         }
         records_[i] = nullptr;

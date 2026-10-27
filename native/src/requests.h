@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -83,6 +82,10 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 // Hex digits (either case), two to a byte, appended to `out`: false for none, an odd count or
 // anything else.
 bool parse_hex(const std::string& text, std::vector<uint8_t>& out);
+// A comma list of numbers ("4,12"), each 1 to `max_digits` digits and from `lo` to `hi`,
+// appended to `out` in order: false for anything else.
+bool parse_number_list(const std::string& text, size_t max_digits, int lo, int hi,
+                       std::vector<int>& out);
 
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
@@ -98,9 +101,10 @@ std::string parse_batch(const std::string& request, Batch& out);
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
 
-// A `disk_slots` request: "disk_slots" (off: count 0, no slot) or "disk_slots COUNT REQUIRED
-// SLOTS", SLOTS a comma list of slots 1 to 30, or "-". REQUIRED (1 to 255) is checked, as the
-// client sends it, but not kept: the file select shows the count alone (files.h).
-std::string parse_disk_slots(const std::string& request, int& count, std::set<int>& slots);
+// A `disk_slots` request: "disk_slots" (off: no slot) or "disk_slots COUNT REQUIRED SLOTS",
+// SLOTS a comma list of slots 1 to 30, or "-": `counts` gets COUNT for each slot. REQUIRED
+// (1 to 255) is checked, as the client sends it, but not kept: the file select shows the count
+// alone (files.h).
+std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts);
 
 }  // namespace zap

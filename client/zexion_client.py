@@ -43,7 +43,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-from . import aplabels, discs, game, ids, native, save_patch, shields, state, ticks  # noqa: E402
+from . import aplabels, discs, game, ids, native, shields, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 from .storage import announced_tick, hint_notes, hints_tick, own_found, store_found  # noqa: E402
 from .ticks import (  # noqa: E402
@@ -127,15 +127,8 @@ class ZexionContext(CommonContext):
         self.disarm_pending = False
         # Warnings and failures that would repeat each poll or retry: each said once.
         self.said = state.SayOnce()
-
-        self.hints_failed = ""  # the last error the hints raised, said once
-        self.offline_failed = False  # the last offline file failed, said once
         # The offline config file, built once per attach to the game: (the game, its text).
         self.offline_config: tuple[game.Game, str] | None = None
-
-    @property
-    def plan(self) -> save_patch.SeedPlan | None:
-        return None if self.conn is None else self.conn.plan
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -239,6 +232,12 @@ class ZexionContext(CommonContext):
                 "DeathLink: the Zexion mod isn't running, so this death waits until it is."
             )
 
+    def lose_helper(self) -> None:
+        """The helper failed: said unless the game closed with it (game_alive), and dropped."""
+        if game_alive(self):
+            logger.warning(HELPER_LOST)
+        self.drop_helper()
+
     def drop_helper(self) -> None:
         if self.helper is not None:
             self.helper.close()
@@ -311,10 +310,8 @@ def helper_failure(ctx: ZexionContext) -> Iterator[None]:
     try:
         yield
     except native.HelperError as exc:
-        if game_alive(ctx):
-            logger.warning(HELPER_LOST)
         log.warning(f"The in-game helper failed ({exc}); trying it again later.")
-        ctx.drop_helper()
+        ctx.lose_helper()
 
 
 async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
@@ -374,13 +371,8 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
         return
-    try:
-        await offline_tick(ctx, p)  # the helper's files for this seed's saves without the client
-    except Exception as exc:  # never in the way of items and checks
-        if not ctx.offline_failed:
-            logger.warning(ticks.OFFLINE_FAILED)
-            log.warning(f"Writing the helper's offline files failed: {exc!r}")
-        ctx.offline_failed = True
+    # The helper's files for this seed's saves without the client.
+    await side_tick(ctx, "offline files", lambda: offline_tick(ctx, p))
     if ctx.game_conn is None:
         try:
             ctx.game_conn = await asyncio.to_thread(game.Game.attach)
@@ -407,8 +399,7 @@ async def poll(ctx: ZexionContext) -> None:
             await hints_tick(ctx, p)
             notes = hint_notes(ctx, p.codes)
         except Exception as exc:  # the hints must never stop items or checks
-            if str(exc) != ctx.hints_failed:
-                ctx.hints_failed = str(exc)
+            if ctx.said("hints", str(exc)):
                 logger.warning(
                     "Area Map hints aren't working right now (details in the log); items and "
                     "checks still work."
@@ -443,9 +434,7 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is not None and current.helper is None:
         # The session gave up on it (try again later): dropped before the count below, so the
         # popups it had not shown are not counted as shown.
-        if game_alive(ctx):
-            logger.warning(HELPER_LOST)
-        ctx.drop_helper()
+        ctx.lose_helper()
     elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
@@ -479,11 +468,8 @@ async def poll(ctx: ZexionContext) -> None:
         if load.seed_loaded:
             logger.info(state.SAVE_CLOSED)
         load.leave()  # reminded again on the next load, and so on
-    if step.other_seed:
-        if ctx.said("other save", "loaded"):  # once a load
-            logger.info(state.OTHER_SAVE)
-    elif step.left_seed or step.seed_matches:  # not an unsettled read
-        ctx.said.clear("other save")
+    if not step.other_seed and (step.left_seed or step.seed_matches):  # not an unsettled read
+        ctx.said.clear("other save")  # said again for the next such load (other_save_tick)
     conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
     if conn.death_link_on:
         await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))

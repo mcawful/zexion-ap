@@ -62,7 +62,7 @@ same seed the same way; they all count.
 - If you die or reload, you don't lose the items sent to you: they're given back.
 - The client says when your seed's save is loaded. When you leave it, or play a save of
   another seed, nothing is sent, and items sent to you wait until you load your seed's save
-  again.
+  again. Plain (not Archipelago) normal or randomizer saves are left alone.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
 

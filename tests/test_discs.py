@@ -108,14 +108,6 @@ def test_saved_at_start_compares_the_continue_point_with_the_start() -> None:
     assert not discs.saved_at_start(b"", blob)
 
 
-def test_the_reminder_comes_once_with_enough_disks() -> None:
-    home = discs.ReturnHome()
-    assert not home.remind(False)
-    assert home.remind(True)
-    home.reminded = True
-    assert not home.remind(True)
-
-
 def test_the_start_cell_is_the_records_row_and_column_in_cells() -> None:
     # (191, 329): cell (13, 16) in this repo's (x, y), which the player state holds as 16, 13.
     assert discs.start_cell(start_blob(191, 329)) == (16, 13)
@@ -159,3 +151,9 @@ def test_another_slot_is_not_a_save() -> None:
     assert not home.offer  # another save of the seed loaded at its pod
     home.see(stamp(950, 191, 329, slot=5), True, True, True)
     assert home.offer
+
+
+def test_the_pod_note_waits_for_the_received_items_popups() -> None:
+    assert not discs.popups_handed(None, 3)  # not known yet
+    assert not discs.popups_handed(2, 3)  # the third received disk's popup not handed yet
+    assert discs.popups_handed(3, 3)

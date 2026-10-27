@@ -39,11 +39,7 @@ NOT_IN_INVENTORY = {ids.DATA_DISC}
 # Records 46-50 all name Scrap Metal's byte as the one their pickup increments, so each of
 # these counts as one Scrap Metal, collected or received (docs/re/memory.md, "Other players'
 # items"; docs/re/save-format.md, "Inventory").
-SCRAP_METAL = ids.SCRAP_METAL
 COUNTED_AS_SCRAP = {ids.STAND_IN, ids.STAND_IN_PROGRESSION, ids.AREA_MAP, ids.ENERGY_SHIELD}
-# The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
-# "Received Energy Shields"), which the helper does for a received one.
-ENERGY_SHIELD = ids.ENERGY_SHIELD
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
@@ -63,7 +59,7 @@ def should_own(
     def count(item: int, n: int = 1) -> None:
         if item in NOT_IN_INVENTORY:
             return
-        item = SCRAP_METAL if item in COUNTED_AS_SCRAP else item
+        item = ids.SCRAP_METAL if item in COUNTED_AS_SCRAP else item
         total[UPGRADE_OF.get(item, item)] += n
 
     for item, n in start_items.items():
@@ -77,8 +73,9 @@ def should_own(
 
 def shields_owed(received: Iterable[int], spawned: int) -> int:
     """How many received Energy Shields have not been given yet (``spawned``: those counted
-    as given)."""
-    return max(0, sum(1 for item in received if item == ENERGY_SHIELD) - max(0, spawned))
+    as given). Its effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
+    "Received Energy Shields"), which the helper does for a received one."""
+    return max(0, sum(1 for item in received if item == ids.ENERGY_SHIELD) - max(0, spawned))
 
 
 def owned(inventory: bytes) -> Counter[int]:

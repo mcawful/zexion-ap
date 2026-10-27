@@ -11,10 +11,10 @@ each, or None).
 
 Also the decisions the game loop makes from that state, as pure functions: the count of
 received items' popups shown, kept on the server (``announced_start`` and the rest), the
-locations found to record there (``found_to_store``), ``SayOnce`` for messages that would
-repeat each poll, and the player's lines when the game or the mod can't be used
-(``attach_failed``, ``helper_failed``). No Archipelago imports, so the tests build them from
-slot data.
+server's count of Energy Shields given (``shield_count``), the locations found to record there
+(``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
+lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``). No
+Archipelago imports, so the tests build them from slot data.
 """
 
 from __future__ import annotations
@@ -86,70 +86,53 @@ class Connection:
         """The connection for a seed's slot data; UnsupportedSeed if this client cannot read it
         (a key missing or of another form: a world of another version)."""
         try:
-            return cls._from_slot_data(slot_data, team, slot)
+            plan = save_patch.plan_from_slot_data(slot_data)
+            kept = frozenset(slot_data["kept_locations"])
+            return cls(
+                team=team,
+                slot=slot,
+                mode=str(slot_data["mode"]),
+                plan=plan,
+                session=session.Session(plan, slot_data["locations"]),
+                kept=kept,
+                foreign=aplabels.foreign_locations(
+                    slot_data["location_items"], kept, aplabels.stand_ins(slot_data)
+                ),
+                hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
+                lock_assists=not slot_data["allow_assists"],
+                intel_chip=bool(slot_data["intel_chip"]),
+                death_link_on=bool(slot_data["death_link"]),
+                hunt=discs.from_slot_data(slot_data),
+            )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
                 f"this seed's slot data is not what this client reads ({exc!r}): the seed is "
                 "from a version of the Zexion world this client does not support"
             ) from exc
 
-    @classmethod
-    def _from_slot_data(cls, slot_data: Mapping, team: int, slot: int) -> Connection:
-        plan = save_patch.plan_from_slot_data(slot_data)
-        kept = frozenset(slot_data["kept_locations"])
-        return cls(
-            team=team,
-            slot=slot,
-            mode=str(slot_data["mode"]),
-            plan=plan,
-            session=session.Session(plan, slot_data["locations"]),
-            kept=kept,
-            foreign=aplabels.foreign_locations(
-                slot_data["location_items"], kept, aplabels.stand_ins(slot_data)
-            ),
-            hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
-            lock_assists=not slot_data["allow_assists"],
-            intel_chip=bool(slot_data["intel_chip"]),
-            death_link_on=bool(slot_data["death_link"]),
-            hunt=discs.from_slot_data(slot_data),
-        )
-
     def key(self, name: str) -> str:
         """This slot's data storage key for ``name`` (per team and slot)."""
         return f"zexion_{name}_{self.team}_{self.slot}"
 
-    # Received Energy Shields counted as given (client/shields.py).
-    @property
-    def shield_key(self) -> str:
-        return self.key("shields")
-
-    # This world's locations found in game, in any save of the seed (own_found): a release,
-    # which checks every location on the server, never writes it.
-    @property
-    def found_key(self) -> str:
-        return self.key("found")
-
-    # The follow-up popups shown for this world's own finds, by location index.
-    @property
-    def popped_key(self) -> str:
-        return self.key("popped")
-
-    # How many received items have had their popup (announced_tick).
-    @property
-    def announced_key(self) -> str:
-        return self.key("announced")
-
-    # Which entry each Area Map used (client/hints.py).
-    @property
-    def hints_key(self) -> str:
-        return self.key("hints")
+    def __post_init__(self) -> None:
+        # This slot's data storage keys: received Energy Shields counted as given (client/
+        # shields.py); this world's locations found in game, in any save of the seed
+        # (own_found: a release, which checks every location on the server, never writes it);
+        # the follow-up popups shown for this world's own finds, by location index; how many
+        # received items have had their popup (announced_tick); which entry each Area Map
+        # used (client/hints.py).
+        self.shield_key = self.key("shields")
+        self.found_key = self.key("found")
+        self.popped_key = self.key("popped")
+        self.announced_key = self.key("announced")
+        self.hints_key = self.key("hints")
 
     def helper_lost(self) -> None:
         """The helper is gone, and the popups it had not shown with it: received items past
         the last count known shown are queued again, on the next helper."""
         queued = self.session.announced
         if queued is not None and self.announced_shown is not None:
-            self.session.mark_announced(min(queued, self.announced_shown))
+            self.session.announced = min(queued, self.announced_shown)
         self.queued_before = None
 
 
@@ -163,6 +146,16 @@ def stored_count(raw: object) -> int | None:
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None
+
+
+def shield_count(raw: object) -> int | None:
+    """The server's count of Energy Shields given (client/shields.py): 0 when none is stored,
+    None when the key holds something other than a count. The key is open to any client in the
+    room, and a bad value must not read as 0, which would give every received shield again: the
+    shields wait instead."""
+    if raw is None:
+        return 0
+    return stored_count(raw)
 
 
 def announced_start(raw: object, held: int, queued_before: int | None = None) -> tuple[int, int]:
@@ -283,7 +276,6 @@ class SeedState:
     hints_sent_at: float = 0.0
     deaths: deathlink.DeathLink = field(default_factory=deathlink.DeathLink)
     death_retry_at: float = 0.0
-    death_said: str = ""
 
 
 @dataclass
@@ -304,13 +296,8 @@ class LoadState:
     goal_withheld: bool = False
 
     def leave(self) -> None:
-        """No save of this seed is loaded: the next load starts afresh."""
-        self.seed_loaded = False
-        self.save_collected = set()
-        self.return_home = discs.ReturnHome()
-        self.ending_unseen = False
-        self.assists_want = self.intel_want = False
-        self.goal_withheld = False
+        """No save of this seed is loaded: the next load starts afresh (every field as new)."""
+        self.__init__()
 
 
 REPORT = "https://github.com/mcawful/zexion-ap/issues"

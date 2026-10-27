@@ -44,9 +44,9 @@ ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
 # Player-state offsets of the energy, missile and bomb numbers (signed 16-bit), in the order
 # supplies() returns them: energy, max energy, missiles, max missiles, bombs, max bombs.
 SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
-SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
-# One read covering the supplies, the player's cell and the inventory (player_state).
-PLAYER_SPAN = (SUPPLY_SPAN[0], INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
+# One read covering the supplies (from the first, 0xCBC), the player's cell and the inventory
+# (player_state).
+PLAYER_SPAN = (min(SUPPLY_FIELDS), INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
 # The player's link to their Energy Shield: pointer, then handle (serial, pool type 2). The
 # object repeats the handle at +0x1D8 and its own address at +0x3C8 (docs/re/memory.md,
@@ -173,21 +173,13 @@ def parse_player_state(span: bytes) -> PlayerState:
     )
 
 
-def parse_pe(header: bytes) -> pe.Header:
+def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Build:
+    """The known build with the PE image's TimeDateStamp and SizeOfImage."""
     try:
-        return pe.parse(header)
+        h = pe.parse(header)
     except pe.PEError as exc:
         raise GameError(str(exc)) from exc
-
-
-def pe_header_fields(header: bytes) -> tuple[int, int]:
-    """(TimeDateStamp, SizeOfImage) from the start of a PE image."""
-    h = parse_pe(header)
-    return h.timestamp, h.size_of_image
-
-
-def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Build:
-    stamp, size = pe_header_fields(header)
+    stamp, size = h.timestamp, h.size_of_image
     for build in known:
         if build.timestamp == stamp and build.size_of_image == size:
             return build
@@ -200,7 +192,7 @@ def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Buil
 def code_section(header: bytes) -> tuple[int, int]:
     """(RVA, size) of .text, from the first 4 KiB of a PE image."""
     try:
-        text = parse_pe(header).section(".text")
+        text = pe.parse(header).section(".text")
     except pe.PEError as exc:
         raise GameError(str(exc)) from exc
     return text.va, text.vsize
@@ -377,9 +369,7 @@ class Game:
 
     def supplies(self) -> tuple[int, ...]:
         """Energy, max energy, missiles, max missiles, bombs, max bombs, read at once."""
-        start, end = SUPPLY_SPAN
-        span = self._read("inventory", start - INVENTORY_IN_PLAYER_STATE, end - start)
-        return tuple(struct.unpack_from("<h", span, f - start)[0] for f in SUPPLY_FIELDS)
+        return self.player_state().supplies
 
     def set_supplies(self, expected: Sequence[int], new: Sequence[int]) -> None:
         """Compare-and-set the six numbers ``supplies()`` returns, writing only those that
@@ -400,8 +390,7 @@ class Game:
     def energy(self) -> int:
         """Current energy (signed); -1 from the moment of death until the respawn (measured),
         so 0 or below counts as dead (0 itself is an assumption)."""
-        offset = ENERGY_NOW - INVENTORY_IN_PLAYER_STATE
-        return struct.unpack("<h", self._read("inventory", offset, 2))[0]
+        return self.player_state().energy
 
     def shield_up(self) -> bool:
         """Whether the player has an Energy Shield up: the player's link to it is set, and the

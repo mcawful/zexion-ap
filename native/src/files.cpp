@@ -40,8 +40,9 @@ constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
 constexpr intptr_t kFill = 0xF;
 
-bool is_entry_fn(const FileAddresses& a, void* fn) {
-    for (void* f : a.entry_fns) {
+// One of the entry handlers: the file select's, COPY FILE's or DELETE FILE's.
+bool is_entry_fn(const GameAddresses& a, void* fn) {
+    for (BYTE* f : {a.file_entry_fn, a.copy_entry_fn, a.delete_entry_fn}) {
         if (f != nullptr && fn == f) return true;
     }
     return false;
@@ -68,6 +69,14 @@ bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
 }
 
 int32_t block_frame(BYTE* (&g)[kEntryGlyphs], int k) { return frame_of(g[kBlock[k]]); }
+
+// Whether the keys' block still shows what the helper wrote (no fill since).
+bool still_written(BYTE* (&g)[kEntryGlyphs], const int32_t (&shown)[6]) {
+    for (int k = 0; k < 6; ++k) {
+        if (block_frame(g, k) != shown[k]) return false;
+    }
+    return true;
+}
 
 // Moves the count's glyphs between their row (where the game's layout puts them) and kCountDrop
 // below it: down while `dropped`, else back up. Their row is found from the glyphs above and
@@ -107,14 +116,14 @@ void* FileDisks::original(void* widget) const {
     return it == wrapped_.end() ? nullptr : it->second.original;
 }
 
-void FileDisks::on_event(const FileAddresses&, void* widget, intptr_t event) {
+void FileDisks::on_event(const GameAddresses&, void* widget, intptr_t event) {
     // The game's handlers take the event as 32 bits (cmp edx at 0xE1F3F).
     if (static_cast<int32_t>(event) != kFill || !on()) return;
     auto it = wrapped_.find(static_cast<BYTE*>(widget));
     if (it != wrapped_.end()) update(it->first, it->second);
 }
 
-void FileDisks::watch(const FileAddresses& a) {
+void FileDisks::watch(const GameAddresses& a) {
     // Entries whose menu has closed went with it.
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         it = is_open(a.current_menu, it->second.menu) ? std::next(it) : wrapped_.erase(it);
@@ -123,17 +132,14 @@ void FileDisks::watch(const FileAddresses& a) {
         restore(a);
         return;
     }
-    BYTE* menu = nullptr;
-    if (!read(a.current_menu, 0, menu)) return;
+    BYTE* menu = pointer_at(a.current_menu);
     for (int m = 0; m < kMaxMenus && menu != nullptr; ++m) {
-        BYTE** panels = nullptr;
-        BYTE* panel = nullptr;
+        BYTE* panel = panel_at(menu, 0);
         void* handler = nullptr;
         int32_t capacity = 0;
         BYTE** children = nullptr;
         BYTE* entries[kEntries] = {};
-        if (read(menu, 0, panels) && read(reinterpret_cast<BYTE*>(panels), 0, panel) &&
-            read(panel, panel::kHandler, handler) && handler == a.file_panel_fn &&
+        if (read(panel, panel::kHandler, handler) && handler == a.file_panel_fn &&
             read(panel, panel::kCapacity, capacity) && capacity >= kEntries &&
             read(panel, panel::kChildren, children) &&
             safe_read(children, entries, sizeof(entries))) {
@@ -145,15 +151,15 @@ void FileDisks::watch(const FileAddresses& a) {
                     !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
-                if (h != a.hook && is_entry_fn(a, h) && a.hook != nullptr &&
+                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr &&
                     writable(entry + widget::kHandler, sizeof(void*))) {
                     wrapped_[entry] = Wrapped{menu, h};
-                    put(entry, widget::kHandler, a.hook);
-                    h = a.hook;
+                    put(entry, widget::kHandler, a.hooks.file_entry);
+                    h = a.hooks.file_entry;
                 }
                 // Only the entries it has wrapped, whose state it keeps.
                 auto it = wrapped_.find(entry);
-                if (h == a.hook && it != wrapped_.end()) update(entry, it->second);
+                if (h == a.hooks.file_entry && it != wrapped_.end()) update(entry, it->second);
             }
         }
         if (!read(menu, menu::kBelow, menu)) break;
@@ -164,11 +170,7 @@ void FileDisks::update(BYTE* entry, Wrapped& w) {
     BYTE* g[kEntryGlyphs] = {};
     if (!entry_glyphs(entry, g)) return;
     // A fill since the helper wrote the entry: the game's frames again.
-    if (w.written) {
-        for (int k = 0; k < 6; ++k) {
-            if (block_frame(g, k) != w.shown[k]) w.written = false;
-        }
-    }
+    w.written = w.written && still_written(g, w.shown);
     if (!rewrite(entry, g, w)) put_back(g, w);  // not one to show: the game's frames
     place_count(g, w.written && shows_disk(g));
 }
@@ -211,27 +213,15 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     for (int i : kBlock) {
         if (!writable(g[i], sprite::kSize)) return false;
     }
-    // Drawn as the game draws the KEYS header (glyph 85): its palette, style and tint.
-    BYTE* like = g[kKeysHeader[0]];
-    BYTE look[sprite::kTintSize];
-    void* palette = nullptr;
-    int16_t number = 0;
-    int32_t style = 0;
-    if (!read(like, sprite::kPalette, palette) || !read(like, sprite::kPaletteNumber, number) ||
-        !read(like, sprite::kStyle, style) ||
-        !safe_read(like + sprite::kTint, look, sizeof(look))) {
-        return false;
-    }
     if (!w.written) {
         for (int k = 0; k < 6; ++k) w.game[k] = block_frame(g, k);
     }
+    // Drawn as the game draws the KEYS header (glyph 85, one of the block, checked writable).
+    const BYTE* like = g[kKeysHeader[0]];
     for (int k = 0; k < 6; ++k) {
         BYTE* cell = g[kBlock[k]];
         set_frame(cell, want[k]);
-        put(cell, sprite::kPalette, palette);
-        put(cell, sprite::kPaletteNumber, number);
-        put(cell, sprite::kStyle, style);
-        std::memcpy(cell + sprite::kTint, look, sizeof(look));
+        look_like(cell, like);
         w.shown[k] = block_frame(g, k);
     }
     w.written = true;
@@ -249,7 +239,7 @@ void FileDisks::put_back(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     w.written = false;
 }
 
-void FileDisks::restore(const FileAddresses& a) {
+void FileDisks::restore(const GameAddresses& a) {
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         BYTE* entry = it->first;
         Wrapped& w = it->second;
@@ -260,16 +250,12 @@ void FileDisks::restore(const FileAddresses& a) {
         // The keys' block and the count's glyphs as the game left them.
         BYTE* g[kEntryGlyphs] = {};
         if (entry_glyphs(entry, g)) {
-            if (w.written) {
-                for (int k = 0; k < 6; ++k) {
-                    if (block_frame(g, k) != w.shown[k]) w.written = false;
-                }
-            }
+            w.written = w.written && still_written(g, w.shown);
             put_back(g, w);
             place_count(g, false);
         }
         void* h = nullptr;
-        if (read(entry, widget::kHandler, h) && h == a.hook) {
+        if (read(entry, widget::kHandler, h) && h == a.hooks.file_entry) {
             if (!writable(entry + widget::kHandler, sizeof(void*))) {
                 ++it;  // still the helper's: kept, so an unload refuses
                 continue;

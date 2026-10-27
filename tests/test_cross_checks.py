@@ -80,13 +80,14 @@ def test_the_config_names_the_addresses_the_helper_takes() -> None:
 
 def test_the_helper_takes_functions_as_code() -> None:
     keys = config_keys()
+    by_name = {t.name: t for t in patterns.TARGETS}
     for name, kind in keys.items():
         # A target named *_fn is a function, so code, except transition_fn, which is data: it
         # holds the address of the routine the game runs next (game_calls.cpp).
         if name.endswith("_fn") and name != "transition_fn":
             assert kind == "code", name
         # A function start (an "at" pattern) is code too.
-        if any(p.kind == "at" for p in patterns.BY_NAME[name].patterns):
+        if any(p.kind == "at" for p in by_name[name].patterns):
             assert kind == "code", name
     # The code the helper patches, whose bytes the offline cache does not check, is code.
     assert {keys[name] for name in offline.NOT_CHECKED} == {"code"}

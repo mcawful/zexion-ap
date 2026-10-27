@@ -33,7 +33,6 @@ import importlib.util
 import struct
 import sys
 from collections import Counter
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,7 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))  # the client package, whose save offsets these are
 
-from client import ids, save_patch  # noqa: E402
+from client import save_patch  # noqa: E402
 
 
 def _load_logic():
@@ -57,11 +56,7 @@ def _load_logic():
 
 
 logic = _load_logic()
-DEFAULT_SETTINGS = logic.DEFAULT_SETTINGS
-FIRST_SPECIAL = logic.FIRST_SPECIAL
 H, W = logic.H, logic.W
-Settings = logic.Settings
-combat_tier = logic.combat_tier
 
 
 def find_randocells(explicit: Path | None = None) -> Path:
@@ -88,48 +83,35 @@ STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 ITEM_FLAG, ITEM_LIST, ITEM_TIERS = 0x44, 0x45, 0x4D
 WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
 
-# Where a randomizer save keeps its seed (docs/re/save-format.md), as client/save_patch.py has it.
-SAVE_CELLS, SAVE_ITEMS, LOCATIONS = save_patch.SECTION, save_patch.ITEM_TABLE, ids.LOCATIONS
-PLAYER_STATE = save_patch.INVENTORY  # one byte per code; items 0-49 are the inventory
-MAP_GRID = save_patch.MAP_GRID  # 54 x 54, one byte per cell
-# The save's randomizer section is loaded to RVA 0xCDD6D0; settings sit at these RVAs in it.
+# A randomizer save's section (save_patch.SECTION, docs/re/save-format.md) is loaded to RVA
+# 0xCDD6D0; settings sit at these RVAs in it.
 RANDO_BLOB_RVA = 0xCDD6D0
 ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
 OPTIONS_RVA = 0xCDDF4B  # one byte per option, indexed by a code-68 entry's tier byte
 MODE_BITS_RVA = (0xCDDF76, 0xCDDF75)  # code 69's mode = first * 2 + second
 
-Entry = logic.Entry
-
 
 @dataclass(frozen=True)
 class Cell:
-    lists: dict[str, list[Entry]]
+    lists: dict[str, list[logic.Entry]]
     passage: dict[str, int]
     item_gated: bool
-    item_needs: list[Entry]
+    item_needs: list[logic.Entry]
 
 
-def settings_from_save(data: bytes) -> Settings:
+def settings_from_save(data: bytes) -> logic.Settings:
     """The seed's settings, from a randomizer save's appended section."""
 
     def at(rva: int) -> int:
-        return SAVE_CELLS + (rva - RANDO_BLOB_RVA)
+        return save_patch.SECTION + (rva - RANDO_BLOB_RVA)
 
     start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
     hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
-    return Settings(start + pool, hi * 2 + lo, bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64]))
+    options = bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64])
+    return logic.Settings(start + pool, hi * 2 + lo, options)
 
 
-@dataclass(frozen=True)
-class Where:
-    """What a check needs to know about where it happens."""
-
-    x: int
-    y: int
-    reached: frozenset[tuple[int, int]] | set[tuple[int, int]]
-
-
-def _entries(rec: bytes, base: int, tiers: int) -> list[Entry]:
+def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
     out = []
     for k in range(8):
         if rec[base + k] == 0xFF:
@@ -159,22 +141,17 @@ def parse(data: bytes) -> list[list[Cell]]:
     return grid
 
 
-def satisfied(
-    entries: Sequence[Entry],
-    have: Counter,
-    settings: Settings = DEFAULT_SETTINGS,
-    where: Where | None = None,
-) -> bool:
-    """The game's check (RVA 0xE3C80); see worlds/zexion/logic.py."""
-    if where is None:
-        return logic.satisfied(entries, have, settings)
-    return logic.satisfied(
-        entries, have, settings, (where.x, where.y), lambda cell: cell in where.reached
+def collectible(grid, cell: tuple[int, int], have: Counter, settings, reached: set) -> bool:
+    """Whether the item at a reached cell can be picked up: its own requirements, if any."""
+    x, y = cell
+    rec = grid[y][x]
+    return not rec.item_gated or logic.satisfied(
+        rec.item_needs, have, settings, cell, reached.__contains__
     )
 
 
 def reachable_cells(
-    grid, have: Counter, settings: Settings, start: tuple[int, int] | list[tuple[int, int]]
+    grid, have: Counter, settings: logic.Settings, start: tuple[int, int] | list[tuple[int, int]]
 ) -> set[tuple[int, int]]:
     """Flood fill from ``start`` (one cell, or a list of them), repeated until stable (codes
     64-67 look at reached cells)."""
@@ -192,8 +169,8 @@ def reachable_cells(
                 passage = cell.passage[d]
                 if passage == WALL:
                     continue
-                if passage == CONDITIONAL and not satisfied(
-                    cell.lists[d], have, settings, Where(x, y, seen)
+                if passage == CONDITIONAL and not logic.satisfied(
+                    cell.lists[d], have, settings, (x, y), seen.__contains__
                 ):
                     continue
                 seen.add((nx, ny))
@@ -203,13 +180,12 @@ def reachable_cells(
 
 
 # A weapon and its upgrade are progressive (logic.WEAPON_UPGRADES; docs/re/randocells.md).
-REDIRECT_IF_OWNED = logic.WEAPON_UPGRADES
 REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in logic.WEAPON_UPGRADES.items()}
 
 
 def collect(have: Counter, item: int) -> None:
     """Add one picked-up item to the counts, as the generator does (RVA 0xE5680)."""
-    upgrade = REDIRECT_IF_OWNED.get(item)
+    upgrade = logic.WEAPON_UPGRADES.get(item)
     if upgrade is not None and have[item] > 0:
         have[upgrade] += 1
         return
@@ -226,7 +202,7 @@ def sweep(
     items,
     start: tuple[int, int] | list[tuple[int, int]],
     initial=None,
-    settings: Settings = DEFAULT_SETTINGS,
+    settings: logic.Settings = logic.DEFAULT_SETTINGS,
 ) -> set[int]:
     """Collect everything reachable from ``start`` (one cell or a list), repeating until
     nothing new opens up."""
@@ -235,13 +211,8 @@ def sweep(
     while True:
         cells = reachable_cells(grid, have, settings, start)
         new = False
-        for i, (x, y) in enumerate(locations):
-            if i in got or (x, y) not in cells:
-                continue
-            cell = grid[y][x]
-            if cell.item_gated and not satisfied(
-                cell.item_needs, have, settings, Where(x, y, cells)
-            ):
+        for i, cell in enumerate(locations):
+            if i in got or cell not in cells or not collectible(grid, cell, have, settings, cells):
                 continue
             got.add(i)
             collect(have, items[i])
@@ -251,8 +222,10 @@ def sweep(
 
 
 def seed_from_save(data: bytes) -> tuple[list[tuple[int, int]], list[int]]:
-    locations = [struct.unpack_from("<HH", data, SAVE_CELLS + 4 * i) for i in range(LOCATIONS)]
-    return locations, list(data[SAVE_ITEMS : SAVE_ITEMS + LOCATIONS])
+    """The seed's location cells and the item at each (docs/re/save-format.md)."""
+    cells, items, count = save_patch.SECTION, save_patch.ITEM_TABLE, save_patch.LOCATIONS
+    locations = [struct.unpack_from("<HH", data, cells + 4 * i) for i in range(count)]
+    return locations, list(data[items : items + count])
 
 
 def inventory_from_save(data: bytes) -> Counter:
@@ -260,43 +233,38 @@ def inventory_from_save(data: bytes) -> Counter:
 
     For a save made right at the start of a seed, this is the seed's starting inventory.
     """
-    return Counter(
-        {i: data[PLAYER_STATE + i] for i in range(FIRST_SPECIAL) if data[PLAYER_STATE + i]}
-    )
+    inv = save_patch.INVENTORY  # one byte per code; items 0-49 are the inventory
+    return Counter({i: data[inv + i] for i in range(logic.FIRST_SPECIAL) if data[inv + i]})
 
 
-START_HEADER = save_patch.START_RECORD  # candidate index - 1, tile column, tile row (16-bit)
-
-
-def start_from_save(data: bytes) -> tuple[int, int] | None:
-    """The seed's start cell, from the start record at the head of the randomizer section.
-
-    The record gives the save point's position in tiles; a map cell is 14 tiles along x and
-    20 along y (docs/re/save-format.md, "The continue point and the seed's start"). None when
-    the file is too short to hold the record (a normal-mode save, for instance).
-    """
-    if len(data) < START_HEADER + 6:
-        return None
-    _, column, row = struct.unpack_from("<3H", data, START_HEADER)
+def _record_cell(data: bytes, offset: int) -> tuple[int, int]:
+    """The cell of a start record (candidate index - 1, tile column, tile row; 16-bit each),
+    which gives a save point's position in tiles: a map cell is 14 tiles along x and 20 along
+    y (docs/re/save-format.md, "The continue point and the seed's start")."""
+    _, column, row = struct.unpack_from("<3H", data, offset)
     return (column // 14, row // 20)
 
 
-SECOND_START = save_patch.SECOND_START  # the second teleport target, as the start record
+def start_from_save(data: bytes) -> tuple[int, int] | None:
+    """The seed's start cell, from the start record at the head of the randomizer section;
+    None when the file is too short to hold the record (a normal-mode save, for instance)."""
+    if len(data) < save_patch.START_RECORD + 6:
+        return None
+    return _record_cell(data, save_patch.START_RECORD)
+
+
 DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
-OPTIONS_IN_SAVE = save_patch.OPTIONS
 
 
 def starts_from_save(data: bytes) -> list[tuple[int, int]]:
-    """The seed's start, plus its second teleport target when Double Teleport is on; empty for
-    a file too short to be a randomizer save."""
+    """The seed's start, plus its second teleport target (a start record too) when Double
+    Teleport is on; empty for a file too short to be a randomizer save."""
     start = start_from_save(data)
-    if start is None or len(data) <= OPTIONS_IN_SAVE + DOUBLE_TELEPORT:
+    if start is None or len(data) <= save_patch.OPTIONS + DOUBLE_TELEPORT:
         return []
-    out = [start]
-    if data[OPTIONS_IN_SAVE + DOUBLE_TELEPORT]:
-        _, column, row = struct.unpack_from("<3H", data, SECOND_START)
-        out.append((column // 14, row // 20))
-    return out
+    if data[save_patch.OPTIONS + DOUBLE_TELEPORT]:
+        return [start, _record_cell(data, save_patch.SECOND_START)]
+    return [start]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -334,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     got = sweep(grid, locations, items, start, initial, settings)
     on = [t for t in range(64) if settings.options[t]]
     print(
-        f"{len(got)}/{LOCATIONS} locations reachable from {start}; starting inventory "
+        f"{len(got)}/{save_patch.LOCATIONS} locations reachable from {start}; starting inventory "
         f"{dict(initial) or 'empty'}; energy total {settings.energy_total}, code-69 mode "
         f"{settings.mode69}, options on {on}"
     )

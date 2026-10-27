@@ -16,6 +16,8 @@ INTEL CHIP (docs/re/memory.md, "Intel Chips").
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from BaseClasses import Item, ItemClassification
 
 from .logic import WEAPON_UPGRADES
@@ -100,6 +102,21 @@ item_name_groups = {
     "Supplies": {NAMES[code] for code in SUPPLIES},
     "Scrap": {NAMES[code] for code in (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)},
 }
+
+
+def as_inventory(counts: Iterable[tuple[int, int]]) -> dict[int, int]:
+    """Counts by the game's item IDs as the game holds them: a progressive weapon as its
+    weapon, and a second copy as its upgrade too, the way the game counts a weapon picked up
+    twice."""
+    have: dict[int, int] = {}
+    for code, n in counts:
+        if code in PROGRESSIVE:
+            have[code] = 1
+            if n > 1:
+                have[PROGRESSIVE[code]] = 1
+        else:
+            have[code] = n
+    return have
 
 
 def classification(code: int) -> ItemClassification:

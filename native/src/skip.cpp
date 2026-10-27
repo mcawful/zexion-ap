@@ -25,10 +25,9 @@ bool expected(const BYTE* r, int16_t else_branch) {
 }  // namespace
 
 bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
-    BYTE* table = nullptr;
+    BYTE* table = pointer_at(table_holder);
     int16_t events = 0;
-    if (!safe_read(table_holder, &table, sizeof(table)) || table == nullptr ||
-        !safe_read(count, &events, sizeof(events)) || events <= kSkipOfferEvent) {
+    if (table == nullptr || !read(count, 0, events) || events <= kSkipOfferEvent) {
         return patched();  // not loaded (yet): keep what is known
     }
     BYTE* record = table + kSkipEvent * event::kSize;
@@ -53,10 +52,9 @@ bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
 
 void EscapeSkip::restore(BYTE* table_holder) {
     if (record_ == nullptr) return;
-    BYTE* table = nullptr;
     BYTE copy[event::kSize];
-    if (safe_read(table_holder, &table, sizeof(table)) && table == table_ &&
-        safe_read(record_, copy, sizeof(copy)) && expected(copy, kSkipOfferEvent) &&
+    if (pointer_at(table_holder) == table_ && safe_read(record_, copy, sizeof(copy)) &&
+        expected(copy, kSkipOfferEvent) &&
         writable(record_ + kElse, sizeof(int16_t))) {
         int16_t none = kNone;
         std::memcpy(record_ + kElse, &none, sizeof(none));

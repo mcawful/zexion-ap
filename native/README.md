@@ -98,7 +98,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
-| `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`; or `refused <why>` | AP saves without the client |
+| `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
 `hello`'s fields (spaces inside a field written as underscores):
@@ -283,16 +283,18 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
 
 - **Labels:** `ap_labels` names map cells (this repo's (x, y); the game shows X = y, Y = x) for
   the **stand-ins**, Scrap Energy (47) and Scrap Chunk (48), which the world puts at every
-  location holding another player's item (48 for progression). HEX is the item and whom it is
-  for, joined by a newline; or `@N` and whom it is for (another Zexion player's item N, named
-  from its record); or `@N NAME` (item N under that name: this player's own OS Install Disk, or
-  another Zexion player's disk, Area Map or Intel Chip). See `client/aplabels.py`.
+  location holding another player's item (48 for progression, but not for another Zexion
+  player's supplies). HEX is the item and whom it is for, joined by a newline; or `@N` and whom
+  it is for (another Zexion player's item N, named from its record); or `@N NAME` (item N under
+  that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
+  Intel Chip). See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of
   its kind within 96 pixels of the player (chosen, not measured), else the player's cell's, else
   the nearest loaded one's (or AP ITEM). The game's pickup popup then shows the logo glyph, then
-  PROGRESSION ITEM (or AP ITEM) over FOR ALICE.
+  PROGRESSION ITEM (or AP ITEM) over FOR ALICE. The map cursor shows the label's first line
+  only: what the item is, not whom it is for.
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
@@ -308,7 +310,8 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
   Scrap Energy in another seed's save would look the same, so the client sends labels only while
   this seed's save is loaded.
 
-Working in game: 2026-10-23 ("Other players' items").
+Working in game: 2026-10-23 ("Other players' items"); 2026-10-26, a three-game seed: no owner
+on the map cursor, other Zexion players' supplies minor ("Map markers").
 
 ### Other Zexion players' items, as themselves
 
@@ -349,8 +352,18 @@ the helper:
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
   frees it with the menu;
 - makes the pause screen's KEYS row the disk row (`src/pause.cpp`): the `jne` that builds the
-  row only once flag 39 is set made a `jmp`, then the small Data Disc icon and the count, the
-  key slots and icons hidden;
+  row only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons
+  hidden. As soon as a save of a known disk seed (one the client left a file for) is loaded, in
+  play or not, the row shows the count from that file until the client's arrives, so a pause
+  screen opened at once shows the disks, not KEYS;
+- while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
+  1008) in the sprite texture (blank there in the game's art, checked as the glyphs are), and
+  points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
+  Disc's (frame 829) with the image's place, drawn 24 x 24. The entry is allocated once and
+  kept for good, never freed, so a pause screen still holding it after an unload points at live
+  memory; whenever the image is not painted (the row off, before an unload, a texture it could
+  not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
+  screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
   play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
   (`src/mission.cpp`), whose YES closes the prompt through the game's NO and then starts the
@@ -365,7 +378,9 @@ Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unlo
 the scanner's text or the pause screen's branch is still the helper's.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
-prompt", "The pause screen's KEYS row", "The file select").
+prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
+received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
+pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
 
 ### AP saves without the client
 
@@ -390,7 +405,8 @@ prompt", "The pause screen's KEYS row", "The file select").
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock, the escape skip, the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
-  notice a load that the client is not connected (or, for `other_save`, is for another seed).
+  notice a load that the client is not connected (or, for `other_save`, is for another seed;
+  only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
   The file select shows each such save's count, from its map in the game's copy of the slot.
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
@@ -403,19 +419,23 @@ Working in game: 2026-10-25 ("AP saves without the client").
 
 ### The map
 
-- **What:** in an AP save in play holding the seed the labels are for (a plain randomizer save
-  is never touched), raises the map squares of item 48 (this player's OS Install Disks and other
-  players' progression items) from the game's basic marker to its important one
-  (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame handler writes
-  the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game writes the cursor's
-  name, in the same frame.
-- **When:** the markers every 16th frame call while labels are set; the names while the map is
-  open and this seed's save is loaded.
+- **What:** in an AP save holding the seed the labels are for, in play or in a menu (a plain
+  randomizer save is never touched), raises the map squares of item 48 (this player's OS
+  Install Disks and other players' progression items, but not a Zexion player's supplies:
+  `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
+  important one (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame
+  handler writes the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game
+  writes the cursor's name, in the same frame.
+- **When:** the markers every 16th frame call while labels are set, once two of those looks in a
+  row have found the seed's save loaded (during a load the section may still be the last
+  save's while the grid is the new one's); the names while the map is open and this seed's save
+  is loaded.
 - **Put back:** the markers are not: the game saves the map grid, and they stay as the game would
   have set them. The handler goes back when the names stop and before an unload, which refuses
   while an open map holds the wrapper.
 
-Working in game: 2026-10-25 ("Map markers").
+Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
+in a pause right after loading (before the two-look check, which is not yet seen in game).
 
 ### The title screen's lines
 
@@ -466,9 +486,11 @@ pipe and unloading. That test skips without a build.
 
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
-configured by RVA like the real game. `native/CMakeLists.txt` maps each test name to its source.
-They share `tests/check.h`; `tests/pipe_client.h` is the pipe client of `parts`,
-`apply_in_frames` and `unload_under_load`.
+configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
+(`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
+`unload_under_load` and `proxy`). They share `tests/check.h`;
+`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
+`unload_under_load`, and the last two's busy threads and wait for an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), the build check and the pipe.
@@ -478,8 +500,8 @@ They share `tests/check.h`; `tests/pipe_client.h` is the pipe client of `parts`,
   again, the received shield and death, the ASSIST watch and the scanner's text.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
-- `apitem`: the stand-in records restyled and named, the logo painted through a fake OpenGL,
-  the label parser.
+- `apitem`: the stand-in records restyled and named, the logo, the font glyphs and the pause
+  row's disc painted through a fake OpenGL, the label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`offline`: the seed file, its match and disk count, the folder, the cache check,
   `offline_put`, a stand-in game dressed and undressed).
@@ -499,6 +521,7 @@ They share `tests/check.h`; `tests/pipe_client.h` is the pipe client of `parts`,
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout |

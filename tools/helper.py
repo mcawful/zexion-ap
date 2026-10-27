@@ -16,16 +16,11 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from protected import ROOT, append_log, lab_dir
+
 sys.path.insert(0, str(ROOT))  # the client package
-
-from client import (  # noqa: E402
-    game,
-    native,
-)
-from protected import append_log, lab_dir  # noqa: E402
+from client import game, native  # noqa: E402
 
 
 def log(entry: dict) -> None:
@@ -52,10 +47,7 @@ def cmd_status(_: argparse.Namespace, g: game.Game) -> int:
     return 0
 
 
-def cmd_load(args: argparse.Namespace, g: game.Game) -> int:
-    if not args.yes:
-        print("load changes the running game; pass --yes once the person playing has agreed")
-        return 1
+def cmd_load(_: argparse.Namespace, g: game.Game) -> int:
     dll = native.default_dll()
     log(
         {"event": "attempt", "action": "load", "pid": g.pid, "build": g.build.name, "dll": str(dll)}
@@ -73,10 +65,7 @@ def cmd_load(args: argparse.Namespace, g: game.Game) -> int:
     return 0
 
 
-def cmd_unload(args: argparse.Namespace, g: game.Game) -> int:
-    if not args.yes:
-        print("unload changes the running game; pass --yes once the person playing has agreed")
-        return 1
+def cmd_unload(_: argparse.Namespace, g: game.Game) -> int:
     if not native.is_loaded(g.pm.process_handle):
         print("helper: not loaded")
         return 0
@@ -110,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--yes", action="store_true")
         p.set_defaults(func=func)
     args = parser.parse_args(argv)
+    if not getattr(args, "yes", True):  # load and unload
+        print(f"{args.command} changes the running game; pass --yes once the player has agreed")
+        return 1
     try:
         g = game.Game.attach()
     except game.GameError as exc:

@@ -23,6 +23,16 @@ constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progress
 // The empty item frames their logos are painted into (frames 63 and 95 of the item sprites).
 constexpr int kStandInFrame = 63, kStandInProgressionFrame = 95;
 constexpr int kStandInCount = 2;
+// Each stand-in's index (0 for Scrap Energy, 1 for Scrap Chunk) from its record, or from its
+// logo frame; -1 for neither. And the records and logo frames by index.
+constexpr int stand_in_index(int record) {
+    return record == kStandInItem ? 0 : record == kStandInProgression ? 1 : -1;
+}
+constexpr int logo_index(int frame) {
+    return frame == kStandInFrame ? 0 : frame == kStandInProgressionFrame ? 1 : -1;
+}
+constexpr int kStandInRecords[kStandInCount] = {kStandInItem, kStandInProgression};
+constexpr int kStandInFrames[kStandInCount] = {kStandInFrame, kStandInProgressionFrame};
 // Their own names, as the game loads their records (47's, then 48's).
 constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
@@ -110,28 +120,33 @@ private:
 };
 
 // One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
-// game's art (the AP logo glyph, the padlock, the disk glyphs). Painted while wanted, again now
-// and then and whenever the texture changes, and cleared when no longer wanted.
+// game's art (the AP logo glyph, the padlock, the disk glyphs), or any one-color image of its own
+// placed in the texture check's kept rectangle (the pause row's disc, pause.h). Painted while
+// wanted, again now and then and whenever the texture changes, and cleared when no longer wanted.
 class FontGlyph {
 public:
     // `rows`: 8 strings of 8, '#' for an opaque white pixel.
-    FontGlyph(uint8_t code, const char (*rows)[9]) : code_(code), rows_(rows) {}
+    FontGlyph(uint8_t code, const char (*rows)[9])
+        : x_((code % 16) * 8), y_(976 + (code / 16) * 8), w_(8), h_(8), rows_(rows[0]) {}
+    // An image of H rows of W - 1 at (x, y) in the sprite texture, '#' for an opaque white pixel.
+    template <size_t H, size_t W>
+    FontGlyph(int x, int y, const char (&rows)[H][W])
+        : x_(x), y_(y), w_(static_cast<int>(W - 1)), h_(static_cast<int>(H)), rows_(rows[0]) {}
     // Game thread (the GL context current). `texture_holder` holds the pointer to the sprite
     // data.
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     bool painted() const { return painted_ != 0; }
 
-    // Inside on_texture: whether its slot may be painted, and the slot painted (or cleared).
+    // Inside on_texture: whether its place may be painted, and the place painted (or cleared).
     bool fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const;
     void upload_pixels(const GlFunctions& gl, bool clear) const;
 
 private:
     bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear);
-    int x() const { return (code_ % 16) * 8; }
-    int y() const;
-    uint8_t code_;
-    const char (*rows_)[9];
+    bool opaque(int px, int py) const { return rows_[py * (w_ + 1) + px] == '#'; }
+    int x_, y_, w_, h_;
+    const char* rows_;  // h_ NUL-terminated strings of w_, back to back
     unsigned painted_ = 0;
     unsigned failed_ = 0;  // a texture it could not paint into: tried again only now and then
     int frames_to_paint_ = 0;
@@ -151,11 +166,6 @@ public:
     // own (again, if the game reloaded its records), and names each for its cell in `cells`
     // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records.
     void watch(BYTE* records_holder, const int (&cells)[2]);
-    // Both named for one cell.
-    void watch(BYTE* records_holder, int cell) {
-        const int cells[2] = {cell, cell};
-        watch(records_holder, cells);
-    }
 
     // Game thread, every frame while active (from the swap hook, the game's GL context
     // current): paints the logo into the sprite texture now and then, and whenever the
@@ -178,7 +188,6 @@ public:
     unsigned painted_texture() const { return painted_; }
 
 private:
-    BYTE* record(BYTE* records_holder, int item) const;
     // Paints (or clears) the logos and the glyph, only where the texture check finds the three
     // places blank (or already the helper's) and the game's art where the PNG has it.
     // `arrow_only`: just the progression logo's frame, for the arrow's next color.

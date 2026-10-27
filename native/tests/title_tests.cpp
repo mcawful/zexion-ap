@@ -93,13 +93,16 @@ void append(BYTE* t) {
 
 BYTE* glyph(BYTE* t, int i) { return get<BYTE**>(t, 0x228)[i]; }
 
-// The title as the game's routine leaves it: the copyright line, after something else.
-BYTE* reset_title() {
+// The title as the game's routine leaves it: the copyright line (returned), after something
+// else; without `copyright`, only that something else (null returned).
+BYTE* reset_title(bool copyright = true) {
     std::memset(g_list, 0, sizeof(g_list));
     g_made = 0;
     BYTE* other = text_new("PUSH ANY KEY", 12, 32);
     append(other);
     text_link(other);
+    g_made = 0;
+    if (!copyright) return nullptr;
     BYTE* line = text_new("C2025 GALLANT LEAF", 18, 32);
     append(line);
     text_link(line);
@@ -116,12 +119,12 @@ BYTE* reset_title() {
     return line;
 }
 
-zap::TitleAddresses addresses() {
-    zap::TitleAddresses a;
+zap::GameAddresses addresses() {
+    zap::GameAddresses a;
     a.draw_layer = reinterpret_cast<BYTE*>(&g_layer);
-    a.text_new_fn = reinterpret_cast<void*>(&text_new);
-    a.text_place_fn = reinterpret_cast<void*>(&text_place);
-    a.text_link_fn = reinterpret_cast<void*>(&text_link);
+    a.text_new_fn = reinterpret_cast<BYTE*>(&text_new);
+    a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
+    a.text_link_fn = reinterpret_cast<BYTE*>(&text_link);
     return a;
 }
 
@@ -212,11 +215,7 @@ void test_lines_are_made_under_the_copyright() {
 }
 
 void test_nothing_without_the_copyright_line() {
-    std::memset(g_list, 0, sizeof(g_list));
-    g_made = 0;
-    BYTE* other = text_new("PUSH ANY KEY", 12, 32);
-    append(other);
-    g_made = 0;
+    reset_title(false);
     zap::TitleLines lines;
     lines.set_version("0.22.0");
     look(lines);
@@ -282,6 +281,5 @@ int main() {
     test_nothing_without_the_copyright_line();
     test_hidden_and_shown_with_the_copyright();
     test_a_new_title_gets_new_lines();
-    if (g_failures == 0) std::printf("title tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("title tests");
 }
