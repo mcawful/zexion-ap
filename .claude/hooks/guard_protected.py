@@ -887,9 +887,9 @@ def _reaches_protected(word: str, folders: list[str | None], protected) -> bool:
 
 def _names_parent(word: str, folders: list[str | None], protected) -> bool:
     """Whether a word names a parent of a protected folder (``"$APPDATA/Gallant Leaf"``,
-    ``…/steamapps/common``, ``rm -r "Gallant Leaf"`` in Roaming): copying into, moving or
-    deleting it reaches the folder. A bare ``steamapps`` or ``userdata`` counts only when that
-    folder exists where the command runs (it may be a test name)."""
+    ``…/steamapps/common``, ``rm -r "Gallant Leaf"`` or ``Gall*`` in Roaming): copying into,
+    moving or deleting it reaches the folder. A bare ``steamapps`` or ``userdata`` counts only
+    when that folder exists where the command runs (it may be a test name)."""
     word = re.sub(r"^--?[\w-]+=", "", word)  # --target-directory=…
     bare = word.lower() in ("steamapps", "userdata")
     return any(

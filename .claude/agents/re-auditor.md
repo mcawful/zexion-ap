@@ -10,8 +10,8 @@ documentation, or the APWorld's logic. Report only these problems.
 
 ## Get the diff
 
-On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
-target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives. Read the whole
+Use the range `docs/DEVELOPING.md`, "Reviewing a change", gives (on a topic branch, `git diff
+develop...HEAD`); on `main`, or when the base is unclear, ask for the range. Read the whole
 functions the diff touches, not just the changed lines; most of these bugs live in the path
 around the change.
 

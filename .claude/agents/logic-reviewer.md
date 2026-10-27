@@ -11,8 +11,8 @@ logic problems.
 
 ## Get the diff
 
-On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
-target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives. When the diff touches
+Use the range `docs/DEVELOPING.md`, "Reviewing a change", gives (on a topic branch, `git diff
+develop...HEAD`); on `main`, or when the base is unclear, ask for the range. When the diff touches
 rules, also read the regions and rules it did not touch that lead to or from the changed ones: a
 rule is only as good as the path to it.
 

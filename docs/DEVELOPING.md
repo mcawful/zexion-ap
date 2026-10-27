@@ -266,12 +266,13 @@ Running it may load the helper into the game: the one already there if it is thi
   save (the reason goes to the log).
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
-## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub
-shows its README); `develop` holds code ready for the next release. Work happens on short-lived
-topic branches cut from `develop`, merged into `develop` by pull request, then deleted. `develop`
-and `main` take changes only through pull requests with every CI check passing. Branch
-protection requires every check but `ruff and pytest (macos-latest)`, which a pull request must
-still pass.
+## Branches and releases
+
+`main` holds released code (or a release waiting for approval; GitHub shows its README);
+`develop` holds code ready for the next release. Work happens on short-lived topic branches cut
+from `develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take
+changes only through pull requests with every CI check passing. Branch protection requires
+every check but `ruff and pytest (macos-latest)`, which a pull request must still pass.
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate

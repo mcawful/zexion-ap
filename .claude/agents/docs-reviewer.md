@@ -12,8 +12,8 @@ delivery safety). Report only documentation problems.
 
 ## Get the diff
 
-On a topic branch, `git diff develop...HEAD`. On `develop`, for uncommitted work or a named
-target, use the range `docs/DEVELOPING.md`, "Reviewing a change", gives.
+Use the range `docs/DEVELOPING.md`, "Reviewing a change", gives (on a topic branch, `git diff
+develop...HEAD`); on `main`, or when the base is unclear, ask for the range.
 
 ## The rules you are enforcing
 
