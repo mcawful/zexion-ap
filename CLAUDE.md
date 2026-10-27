@@ -238,10 +238,10 @@ Committed under `.claude/`, so they apply to anyone working here:
   Debian, Ubuntu and macOS; the Microsoft Store stub; Python 2), the hook exits with an error
   and Claude Code lets the call through: the guard is off, with only a hook error notice.
   `.claude/hooks/run_python.sh` (`sh` on Linux and macOS, Git Bash on Windows, which run hook
-  commands) runs a hook with the first Python that can (the repo's `.venv`, then `python3`,
-  `python`, `py -3`) and, with none, blocks a call whose payload mentions the saves or a Steam
-  folder, as the guard does when it breaks (cases: `tests/test_hook_runner.py`). The hook
-  commands do not call it yet.
+  commands) runs a hook with the first Python 3.11 or later that can run it (the repo's
+  `.venv`, then `python3`, `python`, `py -3`) and, with none, blocks a guard call whose payload
+  mentions the saves or a Steam folder, as the guard does when it breaks (cases:
+  `tests/test_hook_runner.py`). The hook commands do not call it yet.
 - Skills: `/preflight` (the checks; without the toolchain a change is unverified), `/save-lab`
   (Steam Cloud, backups, copies, diffs, patches, install, restore), `/find-address` (a value in
   memory to a byte pattern, recorded with evidence).
