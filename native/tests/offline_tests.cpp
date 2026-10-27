@@ -481,6 +481,15 @@ void test_a_cache_without_the_client_only_keys() {
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
     check(game.mission_status() == "not asked" && g_fade_calls == 0, "no RETURN HOME");
 
+    // A client's short first connection going away, or an unload: everything put back (the
+    // prompt's, the choice's and the map's too) with those members null, then dressed again.
+    game.client_gone(&no_callback);
+    check(game.configured() && !game.client_ready() && !game.intel_on() &&
+              !game.menu_installed(),
+          "put back, still the cache's config");
+    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
+    check(game.intel_on() && game.assists_locked(), "and the save dressed again");
+
     // A client's config sets every key: its parts run.
     check(configure(game).empty() && game.client_ready() && game.left_out().empty(),
           "a client's config: every key");

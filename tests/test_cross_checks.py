@@ -193,7 +193,8 @@ def test_the_clients_parts_wait_for_every_key() -> None:
         for function, _, line in functions(name):
             if function is not None:
                 key = (name, function)
-                bodies[key] = bodies.get(key, "") + line + "\n"
+                # Code only: a gate's name in a comment is no gate.
+                bodies[key] = bodies.get(key, "") + line.split("//", 1)[0] + "\n"
     for name, gates in CLIENT_GATES.items():
         for gate in gates:
             assert "client_ready()" in bodies.get((name, gate), ""), f"{gate} is not gated"

@@ -110,7 +110,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `reads`: the reads a frame has taken, and the seeds the last one found.
-- `cache_missing`: the client-only keys (below) the offline cache lacked, comma-separated.
+- `cache_missing`: the client-only keys (below) the offline cache lacked, comma-separated. With
+  it, `configured=1` means the offline look runs while the client's parts still refuse.
 
 `config` carries the addresses the client resolved by byte pattern (`CONFIG_KEYS` in
 `client/native.py`). The whole configuration is refused unless:
@@ -137,10 +138,11 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 
 ### On the game's thread
 
-A "frame" request (and `hello`'s `configured`, `skip`, `active`, `offline` and `title`) goes to
-the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and runs at the next frame
-call. If no frame takes it within a second (the game paused in the background, say), it is
-withdrawn, the reply is `refused no frame`, and it never runs afterwards.
+A "frame" request (and `hello`'s `configured`, `skip`, `active`, `offline`, `title` and
+`cache_missing`) goes to the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and
+runs at the next frame call. If no frame takes it within a second (the game paused in the
+background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
+afterwards.
 
 The frame call never waits on anything the pipe thread can hold: it takes the mailbox's work
 with one atomic exchange, and only one thread at a time does the work.
@@ -704,7 +706,7 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
-| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only ones null after an offline cache lacking them) |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout |

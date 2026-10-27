@@ -479,7 +479,8 @@ std::string apply(const std::string& request) {
     zap::Batch batch;
     std::string error = zap::parse_batch(request, batch);
     if (!error.empty()) return "error " + error;
-    // Game::apply refuses itself while not configured; a batch no frame took is never applied.
+    // Game::apply refuses itself until every key is set (client_ready); a batch no frame took
+    // is never applied.
     return on_game([&] { return g_game.apply(batch); }, false);
 }
 
