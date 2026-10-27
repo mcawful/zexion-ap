@@ -419,6 +419,13 @@ void test_a_cache_without_the_client_only_keys() {
         check(client.configure(self, partial) == "missing weapon_strip_gate" &&
                   !client.configured(),
               "a client's config needs every key");
+        // One that does not fit (here: data in code) is left out as a missing one is.
+        auto misplaced = stand_in_config();
+        misplaced["fade"] = misplaced["message_fn"];
+        zap::Game cached;
+        check(cached.configure(self, misplaced, false).empty() && cached.left_out() == "fade",
+              "a cache's client-only key that does not fit: left out");
+        check(!client.configure(self, misplaced).empty(), "but not from a client");
     }
 
     reset_game();

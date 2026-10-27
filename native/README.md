@@ -97,7 +97,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued` or `refused not configured`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -117,18 +117,19 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 `client/native.py`). The whole configuration is refused unless:
 
 - every name is there. An offline cache ("AP saves without the client") may lack the client-only
-  ones, marked `client_only` in `kConfigKeys` (`src/game_calls.cpp`): those only the grants, new
-  games, DeathLink, Energy Shields and RETURN HOME WITH THE DISKS? read. The helper then
-  configures with those unset (`hello` lists them as `cache_missing`), and `apply`, `shield`,
-  `die`, `ap_newgame` and `mission_prompt` get `refused not configured` until a client's
-  `config` sets every key. A cache lacking any other key is refused
-  (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds a key
-  only the client's parts read keeps working offline with the older cache (working in game
-  2026-10-27, B1: a cache without `fade` and `fade_level`, no client,
-  `cache_missing=fade,fade_level`; the title line, the file select's AP logos and a dressed AP
-  save as usual); one that adds a key the offline look reads does not, until the client has run
-  once. `tests/test_cross_checks.py` checks that only the client's parts read a client-only key,
-  and that each way a client's state comes in waits for every key;
+  ones, or hold one that does not fit as below: those marked `client_only` in `kConfigKeys`
+  (`src/game_calls.cpp`), which only the grants, new games, DeathLink, Energy Shields and RETURN
+  HOME WITH THE DISKS? read. The helper then configures with those unset (`hello` lists them as
+  `cache_missing`), and `apply`, `shield`, `die`, `ap_newgame` and `mission_prompt` get `refused
+  not configured` until a client's `config` sets every key. A cache lacking any other key is
+  refused (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds
+  a key only the client's parts read keeps working offline with the older cache (working in game
+  2026-10-27, B1, the helper built at 26ce4b6: a cache without `fade` and `fade_level`, no
+  client, `cache_missing=fade,fade_level`; the title line, the file select's AP logos and a
+  dressed AP save as usual; the gates as they are now, and a client-only key that does not fit,
+  stand-in tests only); one that adds a key the offline look reads does not, until the client
+  has run once. `tests/test_cross_checks.py` checks that only the client's parts read a
+  client-only key, and that each way a client's state comes in waits for every key;
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is

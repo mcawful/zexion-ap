@@ -61,8 +61,8 @@ using DeathFn = void (*)(void* player, char kind);
 // GameAddresses it fills. Each lies in the image with kKeyBytes there (the offline cache checks a
 // function's first 16 bytes): functions in code, data in writable data, the CRT's import slots
 // (only read) outside code. room/before: what must also fit in the key's section. A client's
-// config needs every key; the offline cache (inactive) may lack the client_only ones, which are
-// then left null (Game::client_ready). A key is needed offline unless marked so.
+// config needs every key; in the offline cache (inactive) a client_only one missing or not
+// fitting is left null (Game::client_ready). A key is needed offline unless marked so.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -200,16 +200,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
-    std::string left_out;  // the client-only keys an offline cache lacks, left null
+    // The client-only keys an offline cache lacks, or has where they do not fit: left null.
+    std::string left_out;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
-        if (it == rvas.end()) {
-            if (active || !key.client_only) return std::string("missing ") + key.name;
+        std::string why = it == rvas.end() ? std::string("missing ") + key.name
+                                           : check_key(image, image_size, key, it->second);
+        if (!why.empty()) {
+            if (active || !key.client_only) return why;
             left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
             continue;
         }
-        std::string why = check_key(image, image_size, key, it->second);
-        if (!why.empty()) return why;
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
     }
     base_ = reinterpret_cast<BYTE*>(image);

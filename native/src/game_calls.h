@@ -60,7 +60,8 @@ public:
     // Game thread. Checks every kConfigKeys entry is present and placed right in `image` (code
     // in code, data in writable data, the CRT import slots outside code, room where a key needs
     // it), then keeps the addresses. "" or an error. `active`: false for the offline cache, which
-    // may lack the client_only keys (game_calls.cpp): those are left null (client_ready).
+    // may lack the client_only keys (game_calls.cpp) or hold them where they do not fit: those
+    // are left null (client_ready).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }

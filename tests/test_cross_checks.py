@@ -138,7 +138,7 @@ CLIENT_GATES = (
 )
 
 _DEFINITION = re.compile(
-    r"^(?!//|#|namespace|using|struct|class|enum|template|\}|\s)[^;]*?((?:\w+::)*~?\w+)\("
+    r"^(?!//|#|namespace|using|struct|class|enum|template|\}|\s)[^;=]*?((?:\w+::)*~?\w+)\("
 )
 
 
