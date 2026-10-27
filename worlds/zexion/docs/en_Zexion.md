@@ -113,6 +113,7 @@ and ARCHIPELAGO SAVE: NO FEATS EARNED. Your normal saves earn them as usual.
 
 The mod also stops Steam achievements in Archipelago saves (for items, the map and the
 ending). The ending's has been checked in game; the others so far only in the mod's own tests.
+While `/reload_mod` reloads the mod, for a few seconds, they are not stopped.
 
 This needs the mod in the game's folder. It is meant to hold with the client closed too, once
 you have connected to that seed at least once, and to leave plain randomizer saves alone; both

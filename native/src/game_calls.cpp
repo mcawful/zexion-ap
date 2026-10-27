@@ -251,6 +251,20 @@ bool Game::menu_open() const {
     return configured_ && *at_.save_loaded != kNoSaveLoaded && *at_.menu_state != 0;
 }
 
+bool Game::away_from_start() const {
+    if (!in_play() || !rando_save_loaded()) return false;
+    // The start record: the candidate index, then the tile column and row.
+    const auto column = at<uint16_t>(at_.rando_blob, kOfflineStartAt + 2) / kCellColumns;
+    const auto row = at<uint16_t>(at_.rando_blob, kOfflineStartAt + 4) / kCellRows;
+    if (column >= kMapSide || row >= kMapSide) return false;
+    // The raw cell can be -1 (off the map) for a moment: not known, so not away.
+    BYTE* p = player();
+    const uint8_t at_row = at<uint8_t>(p, kPlayerCellRow);
+    const uint8_t at_column = at<uint8_t>(p, kPlayerCellColumn);
+    if (at_row >= kMapSide || at_column >= kMapSide) return false;
+    return at_row != row || at_column != column;
+}
+
 BYTE* Game::record(uint8_t item) const {
     BYTE* records = at<BYTE*>(at_.item_records, 0);
     if (records == nullptr || item >= record::kCount) return nullptr;
@@ -319,11 +333,6 @@ std::string Game::apply(const Batch& batch) {
 
 bool Game::showable(const Popup& popup) const {
     return !popup.origin || (rando_save_loaded() && section_is(*popup.origin, at_.rando_blob));
-}
-
-size_t Game::pending_popups() const {
-    return static_cast<size_t>(
-        std::count_if(popups_.begin(), popups_.end(), [](const Popup& p) { return p.counted; }));
 }
 
 bool Game::popup_busy() const { return popup_frames_left() > 1; }
@@ -736,7 +745,7 @@ void Game::watch_mission() {
     int32_t left = whole ? 1 : kFadeMessageLeft;
     bool idle = in_play() && !waiting && popup_frames_left() <= left &&
                 frames_since_popup_ >= kPopupGapFrames;
-    mission_.watch(at_, idle);
+    mission_.watch(at_, idle, away_from_start());
 }
 
 void Game::watch_files() {
@@ -830,14 +839,29 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
 void Game::watch_feats() {
     // On once two frame calls in a row have found an AP save loaded: during a load the section
     // may still be the last save's for a moment. Off at once.
-    if (ap_save_loaded()) {
+    const bool ap = ap_save_loaded();
+    if (ap) {
         if (feats_passes_ < 2) ++feats_passes_;
     } else {
         feats_passes_ = 0;
     }
+    // The AP saves' slots for the stub's test during a load (feats.h): looked for with no save
+    // loaded (the title, the file select); kept while one loads, and dropped once two frame
+    // calls in a row find a save loaded that is not one.
+    if (*at_.save_loaded == kNoSaveLoaded) {
+        feats_other_ = 0;
+        if (feats_slot_frames_-- <= 0) {
+            feats_slot_frames_ = kFileSlotFrames;
+            feats_slots_ = ap_file_slots();
+        }
+    } else {
+        feats_slot_frames_ = 0;
+        feats_other_ = ap ? 0 : std::min(feats_other_ + 1, 2);
+        if (feats_other_ >= 2) feats_slots_.clear();
+    }
     const bool was_patched = feats_.ending_patched();
     const bool on = feats_passes_ >= 2;
-    feats_.watch(at_, on);
+    feats_.watch(at_, on, feats_slots_);
     // An AP ending, jumped over: the save left (MISSION COMPLETE onward has none loaded) with the
     // patch in place, flag 250 set and flag 251 clear. A save loaded ends it, and so does the
     // Feats of Natu screen going away once it was seen.
@@ -862,6 +886,9 @@ void Game::watch_feats() {
 
 void Game::restore_feats() {
     feats_passes_ = 0;
+    feats_other_ = 0;
+    feats_slots_.clear();
+    feats_slot_frames_ = 0;
     if (!configured_) return;
     feats_.restore();
     feats_screen_note(at_, false);  // the screen's note blanked, if it is up
@@ -939,6 +966,11 @@ bool Game::request_mission() {
     if (!client_ready()) return false;
     mission_.request();
     return true;
+}
+
+bool Game::ending_pending() const {
+    if (!configured_) return false;
+    return mission_.ending() || (feats_.ending_patched() && mission_.ending_queued(at_));
 }
 
 void Game::mission_open() {

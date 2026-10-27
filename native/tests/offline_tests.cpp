@@ -13,6 +13,7 @@
 #include "game_calls.h"
 #include "offline.h"
 #include "stand_in.h"
+#include "fake_gl.h"
 
 using namespace stand_in;
 
@@ -385,6 +386,69 @@ void test_the_ap_saves_slots() {
     check(labeled.ap_file_slots() == std::set<int>{7}, "the labels' seed's save");
 }
 
+// The file select's AP logo as the frame call paints it (Game::watch_files): in its colors,
+// whiter through a new game's fade to white (its routine queued, the timer counting down), and
+// cleared from the texture when the file select's look is put back (restore_files).
+void test_the_logo_through_the_frame_call() {
+    reset_game();
+    gl_fake::reset_gl();
+    clear_slots();
+    slot_block(3)[0x935E] = 0;
+    put<uint16_t>(slot_block(3), 0x9400, 1);
+    put_seed(rando_copy(3));
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.set_gl(gl_fake::fake_gl());
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.add_known_seeds({s});
+    g_save_loaded = 0xFF;  // the file select
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    // The logo's (6, 0) is red ('r'): its green rises as it is whitened.
+    auto logo_green = [](const gl_fake::Upload& u) { return u.pixels[(0 * 16 + 6) * 4 + 1]; };
+    auto logo_uploads = [] {
+        std::vector<gl_fake::Upload> out;
+        for (const gl_fake::Upload& u : gl_fake::g_uploads) {
+            if (u.x == zap::kApLogoX && u.y == zap::kApLogoY && u.w == 16 && u.h == 16) {
+                out.push_back(u);
+            }
+        }
+        return out;
+    };
+    game.watch_all(&no_callback);
+    std::vector<gl_fake::Upload> logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) < 0x80,
+          "an AP save listed: the logo painted at (96, 1040) in its colors");
+    const uint8_t own = logos.empty() ? 0 : logo_green(logos[0]);
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);  // a new game queued, 20 frames left
+    g_transition_timer = 20;
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) > own &&
+              logo_green(logos[0]) < 0xFF,
+          "a new game's fade: painted again, whiter");
+    g_transition_timer = 1;
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) == 0xFF, "all white on its last frame");
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    gl_fake::g_uploads.clear();
+    game.restore_files();
+    logos = logo_uploads();
+    bool blank = logos.size() == 1;
+    for (const gl_fake::Upload& u : logos) {
+        for (uint8_t b : u.pixels) blank = blank && b == 0;
+    }
+    check(blank, "restore_files clears the logo from the texture");
+    game.put_back_all(&no_callback);
+    clear_slots();
+    g_save_loaded = 3;
+}
+
 // The keys only the client's parts read (game_calls.cpp, client_only), in the table's order.
 const char* const kClientOnly[] = {
     "weapon_strip_gate", "hud_number_fn",   "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn",
@@ -523,6 +587,7 @@ int main() {
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
     test_the_ap_saves_slots();
+    test_the_logo_through_the_frame_call();
     test_a_cache_without_the_client_only_keys();
     return report("offline tests");
 }

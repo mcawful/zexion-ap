@@ -47,10 +47,12 @@ public:
 
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
     // state, no popup of the helper's to show, and the game's last message down to its last
-    // kFadeMessageLeft frames (game_calls.cpp; for the ending, ended). Sets the opener (or, after
-    // YES, the ending) once the game is idle, and gives up on an opener another transition took
-    // the place of (asked again; taken_over).
-    void watch(const GameAddresses& addresses, bool idle_in_play);
+    // kFadeMessageLeft frames (game_calls.cpp; for the ending, ended). `away`: the player in
+    // play outside the seed's start cell. Sets the opener (or, after YES, the ending) once the
+    // game is idle, and gives up on an opener another transition took the place of (asked
+    // again; taken_over). A request not yet opened lapses while `away` (popups held it until the
+    // player had left the landing pod): the client asks again after the next save there.
+    void watch(const GameAddresses& addresses, bool idle_in_play, bool away = false);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
     // and wraps YES. Returns "" or what was not as traced; once the three children are read,
@@ -58,7 +60,8 @@ public:
     std::string open(const GameAddresses& addresses);
 
     // Game thread, from the opener when not in play (a death during the fade): the opener
-    // taken off, the fade turned back, and the prompt asked for again.
+    // taken off, the fade turned back if it is still the opener's (fade_still_ours), and the
+    // prompt asked for again.
     void put_off(const GameAddresses& addresses);
 
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
@@ -82,6 +85,9 @@ public:
     // YES; `resume` asks for them again after restore.
     bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
     bool ending() const { return ending_; }
+    // Whether the ending routine is the game's transition now (set and not run yet); false
+    // without the routine table.
+    bool ending_queued(const GameAddresses& addresses) const;
     void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 

@@ -16,6 +16,9 @@ namespace zap {
 // flips at the moment of pickup").
 constexpr int kMapSide = 54;
 constexpr int kMapCells = kMapSide * kMapSide;
+// A map cell is 14 tiles along this repo's x (the tile column) and 20 along its y (the tile row)
+// (docs/re/save-format.md, "The continue point and the seed's start").
+constexpr int kCellColumns = 14, kCellRows = 20;
 
 // save_loaded: 0xFF with no save loaded, 0 in one (docs/re/memory.md, "Telling play from menus,
 // the title screen and death"). The flags: 0x9C4 bytes (client/game.py, FLAGS).

@@ -1,8 +1,9 @@
 // Host tests for Feats and achievements kept out of AP saves (feats.h): the AP-save test, the
 // guard going on and off, the ending's patch run on a stand-in ending, Steam's import slot
-// hooked, the refusals, and putting both back. This program imports SteamInternal_ContextInit
-// by name from a stand-in steam_api64.dll (steam_stub.cpp), as the game does, so the helper finds
-// and hooks the real import slot of a real import.
+// hooked, the stub's test while an AP save loads, the refusals, and putting both back. This
+// program imports SteamInternal_ContextInit by name from a stand-in steam_api64.dll
+// (steam_stub.cpp), as the game does, so the helper finds and hooks the real import slot of a
+// real import.
 
 #include <windows.h>
 
@@ -201,6 +202,15 @@ void test_the_ending() {
     check(site + 7 + get<int32_t>(patch.data(), 2) == g_flags + 251, "the mov clears flag 251");
     check(site + 12 + get<int32_t>(patch.data(), 8) == g_ending + kEndingJoin,
           "the jmp lands on the join");
+    // The ending routine set as the transition (RETURN HOME's, or the escape's event 2567), not
+    // run yet, with the patch in place: an unload would put the patch back first, so it refuses.
+    g_routine_table[zap::kEndingRoutine] = g_ending;
+    g_transition_fn = g_ending;
+    check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
+          "the ending queued with the patch in place: an unload refuses");
+    g_transition_fn = nullptr;
+    check(!game.ending_pending() && game.unload_refusal() == nullptr, "once it has run: not");
+    g_routine_table[zap::kEndingRoutine] = nullptr;
     // A save that already holds flag 251 (an ending before the guard).
     g_flags[250] = 0;
     g_flags[251] = 1;
@@ -250,6 +260,141 @@ void test_steam() {
     check(call_stats(g_stats_context, kSetAchievement, "02MachineGun") &&
               stub_calls(kSetAchievement) == set_before + 2,
           "off: the stats context reaches Steam");
+}
+
+// Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
+BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
+BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
+// Every slot empty, then slot `n` a randomizer save whose copy is section `salt`'s.
+void clear_slots() {
+    std::memset(g_slot_array, 0, sizeof(g_slot_array));
+    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
+    for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
+}
+void put_slot(int n, uint8_t salt) {
+    load_save(salt);
+    slot_block(n)[0x935E] = 0;
+    put<uint16_t>(slot_block(n), 0x9400, 1);
+    std::memcpy(rando_copy(n), g_section, 0x908);
+}
+
+// The load routine sets current_slot's save loaded and runs the 15Explorer check in one game
+// call, before any frame call (feats.h): the stub blocks then if that slot holds an AP save.
+void test_a_load_from_the_file_select() {
+    reset();
+    clear_slots();
+    put_slot(3, 1);  // an AP save
+    zap::Game game;
+    check(configure_feats(game).empty(), "configured");
+    game.add_known_seeds({seed_of_save()});
+    put_slot(5, 2);  // a plain randomizer save
+    g_rando_marker = 0;
+    g_save_loaded = 0xFF;  // the file select
+    game.watch_feats();
+    check(!game.feats().on() && game.feats().steam_hooked() && game.feats().load_test() &&
+              slot_value() == game.feats().stub() && game.feats_state() == "off",
+          "off, but hooked for the load test while a slot holds an AP save");
+
+    int set_before = stub_calls(kSetAchievement), store_before = stub_calls(kStoreStats);
+    // The load of slot 3, up to its tail call: current_slot, the marker, save_loaded.
+    g_current_slot = 2;
+    g_rando_marker = 1;
+    g_save_loaded = 0;
+    check(!call_stats(g_stats_context, kSetAchievement, "15Explorer") &&
+              !call_stats(g_stats_context, kStoreStats, nullptr) &&
+              stub_calls(kSetAchievement) == set_before && stub_calls(kStoreStats) == store_before,
+          "loading the AP save: 15Explorer and StoreStats reach the stand-in");
+    check(call_stats(g_utils_context, kSetAchievement, "x") &&
+              stub_calls(kSetAchievement) == set_before + 1,
+          "another context passes through");
+    g_current_slot = 4;  // slot 5, the plain one
+    check(call_stats(g_stats_context, kSetAchievement, "15Explorer") &&
+              stub_calls(kSetAchievement) == set_before + 2,
+          "loading another slot: Steam sees it");
+    g_current_slot = 2;
+    g_rando_marker = 0;  // a normal save in it (marker 0)
+    check(call_stats(g_stats_context, kSetAchievement, "15Explorer") &&
+              stub_calls(kSetAchievement) == set_before + 3,
+          "the marker not set: Steam sees it");
+    g_rando_marker = 1;
+    for (int32_t slot : {-1, 30, 1000}) {
+        g_current_slot = slot;
+        check(call_stats(g_stats_context, kSetAchievement, "x"), "a slot out of range passes");
+    }
+    check(stub_calls(kSetAchievement) == set_before + 6, "all three to Steam");
+
+    // The AP save loaded: the guard on after two frame calls, then the title again.
+    g_current_slot = 2;
+    std::memcpy(g_section, rando_copy(3), 0x908);
+    game.watch_feats();
+    game.watch_feats();
+    check(game.feats().on() && game.feats().load_test(), "in play: on");
+    g_save_loaded = 0xFF;
+    game.watch_feats();
+    check(!game.feats().on() && game.feats().steam_hooked() && game.feats().load_test(),
+          "back at the title: off, the load test kept");
+
+    // The plain save loaded: the slots kept for one frame call, dropped at the second.
+    g_current_slot = 4;
+    std::memcpy(g_section, rando_copy(5), 0x908);
+    g_save_loaded = 0;
+    game.watch_feats();
+    check(game.feats().load_test(), "one frame call: kept, the section may be the last save's");
+    game.watch_feats();
+    check(!game.feats().steam_hooked() && !game.feats().load_test() &&
+              slot_value() == steam_function(),
+          "a save that is not an AP save: the slot back to steam_api64's");
+    g_current_slot = 2;
+    std::memcpy(g_section, rando_copy(3), 0x908);
+    g_rando_marker = 1;
+    set_before = stub_calls(kSetAchievement);
+    g_save_loaded = 0xFF;
+    game.watch_feats();
+    check(game.feats().load_test(), "at the title again: armed at once");
+    // The title keeps the last save's marker and current_slot: with no save loaded, a menu's
+    // achievement (12GetBonus, 13SecretCode) still reaches Steam.
+    check(call_stats(g_stats_context, kSetAchievement, "12GetBonus") &&
+              stub_calls(kSetAchievement) == set_before + 1,
+          "at the title, the AP save's marker and slot left: Steam sees it");
+    g_save_loaded = 0;  // the load sets save_loaded before its tail call
+    check(!call_stats(g_stats_context, kSetAchievement, "15Explorer") &&
+              stub_calls(kSetAchievement) == set_before + 1,
+          "the load itself still blocked");
+    g_save_loaded = 0xFF;
+    set_before = stub_calls(kSetAchievement);
+
+    // From the pipe thread once no frame can watch (an unload): the test off with the slot.
+    void* stub = game.feats().stub();
+    game.release_steam();
+    auto stub_fn = reinterpret_cast<void* (*)(void*)>(stub);
+    check(slot_value() == steam_function() && !game.feats().load_test() &&
+              stub_fn(g_stats_context) == &g_stats_context[2],
+          "release_steam: the slot back, and the stub passes a load's call through");
+    game.watch_feats();
+    check(game.feats().load_test(), "a refused unload: armed again");
+    game.restore_feats();
+    check(!game.feats().steam_hooked() && !game.feats().load_test() &&
+              slot_value() == steam_function(),
+          "restore_feats: both off");
+    game.watch_feats();
+    check(game.feats().load_test(), "and set again by the next frame call");
+    game.restore_feats();
+
+    // An offline cache without current_slot (a client-only key): no load test, nothing hooked.
+    zap::Game offline;
+    auto config = feats_config();
+    config.erase("current_slot");
+    check(offline.configure(GetModuleHandleW(nullptr), config, false).empty(),
+          "configured from a cache without current_slot");
+    offline.set_offline({zap::offline_seed_of(rando_copy(3))});
+    offline.watch_feats();
+    check(!offline.feats().steam_hooked() && !offline.feats().load_test(),
+          "without current_slot: not hooked at the file select");
+    offline.restore_feats();
+    clear_slots();
+    g_current_slot = 0;
+    g_rando_marker = 0;
+    g_save_loaded = 3;
 }
 
 void test_refusals() {
@@ -573,6 +718,7 @@ int main() {
     test_on_and_off();
     test_the_ending();
     test_steam();
+    test_a_load_from_the_file_select();
     test_refusals();
     test_the_screen_note();
     test_the_note_after_an_ending();

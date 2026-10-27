@@ -112,7 +112,10 @@ def client_only_keys() -> set[str]:
 # - menu.cpp: ARCHIPELAGO's choice, installed only with a new game armed.
 # - mission.cpp: RETURN HOME's fade (fade_frames, MissionPrompt::fade), reached only once a
 #   prompt is asked for, and the game's routines (routine), which MissionPrompt::watch reads every
-#   frame: a null table gives no routine, so nothing runs (offline_tests.cpp drives it null).
+#   frame: a null table gives no routine, so nothing runs (offline_tests.cpp drives it null). The
+#   ending's check for an unload (MissionPrompt::ending_queued) tests the table for null first.
+# - feats.cpp: the Steam stub's test while an AP save loads, set only with current_slot
+#   non-null (native/src/feats.h; native/tests/feats_tests.cpp runs it without the key).
 CLIENT_READERS = {
     "game_calls.cpp": (
         "Game::apply",
@@ -125,7 +128,13 @@ CLIENT_READERS = {
     ),
     "game_calls.h": ("panel_handler",),
     "menu.cpp": ("ArchipelagoChoice::",),
-    "mission.cpp": ("fade_frames", "routine", "MissionPrompt::fade"),
+    "mission.cpp": (
+        "fade_frames",
+        "routine",
+        "MissionPrompt::fade",
+        "MissionPrompt::ending_queued",
+    ),
+    "feats.cpp": ("FeatsGuard::watch", "FeatsGuard::set_switch"),
 }
 # Where a client's state comes into Game (game_calls.cpp): each refuses until every key is set
 # (Game::client_ready), and the readers above run only on what these set. rearm, which puts a

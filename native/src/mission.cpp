@@ -79,7 +79,7 @@ void MissionPrompt::resume(bool asked, bool ending) {
     }
 }
 
-void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
+void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) {
     void* fn = nullptr;
     int32_t timer = -1;
     BYTE* top = nullptr;
@@ -101,6 +101,10 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
     } else if (armed_ && faded_) {
         fade_seen_ = fade_frames(a);  // the opener still in place: how far the fade has got
         timer_seen_ = timer;
+    }
+    if (requested_ && away) {
+        requested_ = false;
+        status_ = "lapsed: the player left the landing pod";
     }
     void* idle_fn = routine(a, kIdleRoutine);
     bool idle = idle_in_play && timer == 0 && fn != nullptr && fn == idle_fn && top == nullptr &&
@@ -191,6 +195,7 @@ void MissionPrompt::take_back(const GameAddresses& a) {
 
 void MissionPrompt::put_off(const GameAddresses& a) {
     armed_ = false;
+    if (!fade_still_ours(a)) faded_ = false;  // the death's own fade, or none ran: left alone
     if (writable_fields(a)) take_back(a);
     fade_back(a);
     requested_ = true;
@@ -261,6 +266,12 @@ void* MissionPrompt::yes() {
     ending_ = true;
     status_ = "yes: ending when idle";
     return no;
+}
+
+bool MissionPrompt::ending_queued(const GameAddresses& a) const {
+    void* fn = nullptr;
+    if (a.routine_table == nullptr || !read(a.transition_fn, 0, fn) || fn == nullptr) return false;
+    return fn == routine(a, kEndingRoutine);
 }
 
 void MissionPrompt::cancel(const GameAddresses& a) {
