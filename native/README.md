@@ -532,7 +532,9 @@ Working in game: 2026-10-25 ("AP saves without the client").
   while an open map holds the wrapper.
 
 Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
-in a pause right after loading (before the two-look check, which is not yet seen in game).
+in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
+two-look check, the unseen squares named as the game names its own and the markers still raised
+after a save, a return to the title and a load.
 
 ### The title screen's lines
 
