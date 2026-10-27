@@ -21,10 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build_apworld import client_version
+from build_apworld import client_version, version_in
 from protected import ROOT
-
-VERSION_LINE = re.compile(r'^VERSION = "([0-9.]+)"', re.M)  # as build_apworld.client_version
 
 
 def parse(text: str) -> tuple[int, ...]:
@@ -49,10 +47,7 @@ def version_at(ref: str, repo: Path = ROOT) -> str:
     except (OSError, subprocess.CalledProcessError) as exc:
         detail = (getattr(exc, "stderr", None) or str(exc)).strip()
         raise SystemExit(f"cannot read client/native.py at {ref}: {detail}") from exc
-    match = VERSION_LINE.search(shown.stdout)
-    if not match:
-        raise SystemExit(f"client/native.py at {ref} has no VERSION")
-    return match.group(1)
+    return version_in(shown.stdout, f"client/native.py at {ref}")
 
 
 def _refuse(version: str, what: str) -> int:

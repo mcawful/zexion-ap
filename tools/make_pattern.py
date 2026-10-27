@@ -143,11 +143,14 @@ def _unique_window(img: Image, rva: int, max_bytes: int, min_fixed: int):
 def pattern_for(
     img: Image, ref_rva: int, kind: str, want: int, max_bytes: int, min_fixed: int
 ) -> Pattern | None:
-    """The shortest unique window starting at the referring instruction."""
+    """The shortest unique window starting at the referring instruction, or (``kind`` "at") at
+    the start of a function."""
     window = _unique_window(img, ref_rva, max_bytes, min_fixed)
     if window is None:
         return None
     first, text = window
+    if kind == "at":
+        return Pattern(text=text, disp_at=0, kind="at", rip_end=0, addend=0)
     call = _call_target(first)
     if call is not None:
         target, field = call, first.imm_offset
@@ -156,14 +159,6 @@ def pattern_for(
     else:
         target, field = first.disp, first.disp_offset
     return Pattern(text=text, disp_at=field, kind=kind, rip_end=first.size, addend=want - target)
-
-
-def start_pattern(img: Image, rva: int, max_bytes: int, min_fixed: int) -> Pattern | None:
-    """The shortest unique window of whole instructions from the start of a function."""
-    window = _unique_window(img, rva, max_bytes, min_fixed)
-    if window is None:
-        return None
-    return Pattern(text=window[1], disp_at=0, kind="at", rip_end=0, addend=0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -195,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             f"rip_end={p.rip_end} addend={p.addend:#x}\n  {p.text}"
         )
     if any(begin == args.rva for begin, _ in img.functions):
-        p = start_pattern(img, args.rva, args.max_bytes, args.min_fixed)
+        p = pattern_for(img, args.rva, "at", args.rva, args.max_bytes, args.min_fixed)
         if p is not None:
             found.append((args.rva, p))
             print(f"function start (at, {fixed_bytes(p)} fixed bytes):\n  {p.text}")

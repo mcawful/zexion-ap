@@ -19,16 +19,8 @@ from protected import ROOT, STEAM_APP_ID, game_dir
 sys.path.insert(0, str(ROOT))  # the client package
 from client import pe  # noqa: E402
 
-DATA_FILES = (
-    "RandoCells",
-    "MapData",
-    "Objects",
-    "AreaEvents",
-    "Enemies",
-    "Flags",
-    "Text",
-    "Bosses",
-)
+DATA_FILES = ("RandoCells", "MapData", "Objects", "AreaEvents", "Enemies", "Flags", "Text",
+              "Bosses")  # fmt: skip
 # The COFF machine type, and the DllCharacteristics bits of the optional header worth naming.
 MACHINES = {0x8664: "x64", 0x14C: "x86", 0xAA64: "ARM64"}
 DLL_FLAGS = {0x0020: "HighEntropyVA", 0x0040: "DynamicBase (ASLR)", 0x0100: "NX"}
