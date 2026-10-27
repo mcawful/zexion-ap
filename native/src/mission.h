@@ -1,6 +1,6 @@
 // RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
 // Disks (docs/re/memory.md, "The mission prompt"). When idle in play (timer 0, routine table
-// entry 2 the pause opener, no menu; the game's last message far enough in, game_calls.cpp,
+// entry 2 the pause opener, no menu; the game's last message far enough in,
 // kFadeMessageLeft), the helper opens it as the escape skip's prompt opens:
 // event 3666 sets the transition routine (its opener here, routine 15 0x1668A0 there) with
 // timer 60, and runs event 3667, the game's fade to black, through the area-event handlers.
@@ -27,6 +27,11 @@ constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;
 // Event 3667, the fade (type 1), and event 3666's delay: the fade takes 40 frames of the 60.
 constexpr int kFadeEvent = 3667;
 constexpr int32_t kFadeDelay = 60;
+// The fade starts with this many frames of the game's last message (GAME SAVED, 180 frames,
+// 0x1FC876) left: 30 frames (half a second) after it appears, the owner's pick in game
+// (2026-10-27). Before that it was 70 left, as far in as Zexion's popup is when the escape skip
+// fades (docs/re/memory.md, "The mission prompt"), which felt slow after a save.
+constexpr int32_t kFadeMessageLeft = 150;
 extern const char kMissionQuestion[];
 
 // The game's fade of the global level, at `fade` (docs/re/memory.md, "The mission prompt"):

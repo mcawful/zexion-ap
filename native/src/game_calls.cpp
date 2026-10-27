@@ -29,12 +29,6 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
-// RETURN HOME's fade starts with this many frames of the game's last message (GAME SAVED, 180
-// frames, 0x1FC876) left. Grabbing Zexion shows its 180-frame popup, and its object's states
-// 2284 (60 frames) and 2286 (50) come before 3674 runs event 3665, the escape skip's fade:
-// 180 - 60 - 50 = 70 left, assuming the popup and state 2284 start on the same frame
-// (docs/re/memory.md, "The mission prompt").
-constexpr int32_t kFadeMessageLeft = 70;
 // Frames between two looks at the escape skip's event and at the scanner's text.
 constexpr int kSkipFrames = 30, kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
