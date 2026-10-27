@@ -230,7 +230,8 @@ def test_a_guard_on_without_all_of_it_is_said_once() -> None:
     said = state.SayOnce()
     check = state.FeatsCheck()
     line, detail = check.seen("on:the_slot_could_not_be_written", True, 0.0, said)
-    assert line == state.FEATS_UNGUARDED and "the_slot_could_not_be_written" in detail
+    assert line == state.FEATS_UNGUARDED
+    assert detail == "not all in place: the_slot_could_not_be_written"
     assert "achievements may be earned in this save" in line
     assert check.known and not check.due(10.0)
     # The next load (a new check), the same again: not said twice.

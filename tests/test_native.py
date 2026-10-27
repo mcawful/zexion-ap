@@ -309,7 +309,7 @@ def test_reload_mod_refused_leaves_the_mod_loaded(monkeypatch, why: str, said: s
 
 def test_reload_mod_loads_again_after_bye_or_a_failed_request(monkeypatch) -> None:
     helper, closed = piped_helper(monkeypatch, lambda data, seconds: b"bye")
-    assert state.reload_reply(helper.unload())[0]
+    assert helper.unload() == "bye"
 
     def broken(data: bytes, seconds: float) -> bytes:
         raise native.HelperError("the helper's pipe closed: 109")
@@ -327,4 +327,5 @@ def test_hello_keeps_the_feats_guards_reason_as_one_field(monkeypatch) -> None:
     helper, _ = piped_helper(monkeypatch, lambda data, seconds: reply)
     hello = helper.hello()
     assert hello["feats"] == "on:steam_api64_is_not_loaded" and hello["folder"] == "1"
-    assert state.FeatsCheck().seen(hello["feats"], True, 0.0, state.SayOnce()) is not None
+    _, detail = state.FeatsCheck().seen(hello["feats"], True, 0.0, state.SayOnce())
+    assert detail == "not all in place: steam_api64_is_not_loaded"
