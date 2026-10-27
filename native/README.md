@@ -747,9 +747,9 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, the escape skip's patch, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
-  WITH THE DISKS? through the frame call (its fade and popups, a request lapsing outside the
-  start cell, a death's own fade left alone, the ending after YES waiting for the last message,
-  and the ending's wait that an unload refuses for).
+  WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
+  request lapsing outside the start cell, a death's own fade left alone, the ending after YES
+  waiting for the last message, and the ending's wait that an unload refuses for).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause

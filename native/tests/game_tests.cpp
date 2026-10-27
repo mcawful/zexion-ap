@@ -1404,6 +1404,40 @@ void test_popups_wait_for_the_mission_fade() {
     game.put_back_all(&chosen);
 }
 
+// A save at the save point during the fade sets the pause opener back in the opener's place:
+// through the Game (the wiring watch_mission gives the prompt), the fade turned back and the
+// prompt asked again; under a door's own fade, nothing turned back.
+void test_a_save_during_the_mission_fade() {
+    for (bool door : {false, true}) {
+        MissionGame m;
+        zap::Game& game = m.game;
+        game.request_mission();
+        message_showing(zap::kFadeMessageLeft);
+        game.watch_all(&chosen);
+        check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener),
+              "the fade, the opener 60 frames away");
+        g_transition_timer = 40;  // the main loop's count (the stand-in's fade does not step)
+        game.watch_all(&chosen);
+        if (door) {
+            g_transition_fn = reinterpret_cast<void*>(&prompt_routine);  // a door, with its fade
+            g_fade[zap::fade_state::kStep] = 12;
+        } else {
+            g_transition_fn = g_routine_table[zap::kIdleRoutine];  // saved again
+        }
+        game.watch_all(&chosen);
+        const std::string turned_back = door ? "" : ", the fade turned back";
+        check(g_fade_calls == (door ? 1 : 2) && !game.menu_installed() &&
+                  game.mission_status() == "asked again: another transition came first" +
+                                               turned_back,
+              door ? "a door's fade left alone" : "a save: the fade turned back");
+        if (!door) {
+            check(g_fade[zap::fade_state::kTarget] == 4 && g_fade[zap::fade_state::kStep] == 6,
+                  "toward the normal level, a step every 6 frames");
+        }
+        game.put_back_all(&chosen);
+    }
+}
+
 // Asked for while the player is in the seed's start cell (the landing pod's), held by popups:
 // dropped once the player is in play outside that cell, before it opens; a death's own fade left
 // alone when the opener is put off; and after YES, the ending waits for the game's last message
@@ -1501,6 +1535,7 @@ void test_return_home_lapses_away_from_the_pod() {
 
 int main() {
     test_popups_wait_for_the_mission_fade();
+    test_a_save_during_the_mission_fade();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();
