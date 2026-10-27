@@ -27,6 +27,8 @@ your version isn't supported.
 - DeathLink.
 - The game's Easy, Standard and OHKO modes and its start rooms.
 - Play your seed's save without the client; what you found is sent when you connect again.
+- Archipelago saves earn no Feats, and the mod stops Steam achievements in them; normal saves
+  are unaffected.
 
 ## Quickstart
 

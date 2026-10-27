@@ -97,6 +97,20 @@ Assist Unlock item from the server console, with your player name:
 `/send YOURNAME Assist Unlock`. On archipelago.gg, the console is the command box on the room
 page, which only whoever created the room sees.
 
+## Do Archipelago saves earn Feats and Steam achievements?
+
+No Feats: the mod keeps Zexion's Feats for the game as it ships, so an Archipelago save's
+ending earns none. The Feats of Natu screen may still come after it, showing your Feats so far
+and ARCHIPELAGO SAVE: NO FEATS EARNED. Your normal saves earn them as usual.
+
+The mod also stops Steam achievements in Archipelago saves (for items, the map and the
+ending). The ending's has been checked in game; the others so far only in the mod's own tests.
+
+This needs the mod in the game's folder. It is meant to hold with the client closed too, once
+you have connected to that seed at least once, and to leave plain randomizer saves alone; both
+are not yet checked in game. Lore entries you unlock in the database stay unlocked
+for the whole game, as they would in any save.
+
 ## Does Zexion support DeathLink?
 
 Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When

@@ -98,6 +98,11 @@ struct GameAddresses {
     BYTE* text_link_fn = nullptr;  // (text): its glyphs into its list
     BYTE* draw_layer = nullptr;    // holds the draw list new screen objects join
     BYTE* map_handler = nullptr;   // holds the map's per-frame handler (0x169E50; mapmarks.h)
+    // Feats and achievements (feats.h).
+    BYTE* ending_unlocks = nullptr;     // the ending's first Steam call (6 bytes)
+    BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250
+    BYTE* stats_context = nullptr;      // ISteamUserStats' accessor context
+    BYTE* context_init_slot = nullptr;  // the import slot of SteamInternal_ContextInit
 
     // Not a key: set before configure (Game::set_hooks). A null hook leaves that part's game
     // function as the game's.

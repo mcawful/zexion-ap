@@ -63,6 +63,8 @@ same seed the same way; they all count.
 - The client says when your seed's save is loaded. When you leave it, or play a save of
   another seed, nothing is sent, and items sent to you wait until you load your seed's save
   again. Plain (not Archipelago) normal or randomizer saves are left alone.
+- Archipelago saves earn no Feats, and the mod stops Steam achievements in them too (see the
+  game page); your normal saves earn them as usual.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
 
@@ -103,11 +105,13 @@ play as normal.
   `zexion_ap.disabled` next to the two mod files. Windows may hide the end of file names, so check it isn't called
   `zexion_ap.disabled.txt` (in File Explorer: View, then turn on File name extensions). While
   it is there, neither Zexion nor the client loads the mod (the client says so). Your saves of
-  a seed still play with the client, but items arrive without popups, and you can't start a
-  new game of a seed. Delete the file to turn the mod back on.
+  a seed still play with the client, but items arrive without popups, you can't start a
+  new game of a seed, and they can earn Feats and Steam achievements. Delete the file to turn
+  the mod back on.
 - **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder.
   Your saves of a seed still load, as plain randomizer games (other players' items and OS
-  Install Disks look like Scrap). To play a seed again, install the mod again.
+  Install Disks look like Scrap), and they can earn Feats and Steam achievements again. To
+  play a seed again, install the mod again.
 
 ## Troubleshooting
 

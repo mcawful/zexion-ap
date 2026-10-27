@@ -111,12 +111,23 @@ void test_the_folder() {
 void test_the_helper_writes_what_the_client_sends() {
     const std::wstring folder = temp_folder(L"zap_offline_put");
     const std::string seed_put = "offline_put seed AP_1-0-1\n" + seed_text();
-    check(zap::put_offline_file(folder, "B1", seed_put) == "stored", "a seed stored");
-    check(zap::put_offline_file(folder, "B1", seed_put) == "unchanged",
-          "the same again: unchanged");
-    check(zap::put_offline_file(folder, "B1", "offline_put config\n" + cached_config("config")) ==
-              "stored",
-          "the config stored");
+    zap::OfflineSeed put;
+    check(zap::put_offline_file(folder, "B1", seed_put, &put) == "stored", "a seed stored");
+    check(put.name == "AP_1-0-1" && zap::offline_matches(put, g_table, g_start),
+          "and handed back, named (for the AP-save test)");
+    zap::OfflineSeed again;
+    check(zap::put_offline_file(folder, "B1", seed_put, &again) == "unchanged" &&
+              again.name == "AP_1-0-1",
+          "the same again: unchanged, and handed back too");
+    zap::OfflineSeed none;
+    check(zap::put_offline_file(folder, "B1", "offline_put config\n" + cached_config("config"),
+                                &none) == "stored" &&
+              none.name.empty(),
+          "the config stored, no seed handed back");
+    check(zap::put_offline_file(folder, "B1", "offline_put seed AP_2-0-1\nnot a seed\n", &none)
+                  .rfind("error", 0) == 0 &&
+              none.name.empty(),
+          "a seed that does not parse: none handed back");
     struct Refused {
         const char* build;
         std::string request;

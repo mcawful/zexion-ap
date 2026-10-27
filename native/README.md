@@ -4,7 +4,8 @@
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
-named pipe. With no client it changes only the title screen and the look of AP saves.
+named pipe. With no client it changes only the title screen and the look of AP saves, and keeps
+Feats and Steam achievements out of AP saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played. A **wrapper** is a helper function the game's menus are pointed at in place of their
@@ -84,7 +85,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= skip= folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= skip= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
@@ -102,6 +103,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 `hello`'s fields (spaces inside a field written as underscores):
 
+- `feats`: Feats and achievements kept out of the AP save loaded (off, on, or on with why a
+  change could not be made).
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
 - `offline`: the seeds read for AP saves without the client, and the file of the one dressed.
 - `active`: a client has configured the helper and not gone away.
@@ -114,7 +117,9 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - every name is there, in an offline cache too (an older helper's cache lacking one reads
   `read_error=cache:_missing_NAME` until a client rewrites it);
 - each lies inside the game's image: functions in its code, data outside it and writable;
-- the exception being the C runtime's `malloc` and `free` import slots, which are only read.
+- the exception being import slots, which lie outside code: the C runtime's `malloc` and
+  `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
+  loaded ("Feats and achievements in AP saves").
 
 The other arguments are described in `src/requests.h` and in the parts below. Anything else gets
 `error unknown request`; errors always start with `error `. A "frame" request while the helper
@@ -157,8 +162,10 @@ screen keeps what it was built from (the pause row's disc, an item record's name
 would show wrong until reopened (seen in game 2026-10-26, before this check; the refusal with
 the pause screen open: working in game 2026-10-26, the Launcher's client log
 `ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47). It also refuses (`error <why>; not
-unloading`) while the game may still call into the helper: an open menu's panel or entry, the open map or the game's transition routine holding one of its
-wrappers, or the scanner's text, the pause screen's branch or an item record still the helper's.
+unloading`) while the game may still call into the helper, or hold something of the helper's.
+That is an open menu's panel or entry, the open map or the game's transition routine holding one
+of its wrappers, or the scanner's text, the pause screen's branch, an item record or the
+ending's patch still the helper's.
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -486,6 +493,86 @@ layout has not been seen on screen.
 
 Working in game: 2026-10-23 ("The escape skip").
 
+### Feats and achievements in AP saves
+
+`src/feats.cpp`; the game's side is `docs/re/memory.md`, "Feats and achievements".
+
+- **What:** while an AP save is loaded, the game earns no Feats and sets no Steam achievement.
+  Two changes:
+  - **The ending.** Its first Steam call (`ending_unlocks`, `call [SteamInternal_ContextInit]`)
+    begins a stretch that sets 14Victory, the ending's database entries, this run's Feats and
+    flag 251. The helper writes 12 bytes over the call: `mov byte [flag 251], 0` and `jmp
+    ending_join`, which is where the ending goes on, just before it sets flag 250. It writes
+    them only if the call goes through `context_init_slot` and the join comes after it, with
+    flag 251's store just before it and flag 250's 0x11 bytes after it. Flag 250, the client's
+    goal and the save after it are unchanged. With flag 251 clear, no Feats of Natu screen
+    follows and the way back to the title records no Feat. That holds for a save that already
+    held flag 251 from an earlier ending, too.
+  - **Steam.** Every achievement call fetches its interface through `context_init_slot`, the
+    import slot of steam_api64's `SteamInternal_ContextInit`. The helper points that slot at a
+    stub. For `stats_context` the stub returns a stand-in interface whose every method is
+    `xor eax, eax; ret`; every other call, the SteamUtils context's included, goes on to
+    steam_api64. The helper hooks the slot only if:
+    - the import table names it for that function;
+    - it still holds steam_api64's own function (so another hook is never replaced);
+    - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
+  - **The Feats of Natu screen.** It still follows an AP ending, by a path not traced, with
+    nothing flashing. The helper writes ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the
+    blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
+    only on that screen as it follows an ending: the top menu with 4 panels, two rows of 7
+    Feats, a live title widget whose label is three equal lines (the middle one naming NATU),
+    and MISSION COMPLETE's statistics under it. It writes the whole line or nothing, only over a
+    line that is blank or already its note, and only if every glyph of it is writable and has
+    the font's frames.
+    - **When:** after an ending the patch jumped over. The guard went off as the save left with
+      the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
+      ends when a save is loaded, or when the screen has come and gone. It looks every 8th
+      frame call while no save is loaded.
+- **An AP save** (`Game::ap_save_loaded`): a randomizer save is loaded (a save, and the marker
+  set) whose item table and start are a seed's the helper knows. It knows a seed from:
+  - a seed file read from `%LOCALAPPDATA%\ZexionAP` (at start and each time a client goes
+    away);
+  - one a client has put since (`offline_put seed`), known from the next frame call;
+  - the seed the labels were set for.
+
+  That covers the client's own seed, a save played with no client, and another seed's save
+  with a client connected (`other_save`). It reuses what the offline look matches saves by,
+  rather than the client's word, so it needs no client: the ending can run offline, or while a
+  client of another seed is connected. A plain randomizer save matches no seed and is left
+  alone. Not covered: an AP save played without the helper, or one whose seed the helper has
+  no file for (every new game from ARCHIPELAGO is made with a client, which leaves the file).
+- **When:** every frame call while configured. It goes on once two frame calls in a row have
+  found an AP save loaded, since during a load the section may still be the last save's. It
+  goes off at once: no save loaded (MISSION COMPLETE onward, the title), a normal save, a
+  randomizer save of no known seed. `hello` reports `feats=off`, `on`, or `on:` and why a
+  change could not be made.
+- **Put back:** both as soon as no AP save is loaded, and before an unload. It stays on when a
+  client goes away, since it applies with no client too. The ending is put back only where it
+  still reads as the helper wrote it; while it does, an unload refuses (`error the ending's
+  patch is still the helper's; not unloading`). Steam's slot is put back even if no frame
+  comes, but only if it still holds the stub. The stub, the stand-in and its vtable are in two
+  pages allocated once and never freed. A call that read the slot just before, or still holds
+  the stand-in, so lands in live memory that runs no helper code, and an unload need not wait
+  for it. If something hooked over the stub since, the stub stays in its chain and passes
+  everything through. The screen's note is blanked again before an unload; the game frees it
+  with the screen otherwise.
+- **Left as it was:** database entries an AP game unlocks (lore, game-wide) stay in
+  `GameUnlocks.sav`. They can complete the database and give 16CompleteReport later, in a
+  normal game.
+
+Working in game: 2026-10-26 ("Feats and achievements"), two AP endings with the guard (a third,
+earlier, is inconclusive: which helper ran is not known), both of the OS Install Disks goal
+through RETURN HOME WITH THE DISKS? with the client connected, and a normal ending. In the AP
+endings the ending was jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav`
+was unchanged; the second showed the note. In the normal ending the Feats were earned as usual.
+The guard also went on in an AP save with no client connected, before the client connected.
+
+Not seen in game:
+- an AP ending with no client, or with a client of another seed;
+- a plain randomizer save left alone;
+- Steam's stand-in stopping an achievement. It was in place in the AP save, but no unearned
+  achievement was tried there, so this is tested only with the stand-in.
+
 ## Building
 
 Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later. From the repo root:
@@ -525,6 +612,14 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`offline`: the seed file, its match and disk count, the folder, the cache check,
   `offline_put`, a stand-in game dressed and undressed).
+- `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no
+  config, a plain randomizer save, a normal save, a put seed, a seed file with no client and
+  with a client of another seed, the labels' seed), the guard on and off, and a stand-in ending
+  run with and without the patch. It also covers the Steam import hooked and passed through,
+  the refusals, putting back with and without a frame, and the Feats of Natu screen's note (on
+  a stand-in screen, after an AP ending only). The program imports
+  `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`),
+  as the game does. Both are built into `build/feats/`, apart from the helper.
 - `proxy`: its exports give what Windows' own give, and it loads no helper outside Zexion.
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
   a batch no frame took, an unload refused while something else is hooked over the
@@ -549,6 +644,6 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
 | `game_mem.cpp`, `game_layout.h` | fault-safe memory access; the layouts several parts share |
-| `apitem`, `looks`, `menu`, `skip`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock) |
+| `apitem`, `looks`, `menu`, `skip`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves) |
 
 `proxy/` is the proxy `version.dll`.

@@ -138,6 +138,27 @@ const IMAGE_NT_HEADERS64* nt_headers(HMODULE module) {
     return nt->Signature == IMAGE_NT_SIGNATURE ? nt : nullptr;
 }
 
+uint64_t section_end(const IMAGE_SECTION_HEADER* section) {
+    return section->VirtualAddress + (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
+}
+
+const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva) {
+    const IMAGE_NT_HEADERS64* nt = nt_headers(module);
+    if (nt == nullptr) return nullptr;
+    auto* section = IMAGE_FIRST_SECTION(nt);
+    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+        if (rva >= section->VirtualAddress && rva < section_end(section)) return section;
+    }
+    return nullptr;
+}
+
+bool in_image_code(HMODULE image, const void* p) {
+    auto address = reinterpret_cast<uintptr_t>(p), base = reinterpret_cast<uintptr_t>(image);
+    if (p == nullptr || address < base) return false;
+    const IMAGE_SECTION_HEADER* section = section_of(image, address - base);
+    return section != nullptr && (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
+}
+
 bool patch_code(BYTE* at, const void* bytes, size_t size) {
     DWORD old = 0;
     if (!VirtualProtect(at, size, PAGE_EXECUTE_READWRITE, &old)) return false;

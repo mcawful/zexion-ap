@@ -22,6 +22,7 @@ constexpr char kOtherSeedNotice[] =
 }  // namespace
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
+    add_known_seeds(seeds);
     leave_offline();
     offline_seeds_ = std::move(seeds);
 }

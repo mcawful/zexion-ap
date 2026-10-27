@@ -15,6 +15,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "build.h"
 #include "game_calls.h"
@@ -74,10 +76,12 @@ std::atomic<zap::ClientState*> g_rearm{nullptr};
 // a client with no build of its own) rather than from elsewhere: `hello` reports it.
 bool g_from_game_folder = false;
 // The offline files (offline.h), read on the helper's thread at start and after each
-// disconnect, handed to the next frame under g_offline_lock.
+// disconnect, handed to the next frame under g_offline_lock; with the seeds a client has put
+// since (`offline_put seed`), which the AP-save test knows at once (Game::add_known_seeds).
 SRWLOCK g_offline_lock = SRWLOCK_INIT;
 bool g_offline_ready = false;
 zap::OfflineFiles g_offline_files;
+std::vector<zap::OfflineSeed> g_put_seeds;
 // For `hello`: the reads taken by a frame, the seeds the last one found, and its error.
 std::atomic<int> g_offline_reads{0};
 std::atomic<int> g_offline_found{-1};
@@ -206,7 +210,9 @@ void take_offline() {
         files = std::move(g_offline_files);
         g_offline_ready = false;
     }
+    std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
+    if (!put.empty()) g_game.add_known_seeds(put);
     if (!ready) return;
     g_offline_reads.fetch_add(1);
     if (!g_game.configured() && !files.config.empty()) {
@@ -222,7 +228,19 @@ void take_offline() {
             ReleaseSRWLockExclusive(&g_offline_lock);
         }
     }
-    if (!g_game.active()) g_game.set_offline(std::move(files.seeds));
+    // The look takes them only with no client; the AP-save test always (set_offline adds them).
+    if (g_game.active()) {
+        g_game.add_known_seeds(files.seeds);
+    } else {
+        g_game.set_offline(std::move(files.seeds));
+    }
+}
+
+// Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
+void note_put_seed(zap::OfflineSeed seed) {
+    AcquireSRWLockExclusive(&g_offline_lock);
+    g_put_seeds.push_back(std::move(seed));
+    ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
 // Pipe thread: sets or clears g_unloading; returns what an unload must wait for, read under the
@@ -310,6 +328,7 @@ std::string undo_for_unload();
 struct HelloState {
     bool configured = false;
     bool skip = false;
+    std::string feats = "off";
     bool active = false;
     std::string offline = "-";
     std::string title = "0";
@@ -330,6 +349,7 @@ std::string hello() {
             [&state] {
                 state.configured = g_game.configured();
                 state.skip = g_game.skip_offered();
+                state.feats = g_game.feats_state();
                 state.active = g_game.active();
                 state.offline = g_game.offline_state();
                 state.title = g_game.title_state();
@@ -342,7 +362,8 @@ std::string hello() {
     ReleaseSRWLockShared(&g_offline_lock);
     return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
            " hooked=" + (g_slot ? "1" : "0") + " configured=" + (state.configured ? "1" : "0") +
-           " skip=" + (state.skip ? "1" : "0") + " folder=" + (g_from_game_folder ? "1" : "0") +
+           " skip=" + (state.skip ? "1" : "0") + " feats=" + one_word(state.feats) +
+           " folder=" + (g_from_game_folder ? "1" : "0") +
            " offline=" + one_word(state.offline) + " active=" + (state.active ? "1" : "0") +
            " title=" + one_word(state.title) + " reads=" + std::to_string(g_offline_reads.load()) +
            "/" + std::to_string(g_offline_found.load()) +
@@ -527,7 +548,10 @@ std::string handle(const std::string& request, bool& stop) {
     if (request.rfind("offline_put ", 0) == 0) {
         // Written by the helper, not the client: a packaged client's AppData writes are
         // redirected (offline.h).
-        return zap::put_offline_file(zap::offline_folder(), g_build, request);
+        zap::OfflineSeed seed;
+        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request, &seed);
+        if (!seed.name.empty()) note_put_seed(std::move(seed));
+        return reply;
     }
     if (request == "unload") {
         std::string why = undo_for_unload();
@@ -565,6 +589,7 @@ std::string undo_for_unload() {
                 state = g_game.snapshot();
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
+                g_game.restore_feats();  // a refused unload sets them again (its watch)
                 g_game.hide_title();  // a refused unload shows them again (its watch)
                 publish_blocker();
                 return std::string();
@@ -583,6 +608,9 @@ std::string undo_for_unload() {
     if (const char* blocker = set_unloading(true)) {
         return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
     }
+    // Steam's slot back even if no frame came: no frame call watches it from here (unloading is
+    // set), and the stub it held stays, passing calls through (feats.h).
+    g_game.release_steam();
     if (!unhook()) return refuse(kHookReplaced);
     delete g_rearm.exchange(nullptr);  // one no frame took: unloading anyway
     return "";

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <sstream>
 
 #include "game_mem.h"
@@ -224,7 +225,7 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
 }  // namespace
 
 std::string put_offline_file(const std::wstring& folder, const char* build,
-                             const std::string& request) {
+                             const std::string& request, OfflineSeed* seed_out) {
     if (folder.empty()) return "error no LOCALAPPDATA";
     size_t eol = request.find('\n');
     if (eol == std::string::npos) return "error no file";
@@ -232,6 +233,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     if (body.size() > kMaxFile) return "error too large";
     std::istringstream words(head);
     std::string op, kind, name, extra;
+    std::optional<OfflineSeed> parsed;  // a seed's file, once checked
     words >> op >> kind;
     std::wstring path;
     if (op != "offline_put") return "error not an offline_put request";
@@ -249,6 +251,8 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
         OfflineSeed seed;
         std::string why = parse_offline_seed(body, seed);
         if (!why.empty()) return "error " + why;
+        seed.name = name;
+        parsed = std::move(seed);
         CreateDirectoryW(folder.c_str(), nullptr);
         CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
         path = folder + L"\\seeds\\";
@@ -261,6 +265,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     bool changed = false;
     std::string why = write_whole(path, body, changed);
     if (!why.empty()) return "error " + why;
+    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     return changed ? "stored" : "unchanged";
 }
 

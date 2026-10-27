@@ -82,9 +82,11 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
-// or not at all: "stored", "unchanged" or "error <why>".
+// or not at all: "stored", "unchanged" or "error <why>". A seed kept ("stored" or "unchanged") is
+// also given in `seed`, named NAME, if not null (for the AP-save test, which knows a client's
+// seed as soon as it is put: feats.h).
 std::string put_offline_file(const std::wstring& folder, const char* build,
-                             const std::string& request);
+                             const std::string& request, OfflineSeed* seed = nullptr);
 
 // "" if the cached addresses fit the game in `image`: at least kOfflineMinChecks functions
 // checked, each one's bytes as the client read them, each at a key of the config.
