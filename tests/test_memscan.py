@@ -81,11 +81,13 @@ def snapshot(lab, name, module_base, regions: list[tuple[int, bytes]], build=B1)
         offset += len(data)
     (folder / "memory.bin").write_bytes(blob)
     meta = {"module_base": module_base, "module_size": 0x10000, "regions": index, "note": ""}
-    (folder / "index.json").write_text(json.dumps(meta | ({"build": build} if build else {})))
+    meta |= {"build": build} if build else {}
+    (folder / "index.json").write_text(json.dumps(meta), encoding="utf-8")
 
 
 def candidate_rvas(lab, name: str) -> list[int]:
-    return [c["rva"] for c in json.loads((lab / "mem" / f"{name}.json").read_text())["candidates"]]
+    saved = json.loads((lab / "mem" / f"{name}.json").read_text(encoding="utf-8"))
+    return [c["rva"] for c in saved["candidates"]]
 
 
 def test_classify_command_aligns_snapshots_by_rva_across_restarts(lab) -> None:
@@ -95,7 +97,7 @@ def test_classify_command_aligns_snapshots_by_rva_across_restarts(lab) -> None:
     snapshot(lab, "t1", 0x10000, [(0x12000, bytes([3, 0, 9]))], build=None)
     snapshot(lab, "t2", 0x50000, [(0x52000, bytes([3, 0, 9]))], build=None)
     assert memscan.main(["classify", "play=p1,p2", "title=t1,t2", "--out", "cand"]) == 0
-    saved = json.loads((lab / "mem" / "cand.json").read_text())
+    saved = json.loads((lab / "mem" / "cand.json").read_text(encoding="utf-8"))
     assert saved["target"] == "play"
     assert saved["candidates"] == [{"rva": 0x2000, "values": {"play": 1, "title": 3}}]
 
@@ -141,7 +143,7 @@ def run_record(lab, monkeypatch, pm, *steps) -> tuple[int, list[str]]:
     monkeypatch.setattr(memscan, "build_of", lambda pm, base: B1)
     monkeypatch.setattr(memscan.time, "sleep", scripted_sleep(*steps))
     code = memscan.main(["record", "r", "--rva", "0x10,0x20"])
-    return code, (lab / "mem" / "r.log").read_text().splitlines()
+    return code, (lab / "mem" / "r.log").read_text(encoding="utf-8").splitlines()
 
 
 def test_record_logs_changes_and_an_end_line_on_ctrl_c(lab, monkeypatch) -> None:
@@ -162,7 +164,7 @@ def test_record_logs_an_end_line_when_the_first_read_fails(lab, monkeypatch) -> 
 def test_record_refuses_candidates_from_another_build(lab, monkeypatch) -> None:
     (lab / "mem").mkdir()
     cands = {"target": "play", "groups": {}, "build": B1, "candidates": [{"rva": 16, "values": {}}]}
-    (lab / "mem" / "c.json").write_text(json.dumps(cands))
+    (lab / "mem" / "c.json").write_text(json.dumps(cands), encoding="utf-8")
     monkeypatch.setattr(memscan, "attach", lambda: (FakeProcess(0x100), 0, 0x1000))
     monkeypatch.setattr(memscan, "build_of", lambda pm, base: {"timestamp": 9})
     assert memscan.main(["record", "r", "--candidates", "c"]) == 1

@@ -5,7 +5,8 @@ description: Run the checks CI runs (ruff format, ruff check, pytest, and Archip
 
 # Pre-flight
 
-Run these in order and stop at the first failure.
+Run these in order and stop at the first failure. On Linux and macOS the venv's programs are
+in `.venv/bin/`, not `.venv/Scripts/`, here and below.
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -13,8 +14,8 @@ Run these in order and stop at the first failure.
 .venv/Scripts/python -m pytest
 ```
 
-`.github/workflows/ci.yml` runs these three on Windows and Ubuntu, a `world` job with Archipelago's
-world tests (below), and a Windows `native` job (the CMake build of `native/`, its ctest tests, and
+`.github/workflows/ci.yml` runs these three on Windows, Ubuntu and macOS, a `world` job with
+Archipelago's world tests (below, on Ubuntu), and a Windows `native` job (the CMake build of `native/`, its ctest tests, and
 `tests/test_native.py` against the built DLL) that preflight does not run. Locally,
 `tests/test_native.py` skips its load test unless `native/build/Release/zexion_ap.dll` exists (or
 `ZEXION_DLL` names a build); build it as `CLAUDE.md` ("Checks") shows when `native/` or

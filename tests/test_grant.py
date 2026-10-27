@@ -53,7 +53,7 @@ def fake(monkeypatch, tmp_path):
 
 
 def entries(log_path) -> list[dict]:
-    return [json.loads(line) for line in log_path.read_text().splitlines()]
+    return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 
 
 def events(log_path) -> list[str]:

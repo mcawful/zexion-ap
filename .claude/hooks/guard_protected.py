@@ -54,6 +54,7 @@ looking at a call that mentions the saves or a Steam folder, the call is blocked
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import json
 import os
@@ -702,8 +703,23 @@ def _mentions_sensitive(text: str) -> bool:
     return any(s in low for s in ("gallant", "steamapps", "3392510"))
 
 
+def read_payload() -> str:
+    """The hook's stdin as UTF-8, which Claude Code sends, whatever this machine's locale.
+
+    Messages go out as UTF-8 too, so a command's non-ASCII text reads right in the reason. A
+    stream that can't do either (none at all, say) gives no payload, never an exception: one
+    here would exit 1, which lets the call through unjudged.
+    """
+    with contextlib.suppress(Exception):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    try:
+        return sys.stdin.buffer.read().decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
 def main() -> int:
-    raw = sys.stdin.read()
+    raw = read_payload()
     # Judge a failure by the tool's own input only. The rest of the payload carries session
     # paths (the transcript lives under AppData) that would make every failure block everything.
     try:
@@ -735,5 +751,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     sys.exit(main())

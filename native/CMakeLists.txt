@@ -6,6 +6,16 @@ project(zexion_ap LANGUAGES CXX)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "zexion_ap builds for 64-bit Windows only, like the game")
 endif()
+# The flags below are MSVC's, and the client, the release builder and the tests look for the
+# DLLs under native/build/Release, where only a multi-config generator puts them.
+if(NOT MSVC)
+  message(FATAL_ERROR "zexion_ap needs Visual Studio's C++ compiler (MSVC)")
+endif()
+get_property(ZAP_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT ZAP_MULTI_CONFIG)
+  message(FATAL_ERROR "zexion_ap needs a multi-config generator: Visual Studio, CMake's default "
+                      "on Windows with Visual Studio installed")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

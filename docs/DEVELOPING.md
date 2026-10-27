@@ -129,28 +129,68 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)
   randomizer game left alone with a client connected (no notice, no look).
 
+## Platforms
+
+The game runs on Windows, so whatever touches it does too. Everything else runs on Windows,
+Linux and macOS, and CI runs ruff and pytest on all three.
+
+Windows only:
+
+- the client attached to the game (`client/process.py` is the Windows API; the rest of
+  `client/` is plain Python, tested anywhere);
+- the live tools: `memscan.py`, `grant.py`, `helper.py`, `check_patterns.py --live`;
+- the helper and the proxy (`native/`): MSVC and CMake's Visual Studio generator, and so a
+  release, whose builder packs their DLLs. `tools/build_apworld.py` itself, and its tests, run
+  anywhere;
+- finding the game by itself: Steam's path comes from the registry. Elsewhere, set
+  `ZEXION_GAME_DIR`; the saves' folder comes from `%APPDATA%`, else `ZEXION_SAVE_DIR`.
+
+Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, parts of
+`tests/test_native.py` and `tests/test_pe.py`), as does `tests/test_native.py`'s load test
+without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.
+
+The commands below are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
+Windows installs. Claude Code needs Git Bash on Windows here too: the hook commands in
+`.claude/settings.json` are written for a POSIX shell. With Git Bash (and with `sh` on Linux and
+macOS), a hook that fails with an exit code other than 2 lets the call through; without it,
+Claude Code runs them in PowerShell, and a failing hook blocks the call instead (Claude Code's
+hooks reference; not tried here). They also work in PowerShell 7, except `VAR=value command`: set
+`$env:AP_TEST_WORLDS = "zexion"` first instead. The venv's programs are in `.venv/Scripts/` on
+Windows and `.venv/bin/` on Linux and macOS: change the folder in each command to match.
+
 ## Setup
 
-Windows. Archipelago 0.6.8 refuses Python 3.14, so the venv is 3.13, managed by `uv`
-(`python -m uv`, as `pip install --user` does not put `uv` on `PATH`). The venv is seeded with
-`pip` because Archipelago's own updater uses it.
+Git and uv, on any of the three. Archipelago 0.6.8 refuses Python 3.14, so the venv is 3.13,
+managed by uv. The venv is seeded with `pip` because Archipelago's own updater uses it.
+
+Install uv one of two ways:
+
+- `python -m pip install --user uv` (on Windows, where `python` is the python.org install),
+  then type `python -m uv` wherever `uv` appears below: `--user` does not put `uv` on `PATH`.
+- uv's own installer ([docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/)),
+  which does. On Linux and macOS use this one: Debian's, Ubuntu's and Homebrew's Pythons refuse
+  `pip install --user` (they are "externally managed"), and many systems have `python3` but no
+  `python`.
 
 ```sh
-python -m pip install --user uv
-python -m uv python install 3.13
-python -m uv venv --seed --python 3.13 .venv
-python -m uv pip install --python .venv -r requirements-dev.txt
+uv python install 3.13
+uv venv --seed --python 3.13 .venv
+uv pip install --python .venv -r requirements-dev.txt
 .venv/Scripts/python tools/ap_checkout.py   # Archipelago at AP_VERSION into .ap/, world linked in
 ```
 
-The native helper needs Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or
-later.
+The native helper, on Windows only, needs Visual Studio 2022 or later with the C++ workload, and
+CMake 3.20 or later; `native/CMakeLists.txt` refuses another compiler or a single-config
+generator (such as plain Ninja), since the DLLs are looked for under `native/build/Release/`.
+
+Line endings: `.gitattributes` checks every text file out with LF, on Windows too, whatever
+`core.autocrlf` says.
 
 ## Checks
 
-CI runs all of these (ruff and pytest on Windows and Ubuntu; the native build, its tests and
-`tests/test_native.py` on Windows; AP's world tests after `tools/ap_checkout.py`). The Claude
-Code skill `/preflight` runs the first block (AP's world tests need `.ap/`).
+CI runs all of these (ruff and pytest on Windows, Ubuntu and macOS; the native build, its tests
+and `tests/test_native.py` on Windows; AP's world tests after `tools/ap_checkout.py`, on
+Ubuntu). The Claude Code skill `/preflight` runs the first block (AP's world tests need `.ap/`).
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -170,8 +210,8 @@ Nothing in `tests/` needs the game. What the native tests cover: `native/README.
 
 ## Running the client from source
 
-It needs `.ap/` with the world linked in (`tools/ap_checkout.py`). Running it may load the
-helper into the game: the one already there if it is this version, else
+On Windows, with the game. It needs `.ap/` with the world linked in (`tools/ap_checkout.py`).
+Running it may load the helper into the game: the one already there if it is this version, else
 `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`).
 
 ```sh
