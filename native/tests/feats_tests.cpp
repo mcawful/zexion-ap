@@ -459,19 +459,23 @@ struct FeatsScreen {
     BYTE* glyph_list[kLength] = {};
     BYTE glyphs[kLength][0x1D8] = {};
     std::vector<BYTE> table = std::vector<BYTE>(256 * 0x38);
-    // MISSION COMPLETE's statistics, the menu under it: 1 panel of 10 lines.
+    // MISSION COMPLETE's statistics, the menu under it: 1 panel of 10 lines (with_assists: and
+    // ASSISTS USED's 8, as read live after an ending with the assist menu unlocked).
     BYTE stats[0x80] = {};
-    BYTE* stats_panels[1] = {};
-    BYTE stats_panel[0x300] = {};
+    BYTE* stats_panels[2] = {};
+    BYTE stats_panel[2][0x300] = {};
 
-    explicit FeatsScreen(const std::string& middle = "FEATS OF NATU!") {
+    explicit FeatsScreen(const std::string& middle = "FEATS OF NATU!",
+                         bool with_assists = false) {
         at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
         at<int32_t>(menu, 8) = 4;
         at<BYTE*>(menu, 0x78) = stats;
         at<BYTE*>(stats, 0) = reinterpret_cast<BYTE*>(stats_panels);
-        at<int32_t>(stats, 8) = 1;
-        stats_panels[0] = stats_panel;
-        at<int32_t>(stats_panel, 0x1E8) = 10;
+        at<int32_t>(stats, 8) = with_assists ? 2 : 1;
+        stats_panels[0] = stats_panel[0];
+        stats_panels[1] = stats_panel[1];
+        at<int32_t>(stats_panel[0], 0x1E8) = 10;
+        at<int32_t>(stats_panel[1], 0x1E8) = 8;
         for (int i = 0; i < 4; ++i) panels[i] = panel[i];
         at<BYTE**>(panel[0], 0x1E0) = children;
         at<int32_t>(panel[0], 0x1E8) = 1;
@@ -532,6 +536,21 @@ void test_the_screen_note() {
     at<int32_t>(screen.glyphs[2 * FeatsScreen::kColumns + 3], 0x1C4) = 'X';
     const std::string theirs = screen.line(2);
     check(zap::feats_screen_note(a, true) && screen.line(2) == theirs, "other text left alone");
+
+    // MISSION COMPLETE with ASSISTS USED under it, as after an ending with assists unlocked.
+    FeatsScreen assists("FEATS OF NATU!", true);
+    current = assists.menu;
+    check(zap::feats_screen_note(a, true) && assists.line(2) == noted_line(),
+          "with ASSISTS USED under it too", assists.line(2));
+    FeatsScreen odd("FEATS OF NATU!", true);
+    at<int32_t>(odd.stats_panel[1], 0x1E8) = 7;
+    current = odd.menu;
+    check(!zap::feats_screen_note(a, true) && odd.line(2) == blank,
+          "a second panel under it that is not ASSISTS USED's 8 lines");
+    FeatsScreen three("FEATS OF NATU!", true);
+    at<int32_t>(three.stats, 8) = 3;
+    current = three.menu;
+    check(!zap::feats_screen_note(a, true) && three.line(2) == blank, "3 panels under it");
 
     // Other screens: not this one.
     FeatsScreen other("OPTIONS");
