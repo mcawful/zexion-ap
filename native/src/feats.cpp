@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "game_layout.h"
 #include "game_mem.h"
 #include "iat.h"
 
@@ -31,13 +32,18 @@ constexpr size_t kLeaSize = 7;
 
 // The stub's two pages (feats.h): code, then data, adjacent.
 constexpr size_t kPage = 0x1000;
-// Data: the original function, the stats context, the stand-in's switch, the holder the stub
-// returns (pointing at the object), the object (pointing at the vtable), and the vtable.
+// Data: the original function, the stats context, the stand-in's switch (blocking always), the
+// holder the stub returns (pointing at the object), the object (pointing at the vtable), the
+// vtable; then the load test: where the live marker word is (null: no test), where current_slot
+// is, and a byte per slot, set for an AP save's.
 constexpr ptrdiff_t kOriginal = 0x00, kContext = 0x08, kBlocked = 0x10, kHolder = 0x18,
                     kObject = 0x20, kVtable = 0x28;
 constexpr int kVtableEntries = 64;  // ISteamUserStats v013 has 51; the game calls 6, 7 and 9
+constexpr ptrdiff_t kMarker = kVtable + kVtableEntries * 8, kSlot = kMarker + 8,
+                    kApSlots = kSlot + 8;
+static_assert(kApSlots + slot::kCount <= static_cast<ptrdiff_t>(kPage), "in the data page");
 // Code: the stub at 0, the stand-in's every method at kReturnZero.
-constexpr ptrdiff_t kReturnZero = 0x20;
+constexpr ptrdiff_t kReturnZero = 78;
 
 int32_t rel32(const BYTE* from_next, const BYTE* to) {
     return static_cast<int32_t>(to - from_next);
@@ -139,16 +145,27 @@ void FeatsGuard::set_image(HMODULE image, void** context_init_by_name) {
     steam_error_.clear();
 }
 
-void FeatsGuard::watch(const GameAddresses& a, bool on) {
+void FeatsGuard::watch(const GameAddresses& a, bool on, const std::set<int>& loading) {
     on_ = on;
     if (on) {
         patch_ending(a);
-        hook_steam(a);
     } else {
         restore_ending();
-        unhook_steam();
         ending_error_.clear();
+    }
+    // Hooked while on, or while the load test can block (a slot holds an AP save).
+    const bool test = !loading.empty() && a.rando_marker != nullptr && a.current_slot != nullptr;
+    if (!on && !test) {
+        unhook_steam();
         steam_slot_error_.clear();
+        return;
+    }
+    const std::set<int> none;
+    const std::set<int>& slots = test ? loading : none;
+    if (slot_ != nullptr) {
+        set_switch(a, on, slots);
+    } else {
+        hook_steam(a, on, slots);
     }
 }
 
@@ -170,6 +187,10 @@ std::string FeatsGuard::state() const {
 }
 
 void* FeatsGuard::stand_in() const { return data_ == nullptr ? nullptr : data_ + kHolder; }
+
+bool FeatsGuard::load_test() const {
+    return data_ != nullptr && at<BYTE*>(data_, kMarker) != nullptr;
+}
 
 void FeatsGuard::patch_ending(const GameAddresses& a) {
     BYTE* site = a.ending_unlocks;
@@ -275,24 +296,46 @@ bool FeatsGuard::make_pages() {
         VirtualAlloc(nullptr, 2 * kPage, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (page == nullptr) return false;
     BYTE* data = page + kPage;
-    // cmp dword [rip+blocked], 0   83 3D rel32 00   0..6
-    // je pass                      74 11            7..8
-    // cmp rcx, [rip+context]       48 3B 0D rel32   9..15
-    // jne pass                     75 08            16..17
-    // lea rax, [rip+holder]        48 8D 05 rel32   18..24
-    // ret                          C3               25
-    // pass: jmp [rip+original]     FF 25 rel32      26..31
-    // return_zero: xor eax, eax    31 C0            32..33
-    // ret                          C3               34
+    // cmp rcx, [rip+context]          48 3B 0D rel32     0..6
+    // jne pass                         75 3F              7..8
+    // cmp dword [rip+blocked], 0       83 3D rel32 00     9..15
+    // jne block                        75 2E              16..17
+    // mov rax, [rip+marker]            48 8B 05 rel32     18..24   the load test (feats.h)
+    // test rax, rax                    48 85 C0           25..27
+    // jz pass                          74 2A              28..29
+    // cmp word [rax], 1                66 83 38 01        30..33
+    // jne pass                         75 24              34..35
+    // mov rax, [rip+slot]              48 8B 05 rel32     36..42
+    // mov eax, [rax]                   8B 00              43..44
+    // cmp eax, slot::kCount            83 F8 1E           45..47
+    // jae pass                         73 16              48..49   (a negative one too)
+    // lea r10, [rip+ap_slots]          4C 8D 15 rel32     50..56
+    // cmp byte [r10+rax], 0            41 80 3C 02 00     57..61
+    // je pass                          74 08              62..63
+    // block: lea rax, [rip+holder]     48 8D 05 rel32     64..70
+    // ret                              C3                 71
+    // pass: jmp [rip+original]         FF 25 rel32        72..77
+    // return_zero: xor eax, eax        31 C0              78..79
+    // ret                              C3                 80
     // No stack is touched, so it needs no unwind information: a stack walk takes it as a leaf.
-    const BYTE code[] = {0x83, 0x3D, 0, 0, 0, 0, 0x00, 0x74, 0x11, 0x48, 0x3B, 0x0D,
-                         0,    0,    0, 0, 0x75, 0x08, 0x48, 0x8D, 0x05, 0,    0,    0,
-                         0,    0xC3, 0xFF, 0x25, 0, 0, 0, 0, 0x31, 0xC0, 0xC3};
+    // Only rax and r10 are changed before the pass, both volatile and neither an argument.
+    static_assert(slot::kCount == 0x1E, "the cmp's imm8");
+    const BYTE code[] = {
+        0x48, 0x3B, 0x0D, 0,    0,    0,    0,    0x75, 0x3F, 0x83, 0x3D, 0,    0,    0,
+        0,    0x00, 0x75, 0x2E, 0x48, 0x8B, 0x05, 0,    0,    0,    0,    0x48, 0x85, 0xC0,
+        0x74, 0x2A, 0x66, 0x83, 0x38, 0x01, 0x75, 0x24, 0x48, 0x8B, 0x05, 0,    0,    0,
+        0,    0x8B, 0x00, 0x83, 0xF8, 0x1E, 0x73, 0x16, 0x4C, 0x8D, 0x15, 0,    0,    0,
+        0,    0x41, 0x80, 0x3C, 0x02, 0x00, 0x74, 0x08, 0x48, 0x8D, 0x05, 0,    0,    0,
+        0,    0xC3, 0xFF, 0x25, 0,    0,    0,    0,    0x31, 0xC0, 0xC3};
+    static_assert(sizeof(code) == kReturnZero + 3, "as laid out");
     std::memcpy(page, code, sizeof(code));
-    put(page, 2, rel32(page + 7, data + kBlocked));
-    put(page, 12, rel32(page + 16, data + kContext));
-    put(page, 21, rel32(page + 25, data + kHolder));
-    put(page, 28, rel32(page + 32, data + kOriginal));
+    put(page, 3, rel32(page + 7, data + kContext));
+    put(page, 11, rel32(page + 16, data + kBlocked));
+    put(page, 21, rel32(page + 25, data + kMarker));
+    put(page, 39, rel32(page + 43, data + kSlot));
+    put(page, 53, rel32(page + 57, data + kApSlots));
+    put(page, 67, rel32(page + 71, data + kHolder));
+    put(page, 74, rel32(page + 78, data + kOriginal));
     at<BYTE*>(data, kHolder) = data + kObject;
     at<BYTE*>(data, kObject) = data + kVtable;
     for (int i = 0; i < kVtableEntries; ++i) {
@@ -309,8 +352,7 @@ bool FeatsGuard::make_pages() {
     return true;
 }
 
-void FeatsGuard::hook_steam(const GameAddresses& a) {
-    if (slot_ != nullptr) return;
+void FeatsGuard::hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading) {
     if (!steam_checked_) {
         steam_error_ = check_steam(a);
         steam_checked_ = true;
@@ -330,9 +372,9 @@ void FeatsGuard::hook_steam(const GameAddresses& a) {
     }
     at<void*>(data_, kOriginal) = real_;
     at<void*>(data_, kContext) = a.stats_context;
-    InterlockedExchange(&at<LONG>(data_, kBlocked), 1);
+    set_switch(a, on, loading);
     if (!swap_slot(slot, real_, code_)) {
-        InterlockedExchange(&at<LONG>(data_, kBlocked), 0);
+        set_switch(a, false, {});
         steam_slot_error_ = "the slot could not be written";
         return;
     }
@@ -340,11 +382,27 @@ void FeatsGuard::hook_steam(const GameAddresses& a) {
     steam_slot_error_.clear();
 }
 
+void FeatsGuard::set_switch(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    InterlockedExchange(&at<LONG>(data_, kBlocked), on ? 1 : 0);
+    auto* marker = reinterpret_cast<void* volatile*>(data_ + kMarker);
+    BYTE* table = data_ + kApSlots;
+    if (loading.empty()) {
+        // The test off before its table is cleared.
+        InterlockedExchangePointer(marker, nullptr);
+        std::memset(table, 0, slot::kCount);
+        return;
+    }
+    // The table and current_slot's place before the marker's, which turns the test on.
+    at<BYTE*>(data_, kSlot) = a.current_slot;
+    for (int n = 1; n <= slot::kCount; ++n) table[n - 1] = loading.count(n) != 0 ? 1 : 0;
+    InterlockedExchangePointer(marker, a.rando_marker);
+}
+
 void FeatsGuard::unhook_steam() {
     void** slot = slot_;
     if (slot == nullptr) return;
-    // Off first: a call already past the slot passes through.
-    InterlockedExchange(&at<LONG>(data_, kBlocked), 0);
+    // Off first (the load test too): a call already past the slot passes through.
+    set_switch({}, false, {});
     // Back only if it still holds the stub; if something hooked over it since, the stub stays in
     // its chain, passing everything through.
     swap_slot(slot, code_, at<void*>(data_, kOriginal));

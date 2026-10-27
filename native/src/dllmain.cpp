@@ -321,6 +321,7 @@ void wait_until_no_call_inside() {
 }
 
 constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
+constexpr char kEndingOnItsWay[] = "the ending RETURN HOME WITH THE DISKS? started is on its way";
 std::string undo_for_unload();
 
 // `hello`'s fields from the game's thread: configured, the escape skip offered, a client there,
@@ -578,6 +579,7 @@ std::string undo_for_unload() {
     // What clients set, armed again should the unload be refused (they would not resend it).
     bool saved = false;
     bool menu_open = false;
+    bool ending = false;
     zap::ClientState state;
     if (g_slot != nullptr) {
         std::string ignored;
@@ -587,6 +589,12 @@ std::string undo_for_unload() {
                 // record's name): nothing is put back under it.
                 if (g_game.menu_open()) {
                     menu_open = true;
+                    return std::string();
+                }
+                // An AP save's ending on its way: unloading would drop it, or put its patch
+                // back before it runs (game_calls.h, ending_pending).
+                if (g_game.ending_pending()) {
+                    ending = true;
                     return std::string();
                 }
                 state = g_game.snapshot();
@@ -608,6 +616,7 @@ std::string undo_for_unload() {
         return why;
     };
     if (menu_open) return refuse("a menu is open");
+    if (ending) return refuse(kEndingOnItsWay);
     if (const char* blocker = set_unloading(true)) {
         return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
     }

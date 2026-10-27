@@ -1251,26 +1251,25 @@ void test_pause_row_from_the_seed_file() {
     g_rando_marker = 0;
 }
 
-// The client's popups still queued, not the helper's own notices; a client going away leaves
-// them to show.
-void test_pending_popups() {
+// The popups queued, the client's and the helper's own notices; a client going away leaves them
+// to show.
+void test_queued_popups() {
     zap::Game game;
-    check(game.pending_popups() == 0, "none before a config");
+    check(game.queued_popups() == 0, "none before a config");
     ready(game);
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB\nnotice 36 HINT: X");
-    check(game.pending_popups() == 3, "three from the client");
+    check(game.queued_popups() == 3, "three from the client");
     game.pump_popups();
-    check(g_messages == 1 && game.pending_popups() == 2, "one shown: two pending");
+    check(g_messages == 1 && game.queued_popups() == 2, "one shown: two queued");
     g_rando_marker = 1;
     game.set_offline({zap::offline_seed_of(g_section)});  // an AP save of a known seed
     check(game.other_save() == "told" && game.queued_popups() == 3,
           "the helper's own notice queued");
-    check(game.pending_popups() == 2, "and not counted");
     g_rando_marker = 0;
     game.client_gone(&chosen);
-    check(!game.active() && game.pending_popups() == 2, "the client gone: its popups stay queued");
+    check(!game.active() && game.queued_popups() == 3, "the client gone: its popups stay queued");
     for (int i = 0; i < 100; ++i) game.pump_popups();
-    check(game.pending_popups() == 0 && g_messages >= 3, "and show without it");
+    check(game.queued_popups() == 0 && g_messages >= 4, "and show without it");
     zap::Batch batch;
     zap::parse_batch("apply\npopup 36 X\nnotice 36 Y", batch);
     check(batch.popups.size() == 2 && batch.popups[0].counted && batch.popups[1].counted,
@@ -1278,7 +1277,7 @@ void test_pending_popups() {
 }
 
 // A client's popups are for the save loaded when they came: while another save is in play they
-// wait (still pending), and the helper's own notices still show.
+// wait (still queued), and the helper's own notices still show.
 void test_popups_wait_for_their_save() {
     zap::Game game;
     ready(game);
@@ -1290,27 +1289,27 @@ void test_popups_wait_for_their_save() {
     game.set_offline({zap::offline_seed_of(g_section)});
     check(game.other_save() == "told", "the other seed's notice queued behind it");
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 1 && game.pending_popups() == 1,
-          "the notice shows; the client's popup waits, pending");
+    check(g_messages == 1 && game.queued_popups() == 1,
+          "the notice shows; the client's popup waits, queued");
     g_rando_marker = 0;  // a normal save
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 1 && game.pending_popups() == 1, "and in a normal save");
+    check(g_messages == 1 && game.queued_popups() == 1, "and in a normal save");
     g_rando_marker = 1;
     g_section[0x26C] = 0x11;  // its save again
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 2 && game.pending_popups() == 0, "shown in its own save");
+    check(g_messages == 2 && game.queued_popups() == 0, "shown in its own save");
     // A client of another seed: the first's popups still held for their own save, and shown
     // there (the client counts them handed over and never sends them again).
     apply(game, "apply\npopup 36 FROM ALICE");
     g_section[0x26C] = 0x22;
-    check(game.pending_popups() == 1, "held for its seed");
+    check(game.queued_popups() == 1, "held for its seed");
     apply(game, "apply\npopup 36 FROM BOB");
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 3 && game.pending_popups() == 1,
+    check(g_messages == 3 && game.queued_popups() == 1,
           "another seed's client: its own shown, the first's still held");
     g_section[0x26C] = 0x11;
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 4 && game.pending_popups() == 0, "and shown in its own save");
+    check(g_messages == 4 && game.queued_popups() == 0, "and shown in its own save");
     g_rando_marker = 0;
 }
 
@@ -1449,16 +1448,138 @@ void test_a_save_during_the_mission_fade() {
     reset_game();
 }
 
+// RETURN HOME WITH THE DISKS? asked for while the player is in the seed's start cell (the
+// landing pod's), held by popups: dropped once the player is in play outside that cell, before
+// it opens; a death's own fade left alone when the opener is put off; and after YES, the ending
+// waits for the game's last message to end, and an unload refuses until it has started.
+void ending_routine() { g_routine_runs += 4; }
+void test_return_home_lapses_away_from_the_pod() {
+    reset_game();
+    reset_events();
+    zap::Game game;
+    check(configure(game).empty(), "configures");
+    zap::Hooks hooks;
+    hooks.mission_open = reinterpret_cast<void*>(&opener);
+    game.set_hooks(hooks);
+    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
+    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
+    g_routine_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&ending_routine);
+    std::memset(g_section, 0, sizeof(g_section));
+    g_rando_marker = 1;
+    // The start record: candidate 6, tile column 191 and row 329, so cell row 16, column 13.
+    put<uint16_t>(g_section, 0x310, 6);
+    put<uint16_t>(g_section, 0x312, 191);
+    put<uint16_t>(g_section, 0x314, 329);
+    auto at_cell = [](uint8_t row, uint8_t column) {
+        g_player[0x107A] = row;
+        g_player[0x107B] = column;
+    };
+    auto idle = [] {
+        g_transition_fn = g_routine_table[zap::kIdleRoutine];
+        g_transition_timer = 0;
+    };
+
+    // At the pod: offered.
+    at_cell(16, 13);
+    idle();
+    message_showing(1);
+    game.request_mission();
+    game.watch_all(&chosen);
+    check(g_fade_calls == 1 && game.mission_status() == "opening after the fade",
+          "in the start cell: offered");
+    game.put_back_all(&chosen);
+
+    // Popups hold it; the player walks into the next cell meanwhile.
+    reset_events();
+    idle();
+    game.set_hooks(hooks);
+    const int fades = g_fade_calls;
+    game.request_mission();
+    apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
+    game.pump_popups();
+    game.watch_all(&chosen);
+    check(g_fade_calls == fades && game.mission_status() == "asked", "held by the popups");
+    at_cell(0xFF, 0xFF);  // the raw cell -1 for a moment: not known
+    game.watch_all(&chosen);
+    check(game.mission_status() == "asked", "off the map: not lapsed");
+    at_cell(16, 14);
+    game.watch_all(&chosen);
+    check(game.mission_status() == "lapsed: the player left the landing pod",
+          "outside the start cell: lapsed");
+    for (int i = 0; i < 600; ++i) {
+        game.pump_popups();
+        message_showing(1);
+        game.watch_all(&chosen);
+    }
+    check(game.queued_popups() == 0 && g_fade_calls == fades &&
+              g_transition_fn == g_routine_table[zap::kIdleRoutine],
+          "the popups shown, and no fade or prompt after them");
+    at_cell(16, 13);
+    game.watch_all(&chosen);
+    check(g_fade_calls == fades, "back at the pod: not offered again until asked again");
+
+    // Dead outside the cell: not in play, so not lapsed; respawned at the pod, offered.
+    game.request_mission();
+    at_cell(17, 13);
+    field<int16_t>(0xCEA) = -1;
+    game.watch_all(&chosen);
+    check(game.mission_status() == "asked", "dead: not lapsed");
+    at_cell(16, 13);
+    field<int16_t>(0xCEA) = 48;
+    game.watch_all(&chosen);
+    check(g_fade_calls == fades + 1, "respawned at the pod: offered");
+
+    // Dead when the opener runs, the death having set a fade of its own: left alone.
+    field<int16_t>(0xCEA) = -1;
+    g_fade[zap::fade_state::kTarget] = 4;  // not event 3667's
+    game.mission_open();
+    check(game.mission_status() == "asked again: not in play when it opened" &&
+              g_fade_calls == fades + 1 && g_transition_fn == g_routine_table[zap::kIdleRoutine],
+          "put off, the death's fade not turned back");
+    field<int16_t>(0xCEA) = 48;
+    game.put_back_all(&chosen);
+
+    // YES: the ending waits for the game's last message to end, not just its last 70 frames.
+    reset_events();
+    idle();
+    game.set_hooks(hooks);
+    check(!game.ending_pending(), "nothing pending");
+    game.mission_yes();
+    check(game.ending_pending(), "YES: the ending pending");
+    message_showing(70);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
+              game.mission_status() == "yes: ending when idle",
+          "not with 70 frames of a message left");
+    message_showing(1);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
+              game.mission_status() == "ending started",
+          "once it has ended");
+    check(!game.ending_pending(), "started, with no ending patch: nothing an unload would undo");
+    game.put_back_all(&chosen);
+
+    for (int i : {zap::kIdleRoutine, zap::kPromptRoutine, zap::kEndingRoutine}) {
+        g_routine_table[i] = nullptr;
+    }
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    g_rando_marker = 0;
+    std::memset(g_section, 0, sizeof(g_section));
+    reset_game();
+}
+
 }  // namespace
 
 int main() {
     test_popups_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
+    test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();
-    test_pending_popups();
+    test_queued_popups();
     test_pause_row_from_the_seed_file();
     test_configure();
     test_apply();

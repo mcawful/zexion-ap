@@ -81,6 +81,8 @@ public:
     void set_active(bool active) { active_ = active; }  // tests
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
+    // After configure (which loads opengl32's): the OpenGL functions to paint with (tests).
+    void set_gl(const GlFunctions& gl) { gl_ = gl; }
 
     // Game thread: puts back everything the helper changed (unload, a client going away); a
     // change held by a menu no longer open is gone with it. `callback`: ARCHIPELAGO's, to
@@ -105,9 +107,6 @@ public:
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
-    // The client's popups still queued (Popup::counted), for the tests: one leaves the queue
-    // when shown, or dropped for want of a record.
-    size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to
     // build (its new-game routine queued, the randomizer marker set) gets `plan`, once. False,
@@ -189,10 +188,16 @@ public:
     void* equip_panel_fn() const { return at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
-    // watch runs every frame; the helper's opener and YES call mission_open and mission_yes;
-    // put_back_all puts back what it holds (before an unload). False, nothing asked, unless
-    // client_ready.
+    // watch runs every frame, and drops a request not yet opened once the player is in play
+    // outside the seed's start cell (the landing pod's); the helper's opener and YES call
+    // mission_open and mission_yes; put_back_all puts back what it holds (before an unload).
+    // False, nothing asked, unless client_ready.
     bool request_mission();
+    // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
+    // patch put back before it runs) or drop: YES pressed and the ending not started yet, or the
+    // ending routine set as the transition with the ending patched. Unload refuses then
+    // (dllmain.cpp).
+    bool ending_pending() const;
     // The file select's entries (files.h): the disk count, which the `disk_slots` request sets
     // (a count by slot), and the AP logo on AP saves (ap_file_slots); the watch runs every
     // frame; the helper's wrapper of the save entries' handler calls the game's
@@ -217,9 +222,12 @@ public:
     // randomizer save is loaded whose item table and start are a seed's the helper knows (a seed
     // file read from the folder or put by a client since, or the seed the labels were set for).
     // The guard goes on once two frame calls in a row have found one, and off at once (each
-    // frame, watch_all). add_known_seeds: seeds to know (by table and start). restore_feats puts
-    // both changes back (before an unload); release_steam, from the pipe thread once no frame
-    // call can watch, puts back Steam's slot alone.
+    // frame, watch_all). With no save loaded, the watch also gives the stub the slots holding AP
+    // saves (ap_file_slots, every kFileSlotFrames), for its test while one loads (feats.h); a
+    // save loaded that two frame calls in a row find is not one drops them. add_known_seeds:
+    // seeds to know (by table and start). restore_feats puts both changes back (before an
+    // unload); release_steam, from the pipe thread once no frame call can watch, puts back
+    // Steam's slot alone.
     bool ap_save_loaded() const;
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
@@ -328,6 +336,9 @@ private:
     // A randomizer save loaded (its marker set): the loaded section is its own.
     bool rando_save_loaded() const;
     bool in_play() const;
+    // In play outside the loaded section's start cell (the seed's, the landing pod's); false
+    // when the start record or the player's cell is no cell of the map.
+    bool away_from_start() const;
     BYTE* player() const;
     BYTE* record(uint8_t item) const;
     bool popup_busy() const;
@@ -435,6 +446,9 @@ private:
     int skip_frames_ = 0;  // frames until the next escape-skip check
     FeatsGuard feats_;
     int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
+    int feats_other_ = 0;   // and that found another save loaded (to 2)
+    std::set<int> feats_slots_;  // the AP saves' slots, for the stub's load test
+    int feats_slot_frames_ = 0;  // frames until the next look for them
     bool feats_ended_ = false;
     bool note_seen_ = false;  // the Feats of Natu screen was up since the ending
     int note_frames_ = 0;  // frames until the next look for it

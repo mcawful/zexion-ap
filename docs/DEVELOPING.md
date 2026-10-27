@@ -108,7 +108,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   at the landing pod only: 2026-10-25; the fade before it: 2026-10-27 (timed to the escape skip's by
   disassembly, not compared in game); the fade turned back after a save at the pod during it:
   2026-10-27. Not seen in game: the fade turned back when the helper takes back a prompt it had
-  not opened yet.
+  not opened yet, and a request held by popups lapsing once the player leaves the pod's cell
+  (stand-in tests only).
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26.
@@ -129,8 +130,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
   SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
   2026-10-26, with the client connected. Not seen in game: Steam's stand-in stopping an
-  achievement left to earn (it was in place; stand-in tests only), an AP ending with no client
-  or with a client of another seed, and a plain randomizer save left alone (`native/README.md`,
+  achievement left to earn (it was in place; stand-in tests only), no 15Explorer when a fully
+  explored AP save loads (by disassembly and stand-in tests), an AP ending with no client or
+  with a client of another seed, and a plain randomizer save left alone (`native/README.md`,
   "Feats and achievements in AP saves"). The client's warnings, the guard on without all of it
   or still off in play: their decisions on stand-in tests (`state.FeatsCheck`), the asking
   itself (`ticks.feats_tick`) not under test, none run in game.

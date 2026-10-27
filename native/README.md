@@ -97,7 +97,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued` or `refused not configured`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued` or `refused not configured`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -118,8 +118,9 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 - every name is there. An offline cache ("AP saves without the client") may lack the client-only
   ones, or hold one that does not fit as below: those marked `client_only` in `kConfigKeys`
-  (`src/game_calls.cpp`), which only the grants, new games, DeathLink, Energy Shields and RETURN
-  HOME WITH THE DISKS? read. The helper then configures with those unset (`hello` lists them as
+  (`src/game_calls.cpp`), which only the grants, new games, DeathLink, Energy Shields, RETURN
+  HOME WITH THE DISKS? and the Feats guard's load test (`current_slot`, with no test when it is
+  unset) read. The helper then configures with those unset (`hello` lists them as
   `cache_missing`), and `apply`, `shield`, `die`, `ap_newgame` and `mission_prompt` get `refused
   not configured` until a client's `config` sets every key. A cache lacking any other key is
   refused (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds
@@ -134,7 +135,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
-  loaded ("Feats and achievements in AP saves").
+  loaded or a save slot holds one ("Feats and achievements in AP saves").
 
 The other arguments are described in `src/requests.h` and in the parts below. Anything else gets
 `error unknown request`; errors always start with `error `. A "frame" request while the helper
@@ -185,7 +186,11 @@ game; fixed since, `native.Helper.unload`, on stand-in tests only). It also refu
 helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
 of its wrappers, or the scanner's text, the pause screen's branch, an item record or the
-ending's patch still the helper's.
+ending's patch still the helper's. It refuses (`error the ending RETURN HOME WITH THE DISKS?
+started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
+THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
+game's transition with the ending's patch in place: an unload would drop the ending, or put
+the patch back before the ending runs ("Feats and achievements in AP saves").
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -420,19 +425,28 @@ the helper:
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
   through the game's NO and then starts the ending once no message shows; NO fades the screen back
   in, as the escape skip's NO does. If event 3667 or its handler is not as traced, the prompt opens
-  at once with no fade, as before. An opener the helper takes back before it runs (the save left,
-  `discs` off, an unload), or one the game runs with the player not in play (a death during the
-  fade: asked again), turns the fade back to the normal level. One another transition took the
-  place of (a save at the save point again, which sets the pause opener back and brings no fade; a
-  door; a death) is asked again once idle, and its fade is turned back only while the game's fade
-  (the `fade` and `fade_level` targets) is still event 3667's: target −1, a step every 8 frames
-  from level 4, or done at −1, and no further back than the helper last saw it with its opener in
-  place, nor the transition timer higher (a save leaves it counting). Anything else, another
-  transition's fade even with 3667's own values (it starts again from level 4, its timer at 70),
-  is left alone. The same when `discs` turns off after such a save. Working in game: the fade
-  turned back after saves at the pod during it, 2026-10-27 (the owner's report). Stand-in tests
-  only: the fade turned back when the helper takes its opener back, another transition's fade
-  left alone, and `discs` turned off after such a save.
+  at once with no fade, as before. A request not yet opened lapses (`lapsed: the player left the
+  landing pod`) once the player is in play outside the seed's start cell (the loaded section's start
+  record's row / 20 and column / 14 against the player state's cell, as the client tests a save at
+  the pod: `docs/re/memory.md`, "The mission prompt"; a cell off the map, as the raw cell reads
+  for a moment, counts as not known), as when popups held it while the player
+  walked on; the client offers it again after the next save there. Once its opener is set, it opens
+  where the player is when its 60 frames are up. An opener the helper takes back before it runs (the
+  save left, `discs` off, an unload) turns the fade back to the normal level; so does one the game
+  runs with the player not in play (a death during the fade: asked again), but only while the fade
+  is still event 3667's, as below, not a fade the death set. One another transition took the place
+  of (a save at the save point again, which sets the pause opener back and brings no fade; a door; a
+  death) is asked again once idle (and lapses if the player is then outside the start cell), and its
+  fade is turned back only while the game's fade (the `fade` and `fade_level` targets) is still
+  event 3667's: target −1, a step every 8 frames from level 4, or done at −1, and no further back
+  than the helper last saw it with its opener in place, nor the transition timer higher (a save
+  leaves it counting). Anything else, another transition's fade even with 3667's own values (it
+  starts again from level 4, its timer at 70), is left alone. The same when `discs` turns off after
+  such a save. Working in game: the fade turned back after saves at the pod during it, 2026-10-27
+  (the owner's report). Stand-in tests only: the fade turned back when the helper takes its opener
+  back, another transition's fade left alone, a death's own fade left alone, `discs` turned off
+  after such a save, a request lapsing outside the start cell, and the ending after YES waiting for
+  the last message to end.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -581,14 +595,27 @@ Working in game: 2026-10-23 ("The escape skip").
     ending_join`, which is where the ending goes on, just before it sets flag 250. It writes
     them only if the call goes through `context_init_slot` and the join comes after it, with
     flag 251's store just before it and flag 250's 0x11 bytes after it. Flag 250, the client's
-    goal and the save after it are unchanged. With flag 251 clear, no Feats of Natu screen
-    follows and the way back to the title records no Feat. That holds for a save that already
-    held flag 251 from an earlier ending, too.
+    goal and the save after it are unchanged. With flag 251 clear, the way back to the title
+    records no Feat. That holds for a save that already held flag 251 from an earlier ending,
+    too.
   - **Steam.** Every achievement call fetches its interface through `context_init_slot`, the
     import slot of steam_api64's `SteamInternal_ContextInit`. The helper points that slot at a
     stub. For `stats_context` the stub returns a stand-in interface whose every method is
-    `xor eax, eax; ret`; every other call, the SteamUtils context's included, goes on to
-    steam_api64. The helper hooks the slot only if:
+    `xor eax, eax; ret`, while it blocks; every other call, the SteamUtils context's included,
+    goes on to steam_api64. It decides at each call, with no helper code: it blocks while the
+    guard is on, and while an AP save is being loaded. The game's load routine reads
+    `current_slot`, sets the randomizer marker from that slot and the save loaded, and ends in
+    the map's 15Explorer check, all in one game call before any frame call: a fully explored AP
+    save would otherwise set 15Explorer each time it is loaded. So the stub also blocks when the
+    marker word (`rando_marker`) is 1 and the slot in `current_slot` holds an AP save, by a table
+    of 30 bytes the frame call fills, with no save loaded, from the slots' own copies of their
+    sections (`Game::ap_file_slots`, as for the file select's logo, every 16th frame call). It
+    keeps the table while a save loads, and clears it once two frame calls in a row find a save
+    loaded that is not an AP save. The slot is hooked whenever the stub can block: the guard on,
+    or the table not empty. Without `current_slot` (a client-only key, so an offline cache may
+    lack it) or `rando_marker` there is no table; and since the table is filled only with no save
+    loaded, a helper loaded in the middle of a save has none until the title comes back. The
+    helper hooks the slot only if:
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
@@ -620,18 +647,29 @@ Working in game: 2026-10-23 ("The escape skip").
 - **When:** every frame call while configured. It goes on once two frame calls in a row have
   found an AP save loaded, since during a load the section may still be the last save's. It
   goes off at once: no save loaded (MISSION COMPLETE onward, the title), a normal save, a
-  randomizer save of no known seed. `hello` reports `feats=off`, `on`, or `on:` and why a
-  change could not be made.
-- **Put back:** both as soon as no AP save is loaded, and before an unload. It stays on when a
-  client goes away, since it applies with no client too. The ending is put back only where it
-  still reads as the helper wrote it; while it does, an unload refuses (`error the ending's
-  patch is still the helper's; not unloading`). Steam's slot is put back even if no frame
-  comes, but only if it still holds the stub. The stub, the stand-in and its vtable are in two
-  pages allocated once and never freed. A call that read the slot just before, or still holds
-  the stand-in, so lands in live memory that runs no helper code, and an unload need not wait
-  for it. If something hooked over the stub since, the stub stays in its chain and passes
-  everything through. The screen's note is blanked again before an unload; the game frees it
-  with the screen otherwise.
+  randomizer save of no known seed. The load test (above) is set with no save loaded, while the
+  guard is off. `hello` reports `feats=off`, `on`, or `on:` and why a change could not be made:
+  the guard's state, not the load test's (with the guard off it reads `off`, the test set or
+  not).
+- **Put back:** both as soon as no AP save is loaded, and before an unload; Steam's slot stays
+  hooked with the guard off while the load test is set (the title and the file select, with an AP
+  save in a slot), the stub then passing every call but a load's through. It stays on when a client
+  goes away, since it applies with no client too. The ending is put back only where it still reads
+  as the helper wrote it; while it does, an unload refuses (`error the ending's patch is still the
+  helper's; not unloading`). Steam's slot is put back even if no frame comes, but only if it still
+  holds the stub, with the load test turned off. The stub, the stand-in and its vtable are in two
+  pages allocated once and never freed. A call that read the slot just before, or still holds the
+  stand-in, so lands in live memory that runs no helper code, and an unload need not wait for it. If
+  something hooked over the stub since, the stub stays in its chain and passes everything through.
+  The screen's note is blanked again before an unload; the game frees it with the screen otherwise.
+- **An unload leaves a gap:** from the unload to the next helper's second frame call (the
+  client's `/reload_mod` waits 3 s before loading it again), an AP save in play has no guard, so
+  a pickup's achievement (a weapon, 10Burst, 11Armor and the like) then reaches Steam, and so
+  would an ending the game itself starts then (the escape's). RETURN HOME WITH THE DISKS?'s
+  ending is not exposed: an unload refuses from its YES until the ending has run
+  ("Unloading"). Closing the gap would mean keeping the slot and the patch across an unload for
+  the next helper to take over, which is more than a few seconds' gap is worth, so it stays,
+  documented here (by code reading; not measured in game).
 - **Left as it was:** database entries an AP game unlocks (lore, game-wide) stay in
   `GameUnlocks.sav`. They can complete the database and give 16CompleteReport later, in a
   normal game.
@@ -642,12 +680,16 @@ through RETURN HOME WITH THE DISKS? with the client connected, and a normal endi
 endings the ending was jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav`
 was unchanged; the second showed the note. In the normal ending the Feats were earned as usual.
 The guard also went on in an AP save with no client connected, before the client connected.
+Those runs had the Steam stub as it was before the load test (feats.h); the stub as it is now,
+rewritten for that test, has run in the stand-in tests only.
 
 Not seen in game:
 - an AP ending with no client, or with a client of another seed;
 - a plain randomizer save left alone;
 - Steam's stand-in stopping an achievement. It was in place in the AP save, but no unearned
-  achievement was tried there, so this is tested only with the stand-in.
+  achievement was tried there, so this is tested only with the stand-in;
+- the load test: a fully explored AP save loaded from the file select earning no 15Explorer
+  (by disassembly and the stand-in only), and the rewritten stub at all.
 
 ## Building
 
@@ -674,6 +716,7 @@ laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_m
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
 `unload_under_load` and `proxy`). They share `tests/check.h`;
+`tests/fake_gl.h` is the fake OpenGL of `apitem` and `offline`;
 `tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
 `unload_under_load`, and the last two's busy threads and wait for an unload.
 
@@ -682,7 +725,10 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, the escape skip's patch, what a refused unload sets
-  again, the received shield and death, the ASSIST watch and the scanner's text.
+  again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
+  WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
+  request lapsing outside the start cell, a death's own fade left alone, the ending after YES
+  waiting for the last message, and the ending's wait that an unload refuses for).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
@@ -691,15 +737,17 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, the AP saves' slots).
-- `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no
-  config, a plain randomizer save, a normal save, a put seed, a seed file with no client and
-  with a client of another seed, the labels' seed), the guard on and off, and a stand-in ending
-  run with and without the patch. It also covers the Steam import hooked and passed through,
-  the refusals, putting back with and without a frame, and the Feats of Natu screen's note (on
-  a stand-in screen, after an AP ending only). The program imports
-  `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`),
-  as the game does. Both are built into `build/feats/`, apart from the helper.
+  undressed, the AP saves' slots, and the file select's logo through the frame call: painted,
+  whitened through a new game's fade, and cleared by `restore_files`).
+- `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
+  plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
+  another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
+  the patch. It also covers the Steam import hooked and passed through, the stub's test while an AP
+  save loads (by slot, marker and context, kept and dropped, off with `release_steam`, none without
+  `current_slot`), the refusals, putting back with and without a frame, and the Feats of Natu
+  screen's note (on a stand-in screen, after an AP ending only). The program imports
+  `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`), as
+  the game does. Both are built into `build/feats/`, apart from the helper.
 - `proxy`: its exports give what Windows' own give, and it loads no helper outside Zexion.
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
   a batch no frame took, an unload refused while something else is hooked over the
