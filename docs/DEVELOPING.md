@@ -118,7 +118,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 - `/reload_mod` in play: the mod back 3 s later, the ASSIST lock and the map's items the game's
   for those seconds: 2026-10-26. With the pause or equipment screen open it unloaded, and the
   open screen showed the disk wrong until reopened (2026-10-26), so an unload now refuses with a
-  menu open: refused with the pause screen open, then reloaded in play, 2026-10-26.
+  menu open: refused with the pause screen open, then reloaded in play, 2026-10-26. A cleanup
+  after that run (5681ed6) made the client take any refusal for a failed request (it dropped
+  the helper and attached to it again); fixed since (`native.Helper.unload`), on stand-in tests
+  only, not run in game.
 - What the helper changed put back when the client goes away (item records, ASSIST, the escape
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
@@ -128,7 +131,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   2026-10-26, with the client connected. Not seen in game: Steam's stand-in stopping an
   achievement left to earn (it was in place; stand-in tests only), an AP ending with no client
   or with a client of another seed, and a plain randomizer save left alone (`native/README.md`,
-  "Feats and achievements in AP saves").
+  "Feats and achievements in AP saves"). The client's one-time warning when the helper reports
+  `feats=on:<why>`: stand-in tests only, not run in game.
 - AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
   NN; normal and plain randomizer saves unmarked), with and without the client, through
   paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. Not seen in
@@ -233,7 +237,12 @@ Running it may load the helper into the game: the one already there if it is thi
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open it
-  refuses and says why.
+  refuses and says why, and the mod stays loaded.
+- While this seed's save is loaded, the client asks the helper whether its Feats and
+  achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
+  in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its
+  `hello`), the client warns once that achievements may be earned in this save (the reason
+  goes to the log).
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
 ## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub

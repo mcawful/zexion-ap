@@ -177,8 +177,11 @@ It refuses (`error a menu is open; not unloading`) while a save is loaded with a
 screen keeps what it was built from (the pause row's disc, an item record's name), which it
 would show wrong until reopened (seen in game 2026-10-26, before this check; the refusal with
 the pause screen open: working in game 2026-10-26, the Launcher's client log
-`ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47). It also refuses (`error <why>; not
-unloading`) while the game may still call into the helper, or hold something of the helper's.
+`ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47, with the client of that run; the client
+after it, from 5681ed6, took any refusal for a failed request and dropped the helper, which by
+the code then put things back under the open screen as for a client going away, not seen in
+game; fixed since, `native.Helper.unload`, on stand-in tests only). It also refuses (`error
+<why>; not unloading`) while the game may still call into the helper, or hold something of the helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
 of its wrappers, or the scanner's text, the pause screen's branch, an item record or the
 ending's patch still the helper's.

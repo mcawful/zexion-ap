@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from client import native, process
+from client import native, process, state
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
@@ -94,12 +94,12 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
         with pytest.raises(native.HelperError, match="closed after an error"):
             helper.request("ping")  # a timeout closes it for good: a late reply can't pair up
     with native.Helper(process.pid) as helper:
-        assert helper.request("unload") == "bye"
+        assert helper.unload() == "bye"
     assert native.wait_unloaded(handle)
     # And it loads again after an unload, as a rebuilt helper would.
     native.load(handle, process.pid, BUILT)
     with native.Helper(process.pid) as helper:
-        assert helper.request("unload") == "bye"
+        assert helper.unload() == "bye"
     assert native.wait_unloaded(handle)
 
 
@@ -279,3 +279,62 @@ def test_a_turned_off_mod_already_loaded_is_used(tmp_path, monkeypatch) -> None:
     stand_in_attach(monkeypatch, game)
     native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
     assert game.loads == 0 and game.unloads == 0
+
+
+def piped_helper(monkeypatch, exchange) -> tuple[native.Helper, list[int]]:
+    """A Helper on a stand-in pipe: ``exchange`` answers each request; the handles closed are
+    listed."""
+    closed: list[int] = []
+
+    class Kernel32:
+        def CloseHandle(self, handle: int) -> bool:
+            closed.append(handle)
+            return True
+
+    monkeypatch.setattr(native, "_kernel32", Kernel32)
+    helper = native.Helper.__new__(native.Helper)
+    helper._handle = 1234
+    helper._exchange = exchange
+    return helper, closed
+
+
+@pytest.mark.parametrize(
+    ("why", "said"),
+    [
+        ("a menu is open", "with a menu open: close it and try again"),
+        ("the ending's patch is still the helper's", "(the ending's patch is still the helper's)"),
+    ],
+)
+def test_reload_mod_refused_leaves_the_mod_loaded(monkeypatch, why: str, said: str) -> None:
+    # What /reload_mod does (zexion_client.poll): the unload request, then reload_reply.
+    refusal = f"error {why}; not unloading".encode()
+    helper, closed = piped_helper(monkeypatch, lambda data, seconds: refusal)
+    unloaded, line = state.reload_reply(helper.unload())
+    assert not unloaded and said in line, "a refusal, not a failed request"
+    assert closed == [] and helper._handle == 1234, "the pipe stays open: the helper works on"
+
+
+def test_reload_mod_loads_again_after_bye_or_a_failed_request(monkeypatch) -> None:
+    helper, closed = piped_helper(monkeypatch, lambda data, seconds: b"bye")
+    assert state.reload_reply(helper.unload()) == (
+        True,
+        "The Zexion mod was unloaded; loading it again.",
+    )
+
+    def broken(data: bytes, seconds: float) -> bytes:
+        raise native.HelperError("the helper's pipe closed: 109")
+
+    helper, closed = piped_helper(monkeypatch, broken)
+    unloaded, line = state.reload_reply(helper.unload())
+    assert unloaded and "didn't answer" in line and closed == [1234]
+    # Any other error reply: what the helper did is not known, so it is dropped too.
+    helper, closed = piped_helper(monkeypatch, lambda data, seconds: b"error unknown request")
+    assert helper.unload() is None and closed == [1234]
+
+
+def test_hello_keeps_the_feats_guards_reason_as_one_field(monkeypatch) -> None:
+    reply = b"zexion-ap 0.30.0 build=B1 hooked=1 feats=on:steam_api64_is_not_loaded folder=1"
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: reply)
+    hello = helper.hello()
+    assert hello["feats"] == "on:steam_api64_is_not_loaded" and hello["folder"] == "1"
+    assert state.feats_unguarded(hello["feats"]) == "steam_api64_is_not_loaded"

@@ -1,7 +1,8 @@
 """The game loop's side tasks with the in-game helper: attaching it, and telling it what this
 seed's save needs (the labels, the ASSIST lock, INTEL CHIP, the OS Install Disks and their
 popups, the new game, the escape skip, received Energy Shields and DeathLinks, the offline
-files, and the notices for another seed's save or the client coming back).
+files, and the notices for another seed's save, the client coming back, or the Feats guard
+not all in place).
 
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
@@ -49,6 +50,7 @@ REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a
 SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
+FEATS_ASK_SECONDS = 5.0  # between asks whether the Feats guard is on for this load
 
 
 async def attach_helper(ctx: ZexionContext) -> None:
@@ -615,6 +617,30 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
         return  # a plain randomizer game (no seed the mod has a file for): left alone
     if ctx.said("other save", "loaded"):  # once a load
         logger.info(state.OTHER_SAVE)
+
+
+async def feats_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """While this seed's save is loaded: whether the helper keeps Feats and Steam achievements
+    out of it (its hello's ``feats``; native/README.md, "Feats and achievements in AP saves").
+    Asked every few seconds until it is on for this load, as the helper turns it on two frame
+    calls into one. On with why something could not be done: the player is told once (again
+    only after a load where it was all in place)."""
+    helper, load = ctx.helper, ctx.load
+    if helper is None or not step.seed_matches or load.feats_known:
+        return
+    if time.monotonic() < load.feats_ask_at:
+        return
+    load.feats_ask_at = time.monotonic() + FEATS_ASK_SECONDS
+    feats = (await asyncio.to_thread(helper.hello)).get("feats", "")
+    if feats != "on" and not feats.startswith("on:"):
+        return  # off: not on for this save yet
+    load.feats_known = True
+    why = state.feats_unguarded(feats)
+    if why is None:
+        ctx.said.clear("feats")
+    elif ctx.said("feats", "unguarded"):
+        logger.warning(state.FEATS_UNGUARDED)
+        log.warning(f"The mod's Feats and achievements guard is not all in place: {why}")
 
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:

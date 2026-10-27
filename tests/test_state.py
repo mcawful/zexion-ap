@@ -232,3 +232,30 @@ def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
     assert state.goal_reached(True, 3, 3)
     assert not state.goal_reached(True, 3, 2), "too few disks"
     assert not state.goal_reached(False, 3, 9), "no ending"
+
+
+def test_a_feats_guard_not_all_in_place_is_read_from_hello() -> None:
+    assert state.feats_unguarded("on") is None
+    assert state.feats_unguarded("off") is None, "not on for this save, or not yet"
+    assert state.feats_unguarded("") is None, "no field"
+    why = "on:the_ending's_call_reads_otherwise;_steam_api64_is_not_loaded"
+    assert state.feats_unguarded(why) == why.removeprefix("on:")
+    assert "achievements may be earned in this save" in state.FEATS_UNGUARDED
+
+
+def test_a_load_ended_while_a_reconnect_carried_it_ends_for_both() -> None:
+    # Session.look_away ran in a thread while Connected carried the ending over.
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.session.holding, old.session._goal_before = True, True
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True)
+    assert new.session.holding and new.session.carried_from is old.session
+    state.end_kept_load(old.session, new)
+    assert not old.session.holding and not new.session.holding
+    assert new.session._goal_before is None
+    # One carried from no other (or that has stepped since: step clears it) is its own.
+    other = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    other.session.holding = True
+    state.end_kept_load(old.session, other)
+    assert other.session.holding
+    state.end_kept_load(old.session, None)
