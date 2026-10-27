@@ -26,6 +26,13 @@
 // that read the slot, or holds the stand-in, just before an unload still lands in live memory,
 // and none of it runs helper code, so an unload need not wait for one. While off, the stub passes
 // everything through, so a slot something else has hooked over the stub since stays safe.
+//
+// The Feats of Natu screen may still follow such an ending (by a path not traced), with nothing
+// flashing. On it the helper writes kFeatsNote into the blank last line of its title label,
+// under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
+// panels; panel 0's first child is a live widget whose label is three lines of 38 glyphs (y 16,
+// 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
+// the two rows of 7 Feat icons (docs/re/memory.md, "Feats and achievements").
 #pragma once
 
 #include <windows.h>
@@ -38,6 +45,14 @@
 namespace zap {
 
 constexpr size_t kEndingPatchSize = 12;
+
+// Under FEATS OF NATU! after an AP save's ending.
+extern const char kFeatsNote[];
+
+// Game thread: if the Feats of Natu screen is the top menu, its title label's last line made
+// kFeatsNote, centered (`show`), or blank again; only a line that reads blank or as the note is
+// written. Returns whether the screen is up.
+bool feats_screen_note(const GameAddresses& addresses, bool show);
 
 class FeatsGuard {
 public:

@@ -319,6 +319,153 @@ void test_refusals() {
     hooked.watch_feats();
 }
 
+// The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, and the
+// title label, three lines of 38 glyphs with the title on the middle one.
+struct FeatsScreen {
+    static constexpr int kColumns = 38, kLength = 3 * kColumns;
+    BYTE menu[0x80] = {};
+    BYTE* panels[4] = {};
+    BYTE panel[4][0x300] = {};
+    BYTE* children[1] = {};
+    BYTE title[0x2D0] = {};
+    BYTE label[0x230] = {};
+    BYTE* glyph_list[kLength] = {};
+    BYTE glyphs[kLength][0x1D8] = {};
+    std::vector<BYTE> table = std::vector<BYTE>(256 * 0x38);
+
+    explicit FeatsScreen(const std::string& middle = "FEATS OF NATU!") {
+        at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
+        at<int32_t>(menu, 8) = 4;
+        for (int i = 0; i < 4; ++i) panels[i] = panel[i];
+        at<BYTE**>(panel[0], 0x1E0) = children;
+        at<int32_t>(panel[0], 0x1E8) = 1;
+        at<int32_t>(panel[1], 0x1E8) = 1;  // EXIT
+        at<int32_t>(panel[2], 0x1E8) = 7;
+        at<int32_t>(panel[3], 0x1E8) = 7;
+        children[0] = title;
+        at<void*>(title, 0x2C8) = reinterpret_cast<void*>(&widget_handler_fn);
+        at<BYTE*>(title, 0x1F0) = label;
+        at<int32_t>(label, 0x1D8) = kLength;
+        at<int32_t>(label, 0x1DC) = kColumns;
+        at<BYTE**>(label, 0x228) = glyph_list;
+        const size_t left = (kColumns - middle.size()) / 2;
+        for (int i = 0; i < kLength; ++i) {
+            glyph_list[i] = glyphs[i];
+            at<BYTE*>(glyphs[i], 0x1A8) = table.data();
+            at<int32_t>(glyphs[i], 0x1BC) = 256;
+            int32_t f = i < 2 * kColumns ? ' ' : 0;  // the first two lines spaces, the last blank
+            const size_t col = static_cast<size_t>(i % kColumns);
+            if (i / kColumns == 1 && col >= left && col < left + middle.size()) f = middle[col - left];
+            at<int32_t>(glyphs[i], 0x1C4) = f;
+        }
+    }
+
+    // Line n's frames as text, '.' for blank (frame 0).
+    std::string line(int n) const {
+        std::string out;
+        for (int i = n * kColumns; i < (n + 1) * kColumns; ++i) {
+            int32_t f = get<int32_t>(glyphs[i], 0x1C4);
+            out += f == 0 ? '.' : static_cast<char>(f);
+        }
+        return out;
+    }
+};
+
+std::string noted_line() {
+    const std::string note = zap::kFeatsNote;
+    const size_t left = (FeatsScreen::kColumns - note.size() + 1) / 2;
+    std::string out(FeatsScreen::kColumns, '.');
+    out.replace(left, note.size(), note);
+    return out;
+}
+
+void test_the_screen_note() {
+    const std::string blank(FeatsScreen::kColumns, '.');
+    FeatsScreen screen;
+    BYTE* current = screen.menu;
+    zap::GameAddresses a;
+    a.current_menu = reinterpret_cast<BYTE*>(&current);
+    a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
+    check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(),
+          "the note under FEATS OF NATU!, centered", screen.line(2));
+    check(screen.line(1).find("FEATS OF NATU!") != std::string::npos, "the title left as it is");
+    check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(), "written once");
+    check(zap::feats_screen_note(a, false) && screen.line(2) == blank, "and blanked again");
+
+    // The game's own text on the last line: never written over.
+    at<int32_t>(screen.glyphs[2 * FeatsScreen::kColumns + 3], 0x1C4) = 'X';
+    const std::string theirs = screen.line(2);
+    check(zap::feats_screen_note(a, true) && screen.line(2) == theirs, "other text left alone");
+
+    // Other screens: not this one.
+    FeatsScreen other("OPTIONS");
+    current = other.menu;
+    check(!zap::feats_screen_note(a, true) && other.line(2) == blank, "a title without NATU");
+    FeatsScreen six;
+    at<int32_t>(six.panel[3], 0x1E8) = 6;
+    current = six.menu;
+    check(!zap::feats_screen_note(a, true) && six.line(2) == blank, "a row of 6");
+    FeatsScreen released;
+    at<int32_t>(released.title, 0x1C8) = 1;
+    current = released.menu;
+    check(!zap::feats_screen_note(a, true) && released.line(2) == blank, "a released title");
+    current = nullptr;
+    check(!zap::feats_screen_note(a, true), "no menu");
+}
+
+// The note after an AP save's ending, through Game: the guard on, then MISSION COMPLETE (no
+// save loaded, flag 250 set), then the screen.
+void test_the_note_after_an_ending() {
+    reset();
+    const std::string blank(FeatsScreen::kColumns, '.');
+    zap::Game game;
+    check(configure_feats(game).empty(), "configured");
+    guard_on(game);
+    g_flags[250] = 1;  // the ending ran
+    g_save_loaded = 0xFF;
+    FeatsScreen screen;
+    g_current_menu = screen.menu;
+    for (int i = 0; i < 8; ++i) game.watch_feats();
+    check(game.feats_ended() && screen.line(2) == noted_line(), "an AP ending: the note",
+          screen.line(2));
+    game.restore_feats();
+    check(screen.line(2) == blank, "blanked before an unload");
+    for (int i = 0; i < 8; ++i) game.watch_feats();
+    check(screen.line(2) == noted_line(), "and back after a refused one");
+
+    // A save loaded ends it.
+    g_save_loaded = 3;
+    g_rando_marker = 0;
+    game.watch_feats();
+    check(!game.feats_ended(), "a save loaded ends it");
+    g_current_menu = nullptr;
+
+    // A normal save's ending: the guard never on, no note.
+    zap::Game normal;
+    check(configure_feats(normal).empty(), "configured");
+    g_save_loaded = 3;
+    g_rando_marker = 0;
+    for (int i = 0; i < 3; ++i) normal.watch_feats();
+    g_save_loaded = 0xFF;
+    g_flags[250] = 1;
+    FeatsScreen plain;
+    g_current_menu = plain.menu;
+    for (int i = 0; i < 8; ++i) normal.watch_feats();
+    check(!normal.feats_ended() && plain.line(2) == blank, "a normal ending: no note");
+    // An AP save left with no ending (flag 250 clear): no note either.
+    zap::Game left;
+    check(configure_feats(left).empty(), "configured");
+    g_flags[250] = 0;
+    g_current_menu = nullptr;
+    guard_on(left);
+    g_save_loaded = 0xFF;
+    g_current_menu = plain.menu;
+    for (int i = 0; i < 8; ++i) left.watch_feats();
+    check(!left.feats_ended() && plain.line(2) == blank, "an AP save left before its ending");
+    g_current_menu = nullptr;
+    g_save_loaded = 3;
+}
+
 void test_put_back() {
     reset();
     const std::vector<unsigned char> original = call_bytes();
@@ -383,6 +530,8 @@ int main() {
     test_the_ending();
     test_steam();
     test_refusals();
+    test_the_screen_note();
+    test_the_note_after_an_ending();
     test_put_back();
     return report("feats tests");
 }

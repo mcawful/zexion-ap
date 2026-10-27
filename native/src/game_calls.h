@@ -212,6 +212,10 @@ public:
     void release_steam() { feats_.release_steam(); }
     std::string feats_state() const { return feats_.state(); }
     const FeatsGuard& feats() const { return feats_; }  // tests
+    // An AP save's ending was the last thing the guard was on for (it went off with flag 250 set
+    // as the save left): the Feats of Natu screen that may follow says no Feats were earned
+    // (feats_screen_note). Until a save is loaded, or the title's lines are up.
+    bool feats_ended() const { return feats_ended_; }
 
     // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files;
     // the watch (every 16th frame call) dresses a save of one of them while no client is there
@@ -406,6 +410,8 @@ private:
     int skip_frames_ = 0;  // frames until the next escape-skip check
     FeatsGuard feats_;
     int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
+    bool feats_ended_ = false;
+    int note_frames_ = 0;  // frames until the next look for the Feats of Natu screen
     // Every seed the helper has known since it loaded (table and start only), the oldest first.
     std::vector<OfflineSeed> known_seeds_;
 };

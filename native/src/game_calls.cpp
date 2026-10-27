@@ -768,12 +768,27 @@ void Game::watch_feats() {
     } else {
         feats_passes_ = 0;
     }
-    feats_.watch(at_, feats_passes_ >= 2);
+    const bool was_on = feats_.on();
+    const bool on = feats_passes_ >= 2;
+    feats_.watch(at_, on);
+    // The guard going off as the save leaves with flag 250 set: an AP ending (MISSION COMPLETE
+    // onward has no save loaded). A save loaded, or the title, ends it.
+    const bool no_save = *at_.save_loaded == kNoSaveLoaded;
+    if (was_on && !on && no_save && at_.flags[flag::kEnding] != 0) feats_ended_ = true;
+    if (!no_save || title_.shown()) feats_ended_ = false;
+    // The Feats of Natu screen comes with no save loaded; looked at every 8th frame call.
+    constexpr int kNoteFrames = 7;
+    if (no_save && note_frames_-- <= 0) {
+        note_frames_ = kNoteFrames;
+        feats_screen_note(at_, feats_ended_);
+    }
 }
 
 void Game::restore_feats() {
     feats_passes_ = 0;
-    if (configured_) feats_.restore(at_);
+    if (!configured_) return;
+    feats_.restore(at_);
+    feats_screen_note(at_, false);  // the screen's note blanked, if it is up
 }
 
 bool Game::labels_seed_loaded(bool in_play_only) const {

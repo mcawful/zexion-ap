@@ -56,7 +56,66 @@ const BYTE* store_target(const BYTE* at, const BYTE* bytes, BYTE value) {
     return at + kStoreSize + field<int32_t>(bytes, 2);
 }
 
+// The Feats of Natu screen (feats.h): its panels, the Feat rows' size, the title label's lines,
+// and what its middle line names.
+constexpr int32_t kScreenPanels = 4, kFeatRowPanels[] = {2, 3}, kFeatsPerRow = 7;
+constexpr int32_t kTitleLines = 3, kMaxColumns = 64;
+constexpr char kScreenName[] = "NATU";
+
 }  // namespace
+
+const char kFeatsNote[] = "ARCHIPELAGO SAVE: NO FEATS EARNED";
+
+bool feats_screen_note(const GameAddresses& a, bool show) {
+    BYTE* top = pointer_at(a.current_menu);
+    int32_t panels = 0;
+    if (top == nullptr || !read(top, menu::kPanelCount, panels) || panels != kScreenPanels) {
+        return false;
+    }
+    for (int32_t i : kFeatRowPanels) {
+        int32_t feats = 0;
+        if (!read(panel_at(top, i), panel::kCapacity, feats) || feats != kFeatsPerRow) return false;
+    }
+    BYTE* title = child_at(panel_at(top, 0), 0);
+    if (!live_widget(title, a.widget_handler_fn)) return false;
+    BYTE* label = pointer_at(title, widget::kLabel);
+    int32_t length = 0, columns = 0;
+    if (!read(label, label::kLength, length) || !read(label, label::kColumns, columns) ||
+        columns <= 0 || columns > kMaxColumns || length != kTitleLines * columns) {
+        return false;
+    }
+    BYTE* list = pointer_at(label, label::kGlyphs);
+    BYTE* glyphs[kTitleLines * kMaxColumns] = {};
+    std::string middle;
+    for (int32_t i = 0; i < length; ++i) {
+        glyphs[i] = pointer_at(list, static_cast<ptrdiff_t>(i) * 8);
+        if (glyphs[i] == nullptr) return false;
+        if (i >= columns && i < 2 * columns) {
+            int32_t f = frame_of(glyphs[i]);
+            middle += f > 0 && f < 128 ? static_cast<char>(f) : ' ';
+        }
+    }
+    if (middle.find(kScreenName) == std::string::npos) return false;
+    // The last line: blank (frame 0), or the note centered with blank glyphs around it.
+    const int32_t note_length = static_cast<int32_t>(sizeof(kFeatsNote) - 1);
+    if (note_length > columns) return true;
+    const int32_t left = (columns - note_length + 1) / 2;
+    BYTE** last = glyphs + 2 * columns;
+    bool blank = true, noted = true;
+    for (int32_t i = 0; i < columns; ++i) {
+        const int32_t f = frame_of(last[i]);
+        const bool in_note = i >= left && i < left + note_length;
+        blank = blank && f == 0;
+        noted = noted && f == (in_note ? static_cast<uint8_t>(kFeatsNote[i - left]) : 0);
+    }
+    if (!blank && !noted) return true;  // the game's own text there: left alone
+    if (show == noted) return true;
+    for (int32_t i = 0; i < columns; ++i) {
+        const bool in_note = show && i >= left && i < left + note_length;
+        set_frame(last[i], in_note ? static_cast<uint8_t>(kFeatsNote[i - left]) : 0);
+    }
+    return true;
+}
 
 void FeatsGuard::set_image(HMODULE image, void** context_init_by_name) {
     image_ = image;
