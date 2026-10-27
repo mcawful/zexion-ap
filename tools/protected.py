@@ -80,22 +80,33 @@ def _plain(text: str) -> str:
     return re.sub(r"(?<=[^/.\s])[. ]+(?=/)", "", text)
 
 
+def _join_run(m: re.Match) -> str:
+    run = m.group()
+    if "," in run or "/" in run:
+        return "/"
+    return "" if "+" in run else run
+
+
 def mentions_protected(text: str) -> bool:
     """True when free text (a shell command, say) names a protected folder anywhere in it.
 
     It also reads the text with quotes and backticks removed, ``/./`` collapsed, and dots and
     spaces dropped from the end of each folder name (Windows ignores them: ``Gallant Leaf.``),
     so none of those hide the folder. And it reads it once more with the folder names joined
-    from quoted pieces: any run of quotes, spaces, ``,``, ``+`` and ``/`` that holds a ``,``,
-    ``+`` or ``/`` becomes one ``/``, and quotes that meet (``'Zex' 'ion'``) close up. So
-    ``os.path.join(…, 'Gallant Leaf', 'Zexion')``, ``Path(…) / 'Gallant Leaf' / 'Zexion'``,
-    ``[IO.Path]::Combine(…)`` and ``'…/common/' + 'Zexion'`` name the folder too.
+    from quoted pieces: string prefixes (``r'…'``) are dropped, PowerShell's ``-ChildPath``
+    and ``-AdditionalChildPath`` read as a ``,``, quotes that meet (``'Zex' 'ion'``) close up,
+    and then any run of quotes, spaces, parentheses, ``$``, ``,``, ``+`` and ``/`` becomes one
+    ``/`` if it holds a ``,`` or ``/``, or nothing if it holds a ``+`` but neither; any other
+    run is left as it is. So
+    ``os.path.join(os.path.join(…, 'Gallant Leaf'), r'Zexion')``, ``Path(…) / 'Gallant Leaf' /
+    'Zexion'``, ``[IO.Path]::Combine(…)``, ``Join-Path … -AdditionalChildPath 'Zexion'``,
+    ``'Zex' + 'ion'`` and ``'…/common/' + 'Zexion'`` name the folder too.
     """
     norm = normalize(text)
-    joined = re.sub(r"([\"'])\s*\1", "", norm)
-    joined = re.sub(  # one pass over each run, so long runs of spaces stay linear
-        r"[\"'\s,+/]+", lambda m: "/" if re.search(r"[,+/]", m.group()) else m.group(), joined
-    )
+    joined = re.sub(r"(?<![\w\"'])[rbuf]{1,2}(?=[\"'])", "", norm)
+    joined = re.sub(r"\s-(?:additional)?childpath\s", ",", joined)
+    joined = re.sub(r"([\"'])\s*\1", "", joined)
+    joined = re.sub(r"[\"'\s,+/()$]+", _join_run, joined)  # one pass per run: stays linear
     readings = (norm, _plain(norm), _plain(joined))
     return any(p.search(t) for t in readings for p in _PROTECTED)
 
@@ -126,15 +137,19 @@ def may_be_above_protected(path: str) -> bool:
 
     That is a folder ending in ``steamapps``, ``steamapps/common``, ``Gallant Leaf``,
     ``userdata`` or ``userdata/<account id>``, read as ``word_may_name_protected`` reads a path
-    (wildcards, 8.3 short names, ``..``). A relative path from there can reach the protected
-    folder without naming it whole. Other names (``steam-achievements``, a user named Steam) do
-    not count.
+    (wildcards, 8.3 short names, ``..``), each name matched whole. A relative path from there
+    can reach the protected folder without naming it whole. Other names (``steam-achievements``,
+    ``fix-userdata``, a user named Steam) do not count, and neither does a last name that is
+    only a wildcard (``build/*``) unless a named parent comes before it (``userdata/*``).
     """
     parts = _path_parts(path)
     for names in _PROTECTED_PARTS:
         for k in range(1, len(names)):
+            first = parts[len(parts) - k] if len(parts) >= k else ""
+            if not re.search(r"[a-z0-9]", re.sub(r"\[[^\]]*\]", "", first)):
+                continue  # *, ?, [..]: any folder at all, not a named parent
             if len(parts) >= k and all(
-                _part_matches(parts[len(parts) - k + j], names[j], first=j == 0, last=False)
+                _part_matches(parts[len(parts) - k + j], names[j], first=False, last=False)
                 for j in range(k)
             ):
                 return True
