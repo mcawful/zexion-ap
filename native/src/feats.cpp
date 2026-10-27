@@ -45,10 +45,6 @@ static_assert(kApSlots + slot::kCount <= static_cast<ptrdiff_t>(kPage), "in the 
 // Code: the stub at 0, the stand-in's every method at kReturnZero.
 constexpr ptrdiff_t kReturnZero = 90;
 
-int32_t rel32(const BYTE* from_next, const BYTE* to) {
-    return static_cast<int32_t>(to - from_next);
-}
-
 bool fits_rel32(const BYTE* from_next, const BYTE* to) {
     ptrdiff_t d = to - from_next;
     return d >= INT32_MIN && d <= INT32_MAX;
@@ -71,16 +67,6 @@ constexpr char kScreenName[] = "NATU";
 constexpr int32_t kStatsPanels = 1, kStatsLines = 10;
 constexpr int32_t kFontFrames = 128;  // every character of the note has its frame
 
-// The panel count of `menu`, and the child count of its panel `i`, or -1.
-int32_t panel_count(const BYTE* menu) {
-    int32_t n = -1;
-    return read(menu, menu::kPanelCount, n) ? n : -1;
-}
-int32_t child_count(const BYTE* menu, int i) {
-    int32_t n = -1;
-    return read(panel_at(menu, i), panel::kCapacity, n) ? n : -1;
-}
-
 // The note's frame at column `i` of a line `columns` wide: its character, or blank (0).
 int32_t note_frame(int32_t i, int32_t columns) {
     const auto length = static_cast<int32_t>(sizeof(kFeatsNote) - 1);
@@ -94,23 +80,23 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
     BYTE* top = pointer_at(a.current_menu);
     if (panel_count(top) != kScreenPanels) return false;
     for (int32_t i : kFeatRowPanels) {
-        if (child_count(top, i) != kFeatsPerRow) return false;
+        if (child_count(panel_at(top, i)) != kFeatsPerRow) return false;
     }
     // Only the screen after an ending: MISSION COMPLETE's statistics under it.
     BYTE* below = pointer_at(top, menu::kBelow);
-    if (panel_count(below) != kStatsPanels || child_count(below, 0) != kStatsLines) return false;
+    if (panel_count(below) != kStatsPanels || child_count(panel_at(below, 0)) != kStatsLines) {
+        return false;
+    }
     BYTE* title = child_at(panel_at(top, 0), 0);
     if (!live_widget(title, a.widget_handler_fn)) return false;
     BYTE* label = pointer_at(title, widget::kLabel);
-    int32_t length = 0, columns = 0;
-    BYTE* list = nullptr;
+    int32_t columns = 0;
     BYTE* glyphs[kTitleLines * kMaxColumns] = {};
-    if (!read(label, label::kLength, length) || !read(label, label::kColumns, columns) ||
-        columns <= 0 || columns > kMaxColumns || length != kTitleLines * columns ||
-        !read(label, label::kGlyphs, list) ||
-        !safe_read(list, glyphs, static_cast<size_t>(length) * sizeof(BYTE*))) {
+    if (!read(label, label::kColumns, columns) || columns <= 0 || columns > kMaxColumns ||
+        !label_glyphs(label, kTitleLines * columns, glyphs)) {
         return false;
     }
+    const int32_t length = kTitleLines * columns;
     std::string middle;
     for (int32_t i = 0; i < length; ++i) {
         if (glyphs[i] == nullptr) return false;
@@ -157,7 +143,7 @@ void FeatsGuard::watch(const GameAddresses& a, bool on, const std::set<int>& loa
     const bool test = !loading.empty() && a.rando_marker != nullptr &&
                       a.current_slot != nullptr && a.save_loaded != nullptr;
     if (!on && !test) {
-        unhook_steam();
+        release_steam();
         steam_slot_error_.clear();
         return;
     }
@@ -173,10 +159,8 @@ void FeatsGuard::watch(const GameAddresses& a, bool on, const std::set<int>& loa
 void FeatsGuard::restore() {
     on_ = false;
     restore_ending();
-    unhook_steam();
+    release_steam();
 }
-
-void FeatsGuard::release_steam() { unhook_steam(); }
 
 std::string FeatsGuard::state() const {
     if (!on_) return "off";
@@ -232,10 +216,10 @@ void FeatsGuard::patch_ending(const GameAddresses& a) {
         return;
     }
     std::memcpy(patch, kStoreByte, sizeof(kStoreByte));
-    put(patch, 2, rel32(site + kStoreSize, flag251));
+    put_rel32(patch, 2, site + kStoreSize, flag251);
     patch[6] = 0;
     patch[7] = kJmp;
-    put(patch, 8, rel32(site + kEndingPatchSize, join));
+    put_rel32(patch, 8, site + kEndingPatchSize, join);
     if (!patch_code(site, patch, sizeof(patch))) {
         ending_error_ = "the ending could not be written";
         return;
@@ -334,14 +318,14 @@ bool FeatsGuard::make_pages() {
         0xFF, 0x25, 0,    0,    0,    0,    0x31, 0xC0, 0xC3};
     static_assert(sizeof(code) == kReturnZero + 3, "as laid out");
     std::memcpy(page, code, sizeof(code));
-    put(page, 3, rel32(page + 7, data + kContext));
-    put(page, 11, rel32(page + 16, data + kBlocked));
-    put(page, 21, rel32(page + 25, data + kMarker));
-    put(page, 39, rel32(page + 43, data + kSaved));
-    put(page, 51, rel32(page + 55, data + kSlot));
-    put(page, 65, rel32(page + 69, data + kApSlots));
-    put(page, 79, rel32(page + 83, data + kHolder));
-    put(page, 86, rel32(page + 90, data + kOriginal));
+    put_rel32(page, 3, page + 7, data + kContext);
+    put_rel32(page, 11, page + 16, data + kBlocked);
+    put_rel32(page, 21, page + 25, data + kMarker);
+    put_rel32(page, 39, page + 43, data + kSaved);
+    put_rel32(page, 51, page + 55, data + kSlot);
+    put_rel32(page, 65, page + 69, data + kApSlots);
+    put_rel32(page, 79, page + 83, data + kHolder);
+    put_rel32(page, 86, page + 90, data + kOriginal);
     at<BYTE*>(data, kHolder) = data + kObject;
     at<BYTE*>(data, kObject) = data + kVtable;
     for (int i = 0; i < kVtableEntries; ++i) {
@@ -406,7 +390,7 @@ void FeatsGuard::set_switch(const GameAddresses& a, bool on, const std::set<int>
     InterlockedExchangePointer(marker, a.rando_marker);
 }
 
-void FeatsGuard::unhook_steam() {
+void FeatsGuard::release_steam() {
     void** slot = slot_;
     if (slot == nullptr) return;
     // Off first (the load test too): a call already past the slot passes through.

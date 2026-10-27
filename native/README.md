@@ -741,7 +741,8 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 `unload_under_load`, and the last two's busy threads and wait for an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
-  front), the build check and the pipe.
+  front), `game_mem.h`'s menu, panel and label readers and its handler-slot swap, the build check
+  and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, the escape skip's patch, what a refused unload sets

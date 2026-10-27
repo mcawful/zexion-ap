@@ -15,7 +15,8 @@
 //   intel 0|1          the Area Map named INTEL CHIP
 //   assists lock|free  the ASSIST lock
 //   discs COUNT REQUIRED HEX   (or "discs -") the disk count when the client last saw it,
-//                      the number needed, and the scanner's line in hex
+//                      the number needed, and the scanner's line in hex: read as the `discs`
+//                      request is (a TOLD after it is ignored)
 //   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks
 //                      not counted in COUNT: each one the map shows collected counts one more
 //   ap_labels          then "label X Y HEX" lines to the end, as the client's request

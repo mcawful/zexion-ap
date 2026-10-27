@@ -28,8 +28,7 @@ constexpr char kDefaultName[] = "\xEE" "AP ITEM";
 static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
 // The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
-// glyph c of the 8 x 8 font at ((c % 16) * 8, 976 + (c / 16) * 8); 2048 x 2048 RGBA.
-constexpr int kTextureSize = 2048;
+// glyph c of the 8 x 8 font at ((c % 16) * 8, 976 + (c / 16) * 8); kTextureSize square.
 constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
 constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
@@ -145,9 +144,6 @@ GlFunctions load_gl() {
     get(gl.GetError, "glGetError");
     return gl;
 }
-
-void ApItems::set_labels(std::map<int, std::string> labels) { labels_ = std::move(labels); }
-
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
                int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]) {
@@ -272,10 +268,7 @@ void logo_pixels(const StandIn& s, int arrow_phase, bool clear, uint8_t (&rgba)[
             int8_t entry = s.logo[y][x];
             if (entry < 0) continue;
             if (entry == kArrow) entry = kArrowColors[arrow_phase];
-            const uint8_t* rgb = kEntryRgb[entry];
-            rgba[y][x][0] = rgb[0];
-            rgba[y][x][1] = rgb[1];
-            rgba[y][x][2] = rgb[2];
+            std::memcpy(rgba[y][x], kEntryRgb[entry], 3);
             rgba[y][x][3] = 0xFF;
         }
     }
@@ -442,11 +435,7 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
         // Menus draw item frames too (the equipment screen draws frame 95, empty in the game's
         // art, by the missile count): the logos come off while one is open, and go back on the
         // first frame after.
-        if (painted_ != 0 && sprite_texture(holder) == painted_) {
-            upload(painted_, gl, check, true, false);
-        }
-        painted_ = 0;
-        frames_to_paint_ = 0;
+        clear(holder, gl, check);
         return;
     }
     int phase = static_cast<int>((now_ms / kFlashMs) % 2);
@@ -467,11 +456,16 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,
                       TextureCheck& check) {
     release(records_holder);
-    if (painted_ != 0 && gl.loaded() && sprite_texture(texture_holder) == painted_) {
+    clear(texture_holder, gl, check);
+    labels_.clear();
+}
+
+void ApItems::clear(BYTE* holder, const GlFunctions& gl, TextureCheck& check) {
+    if (painted_ != 0 && gl.loaded() && sprite_texture(holder) == painted_) {
         upload(painted_, gl, check, true, false);
     }
     painted_ = 0;
-    labels_.clear();
+    frames_to_paint_ = 0;
 }
 
 void ApItems::release(BYTE* records_holder) {

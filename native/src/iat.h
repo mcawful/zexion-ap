@@ -28,4 +28,7 @@ struct Trampoline {
 };
 bool make_trampoline(void* target, Trampoline& out);
 
+// At code + at, the rel32 from an instruction ending at `next` to `to` (the caller checks it fits).
+void put_rel32(BYTE* code, size_t at, const BYTE* next, const BYTE* to);
+
 }  // namespace zap

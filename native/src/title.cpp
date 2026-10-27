@@ -40,35 +40,24 @@ constexpr int kMaxGlyphs = 64;
 // A text object's glyphs, if `object` reads as one of `length` glyphs in one row (the game's
 // line has 32 columns; the helper's are at least as wide as they are long).
 bool glyphs_of(BYTE* object, int32_t length, BYTE** glyphs) {
-    int32_t n = 0, columns = 0;
-    BYTE** list = nullptr;
-    return length > 0 && length <= kMaxGlyphs && read(object, label::kLength, n) && n == length &&
-           read(object, label::kColumns, columns) && columns >= length &&
-           read(object, label::kGlyphs, list) && list != nullptr &&
-           safe_read(list, glyphs, sizeof(BYTE*) * static_cast<size_t>(length));
+    int32_t columns = 0;
+    return length <= kMaxGlyphs && read(object, label::kColumns, columns) && columns >= length &&
+           label_glyphs(object, length, glyphs);
 }
 
-// Whether the text's glyphs show `text` (glyph 0 the © when `copyright`).
-bool shows(BYTE* object, const std::string& text, bool copyright) {
+// Whether the text's glyphs show `text` (glyph 0 the © instead when `copyright`).
+bool shows(BYTE* object, std::string_view text, bool copyright) {
     BYTE* g[kMaxGlyphs] = {};
-    if (!glyphs_of(object, static_cast<int32_t>(text.size()), g)) return false;
-    for (size_t i = 0; i < text.size(); ++i) {
-        int32_t want = copyright && i == 0 ? kCopyright : static_cast<uint8_t>(text[i]);
-        if (frame_of(g[i]) != want) return false;
-    }
-    return true;
+    const size_t from = copyright ? 1 : 0;
+    return glyphs_of(object, static_cast<int32_t>(text.size()), g) &&
+           (!copyright || frame_of(g[0]) == kCopyright) && glyphs_show(g + from, text.substr(from));
 }
 
 bool is_game_line(BYTE* object) {
     BYTE* g[kGameLineLength] = {};
-    if (!glyphs_of(object, kGameLineLength, g) || frame_of(g[0]) != kCopyright) return false;
     const size_t end = sizeof(kGameLineEnd) - 1;
-    for (size_t i = 0; i < end; ++i) {
-        if (frame_of(g[kGameLineLength - end + i]) != static_cast<uint8_t>(kGameLineEnd[i])) {
-            return false;
-        }
-    }
-    return true;
+    return glyphs_of(object, kGameLineLength, g) && frame_of(g[0]) == kCopyright &&
+           glyphs_show(g + kGameLineLength - end, kGameLineEnd);
 }
 
 struct Look {

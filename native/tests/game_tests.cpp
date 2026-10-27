@@ -41,11 +41,6 @@ void message_showing(int32_t frames) {
     put<int32_t>(g_message, 0x1EC, frames);
 }
 
-// A record's name, as the game shows it.
-std::string record_text(int item) {
-    return std::string(reinterpret_cast<const char*>(g_records + item * 100 + 0x0A));
-}
-
 // The RVA of the start of the section holding `p` in this program.
 uint64_t section_start_of(const void* p) {
     const IMAGE_NT_HEADERS64* nt = zap::nt_headers(GetModuleHandleW(nullptr));
@@ -70,14 +65,6 @@ void test_configure() {
     auto missing = config;
     missing.erase("sound_fn");
     check(game.configure(self, missing) == "missing sound_fn", "every key is required");
-    for (const char* key : {"text_new_fn", "text_link_fn", "draw_layer", "map_handler"}) {
-        auto older = config;  // an offline cache from before these keys
-        older.erase(key);
-        zap::Game older_game;
-        check(older_game.configure(self, older) == std::string("missing ") + key &&
-                  !older_game.configured(),
-              "the title screen's and the map's keys are required too");
-    }
     auto swapped = config;
     swapped["message_fn"] = config["inventory"];
     check(game.configure(self, swapped).find("not in code") != std::string::npos,
@@ -125,7 +112,7 @@ void test_apply() {
     check(g_inventory[36] == 1, "the byte is written");
     check(field<int16_t>(0xCC0) == 13 && field<int16_t>(0xCBC) == 12,
           "a Missile Box raises max and current missiles by 10");
-    check(g_hud_values[0] == 12.0, "the missile number is refreshed with the current value");
+    check(g_hud_value == 12.0, "the missile number is refreshed with the current value");
     check(g_calls == "number number layout energy ", "the HUD refresh, without the strip");
     check(g_energy_force == 1, "the energy HUD is forced, as after a load");
     check(game.queued_popups() == 1, "the popup is queued, not shown inside apply");
@@ -658,7 +645,7 @@ void test_pickup_popup_width() {
     check(game.ap_items_restyled(), "and unload has something to put back");
     g_menu = 2;  // a menu open (the equipment screen, say)
     game.watch_ap_items();
-    check(get<int16_t>(g_records, 48 * 100 + 0x02) == 142 && record_text(48) == "SCRAP CHUNK" &&
+    check(get<int16_t>(g_records, 48 * 100 + 0x02) == 142 && record_name(48) == "SCRAP CHUNK" &&
               popup_width_in_code() == 24,
           "in a menu the stand-ins are the game's own, and the popup width the game's");
     g_menu = 0;
@@ -710,16 +697,16 @@ void test_zexion_item_labels() {
     game.set_labels(labels);
     player_cell(5, 2);
     game.watch_ap_items();
-    check(record_text(47) == "\xC5MISSILE BOX" "FOR ZEXION2",
+    check(record_name(47) == "\xC5MISSILE BOX" "FOR ZEXION2",
           "named from the item's record: its icon and the game's name, then whom it is for");
     check(popup_width_in_code() == 12, "the box as wide as the item's line");
     player_cell(6, 2);
     game.watch_ap_items();
-    check(record_text(47) == "\xEE" "SCRAP ENERGY FOR ZEXION2",
+    check(record_name(47) == "\xEE" "SCRAP ENERGY FOR ZEXION2",
           "a stand-in item of theirs takes the stand-in's own name and the logo glyph");
     player_cell(7, 2);  // item 37, whose record holds no name here
     game.watch_ap_items();
-    check(record_text(47) == " \xEE" "AP ITEM" "  FOR ZEXION2", "a record with no name: AP ITEM");
+    check(record_name(47) == " \xEE" "AP ITEM" "  FOR ZEXION2", "a record with no name: AP ITEM");
 
     // "@36 OS INSTALL DISK", for no one: the item's icon, the client's name for it.
     std::map<int, zap::Label> own;
@@ -730,14 +717,14 @@ void test_zexion_item_labels() {
     game.set_labels(own);
     player_cell(8, 2);
     game.watch_ap_items();
-    check(record_text(47) == "\xC5OS INSTALL DISK",
+    check(record_name(47) == "\xC5OS INSTALL DISK",
           "named as the client says, after the item's icon");
     // An OS Install Disk (item 44, whose record has no icon): the helper's disk glyph.
     std::map<int, zap::Label> disk;
     zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@44 os install disk"), disk);
     game.set_labels(disk);
     game.watch_ap_items();
-    check(record_text(47) == "\xFBOS INSTALL DISK", "a disk: the disk glyph, not the logo");
+    check(record_name(47) == "\xFBOS INSTALL DISK", "a disk: the disk glyph, not the logo");
     std::map<int, zap::Label> bad;
     zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
     check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
@@ -959,37 +946,37 @@ void test_stand_ins_named_by_their_own_cell() {
     put_object(4, 78, 48, 6, 2);  // a drop for (6, 2), close by
     place(pool_slot(4), 1010, 610);
     game.watch_ap_items();
-    check(record_text(48).find("ZEXION2") != std::string::npos,
+    check(record_name(48).find("ZEXION2") != std::string::npos,
           "a stand-in is named for the location of the nearest one, not the player's cell");
-    check(record_text(47).find("FINDER") == std::string::npos &&
-              record_text(47).find("ZEXION2") == std::string::npos,
+    check(record_name(47).find("FINDER") == std::string::npos &&
+              record_name(47).find("ZEXION2") == std::string::npos,
           "the other stand-in, with none of its own loaded, for the player's cell: AP ITEM");
     field<double>(0x1100) = 2990;
     game.watch_ap_items();
-    check(record_text(48).find("FINDER") != std::string::npos, "and follows the player");
+    check(record_name(48).find("FINDER") != std::string::npos, "and follows the player");
     check(game.popup_width() == 10, "the popup as wide as the label of the stand-in within reach");
 
     // An object off the map, or in a cell with no label, is not taken.
     place(pool_slot(3), -5, 600);
     game.watch_ap_items();
-    check(record_text(48).find("ZEXION2") != std::string::npos, "a position off the map is not used");
+    check(record_name(48).find("ZEXION2") != std::string::npos, "a position off the map is not used");
     put_object(3, 79, 48, 7, 2);
     place(pool_slot(3), 2990, 600);
     game.watch_ap_items();
-    check(record_text(48).find("ZEXION2") != std::string::npos, "nor a cell with no label");
+    check(record_name(48).find("ZEXION2") != std::string::npos, "nor a cell with no label");
 
     // A stand-in shown by a general object (found by the scan every 31st frame) counts too.
     put_flipped(12, 501, 63, 5, 2);
     place(general_slot(12), 2995, 600);
     for (int i = 0; i < 32; ++i) game.watch_ap_items();  // through the next scan
-    check(record_text(47).find("FINDER") != std::string::npos,
+    check(record_name(47).find("FINDER") != std::string::npos,
           "a general object's stand-in is named for its own cell");
 
     // Out of reach of every stand-in, a labeled cell of the player's own comes first.
     player_cell(5, 2);  // FINDER
     field<double>(0x1100) = 1600;
     game.watch_ap_items();
-    check(record_text(48).find("FINDER") != std::string::npos,
+    check(record_name(48).find("FINDER") != std::string::npos,
           "a stand-in out of reach does not beat the player's labeled cell");
     check(game.popup_width() == 10, "and the popup is that cell's width");
 
@@ -998,7 +985,7 @@ void test_stand_ins_named_by_their_own_cell() {
     player_cell(9, 3);
     field<double>(0x1100) = 2995;
     game.watch_ap_items();
-    check(record_text(47).find("FINDER") == std::string::npos,
+    check(record_name(47).find("FINDER") == std::string::npos,
           "a general object is checked again before its cell is used");
     game.restore_ap_items();
 }
@@ -1102,15 +1089,14 @@ void test_assist_watch() {
 // player may pause and open the map at once), once two looks in a row (every 16th frame) have
 // read that seed loaded, and not in another seed's save.
 void test_map_marks_with_a_menu_open() {
-    reset_game();
+    zap::Game game;
+    ready(game);
     g_rando_marker = 1;
     std::memset(g_section, 0, 4);
     g_section[0] = 3;  // location 0 at (3, 4)
     g_section[2] = 4;
     g_section[0x26C] = 48;  // a progression stand-in
     g_map_grid[4 * 54 + 3] = 0x19;  // shown as a minor item
-    zap::Game game;
-    check(configure(game).empty(), "configures");
     std::map<int, zap::Label> labels;
     zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
     game.set_labels(labels);
@@ -1138,14 +1124,13 @@ void test_map_marks_with_a_menu_open() {
 // A refused unload: put_back_all drops what clients set, and rearm sets all of it again, since
 // the client does not know to resend it.
 void test_refused_unload_rearms() {
-    reset_game();
+    zap::Game game;
+    ready(game);
     reset_sprites();
     reset_texts();
     reset_events();
     g_rando_marker = 1;
     g_section[0x26C] = 0x2F;  // the loaded seed the labels are for
-    zap::Game game;
-    check(configure(game).empty(), "configures");
     std::map<int, zap::Label> labels;
     zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
     game.set_labels(labels);
@@ -1214,10 +1199,9 @@ void test_refused_unload_keeps_a_start() {
 // prepared from the seed's file (its count with the map as it is), so a pause screen opened at
 // once shows it; a save of no known seed gets no row.
 void test_pause_row_from_the_seed_file() {
-    reset_game();
-    g_rando_marker = 1;
     zap::Game game;
-    check(configure(game).empty(), "configures");  // a client, its count not set yet
+    ready(game);  // a client, its count not set yet
+    g_rando_marker = 1;
     zap::OfflineSeed seed = zap::offline_seed_of(g_section);
     seed.discs = true;
     seed.count = 2;
@@ -1313,26 +1297,61 @@ void test_popups_wait_for_their_save() {
     g_rando_marker = 0;
 }
 
-// RETURN HOME WITH THE DISKS? (mission.h) once idle in play: event 3667's fade with event
-// 3666's delay, popups waiting until the game runs the opener; not before the game's last
-// message is down to its last kFadeMessageLeft frames (GAME SAVED's, half a second in).
-// Bodies of their own: the linker folds identical functions into one address.
+// RETURN HOME WITH THE DISKS? (mission.h) through the Game: configured, the opener hooked, the
+// routine table's idle, prompt and ending routines stand-ins of their own, idle in play; all put
+// back after. Bodies of their own: the linker folds identical functions into one address.
 int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
 void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
 void opener() { g_routine_runs += 3; }  // the helper's (dllmain.cpp); not run here
-void test_popups_wait_for_the_mission_fade() {
-    reset_game();
-    reset_events();
+void ending_routine() { g_routine_runs += 4; }
+struct MissionGame {
     zap::Game game;
-    check(configure(game).empty(), "configures");
     zap::Hooks hooks;
-    hooks.mission_open = reinterpret_cast<void*>(&opener);
-    game.set_hooks(hooks);
-    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
-    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
-    g_transition_fn = g_routine_table[zap::kIdleRoutine];
-    g_transition_timer = 0;
+    MissionGame() {
+        ready(game);
+        reset_events();
+        std::memset(g_section, 0, sizeof(g_section));
+        hooks.mission_open = reinterpret_cast<void*>(&opener);
+        game.set_hooks(hooks);
+        g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
+        g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
+        g_routine_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&ending_routine);
+        idle();
+    }
+    ~MissionGame() {
+        for (int i : {zap::kIdleRoutine, zap::kPromptRoutine, zap::kEndingRoutine}) {
+            g_routine_table[i] = nullptr;
+        }
+        g_transition_fn = nullptr;
+        g_transition_timer = 0;
+        g_rando_marker = 0;
+        std::memset(g_section, 0, sizeof(g_section));
+        reset_game();
+    }
+    MissionGame(const MissionGame&) = delete;
+    MissionGame& operator=(const MissionGame&) = delete;
+
+    // Idle in play: the idle routine, no transition pending.
+    static void idle() {
+        g_transition_fn = g_routine_table[zap::kIdleRoutine];
+        g_transition_timer = 0;
+    }
+    // All of it put back, then the events fresh, idle again and the hooks set again.
+    void again() {
+        game.put_back_all(&chosen);
+        reset_events();
+        idle();
+        game.set_hooks(hooks);
+    }
+};
+
+// Offered once idle: event 3667's fade with event 3666's delay, popups waiting until the game
+// runs the opener; not before the game's last message is down to its last kFadeMessageLeft
+// frames (GAME SAVED's, half a second in).
+void test_popups_wait_for_the_mission_fade() {
+    MissionGame m;
+    zap::Game& game = m.game;
     game.request_mission();
     message_showing(zap::kFadeMessageLeft + 1);  // GAME SAVED, 180 frames: 29 in
     game.watch_all(&chosen);
@@ -1354,14 +1373,10 @@ void test_popups_wait_for_the_mission_fade() {
     game.mission_open();  // the game runs the opener
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 1, "then shows");
-    game.put_back_all(&chosen);
 
     // The helper's own popup the last message: never cut short, the fade waits for its end.
+    m.again();
     reset_game();
-    reset_events();
-    g_transition_fn = g_routine_table[zap::kIdleRoutine];
-    g_transition_timer = 0;
-    game.set_hooks(hooks);
     game.request_mission();
     apply(game, "apply\npopup 36 FROM BOB");
     game.pump_popups();
@@ -1374,46 +1389,32 @@ void test_popups_wait_for_the_mission_fade() {
     game.watch_all(&chosen);
     check(g_fade_calls == 1, "once it has ended");
 
-    // The player dead when the game runs the opener: no prompt, the fade turned back, asked again.
+    // The player dead when the game runs the opener: no prompt, the fade turned back (toward the
+    // normal level, a step every 6 frames), asked again.
     field<int16_t>(0xCEA) = -1;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
               g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_transition_timer == 0 &&
-              g_fade_calls == 2,
-          "a death during the fade: put off");
+              g_fade_calls == 2 && g_fade[zap::fade_state::kTarget] == 4 &&
+              g_fade[zap::fade_state::kStep] == 6,
+          "a death during the fade: put off, the fade turned back");
     field<int16_t>(0xCEA) = 48;  // respawned
     game.watch_all(&chosen);
     check(g_fade_calls == 3 && g_transition_timer == zap::kFadeDelay, "then offered again");
     game.put_back_all(&chosen);
-    g_routine_table[zap::kIdleRoutine] = nullptr;
-    g_routine_table[zap::kPromptRoutine] = nullptr;
-    g_transition_fn = nullptr;
-    g_transition_timer = 0;
-    reset_game();
 }
 
-
 // A save at the save point during the fade sets the pause opener back in the opener's place:
-// through the Game, the fade turned back and the prompt asked again; under a door's own fade,
-// nothing turned back.
+// through the Game (the wiring watch_mission gives the prompt), the fade turned back and the
+// prompt asked again; under a door's own fade, nothing turned back.
 void test_a_save_during_the_mission_fade() {
-    reset_game();
-    reset_events();
-    zap::Game game;
-    check(configure(game).empty(), "configures");
-    zap::Hooks hooks;
-    hooks.mission_open = reinterpret_cast<void*>(&opener);
-    game.set_hooks(hooks);
-    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
-    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
     for (bool door : {false, true}) {
-        g_transition_fn = g_routine_table[zap::kIdleRoutine];
-        g_transition_timer = 0;
+        MissionGame m;
+        zap::Game& game = m.game;
         game.request_mission();
         message_showing(zap::kFadeMessageLeft);
         game.watch_all(&chosen);
-        check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener) &&
-                  g_fade[zap::fade_state::kStep] == 8,
+        check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener),
               "the fade, the opener 60 frames away");
         g_transition_timer = 40;  // the main loop's count (the stand-in's fade does not step)
         game.watch_all(&chosen);
@@ -1424,85 +1425,52 @@ void test_a_save_during_the_mission_fade() {
             g_transition_fn = g_routine_table[zap::kIdleRoutine];  // saved again
         }
         game.watch_all(&chosen);
-        if (door) {
-            check(g_fade_calls == 1 &&
-                      game.mission_status() == "asked again: another transition came first",
-                  "a door's fade left alone");
-        } else {
-            check(g_fade_calls == 2 && g_fade[zap::fade_state::kTarget] == 4 &&
-                      g_fade[zap::fade_state::kStep] == 6 &&
-                      game.mission_status() ==
-                          "asked again: another transition came first, the fade turned back",
-                  "a save: the fade turned back");
+        const std::string turned_back = door ? "" : ", the fade turned back";
+        check(g_fade_calls == (door ? 1 : 2) && !game.menu_installed() &&
+                  game.mission_status() == "asked again: another transition came first" +
+                                               turned_back,
+              door ? "a door's fade left alone" : "a save: the fade turned back");
+        if (!door) {
+            check(g_fade[zap::fade_state::kTarget] == 4 && g_fade[zap::fade_state::kStep] == 6,
+                  "toward the normal level, a step every 6 frames");
         }
         game.put_back_all(&chosen);
-        reset_game();
-        reset_events();
-        check(configure(game).empty(), "configures again");
-        game.set_hooks(hooks);
     }
-    g_routine_table[zap::kIdleRoutine] = nullptr;
-    g_routine_table[zap::kPromptRoutine] = nullptr;
-    g_transition_fn = nullptr;
-    g_transition_timer = 0;
-    reset_game();
 }
 
-// RETURN HOME WITH THE DISKS? asked for while the player is in the seed's start cell (the
-// landing pod's), held by popups: dropped once the player is in play outside that cell, before
-// it opens; a death's own fade left alone when the opener is put off; and after YES, the ending
-// waits for the game's last message to end, and an unload refuses until it has started.
-void ending_routine() { g_routine_runs += 4; }
+// Asked for while the player is in the seed's start cell (the landing pod's), held by popups:
+// dropped once the player is in play outside that cell, before it opens; a death's own fade left
+// alone when the opener is put off; and after YES, the ending waits for the game's last message
+// to end, and an unload refuses until it has started.
 void test_return_home_lapses_away_from_the_pod() {
-    reset_game();
-    reset_events();
-    zap::Game game;
-    check(configure(game).empty(), "configures");
-    zap::Hooks hooks;
-    hooks.mission_open = reinterpret_cast<void*>(&opener);
-    game.set_hooks(hooks);
-    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
-    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
-    g_routine_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&ending_routine);
-    std::memset(g_section, 0, sizeof(g_section));
+    MissionGame m;
+    zap::Game& game = m.game;
     g_rando_marker = 1;
     // The start record: candidate 6, tile column 191 and row 329, so cell row 16, column 13.
     put<uint16_t>(g_section, 0x310, 6);
     put<uint16_t>(g_section, 0x312, 191);
     put<uint16_t>(g_section, 0x314, 329);
-    auto at_cell = [](uint8_t row, uint8_t column) {
-        g_player[0x107A] = row;
-        g_player[0x107B] = column;
-    };
-    auto idle = [] {
-        g_transition_fn = g_routine_table[zap::kIdleRoutine];
-        g_transition_timer = 0;
-    };
 
     // At the pod: offered.
-    at_cell(16, 13);
-    idle();
+    player_cell(13, 16);
     message_showing(1);
     game.request_mission();
     game.watch_all(&chosen);
     check(g_fade_calls == 1 && game.mission_status() == "opening after the fade",
           "in the start cell: offered");
-    game.put_back_all(&chosen);
 
     // Popups hold it; the player walks into the next cell meanwhile.
-    reset_events();
-    idle();
-    game.set_hooks(hooks);
+    m.again();
     const int fades = g_fade_calls;
     game.request_mission();
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
     game.pump_popups();
     game.watch_all(&chosen);
     check(g_fade_calls == fades && game.mission_status() == "asked", "held by the popups");
-    at_cell(0xFF, 0xFF);  // the raw cell -1 for a moment: not known
+    player_cell(0xFF, 0xFF);  // the raw cell -1 for a moment: not known
     game.watch_all(&chosen);
     check(game.mission_status() == "asked", "off the map: not lapsed");
-    at_cell(16, 14);
+    player_cell(14, 16);
     game.watch_all(&chosen);
     check(game.mission_status() == "lapsed: the player left the landing pod",
           "outside the start cell: lapsed");
@@ -1514,17 +1482,17 @@ void test_return_home_lapses_away_from_the_pod() {
     check(game.queued_popups() == 0 && g_fade_calls == fades &&
               g_transition_fn == g_routine_table[zap::kIdleRoutine],
           "the popups shown, and no fade or prompt after them");
-    at_cell(16, 13);
+    player_cell(13, 16);
     game.watch_all(&chosen);
     check(g_fade_calls == fades, "back at the pod: not offered again until asked again");
 
     // Dead outside the cell: not in play, so not lapsed; respawned at the pod, offered.
     game.request_mission();
-    at_cell(17, 13);
+    player_cell(13, 17);
     field<int16_t>(0xCEA) = -1;
     game.watch_all(&chosen);
     check(game.mission_status() == "asked", "dead: not lapsed");
-    at_cell(16, 13);
+    player_cell(13, 16);
     field<int16_t>(0xCEA) = 48;
     game.watch_all(&chosen);
     check(g_fade_calls == fades + 1, "respawned at the pod: offered");
@@ -1537,13 +1505,10 @@ void test_return_home_lapses_away_from_the_pod() {
               g_fade_calls == fades + 1 && g_transition_fn == g_routine_table[zap::kIdleRoutine],
           "put off, the death's fade not turned back");
     field<int16_t>(0xCEA) = 48;
-    game.put_back_all(&chosen);
 
     // YES: the ending waits for the game's last message to end, not just its last
     // kFadeMessageLeft frames.
-    reset_events();
-    idle();
-    game.set_hooks(hooks);
+    m.again();
     check(!game.ending_pending() && game.unload_refusal() == nullptr, "nothing pending");
     g_menu = 2;
     check(game.unload_refusal() == zap::kMenuOpenRefusal, "a menu open: an unload refuses");
@@ -1564,15 +1529,6 @@ void test_return_home_lapses_away_from_the_pod() {
     check(!game.ending_pending() && game.unload_refusal() == nullptr,
           "started, with no ending patch: nothing an unload would undo");
     game.put_back_all(&chosen);
-
-    for (int i : {zap::kIdleRoutine, zap::kPromptRoutine, zap::kEndingRoutine}) {
-        g_routine_table[i] = nullptr;
-    }
-    g_transition_fn = nullptr;
-    g_transition_timer = 0;
-    g_rando_marker = 0;
-    std::memset(g_section, 0, sizeof(g_section));
-    reset_game();
 }
 
 }  // namespace

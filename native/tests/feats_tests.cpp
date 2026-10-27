@@ -262,15 +262,7 @@ void test_steam() {
           "off: the stats context reaches Steam");
 }
 
-// Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
-BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
-BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
-// Every slot empty, then slot `n` a randomizer save whose copy is section `salt`'s.
-void clear_slots() {
-    std::memset(g_slot_array, 0, sizeof(g_slot_array));
-    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
-    for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
-}
+// Slot `n` a randomizer save whose copy is section `salt`'s.
 void put_slot(int n, uint8_t salt) {
     load_save(salt);
     slot_block(n)[0x935E] = 0;
@@ -567,6 +559,14 @@ void test_the_screen_note() {
     check(!zap::feats_screen_note(a, true), "no menu");
 }
 
+// MISSION COMPLETE after an ending (no save loaded, flag 250 set), `screen` over it, looked at.
+void after_ending(zap::Game& game, FeatsScreen& screen) {
+    g_flags[250] = 1;
+    g_save_loaded = 0xFF;
+    g_current_menu = screen.menu;
+    note_looks(game);
+}
+
 // The note after an AP save's ending, through Game: the guard on, then MISSION COMPLETE (no
 // save loaded, flag 250 set), then the screen.
 void test_the_note_after_an_ending() {
@@ -575,11 +575,8 @@ void test_the_note_after_an_ending() {
     zap::Game game;
     check(configure_feats(game).empty(), "configured");
     guard_on(game);
-    g_flags[250] = 1;  // the ending ran
-    g_save_loaded = 0xFF;
     FeatsScreen screen;
-    g_current_menu = screen.menu;
-    note_looks(game);
+    after_ending(game, screen);
     check(game.feats_ended() && screen.line(2) == noted_line(), "an AP ending: the note",
           screen.line(2));
     game.restore_feats();
@@ -599,11 +596,8 @@ void test_the_note_after_an_ending() {
     g_save_loaded = 3;
     g_rando_marker = 0;
     for (int i = 0; i < 3; ++i) normal.watch_feats();
-    g_save_loaded = 0xFF;
-    g_flags[250] = 1;
     FeatsScreen plain;
-    g_current_menu = plain.menu;
-    note_looks(normal);
+    after_ending(normal, plain);
     check(!normal.feats_ended() && plain.line(2) == blank, "a normal ending: no note");
     // An AP save left with no ending (flag 250 clear): no note either.
     zap::Game left;
@@ -625,12 +619,9 @@ void test_the_note_after_an_ending() {
     check(configure_feats(refused).empty(), "configured");
     guard_on(refused);
     check(refused.feats().on() && !refused.feats().ending_patched(), "on, the patch refused");
-    g_flags[250] = 1;
     g_flags[251] = 1;
-    g_save_loaded = 0xFF;
     FeatsScreen feats_earned;
-    g_current_menu = feats_earned.menu;
-    note_looks(refused);
+    after_ending(refused, feats_earned);
     check(!refused.feats_ended() && feats_earned.line(2) == blank,
           "a refused patch: no note over the Feats earned");
     g_current_menu = nullptr;
@@ -640,11 +631,8 @@ void test_the_note_after_an_ending() {
     zap::Game seen;
     check(configure_feats(seen).empty(), "configured");
     guard_on(seen);
-    g_flags[250] = 1;
-    g_save_loaded = 0xFF;
     FeatsScreen once;
-    g_current_menu = once.menu;
-    note_looks(seen);
+    after_ending(seen, once);
     check(seen.feats_ended() && once.line(2) == noted_line(), "the note");
     g_current_menu = nullptr;
     note_looks(seen);

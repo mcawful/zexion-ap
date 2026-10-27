@@ -53,8 +53,6 @@ constexpr intptr_t kFill = 0xF;
 // 0 and 1, which the helper never moves, give the rows. The logo is raised 4 px, so that its 16
 // rows center on FILE NN's 8 and stay 4 px clear of the row below.
 constexpr int kLogoCells[4] = {16, 17, kEntryColumns + 16, kEntryColumns + 17};
-constexpr int32_t kLogoFrames[4] = {kApLogoGlyphs[0], kApLogoGlyphs[1], kApLogoGlyphs[2],
-                                    kApLogoGlyphs[3]};
 constexpr int kLogoRowGlyphs[2] = {15, kEntryColumns + 15};
 constexpr double kLogoRaise = 4.0;
 // A glyph shows its own colors in palette 26 (0x368A0: the fixed pipeline, the texture times
@@ -73,17 +71,11 @@ bool is_entry_fn(const GameAddresses& a, void* fn) {
 
 // The entry's label glyphs, if it is an entry as traced.
 bool entry_glyphs(BYTE* entry, BYTE* (&glyphs)[kEntryGlyphs]) {
-    int32_t released = 1, count = 0, columns = 0;
-    BYTE* label = nullptr;
-    BYTE** list = nullptr;
-    if (!read(entry, sprite::kReleased, released) || released != 0 ||
-        !read(entry, widget::kLabel, label) ||
-        !read(label, label::kLength, count) || count != kEntryGlyphs ||
-        !read(label, label::kColumns, columns) || columns != kEntryColumns ||
-        !read(label, label::kGlyphs, list) || !safe_read(list, glyphs, sizeof(glyphs))) {
-        return false;
-    }
-    return true;
+    int32_t released = 1, columns = 0;
+    BYTE* label = pointer_at(entry, widget::kLabel);
+    return read(entry, sprite::kReleased, released) && released == 0 &&
+           read(label, label::kColumns, columns) && columns == kEntryColumns &&
+           label_glyphs(label, kEntryGlyphs, glyphs);
 }
 
 bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
@@ -94,8 +86,8 @@ bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
 int32_t block_frame(BYTE* (&g)[kEntryGlyphs], int k) { return frame_of(g[kBlock[k]]); }
 
 // Whether `cells` show `frames` (what the helper wrote, with no fill since).
-template <size_t N>
-bool shows(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const int32_t (&frames)[N]) {
+template <size_t N, typename Frame>
+bool shows(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const Frame (&frames)[N]) {
     for (size_t k = 0; k < N; ++k) {
         if (frame_of(g[cells[k]]) != frames[k]) return false;
     }
@@ -103,8 +95,8 @@ bool shows(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const int32_t (&fram
 }
 
 // `frames` written into `cells`, if every one is writable.
-template <size_t N>
-bool put_frames(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const int32_t (&frames)[N]) {
+template <size_t N, typename Frame>
+bool put_frames(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const Frame (&frames)[N]) {
     for (int i : cells) {
         if (!writable(g[i], sprite::kSize)) return false;
     }
@@ -196,14 +188,9 @@ void FileEntries::watch(const GameAddresses& a) {
     BYTE* menu = pointer_at(a.current_menu);
     for (int m = 0; m < kMaxMenus && menu != nullptr; ++m) {
         BYTE* panel = panel_at(menu, 0);
-        void* handler = nullptr;
-        int32_t capacity = 0;
-        BYTE** children = nullptr;
         BYTE* entries[kEntries] = {};
-        if (read(panel, panel::kHandler, handler) && handler == a.file_panel_fn &&
-            read(panel, panel::kCapacity, capacity) && capacity >= kEntries &&
-            read(panel, panel::kChildren, children) &&
-            safe_read(children, entries, sizeof(entries))) {
+        if (pointer_at(panel, panel::kHandler) == a.file_panel_fn &&
+            children_of(panel, entries, kEntries) >= kEntries) {
             for (BYTE* entry : entries) {
                 BYTE* glyphs[kEntryGlyphs] = {};
                 void* h = nullptr;
@@ -212,11 +199,17 @@ void FileEntries::watch(const GameAddresses& a) {
                     !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
-                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr &&
-                    writable(entry + widget::kHandler, sizeof(void*))) {
-                    wrapped_[entry] = Wrapped{menu, h};
-                    put(entry, widget::kHandler, a.hooks.file_entry);
-                    h = a.hooks.file_entry;
+                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr) {
+                    // Listed before the swap (the map may throw), so no entry holds the hook
+                    // unlisted, which an unload would not wait for.
+                    const bool listed = wrapped_.count(entry) != 0;
+                    Wrapped& w = wrapped_[entry];
+                    if (swap_pointer(entry, widget::kHandler, h, a.hooks.file_entry)) {
+                        w = Wrapped{menu, h};
+                        h = a.hooks.file_entry;
+                    } else if (!listed) {
+                        wrapped_.erase(entry);
+                    }
                 }
                 // Only the entries it has wrapped, whose state it keeps.
                 auto it = wrapped_.find(entry);
@@ -229,26 +222,25 @@ void FileEntries::watch(const GameAddresses& a) {
 
 void FileEntries::update(BYTE* entry, Wrapped& w) {
     BYTE* g[kEntryGlyphs] = {};
+    int32_t slot = 0;  // 0, no slot, if it cannot be read
     if (!entry_glyphs(entry, g)) return;
+    read(entry, kChildSlot, slot);
     forget_fills(g, w);
     // Each part where it is not one to show: the game's frames.
-    if (!rewrite(entry, g, w)) put_back(g, w);
+    if (!rewrite(entry, slot, g, w)) put_back(g, w);
     place_count(g, w.keys_written && shows_disk(g));
-    if (!mark(entry, g, w)) unmark(g, w);
+    if (!mark(entry, slot, g, w)) unmark(g, w);
     place_logo(g, w.marked);
 }
 
 void FileEntries::forget_fills(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     // A fill since the helper wrote a part: the game's frames there again.
     w.keys_written = w.keys_written && shows(g, kBlock, w.keys_shown);
-    w.marked = w.marked && shows(g, kLogoCells, kLogoFrames);
+    w.marked = w.marked && shows(g, kLogoCells, kApLogoGlyphs);
 }
 
-bool FileEntries::mark(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
-    int32_t slot = 0;
-    if (!read(entry, kChildSlot, slot) || ap_slots_.count(slot) == 0 || !in_use(entry, true)) {
-        return false;
-    }
+bool FileEntries::mark(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
+    if (ap_slots_.count(slot) == 0 || !in_use(entry, true)) return false;
     if (w.marked) return true;
     // Only over blank cells that keep the logo's colors, each of which set_frame can set (so
     // no entry is left half marked).
@@ -266,7 +258,7 @@ bool FileEntries::mark(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
         }
     }
     for (int k = 0; k < 4; ++k) w.logo_game[k] = frame_of(g[kLogoCells[k]]);
-    w.marked = put_frames(g, kLogoCells, kLogoFrames);
+    w.marked = put_frames(g, kLogoCells, kApLogoGlyphs);
     return w.marked;
 }
 
@@ -275,9 +267,7 @@ void FileEntries::unmark(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     if (w.marked && put_frames(g, kLogoCells, w.logo_game)) w.marked = false;
 }
 
-bool FileEntries::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
-    int32_t slot = 0;
-    if (!read(entry, kChildSlot, slot)) return false;
+bool FileEntries::rewrite(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     auto listed = counts_.find(slot);
     if (listed == counts_.end() || !in_use(entry)) return false;
     const int shown = listed->second;
@@ -345,13 +335,10 @@ void FileEntries::restore(const GameAddresses& a) {
             unmark(g, w);
             place_logo(g, false);
         }
-        void* h = nullptr;
-        if (read(entry, widget::kHandler, h) && h == a.hooks.file_entry) {
-            if (!writable(entry + widget::kHandler, sizeof(void*))) {
-                ++it;  // still the helper's: kept, so an unload refuses
-                continue;
-            }
-            put(entry, widget::kHandler, w.original);
+        if (pointer_at(entry, widget::kHandler) == a.hooks.file_entry &&
+            !swap_pointer(entry, widget::kHandler, a.hooks.file_entry, w.original)) {
+            ++it;  // still the helper's: kept, so an unload refuses
+            continue;
         }
         it = wrapped_.erase(it);
     }

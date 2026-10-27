@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "apitem.h"  // kStandInNames
+#include "apitem.h"  // kStandInNames, kStandInProgression
 #include "game_mem.h"
 
 namespace zap {
@@ -39,7 +39,7 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
     const bool obscure_majors = section[kSettings + kObscureMajors] != 0;
     int changed = 0;
     for (int i = 0; i < kLocations; ++i) {
-        if (section[kItemTable + i] != kProgressionStandIn) continue;
+        if (section[kItemTable + i] != kStandInProgression) continue;
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
@@ -67,15 +67,19 @@ constexpr int kCursorChild = 3, kNameChild = 3;
 constexpr ptrdiff_t kCursorRow = 0x1E6, kCursorColumn = 0x1E4;
 constexpr double kFineScale = 40.0;
 
+// Whether either of `child`'s handler slots holds `handler` (never true for none).
+bool holds(const BYTE* child, const void* handler) {
+    return handler != nullptr && (pointer_at(child, kChildHandlers[0]) == handler ||
+                                  pointer_at(child, kChildHandlers[1]) == handler);
+}
+
 // The map's menu, its first panel and that panel's first child, if the top menu is the map's
 // (its handler `handler`).
 bool map_menu(BYTE* current_menu, void* handler, BYTE*& menu, BYTE*& panel, BYTE*& child) {
     menu = pointer_at(current_menu);
     panel = panel_at(menu, 0);
     child = child_at(panel, 0);
-    void* slot = nullptr;
-    return handler != nullptr && ((read(child, kChildHandlers[0], slot) && slot == handler) ||
-                                  (read(child, kChildHandlers[1], slot) && slot == handler));
+    return holds(child, handler);
 }
 
 // The panel holding the scale and the cursor's name: [[[panel + 0x300]] + 8], as 0x16B843 to
@@ -137,12 +141,7 @@ void MapCursorNames::watch(const GameAddresses& a, bool on) {
         constexpr size_t kBothSlots = kChildHandlers[1] - kChildHandlers[0] + sizeof(void*);
         if (map_menu(a.current_menu, handler, menu, panel, child) &&
             writable(child + kChildHandlers[0], kBothSlots)) {
-            for (ptrdiff_t at : kChildHandlers) {
-                void* slot = nullptr;
-                if (read(child, at, slot) && slot == handler) {
-                    std::memcpy(child + at, &a.hooks.map, sizeof(void*));
-                }
-            }
+            for (ptrdiff_t at : kChildHandlers) swap_pointer(child, at, handler, a.hooks.map);
             child_ = child;
             menu_ = menu;
             original_ = handler;
@@ -153,14 +152,8 @@ void MapCursorNames::watch(const GameAddresses& a, bool on) {
 }
 
 bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
-    if (!is_open(a.current_menu, menu_) || child_at(panel_at(menu_, 0), 0) != child_) {
-        return false;
-    }
-    for (ptrdiff_t at : kChildHandlers) {
-        void* slot = nullptr;
-        if (a.hooks.map != nullptr && read(child_, at, slot) && slot == a.hooks.map) return true;
-    }
-    return false;
+    return is_open(a.current_menu, menu_) && child_at(panel_at(menu_, 0), 0) == child_ &&
+           holds(child_, a.hooks.map);
 }
 
 void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels,
@@ -193,12 +186,10 @@ void MapCursorNames::restore(const GameAddresses& a) {
     if (child_ == nullptr) return;
     if (still_wrapped(a)) {
         for (ptrdiff_t at : kChildHandlers) {
-            void* slot = nullptr;
-            if (!read(child_, at, slot) || slot != a.hooks.map) continue;
-            if (!writable(child_ + at, sizeof(void*))) {
+            if (pointer_at(child_, at) == a.hooks.map &&
+                !swap_pointer(child_, at, a.hooks.map, original_)) {
                 return;  // could not put it back: kept, so the unload refuses
             }
-            std::memcpy(child_ + at, &original_, sizeof(void*));
         }
     }
     child_ = nullptr;

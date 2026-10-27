@@ -187,17 +187,18 @@ bool MissionPrompt::taken_over(const GameAddresses& a) {
 }
 
 void MissionPrompt::take_back(const GameAddresses& a) {
-    put(a.transition_fn, 0, routine(a, kIdleRoutine));
-    put<int32_t>(a.transition_timer, 0, 0);
-    armed_ = false;
+    if (writable_fields(a)) {
+        put(a.transition_fn, 0, routine(a, kIdleRoutine));
+        put<int32_t>(a.transition_timer, 0, 0);
+        armed_ = false;
+    }
     fade_back(a);
 }
 
 void MissionPrompt::put_off(const GameAddresses& a) {
     armed_ = false;
     if (!fade_still_ours(a)) faded_ = false;  // the death's own fade, or none ran: left alone
-    if (writable_fields(a)) take_back(a);
-    fade_back(a);
+    take_back(a);
     requested_ = true;
     status_ = "asked again: not in play when it opened";
 }
@@ -206,22 +207,15 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     armed_ = false;
     auto builder = reinterpret_cast<void (*)()>(routine(a, kPromptRoutine));
     if (builder == nullptr) {
-        // Not built: the idle routine back, and the screen out of the fade.
-        if (writable_fields(a)) take_back(a);
-        fade_back(a);
+        take_back(a);  // not built: the idle routine back, and the screen out of the fade
         return status_ = "no prompt builder";
     }
     faded_ = false;  // the builder sets the level and the fade back in itself
     builder();
     // The prompt the game just built: the top menu, its panel's three children.
     BYTE* menu = pointer_at(a.current_menu);
-    BYTE* panel = panel_at(menu, 0);
-    BYTE** children = nullptr;
-    int32_t capacity = 0;
     BYTE* child[kPromptChildren] = {};
-    if (!read(panel, panel::kCapacity, capacity) || capacity != kPromptChildren ||
-        !read(panel, panel::kChildren, children) ||
-        !safe_read(children, child, sizeof(child))) {
+    if (children_of(panel_at(menu, 0), child, kPromptChildren) != kPromptChildren) {
         return status_ = "not the prompt as traced";
     }
     // First of all, YES does what NO does: whatever else is not as traced, the escape skip's
@@ -282,7 +276,7 @@ void MissionPrompt::cancel(const GameAddresses& a) {
         if (fn != a.hooks.mission_open) {
             taken_over(a);  // not ours any more; the fade turned back if it still is
         } else if (writable_fields(a)) {
-            take_back(a);
+            take_back(a);  // else still armed_: held
         }
     }
     if (!armed_ && yes_child_ == nullptr) status_ = "not asked";
@@ -290,10 +284,10 @@ void MissionPrompt::cancel(const GameAddresses& a) {
 
 void MissionPrompt::restore(const GameAddresses& a) {
     cancel(a);  // an opener it could not take off stays armed_: still held
-    void* cb = nullptr;
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
-        read(yes_child_, widget::kCallback, cb) && cb == a.hooks.mission_yes) {
-        put(yes_child_, widget::kCallback, no_fn_);
+        pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes &&
+        !swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {
+        return;  // still the helper's: kept, so an unload refuses
     }
     yes_child_ = nullptr;
     menu_ = nullptr;

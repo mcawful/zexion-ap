@@ -176,7 +176,7 @@ extern const char kApItemRows[8][9];
 class ApItems {
 public:
     // Game thread. The labels by map cell (index y * 54 + x), already filtered to the font.
-    void set_labels(std::map<int, std::string> labels);
+    void set_labels(std::map<int, std::string> labels) { labels_ = std::move(labels); }
     const std::map<int, std::string>& labels() const { return labels_; }
     bool active() const { return !labels_.empty(); }
 
@@ -211,6 +211,8 @@ private:
     // `arrow_only`: just the progression logo's frame, for the arrow's next color.
     bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear,
                 bool arrow_only);
+    // The logos and the glyph cleared, if painted into the texture there now.
+    void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
 
     std::map<int, std::string> labels_;
     BYTE* records_[kStandInCount] = {};

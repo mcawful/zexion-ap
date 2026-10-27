@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 #include "iat.h"
 
@@ -54,9 +55,10 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member of
 // GameAddresses it fills. Each lies in the image with kKeyBytes there (the offline cache checks a
 // function's first 16 bytes): functions in code, data in writable data, the CRT's import slots
-// (only read) outside code. room/before: what must also fit in the key's section. A client's
-// config needs every key; in the offline cache (inactive) a client_only one missing or not
-// fitting is left null (Game::client_ready). A key is needed offline unless marked so.
+// (only read) outside code. room and before: the bytes after and before it that must also lie
+// in its section. A client's config needs every key; in the offline cache (inactive) a
+// client_only one missing or not fitting is left null (Game::client_ready). A key is needed
+// offline unless marked so.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -64,20 +66,18 @@ struct ConfigKey {
     const char* name;
     Member member;
     Held held;
-    uint64_t room;         // bytes from the address that must lie in its section, if not 0
-    const char* room_for;  // what they hold, for the error
-    uint64_t before;       // and bytes before it
+    uint64_t room;    // bytes from the address that must lie in its section, if not 0
+    uint64_t before;  // and bytes before it
     bool client_only = false;  // read only by the client's parts: the cache may lack it
 };
 constexpr ConfigKey code(const char* name, Member member) {
-    return {name, member, Held::kCode, 0, nullptr, 0};
+    return {name, member, Held::kCode, 0, 0};
 }
-constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0,
-                         const char* room_for = nullptr, uint64_t before = 0) {
-    return {name, member, Held::kData, room, room_for, before};
+constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uint64_t before = 0) {
+    return {name, member, Held::kData, room, before};
 }
 constexpr ConfigKey import_slot(const char* name, Member member) {
-    return {name, member, Held::kImportSlot, 0, nullptr, 0};
+    return {name, member, Held::kImportSlot, 0, 0};
 }
 // Read only by the client's parts: grants, new games, DeathLink, Energy Shields and RETURN HOME.
 constexpr ConfigKey client_only(ConfigKey key) {
@@ -88,8 +88,8 @@ constexpr ConfigKey client_only(ConfigKey key) {
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
     // The player state the helper touches, all in the inventory's section.
-    data("inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "the player state",
-         kInventoryInPlayer),
+    // The player state, which starts kInventoryInPlayer bytes before the inventory.
+    data("inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, kInventoryInPlayer),
     data("save_loaded", &G::save_loaded), data("menu_state", &G::menu_state),
     data("item_records", &G::item_records), data("last_message", &G::last_message),
     client_only(data("weapon_strip_gate", &G::weapon_strip_gate)),
@@ -99,12 +99,12 @@ constexpr ConfigKey kConfigKeys[] = {
     client_only(code("energy_hud_fn", &G::energy_hud_fn)),
     client_only(code("weapon_strip_fn", &G::weapon_strip_fn)),
     client_only(code("suit_color_fn", &G::suit_color_fn)),
-    data("rando_blob", &G::rando_blob, kSectionSize, "the section"),
+    data("rando_blob", &G::rando_blob, kSectionSize),
     data("rando_marker", &G::rando_marker), data("transition_fn", &G::transition_fn),
     data("transition_timer", &G::transition_timer),
     client_only(data("current_slot", &G::current_slot)), code("newgame_fn", &G::newgame_fn),
     data("current_menu", &G::current_menu),
-    client_only(data("randomizer_menu", &G::randomizer_menu, kMenuSize, "the menu's state")),
+    client_only(data("randomizer_menu", &G::randomizer_menu, kMenuSize)),
     code("widget_handler_fn", &G::widget_handler_fn),
     client_only(code("panel_handler_fn", &G::panel_handler_fn)),
     client_only(code("rando_menu_fn", &G::rando_menu_fn)),
@@ -112,8 +112,8 @@ constexpr ConfigKey kConfigKeys[] = {
     client_only(code("rando_newgame_fn", &G::rando_newgame_fn)),
     data("event_table", &G::event_table), data("event_count", &G::event_count),
     client_only(data("start_count", &G::start_count)),
-    client_only(data("start_cells", &G::start_cells, 4 * kStartTableMax, "64 rooms")),
-    client_only(data("start_flags", &G::start_flags, kStartTableMax, "64 rooms")),
+    client_only(data("start_cells", &G::start_cells, 4 * kStartTableMax)),
+    client_only(data("start_flags", &G::start_flags, kStartTableMax)),
     data("sprite_texture", &G::sprite_texture), code("popup_width_code", &G::popup_width_code),
     data("item_pool", &G::item_pool), data("palette_table", &G::palette_table),
     data("frame_clock", &G::frame_clock), data("sprite_templates", &G::sprite_templates),
@@ -126,21 +126,21 @@ constexpr ConfigKey kConfigKeys[] = {
     import_slot("free_slot", &G::free_slot), code("widget_new_fn", &G::widget_new_fn),
     code("sprite_sheet_fn", &G::sprite_sheet_fn), code("panel_link_fn", &G::panel_link_fn),
     code("text_set_fn", &G::text_set_fn), client_only(data("routine_table", &G::routine_table)),
-    client_only(data("fade", &G::fade, fade_state::kSize, "the fade's fields")),
+    client_only(data("fade", &G::fade, fade_state::kSize)),
     client_only(data("fade_level", &G::fade_level)), code("keys_branch", &G::keys_branch),
     code("file_panel_fn", &G::file_panel_fn), code("file_entry_fn", &G::file_entry_fn),
     code("copy_entry_fn", &G::copy_entry_fn), code("delete_entry_fn", &G::delete_entry_fn),
     // What the offline look reads whole (offline.h): the map grid, the flags, the save slots
     // and their copies of the randomizer section.
-    data("map_grid", &G::map_grid, kMapCells, "what is read there"),
-    data("flags", &G::flags, kFlagCount, "what is read there"),
-    data("slot_array", &G::slot_array, slot::kCount * slot::kStride, "what is read there"),
-    data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize, "what is read there"),
+    data("map_grid", &G::map_grid, kMapCells),
+    data("flags", &G::flags, kFlagCount),
+    data("slot_array", &G::slot_array, slot::kCount * slot::kStride),
+    data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
-    data("stats_context", &G::stats_context, 3 * sizeof(void*), "the context"),
+    data("stats_context", &G::stats_context, 3 * sizeof(void*)),
     import_slot("context_init_slot", &G::context_init_slot),
 };
 
@@ -159,7 +159,7 @@ std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, 
     }
     if (key.room != 0 &&
         (rva < section->VirtualAddress + key.before || rva + key.room > section_end(section))) {
-        return name + " leaves no room for " + key.room_for;
+        return name + " leaves no room in its section";
     }
     return "";
 }
@@ -362,8 +362,7 @@ void Game::pump_popups() {
     } else {
         std::string head;
         if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
-        const char* name = reinterpret_cast<const char*>(rec + record::kName);
-        head.append(name, strnlen(name, record::kNameSize));
+        head += record_name(rec);
         text = popup_text(head, popup.suffix, kGamePopupWidth, &per_line);
     }
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
@@ -476,9 +475,9 @@ std::string Game::newgame_status() const { return newgame_status_; }
 
 void Game::watch_newgame() {
     if (!configured_ || !newgame_armed_) return;
-    if (at<void*>(at_.transition_fn, 0) != at_.newgame_fn) return;  // no new game queued
-    if (at<int32_t>(at_.transition_timer, 0) <= 1) return;       // too close to being built
-    if (at<uint16_t>(at_.rando_marker, 0) != 1) return;          // a normal new game: not ours
+    if (!newgame_queued()) return;
+    if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
+    if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
     // Check the section is the seed's mode, unless ARCHIPELAGO started it (starting_): that was
     // checked before the plan went in, and the plan's own writes now differ from the mode's.
     int differs = starting_ ? -1 : first_difference(at_.rando_blob, newgame_.expect);
@@ -545,25 +544,6 @@ void Game::restore_assists() {
     lock_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
-namespace {
-
-// Puts the randomizer menu's state back however start_archipelago leaves.
-class MenuStateGuard {
-public:
-    explicit MenuStateGuard(BYTE* state) : state_(state) {
-        std::memcpy(saved_, state_, kMenuSize);
-    }
-    ~MenuStateGuard() { std::memcpy(state_, saved_, kMenuSize); }
-    MenuStateGuard(const MenuStateGuard&) = delete;
-    MenuStateGuard& operator=(const MenuStateGuard&) = delete;
-
-private:
-    BYTE* state_;
-    BYTE saved_[kMenuSize];
-};
-
-}  // namespace
-
 std::string Game::ensure_start_table() {
     const std::vector<StartRoom>& rooms = newgame_.start_table;
     if (rooms.empty()) return "";
@@ -610,7 +590,7 @@ void Game::start_archipelago(WidgetCallback callback) {
     // The game calls the choice's callback once per press; a press after the plan was dropped,
     // or while a new game is queued, does nothing.
     if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
-    if (at<void*>(at_.transition_fn, 0) == at_.newgame_fn) return;
+    if (newgame_queued()) return;
     starting_ = true;
     // Refused: RANDOMIZER back, the plan dropped, nothing queued.
     auto refuse = [&](const std::string& why) {
@@ -618,24 +598,29 @@ void Game::start_archipelago(WidgetCallback callback) {
         choice_.restore(at_, callback);
         disarm_newgame();
     };
+    // The menu's state is the player's own (the game keeps it in its preferences): set to the
+    // seed's mode for the placement, then put back, however it ends.
+    BYTE menu_state[kMenuSize];
+    bool menu_taken = false;
+    auto put_menu_back = [&] {
+        if (std::exchange(menu_taken, false)) {
+            std::memcpy(at_.randomizer_menu, menu_state, kMenuSize);
+        }
+    };
     try {
         std::string table = ensure_start_table();
         if (!table.empty()) return refuse(table);
-        int differs = -1;
-        {
-            // The menu's state is the player's own (the game keeps it in its preferences): set
-            // to the seed's mode for the placement, then put back.
-            MenuStateGuard guard(at_.randomizer_menu);
-            write_edits(at_.randomizer_menu, newgame_.menu);
-            // START GAME's first step would pick a start; the placement reads the AP seed's
-            // instead, so the plan goes in first. Then the placement, which builds the rest of
-            // the section from the menu (the location list, the settings, the map tables).
-            // START GAME's winnability check is skipped: the AP generator made the seed
-            // beatable.
-            write_edits(at_.rando_blob, newgame_.write);
-            reinterpret_cast<void (*)()>(at_.placement_fn)();
-            differs = first_difference(at_.rando_blob, newgame_.expect);
-        }
+        std::memcpy(menu_state, at_.randomizer_menu, kMenuSize);
+        menu_taken = true;
+        write_edits(at_.randomizer_menu, newgame_.menu);
+        // START GAME's first step would pick a start; the placement reads the AP seed's instead,
+        // so the plan goes in first. Then the placement, which builds the rest of the section
+        // from the menu (the location list, the settings, the map tables). START GAME's
+        // winnability check is skipped: the AP generator made the seed beatable.
+        write_edits(at_.rando_blob, newgame_.write);
+        reinterpret_cast<void (*)()>(at_.placement_fn)();
+        const int differs = first_difference(at_.rando_blob, newgame_.expect);
+        put_menu_back();
         if (differs >= 0) {
             return refuse("the placement is not the seed's mode (section +" +
                           hex_offset(differs) + " differs)");
@@ -645,13 +630,14 @@ void Game::start_archipelago(WidgetCallback callback) {
         // play-anyway path queues it. watch_newgame reports it in the next frame.
         write_edits(at_.rando_blob, newgame_.write);
         reinterpret_cast<void (*)()>(at_.rando_newgame_fn)();
-        if (at<void*>(at_.transition_fn, 0) != at_.newgame_fn) {
+        if (!newgame_queued()) {
             return refuse("the game did not queue a new game (is the slot empty?)");
         }
         // The game is leaving the file screen: ARCHIPELAGO stays on the label through the fade,
         // and only RANDOMIZER's callback goes back, so the closing menu holds nothing of ours.
         choice_.release(at_, callback);
     } catch (...) {
+        put_menu_back();
         choice_.restore(at_, callback);
         disarm_newgame();
         throw;
@@ -754,8 +740,7 @@ void Game::watch_files() {
     for (FontGlyph& glyph : disk_header_) show_glyph(glyph, files_.disks_on());
     // The game's fade to white leaves the logo's own colors alone: the logo is painted whiter
     // with each of its frames instead.
-    ap_logo_.set_white(new_game_white(at<void*>(at_.transition_fn, 0) == at_.newgame_fn,
-                                      at<int32_t>(at_.transition_timer, 0)));
+    ap_logo_.set_white(new_game_white(newgame_queued(), at<int32_t>(at_.transition_timer, 0)));
     show_glyph(ap_logo_, files_.marks_on());
 }
 
@@ -888,14 +873,13 @@ void Game::restore_feats() {
     feats_screen_note(at_, false);  // the screen's note blanked, if it is up
 }
 
-bool Game::labels_seed_loaded(bool in_play_only) const {
-    return labels_seed_ && rando_save_loaded() && (!in_play_only || in_play()) &&
-           section_is(*labels_seed_, at_.rando_blob);
+bool Game::labels_seed_loaded() const {
+    return labels_seed_ && rando_save_loaded() && section_is(*labels_seed_, at_.rando_blob);
 }
 
 void Game::watch_map_names() {
     // The map is a menu: the save loaded, in play or not.
-    map_names_.watch(at_, ap_items_.active() && labels_seed_loaded(false));
+    map_names_.watch(at_, ap_items_.active() && labels_seed_loaded());
 }
 
 void Game::map_after() {
@@ -922,7 +906,7 @@ void Game::watch_map_marks() {
     // in play or in a menu, once it has read so on two passes in a row: during a load the
     // section may still be the last save's while the grid is the new one's (which the game then
     // saves). A player who pauses at once and opens the map sees them raised within ~32 frames.
-    if (!labels_seed_loaded(false)) {
+    if (!labels_seed_loaded()) {
         map_seed_passes_ = 0;
         return;
     }
@@ -1025,9 +1009,7 @@ void Game::resolve_item_labels() {
             name = kStandInNames[stand_in_index(pending.item)];
             record[record::kIcon] = 0;
         } else {
-            for (size_t i = 0; i < record::kNameSize && record[record::kName + i] != 0; ++i) {
-                name += static_cast<char>(record[record::kName + i]);
-            }
+            name = record_name(record);
         }
         const size_t room = static_cast<size_t>(kGamePopupWidth) - 1;  // after the icon
         if (name.size() > room) name.resize(room);

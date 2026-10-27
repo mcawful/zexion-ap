@@ -49,14 +49,7 @@ constexpr char kAssist[kAssistLength + 1] = "ASSIST\0\0\0\0\0";
 // Reads the glyph pointers of a live label of N glyphs, or returns false.
 template <int N>
 bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
-    BYTE* label = nullptr;
-    int32_t capacity = 0;
-    BYTE** list = nullptr;
-    if (!read(child, widget::kLabel, label) || !read(label, label::kLength, capacity) ||
-        capacity != N || !read(label, label::kGlyphs, list) ||
-        !safe_read(list, glyphs, sizeof(glyphs))) {
-        return false;
-    }
+    if (!label_glyphs(pointer_at(child, widget::kLabel), N, glyphs)) return false;
     for (BYTE* g : glyphs) {
         int32_t released = 1, count = 0;
         BYTE* table = nullptr;
@@ -69,47 +62,27 @@ bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
     return true;
 }
 
-// A live menu's panel list and its count (1 to kMaxPanels), or false.
-bool panels_of(const BYTE* menu, BYTE**& panels, int32_t& count) {
-    return read(menu, menu::kPanels, panels) && read(menu, menu::kPanelCount, count) &&
-           count > 0 && count <= kMaxPanels;
-}
-
-// Whether `wanted` is one of `menu`'s panels.
+// Whether `wanted` (not null) is one of `menu`'s panels (up to kMaxPanels).
 bool lists_panel(const BYTE* menu, const BYTE* wanted) {
-    BYTE** panels = nullptr;
-    int32_t count = 0;
-    if (!panels_of(menu, panels, count)) return false;
-    for (int32_t p = 0; p < count; ++p) {
-        BYTE* panel = nullptr;
-        if (read(reinterpret_cast<BYTE*>(panels), p * 8, panel) && panel == wanted) return true;
+    const int32_t panels = panel_count(menu);
+    for (int32_t p = 0; panels <= kMaxPanels && p < panels; ++p) {
+        if (panel_at(menu, p) == wanted) return true;
     }
     return false;
 }
 
-// Calls fn(panel, index, child) for each child of each of `menu`'s panels whose children read
-// (1 to kMaxChildren of them), skipping slots that do not read or hold none, until fn returns
-// true; returns whether one did.
+// Calls fn(panel, index, child) for each child of each of `menu`'s panels (up to kMaxPanels)
+// whose children read (up to kMaxChildren of them), skipping those that hold none, until fn
+// returns true; returns whether one did.
 template <typename Fn>
 bool for_each_child(const BYTE* menu, Fn&& fn) {
-    BYTE** panels = nullptr;
-    int32_t count = 0;
-    if (!panels_of(menu, panels, count)) return false;
-    for (int32_t p = 0; p < count; ++p) {
-        BYTE* panel = nullptr;
-        int32_t capacity = 0;
-        BYTE** children = nullptr;
-        if (!read(reinterpret_cast<BYTE*>(panels), p * 8, panel) || panel == nullptr ||
-            !read(panel, panel::kCapacity, capacity) || capacity <= 0 ||
-            capacity > kMaxChildren || !read(panel, panel::kChildren, children)) {
-            continue;
-        }
-        for (int32_t c = 0; c < capacity; ++c) {
-            BYTE* child = nullptr;
-            if (!read(reinterpret_cast<BYTE*>(children), c * 8, child) || child == nullptr) {
-                continue;
-            }
-            if (fn(panel, c, child)) return true;
+    const int32_t panels = panel_count(menu);
+    for (int32_t p = 0; panels <= kMaxPanels && p < panels; ++p) {
+        BYTE* panel = panel_at(menu, p);
+        BYTE* children[kMaxChildren] = {};
+        const int32_t n = children_of(panel, children, kMaxChildren);
+        for (int32_t c = 0; n <= kMaxChildren && c < n; ++c) {
+            if (children[c] != nullptr && fn(panel, c, children[c])) return true;
         }
     }
     return false;
@@ -134,11 +107,10 @@ bool live_run(BYTE** children, int32_t from, int32_t to, BYTE* (&run)[kMaxChildr
 
 BYTE* ArchipelagoChoice::choice_in(BYTE* menu, const GameAddresses& a, void* expected_callback) {
     BYTE* panel = panel_at(menu, kPanelIndex);
-    void* handler = nullptr;
-    int32_t capacity = 0;
-    if (!read(panel, panel::kHandler, handler) ||
+    void* handler = pointer_at(panel, panel::kHandler);
+    if (handler == nullptr ||
         (handler != a.panel_handler_fn && (a.hooks.panel == nullptr || handler != a.hooks.panel)) ||
-        !read(panel, panel::kCapacity, capacity) || capacity != 4) {
+        child_count(panel) != 4) {
         return nullptr;
     }
     BYTE* child = child_at(panel, 1);
@@ -176,40 +148,28 @@ void ArchipelagoChoice::put_handler_back(const GameAddresses& a) {
     }
     // Only on the panel still in the menu's place: one the menu no longer lists is not known
     // to be alive, so it stays remembered (and the helper loaded) until the menu closes.
-    void* handler = nullptr;
-    if (panel_at(hook_menu_, kPanelIndex) != hook_panel_ ||
-        !read(hook_panel_, panel::kHandler, handler)) {
-        return;
-    }
-    if (handler == a.hooks.panel) {
-        at<void*>(hook_panel_, panel::kHandler) = a.panel_handler_fn;
+    void* handler = pointer_at(hook_panel_, panel::kHandler);
+    if (panel_at(hook_menu_, kPanelIndex) != hook_panel_ || handler == nullptr) return;
+    if (handler == a.hooks.panel &&
+        !swap_pointer(hook_panel_, panel::kHandler, a.hooks.panel, a.panel_handler_fn)) {
+        return;  // still the helper's: kept, so an unload refuses
     }
     hook_menu_ = hook_panel_ = nullptr;
 }
 
 bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback) {
     BYTE* top = pointer_at(a.current_menu);
-    if (child_ != nullptr) {
-        if (top == menu_ && choice_in(top, a, reinterpret_cast<void*>(callback)) == child_) {
-            return false;  // still installed on the menu that is up
-        }
-        put_back(a, callback);
-        child_ = nullptr;
-        menu_ = nullptr;
+    if (child_ != nullptr && top == menu_ &&
+        choice_in(top, a, reinterpret_cast<void*>(callback)) == child_) {
+        return false;  // still installed on the menu that is up
     }
-    put_handler_back(a);
+    restore(a, callback);
     if (top == nullptr || hook_panel_ != nullptr) return false;
     BYTE* child = choice_in(top, a, a.rando_menu_fn);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
     // A label already reading ARCHIPELAGO (left by `release`) saves RANDOMIZER as its original.
-    bool already = true;
-    for (int i = 0; i < kLabelLength; ++i) {
-        if (at<int32_t>(glyphs[i], sprite::kFrameIndex) !=
-            static_cast<unsigned char>(kLabel[i])) {
-            already = false;
-        }
-    }
+    const bool already = glyphs_show(glyphs, kLabel);
     for (int i = 0; i < kLabelLength; ++i) {
         BYTE* g = glyphs[i];
         if (already) {
@@ -226,10 +186,8 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).
     BYTE* panel = panel_at(top, kPanelIndex);
-    void* handler = nullptr;
-    if (panel != nullptr && a.hooks.panel != nullptr && read(panel, panel::kHandler, handler) &&
-        handler == a.panel_handler_fn) {
-        at<void*>(panel, panel::kHandler) = a.hooks.panel;
+    if (a.hooks.panel != nullptr &&
+        swap_pointer(panel, panel::kHandler, a.panel_handler_fn, a.hooks.panel)) {
         hook_menu_ = top;
         hook_panel_ = panel;
     }
@@ -303,13 +261,8 @@ BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_c
     for_each_child(menu, [&](BYTE* panel, int32_t index, BYTE* child) {
         if (!live_widget(child, a.widget_handler_fn, expected_callback)) return false;
         BYTE* glyphs[kAssistLength] = {};
-        if (!glyphs_of(child, glyphs)) return false;
-        for (int i = 0; i < kAssistLength; ++i) {
-            int32_t ch = 0;
-            if (!read(glyphs[i], sprite::kFrameIndex, ch) ||
-                ch != static_cast<unsigned char>(kAssist[i])) {
-                return false;
-            }
+        if (!glyphs_of(child, glyphs) || !glyphs_show(glyphs, {kAssist, kAssistLength})) {
+            return false;
         }
         if (panel_out != nullptr) *panel_out = panel;
         if (index_out != nullptr) *index_out = index;

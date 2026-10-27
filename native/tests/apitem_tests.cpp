@@ -32,22 +32,8 @@ void reset_records() {
     own_stand_ins(stand_in::g_records);
 }
 
-std::string name(const BYTE* r = g_scrap) {
-    return std::string(reinterpret_cast<const char*>(r + 0x0A));
-}
-
 BYTE* holder() { return reinterpret_cast<BYTE*>(&stand_in::g_records_ptr); }
 BYTE* sprites() { return reinterpret_cast<BYTE*>(&stand_in::g_sprite_holder); }
-
-// Whether every upload is all zeros (pixels cleared).
-bool all_blank(const std::vector<Upload>& uploads) {
-    for (const Upload& u : uploads) {
-        for (uint8_t b : u.pixels) {
-            if (b != 0) return false;
-        }
-    }
-    return true;
-}
 
 // Both stand-ins named for one cell.
 void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
@@ -78,17 +64,18 @@ void test_restyle_and_names() {
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
     check(get<int16_t>(g_scrap, 0x60) == 244 && get<int16_t>(g_scrap, 0x3C) == 46,
           "the rest left alone");
-    check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
+    check(stand_in::record_name(47) == "MASTER SWORD FOR ALICE", "named for the player's cell");
     check(get<int16_t>(g_chunk, 0x02) == 95 && get<int16_t>(g_chunk, 0x06) == 1 &&
-              g_chunk[0x08] == 0 &&
-              get<int16_t>(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
+              g_chunk[0x08] == 0 && get<int16_t>(g_chunk, 0x40) == -1 &&
+              stand_in::record_name(48) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
     watch(items, holder(), 7);
-    check(name() == "\xEE" "AP ITEM", "elsewhere, the glyph and the general name");
+    check(stand_in::record_name(47) == "\xEE" "AP ITEM",
+          "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
     items.set_labels({{7, long_name}});
     watch(items, holder(), 7);
-    check(name() == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
+    check(stand_in::record_name(47) == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
           "a name is cut to 49 bytes and stays terminated");
 
     items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
@@ -142,7 +129,8 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
     zap::TextureCheck later_check;
     later.set_labels({{1, "NEW NAME"}});
     watch(later, holder(), 1);
-    check(later.restyled() && name() == "NEW NAME", "a later helper takes it over and renames it");
+    check(later.restyled() && stand_in::record_name(47) == "NEW NAME",
+          "a later helper takes it over and renames it");
     later.restore(holder(), sprites(), zap::GlFunctions{}, later_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "and puts the game's own values back");
 }
@@ -154,7 +142,8 @@ void test_a_reload_is_restyled_again() {
     watch(items, holder(), 1);
     reset_records();  // the game reloaded its records
     watch(items, holder(), 1);
-    check(get<int16_t>(g_scrap, 0x02) == 63 && name() == "X", "restyled again after a reload");
+    check(get<int16_t>(g_scrap, 0x02) == 63 && stand_in::record_name(47) == "X",
+          "restyled again after a reload");
 }
 
 void test_painting() {

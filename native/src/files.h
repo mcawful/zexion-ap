@@ -101,9 +101,9 @@ private:
     };
     void update(BYTE* entry, Wrapped& w);
     void forget_fills(BYTE* (&glyphs)[145], Wrapped& w);
-    bool rewrite(BYTE* entry, BYTE* (&glyphs)[145], Wrapped& w);
+    bool rewrite(BYTE* entry, int32_t slot, BYTE* (&glyphs)[145], Wrapped& w);
     void put_back(BYTE* (&glyphs)[145], Wrapped& w);
-    bool mark(BYTE* entry, BYTE* (&glyphs)[145], Wrapped& w);
+    bool mark(BYTE* entry, int32_t slot, BYTE* (&glyphs)[145], Wrapped& w);
     void unmark(BYTE* (&glyphs)[145], Wrapped& w);
     std::map<BYTE*, Wrapped> wrapped_;  // entry -> its menu and the game's handler
     std::map<int, int> counts_;  // slot -> the count it shows

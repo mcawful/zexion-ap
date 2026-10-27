@@ -1,6 +1,6 @@
 // Host tests for RETURN HOME WITH THE DISKS? (mission.h): a stand-in transition (routine,
 // timer, routine table), a stand-in prompt builder laid out as 0x1668A0 builds the escape
-// skip's prompt, a stand-in event table holding event 3667 (the fade) with its handler, and the
+// skip's prompt, stand_in.h's event table holding event 3667 (the fade) with its handler, and the
 // game's fade, which that handler sets and a stand-in stepper runs.
 
 #include <windows.h>
@@ -12,8 +12,11 @@
 
 #include "check.h"
 #include "mission.h"
+#include "stand_in.h"
 
 namespace {
+
+using namespace stand_in;
 
 int g_calls = 0;
 // Bodies of their own: the linker folds identical functions into one address.
@@ -36,59 +39,23 @@ int32_t g_timer = 0;
 BYTE* g_current = nullptr;
 void* g_table[16] = {};
 
-// The area events up to 3667, the fade as B1 loads it, and the handlers by type: type 1's
-// records each record it was given, as it was then.
-constexpr int kEvents = zap::kFadeEvent + 1;
-BYTE g_events[kEvents * 0x28];
-BYTE* g_event_table = g_events;
-int16_t g_event_count = kEvents;
-BYTE* fade_event() { return g_events + zap::kFadeEvent * 0x28; }
-const BYTE kFade[0x28] = {0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x04, 0x00, 0x08, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
-                          0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x53, 0x0E, 0x00, 0x00};
-std::vector<std::vector<BYTE>> g_fades;  // each record the handler ran
-BYTE* g_fade_given = nullptr;
-
-// The game's fade (fade_state) and the global level, as B1 keeps them.
-BYTE g_fade[zap::fade_state::kSize];
-int8_t g_level = 4;
-int8_t& fade_field(ptrdiff_t at) { return reinterpret_cast<int8_t&>(g_fade[at]); }
-// Sets the fade as 0x1F6C40 does for layer 0: the level, unless 0xFE (left as it is), then the
-// step, the countdown (the step) and the target.
-void set_fade(int8_t target, int8_t level, int8_t step) {
-    if (level != static_cast<int8_t>(0xFE)) g_level = level;
-    fade_field(zap::fade_state::kStep) = step;
-    fade_field(zap::fade_state::kCountdown) = step;
-    fade_field(zap::fade_state::kTarget) = target;
-}
 // Passes of the stepper (0x1F7900) over the global level: the countdown down while the step is
 // set; at 0 the level one toward the target, then the step off there, or the countdown again.
 void run_fade(int passes) {
-    int8_t& step = fade_field(zap::fade_state::kStep);
-    int8_t& countdown = fade_field(zap::fade_state::kCountdown);
-    int8_t target = fade_field(zap::fade_state::kTarget);
+    int8_t& step = at<int8_t>(g_fade, zap::fade_state::kStep);
+    int8_t& countdown = at<int8_t>(g_fade, zap::fade_state::kCountdown);
+    int8_t target = at<int8_t>(g_fade, zap::fade_state::kTarget);
     for (int i = 0; i < passes; ++i) {
         if (step == 0 || --countdown != 0) continue;
-        if (target > g_level) ++g_level;
-        if (target < g_level) --g_level;
-        if (target == g_level) {
+        if (target > g_fade_level) ++g_fade_level;
+        if (target < g_fade_level) --g_fade_level;
+        if (target == g_fade_level) {
             step = 0;
         } else {
             countdown = step;
         }
     }
 }
-
-void fade_handler(char, char, BYTE* event) {
-    g_fade_given = event;
-    g_fades.emplace_back(event, event + 0x28);
-    int16_t words[3];
-    std::memcpy(words, event + 4, sizeof(words));  // target, level, step
-    set_fade(static_cast<int8_t>(words[0]), static_cast<int8_t>(words[1]),
-             static_cast<int8_t>(words[2]));
-}
-void* g_handlers[32] = {};
 
 void builder();
 void reset() {
@@ -99,15 +66,9 @@ void reset() {
     g_timer = 0;
     g_current = nullptr;
     g_set.clear();
-    std::memcpy(fade_event(), kFade, sizeof(kFade));
-    g_event_table = g_events;
-    g_event_count = kEvents;
-    g_handlers[1] = reinterpret_cast<void*>(&fade_handler);
-    g_fades.clear();
-    g_fade_given = nullptr;
-    std::memset(g_fade, 0, sizeof(g_fade));
-    fade_field(zap::fade_state::kTarget) = 4;  // the normal level, the fade done
-    g_level = 4;
+    reset_events();
+    g_event_handlers[1] = reinterpret_cast<void*>(&fade_handler);
+    reset_fade();
 }
 
 // The prompt as built: a menu, one panel of YES, NO and the question (30 glyphs). Made, it is
@@ -156,9 +117,9 @@ zap::GameAddresses addresses() {
     a.text_set_fn = reinterpret_cast<BYTE*>(&text_set);
     a.event_table = reinterpret_cast<BYTE*>(&g_event_table);
     a.event_count = reinterpret_cast<BYTE*>(&g_event_count);
-    a.event_handlers = reinterpret_cast<BYTE*>(g_handlers);
+    a.event_handlers = reinterpret_cast<BYTE*>(g_event_handlers);
     a.fade = g_fade;
-    a.fade_level = reinterpret_cast<BYTE*>(&g_level);
+    a.fade_level = reinterpret_cast<BYTE*>(&g_fade_level);
     a.hooks.mission_open = reinterpret_cast<void*>(&open_hook);
     a.hooks.mission_yes = reinterpret_cast<void*>(&yes_hook);
     return a;
@@ -171,10 +132,18 @@ zap::MissionPrompt prompt_in_image() {
     return m;
 }
 
+// Asked for, and watched once idle in play: the fade run, the opener set.
+zap::MissionPrompt fading(const zap::GameAddresses& a) {
+    zap::MissionPrompt m = prompt_in_image();
+    m.request();
+    m.watch(a, true);
+    return m;
+}
+
 // The fade back: event 3667 aimed at level 4, the level left as it is, a step every 6 frames,
 // and +0xC 1 (none of the side fields).
 std::vector<BYTE> fade_back() {
-    std::vector<BYTE> r(kFade, kFade + 0x28);
+    std::vector<BYTE> r(event_3667(), event_3667() + 0x28);
     const int16_t words[] = {4, 0xFE, 6, 0, 1};
     std::memcpy(r.data() + 4, words, sizeof(words));
     return r;
@@ -197,8 +166,8 @@ void test_offered_when_idle_then_yes_ends() {
     check(g_fn == a.hooks.mission_open && g_timer == zap::kFadeDelay && m.holds_hook() &&
               m.opening(),
           "the opener set with event 3666's delay");
-    check(g_fades.size() == 1 && g_fade_given == fade_event() &&
-              std::memcmp(g_fades[0].data(), kFade, sizeof(kFade)) == 0,
+    check(g_fades.size() == 1 && g_fade_event == event_3667() &&
+              std::memcmp(g_fades[0].data(), event_3667(), 0x28) == 0,
           "event 3667 run, the game's own record");
     check(m.status() == "opening after the fade", m.status().c_str());
 
@@ -225,10 +194,8 @@ void test_offered_when_idle_then_yes_ends() {
 
 void test_another_transition_first_is_asked_again() {
     Prompt prompt;
-    zap::MissionPrompt m = prompt_in_image();
     zap::GameAddresses a = addresses();
-    m.request();
-    m.watch(a, true);
+    zap::MissionPrompt m = fading(a);
     run_fade(1);
     m.watch(a, true);
     g_fn = reinterpret_cast<void*>(&door_routine);  // a door took the routine, with its fade
@@ -255,10 +222,8 @@ void test_another_transition_first_is_asked_again() {
 
 void test_unload_puts_back() {
     Prompt prompt;
-    zap::MissionPrompt m = prompt_in_image();
     zap::GameAddresses a = addresses();
-    m.request();
-    m.watch(a, true);
+    zap::MissionPrompt m = fading(a);
     check(m.holds_hook(), "while it fades, the game holds the opener");
     m.restore(a);
     check(g_fn == kIdle && g_timer == 0 && !m.holds_hook(),
@@ -279,10 +244,8 @@ void test_unload_puts_back() {
 void test_an_unexpected_prompt_never_keeps_the_escape_skip() {
     Prompt prompt;
     at<int32_t>(prompt.question, 0x1D8) = 10;  // a question too short for ours
-    zap::MissionPrompt m = prompt_in_image();
     zap::GameAddresses a = addresses();
-    m.request();
-    m.watch(a, true);
+    zap::MissionPrompt m = fading(a);
     check(!m.open(a).empty(), "reported");
     check(at<void*>(prompt.child[0], 0x2C0) == reinterpret_cast<void*>(&game_no),
           "YES is NO: no escape skip outside the escape");
@@ -327,11 +290,11 @@ void test_no_fade_unless_as_traced() {
         const char* why;
     };
     const Case cases[] = {
-        {"another step", [] { fade_event()[8] = 9; }, "event 3667 not as traced"},
-        {"a next event", [] { fade_event()[0x20] = 0; }, "event 3667 not as traced"},
+        {"another step", [] { event_3667()[8] = 9; }, "event 3667 not as traced"},
+        {"a next event", [] { event_3667()[0x20] = 0; }, "event 3667 not as traced"},
         {"too few events", [] { g_event_count = zap::kFadeEvent; }, "no event 3667"},
         {"no table", [] { g_event_table = nullptr; }, "no event 3667"},
-        {"a handler in data", [] { g_handlers[1] = g_events; },
+        {"a handler in data", [] { g_event_handlers[1] = g_events; },
          "its handler not in the game's code"},
     };
     for (const Case& c : cases) {
@@ -356,10 +319,8 @@ void test_no_fade_unless_as_traced() {
 // The opener run with no builder in the table any more: the idle routine back, the fade back.
 void test_no_builder_after_the_fade() {
     Prompt prompt;
-    zap::MissionPrompt m = prompt_in_image();
     zap::GameAddresses a = addresses();
-    m.request();
-    m.watch(a, true);
+    zap::MissionPrompt m = fading(a);
     g_table[zap::kPromptRoutine] = nullptr;
     g_timer = 0;  // the game runs the opener
     check(m.open(a) == "no prompt builder", m.status().c_str());
@@ -374,29 +335,27 @@ void test_no_builder_after_the_fade() {
 void test_a_save_during_the_fade_turns_it_back() {
     for (int passes : {0, 1, 8, 20, 39, 40, 55}) {
         Prompt prompt;
-        zap::MissionPrompt m = prompt_in_image();
         zap::GameAddresses a = addresses();
-        m.request();
-        m.watch(a, true);
+        zap::MissionPrompt m = fading(a);
         for (int i = 0; i < passes; ++i) {
             run_fade(1);
             m.watch(a, true);
         }
         run_fade(1);
-        int8_t level = g_level;
+        int8_t level = g_fade_level;
         g_fn = kIdle;  // saved: the pause opener back, the timer still running
         g_timer = zap::kFadeDelay - passes - 1 > 0 ? zap::kFadeDelay - passes - 1 : 0;
         m.watch(a, true);
         std::string what = "a save after " + std::to_string(passes) + " passes";
         check(!m.holds_hook() && !m.opening(), what.c_str());
         check(g_fades.size() == 2 && g_fades[1] == fade_back(), (what + ": faded back").c_str());
-        check(g_level == level && fade_field(zap::fade_state::kTarget) == 4 &&
-                  fade_field(zap::fade_state::kStep) == 6,
+        check(g_fade_level == level && g_fade[zap::fade_state::kTarget] == 4 &&
+                  g_fade[zap::fade_state::kStep] == 6,
               (what + ": toward level 4 from where it was").c_str());
         check(m.status() == "asked again: another transition came first, the fade turned back",
               m.status().c_str());
         run_fade(30);
-        check(g_level == 4, (what + ": back at the normal level").c_str());
+        check(g_fade_level == 4, (what + ": back at the normal level").c_str());
         g_timer = 0;
         m.watch(a, true);
         check(g_fn == a.hooks.mission_open && g_fades.size() == 3, "asked again once idle");
@@ -420,16 +379,14 @@ void test_another_fade_is_left_alone() {
         {"3667's values over again", 20, 30, [] { set_fade(-1, 4, 8); }},
         {"3667's values once done", 45, 1, [] { set_fade(-1, 4, 8); }},
         {"a fade in", 45, 1, [] { set_fade(4, static_cast<int8_t>(0xFE), 6); }},
-        {"a level set at once", 45, 1, [] { g_level = 4; }},
+        {"a level set at once", 45, 1, [] { g_fade_level = 4; }},
         {"3667's values in the first frame", 0, 70, [] { set_fade(-1, 4, 8); }},
         {"black at once after 3667's end", 45, 70, [] { set_fade(-1, -1, 0); }},
     };
     for (const Case& c : cases) {
         Prompt prompt;
-        zap::MissionPrompt m = prompt_in_image();
         zap::GameAddresses a = addresses();
-        m.request();
-        m.watch(a, true);
+        zap::MissionPrompt m = fading(a);
         for (int i = 0; i < c.passes; ++i) {
             run_fade(1);
             m.watch(a, true);
@@ -447,10 +404,8 @@ void test_another_fade_is_left_alone() {
 // the fade turned back there too, and nothing asked again.
 void test_cancel_after_a_save_turns_the_fade_back() {
     Prompt prompt;
-    zap::MissionPrompt m = prompt_in_image();
     zap::GameAddresses a = addresses();
-    m.request();
-    m.watch(a, true);
+    zap::MissionPrompt m = fading(a);
     run_fade(25);
     m.watch(a, true);
     run_fade(1);

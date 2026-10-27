@@ -230,16 +230,12 @@ public:
     // intel.h), and put back.
     void set_intel(bool on) { intel_.set(on); }
 
-    // Game thread: Feats and achievements kept out of AP saves (feats.h). ap_save_loaded: a
-    // randomizer save is loaded whose item table and start are a seed's the helper knows (a seed
-    // file read from the folder or put by a client since, or the seed the labels were set for).
-    // The guard goes on once two frame calls in a row have found one, and off at once (each
-    // frame, watch_all). With no save loaded, the watch also gives the stub the slots holding AP
-    // saves (ap_file_slots, every kFileSlotFrames), for its test while one loads (feats.h); a
-    // save loaded that two frame calls in a row find is not one drops them. add_known_seeds:
-    // seeds to know (by table and start). restore_feats puts both changes back (before an
-    // unload); release_steam, from the pipe thread once no frame call can watch, puts back
-    // Steam's slot alone.
+    // Game thread: Feats and achievements kept out of AP saves (feats.h; when the guard goes on
+    // and off: watch_feats). ap_save_loaded: a randomizer save is loaded whose item table and
+    // start are a seed's the helper knows (a seed file read from the folder or put by a client
+    // since, or the seed the labels were set for); add_known_seeds: seeds to know.
+    // restore_feats puts both changes back (before an unload); release_steam, from the pipe
+    // thread once no frame call can watch, puts back Steam's slot alone.
     bool ap_save_loaded() const;
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
@@ -347,6 +343,8 @@ private:
     void drop_save_look();
     // A randomizer save loaded (its marker set): the loaded section is its own.
     bool rando_save_loaded() const;
+    // A new game queued: the game's new-game routine set as the next transition.
+    bool newgame_queued() const { return at<void*>(at_.transition_fn, 0) == at_.newgame_fn; }
     bool in_play() const;
     // In play outside the loaded section's start cell (the seed's, the landing pod's); false
     // when the start record or the player's cell is no cell of the map.
@@ -374,7 +372,6 @@ private:
     int offline_played_ = -1;
     bool other_save_ = false;     // a client said the loaded save is not its seed's
     bool other_warned_ = false;   // this load's other-seed notice queued
-    bool other_mode() const { return active_ && other_save_; }
     bool section_is(const OfflineSeed& seed, const BYTE* section) const;
     // Slot n's copy of its randomizer section, if it holds a randomizer save (else null); and
     // whether a section is a known seed's (the labels' or known_seeds_).
@@ -429,8 +426,8 @@ private:
     // are for): the map is changed only in a save holding that seed.
     std::optional<OfflineSeed> labels_seed_;
     std::map<int, Label> labels_;  // as set, for snapshot
-    // That seed's save loaded (`in_play_only`: and in play, not in a menu such as the map).
-    bool labels_seed_loaded(bool in_play_only) const;
+    // That seed's save loaded, in play or in a menu (such as the map).
+    bool labels_seed_loaded() const;
     MapCursorNames map_names_;
     bool discs_told_ = true;
     MissionPrompt mission_;

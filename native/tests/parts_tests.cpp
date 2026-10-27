@@ -12,6 +12,7 @@
 
 #include "check.h"
 #include "build.h"
+#include "game_mem.h"
 #include "iat.h"
 #include "pipe.h"
 #include "pipe_client.h"
@@ -95,6 +96,79 @@ void test_trampoline() {
     check(info.Protect == PAGE_EXECUTE_READ, "the code page is not writable");
 }
 
+// game_mem.h's readers of menus, panels and labels, and its swap of a handler slot: each reads
+// fault-safely and refuses what it cannot read (or write) whole.
+void test_game_mem_helpers() {
+    // Three pages: read-write, read-only (filled first) and not readable.
+    auto* pages = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 0x3000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    BYTE* read_only = pages + 0x1000;
+    BYTE* none = pages + 0x2000;
+    BYTE a = 0, b = 0, c = 0;
+    put<void*>(read_only, 0, &a);
+    DWORD old = 0;
+    VirtualProtect(read_only, 0x1000, PAGE_READONLY, &old);
+    VirtualProtect(none, 0x1000, PAGE_NOACCESS, &old);
+
+    // A menu of one panel (its list at +0, the count at +8), the panel's three children (the
+    // list at +0x1E0, the count at +0x1E8).
+    BYTE panel[0x200] = {};
+    BYTE* children[3] = {&a, &b, &c};
+    put(panel, 0x1E0, children);
+    put<int32_t>(panel, 0x1E8, 3);
+    BYTE menu[0x10] = {};
+    BYTE* panels[1] = {panel};
+    put(menu, 0x00, panels);
+    put<int32_t>(menu, 0x08, 1);
+    check(zap::panel_count(menu) == 1 && zap::child_count(panel) == 3, "the counts");
+    check(zap::panel_count(nullptr) == -1 && zap::child_count(none) == -1, "unreadable: -1");
+    BYTE* out[4] = {};
+    check(zap::children_of(panel, out, 4) == 3 && out[2] == &c && out[3] == nullptr,
+          "the children");
+    BYTE* two[2] = {};
+    check(zap::children_of(panel, two, 2) == 3 && two[0] == &a && two[1] == &b,
+          "more than room for: the first copied, the whole count told");
+    BYTE* untouched[3] = {};
+    put(panel, 0x1E0, none - 8);  // the first child readable, the rest not
+    check(zap::children_of(panel, untouched, 3) == -1 && untouched[0] == nullptr,
+          "a list that cannot be read whole: -1, nothing copied");
+
+    // A label of two glyphs (the count at +0x1D8, the list at +0x228), each glyph's frame (its
+    // character) at +0x1C4.
+    BYTE h[0x1C8] = {}, i[0x1C8] = {};
+    put<int32_t>(h, 0x1C4, 'H');
+    put<int32_t>(i, 0x1C4, 'I');
+    BYTE* list[2] = {h, i};
+    BYTE label[0x230] = {};
+    put<int32_t>(label, 0x1D8, 2);
+    put(label, 0x228, list);
+    BYTE* glyphs[2] = {};
+    check(zap::label_glyphs(label, 2, glyphs) && glyphs[0] == h && glyphs[1] == i,
+          "a label's glyphs");
+    check(!zap::label_glyphs(label, 3, glyphs) && !zap::label_glyphs(label, 0, glyphs) &&
+              !zap::label_glyphs(nullptr, 2, glyphs),
+          "another length, none, or no label: refused");
+    check(zap::glyphs_show(glyphs, "HI") && zap::glyphs_show(glyphs, "H") &&
+              !zap::glyphs_show(glyphs, "HO"),
+          "the glyphs read as their text");
+    BYTE* unreadable[1] = {none};
+    check(!zap::glyphs_show(unreadable, "H"), "an unreadable glyph shows nothing");
+
+    // A handler slot at +8.
+    BYTE widget[0x10] = {};
+    put<void*>(widget, 8, &a);
+    check(!zap::swap_pointer(widget, 8, &b, &c) && get<void*>(widget, 8) == &a,
+          "a slot holding another handler is left alone");
+    check(!zap::swap_pointer(widget, 0, nullptr, &c) && get<void*>(widget, 0) == nullptr,
+          "a null `from` never matches an empty slot");
+    check(zap::swap_pointer(widget, 8, &a, &b) && get<void*>(widget, 8) == &b, "swapped");
+    check(!zap::swap_pointer(read_only, 0, &a, &b) && get<void*>(read_only, 0) == &a,
+          "a slot that cannot be written: refused, left as it was");
+    check(!zap::swap_pointer(none, 0, &a, &b) && !zap::swap_pointer(nullptr, 0, &a, &b),
+          "an unreadable slot: refused");
+    VirtualFree(pages, 0, MEM_RELEASE);
+}
+
 void test_build_check() {
     check(std::string(zap::identify_build(0x6A3F82DE, 0x1204000)) == "B1", "knows B1");
     check(zap::identify_build(0x6A3F82DE, 0x1205000) == nullptr, "refuses another image size");
@@ -132,6 +206,7 @@ void test_pipe() {
 int main() {
     test_import_slot_hook();
     test_trampoline();
+    test_game_mem_helpers();
     test_build_check();
     test_pipe();
     return report("parts tests");

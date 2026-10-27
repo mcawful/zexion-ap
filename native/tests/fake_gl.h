@@ -75,6 +75,16 @@ inline zap::GlFunctions fake_gl() {
     return gl;
 }
 
+// Whether every upload is all zeros (pixels cleared).
+inline bool all_blank(const std::vector<Upload>& uploads) {
+    for (const Upload& u : uploads) {
+        for (uint8_t b : u.pixels) {
+            if (b != 0) return false;
+        }
+    }
+    return true;
+}
+
 inline void reset_gl() {
     stand_in::reset_sprites();
     g_bound = 3;

@@ -6,7 +6,7 @@
 #include <sstream>
 
 #include "game_mem.h"
-#include "requests.h"  // parse_config, parse_hex
+#include "requests.h"  // parse_config, parse_discs, parse_hex
 
 namespace zap {
 
@@ -22,14 +22,6 @@ bool hex_bytes(const std::string& hex, uint8_t* out, size_t size) {
     std::vector<uint8_t> raw;
     if (hex.size() != size * 2 || !parse_hex(hex, raw)) return false;
     std::memcpy(out, raw.data(), size);
-    return true;
-}
-
-// Text as hex, at most one line of the game's text.
-bool hex_text(const std::string& hex, std::string& out) {
-    std::vector<uint8_t> raw;
-    if (hex.size() > 62 || !parse_hex(hex, raw)) return false;
-    out.assign(raw.begin(), raw.end());
     return true;
 }
 
@@ -58,6 +50,9 @@ std::string narrow(const std::wstring& w) {
     return out;
 }
 
+// ASCII text (a build's name, a seed file's: good_seed_name) as a path's characters.
+std::wstring widen(const std::string& text) { return std::wstring(text.begin(), text.end()); }
+
 // The next line of `lines`, its \r dropped; false at the end.
 bool next_line(std::istream& lines, std::string& line) {
     if (!std::getline(lines, line)) return false;
@@ -67,9 +62,7 @@ bool next_line(std::istream& lines, std::string& line) {
 
 // The cached config's file for `build` in `folder`.
 std::wstring config_path(const std::wstring& folder, const char* build) {
-    std::wstring path = folder + L"\\config-";
-    for (const char* c = build; *c != '\0'; ++c) path += static_cast<wchar_t>(*c);
-    return path + L".txt";
+    return folder + L"\\config-" + widen(build) + L".txt";
 }
 
 // The cached config: the `config` request, then "check KEY HEX" lines, at least
@@ -137,7 +130,7 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             break;
         }
         std::istringstream words(line);
-        std::string key, a, b, c;
+        std::string key, a;
         words >> key;
         if (key.empty()) continue;
         if (key == "table") {
@@ -153,17 +146,11 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             if (!(words >> a) || (a != "lock" && a != "free")) return "bad assists";
             out.lock_assists = a == "lock";
         } else if (key == "discs") {
-            if (!(words >> a)) return "bad discs";
-            if (a == "-") continue;
-            if (!(words >> b >> c)) return "bad discs";
-            try {
-                out.count = std::stoi(a);
-                out.required = std::stoi(b);
-            } catch (...) {
-                return "bad discs";
-            }
-            if (out.count < 0 || out.count > 255 || out.required < 1 || out.required > 255 ||
-                !hex_text(c, out.scan_line) || out.scan_line.empty()) {
+            // "discs -", or as the `discs` request (its TOLD left out).
+            if (words >> a && a == "-") continue;
+            bool told = false;
+            if (!parse_discs(line, out.count, out.required, out.scan_line, told).empty() ||
+                out.scan_line.empty()) {
                 return "bad discs";
             }
             out.discs = true;
@@ -253,15 +240,12 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
         if (!why.empty()) return "error " + why;
         seed.name = name;
         parsed = std::move(seed);
-        CreateDirectoryW(folder.c_str(), nullptr);
-        CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
-        path = folder + L"\\seeds\\";
-        for (char c : name) path += static_cast<wchar_t>(c);
-        path += L".txt";
+        path = folder + L"\\seeds\\" + widen(name) + L".txt";
     } else {
         return "error not config or seed";
     }
     CreateDirectoryW(folder.c_str(), nullptr);
+    if (parsed) CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
     bool changed = false;
     std::string why = write_whole(path, body, changed);
     if (!why.empty()) return "error " + why;

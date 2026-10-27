@@ -54,10 +54,9 @@ constexpr double kDiscCorners[8] = {-kHalf, -kHalf, kHalf, -kHalf, kHalf, kHalf,
 constexpr double kDiscLocal[4] = {-kHalf, -kHalf, kHalf, kHalf};
 // A frame-list entry starts with its texture rectangle (u0, v0, u1, v1), over the texture's size
 // (docs/re/memory.md, "The pause screen's KEYS row").
-constexpr float kTextureSize = 2048.0f;
-constexpr float kDiscRect[4] = {kDiscX / kTextureSize, kDiscY / kTextureSize,
-                                (kDiscX + kDiscSize) / kTextureSize,
-                                (kDiscY + kDiscSize) / kTextureSize};
+constexpr float kSide = kTextureSize;
+constexpr float kDiscRect[4] = {kDiscX / kSide, kDiscY / kSide, (kDiscX + kDiscSize) / kSide,
+                                (kDiscY + kDiscSize) / kSide};
 
 void place(BYTE* s, double x, double y, const double (&local)[4]) {
     put(s, sprite::kX, x);
@@ -118,12 +117,10 @@ void PauseDiskRow::entry_shows(bool disc) {
 bool PauseDiskRow::show_disc(BYTE* s) {
     // Only a sprite that keeps its template: the game frees the frame list of one that does not
     // (0x745C0), and must never free the helper's entry.
-    BYTE* list = nullptr;
-    void* sprite_template = nullptr;
+    BYTE* list = pointer_at(s, sprite::kFrameList);
     int32_t frames = 0;
-    if (!read(s, sprite::kTemplate, sprite_template) || sprite_template == nullptr ||
-        !read(s, sprite::kFrameCount, frames) || frames <= kDiskIcon ||
-        !read(s, sprite::kFrameList, list) || list == nullptr) {
+    if (pointer_at(s, sprite::kTemplate) == nullptr || !read(s, sprite::kFrameCount, frames) ||
+        frames <= kDiskIcon || list == nullptr) {
         return false;
     }
     if (entry_ == nullptr) {
@@ -151,18 +148,11 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     // The text fills the row's cells (pause_row_text), read by index below.
     if (text.size() != static_cast<size_t>(kRowCells)) return;
     // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
-    int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0;
-    BYTE* entries = panel_at(menu, 0);
+    int32_t sprites_n = 0;
     BYTE* row = panel_at(menu, 1);
-    if (!read(menu, menu::kPanelCount, panels_n) || panels_n != kPausePanels) return;
-    BYTE** children = nullptr;
-    int32_t entry_count = 0;
-    if (!read(entries, panel::kCapacity, entry_count) || entry_count < 1 ||
-        entry_count > kMaxEntries || !read(entries, panel::kChildren, children)) {
-        return;
-    }
     BYTE* list[kMaxEntries] = {};
-    if (!safe_read(children, list, entry_count * sizeof(BYTE*))) return;
+    const int32_t entry_count = children_of(panel_at(menu, 0), list, kMaxEntries);
+    if (panel_count(menu) != kPausePanels || entry_count < 1 || entry_count > kMaxEntries) return;
     bool equipment = false;
     for (int i = 0; i < entry_count; ++i) {
         void* cb = nullptr;
@@ -172,21 +162,13 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         }
     }
     BYTE* keys = child_at(row, 0);
-    BYTE* label = nullptr;
-    BYTE** glyph_list = nullptr;
-    BYTE** sprite_list = nullptr;
-    if (!equipment || !read(row, panel::kCapacity, capacity) || capacity != 1 ||
-        !read(row, kPanelSpriteCount, sprites_n) || sprites_n != kRowSprites ||
-        !live_widget(keys, a.widget_handler_fn) ||
-        !read(keys, widget::kLabel, label) || !read(label, label::kLength, glyphs_n) ||
-        glyphs_n != kKeysGlyphs || !read(label, label::kGlyphs, glyph_list) ||
-        !read(row, kPanelSprites, sprite_list)) {
-        return;
-    }
     BYTE* glyph[kKeysGlyphs] = {};
     BYTE* sprite[kRowSprites] = {};
-    if (!safe_read(glyph_list, glyph, sizeof(glyph)) ||
-        !safe_read(sprite_list, sprite, sizeof(sprite))) {
+    if (!equipment || child_count(row) != 1 ||
+        !read(row, kPanelSpriteCount, sprites_n) || sprites_n != kRowSprites ||
+        !live_widget(keys, a.widget_handler_fn) ||
+        !label_glyphs(pointer_at(keys, widget::kLabel), kKeysGlyphs, glyph) ||
+        !safe_read(pointer_at(row, kPanelSprites), sprite, sizeof(sprite))) {
         return;
     }
     // Turned already (each frame, as the screen stays up): nothing more to check.
@@ -202,21 +184,9 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         if (!writable(g, sprite::kSize)) return;
     }
     // Still the game's KEYS row: KEYS, and the first key's icon.
-    const char keys_text[] = "KEYS";
-    for (int i = 0; i < kKeysGlyphs; ++i) {
-        int32_t c = -1;
-        if (!read(glyph[i], sprite::kFrameIndex, c) ||
-            c != static_cast<unsigned char>(keys_text[i])) {
-            return;
-        }
-    }
-    if (icon != kKeyIconFirst) return;
-    BYTE* templates = nullptr;
-    BYTE* font = nullptr;
-    if (!read(a.sprite_templates, 0, templates) || !read(templates, sprite::kFontTemplate, font) ||
-        font == nullptr) {
-        return;
-    }
+    if (!glyphs_show(glyph, "KEYS") || icon != kKeyIconFirst) return;
+    BYTE* font = pointer_at(pointer_at(a.sprite_templates), sprite::kFontTemplate);
+    if (font == nullptr) return;
     // The label's glyphs: the middle four characters (they stay where the game put them).
     for (int i = 0; i < kKeysGlyphs; ++i) {
         set_frame(glyph[i], static_cast<unsigned char>(text[2 + i]));
