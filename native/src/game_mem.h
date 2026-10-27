@@ -101,6 +101,9 @@ void look_like(BYTE* sprite, const BYTE* like);
 
 // The NT headers of a loaded image, or null if `module` does not start with a PE's headers.
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module);
+// The RVA just past a section, as loaded; the section of `module` holding `rva`, or null.
+uint64_t section_end(const IMAGE_SECTION_HEADER* section);
+const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva);
 // Whether `p` lies in an executable section of the loaded image `image`.
 bool in_image_code(HMODULE image, const void* p);
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back

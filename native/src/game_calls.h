@@ -212,9 +212,9 @@ public:
     void release_steam() { feats_.release_steam(); }
     std::string feats_state() const { return feats_.state(); }
     const FeatsGuard& feats() const { return feats_; }  // tests
-    // An AP save's ending was the last thing the guard was on for (it went off with flag 250 set
-    // as the save left): the Feats of Natu screen that may follow says no Feats were earned
-    // (feats_screen_note). Until a save is loaded, or the title's lines are up.
+    // An AP save's ending was jumped over (the guard went off as the save left, with the patch in
+    // place, flag 250 set and 251 clear): the Feats of Natu screen that may follow says no Feats
+    // were earned (feats_screen_note). Until a save is loaded, or that screen has come and gone.
     bool feats_ended() const { return feats_ended_; }
 
     // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files;
@@ -411,7 +411,8 @@ private:
     FeatsGuard feats_;
     int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
     bool feats_ended_ = false;
-    int note_frames_ = 0;  // frames until the next look for the Feats of Natu screen
+    bool note_seen_ = false;  // the Feats of Natu screen was up since the ending
+    int note_frames_ = 0;  // frames until the next look for it
     // Every seed the helper has known since it loaded (table and start only), the oldest first.
     std::vector<OfflineSeed> known_seeds_;
 };

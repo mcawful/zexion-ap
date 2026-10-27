@@ -5,6 +5,8 @@
 // and hooks the import slot the same way.
 #include <windows.h>
 
+#include <utility>
+
 namespace {
 
 constexpr int kSlots = 64;
@@ -22,18 +24,12 @@ bool method(Interface*, const char*) {
 }
 
 template <int... I>
-struct Table {
-    static inline void* entries[kSlots] = {reinterpret_cast<void*>(&method<I>)...};
-};
+void** table(std::integer_sequence<int, I...>) {
+    static void* entries[kSlots] = {reinterpret_cast<void*>(&method<I>)...};
+    return entries;
+}
 
-template <int N, int... I>
-struct Make : Make<N - 1, N - 1, I...> {};
-template <int... I>
-struct Make<0, I...> {
-    using type = Table<I...>;
-};
-
-Interface g_interface{Make<kSlots>::type::entries};
+Interface g_interface{table(std::make_integer_sequence<int, kSlots>{})};
 
 }  // namespace
 

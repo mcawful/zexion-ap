@@ -30,6 +30,8 @@ constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
 // Frames between two looks at the escape skip's event and at the scanner's text.
 constexpr int kSkipFrames = 30, kScanFrames = 30;
+// Frames between two looks for the Feats of Natu screen (feats_screen_note).
+constexpr int kNoteFrames = 7;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -127,22 +129,6 @@ constexpr ConfigKey kConfigKeys[] = {
     import_slot("context_init_slot", &G::context_init_slot),
 };
 
-// The RVA just past a section, as loaded.
-uint64_t section_end(const IMAGE_SECTION_HEADER* section) {
-    return section->VirtualAddress + (std::max)(section->Misc.VirtualSize, section->SizeOfRawData);
-}
-
-// The section of `module` holding `rva`, or nullptr.
-const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva) {
-    const IMAGE_NT_HEADERS64* nt = nt_headers(module);
-    if (nt == nullptr) return nullptr;
-    auto* section = IMAGE_FIRST_SECTION(nt);
-    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
-        if (rva >= section->VirtualAddress && rva < section_end(section)) return section;
-    }
-    return nullptr;
-}
-
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
 std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, uint64_t rva) {
     const std::string name = key.name;
@@ -209,8 +195,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
                         found.context_init_slot != at_.context_init_slot)) {
         restore_feats();
     }
-    feats_.set_image(image, reinterpret_cast<void**>(find_import_slot(
-                                image, "steam_api64.dll", "SteamInternal_ContextInit")));
+    feats_.set_image(image,
+                     find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     // A client's config: the offline look put back first, with the addresses it was set with.
     if (configured_ && active) {
         leave_offline();
@@ -735,10 +721,11 @@ bool Game::rando_save_loaded() const {
 bool Game::ap_save_loaded() const {
     if (!configured_ || !rando_save_loaded()) return false;
     if (labels_seed_ && section_is(*labels_seed_, at_.rando_blob)) return true;
+    // The offline look's seeds are among the known ones (set_offline adds them).
     for (const OfflineSeed& seed : known_seeds_) {
         if (section_is(seed, at_.rando_blob)) return true;
     }
-    return loaded_seed() >= 0;
+    return false;
 }
 
 void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
@@ -749,7 +736,6 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
         });
         if (known) continue;
         OfflineSeed key;
-        key.name = seed.name;
         std::memcpy(key.table, seed.table, sizeof(key.table));
         std::memcpy(key.start, seed.start, sizeof(key.start));
         known_seeds_.push_back(std::move(key));
@@ -768,26 +754,35 @@ void Game::watch_feats() {
     } else {
         feats_passes_ = 0;
     }
-    const bool was_on = feats_.on();
+    const bool was_patched = feats_.ending_patched();
     const bool on = feats_passes_ >= 2;
     feats_.watch(at_, on);
-    // The guard going off as the save leaves with flag 250 set: an AP ending (MISSION COMPLETE
-    // onward has no save loaded). A save loaded, or the title, ends it.
-    const bool no_save = *at_.save_loaded == kNoSaveLoaded;
-    if (was_on && !on && no_save && at_.flags[flag::kEnding] != 0) feats_ended_ = true;
-    if (!no_save || title_.shown()) feats_ended_ = false;
-    // The Feats of Natu screen comes with no save loaded; looked at every 8th frame call.
-    constexpr int kNoteFrames = 7;
-    if (no_save && note_frames_-- <= 0) {
-        note_frames_ = kNoteFrames;
-        feats_screen_note(at_, feats_ended_);
+    // An AP ending, jumped over: the save left (MISSION COMPLETE onward has none loaded) with the
+    // patch in place, flag 250 set and flag 251 clear. A save loaded ends it, and so does the
+    // Feats of Natu screen going away once it was seen.
+    if (*at_.save_loaded != kNoSaveLoaded) {
+        feats_ended_ = false;
+        return;
+    }
+    if (was_patched && !on && at_.flags[flag::kEnding] != 0 && at_.flags[flag::kFeat] == 0) {
+        feats_ended_ = true;
+        note_seen_ = false;
+    }
+    if (note_frames_-- > 0) return;
+    note_frames_ = kNoteFrames;
+    const bool up = feats_screen_note(at_, feats_ended_);
+    if (up) {
+        note_seen_ = true;
+    } else if (note_seen_) {
+        feats_ended_ = false;
+        note_seen_ = false;
     }
 }
 
 void Game::restore_feats() {
     feats_passes_ = 0;
     if (!configured_) return;
-    feats_.restore(at_);
+    feats_.restore();
     feats_screen_note(at_, false);  // the screen's note blanked, if it is up
 }
 

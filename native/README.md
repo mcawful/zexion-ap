@@ -519,12 +519,15 @@ Working in game: 2026-10-23 ("The escape skip").
   - **The Feats of Natu screen.** It still follows an AP ending, by a path not traced, with
     nothing flashing. The helper writes ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the
     blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
-    only on that screen: the top menu with 4 panels, two rows of 7 Feats, and a live title
-    widget whose label is three equal lines, the middle one naming NATU. It writes only over a
-    line that is blank, or already its note. It does so while the last thing the guard was on
-    for was an AP ending (the guard went off with no save loaded and flag 250 set), until a save
-    is loaded or the title's lines are up. It looks every 8th frame call while no save is
-    loaded.
+    only on that screen as it follows an ending: the top menu with 4 panels, two rows of 7
+    Feats, a live title widget whose label is three equal lines (the middle one naming NATU),
+    and MISSION COMPLETE's statistics under it. It writes the whole line or nothing, only over a
+    line that is blank or already its note, and only if every glyph of it is writable and has
+    the font's frames.
+    - **When:** after an ending the patch jumped over. The guard went off as the save left with
+      the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
+      ends when a save is loaded, or when the screen has come and gone. It looks every 8th
+      frame call while no save is loaded.
 - **An AP save** (`Game::ap_save_loaded`): a randomizer save is loaded (a save, and the marker
   set) whose item table and start are a seed's the helper knows. It knows a seed from:
   - a seed file read from `%LOCALAPPDATA%\ZexionAP` (at start and each time a client goes
@@ -557,12 +560,18 @@ Working in game: 2026-10-23 ("The escape skip").
   `GameUnlocks.sav`. They can complete the database and give 16CompleteReport later, in a
   normal game.
 
-Working in game: 2026-10-26, three AP endings of the OS Install Disks goal through RETURN HOME
-WITH THE DISKS? and a normal ending ("Feats and achievements"). In the AP endings the ending was
-jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav` was unchanged; the
-third showed the note. In the normal ending the Feats were earned as usual. Steam's stand-in was
-in place in the AP save, but no achievement left to earn was tried there, so that it stops one
-rests on the stand-in tests.
+Working in game: 2026-10-26 ("Feats and achievements"), two AP endings with the guard (a third,
+earlier, is inconclusive: which helper ran is not known), both of the OS Install Disks goal
+through RETURN HOME WITH THE DISKS? with the client connected, and a normal ending. In the AP
+endings the ending was jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav`
+was unchanged; the second showed the note. In the normal ending the Feats were earned as usual.
+The guard also went on in an AP save with no client connected, before the client connected.
+
+Not seen in game:
+- an AP ending with no client, or with a client of another seed;
+- a plain randomizer save left alone;
+- Steam's stand-in stopping an achievement. It was in place in the AP save, but no unearned
+  achievement was tried there, so this is tested only with the stand-in.
 
 ## Building
 

@@ -6,7 +6,6 @@
 
 #include <windows.h>
 
-#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
@@ -103,9 +102,16 @@ void guard_on(zap::Game& game, uint8_t salt = 1) {
     game.watch_feats();
 }
 
-std::string seed_text(const zap::OfflineSeed& s) {
-    return "zexion-ap offline 1\ntable " + hex(s.table, sizeof(s.table)) + "\nstart " +
-           hex(s.start, sizeof(s.start)) + "\nintel 0\nassists free\ndiscs -\nunfound -\n";
+// A normal save loaded and watched: the guard off, the import slot back to steam_api64's.
+void guard_off(zap::Game& game) {
+    g_rando_marker = 0;
+    game.watch_feats();
+}
+
+// Frame calls enough for the Feats of Natu screen's look (every 8th).
+constexpr int kNoteLook = 8;
+void note_looks(zap::Game& game) {
+    for (int i = 0; i < kNoteLook; ++i) game.watch_feats();
 }
 
 void test_the_ap_save_test() {
@@ -150,19 +156,6 @@ void test_the_ap_save_test() {
     check(labeled.ap_save_loaded(), "the labels' seed's save is one");
     load_save(6);
     check(!labeled.ap_save_loaded(), "and only it");
-}
-
-void test_a_put_seed() {
-    load_save(7);
-    zap::OfflineSeed s = seed_of_save(), out;
-    check(zap::put_seed_of("offline_put seed abc-0-1\n" + seed_text(s), out) &&
-              out.name == "abc-0-1" && zap::offline_matches(out, g_section + 0x26C,
-                                                            g_section + 0x310),
-          "a put seed file is its seed, named");
-    check(!zap::put_seed_of("offline_put config\n" + seed_text(s), out), "a config is not");
-    check(!zap::put_seed_of("offline_put seed abc-0-1\nnot a seed file\n", out),
-          "a file that does not parse is not");
-    check(!zap::put_seed_of("offline_put seed abc-0-1", out), "nor one with no file");
 }
 
 void test_on_and_off() {
@@ -214,7 +207,7 @@ void test_the_ending() {
     set_before = stub_calls(kSetAchievement);
     run_ending();
     check(g_flags[250] == 1, "on: flag 250 (the client's goal) is still set");
-    check(g_flags[251] == 0, "on: flag 251 is cleared, so no Feats of Natu screen follows");
+    check(g_flags[251] == 0, "on: flag 251 is cleared");
     check(stub_calls(kSetAchievement) == set_before, "on: no achievement");
     // Run twice: the routine runs once per ending, but nothing in it depends on that.
     run_ending();
@@ -284,8 +277,7 @@ void test_refusals() {
               other.feats_state().find("not the user stats'") != std::string::npos,
           "another context is not hooked", other.feats_state());
     check(other.feats().ending_patched(), "the ending is, on its own checks");
-    g_rando_marker = 0;
-    other.watch_feats();
+    guard_off(other);
 
     // An ending that reads otherwise at its join: nothing written.
     reset();
@@ -299,8 +291,7 @@ void test_refusals() {
               join.feats_state().find("join reads otherwise") != std::string::npos,
           "a join that reads otherwise: the ending left alone", join.feats_state());
     check(join.feats().steam_hooked(), "Steam still hooked");
-    g_rando_marker = 0;
-    join.watch_feats();
+    guard_off(join);
 
     // An import slot something else has hooked: left to it.
     reset();
@@ -315,8 +306,7 @@ void test_refusals() {
     write_slot(steam_function());
     hooked.watch_feats();
     check(hooked.feats().steam_hooked(), "hooked once it lets go");
-    g_rando_marker = 0;
-    hooked.watch_feats();
+    guard_off(hooked);
 }
 
 // The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, and the
@@ -332,10 +322,19 @@ struct FeatsScreen {
     BYTE* glyph_list[kLength] = {};
     BYTE glyphs[kLength][0x1D8] = {};
     std::vector<BYTE> table = std::vector<BYTE>(256 * 0x38);
+    // MISSION COMPLETE's statistics, the menu under it: 1 panel of 10 lines.
+    BYTE stats[0x80] = {};
+    BYTE* stats_panels[1] = {};
+    BYTE stats_panel[0x300] = {};
 
     explicit FeatsScreen(const std::string& middle = "FEATS OF NATU!") {
         at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
         at<int32_t>(menu, 8) = 4;
+        at<BYTE*>(menu, 0x78) = stats;
+        at<BYTE*>(stats, 0) = reinterpret_cast<BYTE*>(stats_panels);
+        at<int32_t>(stats, 8) = 1;
+        stats_panels[0] = stats_panel;
+        at<int32_t>(stats_panel, 0x1E8) = 10;
         for (int i = 0; i < 4; ++i) panels[i] = panel[i];
         at<BYTE**>(panel[0], 0x1E0) = children;
         at<int32_t>(panel[0], 0x1E8) = 1;
@@ -405,6 +404,16 @@ void test_the_screen_note() {
     at<int32_t>(six.panel[3], 0x1E8) = 6;
     current = six.menu;
     check(!zap::feats_screen_note(a, true) && six.line(2) == blank, "a row of 6");
+    FeatsScreen alone;
+    at<BYTE*>(alone.menu, 0x78) = nullptr;
+    current = alone.menu;
+    check(!zap::feats_screen_note(a, true) && alone.line(2) == blank,
+          "not after an ending (no MISSION COMPLETE under it)");
+    FeatsScreen few;
+    at<int32_t>(few.glyphs[2 * FeatsScreen::kColumns + 5], 0x1BC) = 64;
+    current = few.menu;
+    check(zap::feats_screen_note(a, true) && few.line(2) == blank,
+          "a glyph that cannot take the note: the line left whole");
     FeatsScreen released;
     at<int32_t>(released.title, 0x1C8) = 1;
     current = released.menu;
@@ -425,18 +434,17 @@ void test_the_note_after_an_ending() {
     g_save_loaded = 0xFF;
     FeatsScreen screen;
     g_current_menu = screen.menu;
-    for (int i = 0; i < 8; ++i) game.watch_feats();
+    note_looks(game);
     check(game.feats_ended() && screen.line(2) == noted_line(), "an AP ending: the note",
           screen.line(2));
     game.restore_feats();
     check(screen.line(2) == blank, "blanked before an unload");
-    for (int i = 0; i < 8; ++i) game.watch_feats();
+    note_looks(game);
     check(screen.line(2) == noted_line(), "and back after a refused one");
 
     // A save loaded ends it.
     g_save_loaded = 3;
-    g_rando_marker = 0;
-    game.watch_feats();
+    guard_off(game);
     check(!game.feats_ended(), "a save loaded ends it");
     g_current_menu = nullptr;
 
@@ -450,7 +458,7 @@ void test_the_note_after_an_ending() {
     g_flags[250] = 1;
     FeatsScreen plain;
     g_current_menu = plain.menu;
-    for (int i = 0; i < 8; ++i) normal.watch_feats();
+    note_looks(normal);
     check(!normal.feats_ended() && plain.line(2) == blank, "a normal ending: no note");
     // An AP save left with no ending (flag 250 clear): no note either.
     zap::Game left;
@@ -460,8 +468,46 @@ void test_the_note_after_an_ending() {
     guard_on(left);
     g_save_loaded = 0xFF;
     g_current_menu = plain.menu;
-    for (int i = 0; i < 8; ++i) left.watch_feats();
+    note_looks(left);
     check(!left.feats_ended() && plain.line(2) == blank, "an AP save left before its ending");
+    g_current_menu = nullptr;
+
+    // The guard on but the patch refused (the ending's bytes not as traced): the ending ran as the
+    // game's, so no note.
+    reset();
+    set_code_byte(g_ending, kEndingJoin + 1, 0x8B);
+    zap::Game refused;
+    check(configure_feats(refused).empty(), "configured");
+    guard_on(refused);
+    check(refused.feats().on() && !refused.feats().ending_patched(), "on, the patch refused");
+    g_flags[250] = 1;
+    g_flags[251] = 1;
+    g_save_loaded = 0xFF;
+    FeatsScreen feats_earned;
+    g_current_menu = feats_earned.menu;
+    note_looks(refused);
+    check(!refused.feats_ended() && feats_earned.line(2) == blank,
+          "a refused patch: no note over the Feats earned");
+    g_current_menu = nullptr;
+
+    // The screen seen, then gone: the note's turn is over.
+    reset();
+    zap::Game seen;
+    check(configure_feats(seen).empty(), "configured");
+    guard_on(seen);
+    g_flags[250] = 1;
+    g_save_loaded = 0xFF;
+    FeatsScreen once;
+    g_current_menu = once.menu;
+    note_looks(seen);
+    check(seen.feats_ended() && once.line(2) == noted_line(), "the note");
+    g_current_menu = nullptr;
+    note_looks(seen);
+    check(!seen.feats_ended(), "the screen gone: over");
+    FeatsScreen later;
+    g_current_menu = later.menu;
+    note_looks(seen);
+    check(later.line(2) == blank, "a later Feats screen gets none");
     g_current_menu = nullptr;
     g_save_loaded = 3;
 }
@@ -513,8 +559,7 @@ void test_put_back() {
     check(slot_value() == over, "a hook over the stub is not undone");
     check(stub_fn(g_stats_context) == &g_stats_context[2], "the stub passes through");
     write_slot(steam_function());
-    g_rando_marker = 0;
-    game.watch_feats();
+    guard_off(game);
 }
 
 }  // namespace
@@ -525,7 +570,6 @@ int main() {
         return EXIT_FAILURE;
     }
     test_the_ap_save_test();
-    test_a_put_seed();
     test_on_and_off();
     test_the_ending();
     test_steam();

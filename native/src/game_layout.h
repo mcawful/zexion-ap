@@ -28,6 +28,7 @@ constexpr uint64_t kFlagCount = 0x9C4;
 namespace flag {
 constexpr int kScannerTold = 39;
 constexpr int kEnding = 250;
+constexpr int kFeat = 251;  // set with each Feat the ending gives (feats.h)
 }  // namespace flag
 
 // An area event in the loaded table, [event_table] + event * 0x28 (docs/re/memory.md, "The

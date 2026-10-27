@@ -10,9 +10,9 @@
 //   found it, and what the code at the join reads is either rbx (set before the stretch, never
 //   changed in it) or set afresh there, so jumping over it is as if each test in it had failed.
 //   Flag 251 is cleared because the code after the join reads it too (database entry 218, with a
-//   Steam call), and the Feats of Natu screen follows the ending only while it is set: a save that
-//   already holds it, from an ending before this guard, skips the screen as well. Flag 250, the
-//   save that follows and the client's goal are untouched. Nothing jumps into the bytes written
+//   Steam call), as do the tests that lead to the Feats of Natu screen (0x948B7, 0x18A5F2); a
+//   save that already holds it, from an ending before this guard, has it cleared too. Flag 250,
+//   the save that follows and the client's goal are untouched. Nothing jumps into the bytes written
 //   past the call (checked over the whole of B1's code).
 //
 // - Steam. Every achievement call goes `SteamInternal_ContextInit(stats_context)` through the
@@ -32,7 +32,8 @@
 // under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
 // panels; panel 0's first child is a live widget whose label is three lines of 38 glyphs (y 16,
 // 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
-// the two rows of 7 Feat icons (docs/re/memory.md, "Feats and achievements").
+// the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics (1 panel of 10
+// lines) (docs/re/memory.md, "Feats and achievements").
 #pragma once
 
 #include <windows.h>
@@ -47,11 +48,12 @@ namespace zap {
 constexpr size_t kEndingPatchSize = 12;
 
 // Under FEATS OF NATU! after an AP save's ending.
-extern const char kFeatsNote[];
+inline constexpr char kFeatsNote[] = "ARCHIPELAGO SAVE: NO FEATS EARNED";
 
-// Game thread: if the Feats of Natu screen is the top menu, its title label's last line made
-// kFeatsNote, centered (`show`), or blank again; only a line that reads blank or as the note is
-// written. Returns whether the screen is up.
+// Game thread: if the Feats of Natu screen that follows an ending is the top menu, its title
+// label's last line made kFeatsNote, centered (`show`), or blank again. Only a line that reads
+// blank or as the note is written, whole, and only if every glyph of it can take the note.
+// Returns whether the screen is up.
 bool feats_screen_note(const GameAddresses& addresses, bool show);
 
 class FeatsGuard {
@@ -65,7 +67,7 @@ public:
 
     // Game thread: both put back (before an unload). The ending only where it still reads as
     // the helper wrote it.
-    void restore(const GameAddresses& addresses);
+    void restore();
 
     // Any thread, once no frame call can watch (an unload past its last frame): the stand-in off
     // and the slot put back if it still holds the stub. The stub stays, passing calls through.
@@ -83,7 +85,8 @@ public:
 
 private:
     void patch_ending(const GameAddresses& a);
-    void restore_ending(const GameAddresses& a);
+    void restore_ending();
+    bool reads_as_written() const;  // the ending's bytes are still the helper's
     void hook_steam(const GameAddresses& a);
     void unhook_steam();
     // "" if the slot and context are as traced, else why not (made once per configure).

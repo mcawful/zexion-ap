@@ -62,7 +62,6 @@ target_link_libraries(zap_feats_tests PRIVATE zap_core zap_steam_stub)
 foreach(target IN ITEMS zap_steam_stub zap_feats_tests)
   set_target_properties(${target} PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
-                        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
                         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats)
 endforeach()
 add_test(NAME feats COMMAND zap_feats_tests)

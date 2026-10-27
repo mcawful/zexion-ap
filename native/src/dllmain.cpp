@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "build.h"
@@ -209,8 +210,7 @@ void take_offline() {
         files = std::move(g_offline_files);
         g_offline_ready = false;
     }
-    std::vector<zap::OfflineSeed> put = std::move(g_put_seeds);
-    g_put_seeds.clear();
+    std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
     if (!put.empty()) g_game.add_known_seeds(put);
     if (!ready) return;
@@ -237,9 +237,7 @@ void take_offline() {
 }
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
-void note_put_seed(const std::string& request) {
-    zap::OfflineSeed seed;
-    if (!zap::put_seed_of(request, seed)) return;
+void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
     g_put_seeds.push_back(std::move(seed));
     ReleaseSRWLockExclusive(&g_offline_lock);
@@ -550,8 +548,9 @@ std::string handle(const std::string& request, bool& stop) {
     if (request.rfind("offline_put ", 0) == 0) {
         // Written by the helper, not the client: a packaged client's AppData writes are
         // redirected (offline.h).
-        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request);
-        if (reply == "stored" || reply == "unchanged") note_put_seed(request);
+        zap::OfflineSeed seed;
+        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request, &seed);
+        if (!seed.name.empty()) note_put_seed(std::move(seed));
         return reply;
     }
     if (request == "unload") {

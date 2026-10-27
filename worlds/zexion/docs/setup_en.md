@@ -63,7 +63,8 @@ same seed the same way; they all count.
 - The client says when your seed's save is loaded. When you leave it, or play a save of
   another seed, nothing is sent, and items sent to you wait until you load your seed's save
   again. Plain (not Archipelago) normal or randomizer saves are left alone.
-- Archipelago saves earn no Feats or Steam achievements; your other saves earn them as usual.
+- Archipelago saves earn no Feats, and the mod stops Steam achievements in them too (see the
+  game page); your normal saves earn them as usual.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
 
