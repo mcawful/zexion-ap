@@ -35,6 +35,11 @@
 
 namespace zap {
 
+// Game::unload_refusal's reasons.
+inline constexpr char kMenuOpenRefusal[] = "a menu is open";
+inline constexpr char kEndingRefusal[] =
+    "the ending RETURN HOME WITH THE DISKS? started is on its way";
+
 // What clients set that Game::put_back_all drops, for a refused unload to set again
 // (Game::snapshot and Game::rearm). The offline look's own settings are left out: once the
 // unload is refused, watch_offline dresses the save again by itself.
@@ -195,9 +200,16 @@ public:
     bool request_mission();
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
     // patch put back before it runs) or drop: YES pressed and the ending not started yet, or the
-    // ending routine set as the transition with the ending patched. Unload refuses then
-    // (dllmain.cpp).
+    // ending routine set as the transition with the ending patched.
     bool ending_pending() const;
+    // Game thread, in the unload's frame call before anything is put back: why it refuses then,
+    // or null. A menu open (an open screen keeps what it was built from, the pause row's disc or
+    // an item record's name, so nothing is put back under it), or ending_pending.
+    const char* unload_refusal() const {
+        if (menu_open()) return kMenuOpenRefusal;
+        if (ending_pending()) return kEndingRefusal;
+        return nullptr;
+    }
     // The file select's entries (files.h): the disk count, which the `disk_slots` request sets
     // (a count by slot), and the AP logo on AP saves (ap_file_slots); the watch runs every
     // frame; the helper's wrapper of the save entries' handler calls the game's

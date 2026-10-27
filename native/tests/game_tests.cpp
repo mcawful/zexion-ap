@@ -1543,9 +1543,13 @@ void test_return_home_lapses_away_from_the_pod() {
     reset_events();
     idle();
     game.set_hooks(hooks);
-    check(!game.ending_pending(), "nothing pending");
+    check(!game.ending_pending() && game.unload_refusal() == nullptr, "nothing pending");
+    g_menu = 2;
+    check(game.unload_refusal() == zap::kMenuOpenRefusal, "a menu open: an unload refuses");
+    g_menu = 0;
     game.mission_yes();
-    check(game.ending_pending(), "YES: the ending pending");
+    check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
+          "YES: the ending pending, and an unload refuses");
     message_showing(70);
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
@@ -1556,7 +1560,8 @@ void test_return_home_lapses_away_from_the_pod() {
     check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
               game.mission_status() == "ending started",
           "once it has ended");
-    check(!game.ending_pending(), "started, with no ending patch: nothing an unload would undo");
+    check(!game.ending_pending() && game.unload_refusal() == nullptr,
+          "started, with no ending patch: nothing an unload would undo");
     game.put_back_all(&chosen);
 
     for (int i : {zap::kIdleRoutine, zap::kPromptRoutine, zap::kEndingRoutine}) {

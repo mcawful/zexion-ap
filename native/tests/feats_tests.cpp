@@ -202,6 +202,15 @@ void test_the_ending() {
     check(site + 7 + get<int32_t>(patch.data(), 2) == g_flags + 251, "the mov clears flag 251");
     check(site + 12 + get<int32_t>(patch.data(), 8) == g_ending + kEndingJoin,
           "the jmp lands on the join");
+    // The ending routine set as the transition (RETURN HOME's, or the escape's event 2567), not
+    // run yet, with the patch in place: an unload would put the patch back first, so it refuses.
+    g_routine_table[zap::kEndingRoutine] = g_ending;
+    g_transition_fn = g_ending;
+    check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
+          "the ending queued with the patch in place: an unload refuses");
+    g_transition_fn = nullptr;
+    check(!game.ending_pending() && game.unload_refusal() == nullptr, "once it has run: not");
+    g_routine_table[zap::kEndingRoutine] = nullptr;
     // A save that already holds flag 251 (an ending before the guard).
     g_flags[250] = 0;
     g_flags[251] = 1;
@@ -342,6 +351,17 @@ void test_a_load_from_the_file_select() {
     g_save_loaded = 0xFF;
     game.watch_feats();
     check(game.feats().load_test(), "at the title again: armed at once");
+    // The title keeps the last save's marker and current_slot: with no save loaded, a menu's
+    // achievement (12GetBonus, 13SecretCode) still reaches Steam.
+    check(call_stats(g_stats_context, kSetAchievement, "12GetBonus") &&
+              stub_calls(kSetAchievement) == set_before + 1,
+          "at the title, the AP save's marker and slot left: Steam sees it");
+    g_save_loaded = 0;  // the load sets save_loaded before its tail call
+    check(!call_stats(g_stats_context, kSetAchievement, "15Explorer") &&
+              stub_calls(kSetAchievement) == set_before + 1,
+          "the load itself still blocked");
+    g_save_loaded = 0xFF;
+    set_before = stub_calls(kSetAchievement);
 
     // From the pipe thread once no frame can watch (an unload): the test off with the slot.
     void* stub = game.feats().stub();

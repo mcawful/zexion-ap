@@ -321,7 +321,6 @@ void wait_until_no_call_inside() {
 }
 
 constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
-constexpr char kEndingOnItsWay[] = "the ending RETURN HOME WITH THE DISKS? started is on its way";
 std::string undo_for_unload();
 
 // `hello`'s fields from the game's thread: configured, the escape skip offered, a client there,
@@ -578,25 +577,15 @@ std::string undo_for_unload() {
     set_unloading(true);
     // What clients set, armed again should the unload be refused (they would not resend it).
     bool saved = false;
-    bool menu_open = false;
-    bool ending = false;
+    const char* refusal = nullptr;  // Game::unload_refusal's, made before anything is put back
     zap::ClientState state;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
             [&] {
-                // An open screen keeps what it was built from (the pause row's disc, an item
-                // record's name): nothing is put back under it.
-                if (g_game.menu_open()) {
-                    menu_open = true;
-                    return std::string();
-                }
-                // An AP save's ending on its way: unloading would drop it, or put its patch
-                // back before it runs (game_calls.h, ending_pending).
-                if (g_game.ending_pending()) {
-                    ending = true;
-                    return std::string();
-                }
+                // A menu open, or an AP save's ending on its way: nothing is put back.
+                refusal = g_game.unload_refusal();
+                if (refusal != nullptr) return std::string();
                 state = g_game.snapshot();
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
@@ -615,8 +604,7 @@ std::string undo_for_unload() {
         if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };
-    if (menu_open) return refuse("a menu is open");
-    if (ending) return refuse(kEndingOnItsWay);
+    if (refusal != nullptr) return refuse(refusal);
     if (const char* blocker = set_unloading(true)) {
         return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
     }

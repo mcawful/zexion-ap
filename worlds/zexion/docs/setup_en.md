@@ -122,7 +122,7 @@ play as normal.
 | The client says Zexion is running as administrator. | Start Zexion normally, or run the Archipelago Launcher as administrator too. |
 | The client says the mod is the wrong version, or isn't installed. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
 | The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the row above. |
-| The mod misbehaves: popups, labels or menus look wrong while the client is connected. | Type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, items are not. If it says it can't now, close any menu or the map and try again. |
+| The mod misbehaves: popups, labels or menus look wrong while the client is connected. | Type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map and try again. |
 | The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
 | There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. |
 | The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, pick your seed's mode (Easy, Standard or OHKO, as in your YAML), change no other options, and choose START GAME. |

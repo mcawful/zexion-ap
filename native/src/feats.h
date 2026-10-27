@@ -29,9 +29,11 @@
 //   (0x204B70), which sets that achievement when every room is explored: all in one game call,
 //   before any frame call can see the save. So, while the slots hold AP saves (the `loading`
 //   watch argument: Game keeps it with no save loaded, and drops it once two frame calls in a row
-//   find a save loaded that is not one), the stub also blocks when the marker word is 1 and the
-//   table entry for the slot in current_slot is set, and the slot stays hooked for it. That test needs current_slot and
-//   rando_marker; without them it is not made.
+//   find a save loaded that is not one), the stub also blocks when save_loaded is not 0xFF (the
+//   load sets it before its tail jump; the title keeps the last save's marker and current_slot),
+//   the marker word is 1 and the table entry for the slot in current_slot is set, and the slot
+//   stays hooked for it. That test needs current_slot, rando_marker and save_loaded; without
+//   them it is not made.
 //
 // The stub, the stand-in and its vtable are in two pages allocated once and never freed: a call
 // that read the slot, or holds the stand-in, just before an unload still lands in live memory,

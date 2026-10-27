@@ -606,16 +606,18 @@ Working in game: 2026-10-23 ("The escape skip").
     guard is on, and while an AP save is being loaded. The game's load routine reads
     `current_slot`, sets the randomizer marker from that slot and the save loaded, and ends in
     the map's 15Explorer check, all in one game call before any frame call: a fully explored AP
-    save would otherwise set 15Explorer each time it is loaded. So the stub also blocks when the
-    marker word (`rando_marker`) is 1 and the slot in `current_slot` holds an AP save, by a table
+    save would otherwise set 15Explorer each time it is loaded. So the stub also blocks when a
+    save is loaded (`save_loaded` not 0xFF: the load sets it before its tail jump, and the title
+    keeps the last save's marker and `current_slot`), the marker word (`rando_marker`) is 1 and
+    the slot in `current_slot` holds an AP save, by a table
     of 30 bytes the frame call fills, with no save loaded, from the slots' own copies of their
     sections (`Game::ap_file_slots`, as for the file select's logo, every 16th frame call). It
     keeps the table while a save loads, and clears it once two frame calls in a row find a save
     loaded that is not an AP save. The slot is hooked whenever the stub can block: the guard on,
     or the table not empty. Without `current_slot` (a client-only key, so an offline cache may
-    lack it) or `rando_marker` there is no table; and since the table is filled only with no save
-    loaded, a helper loaded in the middle of a save has none until the title comes back. The
-    helper hooks the slot only if:
+    lack it), `rando_marker` or `save_loaded` there is no table; and since the table is filled
+    only with no save loaded, a helper loaded in the middle of a save has none until the title
+    comes back. The helper hooks the slot only if:
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
@@ -653,7 +655,8 @@ Working in game: 2026-10-23 ("The escape skip").
   not).
 - **Put back:** both as soon as no AP save is loaded, and before an unload; Steam's slot stays
   hooked with the guard off while the load test is set (the title and the file select, with an AP
-  save in a slot), the stub then passing every call but a load's through. It stays on when a client
+  save in a slot), the stub then passing every call but a load's through (at the title, a
+  menu's 12GetBonus or 13SecretCode reaches Steam). It stays on when a client
   goes away, since it applies with no client too. The ending is put back only where it still reads
   as the helper wrote it; while it does, an unload refuses (`error the ending's patch is still the
   helper's; not unloading`). Steam's slot is put back even if no frame comes, but only if it still
