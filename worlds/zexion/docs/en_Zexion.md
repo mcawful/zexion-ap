@@ -99,9 +99,10 @@ page, which only whoever created the room sees.
 
 ## Do Archipelago saves earn Feats and Steam achievements?
 
-No. Zexion's Feats and its Steam achievements are kept for the game as it ships, so an
-Archipelago save earns none of them: no achievement for items, the map or the ending, and no
-Feats of Natu screen after it. Your normal and plain randomizer saves earn them as usual.
+They shouldn't. The mod is meant to keep Zexion's Feats and its Steam achievements for the
+game as it ships, so an Archipelago save earns none of them: no achievement for items, the map
+or the ending, and no Feats of Natu screen after it. This is new and not yet confirmed in a
+full play session. Your normal and plain randomizer saves earn them as usual.
 This needs the mod in the game's folder, and holds with the client closed too, once you have
 connected to that seed at least once. Lore entries you unlock in the database stay unlocked
 for the whole game, as they would in any save.
