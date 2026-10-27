@@ -338,16 +338,20 @@ def attach_failed(exc: game.GameError) -> str:
     return "Can't reach the running game; trying again (details in the log)."
 
 
-def reload_reply(reply: str) -> tuple[bool, str]:
-    """/reload_mod: whether the mod unloaded (its ``unload`` reply, or ``error <why>`` for a
-    failed request), and the client's line. A refusal (``error <why>; not unloading``: a menu
-    or the map open, say) leaves it loaded and working."""
+def reload_reply(reply: str | None) -> tuple[bool, str]:
+    """/reload_mod: whether the mod is to be loaded again, from its ``unload`` reply (None: the
+    request failed, its pipe broken, so it unloads itself), and the client's line. A refusal
+    (``error <why>; not unloading``) leaves it loaded and working."""
+    if reply is None:
+        return True, "The Zexion mod didn't answer; loading it again."
     if reply == "bye":
         return True, "The Zexion mod was unloaded; loading it again."
     why = reply.removeprefix("error ").removesuffix("; not unloading")
+    if why == "a menu is open":
+        return False, "The Zexion mod can't be reloaded with a menu open: close it and try again."
     return False, (
-        f"The Zexion mod can't be reloaded right now ({why}). Close any menu or the map and "
-        "try /reload_mod again."
+        f"The Zexion mod can't be reloaded right now ({why}). Try /reload_mod again in a "
+        "moment, out of any menu; if it keeps refusing, restart Zexion."
     )
 
 

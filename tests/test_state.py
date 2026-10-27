@@ -207,10 +207,14 @@ def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_
 def test_reload_mod_says_whether_the_mod_unloaded() -> None:
     unloaded, line = state.reload_reply("bye")
     assert unloaded and "loading it again" in line
-    unloaded, line = state.reload_reply("error the map is open; not unloading")
-    assert not unloaded and "(the map is open)" in line and "/reload_mod" in line
-    unloaded, line = state.reload_reply("error no frame came within 1 s")
-    assert not unloaded and "(no frame came within 1 s)" in line
+    unloaded, line = state.reload_reply(None)  # the request failed: it unloads itself
+    assert unloaded and "didn't answer" in line
+    unloaded, line = state.reload_reply("error a menu is open; not unloading")
+    assert not unloaded and "with a menu open" in line
+    reply = "error the frame hook was replaced by something else; not unloading"
+    unloaded, line = state.reload_reply(reply)
+    assert not unloaded and "(the frame hook was replaced by something else)" in line
+    assert "restart Zexion" in line, "advice that does not hinge on a menu"
 
 
 def test_connects_own_disconnect_keeps_the_connection_a_disconnect_left() -> None:

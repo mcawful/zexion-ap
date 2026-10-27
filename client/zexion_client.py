@@ -70,7 +70,7 @@ from .ticks import (  # noqa: E402
 GAME = "Zexion"
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
-RELOAD_SECONDS = 3.0  # /reload_mod: the wait before loading it again, while it unloads
+RELOAD_SECONDS = 3.0  # /reload_mod: the game loop's wait while it unloads, then loaded again
 HELPER_LOST = (
     f"The Zexion mod stopped responding; trying again in {HELPER_RETRY_SECONDS:.0f} seconds. "
     "Until then items arrive without popups."
@@ -115,7 +115,7 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
-        # /reload_mod: the game loop unloads it and loads it again (RELOAD_SECONDS).
+        # /reload_mod: the game loop unloads it and loads it again (poll).
         self.reload_mod_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
         self.disarm_pending = False
@@ -233,6 +233,7 @@ class ZexionContext(CommonContext):
             self.helper.close()
         self.helper = None
         self.told = None
+        self.reload_mod_pending = False  # a request for the helper gone, not the next one
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         if conn is not None:
@@ -343,14 +344,17 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is not None and ctx.reload_mod_pending:
         ctx.reload_mod_pending = False
         try:
-            reply = await asyncio.to_thread(ctx.helper.request, "unload")
+            reply: str | None = await asyncio.to_thread(ctx.helper.request, "unload")
         except native.HelperError as exc:
-            reply = f"error {exc}"
+            log.warning(f"The unload request failed ({exc}); loading the mod again.")
+            reply = None  # its pipe broke: the helper unloads itself
         unloaded, line = state.reload_reply(reply)
         (logger.info if unloaded else logger.warning)(line)
         if unloaded:
             ctx.drop_helper()
-            ctx.helper_retry_at = time.monotonic() + RELOAD_SECONDS
+            # Nothing else this pass, so no item is written directly (no popup) meanwhile.
+            await asyncio.sleep(RELOAD_SECONDS)
+            await attach_helper(ctx)
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("escape skip check", lambda: skip_tick(ctx)),

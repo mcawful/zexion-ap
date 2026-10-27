@@ -64,10 +64,10 @@ public:
     // Game thread: a save loaded with a menu open (the pause, map or equipment screen, the quit
     // menu). Unload refuses then (dllmain.cpp, undo_for_unload).
     bool menu_open() const;
-    // Whether a client is there: set by `config`, cleared when it goes away. Gates the escape
-    // skip (also on while the offline look dresses a save: offline_skip_).
+    // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
+    // Gates the escape skip (also on while the offline look dresses a save: offline_skip_).
     bool active() const { return active_; }
-    void set_active(bool active) { active_ = active; }
+    void set_active(bool active) { active_ = active; }  // tests
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
 

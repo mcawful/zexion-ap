@@ -114,6 +114,7 @@ async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) ->
     if current.announced is None:
         # Counted as received() counts: Zexion items only.
         before = None if conn.before is None else conn.before.announced
+        conn.before = None  # read once: the old session is not kept
         current.announced = state.announced_start(raw, len(p.codes), before)
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)
     if count is None:
