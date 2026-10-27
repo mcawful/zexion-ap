@@ -12,12 +12,15 @@ that took the name first is refused.
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import time
 from ctypes import wintypes
 from pathlib import Path
 
 from . import patterns, process
+
+log = logging.getLogger("Zexion")  # the log file and the console, not the client's window
 
 DLL_NAME = "zexion_ap.dll"
 # The player's off switch, beside the proxy in the game's folder (native/proxy/version.cpp
@@ -33,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
 UNLOAD_SECONDS = CONNECT_SECONDS = 3.0
+UNLOAD_REFUSED = "; not unloading"  # the end of the helper's refusal: "error <why>; not unloading"
 
 
 class HelperError(RuntimeError):
@@ -316,6 +320,22 @@ class Helper:
             raise HelperError(f"unexpected hello: {' '.join(words)!r}")
         fields = dict(w.split("=", 1) for w in words[2:] if "=" in w)
         return {"version": words[1], **fields}
+
+    def unload(self) -> str | None:
+        """``unload``: "bye" (it unloads now), its refusal as it is (``error <why>; not
+        unloading``: it stays loaded and working, and the pipe open), or None when the request
+        failed (its pipe broken or no reply: closed, so the helper sees the client go and
+        unloads itself if it was unloading)."""
+        try:
+            # Longer than the helper's wait for a frame: a refusal that came late would be
+            # taken for a failed request, the very drop a refusal is there to prevent.
+            return self.request("unload", APPLY_SECONDS)
+        except HelperError as exc:
+            if self._handle is not None and str(exc).endswith(UNLOAD_REFUSED):
+                return f"error {exc}"
+            log.warning(f"The unload request failed ({exc}).")
+            self.close()  # any other reply: what the helper did is not known
+            return None
 
     def configure(self, rvas: dict[str, int]) -> None:
         reply = self.request(config_text(rvas), APPLY_SECONDS)

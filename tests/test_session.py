@@ -373,3 +373,99 @@ def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
     g.flags[ss.ENDING_FLAG] = 0  # another save of the seed, before its ending, loaded meanwhile
     give(after, g, [17])
     assert not after.holding and g.inv[17] == 1, "the hold was the ending's load's alone"
+
+
+def look_away(session: ss.Session, g: FakeGame) -> None:
+    """What the client does with Session.look_away while disconnected (state.end_kept_load)."""
+    if session.look_away(g, gap=0):
+        session.leave()
+
+
+def reconnect(before: ss.Session) -> ss.Session:
+    """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
+    after = ss.Session(PLAN, [list(c) for c in CELLS])
+    after.keep_ending(before)
+    return after
+
+
+def test_the_endings_hold_carries_over_while_its_load_stays(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)
+    g.flags[ss.ENDING_FLAG] = 1
+    session.step(g, [], gap=0)
+    # Disconnected: the ending's cutscenes go on, read as play.
+    look_away(session, g)
+    after = reconnect(session)
+    for _ in range(3):
+        assert after.step(g, [17], gap=0).granted == {}
+    assert after.holding and g.inv[17] == 0
+
+
+def test_the_ending_begun_while_disconnected_holds_after_the_reconnect(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)  # before the ending
+    look_away(session, g)
+    g.flags[ss.ENDING_FLAG] = 1  # it begins while disconnected, in the same load
+    after = reconnect(session)
+    assert after.carried_from is session
+    after.step(g, [17], gap=0)
+    assert after.carried_from is None, "stepped: no later end of the old load is its"
+    after.step(g, [17], gap=0)
+    assert after.holding and g.inv[17] == 0
+
+
+def test_an_ending_played_while_disconnected_holds_nothing_on_the_next_load(setup) -> None:
+    # Review 31, client finding 2, scenario A: no hold where no ending began.
+    session, g = setup
+    session.step(g, [], gap=0)  # this seed's save before its ending
+    # Disconnected: the ending, MISSION COMPLETE, the title, then the ended save loaded.
+    g.state_value = game.NO_SAVE
+    look_away(session, g)
+    g.state_value = game.IN_PLAY
+    g.flags[ss.ENDING_FLAG] = 1
+    look_away(session, g)
+    after = reconnect(session)
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1
+
+
+def test_a_hold_ends_with_its_load_while_disconnected(setup) -> None:
+    # Scenario B: the ending began (held), then the title and the ended save loaded again.
+    session, g = setup
+    session.step(g, [], gap=0)
+    g.flags[ss.ENDING_FLAG] = 1
+    session.step(g, [], gap=0)
+    assert session.holding
+    g.state_value = game.NO_SAVE
+    look_away(session, g)
+    assert not session.holding
+    g.state_value = game.IN_PLAY
+    after = reconnect(session)
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1
+
+
+def test_looking_away_needs_two_reads_and_reads_nothing_with_nothing_carried(setup) -> None:
+    session, g = setup
+    look_away(session, g)
+    assert g.reads == 0, "a session that has not read a load carries nothing"
+    session.step(g, [], gap=0)
+    g.flags[ss.ENDING_FLAG] = 1
+    session.step(g, [], gap=0)
+    reads = iter([game.NO_SAVE, game.IN_PLAY])
+    g.state = lambda energy=None: next(reads)
+    assert not session.look_away(g, gap=0), "a read the next does not agree with: not the title"
+    g.state = lambda energy=None: game.NO_SAVE
+    assert session.look_away(g, gap=0) and session.holding, "it ends nothing itself"
+
+
+def test_the_game_closing_while_disconnected_is_raised(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)
+
+    def closed(energy: int | None = None) -> str:
+        raise game.GameNotRunning("the game exited")
+
+    g.state = closed
+    with pytest.raises(game.GameNotRunning):
+        session.look_away(g, gap=0)  # the client then ends its load (game_closed)

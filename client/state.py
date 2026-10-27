@@ -13,7 +13,8 @@ Also the decisions the game loop makes from that state, as pure functions: the c
 received items' popups handed over, kept on the server (``announced_start``), the
 server's count of Energy Shields given (``shield_count``), the locations found to record there
 (``found_to_store``), ``SayOnce`` for messages that would repeat each poll, and the player's
-lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``). No
+lines when the game or the mod can't be used (``attach_failed``, ``helper_failed``,
+``reload_reply``, ``FeatsCheck``). No
 Archipelago imports, so the tests build them from slot data.
 """
 
@@ -129,7 +130,9 @@ class Connection:
 def left_connection(conn: Connection | None, left: Connection | None) -> Connection | None:
     """The connection to keep for the next one (carry_over) when the client disconnects: the
     one just ended, or, with none (Archipelago's connect disconnects first, after a Disconnect
-    already ended it), the one kept before."""
+    already ended it), the one kept before. The same pick names the connection a reconnect
+    carries from (connected), and the one kept meanwhile (away_tick: a dropped one is still
+    ``conn``)."""
     return conn if conn is not None else left
 
 
@@ -143,6 +146,16 @@ def carry_over(conn: Connection, old: Connection | None, same_seed: bool) -> Non
         return
     conn.session.keep_ending(old.session)
     conn.before = old.session
+
+
+def end_kept_load(ended: session.Session, conn: Connection | None) -> None:
+    """``ended``'s load has ended (its save left, or the game closed), found by a read in a
+    thread (Session.look_away, or a step raising GameNotRunning). A reconnect may have carried
+    its ending over meanwhile (carry_over): the current connection's session too, then, if it
+    has not stepped since (polls run one at a time, so it cannot have yet)."""
+    ended.leave()
+    if conn is not None and conn.session.carried_from is ended:
+        conn.session.leave()
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:
@@ -291,6 +304,54 @@ class SeedState:
     death_retry_at: float = 0.0
 
 
+FEATS_ASK_SECONDS = 5.0  # between asks whether the Feats guard is on for this load
+# This seed's save in play this long with the guard still off: it is not coming (the helper
+# turns it on two frame calls into an AP save's load).
+FEATS_OFF_SECONDS = 10.0
+
+
+@dataclass
+class FeatsCheck:
+    """Whether the helper keeps Feats and Steam achievements out of the loaded save of this
+    seed (its hello's ``feats``; native/README.md, "Feats and achievements in AP saves"), for
+    one load and one helper (ticks.feats_tick asks; this decides)."""
+
+    known: bool = False  # on, or on with why not all of it: not asked again
+    ask_at: float = 0.0  # when to ask next
+    off_since: float | None = None  # first read off with the save in play
+
+    def due(self, now: float) -> bool:
+        """Whether to ask the helper now (and if so, not again for FEATS_ASK_SECONDS)."""
+        if self.known or now < self.ask_at:
+            return False
+        self.ask_at = now + FEATS_ASK_SECONDS
+        return True
+
+    def seen(self, feats: str, in_play: bool, now: float, said: SayOnce) -> tuple[str, str] | None:
+        """The helper's ``feats`` read now (``in_play``: this seed's save in play): the
+        player's line and the log's detail to say, or None. Each warning is said once, and
+        again only after a load where the guard was all in place."""
+        if feats == "on" or feats.startswith("on:"):
+            self.known = True
+            why = feats_unguarded(feats)
+            if why is None:
+                said.clear("feats")
+                return None
+            line, detail = FEATS_UNGUARDED, f"not all in place: {why}"
+        else:  # off: not yet, or not for this save (the helper does not take it for an AP save)
+            if not in_play:
+                return None
+            if self.off_since is None:
+                self.off_since = now
+            if now - self.off_since < FEATS_OFF_SECONDS:
+                return None
+            line, detail = (
+                FEATS_OFF,
+                f"still {feats or 'not reported'} after {now - self.off_since:.0f} s in play",
+            )
+        return (line, detail) if said("feats", line) else None
+
+
 @dataclass
 class LoadState:
     """What the polls found of the loaded save of this seed."""
@@ -304,6 +365,8 @@ class LoadState:
     intel_want: bool = False
     # An ending without enough OS Install Disks (yet), said once a load.
     goal_withheld: bool = False
+    # The helper's Feats guard for this load (ticks.feats_tick).
+    feats: FeatsCheck = field(default_factory=FeatsCheck)
 
     def leave(self) -> None:
         """No save of this seed is loaded: the next load starts afresh (every field as new)."""
@@ -338,10 +401,32 @@ def attach_failed(exc: game.GameError) -> str:
     return "Can't reach the running game; trying again (details in the log)."
 
 
+FEATS_UNGUARDED = (
+    "The Zexion mod couldn't fully turn off Feats and Steam achievements for this Archipelago "
+    "save (details in the log): achievements may be earned in this save."
+)
+FEATS_OFF = (
+    "The Zexion mod doesn't recognize this save as an Archipelago save, so Feats and Steam "
+    "achievements aren't turned off (details in the log): achievements may be earned in this "
+    "save."
+)
+
+
+def feats_unguarded(feats: str) -> str | None:
+    """From the ``feats`` field of the helper's hello (native/README.md, "Feats and
+    achievements in AP saves"): why it could not keep Feats and Steam achievements out of the
+    AP save loaded, as the helper wrote it (``on:<why>``, its spaces written as underscores),
+    or None: ``on`` (in place), ``off`` (not on for this save, or not yet), or no field."""
+    if not feats.startswith("on:"):
+        return None
+    return feats.removeprefix("on:")
+
+
 def reload_reply(reply: str | None) -> tuple[bool, str]:
-    """/reload_mod: whether the mod is to be loaded again, from its ``unload`` reply (None: the
-    request failed, its pipe broken, so it unloads itself), and the client's line. A refusal
-    (``error <why>; not unloading``) leaves it loaded and working."""
+    """/reload_mod: whether the mod is to be loaded again, from its ``unload`` reply
+    (native.Helper.unload; None: the request failed, its pipe broken, so it unloads itself),
+    and the client's line. A refusal (``error <why>; not unloading``) leaves it loaded and
+    working."""
     if reply is None:
         return True, "The Zexion mod didn't answer; loading it again."
     if reply == "bye":

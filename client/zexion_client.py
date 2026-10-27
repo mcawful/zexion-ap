@@ -43,7 +43,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-from . import aplabels, discs, game, ids, native, shields, state, ticks  # noqa: E402
+from . import aplabels, discs, game, ids, native, session, shields, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 from .storage import announced_tick, hint_notes, hints_tick, own_found, store_found  # noqa: E402
 from .ticks import (  # noqa: E402
@@ -54,6 +54,7 @@ from .ticks import (  # noqa: E402
     deathlink_tick,
     detail,
     discs_helper_tick,
+    feats_tick,
     followups_tick,
     labels_tick,
     log,
@@ -153,7 +154,7 @@ class ZexionContext(CommonContext):
             return
         conn.session.helper = self.helper
         # The connection before: one that dropped (kept), or one a disconnect ended.
-        old = self.conn or self.left_conn
+        old = state.left_connection(self.conn, self.left_conn)
         self.left_conn = None
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
         state.carry_over(conn, old, identity == self.seed_state.identity)
@@ -234,6 +235,7 @@ class ZexionContext(CommonContext):
         self.helper = None
         self.told = None
         self.reload_mod_pending = False  # a request for the helper gone, not the next one
+        self.load.feats = state.FeatsCheck()  # the next helper is asked about its own guard
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         if conn is not None:
@@ -338,16 +340,42 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.said.clear("loop")
 
 
+def game_closed(ctx: ZexionContext, current: session.Session) -> None:
+    """The attached game has exited: nothing of this game's carries into the next one's,
+    ``current``'s load (the ending's hold) included."""
+    logger.info("Zexion has closed.")
+    ctx.shields.left()
+    ctx.load.leave()
+    state.end_kept_load(current, ctx.conn)
+    with contextlib.suppress(Exception):
+        ctx.game_conn.pm.close_process()  # the exited game's handle
+    ctx.game_conn = None
+    ctx.drop_helper()
+    ctx.said.clear("read", "read detail")  # the next game's failures are news
+
+
+async def away_tick(ctx: ZexionContext) -> None:
+    """While no connection steps a session (disconnected, or dropped): the one kept for the
+    next connection (connected, state.carry_over) still sees its save leave, so the ending's
+    hold it carries is one of the load still loaded (Session.look_away)."""
+    kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
+    if kept is None or ctx.game_conn is None:
+        return
+    try:
+        if await asyncio.to_thread(kept.session.look_away, ctx.game_conn):
+            state.end_kept_load(kept.session, ctx.conn)
+    except game.GameNotRunning:
+        game_closed(ctx, kept.session)
+    except game.GameError as exc:  # looked at again on the next poll
+        log.debug(f"Reading Zexion while disconnected failed: {exc}")
+
+
 async def poll(ctx: ZexionContext) -> None:
     """One pass of the game loop."""
     p = Poll(ctx)
     if ctx.helper is not None and ctx.reload_mod_pending:
         ctx.reload_mod_pending = False
-        try:
-            reply: str | None = await asyncio.to_thread(ctx.helper.request, "unload")
-        except native.HelperError as exc:
-            log.warning(f"The unload request failed ({exc}); loading the mod again.")
-            reply = None  # its pipe broke: the helper unloads itself
+        reply = await asyncio.to_thread(ctx.helper.unload)  # a refusal as it is; None: failed
         unloaded, line = state.reload_reply(reply)
         (logger.info if unloaded else logger.warning)(line)
         if unloaded:
@@ -368,6 +396,7 @@ async def poll(ctx: ZexionContext) -> None:
             break  # none, or it failed in the tick before
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
+        await away_tick(ctx)
         return
     # The helper's files for this seed's saves without the client.
     await side_tick(ctx, "offline files", lambda: offline_tick(ctx, p))
@@ -412,14 +441,7 @@ async def poll(ctx: ZexionContext) -> None:
             current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes
         )
     except game.GameNotRunning:
-        logger.info("Zexion has closed.")
-        ctx.shields.left()
-        ctx.load.leave()  # nothing of this game's carries into the next one's
-        with contextlib.suppress(Exception):
-            ctx.game_conn.pm.close_process()  # the exited game's handle
-        ctx.game_conn = None
-        ctx.drop_helper()
-        ctx.said.clear("read", "read detail")  # the next game's failures are news
+        game_closed(ctx, current)
         return
     except game.GameError as exc:
         if ctx.said("read", "failing"):  # said again only after a read that worked
@@ -503,6 +525,7 @@ async def poll(ctx: ZexionContext) -> None:
         ("client-back notice", lambda: client_back_tick(ctx, step)),  # CLIENT CONNECTED first
         ("follow-up popups", lambda: followups_tick(ctx, p, step)),
         ("landing pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
+        ("Feats guard check", lambda: feats_tick(ctx, step)),
     ):
         if ctx.helper is None:
             break  # none, or it failed in the tick before

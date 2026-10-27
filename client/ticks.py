@@ -1,7 +1,8 @@
 """The game loop's side tasks with the in-game helper: attaching it, and telling it what this
 seed's save needs (the labels, the ASSIST lock, INTEL CHIP, the OS Install Disks and their
 popups, the new game, the escape skip, received Energy Shields and DeathLinks, the offline
-files, and the notices for another seed's save or the client coming back).
+files, and the notices for another seed's save, the client coming back, or the Feats guard
+not in place).
 
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
@@ -615,6 +616,22 @@ async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
         return  # a plain randomizer game (no seed the mod has a file for): left alone
     if ctx.said("other save", "loaded"):  # once a load
         logger.info(state.OTHER_SAVE)
+
+
+async def feats_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """While this seed's save is loaded: whether the helper keeps Feats and Steam achievements
+    out of it (its hello's ``feats``; native/README.md, "Feats and achievements in AP saves").
+    Asked every few seconds until it is on for this load; the player is warned when it is on
+    with why not all of it, or still off with the save in play (state.FeatsCheck)."""
+    helper, check = ctx.helper, ctx.load.feats
+    if helper is None or not step.seed_matches or not check.due(time.monotonic()):
+        return
+    feats = (await asyncio.to_thread(helper.hello)).get("feats", "")
+    said = check.seen(feats, step.state == game.IN_PLAY, time.monotonic(), ctx.said)
+    if said is not None:
+        line, detail = said
+        logger.warning(line)
+        log.warning(f"The mod's Feats and achievements guard: {detail}")
 
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:

@@ -149,11 +149,32 @@ class Session:
         # cutscenes read as play). Both cleared when no save of this seed is loaded.
         self._goal_before: bool | None = None
         self.holding = False
+        # The session keep_ending carried those from, until this one's first step
+        # (state.end_kept_load).
+        self.carried_from: Session | None = None
 
     def keep_ending(self, before: Session) -> None:
         """A reconnect to the same seed and slot: the ending's hold carries over, as a new
-        session would read the goal as reached already and never hold."""
+        session would read the goal as reached already and never hold. Only a hold of the load
+        still loaded: ``before`` looked for its save leaving while no connection stepped it
+        (look_away)."""
         self._goal_before, self.holding = before._goal_before, before.holding
+        self.carried_from = before
+
+    def look_away(self, g: game.Game, gap: float = SETTLE_SECONDS) -> bool:
+        """While no step runs (the client disconnected, this session kept for the next
+        connection's keep_ending): whether its load has ended, no save loaded (the title, the
+        file select, MISSION COMPLETE onward) in two reads, as a step would see. Otherwise a
+        carried hold, or the goal as read before the ending, would land on a later load (an
+        ended save loaded again). GameNotRunning (the game closed) is raised. It reads nothing,
+        and says False, with nothing to carry. It changes nothing: it runs in a thread while a
+        reconnect may carry this session's ending over, so the caller ends the load
+        (state.end_kept_load)."""
+        if self._goal_before is None and not self.holding:
+            return False
+        first = g.state()
+        time.sleep(gap)
+        return first == game.NO_SAVE and g.state() == game.NO_SAVE
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
@@ -171,13 +192,14 @@ class Session:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
         replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
         client/hints.py)."""
+        self.carried_from = None  # stepped: its own reads decide from here
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
         if snap is None:
             return Step()
         if snap.state == game.NO_SAVE:
-            self._leave()
+            self.leave()
             return Step(left_seed=True)
         try:
             seed = game.parse_seed(snap.blob) if snap.marker == 1 else None
@@ -188,13 +210,13 @@ class Session:
         # ("unknown"), and nothing with no helper, as without it the two can't be told apart.
         if seed is None or list(seed.locations) != self.cells:
             self._due = None
-            self._leave()
+            self.leave()
             if seed is None:
                 return Step(left_seed=True)  # a normal save: nothing to say in the game
             return Step(left_seed=True, other_seed=True, state=snap.state)
         if not save_patch.section_matches(snap.blob, self.plan):
             self._due = None
-            self._leave()
+            self.leave()
             return Step(left_seed=True, other_seed=True, state=snap.state)
         collected = reconcile.collected_locations(snap.grid, self.cells)
         goal = snap.ended >= 1 and snap.finale == 0
@@ -222,8 +244,8 @@ class Session:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)
         return step
 
-    def _leave(self) -> None:
-        """No save of this seed loaded: the next load starts afresh."""
+    def leave(self) -> None:
+        """No save of this seed loaded (or the game closed): the next load starts afresh."""
         self._goal_before = None
         self.holding = False
 

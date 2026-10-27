@@ -232,3 +232,78 @@ def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
     assert state.goal_reached(True, 3, 3)
     assert not state.goal_reached(True, 3, 2), "too few disks"
     assert not state.goal_reached(False, 3, 9), "no ending"
+
+
+def test_a_feats_guard_not_all_in_place_is_read_from_hello() -> None:
+    assert state.feats_unguarded("on") is None
+    assert state.feats_unguarded("off") is None, "not on for this save, or not yet"
+    assert state.feats_unguarded("") is None, "no field"
+    why = "on:the_ending's_call_reads_otherwise;_steam_api64_is_not_loaded"
+    assert state.feats_unguarded(why) == why.removeprefix("on:")
+    assert "achievements may be earned in this save" in state.FEATS_UNGUARDED
+
+
+def test_the_feats_guard_is_asked_every_few_seconds_until_it_is_on() -> None:
+    check, said = state.FeatsCheck(), state.SayOnce()
+    assert check.due(0.0) and not check.due(4.9) and check.due(5.0)
+    assert check.seen("off", True, 5.0, said) is None, "not on yet: the helper needs two frames"
+    assert check.seen("on", True, 6.0, said) is None and check.known
+    assert not check.due(100.0), "on: not asked again this load"
+
+
+def test_a_guard_on_without_all_of_it_is_said_once() -> None:
+    said = state.SayOnce()
+    check = state.FeatsCheck()
+    line, detail = check.seen("on:the_slot_could_not_be_written", True, 0.0, said)
+    assert line == state.FEATS_UNGUARDED and "the_slot_could_not_be_written" in detail
+    assert check.known and not check.due(10.0)
+    # The next load (a new check), the same again: not said twice.
+    assert state.FeatsCheck().seen("on:the_slot_could_not_be_written", True, 0.0, said) is None
+    # A load with all of it in place, then one without: said again.
+    assert state.FeatsCheck().seen("on", True, 0.0, said) is None
+    assert state.FeatsCheck().seen("on:x", False, 0.0, said) is not None, "in a menu too"
+
+
+def test_a_guard_still_off_in_play_is_said_once() -> None:
+    # Review 32, PR #15 finding 1: a save the helper never takes for an AP save.
+    said = state.SayOnce()
+    check = state.FeatsCheck()
+    assert check.seen("off", False, 0.0, said) is None, "a menu does not start the wait"
+    assert check.seen("off", True, 1.0, said) is None
+    assert check.seen("off", False, 20.0, said) is None, "said only with the save in play"
+    assert check.seen("off", True, 10.9, said) is None
+    line, detail = check.seen("off", True, 11.0, said)
+    assert line == state.FEATS_OFF and "after 10 s in play" in detail
+    assert "achievements may be earned in this save" in line
+    assert not check.known and check.seen("off", True, 16.0, said) is None, "once"
+    # It comes on after all: known, and the warning may come again on a later load.
+    assert check.seen("on", True, 21.0, said) is None and check.known
+    later = state.FeatsCheck()
+    later.seen("off", True, 0.0, said)
+    assert later.seen("off", True, 10.0, said) is not None
+    assert state.FeatsCheck().seen("", True, 0.0, said) is None, "no field: as off"
+
+
+def test_a_new_load_or_helper_asks_afresh() -> None:
+    load = state.LoadState()
+    load.feats.known = True
+    load.leave()
+    assert not load.feats.known and load.feats.due(0.0)
+
+
+def test_a_load_ended_while_a_reconnect_carried_it_ends_for_both() -> None:
+    # Session.look_away ran in a thread while Connected carried the ending over.
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.session.holding, old.session._goal_before = True, True
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True)
+    assert new.session.holding and new.session.carried_from is old.session
+    state.end_kept_load(old.session, new)
+    assert not old.session.holding and not new.session.holding
+    assert new.session._goal_before is None
+    # One carried from no other (or that has stepped since: step clears it) is its own.
+    other = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    other.session.holding = True
+    state.end_kept_load(old.session, other)
+    assert other.session.holding
+    state.end_kept_load(old.session, None)
