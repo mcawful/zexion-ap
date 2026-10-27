@@ -97,7 +97,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -215,7 +215,8 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 ### Popups
 
 - **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
-  and at least 20 frames after the helper's last. Each plays the item's own pickup sound.
+  and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
+  on its way (its fade, before the game opens it). Each plays the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown; the client counts a received item's popup as done once `apply` took it. The queue
@@ -390,8 +391,15 @@ the helper:
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
   play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
-  (`src/mission.cpp`), whose YES closes the prompt through the game's NO and then starts the
-  ending.
+  (`src/mission.cpp`) the way the escape skip's opens: it runs the game's fade to black (area
+  event 3667, checked byte for byte, through the game's handler for its type) and sets its
+  opener as the transition 60 frames away (the pause is blocked while that counts; popups
+  wait). Its YES closes the prompt through the game's NO and then starts the ending; NO fades
+  the screen back in, as the escape skip's NO does. If event 3667 or its handler is not as
+  traced, the prompt opens at once with no fade, as before. An opener the helper takes back
+  before it runs (the save left, `discs` off, an unload) turns the fade back to the normal
+  level; one another transition (a door, a death) took the place of is asked again once idle.
+  The fade and its fade back: stand-in tests only, not yet run in game.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -404,7 +412,9 @@ the scanner's text or the pause screen's branch is still the helper's.
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
-pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
+pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"). Not yet run
+in game: the fade before RETURN HOME WITH THE DISKS? and its fade back (stand-in tests,
+2026-10-26).
 
 ### AP saves on the file select
 

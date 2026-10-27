@@ -1314,9 +1314,53 @@ void test_popups_wait_for_their_save() {
     g_rando_marker = 0;
 }
 
+// RETURN HOME WITH THE DISKS? (mission.h) once idle in play: event 3667's fade with event
+// 3666's delay, popups waiting until the game runs the opener; none of it while a popup shows.
+int g_routine_runs = 0;
+void idle_routine() { g_routine_runs += 1; }
+void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
+void opener() { g_routine_runs += 3; }  // the helper's (dllmain.cpp); not run here
+void test_popups_wait_for_the_mission_fade() {
+    reset_game();
+    reset_events();
+    zap::Game game;
+    check(configure(game).empty(), "configures");
+    zap::Hooks hooks;
+    hooks.mission_open = reinterpret_cast<void*>(&opener);
+    game.set_hooks(hooks);
+    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
+    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
+    g_transition_fn = g_routine_table[zap::kIdleRoutine];
+    g_transition_timer = 0;
+    game.request_mission();
+    message_showing(100);  // the game's save message
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_fade_calls == 0,
+          "not while a message shows");
+    message_showing(1);
+    game.watch_all(&chosen);
+    check(g_transition_timer == zap::kFadeDelay && g_fade_calls == 1 &&
+              g_fade_event == event_3667() && g_transition_fn == reinterpret_cast<void*>(&opener) &&
+              game.mission_status() == "opening after the fade",
+          "idle: the fade, the opener 60 frames away");
+    apply(game, "apply\npopup 36 FROM ALICE");
+    for (int i = 0; i < 60; ++i) game.pump_popups();
+    check(g_messages == 0 && game.queued_popups() == 1, "a popup waits through the fade");
+    game.mission_open();  // the game runs the opener
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1, "then shows");
+    game.put_back_all(&chosen);
+    g_routine_table[zap::kIdleRoutine] = nullptr;
+    g_routine_table[zap::kPromptRoutine] = nullptr;
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    reset_game();
+}
+
 }  // namespace
 
 int main() {
+    test_popups_wait_for_the_mission_fade();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();
     test_refused_unload_rearms();

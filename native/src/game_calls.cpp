@@ -198,6 +198,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     }
     feats_.set_image(image,
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
+    mission_.set_image(image);
     // A client's config: the offline look put back first, with the addresses it was set with.
     if (configured_ && active) {
         leave_offline();
@@ -309,6 +310,7 @@ void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
+    if (mission_.opening()) return;  // the fade, then RETURN HOME WITH THE DISKS?
     // The first one for this save (or for any): a client's popups for another save wait for it.
     auto next = std::find_if(popups_.begin(), popups_.end(),
                              [this](const Popup& p) { return showable(p); });

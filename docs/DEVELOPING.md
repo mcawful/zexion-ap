@@ -103,7 +103,8 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   name and no map reveal: 2026-10-25.
 - OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the
   file select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO):
-  2026-10-24; offered at the landing pod only: 2026-10-25. The reminder (ENOUGH OS INSTALL
+  2026-10-24; offered at the landing pod only: 2026-10-25 (the fade before it, as the escape
+  skip's: not yet run in game). The reminder (ENOUGH OS INSTALL
   DISKS FOUND...) after the received disks' popups, and the pause row on a pause right after
   loading: 2026-10-26. Starting disks counted, and the goal sent by a client opened after the
   ending began: 2026-10-26.
