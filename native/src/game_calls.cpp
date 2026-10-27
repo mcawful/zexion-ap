@@ -60,8 +60,9 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member of
 // GameAddresses it fills. Each lies in the image with kKeyBytes there (the offline cache checks a
 // function's first 16 bytes): functions in code, data in writable data, the CRT's import slots
-// (only read) outside code. room/before: what must also fit in the key's section. Every key is
-// required.
+// (only read) outside code. room/before: what must also fit in the key's section. A client's
+// config needs every key; in the offline cache (inactive) a client_only one missing or not
+// fitting is left null (Game::client_ready). A key is needed offline unless marked so.
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -72,6 +73,7 @@ struct ConfigKey {
     uint64_t room;         // bytes from the address that must lie in its section, if not 0
     const char* room_for;  // what they hold, for the error
     uint64_t before;       // and bytes before it
+    bool client_only = false;  // read only by the client's parts: the cache may lack it
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, nullptr, 0};
@@ -83,6 +85,11 @@ constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0,
 constexpr ConfigKey import_slot(const char* name, Member member) {
     return {name, member, Held::kImportSlot, 0, nullptr, 0};
 }
+// Read only by the client's parts: grants, new games, DeathLink, Energy Shields and RETURN HOME.
+constexpr ConfigKey client_only(ConfigKey key) {
+    key.client_only = true;
+    return key;
+}
 // transition_fn is data: it holds the address of the routine the game runs next.
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
@@ -91,37 +98,42 @@ constexpr ConfigKey kConfigKeys[] = {
          kInventoryInPlayer),
     data("save_loaded", &G::save_loaded), data("menu_state", &G::menu_state),
     data("item_records", &G::item_records), data("last_message", &G::last_message),
-    data("weapon_strip_gate", &G::weapon_strip_gate), data("sound_system", &G::sound_system),
-    code("message_fn", &G::message_fn), code("sound_fn", &G::sound_fn),
-    code("hud_number_fn", &G::hud_number_fn), code("hud_layout_fn", &G::hud_layout_fn),
-    code("energy_hud_fn", &G::energy_hud_fn), code("weapon_strip_fn", &G::weapon_strip_fn),
-    code("suit_color_fn", &G::suit_color_fn),
+    client_only(data("weapon_strip_gate", &G::weapon_strip_gate)),
+    data("sound_system", &G::sound_system), code("message_fn", &G::message_fn),
+    code("sound_fn", &G::sound_fn), client_only(code("hud_number_fn", &G::hud_number_fn)),
+    client_only(code("hud_layout_fn", &G::hud_layout_fn)),
+    client_only(code("energy_hud_fn", &G::energy_hud_fn)),
+    client_only(code("weapon_strip_fn", &G::weapon_strip_fn)),
+    client_only(code("suit_color_fn", &G::suit_color_fn)),
     data("rando_blob", &G::rando_blob, kSectionSize, "the section"),
     data("rando_marker", &G::rando_marker), data("transition_fn", &G::transition_fn),
-    data("transition_timer", &G::transition_timer), data("current_slot", &G::current_slot),
-    code("newgame_fn", &G::newgame_fn), data("current_menu", &G::current_menu),
-    data("randomizer_menu", &G::randomizer_menu, kMenuSize, "the menu's state"),
+    data("transition_timer", &G::transition_timer),
+    client_only(data("current_slot", &G::current_slot)), code("newgame_fn", &G::newgame_fn),
+    data("current_menu", &G::current_menu),
+    client_only(data("randomizer_menu", &G::randomizer_menu, kMenuSize, "the menu's state")),
     code("widget_handler_fn", &G::widget_handler_fn),
-    code("panel_handler_fn", &G::panel_handler_fn), code("rando_menu_fn", &G::rando_menu_fn),
-    code("placement_fn", &G::placement_fn), code("rando_newgame_fn", &G::rando_newgame_fn),
+    client_only(code("panel_handler_fn", &G::panel_handler_fn)),
+    client_only(code("rando_menu_fn", &G::rando_menu_fn)),
+    client_only(code("placement_fn", &G::placement_fn)),
+    client_only(code("rando_newgame_fn", &G::rando_newgame_fn)),
     data("event_table", &G::event_table), data("event_count", &G::event_count),
-    data("start_count", &G::start_count),
-    data("start_cells", &G::start_cells, 4 * kStartTableMax, "64 rooms"),
-    data("start_flags", &G::start_flags, kStartTableMax, "64 rooms"),
+    client_only(data("start_count", &G::start_count)),
+    client_only(data("start_cells", &G::start_cells, 4 * kStartTableMax, "64 rooms")),
+    client_only(data("start_flags", &G::start_flags, kStartTableMax, "64 rooms")),
     data("sprite_texture", &G::sprite_texture), code("popup_width_code", &G::popup_width_code),
     data("item_pool", &G::item_pool), data("palette_table", &G::palette_table),
     data("frame_clock", &G::frame_clock), data("sprite_templates", &G::sprite_templates),
-    data("event_handlers", &G::event_handlers), code("death_fn", &G::death_fn),
-    data("halt_flag", &G::halt_flag), code("assist_menu_fn", &G::assist_menu_fn),
-    data("object_pool", &G::object_pool), data("text_table", &G::text_table),
-    code("equipment_fn", &G::equipment_fn), code("equip_panel_fn", &G::equip_panel_fn),
-    code("widget_move_fn", &G::widget_move_fn), code("text_place_fn", &G::text_place_fn),
-    import_slot("malloc_slot", &G::malloc_slot), import_slot("free_slot", &G::free_slot),
-    code("widget_new_fn", &G::widget_new_fn), code("sprite_sheet_fn", &G::sprite_sheet_fn),
-    code("panel_link_fn", &G::panel_link_fn), code("text_set_fn", &G::text_set_fn),
-    data("routine_table", &G::routine_table),
-    data("fade", &G::fade, fade_state::kSize, "the fade's fields"),
-    data("fade_level", &G::fade_level), code("keys_branch", &G::keys_branch),
+    client_only(data("event_handlers", &G::event_handlers)),
+    client_only(code("death_fn", &G::death_fn)), client_only(data("halt_flag", &G::halt_flag)),
+    code("assist_menu_fn", &G::assist_menu_fn), data("object_pool", &G::object_pool),
+    data("text_table", &G::text_table), code("equipment_fn", &G::equipment_fn),
+    code("equip_panel_fn", &G::equip_panel_fn), code("widget_move_fn", &G::widget_move_fn),
+    code("text_place_fn", &G::text_place_fn), import_slot("malloc_slot", &G::malloc_slot),
+    import_slot("free_slot", &G::free_slot), code("widget_new_fn", &G::widget_new_fn),
+    code("sprite_sheet_fn", &G::sprite_sheet_fn), code("panel_link_fn", &G::panel_link_fn),
+    code("text_set_fn", &G::text_set_fn), client_only(data("routine_table", &G::routine_table)),
+    client_only(data("fade", &G::fade, fade_state::kSize, "the fade's fields")),
+    client_only(data("fade_level", &G::fade_level)), code("keys_branch", &G::keys_branch),
     code("file_panel_fn", &G::file_panel_fn), code("file_entry_fn", &G::file_entry_fn),
     code("copy_entry_fn", &G::copy_entry_fn), code("delete_entry_fn", &G::delete_entry_fn),
     // What the offline look reads whole (offline.h): the map grid, the flags, the save slots
@@ -188,11 +200,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
+    // The client-only keys an offline cache lacks, or has where they do not fit: left null.
+    std::string left_out;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
-        if (it == rvas.end()) return std::string("missing ") + key.name;
-        std::string why = check_key(image, image_size, key, it->second);
-        if (!why.empty()) return why;
+        std::string why = it == rvas.end() ? std::string("missing ") + key.name
+                                           : check_key(image, image_size, key, it->second);
+        if (!why.empty()) {
+            if (active || !key.client_only) return why;
+            left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
+            continue;
+        }
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
     }
     base_ = reinterpret_cast<BYTE*>(image);
@@ -218,6 +236,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     gl_ = load_gl();
     configured_ = true;
     active_ = active;
+    left_out_ = left_out;
     return "";
 }
 
@@ -250,7 +269,7 @@ void Game::refresh_hud() {
 }
 
 std::string Game::apply(const Batch& batch) {
-    if (!configured_) return "refused not configured";
+    if (!client_ready()) return "refused not configured";
     if (!in_play()) return "refused not in play";
     BYTE* inv = at_.inventory;
     for (const Cas& c : batch.cas) {
@@ -375,7 +394,7 @@ void Game::note_play(uint64_t now_ms) {
 }
 
 std::string Game::spawn_shield(uint64_t now_ms) {
-    if (!configured_) return "refused not configured";
+    if (!client_ready()) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
     }
@@ -388,7 +407,7 @@ std::string Game::kill(uint64_t now_ms) {
     // It returns at once while the halt flag is set (leaving the player alive at 0), and writes
     // unchecked through the message it posts (0x1DA6E7, 0x1DA6EF), NULL with all four slots
     // busy: so refuse while halted or a message shows.
-    if (!configured_) return "refused not configured";
+    if (!client_ready()) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
     }
@@ -435,10 +454,12 @@ std::string Game::run_item_event(uint8_t item) {
     return "";
 }
 
-void Game::arm_newgame(NewGamePlan plan) {
+bool Game::arm_newgame(NewGamePlan plan) {
+    if (!client_ready()) return false;
     newgame_ = std::move(plan);
     newgame_armed_ = true;
     newgame_status_ = "armed";
+    return true;
 }
 
 void Game::disarm_newgame() {
@@ -914,6 +935,12 @@ void Game::restore_intel() {
     intel_.restore(at_.item_records);
 }
 
+bool Game::request_mission() {
+    if (!client_ready()) return false;
+    mission_.request();
+    return true;
+}
+
 void Game::mission_open() {
     if (!configured_) return;
     // Not in play when the opener runs (the player died during the fade): asked again later.
@@ -1175,13 +1202,15 @@ void Game::rearm(ClientState s) {
         set_labels(std::move(s.labels));
         labels_seed_ = std::move(s.labels_seed);  // the seed they were set for
     }
-    if (s.newgame_armed) {
+    // The new game and the prompt only with every key, as when asked for (arm_newgame,
+    // request_mission).
+    if (s.newgame_armed && client_ready()) {
         newgame_ = std::move(s.newgame);
         newgame_armed_ = true;
         starting_ = s.starting;
         newgame_status_ = std::move(s.newgame_status);
     }
-    mission_.resume(s.mission_asked, s.mission_ending);
+    if (client_ready()) mission_.resume(s.mission_asked, s.mission_ending);
 }
 
 }  // namespace zap

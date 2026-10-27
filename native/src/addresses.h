@@ -1,8 +1,10 @@
 // Where the game's state and functions are: one member per config key (game_calls.cpp,
 // kConfigKeys, which fills them from the RVAs the client resolved by byte pattern:
 // client/patterns.py), and the helper's wrappers the game is pointed at. Game keeps one and
-// hands it to every part. Function arguments as traced in docs/re/memory.md, "Game functions
-// the helper calls"; each part's header says what it reads.
+// hands it to every part. The client-only keys' members (kConfigKeys, client_only) may be null
+// after the offline cache's configure: only the client's parts read them (Game::client_ready).
+// Function arguments as traced in docs/re/memory.md, "Game functions the helper calls"; each
+// part's header says what it reads.
 #pragma once
 
 #include <windows.h>

@@ -56,10 +56,15 @@ def test_the_helper_knows_the_builds_the_client_knows() -> None:
     ]
 
 
-def config_keys() -> dict[str, str]:
-    """The helper's kConfigKeys: each key's kind (code, data, import_slot)."""
+def config_table() -> str:
+    """The helper's kConfigKeys entries, comments stripped."""
     table = braced(source("game_calls.cpp"), "constexpr ConfigKey kConfigKeys[] = {")
-    table = re.sub(r"//[^\n]*", "", table)
+    return re.sub(r"//[^\n]*", "", table)
+
+
+def config_keys() -> dict[str, str]:
+    """The helper's kConfigKeys, in order: each key's kind (code, data, import_slot)."""
+    table = config_table()
     entries = re.findall(r'\b(code|data|import_slot)\(\s*"(\w+)"', table)
     # Every quoted name in the table is some entry's first argument: none was missed.
     first_args = re.findall(r'\(\s*"(\w+)"', table)
@@ -91,3 +96,99 @@ def test_the_helper_takes_functions_as_code() -> None:
             assert kind == "code", name
     # The code the helper patches, whose bytes the offline cache does not check, is code.
     assert {keys[name] for name in offline.NOT_CHECKED} == {"code"}
+
+
+def client_only_keys() -> set[str]:
+    """The keys kConfigKeys marks client_only: an offline cache may lack them."""
+    pattern = r'\bclient_only\(\s*(?:code|data|import_slot)\(\s*"(\w+)"'
+    return set(re.findall(pattern, config_table()))
+
+
+# Where the client's parts read the client-only members, by file: the definitions there that may
+# (a function, or "Class::" for its methods; "" for the whole file).
+# - game_calls.cpp: the grants (apply, refresh_hud), DeathLink (kill), the Energy Shield
+#   (run_item_event) and the new game (watch_newgame, start_archipelago, ensure_start_table).
+# - game_calls.h: panel_handler, for the wrapper ARCHIPELAGO's choice installs.
+# - menu.cpp: ARCHIPELAGO's choice, installed only with a new game armed.
+# - mission.cpp: RETURN HOME, which reads them only once a prompt is asked for; with none asked,
+#   its cancel and restore read nothing of them.
+CLIENT_READERS = {
+    "game_calls.cpp": (
+        "Game::apply",
+        "Game::refresh_hud",
+        "Game::kill",
+        "Game::run_item_event",
+        "Game::watch_newgame",
+        "Game::start_archipelago",
+        "Game::ensure_start_table",
+    ),
+    "game_calls.h": ("",),
+    "menu.cpp": ("ArchipelagoChoice::",),
+    "mission.cpp": ("",),
+}
+# Where a client's state comes into Game (game_calls.cpp): each refuses until every key is set
+# (Game::client_ready), and the readers above run only on what these set.
+CLIENT_GATES = (
+    "Game::apply",
+    "Game::kill",
+    "Game::spawn_shield",
+    "Game::arm_newgame",
+    "Game::request_mission",
+    "Game::rearm",
+)
+
+_DEFINITION = re.compile(
+    r"^(?!//|#|namespace|using|struct|class|enum|template|\}|\s)[^;=]*?((?:\w+::)*~?\w+)\("
+)
+
+
+def code_lines(name: str) -> list[tuple[str, int, str]]:
+    """Each line of a helper source, its comment stripped, with the column-0 definition it lies
+    in ("" before the first)."""
+    out = []
+    current = ""
+    for number, line in enumerate(source(name).splitlines(), 1):
+        m = _DEFINITION.match(line)
+        if m:
+            current = m.group(1)
+        out.append((current, number, line.split("//", 1)[0]))
+    return out
+
+
+def reads_allowed(name: str, function: str) -> bool:
+    return any(
+        rule in ("", function) or (rule.endswith("::") and function.startswith(rule))
+        for rule in CLIENT_READERS.get(name, ())
+    )
+
+
+def test_the_client_only_keys_are_read_only_by_the_clients_parts() -> None:
+    # A key the offline cache may lack is left null there: only the client's parts may read it,
+    # so none of the parts the offline look also uses (the title, the file select, a dressed
+    # save, the map, feats) can (native/tests/offline_tests.cpp drives them with it null).
+    client_only = client_only_keys()
+    assert client_only, "no client_only keys parsed from game_calls.cpp"
+    assert client_only <= set(config_keys())
+    member = re.compile(r"(?:\.|->)(" + "|".join(sorted(client_only)) + r")\b")
+    for path in sorted(SRC.iterdir()):
+        if path.suffix not in (".cpp", ".h") or path.name == "addresses.h":
+            continue
+        for function, number, code in code_lines(path.name):
+            if member.search(code):
+                assert reads_allowed(path.name, function), f"{path.name}:{number} ({function})"
+
+
+def test_the_clients_parts_wait_for_every_key() -> None:
+    bodies: dict[str, str] = {}
+    for function, _, code in code_lines("game_calls.cpp"):
+        bodies[function] = bodies.get(function, "") + code + "\n"
+    for gate in CLIENT_GATES:
+        assert "client_ready()" in bodies.get(gate, ""), f"{gate} is not gated"
+
+
+def test_the_native_test_lists_the_client_only_keys() -> None:
+    # native/tests/offline_tests.cpp configures from a cache without these, in the table's order.
+    test = (SRC.parent / "tests" / "offline_tests.cpp").read_text(encoding="utf-8")
+    listed = re.findall(r'"(\w+)"', braced(test, "const char* const kClientOnly[] = {"))
+    client_only = client_only_keys()
+    assert listed == [key for key in config_keys() if key in client_only]

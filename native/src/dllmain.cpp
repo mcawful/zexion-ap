@@ -332,6 +332,7 @@ struct HelloState {
     bool active = false;
     std::string offline = "-";
     std::string title = "0";
+    std::string left_out;  // the client-only keys the offline cache lacked (Game::left_out)
 };
 
 // A hello field kept to one word: spaces (a seed file's name, a reason) as underscores.
@@ -353,6 +354,7 @@ std::string hello() {
                 state.active = g_game.active();
                 state.offline = g_game.offline_state();
                 state.title = g_game.title_state();
+                state.left_out = g_game.left_out();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -367,6 +369,7 @@ std::string hello() {
            " offline=" + one_word(state.offline) + " active=" + (state.active ? "1" : "0") +
            " title=" + one_word(state.title) + " reads=" + std::to_string(g_offline_reads.load()) +
            "/" + std::to_string(g_offline_found.load()) +
+           (state.left_out.empty() ? "" : " cache_missing=" + state.left_out) +
            (error.empty() ? "" : " read_error=" + one_word(error));
 }
 
@@ -449,8 +452,8 @@ std::string ap_newgame(const std::string& request) {
     if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
-            g_game.arm_newgame(std::move(plan));
-            return std::string("armed");
+            return std::string(g_game.arm_newgame(std::move(plan)) ? "armed"
+                                                                   : "refused not configured");
         },
         true);
 }
@@ -473,7 +476,8 @@ std::string apply(const std::string& request) {
     zap::Batch batch;
     std::string error = zap::parse_batch(request, batch);
     if (!error.empty()) return "error " + error;
-    // Game::apply refuses itself while not configured; a batch no frame took is never applied.
+    // Game::apply refuses itself without every key (client_ready); a batch no frame took is
+    // never applied.
     return on_game([&] { return g_game.apply(batch); }, false);
 }
 
@@ -511,8 +515,7 @@ const Request kRequests[] = {
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
     {"mission_prompt", Match::kName, true,
      [] {
-         g_game.request_mission();
-         return std::string("queued");
+         return std::string(g_game.request_mission() ? "queued" : "refused not configured");
      }},
     {"mission_status", Match::kName, true, [] { return g_game.mission_status(); }},
     {"disk_slots", Match::kWord, false, nullptr, &disk_slots},
