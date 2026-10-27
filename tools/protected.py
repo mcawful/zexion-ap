@@ -73,19 +73,29 @@ def normalize(text: str) -> str:
     return text.lower()
 
 
+def _plain(text: str) -> str:
+    text = re.sub(r"[\"'`]", "", text)
+    while "/./" in text:
+        text = text.replace("/./", "/")
+    return re.sub(r"(?<=[^/.\s])[. ]+(?=/)", "", text)
+
+
 def mentions_protected(text: str) -> bool:
     """True when free text (a shell command, say) names a protected folder anywhere in it.
 
     It also reads the text with quotes and backticks removed, ``/./`` collapsed, and dots and
     spaces dropped from the end of each folder name (Windows ignores them: ``Gallant Leaf.``),
-    so none of those hide the folder.
+    so none of those hide the folder. And it reads it once more with the folder names joined
+    from quoted pieces: any run of quotes, spaces, ``,``, ``+`` and ``/`` that holds a ``,``,
+    ``+`` or ``/`` becomes one ``/``, and quotes that meet (``'Zex' 'ion'``) close up. So
+    ``os.path.join(…, 'Gallant Leaf', 'Zexion')``, ``Path(…) / 'Gallant Leaf' / 'Zexion'``,
+    ``[IO.Path]::Combine(…)`` and ``'…/common/' + 'Zexion'`` name the folder too.
     """
     norm = normalize(text)
-    plain = re.sub(r"[\"'`]", "", norm)
-    while "/./" in plain:
-        plain = plain.replace("/./", "/")
-    plain = re.sub(r"(?<=[^/.\s])[. ]+(?=/)", "", plain)
-    return any(p.search(t) for t in (norm, plain) for p in _PROTECTED)
+    joined = re.sub(r"([\"'])\s*\1", "", norm)
+    joined = re.sub(r"[\"'\s,+/]*[,+/][\"'\s,+/]*", "/", joined)
+    readings = (norm, _plain(norm), _plain(joined))
+    return any(p.search(t) for t in readings for p in _PROTECTED)
 
 
 def word_may_name_protected(word: str) -> bool:
@@ -97,15 +107,7 @@ def word_may_name_protected(word: str) -> bool:
     name (``GALLAN~1``) for a long one. It errs toward True: ``Zex*`` counts, though it could
     also match another folder.
     """
-    norm = re.sub(r"(?<!\$)\{[^{}/]*\}", "*", normalize(word))
-    parts: list[str] = []
-    for part in norm.split("/"):
-        if part not in (".", ".."):
-            part = part.rstrip(". ")
-        if part == ".." and parts and parts[-1] != "..":
-            parts.pop()
-        elif part not in (".", ""):
-            parts.append(part)
+    parts = _path_parts(word)
     for names in _PROTECTED_PARTS:
         last = len(names) - 1
         for start in range(len(parts) - last):
@@ -115,6 +117,41 @@ def word_may_name_protected(word: str) -> bool:
             ):
                 return True
     return False
+
+
+def may_be_above_protected(path: str) -> bool:
+    """True when a folder, by the names it ends in, could hold a protected folder.
+
+    That is a folder ending in ``steamapps``, ``steamapps/common``, ``Gallant Leaf``,
+    ``userdata`` or ``userdata/<account id>``, read as ``word_may_name_protected`` reads a path
+    (wildcards, 8.3 short names, ``..``). A relative path from there can reach the protected
+    folder without naming it whole. Other names (``steam-achievements``, a user named Steam) do
+    not count.
+    """
+    parts = _path_parts(path)
+    for names in _PROTECTED_PARTS:
+        for k in range(1, len(names)):
+            if len(parts) >= k and all(
+                _part_matches(parts[len(parts) - k + j], names[j], first=j == 0, last=False)
+                for j in range(k)
+            ):
+                return True
+    return False
+
+
+def _path_parts(word: str) -> list[str]:
+    """A path's components: normalized, ``.`` and ``..`` resolved, trailing dots and spaces
+    dropped, and a ``{...}`` brace read as ``*``."""
+    norm = re.sub(r"(?<!\$)\{[^{}/]*\}", "*", normalize(word))
+    parts: list[str] = []
+    for part in norm.split("/"):
+        if part not in (".", ".."):
+            part = part.rstrip(". ")
+        if part == ".." and parts and parts[-1] != "..":
+            parts.pop()
+        elif part not in (".", ""):
+            parts.append(part)
+    return parts
 
 
 _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is itself

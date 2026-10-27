@@ -9,47 +9,74 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
   session's working folder, which a ``cd`` in an earlier call may have moved).
   A command that may reach a protected folder is allowed only when every simple command in it
   is recognizably read-only, a ``.venv`` Python run of a script in ``tools/`` (those scripts
-  enforce their own rules through ``tools/protected.py``), or a ``git`` or ``gh`` command
-  that names no protected folder, and no output is redirected into a protected folder.
+  enforce their own rules through ``tools/protected.py``; after a ``cd``, only when every
+  ``cd`` goes to a checkout of this repo), or a ``git`` or ``gh`` command that names no
+  protected folder or parent of one, and no output is redirected into a protected folder.
 
-  - Text that is only data is left out: the body of a Bash heredoc fed to a reader such as
-    ``cat``, ``git`` or ``gh`` (not to a shell or Python), a PowerShell here-string's quotes,
-    and the message values of ``git`` (``-m``) and ``gh`` (``--title``, ``--body`` and the
-    like). So commit messages and PR text may name the folders.
-  - It *may reach* one when its text names one (also with quotes removed, ``/./`` collapsed
-    and trailing dots and spaces dropped before a ``/``); when any of its words could name one
-    as a path (``..``, wildcards such as ``Gallant*``, 8.3 short names:
-    ``protected.word_may_name_protected``) or resolves into one through an existing link;
-    when it may build one from pieces (a word that is the app id as a path component; or, in a
-    command that mentions ``gallant`` or ``steamapps``, a ``Zexion`` component that starts a
+  - Text that is only data is left out: the body of a Bash heredoc that nothing can run, a
+    PowerShell here-string's quotes, and the message values of ``git`` (``-m``, ``-am`` and
+    the like, and ``--message``, of ``commit``, ``merge``, ``tag``, ``stash``, ``notes`` and
+    ``commit-tree``) and ``gh`` (``--title``, ``--body`` and the like). So commit messages and
+    PR text may name the folders. A heredoc body is data when its reader is a data reader
+    (``cat``, ``grep``, ``head``, …; ``git`` only for those subcommands; ``gh``) and its output
+    goes only to the terminal, a file, or a pipe into readers that run nothing and write no
+    file (``cat``, ``grep``, ``head``, …, but not ``git``, ``gh`` or ``tee``): nothing else
+    after the ``<<`` on its line (no ``||``, ``|&``, ``&``, ``;``, backtick, ``<(``, ``>(``,
+    ``$(`` or trailing ``\\``; a descriptor copy such as ``2>&1`` is fine); no ``(``, ``<(``,
+    ``>(`` or backtick around it; a ``$(`` around it only as a git or gh message value (the
+    ``"$(cat <<'EOF' … EOF)"`` form); and a file it is saved to not named again later in the
+    command (``cat > x.sh <<'EOF' … && sh x.sh``). An unquoted delimiter's body that
+    substitutes a command (``$(``, a backtick) is code too. Heredocs are found as Bash finds
+    them: not inside quotes, comments or ``$((…))``, and the delimiter is the whole word
+    (``EOF.x``). Every other body is judged as commands.
+  - It *may reach* one when its text names one (also with quotes removed, ``/./`` collapsed,
+    trailing dots and spaces dropped before a ``/``, and pieces joined: ``'Gallant Leaf',
+    'Zexion'``, ``… / 'Zexion'`` and ``'…/common/' + 'Zexion'`` read as a path); when any of
+    its words could name one as a path (``..``, wildcards such as ``Gallant*``, 8.3 short
+    names: ``protected.word_may_name_protected``) or leads into one from the folder the command
+    runs in or a ``cd`` target, also through an existing link; when it may build one from pieces
+    (a word that is the app id as a path component; or, in a command that mentions ``gallant``
+    or ``steamapps`` or globs a parent such as ``Gall*``, a ``Zexion`` component that starts a
     word or follows a variable or a ``…Leaf``/``…common`` piece, or a ``common`` component
     after a variable); when it makes a link (``mklink``, ``ln``, a junction) next to a folder
-    named like ``gallant`` or ``steam``; or when it changes directory (``cd``, ``pushd``,
-    ``Set-Location`` and their aliases, or the ``cwd`` above) to a path with ``gallant``,
-    ``steam``, ``userdata`` or the app id in a component, or with a wildcard.
+    named like ``gallant`` or ``steam``; or when it runs in or changes directory (``cd``,
+    ``pushd``, ``Set-Location`` and their aliases, or the ``cwd`` above) to a folder that is in
+    a protected one or ends in a parent of one (``Gallant Leaf``, ``steamapps``,
+    ``steamapps/common``, ``userdata``, ``userdata/<id>``, also as wildcards or short names:
+    ``protected.may_be_above_protected``). Other names in the folder's path don't count, so a
+    worktree named ``steam-achievements`` works as any other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write:
     ``find`` without ``-delete``, ``-exec`` and the like; ``sort`` without ``-o``, ``-T``,
     ``--output`` or ``--compress-program``; ``uniq`` and ``xxd`` with at most one file operand
     (a second is their output file); ``tree`` without ``-o`` or ``-R``; ``rg`` without
     ``--pre``; ``file`` without ``-C``; ``less`` without a log file; ``sed`` without ``-i`` or
-    ``-f`` and with no ``w``, ``W`` or ``e`` command in its script. In PowerShell, a script
-    block's contents are checked as commands of their own; ``ForEach-Object`` (``foreach``,
-    ``%``) counts only with script blocks (``| foreach Delete`` calls a method); an expression
-    (one that starts with a variable, a literal, a ``[Type]``, a member of a parenthesis, or a
-    hashtable's ``key=``) counts unless it assigns (``=``, ``++``, ``--``); ``& $variable``
-    never counts.
+    ``-f`` and with no ``w``, ``W`` or ``e`` command in its script. In either shell, ``git
+    diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
+    ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c`` (so ``-cc`` blocks too, erring
+    toward blocking). In PowerShell, a script block's contents are checked as commands of their
+    own; ``ForEach-Object`` (``foreach``, ``%``) counts only with script blocks (``| foreach
+    Delete`` calls a method); an expression (one that starts with a variable, a literal, a
+    ``[Type]``, a member of a parenthesis, or a hashtable's ``key=``) counts unless it assigns
+    (``=``, ``++``, ``--``); ``& $variable`` never counts.
   - Blocked outright: command substitution (``$(``, or a backtick in Bash; the
-    ``"$(cat <<'EOF' … EOF)"`` message form is fine), a PowerShell ``::`` static call other
-    than a known reader (``[IO.File]::ReadAllBytes``, ``[BitConverter]``, ``[Math]`` and so
-    on), a PowerShell method call outside quotes other than a few string ones (``.Delete()``,
-    ``.MoveTo()``, ``.'Delete'()``, ``.$name()``), and output redirected (``>``, ``>>``,
-    ``>&``, ``&>``) to a path that still holds a variable after the hook's own environment is
-    applied (one the command sets itself), because the guard can't see where those lead.
+    ``"$(cat <<'EOF' … EOF)"`` form is fine only as a git or gh message value), a PowerShell
+    ``::`` static call other than a known reader (``[IO.File]::ReadAllBytes``,
+    ``[BitConverter]``, ``[Math]`` and so on), a PowerShell method call outside quotes other
+    than a few string ones (``.Delete()``, ``.MoveTo()``, ``.'Delete'()``, ``.$name()``), and
+    output redirected (``>``, ``>>``, ``>&``, ``&>``) to a path that still holds a variable
+    after the hook's own environment is applied (one the command sets itself), because the
+    guard can't see where those lead.
 
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
-variables or string arithmetic, a link to a parent folder made outside the command, or the
-folder behind a ``cd`` into a variable. It fails closed: if the guard itself breaks while
-looking at a call that mentions the saves or a Steam folder, the call is blocked.
+variables or string arithmetic, a link to a parent folder made outside the command, the
+folder behind a ``cd`` into a variable, or what a script file does when it runs (the file's
+contents are not read). A scratch script written by a heredoc and run in the same command is
+code, like ``python - <<'EOF'``, so it is blocked when it names the saves, even to read them;
+but the run is tied to the heredoc only by the file's name, so ``sh *.sh`` or a variable
+holding the name is missed. A ``tools/`` script is trusted in the session's own ``cwd``
+without checking that it is a checkout of this repo.
+It fails closed: if the guard itself breaks while looking at a call that mentions the saves or
+a Steam folder, the call is blocked.
 """
 
 from __future__ import annotations
@@ -105,6 +132,9 @@ HEREDOC_READERS = {
     "uniq", "cut", "tr", "base64", "xxd", "od", "hexdump", "diff", "cmp", "comm", "nl", "tac",
     "rev", "column", "fold", "paste", "less", "more", "strings",
 }  # fmt: skip
+# What a data heredoc's reader may pipe into and stay data: readers that neither run their input
+# nor write a file a later command could run (no git, gh or tee).
+PIPE_READERS = HEREDOC_READERS - {"git", "gh", "tee"}
 # ForEach-Object counts as read-only only with script blocks: a bare word is a method to call.
 PS_FOREACH = {"foreach", "%", "foreach-object"}
 PS_SCRIPT_BLOCK_PARAMS = {"-process", "-begin", "-end", "-parallel"}
@@ -137,8 +167,16 @@ FIND_WRITE_FLAGS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", 
 UNIQ_VALUED = {"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}
 XXD_VALUED = {"-c", "-cols", "-g", "-groupsize", "-l", "-len", "-n", "-name", "-o", "-offset",
               "-s", "-seek"}  # fmt: skip
-# Options of git and gh whose value is text, not a path.
+# Options of git and gh whose value is text, not a path. For git, only in the subcommands that
+# take a message (in ``git log -m`` and ``git revert -m`` it is something else).
 GIT_TEXT_OPTS = {"-m", "--message"}
+GIT_MESSAGE_SUBCOMMANDS = {"commit", "merge", "tag", "stash", "notes", "commit-tree"}
+# git's global options that take the next word as their value.
+GIT_VALUED_GLOBALS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
+# git subcommands that only read, unless told to write a file (``--output``) or to run a
+# program (``-c``, ``--config-env``, ``--ext-diff``).
+GIT_READERS = {"diff", "log", "show"}
+GIT_READER_WRITE_FLAGS = ("--output", "-c", "--config-env", "--ext-diff", "--exec-path")
 GH_TEXT_OPTS = {"-t", "--title", "-b", "--body", "-n", "--notes", "--subject", "-f",
                 "--raw-field", "-F", "--field", "-q", "--jq", "-S", "--search"}  # fmt: skip
 HARMLESS_TARGETS = {"/dev/null", "$null", "nul", "null"}
@@ -150,8 +188,10 @@ _PS_ODD_METHOD_CALL = re.compile(r"\.\s*(?:(['\"])\w+\1|\$\w+)\s*\(")  # .'Delet
 _PS_STATIC = re.compile(r"\[\s*(?:system\.)?([\w.]+)\s*\]\s*::\s*(\w+)", re.I)
 _PS_QUOTED = re.compile(r"'[^']*'|\"(?:`.|[^\"`])*\"", re.DOTALL)
 _PS_HERE_STRING = re.compile(r"@(['\"])[ \t]*\r?\n(.*?)\r?\n\1@", re.DOTALL)
-_HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|(\\?)([A-Za-z_]\w*))")
-_CAT_HEREDOC = re.compile(r"\$\(\s*cat\s*<<-?\s*(?:'[^'\n]+'|\"[^\"\n]+\"|\\?\w+)[ \t]*\n\s*\)")
+# A heredoc operator and its delimiter word (quotes and backslashes not yet removed).
+_DELIM_WORD = r"(?:[^\s;&|<>()'\"\\]|\\.|'[^'\n]*'|\"[^\"\n]*\")+"
+_HEREDOC = re.compile(rf"<<(-?)[ \t]*({_DELIM_WORD})")
+_CAT_HEREDOC = re.compile(rf"\$\(\s*cat\s*<<-?[ \t]*{_DELIM_WORD}[ \t]*\n\s*\)")
 # A ``>&`` that duplicates or closes a descriptor (2>&1, >&-) rather than naming a file.
 _FD_DUP = re.compile(r"\d*-?(?=$|[\s;&|()<>])")
 _ENV_REF = re.compile(r"\$\{env:(\w+)\}|\$env:(\w+)|\$\{(\w+)\}|\$(\w+)|%(\w+)%", re.I)
@@ -273,43 +313,221 @@ def lex(command: str, powershell: bool) -> tuple[list[list[Word]], list[Word]]:
     return [s for s in segments if s], targets
 
 
-def _cut_heredocs(command: str) -> str:
-    """The command without the bodies of Bash heredocs fed to a data reader.
+class Heredoc:
+    """A Bash heredoc: its ``<<`` operator, its body, and the parenthesis it sits in."""
 
-    The readers are ``HEREDOC_READERS``. A body fed to anything else (``python -``, ``bash``)
-    stays in, and so does one that substitutes a command (``$(`` or a backtick under an
-    unquoted delimiter).
+    def __init__(self, op: re.Match, body_start: int, body_end: int, after: int, opener) -> None:
+        self.op = op
+        self.body_start, self.body_end = body_start, body_end
+        self.after = after  # the end of the delimiter line
+        # The innermost ``(``, ``$(``, ``<(``, ``>(``, ``$((`` or backtick around the operator,
+        # as (kind, where it starts, where it ends), or None at the top level.
+        self.opener: tuple[str, int, int] | None = opener
+        token = op.group(2)
+        self.expands = not re.search(r"['\"\\]", token)  # an unquoted delimiter expands $(…)
+        self.delim = re.sub(r"\\(.)|'([^']*)'|\"([^\"]*)\"", lambda m: "".join(m.groups("")), token)
+
+
+def _heredocs(command: str) -> list[Heredoc]:
+    """The Bash heredocs in ``command``, found as Bash finds them.
+
+    A ``<<`` inside quotes or a comment is text, and ``<<`` inside ``$((…))`` is a shift. The
+    delimiter is the whole shell word after ``<<`` (``EOF.x``), quotes removed. A body runs from
+    the line after its operator to the delimiter line, or to the end of the command.
     """
+    found: list[Heredoc] = []
+    pending: list[tuple[re.Match, tuple | None]] = []
+    stack: list[tuple[str, int, int]] = []  # quotes, parentheses and backticks we are inside
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        top = stack[-1][0] if stack else ""
+        if top == "'":
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
+        if c == "\\":
+            i += 2
+            continue
+        if top == '"':
+            if c == '"':
+                stack.pop()
+            elif command.startswith("$(", i):
+                kind = "$((" if command.startswith("$((", i) else "$("
+                stack.append((kind, i, i + len(kind)))
+                i += len(kind)
+                continue
+            elif c == "`":
+                stack.append(("`", i, i + 1))
+            i += 1
+            continue
+        arithmetic = any(k in ("$((", "((") for k, _, _ in stack)
+        if c in "'\"":
+            stack.append((c, i, i + 1))
+        elif c == "`":
+            if top == "`":
+                stack.pop()
+            else:
+                stack.append(("`", i, i + 1))
+        elif command.startswith("((", i) or command.startswith("$((", i):
+            kind = "$((" if c == "$" else "(("
+            stack.append((kind, i, i + len(kind)))
+            i += len(kind)
+            continue
+        elif c == ")" and top in ("$((", "((") and command.startswith("))", i):
+            stack.pop()
+            i += 2
+            continue
+        elif c == "(":
+            kind = command[i - 1] + "(" if i and command[i - 1] in "$<>" else "("
+            stack.append((kind, i - len(kind) + 1, i + 1))
+        elif c == ")":
+            if top.endswith("("):
+                stack.pop()
+        elif c == "#" and (i == 0 or command[i - 1] in " \t\n;&|()"):
+            newline = command.find("\n", i)
+            i = n if newline < 0 else newline
+            continue
+        elif command.startswith("<<<", i):
+            i += 3
+            continue
+        elif command.startswith("<<", i):
+            op = _HEREDOC.match(command, i)
+            if op and not arithmetic:
+                pending.append((op, stack[-1] if stack else None))
+                i = op.end()
+                continue
+            i += 2
+            continue
+        elif c == "\n" and pending:
+            line_start = i + 1
+            for op, opener in pending:
+                strip = bool(op.group(1))
+                doc = Heredoc(op, line_start, n, n, opener)
+                while line_start < n:
+                    line_end = command.find("\n", line_start)
+                    line_end = n if line_end < 0 else line_end
+                    line = command[line_start:line_end].rstrip("\r")
+                    if (line.lstrip("\t") if strip else line) == doc.delim:
+                        doc.body_end, doc.after = line_start, line_end
+                        line_start = line_end + 1
+                        break
+                    line_start = line_end + 1
+                found.append(doc)
+            pending = []
+            i = found[-1].after
+            continue
+        i += 1
+    return found
+
+
+def _git_subcommand(words: list[str]) -> str:
+    """The subcommand of a ``git`` command (its words, ``git`` first), past global options."""
+    skip = False
+    for w in words[1:]:
+        if skip:
+            skip = False
+        elif w in GIT_VALUED_GLOBALS:
+            skip = True
+        elif not w.startswith("-"):
+            return w.lower()
+    return ""
+
+
+def _is_message_option(words: list[str], option: str, sub: str | None = None) -> bool:
+    """Whether ``option`` of the git or gh command ``words`` takes message text. ``sub``: the
+    git subcommand, when the caller has it."""
+    verb = _verb(words[0]) if words else ""
+    if verb == "gh":
+        return option in GH_TEXT_OPTS
+    sub = _git_subcommand(words) if sub is None and verb == "git" else sub
+    if verb == "git" and sub in GIT_MESSAGE_SUBCOMMANDS:
+        return option in GIT_TEXT_OPTS or re.fullmatch(r"-[a-zA-Z]*m", option) is not None
+    return False
+
+
+def _in_message(command: str, at: int) -> bool:
+    """Whether the ``$(`` at ``at`` is the value of a git or gh message option."""
+    head = command[:at]
+    start = max(head.rfind(c) for c in ";&|\n(") + 1
+    segments, _ = lex(head[start:], False)
+    words = _strip_prefix(segments[-1], False) if segments else []
+    if not words or len(words) < 2:
+        return False
+    last = words[-1]
+    if last == "":  # -m "$(…: the quote opened a new word
+        return _is_message_option(words[:-1], words[-2])
+    if last.endswith("="):  # --body="$(…
+        return _is_message_option(words, last[:-1])
+    return _is_message_option(words, last)  # -m $(… or -m"$(…
+
+
+def _saved_and_used(command: str, doc: Heredoc, piece: str, reader: str) -> bool:
+    """Whether a heredoc's reader saves it to a file that the command names again later."""
+    rest = command[doc.op.end() : command.find("\n", doc.op.end())]
+    files = re.findall(r"\d?>>?\|?[ \t]*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)", piece + " " + rest)
+    if reader == "tee":
+        files += [w for w in piece.split()[1:] if not w.startswith("-")]
+    later = command[doc.after :]
+    for f in files:
+        name = re.split(r"[\\/]", f.strip("\"'"))[-1]
+        if not name or name.lower() in HARMLESS_TARGETS:
+            continue
+        if re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w.-])", later):
+            return True
+    return False
+
+
+def _heredoc_is_data(command: str, doc: Heredoc) -> bool:
+    """Whether nothing can run a heredoc's body: it goes to a data reader and stays data.
+
+    The reader (the command the ``<<`` belongs to) must be in ``HEREDOC_READERS``; for ``git``,
+    a subcommand that takes a message. Its output must go only to the terminal or a file: no
+    ``|``, ``&``, ``;``, ``<(`` or ``>(`` after the operator on its line; no ``(``, ``<(``,
+    ``>(`` or backtick around it; around a ``$(``, only as a git or gh message value; and a
+    file it is saved to is not named again later in the command (``&& sh x.sh``). A body under
+    an unquoted delimiter that substitutes a command (``$(`` or a backtick) is code too.
+    """
+    op = doc.op
+    lo = doc.opener[2] if doc.opener else 0
+    head = command[lo : op.start()]
+    piece = head[max(head.rfind(c) for c in ";&|\n()") + 1 :]
+    words = piece.split()
+    while words and re.fullmatch(r"[A-Za-z_]\w*=\S*", words[0]):
+        words.pop(0)
+    reader = _verb(words[0]) if words else ""
+    if reader not in HEREDOC_READERS:
+        return False
+    if reader == "git" and _git_subcommand(words) not in GIT_MESSAGE_SUBCOMMANDS:
+        return False  # git apply, git am: the body is a patch
+    body = command[doc.body_start : doc.body_end]
+    if doc.expands and ("$(" in body or "`" in body):
+        return False
+    line_end = command.find("\n", op.end())
+    rest = re.sub(r"\d*>&(?:\d+|-)|&>>?", " ", command[op.end() : line_end])
+    if re.search(r"[&;`]|\|\||\|&|[<>]\(|\$\(|\\\s*$", rest):
+        return False
+    for stage in rest.split("|")[1:]:  # piped on: only into readers that run nothing
+        stage_words = stage.split()
+        while stage_words and re.fullmatch(r"[A-Za-z_]\w*=\S*", stage_words[0]):
+            stage_words.pop(0)
+        if not stage_words or _verb(stage_words[0]) not in PIPE_READERS:
+            return False
+    if doc.opener and (doc.opener[0] != "$(" or not _in_message(command, doc.opener[1])):
+        return False
+    return not _saved_and_used(command, doc, piece, reader)
+
+
+def _cut_heredocs(command: str) -> str:
+    """The command without the bodies of Bash heredocs that are only data
+    (``_heredoc_is_data``). Every other body stays in, to be judged as code."""
     out: list[str] = []
     pos = 0
-    while (m := _HEREDOC.search(command, pos)) is not None:
-        delim = m.group(2) or m.group(3) or m.group(5)
-        expands = m.group(5) is not None and not m.group(4)
-        newline = command.find("\n", m.end())
-        if newline < 0:
-            break
-        body_start = line_start = newline + 1
-        body_end = after = len(command)
-        while line_start < len(command):
-            line_end = command.find("\n", line_start)
-            line_end = len(command) if line_end < 0 else line_end
-            line = command[line_start:line_end].rstrip("\r")
-            if (line.lstrip("\t") if m.group(1) else line) == delim:
-                body_end, after = line_start, line_end
-                break
-            line_start = line_end + 1
-        piece = re.split(r"[;&|\n(]|\$\(", command[: m.start()])[-1].split()
-        while piece and re.fullmatch(r"[A-Za-z_]\w*=\S*", piece[0]):
-            piece.pop(0)
-        reader = _verb(piece[0]) if piece else ""
-        body = command[body_start:body_end]
-        runs = expands and ("$(" in body or "`" in body)  # <<EOF bodies substitute commands
-        if reader in HEREDOC_READERS and not runs:
-            out.append(command[pos:body_start])
-            pos = after
-        else:
-            out.append(command[pos:after])
-            pos = after
+    for doc in _heredocs(command):
+        if _heredoc_is_data(command, doc):
+            out.append(command[pos : doc.body_start])
+            pos = doc.after
     out.append(command[pos:])
     return "".join(out)
 
@@ -424,7 +642,19 @@ def _bash_args_write(verb: str, args: list[Word]) -> bool:
     return False
 
 
+def _git_reads(words: list[Word]) -> bool:
+    """``git diff``, ``log`` or ``show`` with nothing that makes it write a file or run one."""
+    return (
+        bool(words)
+        and _verb(words[0]) == "git"
+        and _git_subcommand(words) in GIT_READERS
+        and not any(w.startswith(GIT_READER_WRITE_FLAGS) for w in words[1:])
+    )
+
+
 def _segment_is_read_only(words: list[Word], powershell: bool) -> bool:
+    if _git_reads(_strip_prefix(words, powershell)):
+        return True
     if powershell:
         return _ps_segment_is_read_only(words)
     words = _strip_prefix(words, powershell)
@@ -480,13 +710,16 @@ def _text_words(segments: list[list[Word]], powershell: bool) -> set[int]:
         if not words or _verb(words[0]) not in ("git", "gh"):
             continue
         git = _verb(words[0]) == "git"
+        sub = _git_subcommand(words) if git else ""
+        if git and sub not in GIT_MESSAGE_SUBCOMMANDS:
+            continue
         opts = GIT_TEXT_OPTS if git else GH_TEXT_OPTS
         take_next = False
         for a in words[1:]:
             if take_next:
                 take_next = False
                 is_text = True
-            elif a in opts or (git and re.fullmatch(r"-[a-zA-Z]*m", a)):
+            elif _is_message_option(words, a, sub):
                 take_next = True
                 continue
             else:
@@ -499,7 +732,7 @@ def _text_words(segments: list[list[Word]], powershell: bool) -> set[int]:
 
 
 def _dir_is_suspect(text: str, protected) -> bool:
-    """A folder above or near a protected one (by name), or one spelled with a wildcard."""
+    """A folder near a protected one by name (for links), or one spelled with a wildcard."""
     low = protected.normalize(text)
     if re.search(r"[*?\[]|~\d", low):
         return True
@@ -507,29 +740,56 @@ def _dir_is_suspect(text: str, protected) -> bool:
     return any("gallant" in c or "steam" in c or c in ("userdata", app_id) for c in low.split("/"))
 
 
-def _changes_directory_to_suspect(segments: list[list[Word]], cwd: str, protected) -> bool:
-    dirs = [cwd] if cwd else []
+def _is_absolute(path: str) -> bool:
+    return os.path.isabs(path) or re.match(r"[A-Za-z]:", path) is not None
+
+
+def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> list[str | None]:
+    """The folders the command's ``cd``s go to, resolved against ``cwd`` once variables the
+    hook's environment knows are expanded. None: a target that still holds a variable, so its
+    folder is unknown."""
+    out: list[str | None] = []
+    base = cwd or os.getcwd()
+    assigned = _assigned_names(code, segments)
     for words in segments:
         words = _strip_prefix(words, False)
-        if words and _verb(words[0]) in CD_VERBS:
-            dirs.append(" ".join(words[1:]))
-    return any(_dir_is_suspect(d, protected) for d in dirs)
+        if not words or _verb(words[0]) not in CD_VERBS:
+            continue
+        args = [w for w in words[1:] if not w.startswith("-")]
+        if not args:
+            continue
+        target = _expand_env(protected._expand(args[0]), assigned)
+        if re.search(r"[$%]", target):
+            out.append(None)
+        else:
+            out.append(target if _is_absolute(target) else os.path.join(base, target))
+    return out
 
 
-def _resolves_protected(word: str, cwd: str, protected) -> bool:
-    """Whether a path-like word leads into a protected folder once links are resolved."""
-    if (
-        word.startswith("-")
-        or "://" in word
-        or not re.search(r"[\\/]", word)
-        or re.search(r"[*?\[\n]", word)
-        or len(word) > 400
-    ):
+def _folder_is_suspect(folder: str | None, protected) -> bool:
+    """A folder in a protected one, or one whose last names could hold one (``Gallant Leaf``,
+    ``steamapps``, …: ``protected.may_be_above_protected``). Not judged by other names in it,
+    so a worktree named ``steam-achievements`` or a user named Steam is fine."""
+    return folder is not None and (
+        protected.is_protected_path(folder) or protected.may_be_above_protected(folder)
+    )
+
+
+def _reaches_protected(word: str, folders: list[str | None], protected) -> bool:
+    """Whether a word, read as a path from one of ``folders`` (or as it is), leads into a
+    protected folder, also through an existing link."""
+    if word.startswith("-") or "://" in word or "\n" in word or len(word) > 400 or not word:
         return False
     path = protected._expand(word)
-    if not (os.path.isabs(path) or re.match(r"[A-Za-z]:", path)):
-        path = os.path.join(cwd or os.getcwd(), path)
-    return protected.is_protected_path(path)
+    if _is_absolute(path):
+        return bool(re.search(r"[\\/]", path)) and protected.is_protected_path(path)
+    bases = [f for f in folders if f is not None] or [os.getcwd()]
+    return any(protected.is_protected_path(os.path.join(b, path)) for b in bases)
+
+
+def _repo_checkout(folder: str | None) -> bool:
+    """Whether a folder is a checkout of this repo, so its ``tools/`` are the repo's tools."""
+    return folder is not None and os.path.isfile(os.path.join(folder, "tools", "protected.py"))
 
 
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
@@ -538,7 +798,15 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     parts = [[c for c in protected.normalize(w).split("/") if c] for w in words]
     if any(app_id in p for p in parts):
         return True
-    if "gallant" not in low and "steamapps" not in low:
+    # A glob such as Gall* may stand for the parent: for d in "$APPDATA"/Gall*; … "$d/Zexion"
+    globbed = any(
+        re.match(r"[a-z]", c)
+        and re.search(r"[*?\[]|~\d", c)
+        and protected.may_be_above_protected(c)
+        for p in parts
+        for c in p
+    )
+    if "gallant" not in low and "steamapps" not in low and not globbed:
         return False
     for p in parts:
         for i, c in enumerate(p):
@@ -553,7 +821,7 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     return False
 
 
-def _may_reach_protected(text, words, targets, segments, cwd: str, protected) -> bool:
+def _may_reach_protected(text, words, targets, folders, cwd: str, protected) -> bool:
     if protected.mentions_protected(text) or (cwd and protected.mentions_protected(cwd)):
         return True
     every = words + targets + ([_word(cwd, cwd, 0, 0)] if cwd else [])
@@ -565,9 +833,9 @@ def _may_reach_protected(text, words, targets, segments, cwd: str, protected) ->
         _dir_is_suspect(w, protected) for w in words
     ):
         return True
-    if _changes_directory_to_suspect(segments, cwd, protected):
+    if any(_folder_is_suspect(f, protected) for f in folders):
         return True
-    return any(_resolves_protected(w, cwd, protected) for w in (words + targets)[:64])
+    return any(_reaches_protected(w, folders, protected) for w in (words + targets)[:64])
 
 
 def _assigned_names(code: str, segments: list[list[Word]]) -> set[str]:
@@ -600,8 +868,9 @@ def _is_venv_tool(words: list[Word], powershell: bool) -> bool:
     )
 
 
-def _is_repo_vcs(words: list[Word], text_ids: set[int], cwd: str, protected, ps: bool) -> bool:
-    """A git or gh command whose non-message words name no protected or suspect folder."""
+def _is_repo_vcs(words: list[Word], text_ids: set[int], folders, protected, ps: bool) -> bool:
+    """A git or gh command whose non-message words name no protected folder or a parent of
+    one."""
     words = _strip_prefix(words, ps)
     if not words or _verb(words[0]) not in ("git", "gh"):
         return False
@@ -611,8 +880,8 @@ def _is_repo_vcs(words: list[Word], text_ids: set[int], cwd: str, protected, ps:
     return not any(
         protected.mentions_protected(a)
         or protected.word_may_name_protected(a)
-        or _dir_is_suspect(a, protected)
-        or _resolves_protected(a, cwd, protected)
+        or protected.may_be_above_protected(a)
+        or _reaches_protected(a, folders, protected)
         for a in args
     )
 
@@ -661,7 +930,9 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     text = code
     for w in sorted((w for s in segments for w in s if id(w) in text_ids), key=lambda w: -w.start):
         text = text[: w.start] + " " * (w.end - w.start) + text[w.end :]
-    if not _may_reach_protected(text, words, targets, segments, cwd, protected):
+    cds = _cd_targets(segments, cwd, code, protected)
+    folders = ([cwd] if cwd else []) + cds
+    if not _may_reach_protected(text, words, targets, folders, cwd, protected):
         return None
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
@@ -678,19 +949,21 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         if (
             protected.is_protected_path(expanded)
             or protected.word_may_name_protected(expanded)
-            or _resolves_protected(expanded, cwd, protected)
+            or _reaches_protected(expanded, folders, protected)
             or "$" in expanded
             or "%" in expanded
         ):
             return f"{BLOCK_HINT}\nRedirect target: {target}"
 
-    suspect_dir = _changes_directory_to_suspect(segments, cwd, protected)
+    suspect_dir = any(_folder_is_suspect(f, protected) for f in folders)
+    # After a cd, tools/ is the repo's own only in a checkout of the repo.
+    repo_tools = all(_repo_checkout(f) for f in cds)
     for words in segments:
         if _segment_is_read_only(words, powershell):
             continue
         if not suspect_dir and (
-            _is_venv_tool(words, powershell)
-            or _is_repo_vcs(words, text_ids, cwd, protected, powershell)
+            (repo_tools and _is_venv_tool(words, powershell))
+            or _is_repo_vcs(words, text_ids, folders, protected, powershell)
         ):
             continue
         shown = " ".join(w for w in words if id(w) not in text_ids)

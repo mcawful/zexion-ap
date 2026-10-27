@@ -18,6 +18,7 @@ HOOK = Path(guard_protected.__file__)
 SAVES = "C:/Users/someone/AppData/Roaming/Gallant Leaf/Zexion"
 GAME = "E:/Program Files (x86)/Steam/steamapps/common/Zexion"
 CLOUD = "C:/Program Files (x86)/Steam/userdata/123/3392510/remote"
+REPO = protected.ROOT.as_posix()  # a real checkout: after a cd, tools/ must be the repo's
 
 
 def run(tool: str, **tool_input) -> str | None:
@@ -219,7 +220,7 @@ BASH_DAILY = [
     f'.venv/Scripts/python tools/save_lab.py diff "{SAVES}/Save Game 1.sav" lab/w/x.sav | head -40',
     f'.venv/Scripts/python tools/check_patterns.py "{GAME}/Zexion.exe" 2>&1 | tail -5',
     f'ZEXION_SAVE_DIR="{SAVES}" .venv/Scripts/python tools/save_lab.py slots',
-    f'cd D:/code/zexion-ap && .venv/Scripts/python tools/save_lab.py slots --save-dir "{SAVES}"',
+    f'cd "{REPO}" && .venv/Scripts/python tools/save_lab.py slots --save-dir "{SAVES}"',
     # A scratch script that only names the saves; reads with read, less, sed -n, grep.
     f"cat > lab/probe.py <<'EOF'\nSAVES = r'{SAVES}'\nprint(SAVES)\nEOF",
     f'while read f; do echo "$f"; done < <(ls "{SAVES}")',
@@ -301,9 +302,97 @@ PS_BLOCKED_MORE = [
 ]
 
 
+RM_SAVE = f"import os; os.remove(r'{SAVES}/Save Game 2.sav')"
+
+# Heredoc bodies that end up run, and lexer differences that would hide a command.
+BASH_HEREDOC_RUN = [
+    # Piped into an interpreter, xargs, or anything that is not a plain reader.
+    f"cat <<'EOF' | .venv/Scripts/python -\n{RM_SAVE}\nEOF",
+    f"cat <<'EOF' | python3\n{RM_SAVE}\nEOF",
+    f"cat <<'EOF' | bash\ncp lab/x.dll '{GAME}/zlib.dll'\nEOF",
+    f"cat <<'EOF' | sh -s\nrm -f '{SAVES}/Save Game 2.sav'\nEOF",
+    f"cat <<'EOF' | xargs -d '\\n' rm -f\n{SAVES}/Save Game 2.sav\nEOF",
+    f"cat <<'EOF' | powershell -Command -\nRemove-Item '{SAVES}/Save Game 2.sav'\nEOF",
+    f"cat <<'EOF' | grep -v '#' | bash\nrm -f '{SAVES}/x'\nEOF",
+    f"cat <<'EOF' |\nrm -f '{SAVES}/x'\nEOF\nbash",
+    f"(cat <<'EOF'\nrm -f '{SAVES}/x'\nEOF\n) | bash",
+    # Run through a substitution.
+    f"bash -c \"$(cat <<'EOF'\nrm -f '{SAVES}/Save Game 2.sav'\nEOF\n)\"",
+    f"eval \"$(cat <<'EOF'\nrm -f '{SAVES}/Save Game 2.sav'\nEOF\n)\"",
+    f".venv/Scripts/python <(cat <<'EOF'\n{RM_SAVE}\nEOF\n)",
+    f".venv/Scripts/python -c \"$(cat <<'EOF'\n{RM_SAVE}\nEOF\n)\"",
+    f"git log -m \"$(cat <<'EOF'\n{RM_SAVE}\nEOF\n)\"",
+    # Saved to a file, then run.
+    f"cat > lab/x.py <<'EOF' && .venv/Scripts/python lab/x.py\n{RM_SAVE}\nEOF",
+    f"cat > lab/x.py <<'EOF'\n{RM_SAVE}\nEOF\n.venv/Scripts/python lab/x.py",
+    f"tee lab/x.sh <<'EOF' >/dev/null\nrm -f '{SAVES}/x'\nEOF\nsh lab/x.sh",
+    # git reads a patch, not a message, from stdin.
+    f"git apply --unsafe-paths --directory=x <<'EOF'\n--- a/x\n+++ b/{SAVES}/x\nEOF",
+    # The delimiter is the whole word; a quoted or shifted << is no heredoc.
+    f'cat <<EOF.x\ndata\nEOF.x\ncp lab/a "{SAVES}/Save Game 30.sav"\nEOF',
+    f'cat <<EOF-1\ndata\nEOF-1\nrm "{SAVES}/Save Game 2.sav"\nEOF',
+    f'grep -c "<<EOF" docs/x.md\nrm "{SAVES}/Save Game 2.sav"\nEOF',
+    f'git commit -m "Lexer: cut <<EOF bodies"\nrm "{SAVES}/Save Game 2.sav"\nEOF',
+    f'x=$((1<<EOF))\nrm "{SAVES}/Save Game 2.sav"\nEOF',
+    # -m is a message only where git takes one.
+    f'git log -m --output="{SAVES}/x.txt" -1',
+    f'git show -m --output="{GAME}/zlib.dll" HEAD',
+    f'git diff --output="{SAVES}/x" HEAD',
+    f'git -c diff.external=x diff --no-index "{SAVES}/a" lab/b',
+]
+
+# Paths joined from quoted pieces inside one word of code.
+GL_ZX = "'Gallant Leaf', 'Zexion'"
+BASH_JOINED = [
+    f".venv/Scripts/python -c \"import os,shutil; shutil.copy2('lab/a', "
+    f"os.path.join(os.environ['APPDATA'], {GL_ZX}, 'Save Game 30.sav'))\"",
+    f".venv/Scripts/python -c \"import os; os.remove(os.path.join(os.environ['APPDATA'], {GL_ZX}, "
+    "'Save Game 2.sav'))\"",
+    ".venv/Scripts/python -c \"import os,pathlib,shutil; shutil.copy2('lab/a', "
+    "pathlib.Path(os.environ['APPDATA']) / 'Gallant Leaf' / 'Zexion' / 'x.sav')\"",
+    'python3 -c \'import os,shutil; shutil.copy2("lab/a", os.path.join(os.environ["APPDATA"], '
+    '"Gallant Leaf", "Zexion", "x.sav"))\'',
+    "node -e \"require('fs').copyFileSync('lab/a', require('path').join(process.env.APPDATA, "
+    f"{GL_ZX}, 'x.sav'))\"",
+    ".venv/Scripts/python -c \"import shutil; shutil.copy2('lab/x.dll', "
+    "'E:/SteamLibrary/steamapps/common/' + 'Zexion/zlib.dll')\"",
+    ".venv/Scripts/python -c \"import os,shutil; shutil.copy2('lab/x.dll', "
+    "os.path.join('E:/SteamLibrary/steamapps', 'common', 'Zexion', 'zlib.dll'))\"",
+    ".venv/Scripts/python -c \"import os; os.remove(os.environ['APPDATA'] + '/Gallant Leaf/Zex' "
+    "'ion/x.sav')\"",
+    # A glob for the parent in one word, Zexion after a variable in another.
+    'for d in "$APPDATA"/Gall*; do cp lab/a "$d/Zexion/x.sav"; done',
+    # A tool run after a cd out of the repo: tools/ is someone else's.
+    f'cd "$TEMP" && D:/code/zexion-ap/.venv/Scripts/python tools/w.py "{SAVES}/x"',
+    f'cd lab && ../.venv/Scripts/python tools/save_lab.py slots --save-dir "{SAVES}"',
+]
+PS_JOINED = [
+    f"Copy-Item lab\\a ([IO.Path]::Combine($env:APPDATA, {GL_ZX}, 'x.sav'))",
+    "Copy-Item lab\\a ([IO.Path]::Combine($env:APPDATA,'Gallant Leaf','Zexion','x.sav'))",
+]
+
+# Heredocs that only feed data, and reads that name the folders.
+BASH_DATA = [
+    f"cat <<'EOF' | grep -c Save | head -1\n{SAVES}/Save Game 2.sav\nEOF",
+    f"cat <<'EOF' >&2\n{SAVES}\nEOF",
+    f"cat <<EOF.x\n{SAVES}\nEOF.x",
+    f"git -c user.name=x commit -F - <<'EOF'\nGuard: {SAVES}\nEOF",
+    f"gh pr create --title x --body=\"$(cat <<'EOF'\nBlocks {GAME}\nEOF\n)\"",
+    f"git commit -m\"$(cat <<'EOF'\nGuard: {SAVES}\nEOF\n)\" && git push",
+    f"echo $((1<<4)); cat <<'EOF'\n{SAVES}\nEOF",
+    f"cat > lab/notes.md <<'EOF'\n{SAVES}\nEOF\ngit status",
+    'grep -n "<<EOF" .claude/hooks/guard_protected.py',
+    f'git diff --no-index "{SAVES}/Save Game 1.sav" lab/work/x.sav',
+    f'git log --oneline -3 && ls "{SAVES}"',
+    f'git show HEAD:docs/re/saves.md | grep "{SAVES}"',
+    f'ls "{SAVES}" && git push -u origin claude/steam-achievements',
+    "git commit -m \"Docs: os.path.join(appdata, 'Gallant Leaf', 'Zexion')\"",
+]
+
+
 @pytest.mark.parametrize(
     ("tool", "command"),
-    [("Bash", c) for c in BASH_ALLOWED + BASH_DAILY]
+    [("Bash", c) for c in BASH_ALLOWED + BASH_DAILY + BASH_DATA]
     + [("PowerShell", c) for c in PS_ALLOWED + PS_DAILY],
 )
 def test_read_only_commands_allowed(tool: str, command: str) -> None:
@@ -312,11 +401,88 @@ def test_read_only_commands_allowed(tool: str, command: str) -> None:
 
 @pytest.mark.parametrize(
     ("tool", "command"),
-    [("Bash", c) for c in BASH_BLOCKED + BASH_BLOCKED_MORE]
-    + [("PowerShell", c) for c in PS_BLOCKED + PS_BLOCKED_MORE],
+    [("Bash", c) for c in BASH_BLOCKED + BASH_BLOCKED_MORE + BASH_HEREDOC_RUN + BASH_JOINED]
+    + [("PowerShell", c) for c in PS_BLOCKED + PS_BLOCKED_MORE + PS_JOINED],
 )
 def test_writing_commands_blocked(tool: str, command: str) -> None:
     assert run(tool, command=command)
+
+
+@pytest.mark.parametrize(
+    ("tool", "command", "cwd"),
+    [
+        # A folder named after Steam or a user, not a parent of a protected folder.
+        ("Bash", "git status", "D:/code/zexion-ap/.claude/worktrees/steam-achievements-1a2b3c"),
+        ("Bash", ".venv/Scripts/python -m pytest -q", "/home/steam/zexion-ap"),
+        ("Bash", "ruff check .", "C:/Users/SteamDev/code/zexion-ap"),
+        ("PowerShell", "git status", "C:\\Users\\Gallant\\code\\zexion-ap"),
+        ("Bash", "cd .claude/worktrees/steam-achievements-1a2b3c && git status", REPO),
+        ("Bash", 'cd "D:/Projects [old]/zexion-ap" && cmake --build native/build', REPO),
+        ("Bash", f'ls "{SAVES}" && git push -u origin claude/steam-x', "/home/steam/zexion-ap"),
+        ("Bash", "../../.venv/Scripts/python MultiServer.py ../../lab/ap/AP_1.zip", "D:/c/.ap/AP"),
+    ],
+)
+def test_working_folders_named_like_steam_allowed(tool: str, command: str, cwd: str) -> None:
+    assert guard_protected.check(tool, {"command": command}, protected, session_cwd=cwd) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "cwd"),
+    [
+        # In a protected folder, or in a parent of one, relative paths reach it.
+        ("git status", SAVES),
+        ("rm -r Zexion", "C:/Users/someone/AppData/Roaming/Gallant Leaf"),
+        ("rm -rf Zex*", "E:/SteamLibrary/steamapps/common"),
+        ("rm -rf x", "E:/SteamLibrary/steamapps"),
+        ("cp lab/a ../Zexion/x.dll", "E:/SteamLibrary/steamapps/common/Other"),
+        ("cd E:/SteamLibrary/steamapps/common/Other && cp lab/a ../Zexion/x.dll", REPO),
+        ("cd ../Gallant\\ Leaf && rm -r Zexion", "C:/Users/someone/AppData/Roaming/Other"),
+        ("rm -r 123/3392510", "C:/Program Files (x86)/Steam/userdata"),
+    ],
+)
+def test_working_folders_near_protected_ones_blocked(command: str, cwd: str) -> None:
+    assert guard_protected.check("Bash", {"command": command}, protected, session_cwd=cwd)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("C:/Users/x/AppData/Roaming/Gallant Leaf", True),
+        ("C:/Users/x/AppData/Roaming/Gallant Leaf.", True),
+        ("C:/Users/x/AppData/Roaming/GALLAN~1", True),
+        ("C:/Users/x/AppData/Roaming/Gall*", True),
+        ("E:/SteamLibrary/steamapps", True),
+        ("E:/SteamLibrary/steamapps/common", True),
+        ("C:/Program Files (x86)/Steam/userdata", True),
+        ("C:/Program Files (x86)/Steam/userdata/123", True),
+        ("D:/code/zexion-ap/.claude/worktrees/steam-achievements-1a2b3c", False),
+        ("/home/steam/zexion-ap", False),
+        ("C:/Users/SteamDev", False),
+        ("C:/Program Files (x86)/Steam", False),
+        ("E:/SteamLibrary/steamapps/common/Other", False),
+        ("D:/Projects [old]", False),
+    ],
+)
+def test_may_be_above_protected(path: str, expected: bool) -> None:
+    assert protected.may_be_above_protected(path) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (f"os.path.join(os.environ['APPDATA'], {GL_ZX}, 'x.sav')", True),
+        ("Path(appdata) / 'Gallant Leaf' / 'Zexion'", True),
+        ("[IO.Path]::Combine($a,'Gallant Leaf','Zexion')", True),
+        ("'E:/Steam/steamapps/common/' + 'Zexion/zlib.dll'", True),
+        ("join('C:/Steam/userdata', '123', '3392510')", True),
+        ("'Gallant Leaf/Zex' 'ion'", True),
+        ("os.path.join(appdata, 'Gallant Leaf', 'Other')", False),
+        ("os.path.join(root, 'worlds', 'zexion')", False),
+        ("'steamapps', 'common', 'ZexionSoundtrack'", False),
+    ],
+)
+def test_mentions_protected_joins_quoted_pieces(text: str, expected: bool) -> None:
+    assert protected.mentions_protected(text) is expected
 
 
 @pytest.mark.parametrize(
