@@ -640,10 +640,11 @@ Working in game: 2026-10-23 ("The escape skip").
     blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
     only on that screen as it follows an ending: the top menu with 4 panels, two rows of 7
     Feats, a live title widget whose label is three equal lines (the middle one naming NATU),
-    and MISSION COMPLETE's statistics under it (a panel of 10 lines and, after an ending with the
-    assist menu unlocked, ASSISTS USED's 8 as a second; read live on B1, 2026-10-27). It writes the whole line or nothing, only over a
-    line that is blank or already its note, and only if every glyph of it is writable and has
-    the font's frames.
+    and MISSION COMPLETE's statistics under it: a panel of 10 lines and, seen after an ending in a
+    seed with Allow Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what
+    makes the game add it is not traced). It writes the whole line or nothing, only over a line
+    that is blank or already its note, and only if every glyph of it is writable and has the
+    font's frames.
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
       the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
       ends when a save is loaded, or when the screen has come and gone. It looks every 8th
@@ -715,8 +716,8 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
 - with 575edbf, an AP ending through RETURN HOME WITH THE DISKS? with the client connected: the
   goal sent, nothing lit on the screen, the note shown, `GameUnlocks.sav` rewritten and
   unchanged;
-- with 575edbf, an AP ending through the escape skip with no client (a core-goal seed with the
-  assist menu unlocked): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
+- with 575edbf, an AP ending through the escape skip with no client (a core-goal seed with Allow
+  Assists on): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
   MISSION COMPLETE had ASSISTS USED under it as a second panel, which the screen check refused;
   fixed in d451e6b;
 - with d451e6b, the same save's ending through the escape skip with a client of another seed

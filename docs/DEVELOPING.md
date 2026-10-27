@@ -150,16 +150,17 @@ fault found later that day, the Feats screen's note missing when the assist menu
   with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
   client connected:
   2026-10-27. AP endings through the escape skip with no client, and with a client of another
-  seed, no Feat earned: 2026-10-27; the first, with the assist menu unlocked, showed no note
-  (MISSION COMPLETE then has ASSISTS USED under it, which the screen check refused), fixed in
-  d451e6b, and the second, with that fix, showed it. Not seen in game: Steam's stand-in stopping
-  an achievement left to earn (it was in place; stand-in tests only; the one left that is cheap
-  to earn, 13SecretCode, is taken at the title only), and no 15Explorer when a fully explored AP
-  save loads (by disassembly and stand-in tests) (`native/README.md`, "Feats and achievements in
-  AP saves"). The client's warnings, the guard on without all of it or still off in play: their
-  decisions on stand-in tests (`state.FeatsCheck`), the asking itself (`ticks.feats_tick`) not
-  under test, none run in game. They could not be arranged in game on 2026-10-27: a connected
-  client leaves the helper its seed's file, so the guard turns on in this seed's save.
+  seed, no Feat earned: 2026-10-27; the first, in a seed with Allow Assists on, showed no note
+  (MISSION COMPLETE had ASSISTS USED under it, which the screen check refused; what makes the
+  game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. Not
+  seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in
+  tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
+  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests)
+  (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
+  without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
+  the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be
+  arranged in game on 2026-10-27: a connected client leaves the helper its seed's file, so the
+  guard turns on in this seed's save.
 - AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
   NN; normal and plain randomizer saves unmarked), with and without the client, through
   paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new
