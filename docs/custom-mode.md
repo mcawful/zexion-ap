@@ -99,7 +99,8 @@ Zexion:
 
 **The game's own words.** Each option is named as the game labels it (its `display_name` is
 the menu's label: "Box Compression", "Hints", "Start Keys"), and its description is the blurb
-the game shows when the setting is selected, word for word; a setting with several values
+the game shows when the setting is selected, word for word as the screen shows it (the game's
+`Text` file, which differs from the translation's `LargeText.txt` in four blurbs); a setting with several values
 gives each value's blurb (Hints, Gates, Safety, Start Keys), and each value is named by the
 game's label for it (`vanilla_plus` for Vanilla+). Both are tied to the setting's byte in the
 game's code, not matched by name: the screen's builder passes each widget its label and blurb
