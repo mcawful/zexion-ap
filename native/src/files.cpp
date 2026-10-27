@@ -199,10 +199,17 @@ void FileEntries::watch(const GameAddresses& a) {
                     !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
-                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr &&
-                    swap_pointer(entry, widget::kHandler, h, a.hooks.file_entry)) {
-                    wrapped_[entry] = Wrapped{menu, h};
-                    h = a.hooks.file_entry;
+                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr) {
+                    // Listed before the swap (the map may throw), so no entry holds the hook
+                    // unlisted, which an unload would not wait for.
+                    const bool listed = wrapped_.count(entry) != 0;
+                    Wrapped& w = wrapped_[entry];
+                    if (swap_pointer(entry, widget::kHandler, h, a.hooks.file_entry)) {
+                        w = Wrapped{menu, h};
+                        h = a.hooks.file_entry;
+                    } else if (!listed) {
+                        wrapped_.erase(entry);
+                    }
                 }
                 // Only the entries it has wrapped, whose state it keeps.
                 auto it = wrapped_.find(entry);
