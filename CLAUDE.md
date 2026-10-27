@@ -232,16 +232,14 @@ Committed under `.claude/`, so they apply to anyone working here:
   `tests/test_guard_hook.py`). `deny` rules for Edit and Write back it up; only the
   game-install one has been seen to fire. `ruff_on_edit.py` formats and lints each edited
   `.py`. An allowlist covers read-only git, ruff, pytest, `build_id.py` and `save_lab.py
-  slots`/`diff` (its venv commands in their `.venv/Scripts/` spelling only, so Linux and macOS
-  get asked).
-- The hook commands run `python` from `PATH`. Where that is not Python 3 (missing, as on
-  Debian, Ubuntu and macOS; the Microsoft Store stub; Python 2), the hook exits with an error
-  and Claude Code lets the call through: the guard is off, with only a hook error notice.
-  `.claude/hooks/run_python.sh` (`sh` on Linux and macOS, Git Bash on Windows, which run hook
-  commands) runs a hook with the first Python 3.11 or later that can run it (the repo's
-  `.venv`, then `python3`, `python`, `py -3`) and, with none, blocks a guard call whose payload
-  mentions the saves or a Steam folder, as the guard does when it breaks (cases:
-  `tests/test_hook_runner.py`). The hook commands do not call it yet.
+  slots`/`diff`.
+- Both hook commands run through `.claude/hooks/run_python.sh` (in `sh` on Linux and macOS,
+  Git Bash on Windows, as Claude Code runs hook commands), not a bare `python`: that is missing
+  on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,
+  and a hook that fails that way lets the call through. It runs the hook with the first Python
+  3.11 or later that can run it (the repo's `.venv`, then `python3`, `python`, `py -3`) and,
+  with none, blocks a guard call whose payload mentions the saves or a Steam folder, as the
+  guard does when it breaks (cases: `tests/test_hook_runner.py`).
 - Skills: `/preflight` (the checks; without the toolchain a change is unverified), `/save-lab`
   (Steam Cloud, backups, copies, diffs, patches, install, restore), `/find-address` (a value in
   memory to a byte pattern, recorded with evidence).
