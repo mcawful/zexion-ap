@@ -122,8 +122,9 @@ not run, the ending soon after the grab with no escape and no final battle. It i
 setting like the rest: no preset has it, and turning it on in the game's menu makes the mode
 Custom. So a Custom player gets the game's own version, and a preset player keeps what the
 helper does today (it offers the escape skip in any game, `native/README.md`, "The escape
-skip"). Whether `escape_skip` is still wanted for the presets is open. Colorizer stays out of
-the YAML: the game treats it as the player's
+skip"). Decided (the owner, 2026-10-27): no `escape_skip` option; Abridged Finale is the
+game's form of it. Which other features of the world, the client and the helper the game's
+Custom settings make redundant is to be reviewed on its own. Colorizer stays out of the YAML: the game treats it as the player's
 own (the mode ignores it, the mode buttons leave it), and the client leaves it as the menu has
 it, as it does today.
 
@@ -245,8 +246,6 @@ that on the clipboard, or print it, for the player to paste.
 
 ## Open questions for the owner
 
-- With a preset, keep offering the helper's escape skip (today), or add `escape_skip` as an
-  option for the presets? (Custom players have the game's Abridged Finale.)
 - Abridged Finale with the OS Install Disks goal: refuse, or allow?
 - `start_room: random_start` (and Archipelago's own `random`): the game's Random Start rule
   (this draft), or today's rule (any room every item reaches all locations from, with at least
