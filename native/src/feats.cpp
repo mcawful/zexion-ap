@@ -60,11 +60,12 @@ const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
 }
 
 // The Feats of Natu screen (feats.h): its panels, the Feat rows' size, the title label's lines,
-// what its middle line names, and the menu under it, MISSION COMPLETE's statistics.
+// what its middle line names, and the menu under it, MISSION COMPLETE's statistics: 10 lines,
+// and, seen with the assist menu unlocked, ASSISTS USED's 8 (the game's condition not traced).
 constexpr int32_t kScreenPanels = 4, kFeatRowPanels[] = {2, 3}, kFeatsPerRow = 7;
 constexpr int32_t kTitleLines = 3, kMaxColumns = 64;
 constexpr char kScreenName[] = "NATU";
-constexpr int32_t kStatsPanels = 1, kStatsLines = 10;
+constexpr int32_t kStatsLines = 10, kAssistLines = 8;
 constexpr int32_t kFontFrames = 128;  // every character of the note has its frame
 
 // The note's frame at column `i` of a line `columns` wide: its character, or blank (0).
@@ -84,7 +85,9 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
     }
     // Only the screen after an ending: MISSION COMPLETE's statistics under it.
     BYTE* below = pointer_at(top, menu::kBelow);
-    if (panel_count(below) != kStatsPanels || child_count(panel_at(below, 0)) != kStatsLines) {
+    const int32_t stats = panel_count(below);
+    if ((stats != 1 && stats != 2) || child_count(panel_at(below, 0)) != kStatsLines ||
+        (stats == 2 && child_count(panel_at(below, 1)) != kAssistLines)) {
         return false;
     }
     BYTE* title = child_at(panel_at(top, 0), 0);

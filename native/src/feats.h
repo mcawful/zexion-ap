@@ -46,8 +46,9 @@
 // under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
 // panels; panel 0's first child is a live widget whose label is three lines of 38 glyphs (y 16,
 // 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
-// the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics (1 panel of 10
-// lines) (docs/re/memory.md, "Feats and achievements").
+// the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics: a panel of 10
+// lines, and, after an ending with the assist menu unlocked, a second of 8, ASSISTS USED (its
+// condition in the game not traced) (docs/re/memory.md, "Feats and achievements").
 #pragma once
 
 #include <windows.h>
