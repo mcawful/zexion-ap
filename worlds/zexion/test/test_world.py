@@ -1,14 +1,17 @@
 import random
 import types
 import unittest
+from argparse import Namespace
+from typing import Any
 from unittest import mock
 
-from BaseClasses import Item, ItemClassification, LocationProgressType
+from BaseClasses import CollectionState, Item, ItemClassification, LocationProgressType, MultiWorld
 from Fill import distribute_items_restrictive
 from Options import OptionError
+from worlds.AutoWorld import call_all
 
 from .. import data, rules
-from ..items import DRAWN_AS, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
+from ..items import DRAWN_AS, GAME, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
 from ..options import START_CELLS, Goal, Mode, StartRoom
@@ -46,6 +49,27 @@ def fake_world(
     world.player = 1
     world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
     return world
+
+
+def two_zexion_players(options: dict[str, Any]) -> MultiWorld:
+    """Two Zexion players, Alpha (1) and Beta (2), with the same options, set up as the
+    generator does through generate_basic: item_links in the options make real groups
+    (MultiWorld.set_item_links), and link_items is left to the test."""
+    multiworld = MultiWorld(2)
+    multiworld.game = {1: GAME, 2: GAME}
+    multiworld.player_name = {1: "Alpha", 2: "Beta"}
+    multiworld.set_seed(1)
+    args = Namespace()
+    for name, option in ZexionWorld.options_dataclass.type_hints.items():
+        value = options.get(name, option.default)
+        setattr(args, name, {player: option.from_any(value) for player in (1, 2)})
+    multiworld.set_options(args)
+    multiworld.set_item_links()
+    multiworld.state = CollectionState(multiworld)  # after the groups, which it counts
+    steps = ("generate_early", "create_regions", "create_items", "set_rules")
+    for step in (*steps, "connect_entrances", "generate_basic"):
+        call_all(multiworld, step)
+    return multiworld
 
 
 class TestDefaultStart(ZexionTestBase):
@@ -355,6 +379,29 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertNotIn(locations[1].address, [address for _, address, _ in hints])
 
 
+class TestItemLinkHints(unittest.TestCase):
+    """A real item link between two Zexion players (item_links, then AP's link_items): the
+    group's items, wherever they land, are in both members' hints."""
+
+    def test_the_groups_items_are_hinted_to_both_members(self) -> None:
+        pool = ["Slide Mod", "Phaser", "Wall Jump Boots"]
+        link = {"name": "Linked", "item_pool": pool, "replacement_item": None}
+        multiworld = two_zexion_players({"item_links": [{**link, "link_replacement": True}]})
+        multiworld.link_items()
+        multiworld._all_state = None  # as the generator does after linking
+        distribute_items_restrictive(multiworld)
+        (group,) = multiworld.groups
+        linked = {
+            (loc.player, loc.address, code_of[loc.item.name])
+            for loc in multiworld.get_filled_locations()
+            if loc.item.player == group and loc.item.advancement and loc.address is not None
+        }
+        self.assertEqual({code for _, _, code in linked}, {code_of[name] for name in pool})
+        for player in (1, 2):
+            hints = {tuple(h) for h in multiworld.worlds[player].fill_slot_data()["hints"]}
+            self.assertLessEqual(linked, hints, multiworld.player_name[player])
+
+
 class TestAreaMapHintsOff(ZexionTestBase):
     options = {"area_map_hints": False}
 
@@ -441,6 +488,28 @@ class TestExcludedLocationsNeedFiller(ZexionTestBase):
         other = Item("Something", ItemClassification.filler, 1, self.player + 1)
         self.multiworld.itempool.append(other)
         ZexionWorld.stage_pre_fill(self.multiworld)
+
+
+class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
+    """Two Zexion players with 9 filler items each: Alpha excludes 9 locations, as many as
+    their filler, and Beta 10. The multiworld is one short, and the error names Beta."""
+
+    def test_the_player_over_is_named_not_the_one_at_their_filler(self) -> None:
+        disks = {
+            "goal": "os_install_disks",
+            "os_install_disks": 16,
+            "os_install_disks_required": 12,
+        }
+        multiworld = two_zexion_players(disks)
+        for player, n in ((1, 9), (2, 10)):
+            kept = sorted(multiworld.worlds[player].kept_locations)[:n]
+            for i in kept:
+                location = multiworld.get_location(location_name(i), player)
+                location.progress_type = LocationProgressType.EXCLUDED
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(multiworld)
+        message = str(caught.exception)
+        self.assertIn("Zexion (Beta): 10 excluded locations, but only 9 filler items", message)
 
 
 class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):

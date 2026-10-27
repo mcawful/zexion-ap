@@ -3,7 +3,7 @@
 
 Run from the source checkout (this folder linked into an Archipelago checkout), where the
 repo's root is found through the link; skipped where the client is not there to import (an
-installed apworld).
+installed apworld), except where ZEXION_REQUIRE lists ``client`` (CI's world tests).
 """
 
 from __future__ import annotations
@@ -38,6 +38,15 @@ else:
         from client import state
     except (ImportError, ValueError):
         state = None
+# CI's world tests set ZEXION_REQUIRE=client: there a client that does not import (the world
+# copied rather than linked) fails this test, where the tests below would only skip.
+REQUIRED = os.environ.get("ZEXION_REQUIRE", "").split(",")
+
+
+class TestTheClientIsThereWhereRequired(unittest.TestCase):
+    @unittest.skipUnless("client" in REQUIRED, "ZEXION_REQUIRE does not list client")
+    def test_the_client_imports(self) -> None:
+        self.assertIsNotNone(CLIENT, WHY)
 
 
 @unittest.skipIf(CLIENT is None, WHY)

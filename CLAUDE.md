@@ -82,7 +82,8 @@ uv pip install --python .venv -r requirements-dev.txt
 ## Checks
 
 CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
-on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native build below.
+on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native build below. A pull
+request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
 ```sh
@@ -170,8 +171,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
 - **The release version** is one number in three places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
-  `tests/test_cross_checks.py` and `build_apworld.py` check they match, and CI's release gate
-  (`tools/release_check.py`) that it is above the last release and the version on `main`. The
+  `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
+  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last release and the version on `main`. The
   helper shows it on the title screen.
 - `pyproject.toml`'s `0.0.0` is unused.
 

@@ -21,6 +21,9 @@ ROOT = HOOKS.parent.parent
 RUNNER = HOOKS / "run_python.sh"
 SH = shutil.which("sh")
 needs_sh = pytest.mark.skipif(SH is None, reason="no sh on PATH (on Windows, Git Bash's)")
+# CI's ruff and pytest job sets ZEXION_REQUIRE=sh: there a missing sh fails
+# test_sh_is_on_path_where_ci_requires_it, where the cases that need it would only skip.
+REQUIRED = os.environ.get("ZEXION_REQUIRE", "").split(",")
 REAL = Path(sys.executable).as_posix()
 
 SAVES = "C:/Users/someone/AppData/Roaming/Gallant Leaf/Zexion"
@@ -43,6 +46,11 @@ def _sh(repo: Path, script: str, payload: str, bin_dir: Path | None = None):
         capture_output=True,
         env=env,
     )
+
+
+@pytest.mark.skipif("sh" not in REQUIRED, reason="ZEXION_REQUIRE does not list sh")
+def test_sh_is_on_path_where_ci_requires_it() -> None:
+    assert SH is not None, "no sh on PATH, so the runner's cases skipped"
 
 
 def _fake(path: Path, body: str) -> None:
