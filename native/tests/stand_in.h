@@ -47,6 +47,13 @@ inline void spawn_handler(char row, char column, BYTE* event) {
     g_spawn_column = column;
     g_spawn_event = event;
 }
+// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given.
+inline int g_fade_calls = 0;
+inline BYTE* g_fade_event = nullptr;
+inline void fade_handler(char, char, BYTE* event) {
+    ++g_fade_calls;
+    g_fade_event = event;
+}
 inline void* g_event_handlers[32];
 struct LastMessage {
     BYTE* last;
@@ -69,12 +76,14 @@ inline void newgame_fn() { ++g_newgames; }
 // menu functions, and START GAME's steps, which log their order and queue a new game as the
 // game's do (unless the slot is "taken").
 // The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3665 as
-// the game loads it (flag test: flag 250, then 3668, else none).
+// the game loads it (flag test: flag 250, then 3668, else none), and event 3667 (the fade to
+// black, type 1: layers 0 to 0, to -1 from 4, a step every 8 frames, no sound, no next event).
 constexpr int kStandInEvents = 3700;
 inline BYTE g_events[kStandInEvents * 0x28];
 inline BYTE* g_event_table = g_events;
 inline int16_t g_event_count = kStandInEvents;
 inline BYTE* event_3665() { return g_events + 3665 * 0x28; }
+inline BYTE* event_3667() { return g_events + 3667 * 0x28; }
 inline void reset_events() {
     std::memset(g_events, 0, sizeof(g_events));
     BYTE* r = event_3665();
@@ -83,6 +92,14 @@ inline void reset_events() {
     std::memcpy(r + 2, words, sizeof(words));
     const int16_t self = 3665;
     std::memcpy(r + 0x24, &self, sizeof(self));
+    BYTE* fade = event_3667();
+    const int16_t fade_words[] = {0, -1, 4, 8};
+    fade[0] = 1;
+    std::memcpy(fade + 2, fade_words, sizeof(fade_words));
+    const int16_t none = -1, fade_self = 3667;
+    std::memcpy(fade + 0x1A, &none, sizeof(none));  // no sound
+    std::memcpy(fade + 0x20, &none, sizeof(none));  // no next event
+    std::memcpy(fade + 0x24, &fade_self, sizeof(fade_self));
     g_event_table = g_events;
     g_event_count = kStandInEvents;
 }
@@ -422,7 +439,10 @@ inline void reset_game() {
     std::memset(g_item_pool, 0, sizeof(g_item_pool));
     std::memset(g_object_pool, 0, sizeof(g_object_pool));
     std::memset(g_event_handlers, 0, sizeof(g_event_handlers));
+    g_event_handlers[1] = reinterpret_cast<void*>(&fade_handler);
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
+    g_fade_calls = 0;
+    g_fade_event = nullptr;
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;

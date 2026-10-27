@@ -1314,9 +1314,89 @@ void test_popups_wait_for_their_save() {
     g_rando_marker = 0;
 }
 
+// RETURN HOME WITH THE DISKS? (mission.h) once idle in play: event 3667's fade with event
+// 3666's delay, popups waiting until the game runs the opener; not before the game's last
+// message is down to its last 70 frames, as Zexion's popup is when the escape skip fades.
+// Bodies of their own: the linker folds identical functions into one address.
+int g_routine_runs = 0;
+void idle_routine() { g_routine_runs += 1; }
+void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
+void opener() { g_routine_runs += 3; }  // the helper's (dllmain.cpp); not run here
+void test_popups_wait_for_the_mission_fade() {
+    reset_game();
+    reset_events();
+    zap::Game game;
+    check(configure(game).empty(), "configures");
+    zap::Hooks hooks;
+    hooks.mission_open = reinterpret_cast<void*>(&opener);
+    game.set_hooks(hooks);
+    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
+    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
+    g_transition_fn = g_routine_table[zap::kIdleRoutine];
+    g_transition_timer = 0;
+    game.request_mission();
+    message_showing(71);  // GAME SAVED, 180 frames: 109 in
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_fade_calls == 0,
+          "not before the message is as far in as Zexion's popup at the escape skip's fade");
+    message_showing(70);  // 110 in
+    game.watch_all(&chosen);
+    check(g_transition_timer == zap::kFadeDelay && g_fade_calls == 1 &&
+              g_fade_event == event_3667() && g_transition_fn == reinterpret_cast<void*>(&opener) &&
+              game.mission_status() == "opening after the fade",
+          "idle: the fade, the opener 60 frames away");
+    message_showing(1);  // GAME SAVED over: only the fade holds a popup back
+    game.note_play(1000);
+    check(game.kill(3000) == "refused RETURN HOME WITH THE DISKS? opening" && g_deaths == 0,
+          "no received death between the fade and the prompt");
+    apply(game, "apply\npopup 36 FROM ALICE");
+    for (int i = 0; i < 60; ++i) game.pump_popups();
+    check(g_messages == 0 && game.queued_popups() == 1, "a popup waits through the fade");
+    game.mission_open();  // the game runs the opener
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1, "then shows");
+    game.put_back_all(&chosen);
+
+    // The helper's own popup the last message: never cut short, the fade waits for its end.
+    reset_game();
+    reset_events();
+    g_transition_fn = g_routine_table[zap::kIdleRoutine];
+    g_transition_timer = 0;
+    game.set_hooks(hooks);
+    game.request_mission();
+    apply(game, "apply\npopup 36 FROM BOB");
+    game.pump_popups();
+    check(g_messages == 1, "the helper's popup shows");
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // past the gap between popups
+    message_showing(70);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 0, "not with 70 frames of the helper's popup left");
+    message_showing(1);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 1, "once it has ended");
+
+    // The player dead when the game runs the opener: no prompt, the fade turned back, asked again.
+    field<int16_t>(0xCEA) = -1;
+    game.mission_open();
+    check(game.mission_status() == "asked again: not in play when it opened" &&
+              g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_transition_timer == 0 &&
+              g_fade_calls == 2,
+          "a death during the fade: put off");
+    field<int16_t>(0xCEA) = 48;  // respawned
+    game.watch_all(&chosen);
+    check(g_fade_calls == 3 && g_transition_timer == zap::kFadeDelay, "then offered again");
+    game.put_back_all(&chosen);
+    g_routine_table[zap::kIdleRoutine] = nullptr;
+    g_routine_table[zap::kPromptRoutine] = nullptr;
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    reset_game();
+}
+
 }  // namespace
 
 int main() {
+    test_popups_wait_for_the_mission_fade();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();
     test_refused_unload_rearms();

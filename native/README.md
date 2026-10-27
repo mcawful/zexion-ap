@@ -97,7 +97,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -215,7 +215,8 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 ### Popups
 
 - **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
-  and at least 20 frames after the helper's last. Each plays the item's own pickup sound.
+  and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
+  on its way (its fade, before the game opens it). Each plays the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown; the client counts a received item's popup as done once `apply` took it. The queue
@@ -252,9 +253,10 @@ Working in game: 2026-10-23 ("Received Energy Shields").
 - **What:** `die` deals a received death as the game's damage code does: energy to 0, then the
   game's death routine (`kill`), through an Energy Shield too.
 - **When:** once the player has been in play in one cell for a second, the game's halt byte is
-  clear and no message is showing (the routine posts one without checking it was made);
-  otherwise `refused` (`not configured`, `not settled`, `halted`, `message showing`, `no
-  frame`). The client queues received deaths and asks once a second, one at a time
+  clear, no message is showing (the routine posts one without checking it was made) and
+  RETURN HOME WITH THE DISKS? is not between its fade and its prompt; otherwise `refused` (`not
+  configured`, `not settled`, `halted`, `message showing`, `RETURN HOME WITH THE DISKS?
+  opening`, `no frame`). The client queues received deaths and asks once a second, one at a time
   (`client/deathlink.py`).
 - **Put back:** nothing to put back.
 
@@ -388,10 +390,23 @@ the helper:
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
-- on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in
-  play with no popup showing, opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS?
-  (`src/mission.cpp`), whose YES closes the prompt through the game's NO and then starts the
-  ending.
+- on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in play
+  with no popup of its own to show and the game's last message (GAME SAVED) down to its last 70
+  frames (as far into it as the escape skip's fade is into Zexion's popup, by disassembly with one
+  assumption: `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut
+  short), opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way
+  the escape skip's opens: it runs the game's fade to black (area event 3667, checked byte for byte,
+  through the game's handler for its type) and sets its opener as the transition 60 frames away (the
+  pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
+  through the game's NO and then starts the ending once no message shows; NO fades the screen back
+  in, as the escape skip's NO does. If event 3667 or its handler is not as traced, the prompt opens
+  at once with no fade, as before. An opener the helper takes back before it runs (the save left,
+  `discs` off, an unload), or one the game runs with the player not in play (a death during the
+  fade: asked again), turns the fade back to the normal level; one another transition (a door, a
+  death) took the place of is asked again once idle. The fade turned back: stand-in tests only. Not
+  handled: a save at the save point again during the fade (its transition takes the opener's place
+  and brings no fade) leaves the screen black until the prompt is asked again and fades out anew;
+  turning the fade back there needs the fade's own state read, which the helper has no pattern for.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
 shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -404,7 +419,9 @@ the scanner's text or the pause screen's branch is still the helper's.
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
-pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
+pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"); 2026-10-27,
+the fade before RETURN HOME WITH THE DISKS?, the offer again after each save at the pod and
+YES to the goal ("The mission prompt"; NO from the owner's report).
 
 ### AP saves on the file select
 
