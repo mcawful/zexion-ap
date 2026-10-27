@@ -178,16 +178,6 @@ void put_seed(BYTE* section) {
     std::memcpy(section + 0x310, g_start, sizeof(g_start));
 }
 
-// Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
-BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
-BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
-// Every slot empty.
-void clear_slots() {
-    std::memset(g_slot_array, 0, sizeof(g_slot_array));
-    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
-    for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
-}
-
 void test_a_save_of_the_seed_dressed_offline() {
     reset_game();
     zap::Game game;
@@ -439,11 +429,8 @@ void test_the_logo_through_the_frame_call() {
     gl_fake::g_uploads.clear();
     game.restore_files();
     logos = logo_uploads();
-    bool blank = logos.size() == 1;
-    for (const gl_fake::Upload& u : logos) {
-        for (uint8_t b : u.pixels) blank = blank && b == 0;
-    }
-    check(blank, "restore_files clears the logo from the texture");
+    check(logos.size() == 1 && gl_fake::all_blank(logos),
+          "restore_files clears the logo from the texture");
     game.put_back_all(&no_callback);
     clear_slots();
     g_save_loaded = 3;

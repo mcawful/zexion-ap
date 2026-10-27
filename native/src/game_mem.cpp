@@ -58,6 +58,41 @@ bool writable(const void* at, size_t size) {
     return true;
 }
 
+int32_t panel_count(const BYTE* menu) {
+    int32_t n = -1;
+    return read(menu, menu::kPanelCount, n) ? n : -1;
+}
+
+int32_t child_count(const BYTE* panel) {
+    int32_t n = -1;
+    return read(panel, panel::kCapacity, n) ? n : -1;
+}
+
+int32_t children_of(const BYTE* panel, BYTE** out, int32_t max) {
+    const int32_t count = child_count(panel);
+    const size_t n = static_cast<size_t>((std::min)(count, max));
+    return count >= 0 && safe_read(pointer_at(panel, panel::kChildren), out, n * sizeof(BYTE*))
+               ? count
+               : -1;
+}
+
+bool label_glyphs(const BYTE* label, int32_t count, BYTE** glyphs) {
+    int32_t n = 0;
+    return count > 0 && read(label, label::kLength, n) && n == count &&
+           safe_read(pointer_at(label, label::kGlyphs), glyphs,
+                     static_cast<size_t>(count) * sizeof(BYTE*));
+}
+
+bool swap_pointer(BYTE* base, ptrdiff_t offset, const void* from, const void* to) {
+    void* now = nullptr;
+    if (from == nullptr || !read(base, offset, now) || now != from ||
+        !writable(base + offset, sizeof(void*))) {
+        return false;
+    }
+    put(base, offset, to);
+    return true;
+}
+
 bool live_widget(const BYTE* w, const void* handler) {
     int32_t released = 1;
     void* h = nullptr;
@@ -119,6 +154,13 @@ bool set_frame(BYTE* s, int32_t frame) {
     }
     put<int32_t>(s, sprite::kFrameIndex, frame);
     put(s, sprite::kFrameShown, list + frame * sprite::kFrameSize);
+    return true;
+}
+
+bool glyphs_show(BYTE* const* glyphs, std::string_view text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (frame_of(glyphs[i]) != static_cast<unsigned char>(text[i])) return false;
+    }
     return true;
 }
 

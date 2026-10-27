@@ -9,8 +9,10 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <memory>
@@ -185,7 +187,7 @@ void mission_yes(void* widget, int event) {
     if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
 }
 
-// Game thread: the helper's wrappers for the game's menus, given to Game before it is configured.
+// The helper's wrappers for the game's menus, given to Game once, before the hook.
 void set_hooks() {
     zap::Hooks hooks;
     hooks.panel = reinterpret_cast<void*>(&handler_event<&panel_original, &panel_after>);
@@ -217,10 +219,7 @@ void take_offline() {
     g_offline_reads.fetch_add(1);
     if (!g_game.configured() && !files.config.empty()) {
         std::string why = zap::check_offline_cache(GetModuleHandleW(nullptr), files);
-        if (why.empty()) {
-            set_hooks();
-            why = g_game.configure(GetModuleHandleW(nullptr), files.config, false);
-        }
+        if (why.empty()) why = g_game.configure(GetModuleHandleW(nullptr), files.config, false);
         // The game's thread never waits for the lock: an error it cannot record now is dropped
         // (the pipe thread holds the lock only to swap the files in).
         if (!why.empty() && TryAcquireSRWLockExclusive(&g_offline_lock)) {
@@ -323,38 +322,29 @@ void wait_until_no_call_inside() {
 constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
 std::string undo_for_unload();
 
-// `hello`'s fields from the game's thread: configured, the escape skip offered, a client there,
-// the offline seeds (offline.h) and the title screen's lines (title.h).
-struct HelloState {
-    bool configured = false;
-    bool skip = false;
-    std::string feats = "off";
-    bool active = false;
-    std::string offline = "-";
-    std::string title = "0";
-    std::string left_out;  // the client-only keys the offline cache lacked (Game::left_out)
-};
-
 // A hello field kept to one word: spaces (a seed file's name, a reason) as underscores.
 std::string one_word(std::string text) {
-    for (char& c : text) c = c == ' ' ? '_' : c;
+    std::replace(text.begin(), text.end(), ' ', '_');
     return text;
 }
 
 std::string hello() {
-    // Read on the game's thread; the defaults stand if no frame comes.
-    HelloState state;
+    // The fields read on the game's thread (configured, the escape skip offered, the Feats guard;
+    // the offline seeds, a client there, the title screen's lines; the keys an offline cache
+    // lacked); these defaults stand if no frame comes.
+    std::string game = " configured=0 skip=0 feats=off", look = " offline=- active=0 title=0";
+    std::string left_out;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
-            [&state] {
-                state.configured = g_game.configured();
-                state.skip = g_game.skip_offered();
-                state.feats = g_game.feats_state();
-                state.active = g_game.active();
-                state.offline = g_game.offline_state();
-                state.title = g_game.title_state();
-                state.left_out = g_game.left_out();
+            [&] {
+                game = std::string(" configured=") + (g_game.configured() ? "1" : "0") +
+                       " skip=" + (g_game.skip_offered() ? "1" : "0") +
+                       " feats=" + one_word(g_game.feats_state());
+                look = " offline=" + one_word(g_game.offline_state()) +
+                       " active=" + (g_game.active() ? "1" : "0") +
+                       " title=" + one_word(g_game.title_state());
+                left_out = g_game.left_out();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -363,20 +353,21 @@ std::string hello() {
     std::string error = g_offline_error;
     ReleaseSRWLockShared(&g_offline_lock);
     return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
-           " hooked=" + (g_slot ? "1" : "0") + " configured=" + (state.configured ? "1" : "0") +
-           " skip=" + (state.skip ? "1" : "0") + " feats=" + one_word(state.feats) +
-           " folder=" + (g_from_game_folder ? "1" : "0") +
-           " offline=" + one_word(state.offline) + " active=" + (state.active ? "1" : "0") +
-           " title=" + one_word(state.title) + " reads=" + std::to_string(g_offline_reads.load()) +
-           "/" + std::to_string(g_offline_found.load()) +
-           (state.left_out.empty() ? "" : " cache_missing=" + state.left_out) +
+           " hooked=" + (g_slot ? "1" : "0") + game +
+           " folder=" + (g_from_game_folder ? "1" : "0") + look +
+           " reads=" + std::to_string(g_offline_reads.load()) + "/" +
+           std::to_string(g_offline_found.load()) +
+           (left_out.empty() ? "" : " cache_missing=" + left_out) +
            (error.empty() ? "" : " read_error=" + one_word(error));
 }
 
 // Pipe thread: `work` run on the game's thread at its next frame, and its reply; "refused not
 // configured" instead, when `needs_config` and nothing configured the helper; "refused no frame"
-// if no frame took it within kFrameWaitMs (it then never runs).
-std::string on_game(const std::function<std::string()>& work, bool needs_config) {
+// if no frame took it within kFrameWaitMs (it then never runs). A request that did not parse
+// (`parse_error`) gets "error <parse_error>" at once.
+std::string on_game(const std::function<std::string()>& work, bool needs_config,
+                    const std::string& parse_error = "") {
+    if (!parse_error.empty()) return "error " + parse_error;
     std::string result;
     bool ran = g_mailbox.call(
         [&] {
@@ -388,11 +379,11 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config)
 }
 
 // The requests that run on the game's thread (native/README.md lists them and their replies),
-// each matched by its whole name, or by its first word: `prefix` (the name then anything) or
-// `word` (the name alone, or the name, a space and anything). Most are `game`, run on the
+// each matched by its whole name, or by its first word (the name alone, or then a space or a
+// line break and anything). Most are `game`, run on the
 // game's thread (on_game) as they are; the others `run`, which parse the request on the pipe's
 // thread first, so a bad one gets its error without waiting for a frame.
-enum class Match { kName, kPrefix, kWord };
+enum class Match { kName, kWord };
 struct Request {
     const char* name;
     Match match;
@@ -406,14 +397,13 @@ std::string disk_slots(const std::string& request) {
     // slots holding the seed (files.h); REQUIRED is checked but not shown (requests.h).
     std::map<int, int> counts;
     std::string error = zap::parse_disk_slots(request, counts);
-    if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
             bool on = !counts.empty();
             g_game.set_disk_slots(std::move(counts));
             return std::string(on ? "disk_slots on" : "disk_slots off");
         },
-        true);
+        true, error);
 }
 
 std::string discs(const std::string& request) {
@@ -423,77 +413,65 @@ std::string discs(const std::string& request) {
     bool told = false;
     std::string line;
     std::string error = zap::parse_discs(request, count, required, line, told);
-    if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
             bool on = !line.empty();
             g_game.set_discs(count, required, std::move(line), told);
             return std::string(on ? "discs on" : "discs off");
         },
-        true);
+        true, error);
 }
 
 std::string ap_labels(const std::string& request) {
     std::map<int, zap::Label> labels;
     std::string error = zap::parse_labels(request, labels);
-    if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
             size_t n = labels.size();
             g_game.set_labels(std::move(labels));
             return "labeled " + std::to_string(n);
         },
-        true);
+        true, error);
 }
 
 std::string ap_newgame(const std::string& request) {
     zap::NewGamePlan plan;
     std::string error = zap::parse_newgame(request, plan);
-    if (!error.empty()) return "error " + error;
     return on_game(
         [&] {
             return std::string(g_game.arm_newgame(std::move(plan)) ? "armed"
                                                                    : "refused not configured");
         },
-        true);
+        true, error);
 }
 
 std::string config(const std::string& request) {
     std::map<std::string, uint64_t> rvas;
     std::string error = zap::parse_config(request, rvas);
-    if (!error.empty()) return "error " + error;
     HMODULE exe = GetModuleHandleW(nullptr);
     return on_game(
         [&] {
-            set_hooks();
             std::string e = g_game.configure(exe, rvas);
             return e.empty() ? std::string("ok") : "error " + e;
         },
-        false);
+        false, error);
 }
 
 std::string apply(const std::string& request) {
     zap::Batch batch;
     std::string error = zap::parse_batch(request, batch);
-    if (!error.empty()) return "error " + error;
     // Game::apply refuses itself without every key (client_ready); a batch no frame took is
     // never applied.
-    return on_game([&] { return g_game.apply(batch); }, false);
+    return on_game([&] { return g_game.apply(batch); }, false, error);
 }
 
 const Request kRequests[] = {
     {"shield", Match::kName, false, [] { return g_game.spawn_shield(GetTickCount64()); }},
     {"die", Match::kName, false, [] { return g_game.kill(GetTickCount64()); }},
     {"assists lock", Match::kName, true,
-     [] {
-         g_game.set_assists_locked(true);
-         return std::string("locked");
-     }},
+     [] { g_game.set_assists_locked(true); return std::string("locked"); }},
     {"assists free", Match::kName, true,
-     [] {
-         g_game.set_assists_locked(false);
-         return std::string("free");
-     }},
+     [] { g_game.set_assists_locked(false); return std::string("free"); }},
     // The client's session sees a randomizer save in play that is not its seed's (offline.h).
     {"other_save", Match::kName, true,
      [] { return g_game.other_save(); }},
@@ -503,15 +481,9 @@ const Request kRequests[] = {
      [] { return std::string(g_game.client_back() ? "shown" : "none"); }},
     // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
     {"intel on", Match::kName, true,
-     [] {
-         g_game.set_intel(true);
-         return std::string("intel on");
-     }},
+     [] { g_game.set_intel(true); return std::string("intel on"); }},
     {"intel off", Match::kName, true,
-     [] {
-         g_game.set_intel(false);
-         return std::string("intel off");
-     }},
+     [] { g_game.set_intel(false); return std::string("intel off"); }},
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
     {"mission_prompt", Match::kName, true,
      [] {
@@ -521,28 +493,20 @@ const Request kRequests[] = {
     {"disk_slots", Match::kWord, false, nullptr, &disk_slots},
     {"discs_status", Match::kName, false, [] { return g_game.equipment_status(); }},
     {"discs", Match::kWord, false, nullptr, &discs},
-    {"ap_labels", Match::kPrefix, false, nullptr, &ap_labels},
-    {"ap_newgame", Match::kPrefix, false, nullptr, &ap_newgame},
+    {"ap_labels", Match::kWord, false, nullptr, &ap_labels},
+    {"ap_newgame", Match::kWord, false, nullptr, &ap_newgame},
     {"disarm", Match::kName, false,
-     [] {
-         g_game.disarm_newgame();
-         return std::string("disarmed");
-     }},
+     [] { g_game.disarm_newgame(); return std::string("disarmed"); }},
     {"newgame_status", Match::kName, false, [] { return g_game.newgame_status(); }},
-    {"config", Match::kPrefix, false, nullptr, &config},
-    {"apply", Match::kPrefix, false, nullptr, &apply},
+    {"config", Match::kWord, false, nullptr, &config},
+    {"apply", Match::kWord, false, nullptr, &apply},
 };
 
 bool matches(const Request& r, const std::string& request) {
-    switch (r.match) {
-        case Match::kName:
-            return request == r.name;
-        case Match::kPrefix:
-            return request.rfind(r.name, 0) == 0;
-        case Match::kWord:
-            return request == r.name || request.rfind(std::string(r.name) + " ", 0) == 0;
-    }
-    return false;
+    if (r.match == Match::kName) return request == r.name;
+    const size_t n = std::strlen(r.name);
+    return request.rfind(r.name, 0) == 0 &&
+           (request.size() == n || request[n] == ' ' || request[n] == '\n');
 }
 
 std::string handle(const std::string& request, bool& stop) {
@@ -631,7 +595,9 @@ bool in_game_folder() {
 DWORD WINAPI helper_thread(void*) {
     try {
         g_from_game_folder = in_game_folder();
-        g_game.set_title_version(kVersion);  // before the hook: no frame runs yet
+        // Before the hook: no frame runs yet.
+        g_game.set_title_version(kVersion);
+        set_hooks();
         hook();
         if (g_slot != nullptr) read_offline();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {

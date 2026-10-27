@@ -47,17 +47,10 @@ constexpr intptr_t kHovered = 0, kSelected = 3;
 std::string disk_count_text(int count) { return " " + file_disk_digits(count); }
 
 BYTE* EquipmentHook::entry_in(BYTE* menu, const GameAddresses& a, void* callback) {
-    BYTE* panel = panel_at(menu, 0);
-    int32_t count = 0, capacity = 0;
-    BYTE** children = nullptr;
-    if (!read(menu, menu::kPanelCount, count) || count < 1 ||
-        !read(panel, panel::kCapacity, capacity) || capacity < 1 || capacity > kMaxEntries ||
-        !read(panel, panel::kChildren, children)) {
-        return nullptr;
-    }
     BYTE* list[kMaxEntries] = {};
-    if (!safe_read(children, list, capacity * sizeof(BYTE*))) return nullptr;
-    for (int i = 0; i < capacity; ++i) {
+    const int32_t count = children_of(panel_at(menu, 0), list, kMaxEntries);
+    if (panel_count(menu) < 1 || count < 1 || count > kMaxEntries) return nullptr;
+    for (int i = 0; i < count; ++i) {
         if (live_widget(list[i], a.widget_handler_fn, callback)) return list[i];
     }
     return nullptr;
@@ -66,15 +59,13 @@ BYTE* EquipmentHook::entry_in(BYTE* menu, const GameAddresses& a, void* callback
 bool EquipmentHook::install(const GameAddresses& a) {
     if (a.hooks.equipment == nullptr) return false;
     BYTE* top = pointer_at(a.current_menu);
-    if (child_ != nullptr) {
-        // Still hooked:
-        if (top == menu_ && entry_in(top, a, a.hooks.equipment) == child_) return false;
-        restore(a);
+    if (child_ != nullptr && top == menu_ && entry_in(top, a, a.hooks.equipment) == child_) {
+        return false;  // still hooked
     }
+    restore(a);
     if (top == nullptr) return false;
     BYTE* child = entry_in(top, a, a.equipment_fn);
-    if (child == nullptr || !writable(child + widget::kCallback, sizeof(void*))) return false;
-    put(child, widget::kCallback, a.hooks.equipment);
+    if (!swap_pointer(child, widget::kCallback, a.equipment_fn, a.hooks.equipment)) return false;
     menu_ = top;
     child_ = child;
     return true;
@@ -94,50 +85,40 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     if (count < 1) return "no disk yet";
     if (count > 99) return "the count is too long";
     restore(a);  // an earlier screen's, if still open
+    if (panel_ != nullptr) return "an earlier screen's handler could not be put back";
     // The equipment screen on top, its Energy Tank panel as the builder leaves it.
     BYTE* menu = pointer_at(a.current_menu);
     BYTE* panel = panel_at(menu, kEnergyPanel);
     BYTE* energy = child_at(panel, 0);
-    int32_t panel_count = 0, index = -1, capacity = 0, selectable = 0, glyphs = 0;
-    void* handler = nullptr;
+    int32_t index = -1, selectable = 0, glyphs = 0;
     BYTE** children = nullptr;
-    BYTE* record = nullptr;
     BYTE* records = pointer_at(a.item_records);
-    BYTE* label = nullptr;
-    if (!read(menu, menu::kPanelCount, panel_count) || panel_count != kEquipmentPanels ||
-        panel == nullptr || panel_at(menu, kTextPanel) == nullptr ||
-        !read(panel, kPanelIndex, index) || index != kEnergyPanel ||
-        !read(panel, panel::kHandler, handler) || handler != a.equip_panel_fn ||
-        !read(panel, panel::kCapacity, capacity) || capacity != 1 ||
-        !read(panel, panel::kSelectable, selectable) || selectable != 1 ||
-        !read(panel, panel::kChildren, children) || !live_widget(energy, a.widget_handler_fn) ||
-        !read(energy, kChildRecord, record) || records == nullptr || record != records ||
-        !read(energy, widget::kLabel, label) || !read(label, label::kLength, glyphs) ||
+    BYTE* label = pointer_at(energy, widget::kLabel);
+    if (panel_count(menu) != kEquipmentPanels || panel == nullptr ||
+        panel_at(menu, kTextPanel) == nullptr || !read(panel, kPanelIndex, index) ||
+        index != kEnergyPanel || pointer_at(panel, panel::kHandler) != a.equip_panel_fn ||
+        child_count(panel) != 1 || !read(panel, panel::kSelectable, selectable) ||
+        selectable != 1 || !read(panel, panel::kChildren, children) ||
+        !live_widget(energy, a.widget_handler_fn) || records == nullptr ||
+        pointer_at(energy, kChildRecord) != records || !read(label, label::kLength, glyphs) ||
         glyphs != kEnergyGlyphs || !writable(panel, 0x300)) {
         return "not the equipment screen as traced";
     }
     // What the disk's widget is made from and given.
-    BYTE* templates = nullptr;
-    BYTE* item_template = nullptr;
-    BYTE* palette = nullptr;
+    BYTE* item_template = pointer_at(pointer_at(a.sprite_templates), sprite::kItemTemplate);
+    BYTE* palette = pointer_at(energy, sprite::kPalette);
     int16_t palette_number = 0, disk_frame = -1, dy = 0;
     uint64_t rect = 0;
-    using Malloc = void* (*)(size_t);
-    using Free = void (*)(void*);
-    Malloc game_malloc = nullptr;
-    Free game_free = nullptr;
+    auto game_malloc = reinterpret_cast<void* (*)(size_t)>(pointer_at(a.malloc_slot));
+    auto game_free = reinterpret_cast<void (*)(void*)>(pointer_at(a.free_slot));
     double ex = 0, ey = 0, lx = 0, ly = 0;
-    if (!read(a.sprite_templates, 0, templates) ||
-        !read(templates, sprite::kItemTemplate, item_template) ||
-        item_template == nullptr || !read(energy, sprite::kPalette, palette) ||
-        palette == nullptr ||
+    if (item_template == nullptr || palette == nullptr ||
         !read(energy, sprite::kPaletteNumber, palette_number) ||
         !read(records, kDiskItem * record::kSize + record::kFrame, disk_frame) || disk_frame < 0 ||
-        !read(a.malloc_slot, 0, game_malloc) || game_malloc == nullptr ||
-        !read(a.free_slot, 0, game_free) || game_free == nullptr || !read(energy, sprite::kX, ex) ||
+        game_malloc == nullptr || game_free == nullptr || !read(energy, sprite::kX, ex) ||
         !read(energy, sprite::kY, ey) || !read(label, sprite::kX, lx) ||
-        !read(label, sprite::kY, ly) ||
-        !read(energy, kChildDy, dy) || !read(energy, kChildRect, rect)) {
+        !read(label, sprite::kY, ly) || !read(energy, kChildDy, dy) ||
+        !read(energy, kChildRect, rect)) {
         return "the item sprites, the Energy Tank's look or the allocator are missing";
     }
     // The panel's new two-entry array, from the game's heap (the game frees it with the menu).
@@ -151,10 +132,8 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     BYTE* disk = reinterpret_cast<New>(a.widget_new_fn)(
         text.c_str(), static_cast<int>(text.size()), panel, a.widget_handler_fn, nullptr,
         records + kDiskItem * record::kSize, 0, 1, &rect);
-    BYTE* disk_label = nullptr;
-    if (disk == nullptr || !writable(disk, kWidgetSize) ||
-        !read(disk, widget::kLabel, disk_label) ||
-        disk_label == nullptr) {
+    BYTE* disk_label = pointer_at(disk, widget::kLabel);
+    if (disk == nullptr || !writable(disk, kWidgetSize) || disk_label == nullptr) {
         game_free(array);
         return "the disk's widget could not be made";
     }
@@ -216,12 +195,11 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     BYTE* box = panel_at(menu_, kTextPanel);
     BYTE* description = child_at(box, 0);
     BYTE* name = child_at(box, 1);
-    BYTE* description_label = nullptr;
-    BYTE* name_label = nullptr;
+    BYTE* description_label = pointer_at(description, widget::kLabel);
+    BYTE* name_label = pointer_at(name, widget::kLabel);
     int32_t description_glyphs = 0, name_glyphs = 0;
-    if (!read(description, widget::kLabel, description_label) ||
-        !read(description_label, label::kLength, description_glyphs) ||
-        description_glyphs < kDescriptionGlyphs || !read(name, widget::kLabel, name_label) ||
+    if (!read(description_label, label::kLength, description_glyphs) ||
+        description_glyphs < kDescriptionGlyphs ||
         !read(name_label, label::kLength, name_glyphs) || name_glyphs < 1 + kNameGlyphs) {
         return;
     }
@@ -247,10 +225,10 @@ void EquipmentScreen::tidy(const GameAddresses& a) {
 
 void EquipmentScreen::restore(const GameAddresses& a) {
     if (panel_ == nullptr) return;
-    void* handler = nullptr;
     if (is_open(a.current_menu, menu_) && panel_at(menu_, kEnergyPanel) == panel_ &&
-        read(panel_, panel::kHandler, handler) && handler == a.hooks.equipment_panel) {
-        put(panel_, panel::kHandler, a.equip_panel_fn);
+        pointer_at(panel_, panel::kHandler) == a.hooks.equipment_panel &&
+        !swap_pointer(panel_, panel::kHandler, a.hooks.equipment_panel, a.equip_panel_fn)) {
+        return;  // still the helper's: kept, so an unload refuses
     }
     menu_ = nullptr;
     panel_ = nullptr;

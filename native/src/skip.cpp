@@ -33,18 +33,14 @@ bool EscapeSkip::apply(BYTE* table_holder, BYTE* count) {
     BYTE* record = table + kSkipEvent * event::kSize;
     BYTE copy[event::kSize];
     if (!safe_read(record, copy, sizeof(copy))) return false;
-    if (expected(copy, kSkipOfferEvent)) {
-        table_ = table;
-        record_ = record;
-        return true;  // already patched
+    if (!expected(copy, kSkipOfferEvent)) {  // else already patched
+        if (!expected(copy, kNone) || !writable(record + kElse, sizeof(int16_t))) {
+            table_ = nullptr;
+            record_ = nullptr;  // not the record traced on B1: leave the game alone
+            return false;
+        }
+        put<int16_t>(record, kElse, kSkipOfferEvent);
     }
-    if (!expected(copy, kNone) || !writable(record + kElse, sizeof(int16_t))) {
-        table_ = nullptr;
-        record_ = nullptr;  // not the record traced on B1: leave the game alone
-        return false;
-    }
-    int16_t offer = kSkipOfferEvent;
-    std::memcpy(record + kElse, &offer, sizeof(offer));
     table_ = table;
     record_ = record;
     return true;
@@ -56,8 +52,7 @@ void EscapeSkip::restore(BYTE* table_holder) {
     if (pointer_at(table_holder) == table_ && safe_read(record_, copy, sizeof(copy)) &&
         expected(copy, kSkipOfferEvent) &&
         writable(record_ + kElse, sizeof(int16_t))) {
-        int16_t none = kNone;
-        std::memcpy(record_ + kElse, &none, sizeof(none));
+        put<int16_t>(record_, kElse, kNone);
     }
     table_ = nullptr;
     record_ = nullptr;

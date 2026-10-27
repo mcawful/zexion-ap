@@ -40,20 +40,16 @@ bool ScanText::apply(BYTE* table_holder, const std::string& line) {
     BYTE* entry = table + kScanTextEntry * kTextEntrySize;
     Entry copy;
     if (!safe_read(entry, copy.data(), copy.size())) return false;
-    if (copy == padded(line)) {
-        table_ = table;
-        entry_ = entry;
-        line_ = line;
-        return true;
+    if (copy != padded(line)) {
+        bool ours = entry == entry_ && table == table_ && copy == padded(line_);
+        if ((copy != padded(kScanTextOriginal) && !ours) || !writable(entry, copy.size())) {
+            table_ = nullptr;
+            entry_ = nullptr;  // not the text traced on B1 (another language, say): left alone
+            line_.clear();
+            return false;
+        }
+        std::memcpy(entry, padded(line).data(), kTextEntrySize);
     }
-    bool ours = entry == entry_ && table == table_ && copy == padded(line_);
-    if ((copy != padded(kScanTextOriginal) && !ours) || !writable(entry, copy.size())) {
-        table_ = nullptr;
-        entry_ = nullptr;  // not the text traced on B1 (another language, say): left alone
-        line_.clear();
-        return false;
-    }
-    std::memcpy(entry, padded(line).data(), kTextEntrySize);
     table_ = table;
     entry_ = entry;
     line_ = line;

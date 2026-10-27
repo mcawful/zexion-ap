@@ -24,8 +24,6 @@ bool is_ours(const BYTE* r) {
     return record_named(r, kIntelName) && word(r, record::kEvent) == kNoEvent;
 }
 
-void set_event(BYTE* r, int16_t event) { put(r, record::kEvent, event); }
-
 }  // namespace
 
 void IntelChip::watch(BYTE* holder) {
@@ -41,7 +39,7 @@ void IntelChip::watch(BYTE* holder) {
     }
     if (is_own(copy)) {
         set_record_name(r, kIntelName);
-        set_event(r, kNoEvent);
+        put(r, record::kEvent, kNoEvent);
         restyled_ = true;
     } else {
         restyled_ = is_ours(copy);  // ours already, or another name: left alone
@@ -54,7 +52,7 @@ void IntelChip::restore(BYTE* holder) {
     // Back to the game's, whether this helper renamed it or an earlier one left it so.
     if (r != nullptr && matches(copy, kAreaMap) && is_ours(copy)) {
         set_record_name(r, kOwnName);
-        set_event(r, kOwnEvent);
+        put(r, record::kEvent, kOwnEvent);
     }
     restyled_ = false;
 }

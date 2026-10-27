@@ -107,7 +107,6 @@ private:
     void restore_ending();
     bool reads_as_written() const;  // the ending's bytes are still the helper's
     void hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading);
-    void unhook_steam();
     // The stub's switch: blocking always (`on`), and the load test over `loading` (empty: off).
     void set_switch(const GameAddresses& a, bool on, const std::set<int>& loading);
     // "" if the slot and context are as traced, else why not (made once per configure).

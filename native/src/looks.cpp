@@ -1,5 +1,6 @@
 #include "looks.h"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -136,12 +137,11 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
         int16_t record = field<int16_t>(seen, obj::kRecord);
         const int stand_in = stand_in_index(record);
         if (d.spawn != 0 && d.spawn != spawn) d = {};  // another object now: none of ours
-        // Put back while still ours (seen is this frame's copy of it).
-        if (spawn == 0 || stand_in < 0 || !ours[stand_in]) {
-            undress(object, seen, d, base, standin_palette, false);
-            continue;
-        }
-        int item = item_at(seen[obj::kItemRow], seen[obj::kItemColumn]);
+        // The item it stands in for, if a live, restyled stand-in; else put back while still
+        // ours (seen is this frame's copy of it).
+        const int item = spawn == 0 || stand_in < 0 || !ours[stand_in]
+                             ? -1
+                             : item_at(seen[obj::kItemRow], seen[obj::kItemColumn]);
         if (item < 0) {
             undress(object, seen, d, base, standin_palette, false);
             continue;
@@ -191,10 +191,8 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     }
     // Any dressed earlier and not found now is put back if it is still ours.
     for (int slot = 0; slot < kObjectSlots; ++slot) {
-        if (flipped_dressed_[slot].spawn == 0) continue;
-        bool found = false;
-        for (int s : flipped_slots_) found = found || s == slot;
-        if (!found) {
+        if (flipped_dressed_[slot].spawn != 0 &&
+            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
             undress_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
                          flipped_dressed_[slot], base, standin_palette, true);
         }
@@ -252,14 +250,11 @@ void ItemLooks::restore(const GameAddresses& at) {
         undress_live(at.item_pool + slot * obj::kItemSize, obj::kItemSize, dressed_[slot], base,
                      standin_palette, false);
     }
-    for (int slot = 0; slot < kObjectSlots; ++slot) {
-        if (at.object_pool == nullptr) {
-            flipped_dressed_[slot] = {};
-        } else {
-            undress_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
-                         flipped_dressed_[slot], base, standin_palette, true);
-        }
+    for (int slot = 0; slot < kObjectSlots && at.object_pool != nullptr; ++slot) {
+        undress_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
+                     flipped_dressed_[slot], base, standin_palette, true);
     }
+    if (at.object_pool == nullptr) flipped_dressed_.assign(kObjectSlots, {});
 }
 
 }  // namespace zap

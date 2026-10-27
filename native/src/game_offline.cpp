@@ -101,7 +101,7 @@ void Game::watch_offline() {
     offline_frames_ = kOfflineFrames;
     // A save is dressed with no client, or with a client that said the loaded save is not its
     // seed's (other_save); undressed when that stops.
-    const bool other = other_mode();
+    const bool other = active_ && other_save_;
     const bool dress = !active_ || other;
     // Which known seed's save is loaded.
     const int seed = dress ? loaded_seed() : -1;

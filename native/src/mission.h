@@ -111,7 +111,8 @@ private:
     // is still the opener's (a save sets the pause opener back and brings no fade of its own):
     // whether it did.
     bool taken_over(const GameAddresses& addresses);
-    // Takes the opener off before it runs: the idle routine, timer 0, the fade turned back.
+    // Takes the opener off before it runs, if its fields can be written (else it stays armed_):
+    // the idle routine, timer 0; the fade turned back either way.
     void take_back(const GameAddresses& addresses);
 
     HMODULE image_ = nullptr;

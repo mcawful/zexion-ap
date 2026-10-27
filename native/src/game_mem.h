@@ -61,10 +61,22 @@ inline BYTE* panel_at(const BYTE* menu, int i) {
 inline BYTE* child_at(const BYTE* panel, int i) {
     return pointer_at(pointer_at(panel, panel::kChildren), i * 8);
 }
+// A menu's panel count and a panel's child count (panel::kCapacity), or -1 if unreadable.
+int32_t panel_count(const BYTE* menu);
+int32_t child_count(const BYTE* panel);
+// A panel's first children, up to `max`, copied into `out`: its child count, or -1 (nothing
+// copied) if that or its list cannot be read. The caller checks the count.
+int32_t children_of(const BYTE* panel, BYTE** out, int32_t max);
+// The `count` glyphs of a text label (label::), into `glyphs`, if it has that many (count > 0).
+bool label_glyphs(const BYTE* label, int32_t count, BYTE** glyphs);
 // Whether `w` is a live widget (not released) with the widget handler `handler`, and with the
 // callback `callback` if one is given (null included).
 bool live_widget(const BYTE* w, const void* handler);
 bool live_widget(const BYTE* w, const void* handler, const void* callback);
+
+// Points the slot at base + offset (a handler or callback) at `to` if it holds `from` (not null)
+// and can be written: whether it did.
+bool swap_pointer(BYTE* base, ptrdiff_t offset, const void* from, const void* to);
 
 // An item record's fields the helper checks before it writes one (record::), as the game loads
 // them; matches compares them with a record's copy.
@@ -77,12 +89,13 @@ bool matches(const BYTE* r, const RecordShape& shape);
 // Record `item` behind [records_holder], copied into `copy`, where it is: null if it cannot be
 // read or the game could not write it there.
 BYTE* writable_record(const BYTE* records_holder, int item, BYTE (&copy)[record::kSize]);
-// A record's name is `name` (r a record or its copy), NUL-terminated within the field.
-inline bool record_named(const BYTE* r, std::string_view name) {
-    return name.size() < record::kNameSize &&
-           std::memcmp(r + record::kName, name.data(), name.size()) == 0 &&
-           r[record::kName + name.size()] == 0;
+// A record's name (r a record or its copy), up to its NUL.
+inline std::string_view record_name(const BYTE* r) {
+    const char* name = reinterpret_cast<const char*>(r + record::kName);
+    return {name, strnlen(name, record::kNameSize)};
 }
+// A record's name is `name` (r a record or its copy).
+inline bool record_named(const BYTE* r, std::string_view name) { return record_name(r) == name; }
 // Writes `name` as the record's name, cut to fit and NUL-padded, if it is not that already.
 void set_record_name(BYTE* r, std::string_view name);
 
@@ -96,6 +109,8 @@ int32_t frame_of(const BYTE* sprite);
 // Shows frame `frame` of a sprite's frame list (its index and its frame pointer), if the list
 // has that many; false, with nothing written, otherwise.
 bool set_frame(BYTE* sprite, int32_t frame);
+// Whether each of `glyphs` shows its character of `text` (its frame), one glyph a character.
+bool glyphs_show(BYTE* const* glyphs, std::string_view text);
 // Drawn as `like` is: its palette, style and tint copied (both checked writable by the caller).
 void look_like(BYTE* sprite, const BYTE* like);
 

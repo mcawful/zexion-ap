@@ -19,6 +19,9 @@ constexpr int kMapCells = kMapSide * kMapSide;
 // A map cell is 14 tiles along this repo's x (the tile column) and 20 along its y (the tile row)
 // (docs/re/save-format.md, "The continue point and the seed's start").
 constexpr int kCellColumns = 14, kCellRows = 20;
+// The sprite texture (sprite_texture): Sprites.png, 2048 x 2048 RGBA (docs/re/memory.md, "The
+// pause screen's KEYS row").
+constexpr int kTextureSize = 2048;
 
 // save_loaded: 0xFF with no save loaded, 0 in one (docs/re/memory.md, "Telling play from menus,
 // the title screen and death"). The flags: 0x9C4 bytes (client/game.py, FLAGS).
