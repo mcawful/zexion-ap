@@ -39,7 +39,7 @@ this.
   files full of save data do not mean the folder is full: count the slots this command calls
   empty.
 - **IN USE**: anything else, including a file too short or of an odd size.
-- **IN USE (unreadable)**: a file that can't be read; its hash shows as `?`.
+- **IN USE (unreadable)**: a file that can't be read; its hash shows as question marks.
 
 Both bytes, the facts behind them and what is still assumed (that the file select reads
 nothing else; that a normal-mode save is deleted the same way, only randomizer saves having

@@ -18,7 +18,7 @@ A slot is empty in two ways, and ``slots`` names both. "empty" holds the unused-
 "empty (deleted, data kept)" holds a save deleted in the game: deleting keeps the file and all
 its data, and only sets the empty marker (``0x9360``) to ``0xFF`` and the randomizer marker
 (``0x9402``) to 0, so the game marks the slot empty. Anything else, including a file of an odd
-size or one that can't be read ("IN USE (unreadable)", its hash shown as ``?``), is in use.
+size or one that can't be read ("IN USE (unreadable)", its hash shown as question marks), is in use.
 ``install`` fills either kind of empty slot; over a deleted save it says the data it replaced is
 in the backup it required, and ``lab/installs.log`` records which kind it filled (``was=``).
 
