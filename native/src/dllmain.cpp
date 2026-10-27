@@ -550,11 +550,18 @@ std::string undo_for_unload() {
     set_unloading(true);
     // What clients set, armed again should the unload be refused (they would not resend it).
     bool saved = false;
+    bool menu_open = false;
     zap::ClientState state;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
             [&] {
+                // An open screen keeps what it was built from (the pause row's disc, an item
+                // record's name): nothing is put back under it.
+                if (g_game.menu_open()) {
+                    menu_open = true;
+                    return std::string();
+                }
                 state = g_game.snapshot();
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
@@ -572,6 +579,7 @@ std::string undo_for_unload() {
         if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };
+    if (menu_open) return refuse("a menu is open");
     if (const char* blocker = set_unloading(true)) {
         return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
     }

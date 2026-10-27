@@ -216,6 +216,10 @@ bool Game::in_play() const {
            at<int16_t>(player(), kEnergy) > 0;
 }
 
+bool Game::menu_open() const {
+    return configured_ && *at_.save_loaded != kNoSaveLoaded && *at_.menu_state != 0;
+}
+
 BYTE* Game::record(uint8_t item) const {
     BYTE* records = at<BYTE*>(at_.item_records, 0);
     if (records == nullptr || item >= record::kCount) return nullptr;

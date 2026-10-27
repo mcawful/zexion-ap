@@ -151,8 +151,12 @@ Disks goal's screens.
 `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST again, then, in a
 frame call, puts back what a client going away puts back and hides the title screen's lines.
 
-It refuses (`error <why>; not unloading`) while the game may still call into the helper: an
-open menu's panel or entry, the open map or the game's transition routine holding one of its
+It refuses (`error a menu is open; not unloading`) while a save is loaded with a menu open
+(the pause, map or equipment screen, the quit menu), before putting anything back: an open
+screen keeps what it was built from (the pause row's disc, an item record's name), which it
+would show wrong until reopened (seen in game 2026-10-26, before this check). It also refuses
+(`error <why>; not unloading`) while the game may still call into the helper: an open menu's
+panel or entry, the open map or the game's transition routine holding one of its
 wrappers, or the scanner's text, the pause screen's branch or an item record still the helper's.
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A

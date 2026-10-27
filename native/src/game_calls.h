@@ -61,6 +61,9 @@ public:
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }
+    // Game thread: a save loaded with a menu open (the pause, map or equipment screen, the quit
+    // menu). Unload refuses then (dllmain.cpp, undo_for_unload).
+    bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away. Gates the escape
     // skip (also on while the offline look dresses a save: offline_skip_).
     bool active() const { return active_; }
