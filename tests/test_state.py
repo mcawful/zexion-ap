@@ -72,7 +72,7 @@ def test_a_new_helper_is_told_everything_again() -> None:
 
 
 def test_leaving_the_seeds_save_starts_the_next_load_afresh() -> None:
-    load = state.LoadState(seed_loaded=True, save_collected={1, 2}, ending_unseen=True)
+    load = state.LoadState(seed_loaded=True, save_collected={1, 2}, goal_withheld=True)
     load.return_home.reminded = True
     load.assists_want = load.intel_want = True
     load.leave()
@@ -88,17 +88,17 @@ def test_the_goal_withheld_is_said_again_on_the_next_load() -> None:
 # --- received items' popups -----------------------------------------------------------------
 
 
-def test_with_no_count_stored_everything_held_counts_as_shown_and_is_stored_at_once() -> None:
+def test_with_no_count_stored_everything_held_counts_as_handed_and_is_stored_at_once() -> None:
     for absent in (None, "x", -1, True):
-        assert state.announced_start(absent, 5) == (5, 5)
+        assert state.announced_start(absent, 5) == 5
         assert state.announced_to_store(5, absent, None) == 5, "the key is made at once"
-    assert state.announced_start(None, 0) == (0, 0)
+    assert state.announced_start(None, 0) == 0
     assert state.announced_to_store(0, None, None) == 0, "even with nothing held"
 
 
 def test_a_stored_count_starts_the_session_capped_at_the_items_held() -> None:
-    assert state.announced_start(3, 5) == (3, 3)
-    assert state.announced_start(9, 5) == (5, 5)
+    assert state.announced_start(3, 5) == 3
+    assert state.announced_start(9, 5) == 5
     assert state.announced_to_store(3, 3, None) is None, "nothing new: nothing stored"
 
 
@@ -109,23 +109,14 @@ def test_a_shield_count_that_is_not_a_count_pauses_shields_rather_than_reading_a
         assert state.shield_count(bad) is None, "every received shield would be given again"
 
 
-def test_a_reconnect_does_not_queue_again_what_the_same_helper_holds() -> None:
-    assert state.announced_start(3, 5, queued_before=5) == (5, 3)
-    assert state.announced_start(3, 5, queued_before=9) == (5, 3)
-    assert state.announced_start(3, 5, queued_before=2) == (3, 3)
+def test_a_reconnect_does_not_hand_over_again_what_the_connection_before_did() -> None:
+    # Its last count may not have reached the server before it ended.
+    assert state.announced_start(3, 5, handed_before=5) == 5
+    assert state.announced_start(3, 5, handed_before=9) == 5
+    assert state.announced_start(3, 5, handed_before=2) == 3
 
 
-def test_popups_shown_are_those_queued_less_those_waiting() -> None:
-    assert state.popups_unstored(5, 3, None)
-    assert not state.popups_unstored(3, 3, None) and not state.popups_unstored(5, 3, 5)
-    assert state.popups_shown(5, 2, 3) == 3
-    assert state.popups_shown(5, 0, 3) == 5
-    # The helper's count takes in follow-up popups too: never below what was known.
-    assert state.popups_shown(5, 4, 3) == 3
-    assert state.popups_shown(5, 9, 0) == 0
-
-
-def test_new_popups_shown_are_stored_and_a_failed_store_is_sent_again() -> None:
+def test_new_popups_handed_over_are_stored_and_a_failed_store_is_sent_again() -> None:
     assert state.announced_to_store(5, 3, None) == 5
     assert state.announced_to_store(5, 3, 4) == 5
     # The store failed: sent stays as it was, so the next poll sends it again.
@@ -134,16 +125,6 @@ def test_new_popups_shown_are_stored_and_a_failed_store_is_sent_again() -> None:
     assert state.announced_to_store(5, 3, 5) is None
     assert state.announced_to_store(5, None, 5) is None
     assert state.announced_to_store(4, 5, None) is None, "another client of the slot is ahead"
-
-
-def test_a_lost_helper_queues_again_what_it_had_not_shown() -> None:
-    conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    conn.helper_lost()
-    assert conn.session.announced is None, "nothing known yet: nothing to queue again"
-    conn.session.announced = 5
-    conn.announced_shown, conn.queued_before = 3, 5
-    conn.helper_lost()
-    assert conn.session.announced == 3 and conn.queued_before is None
 
 
 # --- the locations found, and what is said once ------------------------------------------------
@@ -203,3 +184,51 @@ def test_leaving_this_seeds_save_says_items_wait() -> None:
     # The server still sends items: they are given once this seed's save is loaded again.
     for line in (state.SAVE_CLOSED, state.OTHER_SAVE):
         assert "wait until" in line and "received" not in line
+
+
+# --- reconnects, a lost helper, the goal ------------------------------------------------------
+
+
+def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_hold() -> None:
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.session.announced, old.session.holding = 7, True
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True)
+    assert new.before is old.session and new.session.holding
+    old.session.announced = 9  # its last poll handed more over after Connected
+    assert new.before.announced == 9, "read when the new count starts, not at Connected"
+    other_seed = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(other_seed, old, same_seed=False)
+    assert other_seed.before is None and not other_seed.session.holding
+    state.carry_over(other_seed, None, same_seed=True)
+    assert other_seed.before is None
+
+
+def test_reload_mod_says_whether_the_mod_unloaded() -> None:
+    unloaded, line = state.reload_reply("bye")
+    assert unloaded and "loading it again" in line
+    unloaded, line = state.reload_reply(None)  # the request failed: it unloads itself
+    assert unloaded and "didn't answer" in line
+    unloaded, line = state.reload_reply("error a menu is open; not unloading")
+    assert not unloaded and "with a menu open" in line
+    reply = "error the frame hook was replaced by something else; not unloading"
+    unloaded, line = state.reload_reply(reply)
+    assert not unloaded and "(the frame hook was replaced by something else)" in line
+    assert "restart Zexion" in line, "advice that does not hinge on a menu"
+
+
+def test_connects_own_disconnect_keeps_the_connection_a_disconnect_left() -> None:
+    # Disconnect, then Connect: Archipelago's connect disconnects first, with no connection.
+    conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    left = state.left_connection(conn, None)
+    assert left is conn
+    assert state.left_connection(None, left) is conn, "the one left is not forgotten"
+    newer = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    assert state.left_connection(newer, left) is newer
+
+
+def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
+    assert state.goal_reached(True, None, 0), "the core goal: the ending"
+    assert state.goal_reached(True, 3, 3)
+    assert not state.goal_reached(True, 3, 2), "too few disks"
+    assert not state.goal_reached(False, 3, 9), "no ending"

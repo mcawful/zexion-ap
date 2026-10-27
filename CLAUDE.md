@@ -38,7 +38,7 @@ Where things are:
   writes it.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
-  the helper, the client's `/unload_helper`, and `save_lab.py install` and `restore`. Grants and
+  the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
   memory writes go only into a lab slot; grants only while the player stands still in play.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
@@ -107,8 +107,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   RANDOMIZER on the menu instead of offering ARCHIPELAGO.
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. `/unload_helper` (hidden from `/help`)
-  unloads it as if it had failed; the client loads it again within 30 seconds.
+  directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
+  again a few seconds later (for a misbehaving mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads).
@@ -135,7 +135,7 @@ game or save folders.
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
 | `build_apworld.py` | a release into `dist/` | no |
-| `release_check.py [--above TAG]` | the release version; fails unless above `TAG` | no |
+| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
 
 The tools find the game through Steam's library list and the saves through `%APPDATA%`.
 `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR` (or `save_lab.py
@@ -157,8 +157,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
   `tests/test_cross_checks.py` and `build_apworld.py` check they match, and CI's release gate
-  (`tools/release_check.py`) that it is above the last release. The helper shows it on the
-  title screen.
+  (`tools/release_check.py`) that it is above the last release and the version on `main`. The
+  helper shows it on the title screen.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout

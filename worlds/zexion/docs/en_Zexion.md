@@ -5,7 +5,9 @@
 Zexion has its own randomizer. This world uses its map and its rules for what each item opens
 up, but lets Archipelago decide what is at each of the game's 154 item locations (150 in
 OHKO). Items found in Zexion can belong to other players, and their games can send items to
-you.
+you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
+Chips): excluding more locations than there is filler stops generation with an error that says
+so.
 
 You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
 (`zexion-setup-guide.md` in the release).
@@ -27,6 +29,9 @@ Set with the Goal option.
   - Once you have enough, save at the start room (your landing pod) and answer YES to RETURN
     HOME WITH THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the
     question comes back the next time you save there.
+  - Each disk takes the place of a filler item (Scrap, then Area Maps or Intel Chips), and
+    excluded locations can hold only filler: with many disks, excluding many locations stops
+    generation with an error that says so (the OS Install Disks option gives the numbers).
 
 ## Which modes are there?
 
@@ -53,7 +58,7 @@ the mode's own starting items):
 - one of each upgrade, and at most two of each weapon (the second is its upgrade);
 - Energy Tanks, Missile Boxes, and up to 9 Missile Containers;
 - keys, in order from the Alpha Key;
-- OS Install Disks, with the OS Install Disks goal.
+- OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
 
 Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
 or Assist Unlock, stops generation with an error that names it.

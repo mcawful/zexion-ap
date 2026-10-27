@@ -21,7 +21,8 @@ constexpr size_t kSuffixMax = 40;
 constexpr size_t kNoticeMax = 200;
 
 bool parse_number(const std::string& text, uint64_t& out) {
-    if (text.empty()) return false;
+    // A digit first: strtoull also takes leading spaces and a sign, and reads "-1" as 2^64 - 1.
+    if (text.empty() || !std::isdigit(static_cast<unsigned char>(text[0]))) return false;
     char* end = nullptr;
     out = std::strtoull(text.c_str(), &end, text.rfind("0x", 0) == 0 ? 16 : 10);
     return end != nullptr && *end == '\0';
@@ -162,7 +163,7 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
         SectionBytes edit;
         size_t room = op == "menu" ? kMenuSize : kSectionSize;
         if (!(words >> offset_text >> hex) || !parse_number(offset_text, offset) ||
-            !parse_hex(hex, edit.bytes) || offset + edit.bytes.size() > room) {
+            !parse_hex(hex, edit.bytes) || offset > room || edit.bytes.size() > room - offset) {
             return "bad line " + line;
         }
         edit.offset = static_cast<uint16_t>(offset);

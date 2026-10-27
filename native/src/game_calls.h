@@ -61,12 +61,13 @@ public:
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }
-    // Whether a client is there: set by `config`, cleared when it goes away. Gates the escape
-    // skip (also on while the offline look dresses a save: offline_skip_).
+    // Game thread: a save loaded with a menu open (the pause, map or equipment screen, the quit
+    // menu). Unload refuses then (dllmain.cpp, undo_for_unload).
+    bool menu_open() const;
+    // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
+    // Gates the escape skip (also on while the offline look dresses a save: offline_skip_).
     bool active() const { return active_; }
-    void set_active(bool active) { active_ = active; }
-    // Popups not shown yet dropped (the client that sent them went away).
-    void clear_popups() { popups_.clear(); }
+    void set_active(bool active) { active_ = active; }  // tests
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
 
@@ -74,6 +75,10 @@ public:
     // change held by a menu no longer open is gone with it. `callback`: ARCHIPELAGO's, to
     // recognize it.
     void put_back_all(WidgetCallback callback);
+    // Game thread: the client went away. Puts back what it set (put_back_all) and goes
+    // inactive until a client configures again; its popups not shown yet stay queued, as their
+    // items are already given (the client counts popups handed over, not shown).
+    void client_gone(WidgetCallback callback);
     // Game thread: what clients set, before put_back_all drops it, and set again after it (an
     // unload refused).
     ClientState snapshot() const;
@@ -89,8 +94,8 @@ public:
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
-    // The client's popups still queued (Popup::counted), for the `popups` request: one leaves
-    // the queue when shown, dropped for want of a record, or dropped with the client.
+    // The client's popups still queued (Popup::counted), for the tests: one leaves the queue
+    // when shown, or dropped for want of a record.
     size_t pending_popups() const;
 
     // Game thread. Arms the AP new game: the next randomizer new game the game is about to
@@ -288,6 +293,8 @@ private:
     BYTE* player() const;
     BYTE* record(uint8_t item) const;
     bool popup_busy() const;
+    // Whether a queued popup may show in the save loaded now (Popup::origin).
+    bool showable(const Popup& popup) const;
     void refresh_hud();
 
     bool configured_ = false;

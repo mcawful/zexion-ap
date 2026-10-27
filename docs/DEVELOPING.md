@@ -30,11 +30,14 @@ worlds/zexion/ → generation → slot data → client
   other 4), using the game's own randomizer map and rules (`docs/re/locations.md`).
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
-  other worlds send, and sends the goal when the ending begins. It never counts its own grants:
+  other worlds send, and sends the goal once the save has reached the ending (with the OS
+  Install Disks goal, with enough disks). It never counts its own grants:
   it gives what the player should own minus what the inventory holds, so an item lost to a
   death or a reload is given again. It keeps a few records in the server's data storage (the
-  popups shown, the Intel Chip hints made). A failing side task (labels, disk count, DeathLink,
-  follow-up popups) is logged once while items, checks and the goal go on.
+  received items handed to the helper for their popup, the follow-up popups shown, the Intel
+  Chip hints made; sent again until the server holds them). A
+  failing side task (labels, disk count, DeathLink, follow-up popups) is logged once while items,
+  checks and the goal go on.
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -76,7 +79,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
 
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
-  storage): 2026-10-26. Not seen in game: a game closed with popups queued.
+  storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
+  helper, which keeps its queue when the client goes away (Disconnect then Connect, the
+  client closed, the save quit to the title: 2026-10-26). A game closed, or the helper
+  unloaded, with popups queued loses them (2026-10-26).
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
@@ -97,16 +103,22 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   file select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO):
   2026-10-24; offered at the landing pod only: 2026-10-25. The reminder (ENOUGH OS INSTALL
   DISKS FOUND...) after the received disks' popups, and the pause row on a pause right after
-  loading: 2026-10-26.
+  loading: 2026-10-26. Starting disks counted, and the goal sent by a client opened after the
+  ending began: 2026-10-26.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
+- `/reload_mod` in play: the mod back 3 s later, the ASSIST lock and the map's items the game's
+  for those seconds: 2026-10-26. With the pause or equipment screen open it unloaded, and the
+  open screen showed the disk wrong until reopened (2026-10-26), so an unload now refuses with a
+  menu open: refused with the pause screen open, then reloaded in play, 2026-10-26.
 - What the helper changed put back when the client goes away (item records, ASSIST, the escape
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
   screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
 - AP saves without the client, from a fresh start too, and another seed's save told so:
-  2026-10-25; its notice as now worded: 2026-10-26. Not seen in game: a plain (not Archipelago)
+  2026-10-25; its notice as now worded, and its look kept when a client of another seed
+  attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)
   randomizer game left alone with a client connected (no notice, no look).
 
 ## Setup
@@ -162,8 +174,9 @@ helper into the game: the one already there if it is this version, else
 - `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it in
   the seed's mode, with no options changed, gets the seed. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/unload_helper` unloads the helper as if it had failed; the client loads it again within
-  30 seconds.
+- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
+  meanwhile (popups still queued are lost; items are not); with a menu or the map open it
+  refuses and says why.
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
 ## Branches and releases  `main` holds released code (or a release waiting for approval; GitHub
@@ -173,8 +186,10 @@ and `main` take changes only through pull requests with every CI check passing (
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate: it must come from
-this repo's `develop` and raise the version above every release's tag
-(`tools/release_check.py`); if GitHub can't list the releases, the gate fails.
+this repo's `develop` and raise the version above every release's tag and above the version
+on `main` (`tools/release_check.py`). The second matters while a merged release waits for
+approval: it has no tag yet, but `main` already holds its number. If GitHub can't list the
+releases or `main`'s version can't be read, the gate fails.
 
 A release has one version number, in three places: `VERSION` in `client/native.py`,
 `kVersion` in `native/src/dllmain.cpp` and `world_version` in
@@ -193,11 +208,14 @@ To release:
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
    tagged or published before that. It then builds the helper and proxy, runs the native
    tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
-   GitHub Release of the files below, with generated notes. A version already released is
-   skipped.
+   GitHub Release of the files below, with generated notes. A version already released from
+   this same commit is skipped (a re-run). The job fails instead if that version's release is
+   a draft (a publish that failed part-way: publish or delete it on GitHub, then re-run) or was
+   released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
-   release: fix the cause (on a topic branch into `develop`, then `develop` into `main` again if
-   code changed) or re-run the workflow from the Actions page; the skip makes a re-run safe.
+   release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
+   `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
+   `main` again.
 
 `tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
 `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as

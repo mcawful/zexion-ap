@@ -24,7 +24,7 @@ DLL_NAME = "zexion_ap.dll"
 # looks for it in its own folder): while it exists neither the proxy nor the client loads the
 # game folder's helper.
 DISABLED_NAME = "zexion_ap.disabled"
-VERSION = "0.29.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "0.30.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
@@ -327,18 +327,6 @@ class Helper:
         if reply != "applied" and not reply.startswith("refused "):
             raise HelperError(f"unexpected reply to apply: {reply!r}")
         return reply
-
-    def popups_pending(self) -> int | None:
-        """How many popups of ``apply`` batches the helper holds that it has not shown yet
-        (``popups``, replying ``pending N``); None when no frame took the request (a load, a
-        stall: asked again later); HelperError for any other reply."""
-        reply = self.request("popups")
-        if reply.startswith("refused "):
-            return None
-        words = reply.split()
-        if len(words) != 2 or words[0] != "pending" or not words[1].isdigit():
-            raise HelperError(f"unexpected reply to popups: {reply!r}")
-        return int(words[1])
 
     def close(self) -> None:
         if self._handle is not None:

@@ -4,12 +4,15 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "text.h"  // Label
 
 namespace zap {
+
+struct OfflineSeed;  // offline.h
 
 struct Cas {
     uint8_t item;  // inventory byte 0..49
@@ -22,9 +25,11 @@ struct Popup {
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
     bool silent = false;  // no pickup sound (the helper's offline notices, game_offline.cpp)
-    // A client's (from `apply`), which the client counts as shown once it has left the queue:
-    // the `popups` request counts those still queued. The helper's own notices are not.
+    // A client's (from `apply`), not one of the helper's own notices: held for its save.
     bool counted = false;
+    // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
+    // another save is loaded. None: shown in any save.
+    std::shared_ptr<const OfflineSeed> origin;
 };
 
 struct Batch {

@@ -279,15 +279,3 @@ def test_a_turned_off_mod_already_loaded_is_used(tmp_path, monkeypatch) -> None:
     stand_in_attach(monkeypatch, game)
     native.attach(game, tmp_path / "no-build" / "zexion_ap.dll")
     assert game.loads == 0 and game.unloads == 0
-
-
-def test_the_popups_waiting_are_read_from_the_helpers_reply(monkeypatch) -> None:
-    helper = object.__new__(native.Helper)
-    replies = iter(["pending 3", "pending 0", "pending", "pending -1", "refused no frame"])
-    monkeypatch.setattr(helper, "request", lambda text, *args: next(replies), raising=False)
-    assert helper.popups_pending() == 3
-    assert helper.popups_pending() == 0
-    for _ in range(2):
-        with pytest.raises(native.HelperError, match="unexpected reply to popups"):
-            helper.popups_pending()
-    assert helper.popups_pending() is None  # no frame took it: asked again later

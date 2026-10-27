@@ -56,8 +56,6 @@ int wmain(int argc, wchar_t** argv) {
     check(hello.find("hooked=1 configured=0") != std::string::npos, "hello before config", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
-    reply = zap_test::ask(pipe, "popups");
-    check(reply == "pending 0", "popups before config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
@@ -71,8 +69,6 @@ int wmain(int argc, wchar_t** argv) {
     check(stand_in::g_messages == 1 &&
               stand_in::g_text == "\xC5MISSILE BOX FROM ALICE" && stand_in::g_message_args[0] == 12,
           "the popup was shown from a frame call, the sender on its own line", stand_in::g_text);
-    reply = zap_test::ask(pipe, "popups");
-    check(reply == "pending 0", "shown: none pending", reply);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused item 36 holds 1", "a stale expectation is refused", reply);
@@ -91,6 +87,13 @@ int wmain(int argc, wchar_t** argv) {
     // A refused unload: the new-game plan the client armed is armed again.
     reply = zap_test::ask(pipe, "ap_newgame\nwrite 0x310 11");
     check(reply == "armed", "a plan armed", reply);
+    // A menu open in a save: refused before anything is put back.
+    stand_in::g_menu = 2;
+    reply = zap_test::ask(pipe, "unload");
+    check(reply == "error a menu is open; not unloading", "refused with a menu open", reply);
+    reply = zap_test::ask(pipe, "newgame_status");
+    check(reply == "armed", "nothing put back under the menu", reply);
+    stand_in::g_menu = 0;
     void** slot = zap::find_import_slot(GetModuleHandleW(nullptr), "kernel32.dll", "GetTickCount");
     void* other = reinterpret_cast<void*>(&chained_tick);
     g_next = slot != nullptr ? *slot : nullptr;

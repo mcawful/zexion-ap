@@ -81,7 +81,8 @@ jobs:
   release-gate:
     name: release gate
     # Only a pull request into main is a release: it must come from this repo's develop and
-    # raise the version above the last release.
+    # raise the version above the last release and above the version on main (a merged release
+    # waiting for approval has no tag yet, but main already holds its version).
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
@@ -99,11 +100,14 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
-      # Every release's tag (none before the first). A failing call fails the step, so the
+      # Every release's tag (none before the first), and main's version as fetched now. A failing
+      # call fails the step (and release_check fails if it can't read main's version), so the
       # gate never passes on an error.
-      - name: Version above the last release
+      - name: Version above the last release and main
         env:
           GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
           tags="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName -q '.[].tagName')"
-          uv run --no-project python tools/release_check.py --above $tags
+          uv run --no-project python tools/release_check.py --base "origin/$BASE_REF" --above $tags

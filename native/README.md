@@ -89,7 +89,6 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
-| `popups` (frame) | `pending N` | Popups |
 | `ap_newgame` and lines `expect`, `write` or `menu OFFSET HEX`, `start_table HEX` (frame) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
@@ -136,9 +135,12 @@ with one atomic exchange, and only one thread at a time does the work.
 When the pipe's client disconnects (the client exited or crashed, or `tools/helper.py` was
 done), the next frame call, before it serves any request, puts back everything the parts below
 set (`Game::put_back_all` in `src/game_calls.cpp`). A change held by a menu no longer open is
-gone with it. It drops the popups not shown yet and goes inactive until a client sends `config`
-again (the client resends every request after it attaches). The offline look then applies
+gone with it. It goes inactive until a client sends `config` again (the client resends every
+request after it attaches). The client's popups not shown yet stay queued and still show
+("Popups"): their items are already given. The offline look then applies
 again (AP saves without the client). The helper stays loaded and hooked.
+
+The client's popups staying queued, and showing: working in game 2026-10-26 (0.30.0).
 
 Working in game: 2026-10-25, the client stopped with helper 0.20.0 loaded by the proxy
 ("The escape skip", "Other players' items"). Not looked at: ARCHIPELAGO and the OS Install
@@ -149,10 +151,17 @@ Disks goal's screens.
 `unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST again, then, in a
 frame call, puts back what a client going away puts back and hides the title screen's lines.
 
-It refuses (`error <why>; not unloading`) when no frame came to do that, or while the game may
-still call into the helper: an open menu's panel or entry, the open map or the game's transition
-routine holding one of its wrappers, or the scanner's text, the pause screen's branch or an item
-record still the helper's. A refused unload sets again, in the next frame call and before any
+It refuses (`error a menu is open; not unloading`) while a save is loaded with a menu open
+(the pause, map or equipment screen, the quit menu), before putting anything back: an open
+screen keeps what it was built from (the pause row's disc, an item record's name), which it
+would show wrong until reopened (seen in game 2026-10-26, before this check; the refusal with
+the pause screen open: working in game 2026-10-26, the Launcher's client log
+`ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47). It also refuses (`error <why>; not
+unloading`) while the game may still call into the helper: an open menu's panel or entry, the open map or the game's transition routine holding one of its
+wrappers, or the scanner's text, the pause screen's branch or an item record still the helper's.
+If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
+came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
+refused unload sets again, in the next frame call and before any
 request, what clients had set (`zap::ClientState`), since a client would not know to resend it.
 
 Then it points the slot back at SDL, only if the slot still holds the trampoline (otherwise
@@ -202,8 +211,16 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
   and at least 20 frames after the helper's last. Each plays the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
-  shown: `popups` counts a client's popups still queued (not the helper's own notices), so the
-  client counts one as shown only once it has left the queue.
+  shown; the client counts a received item's popup as done once `apply` took it. The queue
+  outlives the client ("A client going away"), but not the helper: an unload, or the game
+  closing, loses the popups still queued (their items are given).
+- **Their save:** a client's popup is for the seed of the randomizer save loaded when `apply`
+  took it (with none loaded, it shows in any save). While a save of another seed, or a normal
+  save, is in play it waits (not keeping RETURN HOME WITH THE DISKS? waiting), and the next one
+  for this save, or a helper notice, shows instead. A client of another seed does not drop them:
+  they wait for their own save.
+  Working in game 2026-10-26: popups waiting through a normal save, shown in their own save.
+  A client of another seed leaving them queued: stand-in tests only (`tests/game_tests.cpp`).
 - **Text:** a `popup` is the item's icon and name, then the client's suffix (≤ 40 characters);
   a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character width
   (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls").
@@ -407,6 +424,9 @@ pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row").
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
   notice a load that the client is not connected (or, for `other_save`, is for another seed;
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
+  While the save stays dressed, each look sets that look again where it was changed: a client of
+  another seed, attaching with the save in play, takes its own look back, which is not this
+  save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
   The file select shows each such save's count, from its map in the game's copy of the slot.
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
@@ -507,7 +527,7 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
   `offline_put`, a stand-in game dressed and undressed).
 - `proxy`: its exports give what Windows' own give, and it loads no helper outside Zexion.
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
-  `popups`, a batch no frame took, an unload refused while something else is hooked over the
+  a batch no frame took, an unload refused while something else is hooked over the
   helper, with what the client had set armed again).
 - `unload_under_load`: a test build, `zexion_ap_hooktest.dll`, hooks the loading program's own
   `GetTickCount` import (it refuses to hook a known game build), counts calls, and survives 300

@@ -336,6 +336,24 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertTrue(all(isinstance(code, int) and 0 <= code <= 50 for code in codes))
         self.assertFalse(codes & NOT_HINTED)
 
+    def test_an_item_links_items_are_hinted_to_its_members(self) -> None:
+        # The group's item goes to every member, so it is this player's to find.
+        mine, other = self.player + 1, self.player + 2
+        self.multiworld.groups[mine] = {"players": {self.player, other}}
+        self.multiworld.groups[other] = {"players": {other}}
+        ids = self.world.item_name_to_id
+        progression = ItemClassification.progression
+        placed = [
+            ZexionItem("Slide Mod", progression, ids["Slide Mod"], mine),
+            ZexionItem("Phaser", progression, ids["Phaser"], other),
+        ]
+        locations = [self.multiworld.get_location(location_name(i), self.player) for i in (0, 1)]
+        for location, item in zip(locations, placed, strict=True):
+            location.place_locked_item(item)
+        hints = self.world.fill_slot_data()["hints"]
+        self.assertIn([self.player, locations[0].address, code_of["Slide Mod"]], hints)
+        self.assertNotIn(locations[1].address, [address for _, address, _ in hints])
+
 
 class TestAreaMapHintsOff(ZexionTestBase):
     options = {"area_map_hints": False}
@@ -389,6 +407,65 @@ class TestIntelChipsLeaveFillerForExcludedLocations(ZexionTestBase):
         item = location.item
         self.assertIsNotNone(item)
         self.assertEqual(item.classification, ItemClassification.filler)
+
+
+class TestExcludedLocationsNeedFiller(ZexionTestBase):
+    """Standard with 16 disks keeps 9 filler items, the Intel Chips: a tenth excluded location
+    would stop AP's fill, so the world refuses it first, naming the options."""
+
+    run_default_tests = False
+    options = {"goal": "os_install_disks", "os_install_disks": 16, "os_install_disks_required": 12}
+
+    def exclude(self, n: int) -> None:
+        # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
+        for i in sorted(self.world.kept_locations)[:n]:
+            location = self.multiworld.get_location(location_name(i), self.player)
+            location.progress_type = LocationProgressType.EXCLUDED
+
+    def test_as_many_excluded_as_filler_left_fills(self) -> None:
+        self.exclude(9)
+        ZexionWorld.stage_pre_fill(self.multiworld)
+        distribute_items_restrictive(self.multiworld)
+
+    def test_one_more_is_refused_with_the_options_named(self) -> None:
+        self.exclude(10)
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(self.multiworld)
+        message = str(caught.exception)
+        self.assertIn("10 excluded locations, but only 9 filler items", message)
+        self.assertIn("OS Install Disks (16", message)
+        self.assertIn("exclude_locations", message)
+
+    def test_another_players_filler_makes_up_the_difference(self) -> None:
+        self.exclude(10)
+        other = Item("Something", ItemClassification.filler, 1, self.player + 1)
+        self.multiworld.itempool.append(other)
+        ZexionWorld.stage_pre_fill(self.multiworld)
+
+
+class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
+    """An Assist Unlock at this player's own location would be handed out as Scrap Metal and
+    never received, so the assist lock would never lift: an item rule keeps it out (plando
+    places through the same rule). Sent from the server console, it is just an item ID."""
+
+    run_default_tests = False
+
+    def test_only_this_players_own_assist_unlock_is_refused(self) -> None:
+        state = self.multiworld.state
+        mine = self.world.create_item("Assist Unlock")
+        theirs = ZexionItem(mine.name, mine.classification, mine.code, self.player + 1)
+        scrap = self.world.create_item("Scrap Metal")
+        for location in self.multiworld.get_locations(self.player):
+            if location.address is None:
+                continue
+            with self.subTest(location.name):
+                self.assertFalse(location.can_fill(state, mine, check_access=False))
+                self.assertTrue(location.can_fill(state, theirs, check_access=False))
+                self.assertTrue(location.can_fill(state, scrap, check_access=False))
+
+    def test_the_server_console_can_still_send_it(self) -> None:
+        # /send looks the name up in the game's item names (MultiServer, _cmd_send_multiple).
+        self.assertIn("Assist Unlock", self.world.item_name_to_id)
 
 
 def pool_names(test: ZexionTestBase) -> list[str]:
@@ -526,6 +603,20 @@ class TestDiscOptionsChecked(unittest.TestCase):
     def test_more_required_than_placed_is_an_error(self) -> None:
         with self.assertRaises(OptionError):
             self.world(1, 10, 11).generate_early()
+
+    def test_starting_disks_count_toward_the_required(self) -> None:
+        def world(required: int) -> ZexionWorld:
+            return fake_world(
+                goal=Goal.option_os_install_disks,
+                start_inventory={"OS Install Disk": 5},
+                placed=10,
+                required=required,
+            )
+
+        world(15).generate_early()  # 10 placed and 5 to start with
+        with self.assertRaises(OptionError) as caught:
+            world(16).generate_early()
+        self.assertIn("plus the 5 in start_inventory", str(caught.exception))
 
     def test_what_discs_replace_is_read_by_no_rule(self) -> None:
         codes = set()

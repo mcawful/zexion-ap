@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -86,8 +88,102 @@ def test_install_requires_yes_backup_and_empty_slot(saves: Path, tmp_path: Path)
     assert save_lab.main(["install", str(patched), "30", "--yes"]) == 1  # no such slot
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
     assert (saves / "Save Game 3.sav").read_bytes() == patched.read_bytes()
-    # The backup no longer matches slot 3, so a second install there is refused.
+    # Slot 3 now holds the installed save, so a second install there is refused as in use.
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+
+
+def _patched(tmp_path: Path) -> Path:
+    path = tmp_path / "patched.sav"
+    path.write_bytes(b"\xe8\x03" + b"\x2e" * (SIZE - 2))
+    return path
+
+
+def _edit_manifest(backup: Path, change) -> None:
+    path = backup / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    change(manifest)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _backups(tmp_path: Path) -> list[Path]:
+    return sorted((tmp_path / "lab" / "backups").iterdir())
+
+
+def test_install_refuses_a_backup_older_than_12_hours(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
+    old = save_lab.backup()
+    age = save_lab.BACKUP_MAX_AGE_HOURS * 3600 + 60
+
+    def make_old(manifest: dict) -> None:
+        manifest["created"] -= age
+
+    _edit_manifest(old, make_old)
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    save_lab.backup()  # a fresh one is enough
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
+
+
+def test_install_refuses_a_slot_changed_since_the_backup(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
+    (saves / "Save Game 4.sav").write_bytes(b"x" * SIZE)
+    save_lab.backup()
+    (saves / "Save Game 4.sav").write_bytes(template())  # emptied after the backup
+    assert save_lab.main(["install", str(patched), "4", "--yes"]) == 1
+    assert (saves / "Save Game 4.sav").read_bytes() == template()
+
+
+def test_install_refuses_a_manifest_without_the_slot_as_it_is(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
+    backup = save_lab.backup()
+
+    def misstate_slot_3(manifest: dict) -> None:
+        manifest["files"]["Save Game 3.sav"] = "0" * 64
+
+    _edit_manifest(backup, misstate_slot_3)  # the copy itself still matches the slot
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+
+
+def test_install_refuses_a_backup_copy_unlike_its_manifest(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
+    backup = save_lab.backup()
+    (backup / "Save Game 3.sav").write_bytes(b"y" * SIZE)  # the manifest still holds the slot
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+
+
+def test_a_save_write_that_reads_back_wrong_fails(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patched = _patched(tmp_path)
+    save_lab.backup()
+    replace = os.replace
+
+    def replace_then_spoil(src, dst) -> None:
+        replace(src, dst)
+        Path(dst).write_bytes(b"spoiled")
+
+    monkeypatch.setattr(save_lab.os, "replace", replace_then_spoil)
+    with pytest.raises(RuntimeError, match="read-back"):
+        save_lab.main(["install", str(patched), "3", "--yes"])
+    assert not (tmp_path / "lab" / "installs.log").exists()  # not logged as installed
+
+
+def test_a_failed_replace_leaves_no_temporary_file(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patched = _patched(tmp_path)
+    save_lab.backup()
+
+    def held_open(src, dst) -> None:
+        raise PermissionError(f"{dst} is in use")
+
+    monkeypatch.setattr(save_lab.os, "replace", held_open)
+    with pytest.raises(PermissionError):
+        save_lab.main(["install", str(patched), "3", "--yes"])
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    assert list(saves.glob("*.zexion-ap-tmp")) == []
 
 
 def test_restore_puts_a_slot_back_and_backs_up_first(saves: Path, tmp_path: Path) -> None:
@@ -100,6 +196,34 @@ def test_restore_puts_a_slot_back_and_backs_up_first(saves: Path, tmp_path: Path
     assert (saves / "Save Game 3.sav").read_bytes() == original
     backups = list((tmp_path / "lab" / "backups").iterdir())
     assert len(backups) == 2  # the original, plus the safety copy taken before restoring
+
+
+def test_restore_refuses_a_backup_unlike_its_manifest(saves: Path, tmp_path: Path) -> None:
+    backup = save_lab.backup()
+    (backup / "Save Game 3.sav").write_bytes(b"y" * SIZE)  # corrupted after it was taken
+    (saves / "Save Game 3.sav").write_bytes(b"x" * SIZE)
+    with pytest.raises(RuntimeError, match="does not match its manifest"):
+        save_lab.main(["restore", str(backup), "--slot", "3", "--yes"])
+    assert (saves / "Save Game 3.sav").read_bytes() == b"x" * SIZE
+    assert _backups(tmp_path) == [backup]  # refused before the safety backup
+
+
+def test_restore_refuses_a_backup_of_another_folder(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    other = tmp_path / "folder-copy"
+    shutil.copytree(saves, other)
+    (other / "Save Game 3.sav").write_bytes(b"x" * SIZE)
+    monkeypatch.setenv("ZEXION_SAVE_DIR", str(other))
+    backup = save_lab.backup()
+    monkeypatch.setenv("ZEXION_SAVE_DIR", str(saves))
+    before = {p.name: p.read_bytes() for p in saves.iterdir()}
+
+    assert save_lab.main(["restore", str(backup), "--yes"]) == 1
+    assert {p.name: p.read_bytes() for p in saves.iterdir()} == before
+    assert _backups(tmp_path) == [backup]  # refused before the safety backup
+    # Into the folder it came from, it restores.
+    assert save_lab.main(["--save-dir", str(other), "restore", str(backup), "--yes"]) == 0
 
 
 def test_lab_outputs_refuse_protected_folders(saves: Path, tmp_path: Path) -> None:

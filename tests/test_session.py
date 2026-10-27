@@ -351,3 +351,25 @@ def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
     session.step(g, [], gap=0)
     session.step(g, [], gap=0)
     assert helper.requests == []
+
+
+def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
+    session, g = setup
+    session.announced = 0
+    give(session, g, [17])
+    assert g.inv[17] == 1 and session.announced == 1
+
+
+def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)
+    g.flags[ss.ENDING_FLAG] = 1
+    assert session.step(g, [], gap=0).goal and session.holding
+    after = ss.Session(PLAN, [list(c) for c in CELLS])  # the next connection's
+    after.keep_ending(session)
+    for _ in range(3):
+        assert after.step(g, [17], gap=0).granted == {}
+    assert g.inv[17] == 0
+    g.flags[ss.ENDING_FLAG] = 0  # another save of the seed, before its ending, loaded meanwhile
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1, "the hold was the ending's load's alone"

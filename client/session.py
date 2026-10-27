@@ -141,14 +141,19 @@ class Session:
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
         # How many received items have been handed over, to the helper for their popup or
-        # written directly; None until the server's count of those shown is read (or the count
-        # again after a lost helper).
+        # written directly; None until the server's count is read (client/storage.py,
+        # announced_tick).
         self.announced: int | None = None
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded.
         self._goal_before: bool | None = None
         self.holding = False
+
+    def keep_ending(self, before: Session) -> None:
+        """A reconnect to the same seed and slot: the ending's hold carries over, as a new
+        session would read the goal as reached already and never hold."""
+        self._goal_before, self.holding = before._goal_before, before.holding
 
     def say_once(self, key: str, message: str) -> None:
         if key not in self._said:
@@ -210,6 +215,8 @@ class Session:
         if self._goal_before is False and goal:
             self.holding = True
             self._due = None
+        elif not goal:
+            self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
         if snap.state == game.IN_PLAY and not self.holding:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)

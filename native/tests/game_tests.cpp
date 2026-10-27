@@ -1251,7 +1251,8 @@ void test_pause_row_from_the_seed_file() {
     g_rando_marker = 0;
 }
 
-// The `popups` request's count: the client's popups still queued, not the helper's own notices.
+// The client's popups still queued, not the helper's own notices; a client going away leaves
+// them to show.
 void test_pending_popups() {
     zap::Game game;
     check(game.pending_popups() == 0, "none before a config");
@@ -1265,19 +1266,59 @@ void test_pending_popups() {
     check(game.other_save() == "told" && game.queued_popups() == 3,
           "the helper's own notice queued");
     check(game.pending_popups() == 2, "and not counted");
-    game.clear_popups();
-    check(game.pending_popups() == 0, "dropped with the client: none pending");
     g_rando_marker = 0;
+    game.client_gone(&chosen);
+    check(!game.active() && game.pending_popups() == 2, "the client gone: its popups stay queued");
+    for (int i = 0; i < 100; ++i) game.pump_popups();
+    check(game.pending_popups() == 0 && g_messages >= 3, "and show without it");
     zap::Batch batch;
     zap::parse_batch("apply\npopup 36 X\nnotice 36 Y", batch);
     check(batch.popups.size() == 2 && batch.popups[0].counted && batch.popups[1].counted,
           "a batch's popups are counted");
 }
 
+// A client's popups are for the save loaded when they came: while another save is in play they
+// wait (still pending), and the helper's own notices still show.
+void test_popups_wait_for_their_save() {
+    zap::Game game;
+    ready(game);
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 36 FROM ALICE");
+    g_section[0x26C] = 0x22;  // the player left: another seed's save in play
+    game.set_offline({zap::offline_seed_of(g_section)});
+    check(game.other_save() == "told", "the other seed's notice queued behind it");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1 && game.pending_popups() == 1,
+          "the notice shows; the client's popup waits, pending");
+    g_rando_marker = 0;  // a normal save
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1 && game.pending_popups() == 1, "and in a normal save");
+    g_rando_marker = 1;
+    g_section[0x26C] = 0x11;  // its save again
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 2 && game.pending_popups() == 0, "shown in its own save");
+    // A client of another seed: the first's popups still held for their own save, and shown
+    // there (the client counts them handed over and never sends them again).
+    apply(game, "apply\npopup 36 FROM ALICE");
+    g_section[0x26C] = 0x22;
+    check(game.pending_popups() == 1, "held for its seed");
+    apply(game, "apply\npopup 36 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 3 && game.pending_popups() == 1,
+          "another seed's client: its own shown, the first's still held");
+    g_section[0x26C] = 0x11;
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 4 && game.pending_popups() == 0, "and shown in its own save");
+    g_rando_marker = 0;
+}
+
 }  // namespace
 
 int main() {
     test_map_marks_with_a_menu_open();
+    test_popups_wait_for_their_save();
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();
     test_pending_popups();

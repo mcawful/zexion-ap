@@ -2,8 +2,10 @@ name: Release
 
 # A merge into main (only develop's pull requests, which CI's release gate checked) publishes
 # the release: the helper and proxy built here, the apworld and the player guides, under the tag
-# v<VERSION>. A version already released is skipped. The job runs in the "release" environment,
-# which waits for the owner's approval in GitHub before anything is built or published.
+# v<VERSION>. A version already released from this same commit is skipped (a re-run); one
+# released from another commit, or left as a draft, fails the job instead. The job runs in the
+# "release" environment, which waits for the owner's approval in GitHub before anything is built
+# or published.
 on:
   push:
     branches: [main]
@@ -37,11 +39,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+        # A release of this version that is a draft (a publish that failed part-way) or tags
+        # another commit (main changed under a released number) fails here: skipping it would
+        # leave this commit in no release with the run green.
         run: |
           version="$(python tools/release_check.py)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "v$version is already released: nothing to do."
+          if draft="$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2> /dev/null)"; then
+            if [ "$draft" != false ]; then
+              echo "::error::v$version is a draft release: publish or delete it on GitHub, then re-run this workflow."
+              exit 1
+            fi
+            tagged="$(gh api "repos/$GITHUB_REPOSITORY/commits/v$version" -q .sha)"
+            if [ "$tagged" != "$GITHUB_SHA" ]; then
+              echo "::error::v$version is already released from $tagged, not this commit ($GITHUB_SHA): raise the version and merge develop into main again."
+              exit 1
+            fi
+            echo "v$version is already released from this commit: nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Build the release
