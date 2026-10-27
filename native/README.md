@@ -516,6 +516,15 @@ Working in game: 2026-10-23 ("The escape skip").
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
+  - **The Feats of Natu screen.** It still follows an AP ending, by a path not traced, with
+    nothing flashing. The helper writes ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the
+    blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
+    only on that screen: the top menu with 4 panels, two rows of 7 Feats, and a live title
+    widget whose label is three equal lines, the middle one naming NATU. It writes only over a
+    line that is blank, or already its note. It does so while the last thing the guard was on
+    for was an AP ending (the guard went off with no save loaded and flag 250 set), until a save
+    is loaded or the title's lines are up. It looks every 8th frame call while no save is
+    loaded.
 - **An AP save** (`Game::ap_save_loaded`): a randomizer save is loaded (a save, and the marker
   set) whose item table and start are a seed's the helper knows. It knows a seed from:
   - a seed file read from `%LOCALAPPDATA%\ZexionAP` (at start and each time a client goes
@@ -542,12 +551,18 @@ Working in game: 2026-10-23 ("The escape skip").
   pages allocated once and never freed. A call that read the slot just before, or still holds
   the stand-in, so lands in live memory that runs no helper code, and an unload need not wait
   for it. If something hooked over the stub since, the stub stays in its chain and passes
-  everything through.
+  everything through. The screen's note is blanked again before an unload; the game frees it
+  with the screen otherwise.
 - **Left as it was:** database entries an AP game unlocks (lore, game-wide) stay in
   `GameUnlocks.sav`. They can complete the database and give 16CompleteReport later, in a
   normal game.
 
-Working in game: not yet; stand-in tests only (`tests/feats_tests.cpp`).
+Working in game: 2026-10-26, three AP endings of the OS Install Disks goal through RETURN HOME
+WITH THE DISKS? and a normal ending ("Feats and achievements"). In the AP endings the ending was
+jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav` was unchanged; the
+third showed the note. In the normal ending the Feats were earned as usual. Steam's stand-in was
+in place in the AP save, but no achievement left to earn was tried there, so that it stops one
+rests on the stand-in tests.
 
 ## Building
 
@@ -592,7 +607,8 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
   config, a plain randomizer save, a normal save, a put seed, a seed file with no client and
   with a client of another seed, the labels' seed), the guard on and off, and a stand-in ending
   run with and without the patch. It also covers the Steam import hooked and passed through,
-  the refusals, and putting back with and without a frame. The program imports
+  the refusals, putting back with and without a frame, and the Feats of Natu screen's note (on
+  a stand-in screen, after an AP ending only). The program imports
   `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`),
   as the game does. Both are built into `build/feats/`, apart from the helper.
 - `proxy`: its exports give what Windows' own give, and it loads no helper outside Zexion.

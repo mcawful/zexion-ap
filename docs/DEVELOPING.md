@@ -118,9 +118,10 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
   screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
-- No Feats or Steam achievements earned in AP saves (the ending jumps over its Feats and
-  14Victory, and Steam's stats interface is stood in for), normal saves unchanged: stand-in
-  tests only, not yet seen in game (`native/README.md`, "Feats and achievements in AP saves").
+- No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
+  SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
+  2026-10-26. Not seen in game: Steam's stand-in stopping an achievement left to earn (it was
+  in place; stand-in tests only; `native/README.md`, "Feats and achievements in AP saves").
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)
