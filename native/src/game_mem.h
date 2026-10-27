@@ -101,6 +101,8 @@ void look_like(BYTE* sprite, const BYTE* like);
 
 // The NT headers of a loaded image, or null if `module` does not start with a PE's headers.
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module);
+// Whether `p` lies in an executable section of the loaded image `image`.
+bool in_image_code(HMODULE image, const void* p);
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page
 // could not be made writable. Game thread, so the game is not running the code meanwhile.

@@ -19,7 +19,7 @@ add_library(zap_core STATIC
             src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp
             src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp
-            src/apitem.cpp src/looks.cpp)
+            src/apitem.cpp src/looks.cpp src/feats.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 
@@ -51,6 +51,21 @@ foreach(name IN LISTS ZAP_TESTS)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core)
   add_test(NAME ${name} COMMAND zap_${name}_tests)
 endforeach()
+
+# Feats and achievements (src/feats.h): the tests import SteamInternal_ContextInit by name from
+# a stand-in steam_api64.dll, as the game does. Both are built into a folder of their own, so no
+# program of ours picks the stand-in up in place of Steam's.
+add_library(zap_steam_stub SHARED tests/steam_stub.cpp)
+set_target_properties(zap_steam_stub PROPERTIES OUTPUT_NAME steam_api64)
+add_executable(zap_feats_tests tests/feats_tests.cpp)
+target_link_libraries(zap_feats_tests PRIVATE zap_core zap_steam_stub)
+foreach(target IN ITEMS zap_steam_stub zap_feats_tests)
+  set_target_properties(${target} PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
+                        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
+                        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats)
+endforeach()
+add_test(NAME feats COMMAND zap_feats_tests)
 
 # The whole helper loaded and unloaded under load, and grants applied in its frame calls.
 foreach(name IN ITEMS unload apply)

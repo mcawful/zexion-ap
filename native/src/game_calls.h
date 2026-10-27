@@ -19,6 +19,7 @@
 #include "apitem.h"
 #include "looks.h"
 #include "equip.h"
+#include "feats.h"
 #include "mission.h"
 #include "pause.h"
 #include "files.h"
@@ -196,6 +197,22 @@ public:
     // intel.h), and put back.
     void set_intel(bool on) { intel_.set(on); }
 
+    // Game thread: Feats and achievements kept out of AP saves (feats.h). ap_save_loaded: a
+    // randomizer save is loaded whose item table and start are a seed's the helper knows (a seed
+    // file read from the folder or put by a client since, or the seed the labels were set for).
+    // The guard goes on once two frame calls in a row have found one, and off at once (each
+    // frame, watch_all). add_known_seeds: seeds to know (by table and start). restore_feats puts
+    // both changes back (before an unload); release_steam, from the pipe thread once no frame
+    // call can watch, puts back Steam's slot alone.
+    bool ap_save_loaded() const;
+    void watch_feats();
+    void add_known_seeds(const std::vector<OfflineSeed>& seeds);
+    size_t known_seeds() const { return known_seeds_.size(); }  // tests
+    void restore_feats();
+    void release_steam() { feats_.release_steam(); }
+    std::string feats_state() const { return feats_.state(); }
+    const FeatsGuard& feats() const { return feats_; }  // tests
+
     // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files;
     // the watch (every 16th frame call) dresses a save of one of them while no client is there
     // or the client said other_save, and sets the file select's counts with or without a
@@ -266,6 +283,7 @@ public:
         if (ap_items_restyled()) return "an item record is still restyled";
         if (scan_written()) return "the scanner's message is still the helper's";
         if (keys_branch_patched()) return "the pause screen's branch is still the helper's";
+        if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         return nullptr;
     }
 
@@ -386,6 +404,10 @@ private:
     GlFunctions gl_;
     TextureCheck texture_check_;  // for everything painted into the sprite texture
     int skip_frames_ = 0;  // frames until the next escape-skip check
+    FeatsGuard feats_;
+    int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
+    // Every seed the helper has known since it loaded (table and start only), the oldest first.
+    std::vector<OfflineSeed> known_seeds_;
 };
 
 }  // namespace zap

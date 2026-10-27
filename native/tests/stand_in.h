@@ -253,6 +253,88 @@ inline BYTE g_flags[0x9C4] = {};
 inline BYTE g_slot_array[30 * 0x9408] = {};
 inline BYTE g_rando_slots[30 * 0x908] = {};
 
+// Feats and achievements (feats.h). Two Steamworks accessor contexts ({init, counter,
+// interface}), each init a `lea rdx, [rip+name]` then `ret` in code: the user stats' and
+// another; the import slot SteamInternal_ContextInit is called through (a plain variable here:
+// the feats tests use their own import's); and a small ending run as the game's runs (laid out
+// by build_ending), whose call through the slot sets one achievement.
+inline const char g_stats_name[] = "STEAMUSERSTATS_INTERFACE_VERSION013";
+inline const char g_utils_name[] = "SteamUtils010";
+__declspec(allocate(".zapcode")) inline unsigned char g_stats_init[8] = {0x48, 0x8D, 0x15, 0, 0,
+                                                                         0,    0,    0xC3};
+__declspec(allocate(".zapcode")) inline unsigned char g_utils_init[8] = {0x48, 0x8D, 0x15, 0, 0,
+                                                                         0,    0,    0xC3};
+inline void* g_stats_context[3] = {g_stats_init, nullptr, nullptr};
+inline void* g_utils_context[3] = {g_utils_init, nullptr, nullptr};
+inline void* g_context_init_slot = nullptr;
+inline const char* g_victory = "14Victory";
+// The ending (cf. 0x94A30 on B1), at these offsets: the call through the slot, the join, flag
+// 250's store 0x11 past it.
+constexpr ptrdiff_t kEndingCall = 0x0B, kEndingJoin = 0x28, kEndingSize = 0x45;
+__declspec(allocate(".zapcode")) inline unsigned char g_ending[0x50] = {};
+
+// Writes `bytes` over code at `at`, as the helper does. Byte by byte through volatile: the
+// section packs these arrays more tightly than the compiler assumes when it copies into them with
+// aligned stores. (Read them back with code_byte or through a pointer, check.h.)
+inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) {
+    DWORD old = 0;
+    VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
+    auto* to = static_cast<volatile unsigned char*>(at);
+    for (size_t i = 0; i < n; ++i) to[i] = bytes[i];
+    VirtualProtect(at, n, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), at, n);
+}
+
+// The init functions' names, and the ending, calling through `slot`:
+//   00 sub rsp, 0x28              04 lea rcx, [stats context]
+//   0B call [slot]                11 mov rdx, [g_victory]
+//   18 mov rcx, [rax]             1B mov rax, [rcx]         1E call [rax+0x30] (SetAchievement)
+//   21 mov byte [flag 251], 1     28 movsxd rdx, [flags]    2F lea r8, [flags]
+//   36 xorps xmm0, xmm0           39 mov byte [flag 250], 1
+//   40 add rsp, 0x28              44 ret
+inline void build_ending(void** slot) {
+    auto init = [](unsigned char* code, const char* name) {
+        unsigned char b[8] = {0x48, 0x8D, 0x15, 0, 0, 0, 0, 0xC3};
+        auto r = static_cast<int32_t>(reinterpret_cast<const BYTE*>(name) - (code + 7));
+        std::memcpy(b + 3, &r, sizeof(r));
+        write_code(code, b, sizeof(b));
+    };
+    init(g_stats_init, g_stats_name);
+    init(g_utils_init, g_utils_name);
+    unsigned char e[kEndingSize] = {
+        0x48, 0x83, 0xEC, 0x28,                    // 00
+        0x48, 0x8D, 0x0D, 0, 0, 0, 0,              // 04
+        0xFF, 0x15, 0, 0, 0, 0,                    // 0B
+        0x48, 0x8B, 0x15, 0, 0, 0, 0,              // 11
+        0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01,        // 18, 1B
+        0xFF, 0x50, 0x30,                          // 1E
+        0xC6, 0x05, 0, 0, 0, 0, 0x01,              // 21
+        0x48, 0x63, 0x15, 0, 0, 0, 0,              // 28
+        0x4C, 0x8D, 0x05, 0, 0, 0, 0,              // 2F
+        0x0F, 0x57, 0xC0,                          // 36
+        0xC6, 0x05, 0, 0, 0, 0, 0x01,              // 39
+        0x48, 0x83, 0xC4, 0x28, 0xC3,              // 40, 44
+    };
+    // Each field relative to where it will be, in g_ending.
+    auto rel = [&](size_t field, size_t next, const void* target) {
+        auto r = static_cast<int32_t>(static_cast<const BYTE*>(target) - (g_ending + next));
+        std::memcpy(e + field, &r, sizeof(r));
+    };
+    rel(0x07, 0x0B, g_stats_context);
+    rel(0x0D, 0x11, slot);
+    rel(0x14, 0x18, &g_victory);
+    rel(0x23, 0x28, g_flags + 251);
+    rel(0x2B, 0x2F, g_flags);
+    rel(0x32, 0x36, g_flags);
+    rel(0x3B, 0x40, g_flags + 250);
+    write_code(g_ending, e, sizeof(e));
+}
+
+// Runs the stand-in ending, as the game's transition runs the real one.
+inline void run_ending() {
+    reinterpret_cast<void (*)()>(static_cast<void*>(g_ending))();
+}
+
 inline std::map<std::string, uint64_t> stand_in_config() {
     return {
         {"inventory", rva(g_inventory)},
@@ -323,6 +405,10 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"event_handlers", rva(g_event_handlers)},
         {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
         {"halt_flag", rva(&g_halt_flag)},
+        {"ending_unlocks", rva(g_ending + kEndingCall)},
+        {"ending_join", rva(g_ending + kEndingJoin)},
+        {"stats_context", rva(g_stats_context)},
+        {"context_init_slot", rva(&g_context_init_slot)},
     };
 }
 

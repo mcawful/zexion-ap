@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "iat.h"
+
 namespace zap {
 
 namespace {
@@ -119,6 +121,10 @@ constexpr ConfigKey kConfigKeys[] = {
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize, "what is read there"),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
+    // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
+    code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
+    data("stats_context", &G::stats_context, 3 * sizeof(void*), "the context"),
+    import_slot("context_init_slot", &G::context_init_slot),
 };
 
 // The RVA just past a section, as loaded.
@@ -195,6 +201,16 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
     }
     base_ = reinterpret_cast<BYTE*>(image);
+    // The guard's changes, made at the old addresses, are put back before new ones replace them
+    // (the same build's are the same: nothing then changes).
+    if (configured_ && (found.ending_unlocks != at_.ending_unlocks ||
+                        found.ending_join != at_.ending_join || found.flags != at_.flags ||
+                        found.stats_context != at_.stats_context ||
+                        found.context_init_slot != at_.context_init_slot)) {
+        restore_feats();
+    }
+    feats_.set_image(image, reinterpret_cast<void**>(find_import_slot(
+                                image, "steam_api64.dll", "SteamInternal_ContextInit")));
     // A client's config: the offline look put back first, with the addresses it was set with.
     if (configured_ && active) {
         leave_offline();
@@ -406,11 +422,7 @@ std::string Game::run_item_event(uint8_t item) {
     BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
     if (handler == nullptr) return "no handler";
     // The handler must be code in the game's own image.
-    auto address = reinterpret_cast<uintptr_t>(handler);
-    auto image = reinterpret_cast<uintptr_t>(base_);
-    const IMAGE_SECTION_HEADER* section =
-        address > image ? section_of(reinterpret_cast<HMODULE>(base_), address - image) : nullptr;
-    if (section == nullptr || (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
+    if (!in_image_code(reinterpret_cast<HMODULE>(base_), handler)) {
         return "handler not in the game's code";
     }
     BYTE* p = player();
@@ -466,6 +478,7 @@ void Game::watch_menu(WidgetCallback callback) {
 
 void Game::watch_all(WidgetCallback callback) {
     if (!configured_) return;
+    watch_feats();
     watch_menu(callback);
     watch_assists();
     watch_skip();
@@ -717,6 +730,50 @@ void Game::restore_files() {
 
 bool Game::rando_save_loaded() const {
     return *at_.save_loaded != kNoSaveLoaded && at<uint16_t>(at_.rando_marker, 0) == 1;
+}
+
+bool Game::ap_save_loaded() const {
+    if (!configured_ || !rando_save_loaded()) return false;
+    if (labels_seed_ && section_is(*labels_seed_, at_.rando_blob)) return true;
+    for (const OfflineSeed& seed : known_seeds_) {
+        if (section_is(seed, at_.rando_blob)) return true;
+    }
+    return loaded_seed() >= 0;
+}
+
+void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
+    constexpr size_t kMaxKnownSeeds = 1024;
+    for (const OfflineSeed& seed : seeds) {
+        bool known = std::any_of(known_seeds_.begin(), known_seeds_.end(), [&](const auto& k) {
+            return offline_matches(k, seed.table, seed.start);
+        });
+        if (known) continue;
+        OfflineSeed key;
+        key.name = seed.name;
+        std::memcpy(key.table, seed.table, sizeof(key.table));
+        std::memcpy(key.start, seed.start, sizeof(key.start));
+        known_seeds_.push_back(std::move(key));
+    }
+    if (known_seeds_.size() > kMaxKnownSeeds) {
+        known_seeds_.erase(known_seeds_.begin(),
+                           known_seeds_.end() - static_cast<ptrdiff_t>(kMaxKnownSeeds));
+    }
+}
+
+void Game::watch_feats() {
+    // On once two frame calls in a row have found an AP save loaded: during a load the section
+    // may still be the last save's for a moment. Off at once.
+    if (ap_save_loaded()) {
+        if (feats_passes_ < 2) ++feats_passes_;
+    } else {
+        feats_passes_ = 0;
+    }
+    feats_.watch(at_, feats_passes_ >= 2);
+}
+
+void Game::restore_feats() {
+    feats_passes_ = 0;
+    if (configured_) feats_.restore(at_);
 }
 
 bool Game::labels_seed_loaded(bool in_play_only) const {

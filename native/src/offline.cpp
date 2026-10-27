@@ -264,6 +264,20 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     return changed ? "stored" : "unchanged";
 }
 
+bool put_seed_of(const std::string& request, OfflineSeed& out) {
+    constexpr char kSeedPut[] = "offline_put seed ";
+    constexpr size_t kPrefix = sizeof(kSeedPut) - 1;
+    size_t eol = request.find('\n');
+    if (request.rfind(kSeedPut, 0) != 0 || eol == std::string::npos || eol <= kPrefix) {
+        return false;
+    }
+    OfflineSeed seed;
+    if (!parse_offline_seed(request.substr(eol + 1), seed).empty()) return false;
+    seed.name = request.substr(kPrefix, eol - kPrefix);
+    out = std::move(seed);
+    return true;
+}
+
 std::string check_offline_cache(HMODULE image, const OfflineFiles& files) {
     if (files.config.empty()) return "no cached addresses";
     if (files.checks.size() < kOfflineMinChecks) return "too few functions checked";

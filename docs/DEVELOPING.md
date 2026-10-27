@@ -49,8 +49,10 @@ worlds/zexion/ → generation → slot data → client
   the proxy nor the client loads it (a client run from source still loads its own build).
 - **The offline cache.** The client sends the helper a small file per seed it connects to and
   the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP`.
-  With no client, the helper uses them to give AP saves their look. Deleting the folder is
-  safe: the client sends the files again the next time it attaches to the game.
+  With no client, the helper uses them to give AP saves their look. With or without a client,
+  they also tell it which saves are AP saves, which earn no Feats or Steam achievements.
+  Deleting the folder is safe: the client sends the files again the next time it attaches to
+  the game.
 
 How the helper works: [`native/README.md`](../native/README.md).
 
@@ -116,6 +118,9 @@ All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
   skip): 2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. Not seen on
   screen: START THE AP CLIENT TO PLAY A SEED (reported by the helper's `hello` only).
+- No Feats or Steam achievements earned in AP saves (the ending jumps over its Feats and
+  14Victory, and Steam's stats interface is stood in for), normal saves unchanged: stand-in
+  tests only, not yet seen in game (`native/README.md`, "Feats and achievements in AP saves").
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. Not seen in game: a plain (not Archipelago)

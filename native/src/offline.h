@@ -86,6 +86,11 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request);
 
+// The seed of an `offline_put seed NAME` request, its file parsed and named NAME (for the
+// AP-save test, which knows a client's seed as soon as it is put: feats.h): false for another
+// request or a file that does not parse.
+bool put_seed_of(const std::string& request, OfflineSeed& out);
+
 // "" if the cached addresses fit the game in `image`: at least kOfflineMinChecks functions
 // checked, each one's bytes as the client read them, each at a key of the config.
 constexpr size_t kOfflineMinChecks = 8;

@@ -1,0 +1,95 @@
+// Feats and Steam achievements kept out of AP saves (docs/re/memory.md, "Feats and achievements").
+// While Game says an AP save is loaded (Game::ap_save_loaded), the helper changes two things, and
+// puts both back as soon as it does not, and before an unload:
+//
+// - The ending. Its routine (0x94A30 on B1) sets 14Victory, the ending's database entries, this
+//   run's Feat bytes and flag 251 in one stretch, from its first Steam call (ending_unlocks, the
+//   6-byte `call [SteamInternal_ContextInit]`) to just before it sets flag 250 (ending_join).
+//   The helper writes 12 bytes over that call: `mov byte [flag 251], 0` and `jmp ending_join`.
+//   Every callee-saved register is stored before the call, the stretch leaves the stack as it
+//   found it, and what the code at the join reads is either rbx (set before the stretch, never
+//   changed in it) or set afresh there, so jumping over it is as if each test in it had failed.
+//   Flag 251 is cleared because the code after the join reads it too (database entry 218, with a
+//   Steam call), and the Feats of Natu screen follows the ending only while it is set: a save that
+//   already holds it, from an ending before this guard, skips the screen as well. Flag 250, the
+//   save that follows and the client's goal are untouched. Nothing jumps into the bytes written
+//   past the call (checked over the whole of B1's code).
+//
+// - Steam. Every achievement call goes `SteamInternal_ContextInit(stats_context)` through the
+//   import slot context_init_slot, then a call through the interface's vtable (SetAchievement,
+//   ClearAchievement or StoreStats); no call site keeps the pointer or tests a result. The helper
+//   points the slot at a stub that, for stats_context only, returns a stand-in interface whose
+//   every vtable entry is `xor eax, eax; ret`, and passes every other call (the SteamUtils
+//   context, any other) to steam_api64.
+//
+// The stub, the stand-in and its vtable are in two pages allocated once and never freed: a call
+// that read the slot, or holds the stand-in, just before an unload still lands in live memory,
+// and none of it runs helper code, so an unload need not wait for one. While off, the stub passes
+// everything through, so a slot something else has hooked over the stub since stays safe.
+#pragma once
+
+#include <windows.h>
+
+#include <cstdint>
+#include <string>
+
+#include "addresses.h"
+
+namespace zap {
+
+constexpr size_t kEndingPatchSize = 12;
+
+class FeatsGuard {
+public:
+    // Game thread, at configure: the image, and the import slot that names steam_api64's
+    // SteamInternal_ContextInit (null if the image has none); the Steam checks are made again.
+    void set_image(HMODULE image, void** context_init_by_name);
+
+    // Game thread, each frame: on (an AP save loaded) or off.
+    void watch(const GameAddresses& addresses, bool on);
+
+    // Game thread: both put back (before an unload). The ending only where it still reads as
+    // the helper wrote it.
+    void restore(const GameAddresses& addresses);
+
+    // Any thread, once no frame call can watch (an unload past its last frame): the stand-in off
+    // and the slot put back if it still holds the stub. The stub stays, passing calls through.
+    void release_steam();
+
+    bool on() const { return on_; }
+    bool ending_patched() const { return ending_patched_; }
+    bool steam_hooked() const { return slot_ != nullptr; }
+    // For `hello`: "off", "on", or "on:" and why a change could not be made.
+    std::string state() const;
+
+    // Tests: the stub's entry, and the stand-in interface pointer's holder it returns.
+    void* stub() const { return code_; }
+    void* stand_in() const;
+
+private:
+    void patch_ending(const GameAddresses& a);
+    void restore_ending(const GameAddresses& a);
+    void hook_steam(const GameAddresses& a);
+    void unhook_steam();
+    // "" if the slot and context are as traced, else why not (made once per configure).
+    std::string check_steam(const GameAddresses& a);
+    bool make_pages();
+
+    HMODULE image_ = nullptr;
+    void** by_name_ = nullptr;
+    bool on_ = false;
+    bool ending_patched_ = false;
+    BYTE* site_ = nullptr;  // where the ending was patched
+    BYTE original_[kEndingPatchSize] = {};
+    BYTE written_[kEndingPatchSize] = {};
+    std::string ending_error_;
+    bool steam_checked_ = false;
+    std::string steam_error_;       // check_steam's
+    std::string steam_slot_error_;  // the last hook's
+    void* real_ = nullptr;          // steam_api64's SteamInternal_ContextInit
+    void** volatile slot_ = nullptr;  // while hooked
+    BYTE* code_ = nullptr;  // the stub's pages (feats.cpp), never freed
+    BYTE* data_ = nullptr;
+};
+
+}  // namespace zap

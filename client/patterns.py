@@ -917,6 +917,63 @@ TARGETS = (
             rip("80 3D ?? ?? ?? ?? 00 75 10 66 FF 8B BE 0C 00 00 33 C0 66 89 83 8C 10 00 00 FF 05 ?? ?? ?? ?? B9 CC 01 00 00", 2, 7),
         ),
     ),
+    Target(
+        "ending_unlocks",
+        "the ending's first Steam call, where its achievement, database entries and Feats "
+            "begin; the helper jumps from here to ending_join in AP saves",
+        {"B1": 0x94A7E},
+        (
+            # from the ending routine's start (0x94a30 on B1) through its register saves; the
+            # call itself is left out, since the helper patches it while it runs
+            at("4C 8B DC 57 48 83 EC 50 48 83 3D ?? ?? ?? ?? 00 48 8B 05 ?? ?? ?? ?? 49 89 5B 10 48 8B 1D ?? ?? ?? ?? C6 80 20 01 00 00 00 0F 85 ?? ?? ?? ?? 49 89 6B 18 48 8D 0D ?? ?? ?? ?? 49 89 73 20 4D 89 63 F0 4D 89 6B E8 4D 89 73 E0 4D 89 7B D8", 0x4E),
+            # from the one call to the routine (RVA 0xcdcb4 on B1), in a wrapper whose
+            # neighbor's end makes it unique, 0x4e into it
+            rip("48 83 C4 20 5B C3 CC CC CC CC CC CC 48 83 EC 28 E8 ?? ?? ?? ?? 48 83 C4 28 E9", 17, 21, 0x4E),
+            # from the code after the patched bytes (RVA 0x94a8b on B1): 14Victory's
+            # SetAchievement, StoreStats, then the eggs' count
+            at("48 8B 08 48 8B 01 FF 50 30 48 8D 0D ?? ?? ?? ?? FF 15 ?? ?? ?? ?? 48 8B 08 48 8B 01 FF 50 48 0F B6 83 B4 10 00 00 33 C9 84 C0 0F 95 C1", -0xD),
+        ),
+    ),
+    Target(
+        "ending_join",
+        "where the ending goes on after its achievements and Feats: just before it sets flag 250",
+        {"B1": 0x94DED},
+        (
+            # the Data Disc test's je past Secret Knowledge (RVA 0x94d5b on B1)
+            rip("80 BB BA 10 00 00 00 0F 84 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? 00 C6 05 ?? ?? ?? ?? 01 75 ??", 9, 13),
+            # the instructions there, after flag 251's store (RVA 0x94de6 on B1), through flag
+            # 250's
+            at("C6 05 ?? ?? ?? ?? 01 48 63 15 ?? ?? ?? ?? 4C 8D 05 ?? ?? ?? ?? 0F 57 C0 C6 05 ?? ?? ?? ?? 01 33 C0", 7),
+        ),
+    ),
+    Target(
+        "stats_context",
+        "the Steamworks accessor context of ISteamUserStats, which every achievement call "
+            "passes to SteamInternal_ContextInit",
+        {"B1": 0x22FC48},
+        (
+            # the ending's, before its register saves (RVA 0x94a63 on B1)
+            rip("48 8D 0D ?? ?? ?? ?? 49 89 73 20 4D 89 63 F0 4D 89 6B E8 4D 89 73 E0 4D 89 7B D8", 3, 7),
+            # a pickup's StoreStats (RVA 0x1f234 on B1)
+            rip("48 8D 0D ?? ?? ?? ?? FF 15 ?? ?? ?? ?? 48 8B 08 48 8B 01 FF 50 48 48 8B 1D ?? ?? ?? ?? 48 0F BF 86 E8 01 00 00 48 6B C8 64 66 83 7C 19 3C 19", 3, 7),
+            # the clear-Feats menu's ClearAchievement (RVA 0xf5a06 on B1)
+            rip("48 8D 0D ?? ?? ?? ?? FF 15 ?? ?? ?? ?? 4C 8D 0D ?? ?? ?? ?? 48 8B 08 8D 43 FE 99 2B C2 D1 F8 4C 8B 01 48 63 D0 49 8B 94 D1 80 00 00 00 41 FF 50 38", 3, 7),
+        ),
+    ),
+    Target(
+        "context_init_slot",
+        "the import slot of steam_api64's SteamInternal_ContextInit, every Steamworks "
+            "accessor's way to its interface",
+        {"B1": 0x209C98},
+        (
+            # from the call at RVA 0x281d6 on B1
+            rip("FF 15 ?? ?? ?? ?? 48 8B 08 48 8B 01 FF 50 48 4C 8B 05 ?? ?? ?? ?? 33 D2 49 81 C0 E0 23 01 00 41 0F B6 CF 49 0F BE 00 FF 94 C7 ?? ?? ?? ??", 2, 6),
+            # from the call at RVA 0x1743c on B1
+            rip("FF 15 ?? ?? ?? ?? 48 8B 15 ?? ?? ?? ?? 48 8B 08 48 8B 01 FF 50 30 48 8D 0D ?? ?? ?? ?? FF 15 ?? ?? ?? ?? 48 8B 08 48 8B 01 FF 50 48 0F B7 53 1A", 2, 6),
+            # the clear-Feats menu's (RVA 0xf5a0d on B1)
+            rip("FF 15 ?? ?? ?? ?? 4C 8D 0D ?? ?? ?? ?? 48 8B 08 8D 43 FE 99 2B C2 D1 F8 4C 8B 01 48 63 D0 49 8B 94 D1 80 00 00 00 41 FF 50 38", 2, 6),
+        ),
+    ),
 )
 # fmt: on
 
