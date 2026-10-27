@@ -89,8 +89,8 @@ private:
     // Runs event 3667 (`out`), or a copy of it aimed back at the normal level, through the
     // type 1 handler: "" or what was not as traced (nothing run).
     std::string fade(const GameAddresses& addresses, bool out);
-    // Turns the fade back to the normal level, if it ran for the opener.
-    void fade_back(const GameAddresses& addresses);
+    // Turns the fade back to the normal level, if it ran for the opener: whether it did.
+    bool fade_back(const GameAddresses& addresses);
     // Whether the game's fade is still the one the opener ran: on event 3667's way (fade_frames)
     // and no further back than when last seen with the opener in place, nor the transition timer
     // higher (a save leaves it counting). The same values from another transition's fade

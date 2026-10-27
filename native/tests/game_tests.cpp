@@ -1393,10 +1393,67 @@ void test_popups_wait_for_the_mission_fade() {
     reset_game();
 }
 
+
+// A save at the save point during the fade sets the pause opener back in the opener's place:
+// through the Game, the fade turned back and the prompt asked again; under a door's own fade,
+// nothing turned back.
+void test_a_save_during_the_mission_fade() {
+    reset_game();
+    reset_events();
+    zap::Game game;
+    check(configure(game).empty(), "configures");
+    zap::Hooks hooks;
+    hooks.mission_open = reinterpret_cast<void*>(&opener);
+    game.set_hooks(hooks);
+    g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
+    g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
+    for (bool door : {false, true}) {
+        g_transition_fn = g_routine_table[zap::kIdleRoutine];
+        g_transition_timer = 0;
+        game.request_mission();
+        message_showing(70);
+        game.watch_all(&chosen);
+        check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener) &&
+                  g_fade[zap::fade_state::kStep] == 8,
+              "the fade, the opener 60 frames away");
+        g_transition_timer = 40;  // the main loop's count (the stand-in's fade does not step)
+        game.watch_all(&chosen);
+        if (door) {
+            g_transition_fn = reinterpret_cast<void*>(&prompt_routine);  // a door, with its fade
+            g_fade[zap::fade_state::kStep] = 12;
+        } else {
+            g_transition_fn = g_routine_table[zap::kIdleRoutine];  // saved again
+        }
+        game.watch_all(&chosen);
+        if (door) {
+            check(g_fade_calls == 1 &&
+                      game.mission_status() == "asked again: another transition came first",
+                  "a door's fade left alone");
+        } else {
+            check(g_fade_calls == 2 && g_fade[zap::fade_state::kTarget] == 4 &&
+                      g_fade[zap::fade_state::kStep] == 6 &&
+                      game.mission_status() ==
+                          "asked again: another transition came first, the fade turned back",
+                  "a save: the fade turned back");
+        }
+        game.put_back_all(&chosen);
+        reset_game();
+        reset_events();
+        check(configure(game).empty(), "configures again");
+        game.set_hooks(hooks);
+    }
+    g_routine_table[zap::kIdleRoutine] = nullptr;
+    g_routine_table[zap::kPromptRoutine] = nullptr;
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    reset_game();
+}
+
 }  // namespace
 
 int main() {
     test_popups_wait_for_the_mission_fade();
+    test_a_save_during_the_mission_fade();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();
     test_refused_unload_rearms();

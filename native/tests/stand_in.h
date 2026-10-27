@@ -47,12 +47,26 @@ inline void spawn_handler(char row, char column, BYTE* event) {
     g_spawn_column = column;
     g_spawn_event = event;
 }
-// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given.
+// The game's fade (mission.h, fade_state) and the global level it moves.
+inline BYTE g_fade[0xAC] = {};
+inline int8_t g_fade_level = 4;
+inline void reset_fade() {
+    std::memset(g_fade, 0, sizeof(g_fade));
+    g_fade[zap::fade_state::kTarget] = 4;  // the normal level, the fade done
+    g_fade_level = 4;
+}
+// Type 1's (the fade, mission.h) counts its calls and keeps the record it was last given, and
+// sets the fade as 0x1F6C40 does for layer 0: the level (unless 0xFE), the step, the countdown
+// (the step) and the target.
 inline int g_fade_calls = 0;
 inline BYTE* g_fade_event = nullptr;
 inline void fade_handler(char, char, BYTE* event) {
     ++g_fade_calls;
     g_fade_event = event;
+    if (event[6] != 0xFE) g_fade_level = static_cast<int8_t>(event[6]);
+    g_fade[zap::fade_state::kStep] = event[8];
+    g_fade[zap::fade_state::kCountdown] = event[8];
+    g_fade[zap::fade_state::kTarget] = event[4];
 }
 inline void* g_event_handlers[32];
 struct LastMessage {
@@ -162,9 +176,6 @@ inline BYTE* g_draw_layer = nullptr;
 inline void* g_map_handler = nullptr;  // no map open
 inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
-// The game's fade (mission.h, fade_state) and the global level it moves.
-inline BYTE g_fade[0xAC] = {};
-inline int8_t g_fade_level = 4;
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
 __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
 inline void* g_free_slot = nullptr;
@@ -448,6 +459,7 @@ inline void reset_game() {
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
     g_fade_calls = 0;
     g_fade_event = nullptr;
+    reset_fade();
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;

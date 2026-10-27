@@ -35,7 +35,10 @@ using EventFn = void (*)(char, char, BYTE*);
 // level 4 (the record's), the countdown from 8 (its step) down; at 0 the level one lower and the
 // countdown 8 again, until the level is the target, -1, and the stepper turns the step off
 // (0x1F7BFF): 40 frames. How many of them it has run, or -1 if the fade holds anything else.
-constexpr int8_t kFadeFrom = 4, kFadeTo = -1, kFadeEvery = 8;
+constexpr int8_t kFadeFrom = static_cast<int8_t>(kFadeRecord[kFadeLevel]);
+constexpr int8_t kFadeTo = static_cast<int8_t>(kFadeRecord[kFadeTarget]);
+constexpr int8_t kFadeEvery = static_cast<int8_t>(kFadeRecord[kFadeStep]);
+static_assert(kFadeFrom == kNormalLevel && kFadeTo == -1 && kFadeEvery == 8, "as traced");
 constexpr int kFadeFrames = (kFadeFrom - kFadeTo) * kFadeEvery;
 int fade_frames(const GameAddresses& a) {
     int8_t target = 0, step = 0, countdown = 0, level = 0;
@@ -122,8 +125,10 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play) {
         std::string why = fade(a, true);
         faded_ = why.empty();
         fade_seen_ = faded_ ? fade_frames(a) : -1;
-        timer_seen_ = kFadeDelay;
-        if (faded_) put<int32_t>(a.transition_timer, 0, kFadeDelay);
+        if (faded_) {
+            put<int32_t>(a.transition_timer, 0, kFadeDelay);
+            timer_seen_ = kFadeDelay;
+        }
         status_ = faded_ ? "opening after the fade" : "opening without the fade: " + why;
     }
 }
@@ -157,10 +162,12 @@ std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
     return "";
 }
 
-void MissionPrompt::fade_back(const GameAddresses& a) {
-    if (faded_) fade(a, false);  // the record checked again: skipped if it changed since
+bool MissionPrompt::fade_back(const GameAddresses& a) {
+    // The record checked again: skipped if it changed since.
+    bool back = faded_ && fade(a, false).empty();
     faded_ = false;
     fade_seen_ = -1;
+    return back;
 }
 
 bool MissionPrompt::fade_still_ours(const GameAddresses& a) const {
@@ -171,11 +178,8 @@ bool MissionPrompt::fade_still_ours(const GameAddresses& a) const {
 
 bool MissionPrompt::taken_over(const GameAddresses& a) {
     armed_ = false;
-    // Another fade, or none ran: left alone. The record checked again before it runs.
-    bool back = fade_still_ours(a) && fade(a, false).empty();
-    faded_ = false;
-    fade_seen_ = -1;
-    return back;
+    if (!fade_still_ours(a)) faded_ = false;  // another fade, or none ran: left alone
+    return fade_back(a);
 }
 
 void MissionPrompt::take_back(const GameAddresses& a) {
