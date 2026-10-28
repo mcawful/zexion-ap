@@ -85,7 +85,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= skip= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only keys, ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only keys, ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
@@ -143,7 +143,7 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 
 ### On the game's thread
 
-A "frame" request (and `hello`'s `configured`, `skip`, `active`, `offline`, `title` and
+A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title` and
 `cache_missing`) goes to the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and
 runs at the next frame call. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
@@ -425,14 +425,14 @@ the helper:
 - on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in play
   with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
   its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
-  until then 70, as far into it as the escape skip's fade is into Zexion's popup:
+  until then 70, as far into it as the game's escape skip fade is into Zexion's popup:
   `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut short),
   opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way the
-  escape skip's opens: it runs the game's fade to black (area event 3667, checked byte for byte,
-  through the game's handler for its type) and sets its opener as the transition 60 frames away (the
+  game opens it as SKIP ESCAPE AND FINAL BATTLE?: it runs the game's fade to black (area event
+  3667, checked byte for byte, through the game's handler for its type) and sets its opener as the transition 60 frames away (the
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
   through the game's NO and then starts the ending once no message shows; NO fades the screen back
-  in, as the escape skip's NO does. If event 3667 or its handler is not as traced, the prompt opens
+  in, as the game's NO does there. If event 3667 or its handler is not as traced, the prompt opens
   at once with no fade, as before. A request not yet opened lapses (`lapsed: the player left the
   landing pod`) once the player is in play outside the seed's start cell (the loaded section's start
   record's row / 20 and column / 14 against the player state's cell, as the client tests a save at
@@ -523,11 +523,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 - **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
   first. With no client yet, the cached addresses configure it if they are for its build and the
   game holds every checked function's bytes, even if the cache lacks the client-only keys (a
-  cache from before a release that added one: "The pipe"). So the offline look, the escape skip,
-  the map markers and the title lines all run with no client once the cache checks out.
+  cache from before a release that added one: "The pipe"). So the offline look, the map markers
+  and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
-  client would: the item labels, INTEL CHIP, the ASSIST lock, the escape skip, the disk count
+  client would: the item labels, INTEL CHIP, the ASSIST lock, the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
   notice a load that the client is not connected (or, for `other_save`, is for another seed;
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
@@ -582,20 +582,6 @@ Working in game: 2026-10-25, the two lines under the copyright, with a client an
 ("The title screen"). The client line: working in game 2026-10-27 (0.30.0, the owner's
 screenshots), START THE AP CLIENT TO PLAY A SEED centered above the two lines with the client
 closed, gone with it open.
-
-### The escape skip
-
-- **What:** checks area event 3665 in the game's loaded event table (`src/skip.cpp`): "if flag
-  250, offer SKIP ESCAPE AND FINAL BATTLE?". Flag 250 is set only by the ending, so a first
-  playthrough never gets the offer; if every field of the record is as traced, the helper points
-  its other branch at the offer too, so grabbing Zexion offers the skip in any game. A table the
-  game loads again is patched again; nothing is saved. `hello` reports it as `skip=1`.
-- **When:** every 31st frame call while a client is active, or while a save is dressed offline.
-- **Put back:** the record, with the rest. If no frame comes to do it on unload, it stays
-  pointed at the offer (a game event) until Zexion restarts; once an unload begins no frame
-  patches it again.
-
-Working in game: 2026-10-23 ("The escape skip").
 
 ### Feats and achievements in AP saves
 
@@ -716,8 +702,8 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
 - with 575edbf, an AP ending through RETURN HOME WITH THE DISKS? with the client connected: the
   goal sent, nothing lit on the screen, the note shown, `GameUnlocks.sav` rewritten and
   unchanged;
-- with 575edbf, an AP ending through the escape skip with no client (a core-goal seed with Allow
-  Assists on): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
+- with 575edbf, an AP ending through the escape skip with no client (the helper's offer, retired
+  since; a core-goal seed with Allow Assists on): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
   MISSION COMPLETE had ASSISTS USED under it as a second panel, which the screen check refused;
   fixed in d451e6b;
 - with d451e6b, the same save's ending through the escape skip with a client of another seed
@@ -764,7 +750,7 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
   and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
-  new-game watch, a whole ARCHIPELAGO press, the escape skip's patch, what a refused unload sets
+  new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside the start cell, a death's own fade left alone, the ending after YES
@@ -812,6 +798,6 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
 | `game_mem.cpp`, `game_layout.h` | fault-safe memory access; the layouts several parts share |
-| `apitem`, `looks`, `menu`, `skip`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves) |
+| `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves) |
 
 `proxy/` is the proxy `version.dll`.

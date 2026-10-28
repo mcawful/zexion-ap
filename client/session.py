@@ -39,10 +39,11 @@ from . import discs, game, ids, native, reconcile, save_patch
 logger = logging.getLogger("Zexion")
 
 SETTLE_SECONDS = game.SETTLE_SECONDS
-# The goal: flag 250 with flag 211 clear. The ending sets 250 and clears 185-212; the escape
-# skip's YES sets 250 with 211 still set (docs/re/memory.md, "The ending: flag 250" and "The
-# escape skip"). It is always the ending: the world sends Abridged Finale (setting 32) as 0 and
-# newgame's expect lines require it.
+# The goal: flag 250 with flag 211 clear, the ending begun (docs/re/memory.md, "The ending: flag
+# 250"). The ending sets 250 and clears 185-212, at the ship after the final battle or, under
+# Abridged Finale, soon after the grab. The game's own SKIP ESCAPE AND FINAL BATTLE?, offered
+# after the grab in a game that has reached the ending before, sets 250 on YES with 211 still
+# set ("The escape skip"): the goal waits for the ending that follows at the ship.
 ENDING_FLAG, FINALE_FLAG = 250, 211
 # Set once the scanner has shown where the keys are, or said how many OS Install Disks are
 # needed (docs/re/memory.md, "The scanner"); also set from the start of a game whose map is

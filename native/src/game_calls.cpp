@@ -30,8 +30,8 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
-// Frames between two looks at the escape skip's event and at the scanner's text.
-constexpr int kSkipFrames = 30, kScanFrames = 30;
+// Frames between two looks at the scanner's text.
+constexpr int kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
 constexpr int kNoteFrames = 7;
 
@@ -507,7 +507,6 @@ void Game::watch_all(WidgetCallback callback) {
     watch_feats();
     watch_menu(callback);
     watch_assists();
-    watch_skip();
     watch_discs();
     watch_equipment();
     watch_mission();
@@ -642,17 +641,6 @@ void Game::start_archipelago(WidgetCallback callback) {
         disarm_newgame();
         throw;
     }
-}
-
-void Game::watch_skip() {
-    if (!configured_ || (!active_ && !offline_skip_)) return;
-    if (skip_frames_-- > 0) return;
-    skip_frames_ = kSkipFrames;
-    skip_.apply(at_.event_table, at_.event_count);
-}
-
-void Game::restore_skip() {
-    if (configured_) skip_.restore(at_.event_table);
 }
 
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {
@@ -1157,7 +1145,6 @@ void Game::drop_save_look() {
     restore_assists();
     set_discs(0, 0, "");
     restore_discs();
-    restore_skip();
 }
 
 void Game::put_back_all(WidgetCallback callback) {

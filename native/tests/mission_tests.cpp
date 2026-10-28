@@ -1,7 +1,7 @@
 // Host tests for RETURN HOME WITH THE DISKS? (mission.h): a stand-in transition (routine,
-// timer, routine table), a stand-in prompt builder laid out as 0x1668A0 builds the escape
-// skip's prompt, stand_in.h's event table holding event 3667 (the fade) with its handler, and the
-// game's fade, which that handler sets and a stand-in stepper runs.
+// timer, routine table), a stand-in prompt builder laid out as 0x1668A0 builds the game's
+// SKIP ESCAPE AND FINAL BATTLE? prompt, stand_in.h's event table holding event 3667 (the fade)
+// with its handler, and the game's fade, which that handler sets and a stand-in stepper runs.
 
 #include <windows.h>
 
@@ -236,19 +236,19 @@ void test_unload_puts_back() {
     m.open(a);
     m.restore(a);
     check(at<void*>(prompt.child[0], 0x2C0) == reinterpret_cast<void*>(&game_no),
-          "a prompt up: YES is NO, never the escape skip's YES");
+          "a prompt up: YES is NO, never the game's own YES");
     check(!m.holds_hook(), "nothing held");
     check(g_fades.size() == 1, "no fade back once the prompt is up: NO's close does that");
 }
 
-void test_an_unexpected_prompt_never_keeps_the_escape_skip() {
+void test_an_unexpected_prompt_never_keeps_the_games_yes() {
     Prompt prompt;
     at<int32_t>(prompt.question, 0x1D8) = 10;  // a question too short for ours
     zap::GameAddresses a = addresses();
     zap::MissionPrompt m = fading(a);
     check(!m.open(a).empty(), "reported");
     check(at<void*>(prompt.child[0], 0x2C0) == reinterpret_cast<void*>(&game_no),
-          "YES is NO: no escape skip outside the escape");
+          "YES is NO: the escape never skipped outside it");
     check(g_set.empty() && !m.holds_hook(), "nothing relabeled, nothing held");
 }
 
@@ -425,7 +425,7 @@ int main() {
     test_offered_when_idle_then_yes_ends();
     test_another_transition_first_is_asked_again();
     test_unload_puts_back();
-    test_an_unexpected_prompt_never_keeps_the_escape_skip();
+    test_an_unexpected_prompt_never_keeps_the_games_yes();
     test_no_fade_unless_as_traced();
     test_no_builder_after_the_fade();
     test_a_save_during_the_fade_turns_it_back();

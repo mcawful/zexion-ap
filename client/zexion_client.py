@@ -63,7 +63,6 @@ from .ticks import (  # noqa: E402
     offline_tick,
     other_save_tick,
     shields_tick,
-    skip_tick,
     slots_tick,
     toggle_tick,
 )
@@ -370,7 +369,6 @@ async def poll(ctx: ZexionContext) -> None:
             await attach_helper(ctx)
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
-        ("escape skip check", lambda: skip_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),
         ("assist lock", lambda: toggle_tick(ctx, ctx.told.assists, ctx.load.assists_want, ASSISTS)),
         ("Intel Chips", lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL)),

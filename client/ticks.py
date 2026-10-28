@@ -1,8 +1,7 @@
 """The game loop's side tasks with the in-game helper: attaching it, and telling it what this
 seed's save needs (the labels, the ASSIST lock, INTEL CHIP, the OS Install Disks and their
-popups, the new game, the escape skip, received Energy Shields and DeathLinks, the offline
-files, and the notices for another seed's save, the client coming back, or the Feats guard
-not in place).
+popups, the new game, received Energy Shields and DeathLinks, the offline files, and the
+notices for another seed's save, the client coming back, or the Feats guard not in place).
 
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
@@ -46,7 +45,6 @@ def detail(message: str) -> None:
 
 
 NEWGAME_POLL_SECONDS = 1.0
-SKIP_CHECK_SECONDS = 2.0
 REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a request
 SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
@@ -73,7 +71,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.
     ctx.helper = helper
-    ctx.told = state.HelperState(skip_check_at=time.monotonic() + SKIP_CHECK_SECONDS)
+    ctx.told = state.HelperState()
     if ctx.conn is not None:
         ctx.conn.session.helper = helper
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
@@ -465,35 +463,6 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     if ctx.said("death", reply) and reply != "refused not settled":
         detail(f"DeathLink: the received death is waiting: {reply}")
     seed.death_retry_at = time.monotonic() + DEATH_RETRY_SECONDS
-
-
-async def skip_tick(ctx: ZexionContext) -> None:
-    """Once per helper, a moment after it attaches: say whether it offers the escape skip (it
-    patches the game's event within 31 frames, or leaves an event it does not recognize)."""
-    helper, told = ctx.helper, ctx.told
-    if told.skip_check_at is None or time.monotonic() < told.skip_check_at:
-        return
-    told.skip_check_at = None
-    hello = await asyncio.to_thread(helper.hello)
-    if hello.get("configured") != "1":
-        told.skip_check_at = time.monotonic() + SKIP_CHECK_SECONDS  # no frame came: ask again
-        return
-    if hello.get("skip") == "1":
-        goal = (
-            "the goal is the OS Install Disks"
-            if ctx.conn is not None and ctx.conn.hunt is not None
-            else "the goal is sent once the save has reached the ending, either way"
-        )
-        detail(
-            f"Grabbing Zexion offers SKIP ESCAPE AND FINAL BATTLE? while the helper runs; {goal}."
-        )
-    else:
-        logger.warning(
-            "The mod couldn't add SKIP ESCAPE AND FINAL BATTLE?: you'll have to finish the "
-            "escape, which may need items the seed doesn't require (such as the Zenith "
-            "Thrusters)."
-        )
-        log.warning("The helper did not patch the escape skip's event (not as expected).")
 
 
 async def newgame_tick(ctx: ZexionContext) -> None:

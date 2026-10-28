@@ -102,22 +102,16 @@ inline void newgame_fn() { ++g_newgames; }
 // The game-mode panel's surroundings: the most recent menu, the randomizer menu's state, the
 // menu functions, and START GAME's steps, which log their order and queue a new game as the
 // game's do (unless the slot is "taken").
-// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3665 as
-// the game loads it (flag test: flag 250, then 3668, else none), and event 3667 (the fade to
-// black, type 1: layers 0 to 0, to -1 from 4, a step every 8 frames, no sound, no next event).
+// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3667 as
+// the game loads it (the fade to black, type 1: layers 0 to 0, to -1 from 4, a step every 8
+// frames, no sound, no next event).
 constexpr int kStandInEvents = 3700;
 inline BYTE g_events[kStandInEvents * 0x28];
 inline BYTE* g_event_table = g_events;
 inline int16_t g_event_count = kStandInEvents;
-inline BYTE* event_3665() { return g_events + 3665 * 0x28; }
 inline BYTE* event_3667() { return g_events + 3667 * 0x28; }
 inline void reset_events() {
     std::memset(g_events, 0, sizeof(g_events));
-    BYTE* r = event_3665();
-    const int16_t words[] = {250, 3668, -1, -1};
-    r[0] = 14;
-    std::memcpy(r + 2, words, sizeof(words));
-    put<int16_t>(r, 0x24, 3665);
     BYTE* fade = event_3667();
     const int16_t fade_words[] = {0, -1, 4, 8};
     fade[0] = 1;
@@ -137,7 +131,6 @@ inline void reset_texts() {
     std::memcpy(text_12(), "ENERGY KEYS DETECTED!", 21);
     g_text_table = g_texts;
 }
-inline int16_t event_else() { return get<int16_t>(event_3665(), 6); }
 
 // The randomizer menu's start table: a count, the rooms' cells, their flags.
 inline int16_t g_start_count = 0;

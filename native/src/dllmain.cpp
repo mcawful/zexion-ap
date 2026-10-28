@@ -329,17 +329,16 @@ std::string one_word(std::string text) {
 }
 
 std::string hello() {
-    // The fields read on the game's thread (configured, the escape skip offered, the Feats guard;
-    // the offline seeds, a client there, the title screen's lines; the keys an offline cache
-    // lacked); these defaults stand if no frame comes.
-    std::string game = " configured=0 skip=0 feats=off", look = " offline=- active=0 title=0";
+    // The fields read on the game's thread (configured, the Feats guard; the offline seeds, a
+    // client there, the title screen's lines; the keys an offline cache lacked); these defaults
+    // stand if no frame comes.
+    std::string game = " configured=0 feats=off", look = " offline=- active=0 title=0";
     std::string left_out;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
             [&] {
                 game = std::string(" configured=") + (g_game.configured() ? "1" : "0") +
-                       " skip=" + (g_game.skip_offered() ? "1" : "0") +
                        " feats=" + one_word(g_game.feats_state());
                 look = " offline=" + one_word(g_game.offline_state()) +
                        " active=" + (g_game.active() ? "1" : "0") +

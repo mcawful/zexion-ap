@@ -17,10 +17,10 @@ You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
 Set with the Goal option.
 
 - **Core** (default): find the Alpha, Beta, Gamma and Omega Keys, open the core and grab
-  Zexion. The game then asks SKIP ESCAPE AND FINAL BATTLE?: YES takes you to just before the
-  ship. Board the ship: reaching the ending is your goal. The seed only makes sure you can
-  reach Zexion, not that you have the items the escape needs (such as the Zenith Thrusters),
-  so answer YES unless you have them.
+  Zexion, then escape, win the final battle and board the ship: reaching the ending is your
+  goal. The seed only makes sure you can reach the keys and Zexion, not that you have the
+  items the escape needs (such as the Zenith Thrusters): the escape and final battle are yours
+  to finish.
 - **OS Install Disks**: find enough OS Install Disks (the options set how many are placed and
   how many you need). The four keys are not in the seed.
   - Your count shows on each disk's popup, on the pause screen and on the file select.

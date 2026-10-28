@@ -269,7 +269,6 @@ class HelperState:
     other_save_seen: bool = False  # the poll before saw it too (other_save_tick)
     offline_sent: dict[str, str] = field(default_factory=dict)  # what it last kept, by kind
     offline_at: float = 0.0
-    skip_check_at: float | None = None  # when to ask whether it offers the escape skip
 
 
 @dataclass

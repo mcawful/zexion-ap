@@ -564,61 +564,6 @@ void test_scanner_line() {
           "32 characters do not fit with the zero after them");
 }
 
-void test_escape_skip() {
-    zap::Game game;
-    check(configure(game).empty(), "configures");
-    reset_events();
-    game.watch_skip();
-    check(event_else() == 3668 && game.skip_offered(), "event 3665 offers the skip either way");
-    game.watch_skip();  // within its 30 frames: nothing to do
-    game.restore_skip();
-    check(event_else() == -1 && !game.skip_offered(), "restored");
-
-    // No client (it went away): the base game's event, until a client configures it again.
-    reset_events();
-    check(game.active(), "active once configured");
-    game.set_active(false);
-    for (int i = 0; i < 31; ++i) game.watch_skip();
-    check(event_else() == -1 && !game.skip_offered(), "no client: no skip");
-    check(configure(game).empty() && game.active(), "a client's config: active again");
-    for (int i = 0; i < 31; ++i) game.watch_skip();
-    check(event_else() == 3668, "and the skip offered again");
-    game.restore_skip();
-
-    reset_events();
-    event_3665()[2] = 251;  // not the record traced on B1
-    for (int i = 0; i < 31; ++i) game.watch_skip();
-    check(event_3665()[6] == 0xFF && !game.skip_offered(), "another record is left alone");
-
-    reset_events();
-    g_event_count = 3000;  // the table not loaded in full
-    zap::Game fresh;
-    configure(fresh);
-    fresh.watch_skip();
-    check(event_else() == -1, "a short table is left alone");
-    g_event_count = kStandInEvents;
-    for (int i = 0; i < 31; ++i) fresh.watch_skip();
-    check(event_else() == 3668, "patched once it is loaded");
-
-    // The game loads its events again into a new table: the new one is patched.
-    static BYTE other[kStandInEvents * 0x28];
-    std::memcpy(other, g_events, sizeof(other));
-    put<int16_t>(other, 3665 * 0x28 + 6, -1);
-    g_event_table = other;
-    for (int i = 0; i < 31; ++i) fresh.watch_skip();
-    check(get<int16_t>(other, 3665 * 0x28 + 6) == 3668, "a reloaded table is patched");
-    fresh.restore_skip();
-    check(get<int16_t>(other, 3665 * 0x28 + 6) == -1, "and restored");
-
-    // Restore only into the table patched, and only if the record still reads as patched.
-    reset_events();
-    for (int i = 0; i < 31; ++i) fresh.watch_skip();
-    g_event_table = other;  // replaced since
-    fresh.restore_skip();
-    check(event_else() == 3668, "a table no longer loaded is not written");
-    g_event_table = g_events;
-}
-
 // The width the pickup popup's `mov edx, imm32` holds.
 int32_t popup_width_in_code() {
     int32_t width = 0;
@@ -1556,7 +1501,6 @@ int main() {
     test_assist_watch();
     test_newgame_watch();
     test_archipelago_choice();
-    test_escape_skip();
     test_scanner_line();
     test_start_table();
     return report("game tests");
