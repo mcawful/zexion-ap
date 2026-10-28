@@ -9,7 +9,7 @@ from typing import Any
 from Fill import distribute_items_restrictive
 from Options import OptionError
 
-from .. import custom, data
+from .. import custom, data, reach
 from ..custom import (
     BOMB_BOX,
     ENERGY_TANK,
@@ -479,3 +479,23 @@ class EveryStartFills(ZexionTestBase):
                     self.world_setup()
                     distribute_items_restrictive(self.multiworld)
                     self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
+
+
+class TestTheLogicReviewsFindings(unittest.TestCase):
+    def test_a_started_gun_and_its_upgrade_count_as_both(self) -> None:
+        seed = reach.Seed.of(Menu.preset("standard").logic_settings(), {7: 2}, [])
+        self.assertEqual(seed.start_items, ((7, 1), (12, 1)))
+        self.assertEqual(seed.every_item, ((7, 1), (12, 1)))
+
+    def test_gates_off_waits_with_the_core_goal(self) -> None:
+        with self.assertRaisesRegex(OptionError, "gates: off"):
+            fake_world(mode="custom", gates="off").generate_early()
+        fake_world(mode="custom", gates="off", goal=1).generate_early()
+
+    def test_the_cores_own_lists_are_judged_with_the_start(self) -> None:
+        # Into the core: code 51 (Wall Jump Boots with G-Diffuser or Gravity Harness, or the
+        # Zenith Thrusters) or the Jump Booster (data.CORE).
+        out = ("Jump Booster", "Zenith Thrusters", "G-Diffuser", "Gravity Harness")
+        items = dict.fromkeys(out, "excluded")
+        with self.assertRaisesRegex(OptionError, "no start room|does not suit"):
+            fake_world(mode="custom", custom_items=items).generate_early()

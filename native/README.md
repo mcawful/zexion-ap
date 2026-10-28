@@ -324,7 +324,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   letters. Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
-  new game. For Double Teleport (OHKO) it first fills in the menu's start table from
+  new game (a Custom seed's settings: built in the client and world, not yet run in game). For
+  Double Teleport (OHKO) it first fills in the menu's start table from
   `start_table` if the menu never built it, and refuses the start if it differs.
 - A section of another mode, or a slot the game will not start a game in, drops the plan with
   nothing queued, and the client arms it again.

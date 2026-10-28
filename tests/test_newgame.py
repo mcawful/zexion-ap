@@ -184,8 +184,20 @@ def test_randomizer_steps_name_a_presets_safety() -> None:
 
 def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings() -> None:
     options = {10: 1, 30: 1, 31: 0, 32: 1, 33: 0, 37: 0, 42: 0, 43: 1, 72: 1, 73: 1}
-    steps = ng.randomizer_steps(plan(options=options, amounts=(6, 20, 25, 200, 0, 30)), "custom")
-    assert steps.startswith("set Custom: Starting Items 6 Energy Tanks, 25 missiles, 0 Mega")
+    settings = bytearray(64)
+    settings[34 - 10] = settings[35 - 10] = 1  # Start Keys 3
+    menu = menu_setup(
+        start=bytes([0] * 3 + [1] + [1, 1] + [0] * 21),
+        pool=bytes([1] * 4 + [0, 1] + [1] * 18 + [0] + [1] * 2),
+        settings=bytes(settings),
+    )
+    p = plan(options=options, amounts=(6, 20, 25, 200, 0, 30), menu=menu)
+    steps = ng.randomizer_steps(p, "custom")
+    assert steps.startswith(
+        "set Custom, first the items (Starting Item: Machine Gun; Random: Navcore, Force "
+        "Blaster; Excluded: Power Core; the rest in the Item Pool) and Start Keys 3"
+    )
+    assert "then Starting Items 6 Energy Tanks, 25 missiles, 0 Mega Bombs" in steps
     assert "Item Pool 20, 200, 30" in steps
     for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
         assert part in steps

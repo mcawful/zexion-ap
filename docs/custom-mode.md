@@ -196,7 +196,8 @@ step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secr
   built, the world asks for 3 locations, not 1** (`ZexionWorld.passes`, every mode): from a
   room whose starting items reach one location, Archipelago's fill failed in 1 to 5 of 20
   solo generations for six of Standard's ten such rooms (the other four, and every room
-  reaching 2 or more, 20 of 20; 2026-10-27, a scratch script, not kept), where the game's own
+  reaching 2 or more, 20 of 20; 2026-10-27, AP 0.6.8, seeds 0 to 19, every other option at
+  its default; a scratch script, not kept, so not reproducible as is), where the game's own
   placement repairs its fill. With 3, Easy and Standard take the 9 rooms the world offered
   before and OHKO all 34 (by the pair rule below); the earlier rule (every item reaching all
   154 locations as well) stays in `reach.offered_starts` as the tests' check on `data.MODES`.
@@ -228,7 +229,12 @@ step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secr
   Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   makes filler when it runs short (`custom.compress`), in every mode. A pool longer than its
   places is refused, where the game would drop entries at random. Gates Open is accepted, but
-  the logic does not use the gates yet (step D): stricter than the game's, never looser.
+  the logic does not use the gates yet (step D): stricter than the game's, never looser. Gates
+  Off is refused with the core goal: under it the gates' key check never passes (`re/memory.md`,
+  "Keys, the gates and the key markers"), and whether a gate closes the core is not known
+  (rank 12: play it once). A start room also needs every item to pass the core's own lists
+  after the door (`data.CORE`), and the world counts a started gun and its upgrade as both, as
+  the game does (found by the `logic-reviewer`, 2026-10-27).
 
 **The goal.** The game's winnability check needs a cell holding Zexion and the four keys:
 without Abridged Finale only the ship's, (1, 42), since its logic enters the core only with it;
@@ -279,15 +285,19 @@ Disks), the start room and the second teleport target the world chose, the start
 amounts (the coin flips and Random Gun as the world resolved them, and any `start_inventory`),
 and the starting keys; and the client checks that the settings the logic reads came out as the
 seed's. In play, the client and the helper add what AP needs on top: received items, the OS
-Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the assist lock. One small addition would help: setting the menu's Starting Location to the world's start
-room, so the pause menu's view names the room instead of reading Random Start (seen in an AP
-save: `re/randocells.md`, "The settings code").
+Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the assist lock. One small addition, built in step B (`ZexionWorld.menu_setup`): the menu's
+Starting Location set to the world's start room, so the pause menu's view names the room
+instead of reading Random Start (seen in an AP save before it: `re/randocells.md`, "The
+settings code"). Opening that view leaves the seed's state in the menu (same section), so a
+RANDOMIZER game started afterwards tries only that room, not Random Start (by the code; not
+tried).
 
 **ARCHIPELAGO** already sets the whole menu state (seed text, both item arrays, the six amounts
 and settings t10 to t73 but Colorizer) from the slot data, runs the game's placement, checks
 the section and writes the seed over it (`memory.md`, "The game-mode panel"). A Custom seed's
 slot data carries its own settings there instead of a preset's; the checks (`expect` lines)
-grow to every setting the logic reads: t30 to t33, t37, Safety, Gates and the amounts.
+cover every setting the logic reads: t10 (Guns First, added in step B), t30 to t33, t37,
+Safety, Gates and the amounts (`custom.CHECKED`).
 
 **The seed's settings in game.** The pause menu's OPTION MENU, RANDO, RANDO SETTINGS shows a
 save's seed, mode, items, amounts and settings, decoded from the settings code the save keeps
@@ -325,7 +335,7 @@ game for this review.
 | The `escape_skip` option (discussed, never in the repo) | — | Abridged Finale (t32) | Fully | Nothing: dropped by the owner, 2026-10-27 ("The YAML", Abridged Finale). | None |
 | The escape skip offer (event 3665's else branch pointed at the offer; retired 2026-10-27) | Removed: it was `native/src/skip.cpp`, the offline look's part, the client's check and the Goal option's text | Abridged Finale (t32) | Fully in a Custom seed with it on: event 3583 sets flag 289 at the grab, and event 3668 offers nothing while 289 is set, the helper's patch included (measured by disassembly; in game, 2026-10-27, flag 289 was set at the grab and the ending followed with no escape and no prompt, the helper's patch off at the time). No for presets, and for Custom with it off | Done, 2026-10-27, by the owner's decision (below): the patch, the offline look's part, the client's check of it, their tests and the Goal text removed; the event table's targets stay, since RETURN HOME WITH THE DISKS? uses them. This review had advised keeping the patch until the escape's needs were measured and put in the goal's rule, since the world's logic does not cover the escape and the final battle | Accepted by the owner: a preset core-goal seed can reach Zexion before the player has what the escape needs ("The YAML", Abridged Finale) |
 | The start room (`start_room`, `AUTOMATIC_ROOM`, the start record write) | `worlds/zexion/options.py`, `world.py` (`choose_starts`); `client/newgame.py` (`write` of `START_RECORD`) | Starting Location (t22 to t27) | Partly. The game's 34 rooms are the option's values (`options.ROOM_NAMES`), and a named value writes a start record of the same form (room index, column, row: `re/randocells.md`, "Starting Location and the second teleport target"). But ARCHIPELAGO skips the step that reads it, and the world's fill must know the room, so the world chooses it, by the game's Random Start rule (`custom.random_start`) for `random_start` | Not retirable: the world still chooses and the client still writes. What the setting adds is the view: since step B the world sets it to its room in the menu (`ZexionWorld.menu_setup`), which names the start in RANDO SETTINGS, in a preset seed too, since the mode check skips it (above) | Low |
-| The second teleport target (`pick_second_start`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is in the draft already. The writes stay | Medium (a new entrance rule) |
+| The second teleport target (`ZexionWorld.partners`, `reach.second_starts`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is step D. The writes stay | Medium (a new entrance rule) |
 | Starting keys | `client/newgame.py` (`start_with`; writes t34 to t36); `worlds/zexion/starting.py` (the first keys from the Alpha Key) | Start Keys (t34 to t36) | Fully, by the code: the client gives starting keys by writing the game's own Start Keys bits (`client/newgame.py`), and the new game gives the first *k* keys from them (`0xA11A5`, by disassembly: `re/randocells.md`, "What each setting does in the game"). The game's own Start Keys 4 gave the four keys in a seed made in its menu (2026-10-27); the client's write of the bits has not been run with keys | Nothing to retire. In Custom, `start_keys` is the menu's value and start_inventory keys add to the count | None |
 | The key markers, the scanner | the game's new game (event chain 3329 to 3378, from the item table); `client/save_patch.py` (the offline reference only) | Start Keys, Gates | Not an AP feature: the game draws the markers from AP's item table already, so a key in another world or started with has none. Gates changes which gates pass, and with Open the logic (`re/memory.md`, "Keys, the gates and the key markers"), not the markers, and the core goal's four keys are the game's winnability check's own | — | — |
 | The starting items and amounts (the start-with array and the amounts written over the placement) | `client/newgame.py` (`start_with`) | The 27 items' Start state, Random Gun, the six amounts | Partly: the menu holds the seed's starting items and amounts, and the new game gives them. But the game resolves `random` items and Random Gun from its own seed text, and the world from its random numbers, and start_inventory is AP's alone | Only if the world reproduced the game's generator from the seed text (`lab/rando-options/agentB/sim_pool.py` does steps 1 to 7) so both agree; not worth it. Keep the writes | Medium if retired: wrong starting items |
@@ -353,7 +363,8 @@ game do it and the AP feature stays out of the way, as it already does:
 2. **Start Keys** through the bits the client already writes (by the code; Start Keys 4 gave
    the four keys in a seed made in the game's menu, 2026-10-27).
 3. **Starting Location** set to the world's room, for the settings view, in Custom and, since
-   the mode check skips it, in the presets too (the small addition in "The new game").
+   the mode check skips it, in the presets too (the small addition in "The new game"; built
+   in step B).
 4. **Obscure** passed through; the helper's markers follow Obscure Majors while Minors is on,
    and the Majors-on, Minors-off case still needs handling (`re/memory.md`, "Map markers").
 

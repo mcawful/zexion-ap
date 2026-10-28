@@ -200,11 +200,24 @@ SAFETY, GATES = (
 PRESETS = {"easy": "Easy", "standard": "Standard", "ohko": "OHKO"}
 
 
+# The menu's 27 items, by the first screen's names, in START_WITH_ORDER's order.
+ITEM_LABELS = (
+    "Slide Mod", "Wall Jump Boots", "Marine Jets", "Navcore", "Machine Gun", "Force Blaster",
+    "Snake", "Lance", "Arc Plasma", "Rocket Slide", "Jump Booster", "Phaser", "S-Blade",
+    "Pulse Wave", "Pentashot", "Tunneler", "Focal Crystal", "Plasma Burst", "G-Diffuser",
+    "Gravity Harness", "Zenith Thrusters", "Magnus Armor", "Power Cartridge", "Power Chip",
+    "Power Core", "Javelin Missiles", "X-Missile",
+)  # fmt: skip
+START_KEYS = (34, 35, 36)
+
+
 def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
     """How to set RANDOMIZER's menu for this seed, for a player starting it by hand: a preset
     with its Safety (the one checked setting a preset may change), or for Custom the six
-    amounts and every checked setting. The items and the other settings are not checked: the
-    client writes the seed's own over them."""
+    amounts and every checked setting, and first the items' states and Start Keys, which the
+    menu's limits on the pool missiles and Mega Bombs depend on (docs/re/randocells.md, "The
+    randomizer menu's first screen: items and amounts"). The rest is not checked: the client
+    writes the seed's own starting items and item table over the game's."""
 
     def value(bits: tuple[int, ...], labels: tuple[str, ...]) -> str:
         return labels[sum(plan.options.get(t, 0) << i for i, t in enumerate(bits))]
@@ -212,6 +225,17 @@ def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
     safety = f"Safety {value(*SAFETY)}"
     if mode in PRESETS:
         return f"pick {PRESETS[mode]} mode, set {safety} and change no other options"
+    menu = plan.menu
+    states: dict[tuple[int, int], list[str]] = {}
+    for label, start, pool in zip(ITEM_LABELS, menu.start, menu.pool, strict=True):
+        states.setdefault((start, pool), []).append(label)
+    groups = [
+        f"{name} {', '.join(states[key])}"
+        for key, name in (((1, 0), "Starting Item:"), ((1, 1), "Random:"), ((0, 0), "Excluded:"))
+        if states.get(key)
+    ]
+    items = "; ".join(groups) or "every item in the Item Pool"
+    keys = sum(menu.settings[t - MENU_FIRST_SETTING] << i for i, t in enumerate(START_KEYS))
     a = plan.amounts
     amounts = (
         f"Starting Items {a[0]} Energy Tanks, {a[2]} missiles, {a[4]} Mega Bombs; Item Pool "
@@ -221,4 +245,8 @@ def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
         f"{label} {'on' if plan.options.get(t) else 'off'}" for t, label in ON_OFF_LABELS.items()
     ]
     settings += [safety, f"Gates {value(*GATES)}"]
-    return f"set Custom: {amounts}; Edit Options: {', '.join(settings)}"
+    return (
+        f"set Custom, first the items ({items}; the rest in the Item Pool) and Start Keys {keys} "
+        f"(the menu limits the amounts by them), then {amounts}; Edit Options: "
+        f"{', '.join(settings)}"
+    )

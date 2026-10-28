@@ -56,6 +56,7 @@ from .options import (
     RANDOM_START,
     SETTINGS,
     Amount,
+    Gates,
     Goal,
     Safety,
     StartRoom,
@@ -192,6 +193,13 @@ class ZexionWorld(World):
                 f"{who}: abridged_finale ends the game when Zexion is grabbed, so it cannot go "
                 f"with the OS Install Disks goal"
             )
+        if not self.disc_hunt and menu.value(custom.GATES) == Gates.option_off:
+            # The gates' key check never passes under Off (docs/re/memory.md, "Keys, the gates
+            # and the key markers"), and whether a gate closes the core is not known.
+            raise OptionError(
+                f"{who}: gates: off is not supported with the core goal yet: whether the "
+                f"disabled gates close the way to Zexion is not known"
+            )
         if not is_custom:
             return menu
         unsupported = []
@@ -229,9 +237,17 @@ class ZexionWorld(World):
         return bool(self.menu.setting(custom.DOUBLE_TELEPORT))
 
     def reaches_the_door(self, room: dict) -> bool:
-        """With the core goal, whether every item reaches the core's door from this room."""
+        """With the core goal, whether every item reaches the core's door from this room and
+        passes the core's own lists on the way to Zexion (data.CORE)."""
+        if self.disc_hunt:
+            return True
         door = data.CELL_REGION[data.CORE["door"]]
-        return self.disc_hunt or door in self.seed_reach.every(room["cell"]).regions
+        every = self.seed_reach.every(room["cell"])
+        have = dict(self.seed_reach.every_item)
+        return door in every.regions and all(
+            logic.satisfied(entries, have, self.logic_settings, cell)
+            for entries, cell in data.CORE["needs"]
+        )
 
     def partners(self, room: dict) -> list[dict]:
         """With Double Teleport, the second teleport targets for this start: rooms that,

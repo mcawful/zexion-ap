@@ -27,7 +27,7 @@ worlds/zexion/ → generation → slot data → client
 ```
 
 - **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
-  other 4), using the game's own randomizer map and rules (`docs/re/locations.md`).
+  other 4; in Custom, those the settings reach from the start), using the game's own randomizer map and rules (`docs/re/locations.md`).
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
   other worlds send, and sends the goal once the save has reached the ending (with the OS
@@ -268,8 +268,9 @@ Running it may load the helper into the game: the one already there if it is thi
 
 - `--verbose` also shows what the client sets up in the game for the seed.
 - `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it
-  with the menu set as the client says (the seed's mode and Safety; for Custom, the amounts and
-  the settings the logic reads: `client/newgame.py`, `randomizer_steps`) gets the seed. From the Launcher:
+  with the menu set as the client says (the seed's mode and Safety; for Custom, the items and
+  Start Keys, which the amounts' limits depend on, the amounts and the settings the logic
+  reads: `client/newgame.py`, `randomizer_steps`) gets the seed. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or

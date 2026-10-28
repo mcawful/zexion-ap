@@ -30,8 +30,9 @@ derivation works and what backs it (the decode in `docs/re/randocells.md`, the s
 playthroughs it was checked against), section by section, including the world's deliberate
 exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come from
 `docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in the
-game); the item pool and its classifications are `worlds/zexion/items.py` and each mode's pool in
-`data.py`.
+game); the item pool and its classifications are `worlds/zexion/items.py`, and each preset
+mode's pool in `data.py` or, for Custom mode, the pool `worlds/zexion/custom.py` builds by the
+game's pool rule (`randocells.md`, "The pool"; `docs/custom-mode.md`).
 
 These docs are long: find the section with a search for `^## ` and read only that range.
 
@@ -65,7 +66,8 @@ once and stop.
 5. **Pool problems.** Total items not equal to total locations, a progression item classified
    as filler or useful (or the reverse when its classification changes logic), or item counts
    that differ from the mode's pool in `data.py` (as a fresh save of that mode had it:
-   `locations.md`, "Not yet decided") less what the world takes out as `locations.md` records.
+   `locations.md`, "Not yet decided"), or for Custom from the game's pool rule as `custom.py`
+   applies it, less what the world takes out as `locations.md` records.
 
 ## Method
 

@@ -158,7 +158,7 @@ public:
     void restore_assists();
 
     // Game thread, from ARCHIPELAGO's callback: runs the game's placement with the menu set to
-    // the seed's mode, checks `expect`, writes the plan over it and queues the new game
+    // the seed's settings, checks `expect`, writes the plan over it and queues the new game
     // (watch_newgame reports "applied slot N" next frame). Anything off: "refused <why>", the
     // plan dropped, nothing queued.
     void start_archipelago(WidgetCallback callback);

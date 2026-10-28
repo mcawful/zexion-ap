@@ -303,7 +303,9 @@ class Gates(Choice):
     Vanilla: Gates require the four keys to access all like in the base game.
     Unlocked: Gates can be opened one by one by visiting their locations.
     Open: Gates can be moved through freely. (The R'talva gate is locked before defeating
-    Aesos) The seed's logic does not use the gates yet."""
+    Aesos) The seed's logic does not use the gates yet.
+    Off is refused with the core goal for now: whether the disabled gates close the way to
+    Zexion is not known."""
 
     display_name = "Gates"
     option_off = 0

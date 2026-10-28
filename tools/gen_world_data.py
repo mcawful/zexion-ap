@@ -19,11 +19,12 @@ Reads (all copies in lab/, never the game folder):
   MapData for the cells holding Zexion (the core goal, ``CORE``: docs/re/locations.md, "The
   core goal is Zexion's cell in the core").
 
-Cells joined by always-open passages are merged into one region (strongly connected
-components of the open passages); each conditional passage between two regions becomes an
-entrance carrying the requirement list of the cell it leaves from. The map is shared by all
-modes; a mode's settings only change how the rules evaluate. Only cells reachable with every
-item from some mode's valid start are kept. A start is valid for a mode when, with every item
+Cells joined by always-open passages are merged into one region (strongly connected components
+of the open passages); each conditional passage between two regions becomes an entrance carrying
+the requirement list of the cell it leaves from. The map is shared by all modes; a mode's
+settings only change how the rules evaluate. Only cells reachable with every item from some
+mode's valid start are kept, and those every item of a mode reaches from any start room with X
+Crystals and X Blocks on (``opened_cells``). A start is valid for a mode when, with every item
 of that mode, all 154 locations are reachable from it, and with only that mode's starting
 inventory at least ``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions
 and locations with every item, which the mode then holds once; the generator refuses data where

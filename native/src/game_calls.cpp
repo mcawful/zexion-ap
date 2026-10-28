@@ -478,8 +478,9 @@ void Game::watch_newgame() {
     if (!newgame_queued()) return;
     if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
     if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
-    // Check the section is the seed's mode, unless ARCHIPELAGO started it (starting_): that was
-    // checked before the plan went in, and the plan's own writes now differ from the mode's.
+    // Check the section has the seed's amounts and settings, unless ARCHIPELAGO started it
+    // (starting_): that was checked before the plan went in, and the plan's own writes now
+    // differ from them.
     int differs = starting_ ? -1 : first_difference(at_.rando_blob, newgame_.expect);
     if (differs >= 0) {
         newgame_status_ = "refused the new game is not the seed's mode (section +" +
@@ -598,7 +599,7 @@ void Game::start_archipelago(WidgetCallback callback) {
         disarm_newgame();
     };
     // The menu's state is the player's own (the game keeps it in its preferences): set to the
-    // seed's mode for the placement, then put back, however it ends.
+    // seed's settings for the placement, then put back, however it ends.
     BYTE menu_state[kMenuSize];
     bool menu_taken = false;
     auto put_menu_back = [&] {

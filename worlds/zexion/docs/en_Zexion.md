@@ -4,7 +4,8 @@
 
 Zexion has its own randomizer. This world uses its map and its rules for what each item opens
 up, but lets Archipelago decide what is at each of the game's 154 item locations (150 in
-OHKO). Items found in Zexion can belong to other players, and their games can send items to
+OHKO; in Custom, those your settings and start room reach: the others hold Scrap, as the game
+leaves them). Items found in Zexion can belong to other players, and their games can send items to
 you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
 Chips): exclude more locations than you have filler, and generation stops with an error that
 says so, unless the other players' filler makes up the difference.
@@ -32,7 +33,8 @@ Set with the Goal option.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then in
     Standard past 25 disks Energy Shields. Excluded locations can hold only filler, so with many
     disks, excluding many locations can stop generation, as above (the OS Install Disks option
-    gives the numbers).
+    gives the numbers). Where there is too little filler for the disks, ten Missile Containers
+    or Mega Bombs become a box and nine Scrap Metal, as the game makes filler.
 
 ## Which modes are there?
 
@@ -48,7 +50,8 @@ Finale and the rest). Each starts as `preset`: the value of `custom_base`, the m
 starts from. The seed is built from them as the game builds its own: the coin flips, Random
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them. Not yet: Guns First off, Secret Shuffle on, and starting Mega Bombs.
+error that names them. Not yet: Guns First off, Secret Shuffle on, starting Mega Bombs, and Gates Off with the core
+goal.
 Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
 goal.
 
@@ -109,8 +112,8 @@ With the option off, Area Maps work as in the normal game.
 
 ## Can I use the assist menu?
 
-Not by default. ASSIST (pause, OPTIONS) is locked in your seed's saves. Turn on the Allow
-Assists option to allow it.
+Not by default. ASSIST (pause, OPTIONS) is locked in your seed's saves. Turn on the Enable Assist
+Options option (`allow_assists: true`) to allow it.
 
 If a seed turns out to need the assists, the host can unlock them for good by sending you the
 Assist Unlock item from the server console, with your player name:

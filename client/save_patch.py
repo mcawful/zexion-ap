@@ -49,7 +49,7 @@ class PatchError(ValueError):
 
 @dataclass(frozen=True)
 class MenuSetup:
-    """The randomizer menu as the seed's mode, for the helper's ARCHIPELAGO choice
+    """The randomizer menu as the seed's settings, for the helper's ARCHIPELAGO choice
     (client/newgame.py), from the slot data."""
 
     seed_text: str  # 16 characters, 0-9 and A-F
@@ -126,7 +126,7 @@ def check_mode(save: bytes, plan: SeedPlan) -> None:
     if tuple(amounts) != plan.amounts:
         raise PatchError(
             f"this game's Energy, missile and bomb amounts {amounts} are not the seed's "
-            f"{plan.amounts}: start the new game in the seed's mode"
+            f"{plan.amounts}: start the new game with the seed's mode and settings"
         )
     wrong = [t for t, v in plan.options.items() if save[OPTIONS + t] != v]
     if wrong:

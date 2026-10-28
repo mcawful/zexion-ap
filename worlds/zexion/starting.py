@@ -18,7 +18,8 @@ world refuses those items in generation (``problems``, from generate_early), wit
   edits are tested against, has no place for current bombs;
 - no Scrap, Area Map or Energy Shield (no way into a new game; the shield is a pickup's spawn);
 - no Intel Chip or Assist Unlock: the client acts on them only as received (a hint, the assist
-  lock lifted), and a starting one is never received (the Allow Assists option lifts the lock);
+  lock lifted), and a starting one is never received (the Enable Assist Options option lifts
+  the lock);
 - an OS Install Disk only with the OS Install Disks goal, which counts it (slot data
   "discs_start").
 """
@@ -41,7 +42,10 @@ NEVER = {
     49: "a new game cannot start with an Area Map",
     50: "a new game cannot start with an Energy Shield",
     INTEL_CHIP: "a starting Intel Chip is never received, so it would hint nothing",
-    ASSIST_UNLOCK: "a starting Assist Unlock is never received; use Allow Assists instead",
+    ASSIST_UNLOCK: (
+        "a starting Assist Unlock is never received; use Enable Assist Options (allow_assists) "
+        "instead"
+    ),
 }
 
 

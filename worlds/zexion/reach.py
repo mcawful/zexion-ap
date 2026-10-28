@@ -53,10 +53,20 @@ def inventory(counts: Mapping[int, int]) -> Inventory:
     return tuple(sorted((code, n) for code, n in counts.items() if n))
 
 
+def collected(start_inventory: Mapping[int, int]) -> dict[int, int]:
+    """Starting items by item code, counted as the game counts them (``logic.collect``): a
+    progressive weapon held twice as the weapon and its upgrade."""
+    have: dict[int, int] = {}
+    for code, n in sorted(start_inventory.items()):
+        for _ in range(n):
+            logic.collect(have, code)
+    return have
+
+
 def every_item(start_inventory: Mapping[int, int], pool: Iterable[int]) -> Inventory:
     """The starting items and every item of the pool, counted as the game's generator counts
     them (a weapon picked up twice as its upgrade: ``logic.collect``)."""
-    have = dict(start_inventory)
+    have = collected(start_inventory)
     for item in pool:
         logic.collect(have, item)
     return inventory(have)
@@ -139,7 +149,8 @@ class Seed:
     def of(
         cls, settings: logic.Settings, start_inventory: Mapping[int, int], pool: Iterable[int]
     ) -> Seed:
-        return cls(settings, inventory(start_inventory), every_item(start_inventory, pool))
+        start = inventory(collected(start_inventory))
+        return cls(settings, start, every_item(start_inventory, pool))
 
     def every(self, *starts: Cell) -> Reach:
         """What every item reaches from these starts."""
