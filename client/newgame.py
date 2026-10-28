@@ -113,9 +113,9 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
         lines.append(f"expect {section(sp.OPTIONS + t):#x} {value:02x}")
     # The AP seed.
     lines.append(f"write {section(sp.ITEM_TABLE):#x} {bytes(plan.location_items).hex()}")
-    # The seed text and its hash: ARCHIPELAGO's placement already ran from them; a RANDOMIZER
-    # game ran from the menu's own text, so it gets the seed's, as RANDO SETTINGS shows it and
-    # Colorizer's colors follow it. (The Hints' map rectangles the placement drew stay.)
+    # The seed text and its hash: the seed's placement already ran from them (the helper's,
+    # for ARCHIPELAGO and over a RANDOMIZER game alike); written again for a plan without menu
+    # lines, whose game ran from the menu's own text.
     lines.append(f"write {section(sp.SEED_TEXT):#x} {seed_text.encode('ascii').hex()}")
     hashed = struct.pack("<Q", sp.seed_hash(seed_text)).hex()
     lines.append(f"write {section(sp.SEED_HASH):#x} {hashed}")

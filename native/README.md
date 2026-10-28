@@ -90,7 +90,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
-| `ap_newgame` and lines `expect`, `write` or `menu OFFSET HEX`, `start_table HEX` (frame) | `armed`, `refused <why>`, `error <why>` | New games |
+| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; `menu` lines need `identify` lines, `choice` needs `menu` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
@@ -334,8 +334,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
   Double Teleport (OHKO) it first fills in the menu's start table from
   `start_table` if the menu never built it, and refuses the start if it differs.
-- A section of another mode, or a slot the game will not start a game in, drops the plan with
-  nothing queued, and the client arms it again.
+- A section of another seed (its text) or mode, or a slot the game will not start a game in,
+  drops the plan with nothing of the seed written, and the client arms it again.
 - **Put back:** RANDOMIZER and the game's handler go back as soon as the menu is not on top, on
   `disarm` and before an unload, but only while that menu is still open (the game frees a closed
   menu's widgets without clearing them). While the panel may still hold the wrapper, the helper

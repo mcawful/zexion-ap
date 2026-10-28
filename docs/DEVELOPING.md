@@ -97,7 +97,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
-  modes: 2026-10-22.
+  modes: 2026-10-22. That was the earlier path, checked against the player's own placement;
+  identifying the game by its seed text and placing it again (2026-10-27) is not yet run in
+  game.
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
   2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
   three-game seed (other games' items, no owner on the map, other Zexion players' supplies

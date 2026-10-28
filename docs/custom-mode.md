@@ -428,7 +428,8 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    prompt and the client sent the goal (the first Abridged Finale run with the client); Easy
    with Safety Light and Vallahar read EASY MODE and started there; Custom on OHKO's base with
    Random Start started in Top of Pulsava and the pause menu offered TELEPORT TO VALLAHAR; a
-   Custom seed set by hand from RANDOMIZER with the client's steps took the seed, twice, and
+   Custom seed set by hand from RANDOMIZER with the client's steps (since replaced by the seed
+   text alone: "The new game") took the seed, twice, and
    one with Safety wrong was refused (the world's tests also
    generate and fill Custom seeds and check the measured seeds' pools; `test_custom.py`). The
    options in the game's words, refusing what the game's menu cannot
