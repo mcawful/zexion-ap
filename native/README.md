@@ -690,8 +690,8 @@ closed, gone with it open.
       text and the hint names EXPANDED ENDING; the game's other hints (`docs/re/memory.md`;
       when each shows is not decoded) are left alone, with no note. Working in game,
       2026-10-28 (a fresh save folder: on the lower two lines over rows of 6 and 5, and with the
-      code typed, on the upper two over the secret row); putting the hint back on an unload is
-      in stand-in tests only.
+      code typed, on the upper two over the secret row; and the hint back, as the game wrote
+      it, on an unload with the screen up).
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
       the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
       ends when a save is loaded, or when the screen has come and gone. It looks every 8th
@@ -776,15 +776,15 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
 - 2026-10-28, with the hint's change, in a fresh save folder (no Ending B, no Feats on record)
   and the same save: FEATS OF NATU! and the note in place of the hint, over rows of 6 and 5,
   and again with the code typed, on the upper two lines over the secret row; flag 251 clear,
-  and `GameUnlocks.sav` given no Feat, no Ending A or B entry and no `+0xCE00A8`.
+  and `GameUnlocks.sav` given no Feat, no Ending A or B entry and no `+0xCE00A8`; an unload with
+  that screen up put the game's hint back.
 
 Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over a bottom row of 6 (by disassembly and stand-in tests only);
-- the hint put back on an unload (stand-in tests only).
+- the note over a bottom row of 6 (by disassembly and stand-in tests only).
 
 ## Building
 
