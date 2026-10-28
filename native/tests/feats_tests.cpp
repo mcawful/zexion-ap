@@ -447,12 +447,13 @@ void test_refusals() {
 }
 
 // The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, and the
-// title label, three lines of 38 glyphs with the title on the middle one.
+// title label, three lines of 38 glyphs with the title on the middle one. with_secret_row: a
+// fifth panel, the 5 secret Feats (read live, 2026-10-28).
 struct FeatsScreen {
     static constexpr int kColumns = 38, kLength = 3 * kColumns;
     BYTE menu[0x80] = {};
-    BYTE* panels[4] = {};
-    BYTE panel[4][0x300] = {};
+    BYTE* panels[5] = {};
+    BYTE panel[5][0x300] = {};
     BYTE* children[1] = {};
     BYTE title[0x2D0] = {};
     BYTE label[0x230] = {};
@@ -466,9 +467,10 @@ struct FeatsScreen {
     BYTE stats_panel[2][0x300] = {};
 
     explicit FeatsScreen(const std::string& middle = "FEATS OF NATU!",
-                         bool with_assists = false) {
+                         bool with_assists = false, bool with_secret_row = false) {
         at<BYTE*>(menu, 0) = reinterpret_cast<BYTE*>(panels);
-        at<int32_t>(menu, 8) = 4;
+        at<int32_t>(menu, 8) = with_secret_row ? 5 : 4;
+        at<int32_t>(panel[4], 0x1E8) = 5;
         at<BYTE*>(menu, 0x78) = stats;
         at<BYTE*>(stats, 0) = reinterpret_cast<BYTE*>(stats_panels);
         at<int32_t>(stats, 8) = with_assists ? 2 : 1;
@@ -476,7 +478,7 @@ struct FeatsScreen {
         stats_panels[1] = stats_panel[1];
         at<int32_t>(stats_panel[0], 0x1E8) = 10;
         at<int32_t>(stats_panel[1], 0x1E8) = 8;
-        for (int i = 0; i < 4; ++i) panels[i] = panel[i];
+        for (int i = 0; i < 5; ++i) panels[i] = panel[i];
         at<BYTE**>(panel[0], 0x1E0) = children;
         at<int32_t>(panel[0], 0x1E8) = 1;
         at<int32_t>(panel[1], 0x1E8) = 1;  // EXIT
@@ -559,14 +561,56 @@ void test_the_screen_note() {
         check(!zap::feats_screen_note(a, true) && three.line(2) == blank, "3 panels under it");
     }
 
+    {
+        // The secret row, as read live (2026-10-28): a fifth panel of 5, ASSISTS USED under it.
+        FeatsScreen secret("FEATS OF NATU!", true, true);
+        current = secret.menu;
+        check(zap::feats_screen_note(a, true) && secret.line(2) == noted_line(),
+              "with the secret row too", secret.line(2));
+        check(zap::feats_screen_note(a, false) && secret.line(2) == blank,
+              "and blanked again there");
+        FeatsScreen odd_secret("FEATS OF NATU!", false, true);
+        at<int32_t>(odd_secret.panel[4], 0x1E8) = 4;
+        current = odd_secret.menu;
+        check(!zap::feats_screen_note(a, true) && odd_secret.line(2) == blank,
+              "a fifth panel that is not 5 Feats");
+        FeatsScreen six_panels("FEATS OF NATU!", false, true);
+        at<int32_t>(six_panels.menu, 8) = 6;
+        current = six_panels.menu;
+        check(!zap::feats_screen_note(a, true) && six_panels.line(2) == blank, "6 panels");
+        FeatsScreen no_fifth("FEATS OF NATU!", false, true);
+        no_fifth.panels[4] = nullptr;
+        current = no_fifth.menu;
+        check(!zap::feats_screen_note(a, true) && no_fifth.line(2) == blank,
+              "5 panels, the fifth missing");
+    }
+
+    {
+        // Shorter rows, as the builder makes them with Feats hidden (by disassembly).
+        FeatsScreen short_rows;
+        at<int32_t>(short_rows.panel[2], 0x1E8) = 6;
+        at<int32_t>(short_rows.panel[3], 0x1E8) = 5;
+        current = short_rows.menu;
+        check(zap::feats_screen_note(a, true) && short_rows.line(2) == noted_line(),
+              "rows of 6 and 5", short_rows.line(2));
+    }
+
     // Other screens: not this one.
     FeatsScreen other("OPTIONS");
     current = other.menu;
     check(!zap::feats_screen_note(a, true) && other.line(2) == blank, "a title without NATU");
-    FeatsScreen six;
-    at<int32_t>(six.panel[3], 0x1E8) = 6;
-    current = six.menu;
-    check(!zap::feats_screen_note(a, true) && six.line(2) == blank, "a row of 6");
+    FeatsScreen top_five;
+    at<int32_t>(top_five.panel[2], 0x1E8) = 5;
+    current = top_five.menu;
+    check(!zap::feats_screen_note(a, true) && top_five.line(2) == blank, "a top row of 5");
+    FeatsScreen eight;
+    at<int32_t>(eight.panel[3], 0x1E8) = 8;
+    current = eight.menu;
+    check(!zap::feats_screen_note(a, true) && eight.line(2) == blank, "a row of 8");
+    FeatsScreen four;
+    at<int32_t>(four.panel[3], 0x1E8) = 4;
+    current = four.menu;
+    check(!zap::feats_screen_note(a, true) && four.line(2) == blank, "a second row of 4");
     FeatsScreen alone;
     at<BYTE*>(alone.menu, 0x78) = nullptr;
     current = alone.menu;

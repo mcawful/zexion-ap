@@ -59,10 +59,15 @@ const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
     return where + kStoreSize + field<int32_t>(bytes, 2);
 }
 
-// The Feats of Natu screen (feats.h): its panels, the Feat rows' size, the title label's lines,
-// what its middle line names, and the menu under it, MISSION COMPLETE's statistics: 10 lines,
-// and, seen with the assist menu unlocked, ASSISTS USED's 8 (the game's condition not traced).
-constexpr int32_t kScreenPanels = 4, kFeatRowPanels[] = {2, 3}, kFeatsPerRow = 7;
+// The Feats of Natu screen (feats.h): its panels (a fifth, the secret row, when the builder adds
+// it), the Feat rows' sizes, the title label's lines, what its middle line names, and the menu
+// under it, MISSION COMPLETE's statistics: 10 lines, and, seen with the assist menu unlocked,
+// ASSISTS USED's 8 (the game's condition not traced).
+constexpr int32_t kScreenPanels = 4, kSecretPanels = 5, kSecretRow = 4, kSecretFeats = 5;
+struct FeatRow {
+    int32_t panel, fewest, most;
+};
+constexpr FeatRow kFeatRows[] = {{2, 6, 7}, {3, 5, 7}};
 constexpr int32_t kTitleLines = 3, kMaxColumns = 64;
 constexpr char kScreenName[] = "NATU";
 constexpr int32_t kStatsLines = 10, kAssistLines = 8;
@@ -79,9 +84,14 @@ int32_t note_frame(int32_t i, int32_t columns) {
 
 bool feats_screen_note(const GameAddresses& a, bool show) {
     BYTE* top = pointer_at(a.current_menu);
-    if (panel_count(top) != kScreenPanels) return false;
-    for (int32_t i : kFeatRowPanels) {
-        if (child_count(panel_at(top, i)) != kFeatsPerRow) return false;
+    const int32_t panels = panel_count(top);
+    if (panels != kScreenPanels && panels != kSecretPanels) return false;
+    for (const FeatRow& row : kFeatRows) {
+        const int32_t feats = child_count(panel_at(top, row.panel));
+        if (feats < row.fewest || feats > row.most) return false;
+    }
+    if (panels == kSecretPanels && child_count(panel_at(top, kSecretRow)) != kSecretFeats) {
+        return false;
     }
     // Only the screen after an ending: MISSION COMPLETE's statistics under it.
     BYTE* below = pointer_at(top, menu::kBelow);

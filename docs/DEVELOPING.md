@@ -160,10 +160,13 @@ fault found later that day, the Feats screen's note missing when the assist menu
   2026-10-27. AP endings through the helper's escape skip (since retired) with no client, and
   with a client of another seed, no Feat earned: 2026-10-27; the first, in a seed with Allow Assists on, showed no note
   (MISSION COMPLETE had ASSISTS USED under it, which the screen check refused; what makes the
-  game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. Not
+  game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. The
+  note with the secret Feats row shown (0.30.0 showed none there), and in the usual layout, no
+  Feat earned: 2026-10-28. Not
   seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in
   tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
-  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests)
+  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests), and the
+  note over shorter rows of Feats (by disassembly and stand-in tests)
   (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
   without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
   the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be

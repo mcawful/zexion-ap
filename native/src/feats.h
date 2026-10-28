@@ -48,7 +48,12 @@
 // 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
 // the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics: a panel of 10
 // lines, and, after an ending with the assist menu unlocked, a second of 8, ASSISTS USED (its
-// condition in the game not traced) (docs/re/memory.md, "Feats and achievements").
+// condition in the game not traced). With the secret row (a secret Feat earned, or the title
+// screen's code typed since the game started) there is a fifth panel of 5, and the game moves the
+// title up 8 (lines at y 8, 24 and 40) and the rows up 16, so the last line stays blank and free
+// (read live, 2026-10-28). By disassembly the rows can also be shorter: 6 or 7 on top, 5 to 7
+// below (not seen)
+// (docs/re/memory.md, "Feats and achievements").
 #pragma once
 
 #include <windows.h>
