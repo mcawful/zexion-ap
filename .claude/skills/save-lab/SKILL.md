@@ -85,8 +85,9 @@ It fills either kind of empty slot. It refuses a slot that is in use, a slot num
 exist, and a missing or stale backup. Over a deleted save it says that the old data is in the
 backup, and names the file there. It writes through a temporary file (removed if the write
 fails), reads the result back, and logs to `lab/installs.log`, with `was=template` or
-`was=deleted` for the kind of slot it filled. The game may cache saves; have the user return to
-the title screen or restart before loading the slot.
+`was=deleted` for the kind of slot it filled. Install with the game closed: the game keeps the
+slots in memory, and one installed while it ran was written over by the game's own empty copy of
+that slot (2026-10-28, `docs/re/memory.md`, "Feats and achievements"). Then the user starts it.
 
 ## 6. Put things back
 
