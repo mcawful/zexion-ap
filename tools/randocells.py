@@ -16,7 +16,10 @@ to the cell, the options and energy (``cell_code``; decided before anything else
 list). Tier/count byte: 1 = enough alone; 2 = part of the group needed together; 3 = this
 item does not count here; 4 = required; 11-40 = enough alone with (value - 10) of the item;
 41-90 = in the group, with (value - 40). Not modeled yet: Missile and Bomb Boxes adding 10
-to a group's count.
+to a group's count. Modeled, as the game's logic has them: Gates Open's travel between the gate
+cells, and a flagged second teleport target counted only from a useful-item score of 27
+(docs/re/randocells.md, "What each setting does in the game" and "Starting Location and the
+second teleport target").
 
     randocells.py SAVE.sav --fresh            a save made at the start of its seed
     randocells.py SAVE.sav --start X,Y        any randomizer save, from one given cell
@@ -88,6 +91,7 @@ WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
 RANDO_BLOB_RVA = 0xCDD6D0
 ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
 OPTIONS_RVA = 0xCDDF4B  # one byte per option, indexed by a code-68 entry's tier byte
+GATES = (72, 73)  # Gates' two bits; both set is Open
 MODE_BITS_RVA = (0xCDDF76, 0xCDDF75)  # code 69's mode = first * 2 + second
 
 
@@ -108,7 +112,8 @@ def settings_from_save(data: bytes) -> logic.Settings:
     start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
     hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
     options = bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64])
-    return logic.Settings(start + pool, hi * 2 + lo, options)
+    gates_open = all(data[at(OPTIONS_RVA) + t] for t in GATES)
+    return logic.Settings(start + pool, hi * 2 + lo, options, gates_open)
 
 
 def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
@@ -154,9 +159,12 @@ def reachable_cells(
     grid, have: Counter, settings: logic.Settings, start: tuple[int, int] | list[tuple[int, int]]
 ) -> set[tuple[int, int]]:
     """Flood fill from ``start`` (one cell, or a list of them), repeated until stable (codes
-    64-67 look at reached cells)."""
+    64-67 look at reached cells); under Gates Open, from the gate cells too once one counts as
+    reached (``gates_triggered``)."""
     seen: set[tuple[int, int]] = set(start) if isinstance(start, list) else {start}
     while True:
+        if gates_triggered(grid, have, settings, seen):
+            seen.update(logic.GATE_TARGETS)
         before = len(seen)
         todo = list(seen)
         while todo:
@@ -179,6 +187,15 @@ def reachable_cells(
             return seen
 
 
+def gates_triggered(grid, have: Counter, settings: logic.Settings, seen: set) -> bool:
+    """Under Gates Open, whether a gate cell counts as reached as the game's logic reads it:
+    two of them reached, the other two collectible (logic.GATE_TRIGGERS; 0xE6F5C)."""
+    return settings.gates_open and any(
+        cell in seen and (not as_location or collectible(grid, cell, have, settings, seen))
+        for cell, as_location in logic.GATE_TRIGGERS
+    )
+
+
 # A weapon and its upgrade are progressive (logic.WEAPON_UPGRADES; docs/re/randocells.md).
 collect = logic.collect
 
@@ -190,13 +207,18 @@ def sweep(
     start: tuple[int, int] | list[tuple[int, int]],
     initial=None,
     settings: logic.Settings = logic.DEFAULT_SETTINGS,
+    second: tuple[tuple[int, int], bool] | None = None,
 ) -> set[int]:
     """Collect everything reachable from ``start`` (one cell or a list), repeating until
-    nothing new opens up."""
+    nothing new opens up. ``second`` is a second teleport target and whether its room is
+    flagged: a flagged one counts only from a useful-item score of 27 (``second_counts``)."""
     have: Counter = Counter(initial or {})
     got: set[int] = set()
     while True:
-        cells = reachable_cells(grid, have, settings, start)
+        starts = list(start) if isinstance(start, list) else [start]
+        if second is not None and second_counts(have, second[1]):
+            starts.append(second[0])
+        cells = reachable_cells(grid, have, settings, starts)
         new = False
         for i, cell in enumerate(locations):
             if i in got or cell not in cells or not collectible(grid, cell, have, settings, cells):
@@ -206,6 +228,12 @@ def sweep(
             new = True
         if not new:
             return got
+
+
+def second_counts(have: Counter, flagged: bool) -> bool:
+    """Whether the logic floods from the second teleport target: an unflagged room at once, a
+    flagged one once the useful-item score reaches logic.SECOND_TARGET_SCORE (0xE6D20)."""
+    return not flagged or logic.useful_score(have) >= logic.SECOND_TARGET_SCORE
 
 
 def seed_from_save(data: bytes) -> tuple[list[tuple[int, int]], list[int]]:
@@ -243,6 +271,9 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
 DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
 
 
+SECOND_FLAG = 6  # the second target's room flag, after its record (section +0x6D2)
+
+
 def starts_from_save(data: bytes) -> list[tuple[int, int]]:
     """The seed's start, plus its second teleport target (a start record too) when Double
     Teleport is on; empty for a file too short to be a randomizer save."""
@@ -252,6 +283,15 @@ def starts_from_save(data: bytes) -> list[tuple[int, int]]:
     if data[save_patch.OPTIONS + DOUBLE_TELEPORT]:
         return [start, _record_cell(data, save_patch.SECOND_START)]
     return [start]
+
+
+def second_from_save(data: bytes) -> tuple[tuple[int, int], bool] | None:
+    """The second teleport target and whether its room is flagged, when Double Teleport is on;
+    None otherwise."""
+    starts = starts_from_save(data)
+    if len(starts) < 2:
+        return None
+    return starts[1], bool(data[save_patch.SECOND_START + SECOND_FLAG])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,7 +308,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "the save was made at the start of the seed: use its inventory, its start record "
-            "and, with Double Teleport, its second teleport target"
+            "and, with Double Teleport, its second teleport target (a flagged one from a "
+            "useful-item score of 27)"
         ),
     )
     args = parser.parse_args(argv)
@@ -278,20 +319,29 @@ def main(argv: list[str] | None = None) -> int:
     locations, items = seed_from_save(data)
     initial = inventory_from_save(data) if args.fresh else Counter()
     settings = settings_from_save(data)
+    second = None
     if args.start:
         shown_x, shown_y = (int(v) for v in args.start.split(","))
         start = (shown_y, shown_x)
     elif args.fresh and starts_from_save(data):
-        start = starts_from_save(data)
+        start = starts_from_save(data)[0]
+        second = second_from_save(data)
     else:
         print("give --start X,Y, or --fresh with a save made at the start of the seed")
         return 1
-    got = sweep(grid, locations, items, start, initial, settings)
+    got = sweep(grid, locations, items, start, initial, settings, second)
     on = [t for t in range(64) if settings.options[t]]
+    if second is not None:
+        have = Counter(initial)
+        for i in sorted(got):
+            collect(have, items[i])
+        cell, flagged = second
+        counted = second_counts(have, flagged)
+        print(f"second teleport target {cell}, flagged {flagged}, counted in the end {counted}")
     print(
         f"{len(got)}/{save_patch.LOCATIONS} locations reachable from {start}; starting inventory "
         f"{dict(initial) or 'empty'}; energy total {settings.energy_total}, code-69 mode "
-        f"{settings.mode69}, options on {on}"
+        f"{settings.mode69}, options on {on}, gates open {settings.gates_open}"
     )
     return 0
 

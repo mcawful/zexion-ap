@@ -169,3 +169,47 @@ def test_starts_come_from_the_start_record_and_the_second_target() -> None:
     assert rc.starts_from_save(bytes(save)) == [(13, 16)]
     save[sp.OPTIONS + rc.DOUBLE_TELEPORT] = 1
     assert rc.starts_from_save(bytes(save)) == [(13, 16), (10, 23)]
+
+
+def test_second_target_reads_its_flag() -> None:
+    save = bytearray(0x13200)
+    struct.pack_into("<3H", save, sp.START_RECORD, 6, 191, 329)
+    struct.pack_into("<3H", save, sp.SECOND_START, 0, 20, 509)  # Exodia, cell (1, 25)
+    assert rc.second_from_save(bytes(save)) is None
+    save[sp.OPTIONS + rc.DOUBLE_TELEPORT] = 1
+    save[sp.SECOND_START + rc.SECOND_FLAG] = 1
+    assert rc.second_from_save(bytes(save)) == ((1, 25), True)
+
+
+def test_a_flagged_second_target_waits_for_the_score() -> None:
+    # A location at the second target only: reached from a flagged one once the useful-item
+    # score is 27, from an unflagged one at once.
+    grid = rc.parse(bytes(blank()))
+    locations, items = [(40, 40)], [46]
+    second = (40, 40)
+    assert rc.sweep(grid, locations, items, (10, 10), {0: 26}, second=(second, True)) == set()
+    assert rc.sweep(grid, locations, items, (10, 10), {0: 27}, second=(second, True)) == {0}
+    assert rc.sweep(grid, locations, items, (10, 10), {0: 14, 25: 1}, second=(second, True)) == {0}
+    assert rc.sweep(grid, locations, items, (10, 10), {}, second=(second, False)) == {0}
+
+
+def test_gates_open_travels_between_the_gate_cells() -> None:
+    data = blank()
+    open_passage(data, 11, 30, "E")  # the start (11, 30) leads to the gate cell (12, 30)
+    grid = rc.parse(bytes(data))
+    shut = logic.Settings()
+    gates = logic.Settings(gates_open=True)
+    assert rc.reachable_cells(grid, Counter(), shut, (11, 30)) == {(11, 30), (12, 30)}
+    got = rc.reachable_cells(grid, Counter(), gates, (11, 30))
+    assert got == {(11, 30), (12, 30), (24, 44), (14, 2)}
+    # (51, 34) opens the travel but is no target; nothing is reached without a gate cell.
+    assert rc.reachable_cells(grid, Counter(), gates, (51, 34)) == {(51, 34), *logic.GATE_TARGETS}
+    assert rc.reachable_cells(grid, Counter(), gates, (10, 10)) == {(10, 10)}
+
+
+def test_gates_open_is_both_bits() -> None:
+    save = bytearray(0x13200)
+    save[sp.OPTIONS + 72] = 1
+    assert not rc.settings_from_save(bytes(save)).gates_open
+    save[sp.OPTIONS + 73] = 1
+    assert rc.settings_from_save(bytes(save)).gates_open
