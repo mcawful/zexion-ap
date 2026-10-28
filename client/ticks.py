@@ -517,10 +517,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 "and choose ARCHIPELAGO."
             )
         else:
-            logger.info(
-                "To play, load this seed's save, or start a new game: in an empty slot "
-                f"choose RANDOMIZER, {newgame.randomizer_steps(plan, conn.mode)}, and START GAME."
-            )
+            for line in newgame.randomizer_message(plan, conn.mode):
+                logger.info(line)
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
         return

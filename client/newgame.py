@@ -26,6 +26,10 @@ game's placement
 write: the second target, or for Double Teleport (OHKO) the start table the placement reads,
 used only on the build it was measured on.
 
+Without it (RANDOMIZER) the player sets the menu: ``randomizer_message`` gives the seed text and
+the game's settings code as one line to paste with the menu's Paste<-Clipboard, which sets the
+same menu state, and the settings to set by hand as the fallback.
+
 Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
 start (``save_patch.SECTION``).
 """
@@ -155,12 +159,8 @@ def start_table(plan: sp.SeedPlan, build_sha256: str) -> tuple[tuple[int, int, i
     return table
 
 
-def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None) -> list[str]:
-    """The ARCHIPELAGO choice's lines: the menu's state as the seed's settings, and what START
-    GAME's skipped first step would write: in a mode with one start, the menu setup's second
-    target and 0 after it; with a second teleport target, the start table the placement reads
-    (``plan_text`` writes the second start and its flag), which the helper fills in if the
-    menu never built it."""
+def check_menu(plan: sp.SeedPlan) -> sp.MenuSetup:
+    """The seed's menu state, checked for shape and for holding the seed's checked settings."""
     menu = plan.menu
     if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
         raise NewGameError(f"the seed text {menu.seed_text!r} is not 16 hex digits")
@@ -172,6 +172,16 @@ def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None
         index = t - MENU_FIRST_SETTING
         if 0 <= index < len(menu.settings) and menu.settings[index] != value:
             raise NewGameError(f"the menu's setting {t} is not the seed's")
+    return menu
+
+
+def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None) -> list[str]:
+    """The ARCHIPELAGO choice's lines: the menu's state as the seed's settings, and what START
+    GAME's skipped first step would write: in a mode with one start, the menu setup's second
+    target and 0 after it; with a second teleport target, the start table the placement reads
+    (``plan_text`` writes the second start and its flag), which the helper fills in if the
+    menu never built it."""
+    menu = check_menu(plan)
     lines = []
     if plan.second_start is not None:
         if table is None:
@@ -193,6 +203,66 @@ def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None
         f"menu {MENU_AMOUNTS:#x} {struct.pack('<6h', *plan.amounts).hex()}",
         f"menu {MENU_SETTINGS + MENU_FIRST_SETTING:#x} {menu.settings[:color].hex()}",
         f"menu {MENU_SETTINGS + COLOR_SETTING + 1:#x} {menu.settings[color + 1 :].hex()}",
+    ]
+
+
+# The settings code Copy->Clipboard writes and Paste<-Clipboard reads (docs/re/randocells.md,
+# "The settings code"): 170 bits, lowest first, five to a character of this alphabet: t10 to t73,
+# each item's start-with and pool bits, then the six amounts in these widths.
+CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnp"
+CODE_AMOUNT_BITS = (6, 6, 10, 10, 10, 10)
+
+
+def settings_code(menu: sp.MenuSetup, amounts: tuple[int, ...]) -> str:
+    """The game's settings code for this menu state and these six amounts: 34 characters."""
+    if len(amounts) != len(CODE_AMOUNT_BITS) or not all(
+        0 <= a < 1 << bits for a, bits in zip(amounts, CODE_AMOUNT_BITS, strict=True)
+    ):
+        raise NewGameError(f"the amounts {amounts} do not fit the settings code")
+    if set(menu.settings) - {0, 1}:
+        raise NewGameError("the menu's settings are not each 0 or 1")
+    value, width = 0, 0
+
+    def put(field: int, bits: int) -> None:
+        nonlocal value, width
+        value |= field << width
+        width += bits
+
+    for setting in menu.settings:
+        put(setting, 1)
+    for start, pool in zip(menu.start, menu.pool, strict=True):
+        put(start, 1)
+        put(pool, 1)
+    for amount, bits in zip(amounts, CODE_AMOUNT_BITS, strict=True):
+        put(amount, bits)
+    return "".join(CODE_ALPHABET[(value >> k) & 31] for k in range(0, width, 5))
+
+
+def paste_text(plan: sp.SeedPlan) -> str:
+    """The text to paste with the randomizer menu's Paste<-Clipboard: the seed text and the
+    settings code with nothing between them, as Copy->Clipboard writes them, since Paste reads
+    the code from the character after the seed's 16th. Pasted, it sets the seed text, the
+    items' states, the six amounts and every setting t10 to t73 at once."""
+    return check_menu(plan).seed_text + settings_code(plan.menu, plan.amounts)
+
+
+def randomizer_message(plan: sp.SeedPlan, mode: str) -> list[str]:
+    """The client's lines for starting this seed from RANDOMIZER: the text to paste, on a line
+    of its own (a click on a line in AP's client window copies it), and the menu to set by
+    hand as the fallback; the steps alone if the seed's menu state has no code."""
+    steps = randomizer_steps(plan, mode)
+    start = (
+        "To play, load this seed's save, or start a new game: in an empty slot choose RANDOMIZER"
+    )
+    try:
+        paste = paste_text(plan)
+    except NewGameError:
+        return [f"{start}, {steps}, and START GAME."]
+    return [
+        f"{start}, copy the next line (in the client's window, click it), press the menu's "
+        "Paste from Clipboard, and START GAME:",
+        paste,
+        f"Or, without pasting, {steps}, and START GAME.",
     ]
 
 

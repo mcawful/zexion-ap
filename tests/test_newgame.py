@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import struct
+from pathlib import Path
 
 import pytest
 from fakes import fresh, menu_setup, plan
@@ -231,3 +233,109 @@ def test_a_seed_text_the_game_would_read_otherwise_is_refused(text) -> None:
         sp.patch(bytes(fresh()), plan(menu=menu_setup(seed_text=text)))
     with pytest.raises(ng.NewGameError):
         ng.plan_text(plan(menu=menu_setup(seed_text=text)), offer_choice=False)
+
+
+# --- the settings code, for RANDOMIZER's Paste<-Clipboard -----------------------------------------
+
+
+def preset_modes() -> dict:
+    """The presets' menu states and amounts, from worlds/zexion/data.py, loaded by path as
+    tools/randocells.py loads logic.py (the world's package needs AP)."""
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("zexion_data", root / "worlds/zexion/data.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.MODES
+
+
+def preset_plan(mode: str) -> sp.SeedPlan:
+    entry = preset_modes()[mode]
+    menu = entry["menu"]
+    checked = (10, 30, 31, 32, 33, 37, 42, 43, 72, 73)
+    return plan(
+        amounts=tuple(entry["amounts"]),
+        options={t: menu["settings"][t - ng.MENU_FIRST_SETTING] for t in checked},
+        menu=menu_setup(
+            start=bytes(menu["start"]), pool=bytes(menu["pool"]), settings=bytes(menu["settings"])
+        ),
+    )
+
+
+def paste(text: str) -> tuple[str, str]:
+    """The seed text and the code Paste<-Clipboard takes from the clipboard (0x148140): the
+    first 16 letters or digits, uppercased, then, with 44 or more characters, up to 34 from
+    the one after the 16th."""
+    seed, used = "", 0
+    while len(seed) < 16 and used < len(text):
+        if text[used].isascii() and text[used].isalnum():
+            seed += text[used].upper()
+        used += 1
+    return seed, text[used : used + 34] if len(text) >= 44 else ""
+
+
+def decode(code: str) -> tuple[bytes, bytes, bytes, tuple[int, ...]]:
+    """The settings code read back: settings t10 to t73, the start-with and pool arrays, and
+    the six amounts (docs/re/randocells.md, "The settings code")."""
+    value = sum(ng.CODE_ALPHABET.index(c) << (5 * i) for i, c in enumerate(code))
+
+    def take(bits: int) -> int:
+        nonlocal value
+        field, value = value & ((1 << bits) - 1), value >> bits
+        return field
+
+    settings = bytes(take(1) for _ in range(64))
+    pairs = [(take(1), take(1)) for _ in ng.START_WITH_ORDER]
+    amounts = tuple(take(bits) for bits in ng.CODE_AMOUNT_BITS)
+    return settings, bytes(s for s, _ in pairs), bytes(p for _, p in pairs), amounts
+
+
+def test_the_settings_code_is_the_games_for_standard_and_easy() -> None:
+    # Standard's menu state read live in the menu; Easy's first 32 characters from its saves'
+    # t74 to t105, which drop the last two (docs/re/randocells.md, "The settings code").
+    standard, easy = preset_plan("standard"), preset_plan("easy")
+    code = ng.settings_code(standard.menu, standard.amounts)
+    assert code == "FCCgBLLBBBBBLcJcPcNcNcNmVLFBjFBBQB"
+    assert ng.settings_code(easy.menu, easy.amounts)[:32] == "FLCgBLLBBBBBLcHcNcNcNRNRWWFBKJBB"
+
+
+@pytest.mark.parametrize("mode", ["easy", "standard", "ohko"])
+def test_paste_reads_back_the_seed_and_its_menu_state(mode) -> None:
+    p = preset_plan(mode)
+    text = ng.paste_text(p)
+    assert len(text) == 50
+    seed, code = paste(text)
+    assert seed == p.menu.seed_text
+    assert decode(code) == (p.menu.settings, p.menu.start, p.menu.pool, p.amounts)
+
+
+def test_paste_reads_back_a_custom_state_with_the_largest_amounts() -> None:
+    settings = bytes(i % 3 == 0 for i in range(64))
+    menu = menu_setup(
+        start=bytes(i % 2 for i in range(27)), pool=bytes(i % 5 != 0 for i in range(27)),
+        settings=settings,
+    )  # fmt: skip
+    amounts = (37, 3, 999, 0, 0, 999)
+    p = plan(options={}, amounts=amounts, menu=menu)
+    assert decode(paste(ng.paste_text(p))[1]) == (settings, menu.start, menu.pool, amounts)
+
+
+@pytest.mark.parametrize(
+    ("amounts", "settings"),
+    [((64, 0, 0, 0, 0, 0), bytes(64)), ((0, 0, 1024, 0, 0, 0), bytes(64)), ((0,) * 6, b"\2" * 64)],
+)
+def test_a_state_the_code_cannot_hold_leaves_the_steps_alone(amounts, settings) -> None:
+    p = plan(options={}, amounts=amounts, menu=menu_setup(settings=settings))
+    with pytest.raises(ng.NewGameError):
+        ng.paste_text(p)
+    (line,) = ng.randomizer_message(p, "standard")
+    assert line.endswith(
+        "change no other options (the seed, optional: 0123 4567 89AB CDEF), and START GAME."
+    )
+
+
+def test_the_randomizer_message_puts_the_paste_text_on_a_line_of_its_own() -> None:
+    p = preset_plan("standard")
+    first, text, steps = ng.randomizer_message(p, "standard")
+    assert "choose RANDOMIZER" in first and "Paste from Clipboard" in first
+    assert text == "0123456789ABCDEFFCCgBLLBBBBBLcJcPcNcNcNmVLFBjFBBQB"
+    assert steps.startswith("Or, without pasting, pick Standard mode, set Safety")

@@ -306,10 +306,27 @@ save's seed, mode, items, amounts and settings, decoded from the settings code t
 state it ran with, so a Custom seed started through ARCHIPELAGO shows its own settings there
 with nothing more to build; today's AP seeds show their preset.
 
-**RANDOMIZER**, the fallback, has the player set the menu by hand: easy for a preset, slow for
-Custom (20 settings, 27 items, six amounts). The game's Paste←Clipboard takes the seed text and
-the settings code ("The settings code"), whose format is known exactly, so the client could put
-that on the clipboard, or print it, for the player to paste. As built, the client's message lists the items, Start Keys, amounts and checked settings to set (`client/newgame.py`, `randomizer_steps`), and the seed text as optional: the game's placement runs from whatever text the menu holds, and the client then writes the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27, after two RANDOMIZER games of one seed showed the same items under different seed texts), so RANDO SETTINGS and Colorizer's colors are an ARCHIPELAGO game's (working in game, 2026-10-27: RANDO SETTINGS showed the seed's text in a RANDOMIZER game). The Hints' map rectangles the placement drew from the menu's text stay (typing the seed's text makes them ARCHIPELAGO's too); they follow the game's own placement, not AP's, in either path.
+**RANDOMIZER**, the fallback, has the player set the menu: by hand that is easy for a preset,
+slow for Custom (20 settings, 27 items, six amounts). So the client prints one line to paste
+(`client/newgame.py`, `paste_text`, built 2026-10-27): the seed text and the game's settings
+code for the seed's menu state, with nothing between them, as Copy→Clipboard writes them
+(`re/randocells.md`, "The settings code"). The player copies it (a click on the line in AP's
+client window copies it), presses the menu's Paste←Clipboard, which sets the seed text, the
+items' states, the six amounts and settings t10 to t73 at once, and START GAME. The settings
+include Starting Location as the world's start room, so START GAME tries only that room; the
+client writes the start over it anyway. Colorizer (t12), which ARCHIPELAGO leaves as the player
+set it, comes out off (no option sets it), and the player may turn it on after pasting: the
+mode check ignores it. Below the line, the message still lists what to set by hand: the items,
+Start Keys, amounts and checked settings (`randomizer_steps`), with the seed text optional.
+Either way the game's placement runs from the text the menu holds, and the client then writes
+the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27,
+after two RANDOMIZER games of one seed showed the same items under different seed texts), so
+RANDO SETTINGS and Colorizer's colors are an ARCHIPELAGO game's (working in game, 2026-10-27:
+RANDO SETTINGS showed the seed's text in a RANDOMIZER game). The Hints' map rectangles the
+placement drew from the menu's text stay (pasted or typed, the seed's text makes them
+ARCHIPELAGO's too); they follow the game's own placement, not AP's, in either path. The paste
+line is not yet run in game: its format comes from the disassembly of Copy and Paste, and its
+encoder is checked against Standard's and Easy's codes (`tests/test_newgame.py`).
 
 ## What the settings make redundant in zexion-ap
 
@@ -348,7 +365,7 @@ game for this review.
 | The OS Install Disks goal (the count, the scanner's line, the pause row, the equipment screen, the file select, RETURN HOME WITH THE DISKS?) | `client/discs.py`, `ticks.py`; `native/src/scan.cpp`, `pause.cpp`, `equip.cpp`, `files.cpp`, `mission.cpp` | — | No. Abridged Finale is another ending (at the grab), not the pod. Hints Revealed sets flag 39 from the start, which the client already takes for "told" (`client/session.py`, `SCANNED_FLAG`), so the popups give the number needed from the start while the scanner's message never runs (by the code; not seen in game) | — | — |
 | Allow Assists (the ASSIST lock, Assist Unlock) | `worlds/zexion/options.py`, `items.py`; `client/`; `native/src/menu.cpp` | — | No: the randomizer menu has no assist setting, and the game lets a randomizer save use ASSIST (its MISSION COMPLETE has shown ASSISTS USED: `native/README.md`, "Feats and achievements in AP saves"). By the owner's principle it is a protection the game does not have: whether to keep it is the owner's call, not a redundancy | If dropped: the option, item 100 and its rule, the client's lock and the helper's menu part, with their tests and docs; YAMLs that set `allow_assists` need updating | Low |
 | No Feats or achievements in AP saves | `native/src/feats.cpp` | — | No: the game earns Feats in every randomizer ending (`re/memory.md`, "The ending: flag 250") | — | — |
-| The ARCHIPELAGO new game; the RANDOMIZER fallback | `native/src/menu.cpp`; `client/newgame.py` | — | No. For RANDOMIZER only, Paste←Clipboard with the settings code could replace setting a Custom menu by hand ("The new game") | — | — |
+| The ARCHIPELAGO new game; the RANDOMIZER fallback | `native/src/menu.cpp`; `client/newgame.py` | — | No. For RANDOMIZER only, Paste←Clipboard with the settings code replaces setting the menu by hand: the client prints the line to paste, and the manual steps stay below it as the fallback ("The new game") | — | — |
 | The `expect` checks (Abridged Finale and the others the logic reads must be the seed's) | `client/newgame.py`; `worlds/zexion/custom.py` (`CHECKED`) | Every setting the logic reads | Not redundant: they check the seed's values, Custom's included, and grew by Guns First (step B, "The new game") | — | — |
 | Received items and popups, Energy Shields, DeathLink, the title lines, the file select's logo, the offline look | `client/`, `native/` | — | No | — | — |
 
@@ -425,7 +442,8 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, Allow
    Assists shown as "Enable Assist Options". The escape skip offer was retired on its own ahead
    of it, 2026-10-27 (the helper's patch, its offline part, the client's check of it, their
-   tests, and the Goal option's mention of SKIP ESCAPE).
+   tests, and the Goal option's mention of SKIP ESCAPE). After it, the RANDOMIZER fallback's
+   line to paste ("The new game"; built 2026-10-27, not yet run in game).
 4. **C. The helper's markers** read all three Obscure settings and handle Majors on with Minors
    off (alongside B: the helper only).
 5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.
