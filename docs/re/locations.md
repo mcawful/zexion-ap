@@ -144,7 +144,9 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   games").
 - **What the slot data gives the client for that.** `location_items`: for each of the 154
   locations, the game's item ID to place there: this world's own item (a progressive weapon as
-  the weapon, which the game turns into the upgrade on a second copy, `randocells.md`; an Intel
+  the weapon, which with Guns First the game turns into the upgrade on a second copy,
+  `randocells.md`; with Guns First off an upgrade as itself, which the game hands out as
+  itself, `randocells.md`, "The evaluator works on a table of 64 counts"; an Intel
   Chip as the Area Map, 49; this world's own Scrap Energy and Scrap Chunk as Scrap Metal), a
   stand-in where another world's item is: Scrap Energy (47), or Scrap Chunk (48) for a
   progression item (not another Zexion player's supplies, which stay 47, minor on the map as the
@@ -153,7 +155,8 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   (slot data `stand_in` and `stand_in_progression`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
-  any `start_inventory` (a second copy of a progressive weapon as its upgrade). The world
+  any `start_inventory` (with Guns First, a second copy of a progressive weapon as its
+  upgrade; without it, each upgrade as itself). The world
   refuses a `start_inventory` the client does not give through a new game (the limits and
   their reasons: `worlds/zexion/starting.py`). `amounts` and
   `options`: the seed's six Energy, missile and bomb amounts and the settings the logic depends
@@ -170,8 +173,8 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 - **Modes and settings.** The world offers Easy, Standard and OHKO, each as one fresh save of
   that mode had it: its settings, its item pool and its starting items (in Standard, the Force
   Blaster that "Random Gun" gave that seed); and Custom, every setting of the menu, built by
-  the game's rules ([`../custom-mode.md`](../custom-mode.md); run in game 2026-10-27). Guns First
-  off and Secret Shuffle on are not in the logic yet. An upgrade started without its gun is
-  started as the gun (the
-  world's weapons are progressive), more than the game's start gives.
+  the game's rules ([`../custom-mode.md`](../custom-mode.md); run in game 2026-10-27). Secret
+  Shuffle on is not in the logic yet. With Guns First on, an upgrade started without its gun
+  is started as the gun (the world's weapons are progressive), more than the game's start
+  gives; with it off (step E), each upgrade is its own item, as the game counts it.
 - **Missile and Bomb Boxes in groups:** not modeled (`randocells.md`, "Not yet found").

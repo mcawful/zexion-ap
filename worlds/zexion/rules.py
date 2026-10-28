@@ -15,11 +15,14 @@ if TYPE_CHECKING:
     from .world import ZexionWorld
 
 
-def inventory(state: CollectionState, player: int) -> dict[int, int]:
-    """Item counts by the game's item IDs, as the logic reads them (``items.as_inventory``).
-    Only progression items are in ``prog_items``, which is all the logic reads."""
+def inventory(state: CollectionState, player: int, guns_first: bool = True) -> dict[int, int]:
+    """Item counts by the game's item IDs, as the logic reads them (``items.as_inventory``: with
+    Guns First a progressive weapon's second copy as its upgrade). Only progression items are in
+    ``prog_items``, which is all the logic reads."""
     counts = state.prog_items[player].items()
-    return as_inventory((code_of[name], n) for name, n in counts if name in code_of and n > 0)
+    return as_inventory(
+        ((code_of[name], n) for name, n in counts if name in code_of and n > 0), guns_first
+    )
 
 
 def region_name(region: int) -> str:
@@ -39,7 +42,8 @@ def requirement(
             region = data.CELL_REGION.get(other)
             return region in created and state.can_reach_region(region_name(region), player)
 
-        return logic.satisfied(entries, inventory(state, player), settings, cell, reached)
+        have = inventory(state, player, settings.guns_first)
+        return logic.satisfied(entries, have, settings, cell, reached)
 
     return rule
 
@@ -61,9 +65,11 @@ def second_target(world: ZexionWorld) -> Callable[[CollectionState], bool]:
     """The rule on a flagged second teleport target: the logic counts it once the useful-item
     score reaches logic.SECOND_TARGET_SCORE (reach.second_counts)."""
     player = world.player
+    guns_first = world.logic_settings.guns_first
 
     def rule(state: CollectionState) -> bool:
-        return logic.useful_score(inventory(state, player)) >= logic.SECOND_TARGET_SCORE
+        have = inventory(state, player, guns_first)
+        return logic.useful_score(have) >= logic.SECOND_TARGET_SCORE
 
     return rule
 

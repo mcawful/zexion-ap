@@ -261,8 +261,11 @@ class Session:
         notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
         plan = self.plan
-        target = reconcile.should_own(plan.start_items, plan.location_items, collected, received)
-        result = reconcile.grants(snap.inventory, target)
+        guns_first = plan.guns_first
+        target = reconcile.should_own(
+            plan.start_items, plan.location_items, collected, received, guns_first
+        )
+        result = reconcile.grants(snap.inventory, target, guns_first)
         for item, missing in result.not_grantable.items():
             self.say_once(
                 f"stuck {item} {missing}",
@@ -317,16 +320,22 @@ class Session:
     ) -> dict[int, int]:
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
         start = self.announced if self.announced is not None else len(received)
-        # A progressive weapon received while its weapon is owned arrives as the upgrade, so
-        # its popup names the upgrade.
+        # With Guns First, a progressive weapon received while its weapon is owned arrives as
+        # the upgrade, so its popup names the upgrade; an upgrade received as itself (sent from
+        # the server console) is a copy of its weapon too (reconcile.should_own). Without it,
+        # each item is itself.
+        guns_first = self.plan.guns_first
         weapons = {w for w in ids.PROGRESSIVE if snap.inventory[w]}
         for index in range(start, len(received)):
             item = received[index]
-            if item in ids.PROGRESSIVE:
-                if item in weapons:
-                    item = ids.PROGRESSIVE[item]
+            if guns_first:
+                item = reconcile.UPGRADE_OF.get(item, item)
+            if item in ids.PROGRESSIVE and guns_first:
+                weapon = item
+                if weapon in weapons:
+                    item = ids.PROGRESSIVE[weapon]
                 # The weapon is owned from now on, whichever byte this one set.
-                weapons.add(received[index])
+                weapons.add(weapon)
             sender = senders[index] if senders and index < len(senders) else ""
             note = (notes or {}).get(index)
             if note:

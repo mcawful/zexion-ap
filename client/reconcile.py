@@ -13,9 +13,16 @@ inventory go back to the last save when the player dies or reloads, so the diffe
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
-A weapon and its upgrade are one progressive item: the game turns a second copy into the
-upgrade (docs/re/randocells.md; seen for the Machine Gun only); should another weapon not, the
-upgrade is still owed and given.
+With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
+item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works
+on a table of 64 counts": on the item's update by the save's Guns First, at pickup by the
+randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is still owed and
+given. With it off the game
+redirects nothing in the seed's own items, and each upgrade is an item, and a byte, of its own
+(docs/re/randocells.md, "The evaluator works on a table of 64 counts"): every item is counted as
+itself, and a gun or an upgrade is never written above 1. A second copy, which the game's own
+pools never hold (only a start_inventory or a server console's copy could make one), is not
+written: the game's byte for a gun held twice is not measured.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -30,6 +37,7 @@ from . import ids
 from .ids import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER, PROGRESSIVE
 
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
+WEAPONS_AND_UPGRADES = frozenset(PROGRESSIVE) | frozenset(UPGRADE_OF)
 
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {ids.ZEXION}
@@ -52,15 +60,18 @@ def should_own(
     location_items: Sequence[int],
     collected: Iterable[int],
     received: Iterable[int],
+    guns_first: bool = True,
 ) -> Counter[int]:
-    """How many of each item the player should own, progressive weapons under the weapon."""
+    """How many of each item the player should own; with Guns First, progressive weapons under
+    the weapon."""
     total: Counter[int] = Counter()
+    merged = UPGRADE_OF if guns_first else {}
 
     def count(item: int, n: int = 1) -> None:
         if item in NOT_IN_INVENTORY:
             return
         item = ids.SCRAP_METAL if item in COUNTED_AS_SCRAP else item
-        total[UPGRADE_OF.get(item, item)] += n
+        total[merged.get(item, item)] += n
 
     for item, n in start_items.items():
         count(item, n)
@@ -78,13 +89,13 @@ def shields_owed(received: Iterable[int], spawned: int) -> int:
     return max(0, sum(1 for item in received if item == ids.ENERGY_SHIELD) - max(0, spawned))
 
 
-def owned(inventory: bytes) -> Counter[int]:
-    """What the inventory holds, progressive weapons under the weapon."""
+def owned(inventory: bytes, guns_first: bool = True) -> Counter[int]:
+    """What the inventory holds; with Guns First, progressive weapons under the weapon."""
     have: Counter[int] = Counter()
     for item in range(min(len(inventory), len(ids.GAME_ITEMS))):
         if not inventory[item]:
             continue
-        if item in PROGRESSIVE or item in UPGRADE_OF:
+        if guns_first and (item in PROGRESSIVE or item in UPGRADE_OF):
             have[UPGRADE_OF.get(item, item)] += 1
         else:
             have[item] += inventory[item]
@@ -97,18 +108,21 @@ class Grants:
     not_grantable: dict[int, int]  # item -> how many are owed but cannot be written
 
 
-def grants(inventory: bytes, target: Counter[int]) -> Grants:
-    """The inventory bytes to raise so the player owns `target`."""
-    have = owned(inventory)
+def grants(inventory: bytes, target: Counter[int], guns_first: bool = True) -> Grants:
+    """The inventory bytes to raise so the player owns `target` (from ``should_own`` with the
+    same ``guns_first``)."""
+    have = owned(inventory, guns_first)
     new: dict[int, int] = {}
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
+        if not guns_first and item in WEAPONS_AND_UPGRADES:
+            want = min(want, 1)  # one byte of 1 each (the module's docstring)
         missing = want - have[item]
         if missing <= 0:
             continue
         if item in NOT_GRANTABLE:
             stuck[item] = missing
-        elif item in PROGRESSIVE:
+        elif item in PROGRESSIVE and guns_first:
             upgrade = PROGRESSIVE[item]
             for byte in (item, upgrade):
                 if missing and inventory[byte] == 0:

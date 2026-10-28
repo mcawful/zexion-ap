@@ -143,8 +143,9 @@ class CustomItems(OptionDict):
     start (":Starting Item": "Choose the items you start the game with."), pool (found
     throughout the world: "Choose the items to find throughout the world."), random
     (":Random": a coin flip between the two) or excluded (":Excluded": neither). Items not
-    listed keep custom_base's state. An upgrade started without its gun starts as the gun:
-    the world holds each gun and its upgrade as one progressive item."""
+    listed keep custom_base's state. With Guns First on, an upgrade started without its gun
+    starts as the gun: the world holds each gun and its upgrade as one progressive item. With
+    it off, each upgrade starts as itself."""
 
     display_name = "Starting Items and Item Pool"
     valid_keys = [name for name, _ in custom.MENU_ITEMS]
@@ -171,7 +172,10 @@ class RandomGun(Setting):
 
 class GunsFirst(Setting):
     """Guns will be found before their upgrade that specifically requires them.
-    Custom mode only; 'preset': the mode's. Off is not supported yet."""
+    Custom mode only; 'preset': the mode's. On, each gun and its upgrade are one progressive
+    item ("Progressive Machine Gun": the gun, then its upgrade); off, each upgrade (Pulse Wave,
+    Pentashot, Tunneler, Focal Crystal, Plasma Burst) is an item of its own, of no use without
+    its gun."""
 
     display_name = "Guns First"
     setting = custom.GUNS_FIRST

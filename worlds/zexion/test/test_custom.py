@@ -9,7 +9,7 @@ from typing import Any
 from Fill import distribute_items_restrictive
 from Options import OptionError
 
-from .. import custom, data, reach
+from .. import custom, data, logic, reach
 from ..custom import (
     BOMB_BOX,
     ENERGY_TANK,
@@ -20,6 +20,7 @@ from ..custom import (
     Menu,
 )
 from ..items import NAMES
+from ..locations import LOCATION_ID_BASE
 from ..options import CustomItems
 from .bases import ZexionTestBase
 from .test_world import fake_world, pool_names
@@ -184,6 +185,39 @@ class TestGunsFirst(unittest.TestCase):
         have = custom.starting_items(menu, start)
         self.assertNotIn(9, have)
 
+    def test_off_no_swap(self) -> None:
+        menu = Menu.preset("standard").with_item(ENTRY["Lance"], "excluded")
+        menu = menu.with_settings({custom.GUNS_FIRST: 0})
+        _, pool = custom.resolve(menu, random.Random(1))
+        self.assertEqual((pool[ENTRY["Lance"]], pool[ENTRY["Focal Crystal"]]), (0, 1))
+
+    def test_off_each_upgrade_is_its_own_item(self) -> None:
+        menu = Menu.preset("standard").with_settings({custom.GUNS_FIRST: 0})
+        _, pool = custom.resolve(menu, random.Random(1))
+        items = Counter(custom.pool_items(menu, pool, random.Random(1)))
+        # Standard pools all five upgrades: each is in the pool once, as itself.
+        self.assertEqual([items[c] for c in (9, 10, 12, 14, 15)], [1] * 5)
+        self.assertTrue(all(items[c] <= 1 for c in (3, 4, 5, 6, 7)))
+        start, _ = custom.resolve(menu.with_item(ENTRY["Pulse Wave"], "start"), random.Random(1))
+        have = custom.starting_items(menu, start)
+        self.assertEqual(have[9], 1)
+
+    def test_off_the_logic_redirects_nothing(self) -> None:
+        on = Menu.preset("standard").logic_settings()
+        off = Menu.preset("standard").with_settings({custom.GUNS_FIRST: 0}).logic_settings()
+        self.assertTrue(on.guns_first)
+        self.assertFalse(off.guns_first)
+        # A Plasma Burst alone counts as the Arc Plasma only with Guns First (0xE5680).
+        self.assertEqual(reach.Seed.of(on, {12: 1}, []).start_items, ((7, 1),))
+        self.assertEqual(reach.Seed.of(off, {12: 1}, []).start_items, ((12, 1),))
+        # And a gun picked up twice counts as its upgrade only with it.
+        self.assertEqual(reach.Seed.of(on, {}, [7, 7]).every_item, ((7, 1), (12, 1)))
+        self.assertEqual(reach.Seed.of(off, {}, [7, 7]).every_item, ((7, 2),))
+        # Without its gun an upgrade does nothing, by the game's rules (logic.derive): code 57
+        # is Tunneler, Lance, S-Blade or Plasma Burst.
+        self.assertFalse(logic.satisfied([(57, 1)], {12: 1}, off))
+        self.assertTrue(logic.satisfied([(57, 1)], {7: 1, 12: 1}, off))
+
 
 class TestTheMenusLimits(unittest.TestCase):
     def test_the_presets_hold(self) -> None:
@@ -305,7 +339,6 @@ class TestTheOptionsRefuse(unittest.TestCase):
         self.assertIn("OS Install Disks", self.refused(mode="custom", abridged_finale="on", goal=1))
 
     def test_what_is_not_supported_yet(self) -> None:
-        self.assertIn("guns_first", self.refused(mode="custom", guns_first="off"))
         self.assertIn("secret_shuffle", self.refused(mode="custom", secret_shuffle="on"))
         self.assertIn("starting_mega_bombs", self.refused(mode="custom", starting_mega_bombs=5))
 
@@ -423,6 +456,47 @@ class CustomSeed(ZexionTestBase):
         self.assertEqual(menu["settings"][custom.BOX_COMPRESSION - 10], 0)
         keys = {int(k): v for k, v in slot["start_items"].items()}
         self.assertEqual((keys.get(27), keys.get(28), keys.get(29)), (1, 1, None))
+
+
+class CustomSeedGunsFirstOff(ZexionTestBase):
+    """Guns First off: each upgrade is an item of its own, named as the game names it, and the
+    game's item table holds it as itself."""
+
+    options = {
+        "mode": "custom",
+        "guns_first": "off",
+        "random_gun": "off",
+        # The Arc Plasma is a coin flip in Standard: pooled here, so the test is the same each run.
+        "custom_items": {"Pulse Wave": "start", "Snake": "excluded", "Arc Plasma": "pool"},
+    }
+
+    def test_the_items(self) -> None:
+        have = Counter(item.name for item in self.multiworld.precollected_items[self.player])
+        self.assertEqual((have["Progressive Machine Gun"], have["Pulse Wave"]), (1, 1))
+        pool = pool_names(self)
+        for name in ("Pentashot", "Focal Crystal", "Plasma Burst", "Tunneler"):
+            self.assertEqual(pool.count(name), 1, name)
+        for name in ("Progressive Force Blaster", "Progressive Lance", "Progressive Arc Plasma"):
+            self.assertEqual(pool.count(name), 1, name)
+        self.assertNotIn("Progressive Snake", pool)  # excluded, and no swap for its Tunneler
+        self.assertNotIn("Progressive Machine Gun", pool)
+
+    def test_the_slot_data(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["options"]["10"], 0)
+        start = {int(k): v for k, v in slot["start_items"].items()}
+        self.assertEqual((start[3], start[9]), (1, 1))
+        table = slot["location_items"]
+        names = {NAMES[code]: code for code in (14, 10, 12, 15)}
+        held = 0
+        for location in self.multiworld.get_locations(self.player):
+            item = location.item
+            if item is None or item.player != self.player or item.name not in names:
+                continue
+            # Each upgrade the world placed here is held as itself.
+            self.assertEqual(table[location.address - LOCATION_ID_BASE], names[item.name])
+            held += 1
+        self.assertLessEqual(held, 4)
 
 
 class CustomSeedShortOfFiller(ZexionTestBase):

@@ -50,7 +50,12 @@ Finale and the rest). Each starts as `preset`: the value of `custom_base`, the m
 starts from. The seed is built from them as the game builds its own: the coin flips, Random
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them. Not yet: Guns First off, Secret Shuffle on and starting Mega Bombs.
+error that names them. Not yet: Secret Shuffle on and starting Mega Bombs.
+With Guns First on (every preset), each gun and its upgrade are one item, Progressive
+Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
+the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
+items of their own, and the seed's logic counts each only once you have its gun, as the
+game's own logic does.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
 R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off is
 taken with the core goal: the core's door needs the four keys whatever Gates is, and the
@@ -85,7 +90,11 @@ Locations are named by their area and their X and Y as the pause screen shows th
 Yes, with `start_inventory`, as long as a new game can start with them (counted together with
 the mode's own starting items):
 
-- one of each upgrade, and at most two of each weapon (the second is its upgrade);
+- one of each item such as the Slide Mod or the Power Core;
+- with Guns First on (every preset), at most two of each Progressive weapon (the second is its
+  upgrade), and none of the five upgrades as items of their own; with it off, one of each
+  gun and one of each of the five upgrades, and none the item pool already holds (use
+  `start_inventory_from_pool` for those);
 - Energy Tanks, Missile Boxes, and up to 9 Missile Containers (Custom's starting missiles
   come as Missile Boxes of ten and the rest as containers, and count toward the 9);
 - keys, in order from the Alpha Key;
