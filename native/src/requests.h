@@ -54,7 +54,7 @@ struct StartRoom {
 
 // What an AP new game needs: the section must already hold `expect` (the seed's amounts and
 // checked settings), and
-// then gets `write` (the AP item table, start, starting items). `menu` (offsets into the
+// then gets `write` (the AP item table, start, starting items, seed text and hash). `menu` (offsets into the
 // randomizer menu's state) sets the menu up as the seed's settings for the ARCHIPELAGO choice;
 // without it the choice is not offered and only a RANDOMIZER game started by hand gets the
 // plan.

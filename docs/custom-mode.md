@@ -1,6 +1,7 @@
 # Custom mode: design and build
 
-**Status: steps A and B of "The build plan" built, 2026-10-27; not yet run in game.** `mode:
+**Status: steps A and B of "The build plan" built and run in game, 2026-10-27** ("The
+build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
 `world.py`), with Guns First off and Secret Shuffle on refused until step E, and starting Mega
 Bombs until the client can give them. This page set out how the YAML offers every setting of
@@ -308,7 +309,7 @@ with nothing more to build; today's AP seeds show their preset.
 **RANDOMIZER**, the fallback, has the player set the menu by hand: easy for a preset, slow for
 Custom (20 settings, 27 items, six amounts). The game's Paste←Clipboard takes the seed text and
 the settings code ("The settings code"), whose format is known exactly, so the client could put
-that on the clipboard, or print it, for the player to paste.
+that on the clipboard, or print it, for the player to paste. As built, the client's message lists the items, Start Keys, amounts and checked settings to set (`client/newgame.py`, `randomizer_steps`); the seed text is not among them: the game's placement runs from the menu's own, and the client then writes the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27, after two RANDOMIZER games of one seed showed the same items under different seed texts), so RANDO SETTINGS and Colorizer's colors are an ARCHIPELAGO game's. The Hints' map rectangles the placement drew from the menu's text stay; they follow the game's own placement, not AP's, in either path.
 
 ## What the settings make redundant in zexion-ap
 
@@ -400,13 +401,23 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    at (36, 42) (`re/locations.md`, "The core goal is Zexion's cell in the core").
 2. **A. Reachability at generation time:** the reachable locations and the start rooms worked
    out when a seed is generated, not per preset in `data.py`; tests show the same results for
-   Easy, Standard and OHKO. **Built, 2026-10-27; not yet run in game:** `worlds/zexion/reach.py`
+   Easy, Standard and OHKO. **Built, 2026-10-27; run in game with step B:** `worlds/zexion/reach.py`
    floods the region graph with the seed's `logic.Settings`, cached by settings, inventory and
    starts; `worlds/zexion/test/test_reach.py` finds the
    presets' start rooms, regions and locations equal to `data.MODES` from every start, and in
    OHKO from every pair of rooms, and shows Safety, the Energy total and X Crystals changing the
    results.
-3. **B. `mode: custom`:** **built, 2026-10-27; not yet run in game** (the world's tests
+3. **B. `mode: custom`:** **built, and run in game 2026-10-27** (B1, helper 0.30.0 built
+   from the branch with #30's retirement, client from source, seed `lab/ap/live37`, four
+   players): a Custom seed with every item started, Start Keys 4, Abridged Finale, X Crystals,
+   X Blocks and Hints Revealed started through ARCHIPELAGO with RANDO SETTINGS showing exactly
+   its settings and Landing Pod, the four keys, 20 Energy Tanks and 25 missiles as 2 Missile
+   Boxes and 5 containers, and the map revealed; at the grab of Zexion the ending began with no
+   prompt and the client sent the goal (the first Abridged Finale run with the client); Easy
+   with Safety Light and Vallahar read EASY MODE and started there; Custom on OHKO's base with
+   Random Start started in Top of Pulsava and the pause menu offered TELEPORT TO VALLAHAR; a
+   Custom seed set by hand from RANDOMIZER with the client's steps took the seed, twice, and
+   one with Safety wrong was refused (the world's tests also
    generate and fill Custom seeds and check the measured seeds' pools; `test_custom.py`). The
    options in the game's words, refusing what the game's menu cannot
    hold, the game's pool rules, the game's Random Start rule, `start_room` and `safety` with the

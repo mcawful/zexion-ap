@@ -352,5 +352,5 @@ path) is reviewed as named. The review subagents in `.claude/agents/` follow thi
   reverse-engineering record. `worlds/zexion/`: the APWorld and the player docs.
   Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
 - When the game is patched: [`docs/re/new-build.md`](re/new-build.md).
-- Custom mode, every setting of the game's randomizer (step B built, not yet run in game):
+- Custom mode, every setting of the game's randomizer (step B, run in game 2026-10-27):
   [`docs/custom-mode.md`](custom-mode.md).

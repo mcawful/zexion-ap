@@ -67,6 +67,10 @@ class Amount(NamedRange):
     default = -1
     amount: int  # custom.START_ENERGY and so on
 
+    @classmethod
+    def get_option_name(cls, value: int) -> str:
+        return "Preset" if value == cls.default else str(value)
+
 
 class StartingEnergyTanks(Amount):
     """Choose the items you start the game with.
@@ -353,6 +357,10 @@ class StartKeys(NamedRange):
     special_range_names = {"preset": -1}
     default = -1
     bits = custom.START_KEYS
+
+    @classmethod
+    def get_option_name(cls, value: int) -> str:
+        return "Preset" if value == cls.default else str(value)
 
 
 # Starting Location's rooms, in the menu's order: value n is start-table room n - 1

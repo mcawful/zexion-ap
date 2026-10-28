@@ -44,8 +44,26 @@ def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
     save = fresh()
     assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
     patched = sp.patch(bytes(fresh()), p)
-    for start, size in ((sp.ITEM_TABLE, sp.LOCATIONS), (sp.START_RECORD, 6), (sp.SECOND_START, 6)):
+    for start, size in (
+        (sp.ITEM_TABLE, sp.LOCATIONS),
+        (sp.START_RECORD, 6),
+        (sp.SECOND_START, 6),
+        (sp.SEED_TEXT, 16),
+        (sp.SEED_HASH, 8),
+    ):
         assert save[start : start + size] == patched[start : start + size]
+
+
+def test_the_seed_text_and_its_hash_are_the_seeds() -> None:
+    # Two saves of 2026-10-27 (lab/ap/live37): their seed texts and the hashes the game stored.
+    assert sp.seed_hash("6D03FB8F34D40BCA") == 0xACB04D43F8BF30D6
+    assert sp.seed_hash("A923AEC2C81578A7") == 0x7A87518C2CEA329A
+    save = fresh()
+    p = plan()
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
+    at = sp.SEED_TEXT
+    assert bytes(save[at : at + 16]).decode() == p.menu.seed_text
+    assert struct.unpack_from("<Q", save, sp.SEED_HASH)[0] == sp.seed_hash(p.menu.seed_text)
 
 
 def test_starting_items_become_the_array_amounts_and_keys() -> None:
@@ -202,3 +220,13 @@ def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings()
     for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
         assert part in steps
     assert steps.endswith("Safety Normal, Gates Open")
+
+
+@pytest.mark.parametrize("text", ["6d03fb8f34d40bca", "6D03FB8F34D40BC", "6D03FB8F34D40BCG"])
+def test_a_seed_text_the_game_would_read_otherwise_is_refused(text) -> None:
+    with pytest.raises(ValueError):
+        sp.seed_hash(text)
+    with pytest.raises(sp.PatchError):
+        sp.patch(bytes(fresh()), plan(menu=menu_setup(seed_text=text)))
+    with pytest.raises(ng.NewGameError):
+        ng.plan_text(plan(menu=menu_setup(seed_text=text)), offer_choice=False)

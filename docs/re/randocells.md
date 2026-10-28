@@ -307,8 +307,6 @@ The key is the name in lower case, words joined by `_`, apostrophes dropped: the
 - A seed made with Secret Shuffle on, Bulk Bombs on, both amounts 20 or more, or a list over
   *N*: the code's rules were read ("The pool", "What each setting does in the game"), but none
   has been generated and checked.
-- Abridged Finale run by the AP client: its goal condition held in game, and Custom seeds can
-  set it since step B (`docs/custom-mode.md`), but none has been played with the client.
 - Whether the hyperspace gates are what stands between the player and the core under Gates
   Unlocked, the default (`memory.md`, "Keys, the gates and the key markers").
 - The placement's swaps, its moves of progression deeper and its spreading of the keys, in

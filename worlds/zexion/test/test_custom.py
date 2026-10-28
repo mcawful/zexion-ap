@@ -510,3 +510,12 @@ class TestTheLogicReviewsFindings(unittest.TestCase):
         items = dict.fromkeys(out, "excluded")
         with self.assertRaisesRegex(OptionError, "no start room|does not suit"):
             fake_world(mode="custom", custom_items=items).generate_early()
+
+
+class TestTheSpoilerNamesPreset(unittest.TestCase):
+    def test_an_amount_left_preset_reads_preset(self) -> None:
+        from ..options import StartingMissiles, StartKeys
+
+        self.assertEqual(StartingMissiles(-1).current_option_name, "Preset")
+        self.assertEqual(StartingMissiles(25).current_option_name, "25")
+        self.assertEqual(StartKeys(-1).current_option_name, "Preset")

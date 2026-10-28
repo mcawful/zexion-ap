@@ -26,7 +26,7 @@ your version isn't supported.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
 - DeathLink.
 - The game's Easy, Standard and OHKO modes and its start rooms, and Custom mode: every
-  setting of the game's randomizer menu in the YAML (not yet run in game).
+  setting of the game's randomizer menu in the YAML.
 - Play your seed's save without the client; what you found is sent when you connect again.
 - Archipelago saves earn no Feats, and the mod stops Steam achievements in them; normal saves
   are unaffected.

@@ -32,6 +32,9 @@ CONTINUE = 0x935C  # tile row, tile column (16-bit each)
 SECTION = 0x12814  # the randomizer section, as loaded to +0xCDD6D0
 ITEM_TABLE = 0x12A80  # item ID per location
 START_RECORD = 0x12B24  # start-candidate index - 1, tile column, tile row
+SEED_HASH = 0x12B1C  # the seed text's hash, 64-bit, which the game's random numbers start from
+SEED_TEXT = 0x12E6C  # the 16-character seed text the menu showed (section +0x658)
+SEED_DIGITS = 16
 SECOND_START = 0x12EE0  # the same, for the second teleport target
 AMOUNTS = 0x12ED4  # starting and pool Energy, missiles, bombs (six 16-bit values)
 OPTIONS = 0x1308F  # setting t at OPTIONS + t
@@ -102,6 +105,19 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
     )
 
 
+def seed_hash(text: str) -> int:
+    """The game's hash of a seed text of 16 characters 0-9 and A-F (docs/re/randocells.md, "The
+    pool"): the characters a number in base 16, the first the least significant, modulo 2**64.
+    Raises ValueError for another text (the game would read a lowercase letter otherwise)."""
+    if len(text) != SEED_DIGITS or not set(text) <= set("0123456789ABCDEF"):
+        raise ValueError(f"the seed text {text!r} is not 16 characters 0-9 and A-F")
+    value = 0
+    for i, c in enumerate(text):
+        digit = int(c, 16)
+        value = (value + digit * 16**i) & 0xFFFFFFFFFFFFFFFF
+    return value
+
+
 def cell_of(column: int, row: int) -> tuple[int, int]:
     return (column // TILES_X, row // TILES_Y)
 
@@ -145,6 +161,13 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
         raise PatchError(f"starting items {sorted(bad)} cannot be written")
     out = bytearray(save)
     out[ITEM_TABLE : ITEM_TABLE + LOCATIONS] = bytes(plan.location_items)
+    # The seed text and its hash, as an ARCHIPELAGO game has them (client/newgame.py).
+    try:
+        hashed = seed_hash(plan.menu.seed_text)
+    except ValueError as error:
+        raise PatchError(str(error)) from error
+    out[SEED_TEXT : SEED_TEXT + SEED_DIGITS] = plan.menu.seed_text.encode("ascii")
+    struct.pack_into("<Q", out, SEED_HASH, hashed)
     struct.pack_into("<3H", out, START_RECORD, *plan.start)
     if plan.second_start is not None:
         struct.pack_into("<3H", out, SECOND_START, *plan.second_start)
