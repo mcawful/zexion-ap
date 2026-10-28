@@ -23,9 +23,23 @@ namespace zap {
 // many squares changed.
 int mark_important(const BYTE* section, BYTE* grid, bool ended);
 
+// The randomizer's three Obscure settings, from the loaded section: Obscure Majors (t29),
+// Obscure Minors (t38) and Obscure Class (t41). All off with no section.
+struct Obscure {
+    bool majors = false, minors = false, by_class = false;
+};
+Obscure obscure_settings(const BYTE* section);
+
 // One square's value raised from the minor class to the major one, as the game would have set
-// it for a major item; any other value unchanged. `obscure_majors`: setting 29.
-uint8_t important_value(uint8_t value, bool obscure_majors, bool ended);
+// it for a major item under `obscure`; any other value unchanged. In a randomizer game the
+// game's reveal (0x7EECE) obscures a major under Obscure Majors or Obscure Class, and a minor
+// under Obscure Minors (Class sends a minor down the major's path), both only with flag 250
+// clear and a reveal mode other than 3. So an obscured minor becomes an obscured major unless
+// majors are shown, and a shown minor a shown major, except under Majors on with Minors and
+// Class off: there a square a hint, a map room or Hints Revealed revealed (base 0xC) becomes an
+// obscured major and one seen directly (base 0x18) a shown one (docs/re/memory.md, "Map
+// markers").
+uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
 
 // A label (apitem.h: the popup's text, a glyph and up to two lines of `width` characters) as the
 // map cursor's name: its first line only, what the item is and not whom it is for ("OS INSTALL

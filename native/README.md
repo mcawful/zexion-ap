@@ -564,7 +564,11 @@ Working in game: 2026-10-25 ("AP saves without the client").
   randomizer save is never touched), raises the map squares of item 48 (this player's OS
   Install Disks and other players' progression items, but not a Zexion player's supplies:
   `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
-  important one (`src/mapmarks.cpp`). While the map is open, a wrapper on the map's per-frame
+  important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors are under
+  the seed's Obscure Majors, Obscure Minors and Obscure Class. Under Majors on with Minors and
+  Class off a stand-in shown as a minor in a square a hint, a map room or Hints Revealed
+  revealed becomes an obscured major and one seen directly a shown major; the value cannot tell
+  an Area Map's reveal (shown) from a hint's ("Map markers"). While the map is open, a wrapper on the map's per-frame
   handler writes the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game
   writes the cursor's name, in the same frame.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
@@ -578,7 +582,8 @@ Working in game: 2026-10-25 ("AP saves without the client").
 Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
 in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
 two-look check, the unseen squares named as the game names its own and the markers still raised
-after a save, a return to the title and a load.
+after a save, a return to the title and a load. Obscure Majors on with Minors off, and Obscure
+Class: stand-in tests only (`tests/mapmarks_tests.cpp`), not run in game.
 
 ### The title screen's lines
 

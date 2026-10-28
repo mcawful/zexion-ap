@@ -13,22 +13,38 @@ namespace {
 constexpr int kLocations = 154;
 constexpr ptrdiff_t kItemTable = 0x26C;
 constexpr ptrdiff_t kSettings = 0x87B;  // +0xCDDF4B less the section's +0xCDD6D0
-constexpr int kObscureMajors = 29;
+constexpr int kObscureMajors = 29, kObscureMinors = 38, kObscureClass = 41;
 constexpr uint8_t kClassLimit = 0x24;  // values below hold an item's class in value % 12
+constexpr uint8_t kRevealed = 0xC;     // the base of a square a hint or map revealed
 constexpr uint8_t kMinorShown = 1, kMajorShown = 2, kMinorObscured = 7, kMajorObscured = 9;
 
 }  // namespace
 
-uint8_t important_value(uint8_t value, bool obscure_majors, bool ended) {
+Obscure obscure_settings(const BYTE* section) {
+    if (section == nullptr) return {};
+    return {section[kSettings + kObscureMajors] != 0, section[kSettings + kObscureMinors] != 0,
+            section[kSettings + kObscureClass] != 0};
+}
+
+uint8_t important_value(uint8_t value, Obscure obscure, bool ended) {
     if (value >= kClassLimit) return value;
+    const auto base = static_cast<uint8_t>(value - value % 12);
+    auto as_major = [base](bool obscured) {
+        return static_cast<uint8_t>(base + (obscured ? kMajorObscured : kMajorShown));
+    };
     switch (value % 12) {
-        case kMinorShown:
-            return static_cast<uint8_t>(value + (kMajorShown - kMinorShown));
+        case kMinorShown: {
+            // Shown as a minor: shown as a major too, except under Majors on with Minors and
+            // Class off, where the game's reveal (0x7EECE) obscured a major unless its mode was
+            // 3. The value does not hold the mode, so a square a hint or map revealed (base
+            // 0xC: modes 1 and 2) is obscured, and one seen directly (base 0x18: the player's
+            // room's reveal, 0x1D07E5, never obscures) shown; memory.md lists what this misses.
+            const bool majors_only = obscure.majors && !obscure.minors && !obscure.by_class;
+            return as_major(majors_only && !ended && base == kRevealed);
+        }
         case kMinorObscured:
-            // Obscured as a minor: as a major, obscured too if majors are, else shown (0x7EECE).
-            return static_cast<uint8_t>(obscure_majors && !ended
-                                            ? value + (kMajorObscured - kMinorObscured)
-                                            : value - (kMinorObscured - kMajorShown));
+            // Obscured as a minor: as a major, obscured too if majors are, else shown.
+            return as_major((obscure.majors || obscure.by_class) && !ended);
         default:
             return value;
     }
@@ -36,14 +52,14 @@ uint8_t important_value(uint8_t value, bool obscure_majors, bool ended) {
 
 int mark_important(const BYTE* section, BYTE* grid, bool ended) {
     if (section == nullptr || grid == nullptr) return 0;
-    const bool obscure_majors = section[kSettings + kObscureMajors] != 0;
+    const Obscure obscure = obscure_settings(section);
     int changed = 0;
     for (int i = 0; i < kLocations; ++i) {
         if (section[kItemTable + i] != kStandInProgression) continue;
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
-        uint8_t raised = important_value(cell, obscure_majors, ended);
+        uint8_t raised = important_value(cell, obscure, ended);
         if (raised != cell) {
             cell = raised;
             ++changed;
