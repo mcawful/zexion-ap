@@ -361,6 +361,26 @@ def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> 
     assert helper.popups() == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
 
 
+def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    # A Pentashot sent from the server console is a Force Blaster's copy (reconcile): the first
+    # sets the gun's byte, so it and the Force Blaster after it pop up as written.
+    give(session, g, [14, 4], senders=["Alice"] * 2)
+    assert helper.popups() == ["popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert (g.inv[4], g.inv[14]) == (1, 1)
+
+
+def test_without_guns_first_each_item_pops_up_as_itself() -> None:
+    off = plan(options={10: 0, 42: 2, 72: 1})
+    session, g = ss.Session(off, [list(c) for c in CELLS]), FakeGame(off)
+    helper = FakeHelper(g)
+    session.helper, session.announced = helper, 0
+    # The Machine Gun is a starting item: a received Pulse Wave and Pentashot are themselves.
+    give(session, g, [9, 14], senders=["Alice"] * 2)
+    assert helper.popups() == ["popup 9 FROM Alice", "popup 14 FROM Alice"]
+    assert (g.inv[3], g.inv[4], g.inv[9], g.inv[14]) == (1, 0, 1, 1)
+
+
 def test_lagging_supplies_are_refreshed_through_the_helper(with_helper) -> None:
     session, g, helper, _ = with_helper
     g.sup[3] = 3  # max missiles below the 3 containers + 10 for the Missile Box

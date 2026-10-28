@@ -93,7 +93,8 @@ the mode's own starting items):
 - one of each item such as the Slide Mod or the Power Core;
 - with Guns First on (every preset), at most two of each Progressive weapon (the second is its
   upgrade), and none of the five upgrades as items of their own; with it off, one of each
-  gun and one of each of the five upgrades;
+  gun and one of each of the five upgrades, and none the item pool already holds (use
+  `start_inventory_from_pool` for those);
 - Energy Tanks, Missile Boxes, and up to 9 Missile Containers (Custom's starting missiles
   come as Missile Boxes of ten and the rest as containers, and count toward the 9);
 - keys, in order from the Alpha Key;

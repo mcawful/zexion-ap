@@ -9,7 +9,8 @@ world refuses those items in generation (``problems``, from generate_early), wit
 - the Navcore or another item of the new game's start-with array: one at most (the array holds
   1 for "start with it"); with Guns First on, a progressive weapon twice at most (the weapon and
   its upgrade) and no upgrade as an item of its own (the game's Guns First seeds hold none:
-  docs/re/randocells.md, "The pool", step 8); with it off, a weapon and an upgrade once each;
+  docs/re/randocells.md, "The pool", step 8); with it off, a weapon and an upgrade once each,
+  and none the item pool also holds (worlds/zexion/world.py, ``check_start_inventory``);
 - Missile Containers: 9 at most, the mode's own included (the new game takes one missile amount,
   containers plus 10 per Missile Box, and the game splits it back into tens and containers);
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
@@ -37,6 +38,7 @@ MAX_CONTAINERS = 9
 # which with Guns First this world hands out as a progressive weapon's second copy.
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
 START_WITH |= {32, 33, 34}
+WEAPONS_AND_UPGRADES = frozenset(PROGRESSIVE) | UPGRADES
 NEVER = {
     **dict.fromkeys((2, 37), "starting bombs are not supported yet"),
     **dict.fromkeys((46, 47, 48), "a new game cannot start with Scrap"),

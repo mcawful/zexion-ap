@@ -211,7 +211,18 @@ class ZexionWorld(World):
         counts = Counter(self.start_inventory)
         for name, n in self.options.start_inventory.value.items():
             counts[code_of[name]] += n
-        found = starting.problems(counts, self.disc_hunt, self.logic_settings.guns_first)
+        guns_first = self.logic_settings.guns_first
+        found = starting.problems(counts, self.disc_hunt, guns_first)
+        if not guns_first:
+            # Without Guns First a second copy of a gun or an upgrade is nothing to the game's
+            # logic, and a gun picked up again could become its upgrade by the menu's Guns First
+            # (docs/re/randocells.md, "The evaluator works on a table of 64 counts").
+            found += [
+                f"{NAMES[code]}: the item pool holds it, and with Guns First off a second one is "
+                f"nothing (start_inventory_from_pool takes it from the pool)"
+                for code in sorted(starting.WEAPONS_AND_UPGRADES)
+                if self.options.start_inventory.value.get(NAMES[code]) and code in self.pool_codes
+            ]
         if found:
             raise OptionError(
                 f"Zexion ({self.player_name}): the client cannot start a seed with this "

@@ -806,8 +806,12 @@ class TestStartInventoryChecked(unittest.TestCase):
 
     def test_without_guns_first_one_of_each_weapon_and_upgrade(self) -> None:
         off = {"mode": "custom", "guns_first": "off", "random_gun": "off"}
-        fine = {"Pulse Wave": 1, "Progressive Lance": 1, "Focal Crystal": 1}
-        fake_world(start_inventory=fine, **off).generate_early()
+        # None is in the pool: the Lance and the Pulse Wave excluded, the Focal Crystal started.
+        items = {"Lance": "excluded", "Pulse Wave": "excluded", "Focal Crystal": "start"}
+        fine = {"Pulse Wave": 1, "Progressive Lance": 1}
+        fake_world(start_inventory=fine, custom_items=items, **off).generate_early()
+        # The pool holds the Lance: a second one is refused.
+        self.assertIn("item pool holds it", self.refused({"Progressive Lance": 1}, **off))
         # Standard starts with the Machine Gun (Random Gun off).
         machine_gun = {"Progressive Machine Gun": 1}
         self.assertIn("Progressive Machine Gun", self.refused(machine_gun, **off))

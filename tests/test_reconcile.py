@@ -120,6 +120,14 @@ def test_without_guns_first_every_item_is_itself(collected, received, extra, owe
     assert rc.grants(have, target, guns_first=False).inventory == owed
 
 
+def test_without_guns_first_no_gun_or_upgrade_byte_above_one() -> None:
+    # A second Machine Gun (a start_inventory or console copy) is not written as a byte of 2.
+    target = rc.should_own(START, TABLE, {0}, [3, 9, 9], guns_first=False)
+    assert rc.grants(inv(**STARTED), target, guns_first=False).inventory == {3: 1, 9: 1}
+    # A second pickup that the menu's Guns First turned into the upgrade: nothing is owed.
+    assert rc.grants(inv(**STARTED, i3=1, i9=1), target, guns_first=False).inventory == {}
+
+
 def test_without_guns_first_an_upgrade_does_not_stand_for_its_weapon() -> None:
     # With Guns First, a held Pulse Wave would count as the Machine Gun owed here.
     target = rc.should_own({}, TABLE, set(), [3], guns_first=False)

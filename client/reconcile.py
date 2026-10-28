@@ -20,7 +20,9 @@ randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is
 given. With it off the game
 redirects nothing in the seed's own items, and each upgrade is an item, and a byte, of its own
 (docs/re/randocells.md, "The evaluator works on a table of 64 counts"): every item is counted as
-itself.
+itself, and a gun or an upgrade is never written above 1. A second copy, which the game's own
+pools never hold (only a start_inventory or a server console's copy could make one), is not
+written: the game's byte for a gun held twice is not measured.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -35,6 +37,7 @@ from . import ids
 from .ids import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER, PROGRESSIVE
 
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
+WEAPONS_AND_UPGRADES = frozenset(PROGRESSIVE) | frozenset(UPGRADE_OF)
 
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {ids.ZEXION}
@@ -112,6 +115,8 @@ def grants(inventory: bytes, target: Counter[int], guns_first: bool = True) -> G
     new: dict[int, int] = {}
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
+        if not guns_first and item in WEAPONS_AND_UPGRADES:
+            want = min(want, 1)  # one byte of 1 each (the module's docstring)
         missing = want - have[item]
         if missing <= 0:
             continue
