@@ -10,7 +10,7 @@ from Fill import distribute_items_restrictive
 from Options import OptionError
 from worlds.AutoWorld import call_all
 
-from .. import data, rules
+from .. import data, reach, rules
 from ..items import DRAWN_AS, GAME, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
@@ -203,11 +203,32 @@ class TestOtherStart(ZexionTestBase):
 class TestStartRoomNotOffered(unittest.TestCase):
     def test_a_room_the_mode_does_not_offer_is_replaced(self) -> None:
         starts = [s for s in data.MODES["standard"]["starts"] if s["cell"] != START_CELLS[0]]
-        with mock.patch.dict(data.MODES["standard"], {"starts": starts}):
+        with mock.patch.object(reach, "offered_starts", return_value=starts):
             world = fake_world(start_room=0)
             with self.assertLogs(level="WARNING"):
                 world.generate_early()
             self.assertIn(world.start, starts)
+
+    def test_settings_that_offer_no_room_are_refused(self) -> None:
+        with (
+            mock.patch.object(reach, "offered_starts", return_value=[]),
+            self.assertRaisesRegex(OptionError, "no start room"),
+        ):
+            fake_world().generate_early()
+
+    def test_settings_that_do_not_reach_the_cores_door_are_refused(self) -> None:
+        door = data.CELL_REGION[data.CORE["door"]]
+        real = reach.Seed.every
+
+        def without_door(seed: reach.Seed, *starts: tuple[int, int]) -> reach.Reach:
+            got = real(seed, *starts)
+            return reach.Reach(got.regions - {door}, got.locations)
+
+        with (
+            mock.patch.object(reach.Seed, "every", without_door),
+            self.assertRaisesRegex(OptionError, "core's door"),
+        ):
+            fake_world().generate_early()
 
     def test_every_room_random_can_roll_gives_a_start_of_the_mode(self) -> None:
         # 'random' rolls any of StartRoom's values, in any mode.
@@ -253,8 +274,8 @@ class TestOHKO(ZexionTestBase):
         self.assertEqual(self.count("Energy Tank"), 0)
 
     def test_the_two_starts_reach_enough_with_the_starting_items(self) -> None:
-        start, second = self.world.start, self.world.second
-        both = set(start["sphere0_indices"]) | set(second["sphere0_indices"])
+        start, second, seed = self.world.start, self.world.second, self.world.seed_reach
+        both = seed.sphere0(start["cell"]).locations | seed.sphere0(second["cell"]).locations
         self.assertGreaterEqual(len(both), 3)
 
     def test_slot_data_names_the_second_target(self) -> None:

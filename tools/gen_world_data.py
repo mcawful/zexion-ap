@@ -28,7 +28,10 @@ of that mode, all 154 locations are reachable from it, and with only that mode's
 inventory at least ``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions
 and locations with every item, which the mode then holds once; the generator refuses data where
 they differ. The output is a Python module of plain data; worlds/zexion turns it into regions
-and rules with worlds/zexion/logic.py.
+and rules with worlds/zexion/logic.py. The world works out each seed's reachable regions,
+locations and start rooms itself when the seed is generated (worlds/zexion/reach.py), over the
+map and the 34 start rooms (``START_ROOMS``) written here; each mode's lists here (``regions``,
+``location_indices``, ``starts``) are what its tests compare those results with.
 """
 
 from __future__ import annotations
@@ -412,6 +415,11 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         "entrances": entrances,
         "location_rules": location_rules,
         "build": cells_path.parent.name,
+        # Every start-room candidate, for the world to judge with the seed's settings.
+        "start_rooms": [
+            {"index": c["index"], "cell": tuple(c["cell"]), "column": c["column"], "row": c["row"]}
+            for c in candidates
+        ],
         # The randomizer menu's start table, as it builds it when it opens: every candidate
         # room in order, with its flag (the room holds object 25), checked against the game's
         # own table (docs/re/memory.md, "Starting a new game" on OHKO).
@@ -442,7 +450,8 @@ def render(d: dict, source: str) -> str:
         "# Per mode ('checked_options': the settings a new game must match). 'regions' and",
         "# 'location_indices': what every item reaches from each of the mode's starts, the same",
         "# from all of them. A mode with a second teleport target lists every candidate, with",
-        "# 'sphere0_indices'.",
+        "# 'sphere0_indices'. The world works these three out itself when a seed is generated",
+        "# (reach.py); its tests compare the results with them.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
@@ -481,6 +490,10 @@ def render(d: dict, source: str) -> str:
         "",
         "# Location index -> the requirements for collecting its item, where it has any.",
         f"LOCATION_RULES = {d['location_rules']!r}",
+        "",
+        "# Every start-room candidate, in the start table's order: its index, cell and the",
+        "# save point's tile column and row (docs/re/save-format.md).",
+        f"START_ROOMS = {d['start_rooms']!r}",
         "",
         "# The randomizer menu's start table: each candidate room's cell (x, y) and flag, and",
         "# the start of the SHA-256 of the exe whose data it came from (the build it holds in).",

@@ -11,7 +11,7 @@ order").
 from __future__ import annotations
 
 import struct
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 
 W = H = 54
@@ -22,6 +22,20 @@ Cell = tuple[int, int]
 # Item definition redirects (docs/re/randocells.md): a weapon picked up again counts as its
 # upgrade, and an upgrade picked up first counts as its weapon, so each pair is progressive.
 WEAPON_UPGRADES = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
+REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in WEAPON_UPGRADES.items()}
+
+
+def collect(have: MutableMapping[int, int], item: int) -> None:
+    """Add one picked-up item to the counts, as the generator does (RVA 0xE5680)."""
+    upgrade = WEAPON_UPGRADES.get(item)
+    if upgrade is not None and have.get(item, 0) > 0:
+        have[upgrade] = have.get(upgrade, 0) + 1
+        return
+    base = REDIRECT_IF_MISSING.get(item)
+    if base is not None and have.get(base, 0) == 0:
+        have[base] = 1
+        return
+    have[item] = have.get(item, 0) + 1
 
 
 @dataclass(frozen=True)
