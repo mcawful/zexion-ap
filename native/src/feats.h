@@ -41,9 +41,9 @@
 // load test off (and after release_steam), the stub passes everything through, so a slot
 // something else has hooked over the stub since stays safe.
 //
-// The Feats of Natu screen may still follow such an ending (by a path not traced), with nothing
-// flashing. On it the helper writes kFeatsNote into the blank last line of its title label,
-// under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
+// The Feats of Natu screen follows MISSION COMPLETE (whose builder always leads on to it, by
+// disassembly), with nothing flashing after such an ending. On it the helper writes kFeatsNote
+// into the blank last line of its title label, under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
 // panels; panel 0's first child is a live widget whose label is three lines of 38 glyphs (y 16,
 // 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
 // the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics: a panel of 10
@@ -52,7 +52,10 @@
 // screen's code typed since the game started) there is a fifth panel of 5, and the game moves the
 // title up 8 (lines at y 8, 24 and 40) and the rows up 16, so the last line stays blank and free
 // (read live, 2026-10-28). By disassembly the rows can also be shorter: 6 or 7 on top, 5 to 7
-// below (not seen)
+// below (6 and 5 seen, 2026-10-28). And in a game that has never reached Ending B, which an AP ending does not
+// reach, the title is a hint instead, COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!,
+// on the upper two lines of a label 8 lower (y 24, 40 and 56): the helper writes FEATS OF NATU!
+// and the note over it (working in game, 2026-10-28), and puts the hint back on an unload
 // (docs/re/memory.md, "Feats and achievements").
 #pragma once
 
@@ -73,8 +76,10 @@ inline constexpr char kFeatsNote[] = "ARCHIPELAGO SAVE: NO FEATS EARNED";
 
 // Game thread: if the Feats of Natu screen that follows an ending is the top menu, its title
 // label's last line made kFeatsNote, centered (`show`), or blank again. Only a line that reads
-// blank or as the note is written, whole, and only if every glyph of it can take the note.
-// Returns whether the screen is up.
+// blank or as the note is written, whole, and only if every glyph of it can take the note. With
+// the hint at the title: the whole label made FEATS OF NATU! and the note (`show`), on the two
+// lines whose note clears the top row of Feats, the lower pair first; or the hint put back, if
+// the label still reads as the helper wrote it. Returns whether the screen is up.
 bool feats_screen_note(const GameAddresses& addresses, bool show);
 
 class FeatsGuard {

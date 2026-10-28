@@ -454,7 +454,7 @@ struct FeatsScreen {
     BYTE menu[0x80] = {};
     BYTE* panels[5] = {};
     BYTE panel[5][0x300] = {};
-    BYTE* children[1] = {};
+    BYTE* children[3] = {};  // the title; the name and description left out
     BYTE title[0x2D0] = {};
     BYTE label[0x230] = {};
     BYTE* glyph_list[kLength] = {};
@@ -480,7 +480,8 @@ struct FeatsScreen {
         at<int32_t>(stats_panel[1], 0x1E8) = 8;
         for (int i = 0; i < 5; ++i) panels[i] = panel[i];
         at<BYTE**>(panel[0], 0x1E0) = children;
-        at<int32_t>(panel[0], 0x1E8) = 1;
+        at<int32_t>(panel[0], 0x1E8) = 3;
+        at<int16_t>(panel[2], 0x1D8) = with_secret_row ? 60 : 76;  // the rows' y
         at<int32_t>(panel[1], 0x1E8) = 1;  // EXIT
         at<int32_t>(panel[2], 0x1E8) = 7;
         at<int32_t>(panel[3], 0x1E8) = 7;
@@ -499,8 +500,25 @@ struct FeatsScreen {
             const size_t col = static_cast<size_t>(i % kColumns);
             if (i / kColumns == 1 && col >= left && col < left + middle.size()) f = middle[col - left];
             at<int32_t>(glyphs[i], 0x1C4) = f;
+            at<double>(glyphs[i], 0x48) = (with_secret_row ? 8 : 16) + 16.0 * (i / kColumns);
         }
     }
+
+    // The title's hint for a game that has never reached Ending B (description 219), as the
+    // builder places it: on the upper two lines of the label, the widget 8 lower than the
+    // usual title's (lines at y 24, 40 and 56), the last line blank.
+    void hint() {
+        const std::string text[3] = {"      COMPLETE ANY ONE OF THESE",
+                                     "     TO SEE THE EXPANDED ENDING!", ""};
+        for (int i = 0; i < kLength; ++i) {
+            const int n = i / kColumns, col = i % kColumns;
+            const std::string& s = text[n];
+            at<int32_t>(glyphs[i], 0x1C4) = col < static_cast<int>(s.size()) ? s[col] : 0;
+            at<double>(glyphs[i], 0x48) = 24 + 16.0 * n;
+        }
+    }
+
+    std::string all() const { return line(0) + "|" + line(1) + "|" + line(2); }
 
     // Line n's frames as text, '.' for blank (frame 0).
     std::string line(int n) const {
@@ -627,6 +645,93 @@ void test_the_screen_note() {
     check(!zap::feats_screen_note(a, true) && released.line(2) == blank, "a released title");
     current = nullptr;
     check(!zap::feats_screen_note(a, true), "no menu");
+}
+
+// `text` centered on a line of the screen's width, '.' for blank.
+std::string centered_line(const std::string& text) {
+    const size_t left = (FeatsScreen::kColumns - text.size() + 1) / 2;
+    std::string out(FeatsScreen::kColumns, '.');
+    out.replace(left, text.size(), text);
+    return out;
+}
+
+void test_the_hint_replaced() {
+    const std::string blank(FeatsScreen::kColumns, '.');
+    const std::string title = centered_line("FEATS OF NATU!");
+    BYTE* current = nullptr;
+    zap::GameAddresses a;
+    a.current_menu = reinterpret_cast<BYTE*>(&current);
+    a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
+    {
+        // The rows at y 76: the note's line at 56 clears them, so the lower two lines.
+        FeatsScreen screen;
+        screen.hint();
+        const std::string game = screen.all();
+        current = screen.menu;
+        check(zap::feats_screen_note(a, true) && screen.line(0) == blank &&
+                  screen.line(1) == title && screen.line(2) == noted_line(),
+              "the hint replaced: FEATS OF NATU! and the note under it", screen.all());
+        check(zap::feats_screen_note(a, true) && screen.line(1) == title, "kept while shown");
+        check(zap::feats_screen_note(a, false) && screen.all() == game, "and the hint put back",
+              screen.all());
+        check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(), "and again");
+        at<int32_t>(screen.glyphs[5], 0x1C4) = 'X';  // the game's own text since
+        check(zap::feats_screen_note(a, false) && screen.line(0)[5] == 'X' &&
+                  screen.line(1) == title,
+              "a label the game wrote since: the hint not put back", screen.all());
+        at<int32_t>(screen.glyphs[5], 0x1C4) = 0;
+        check(zap::feats_screen_note(a, true) && screen.line(1) == title &&
+                  screen.line(2) == noted_line(),
+              "then FEATS OF NATU!'s note as usual", screen.all());
+    }
+    {
+        // With the secret row the rows are at y 60: the upper two lines.
+        FeatsScreen secret("FEATS OF NATU!", true, true);
+        secret.hint();
+        const std::string game = secret.all();
+        current = secret.menu;
+        check(zap::feats_screen_note(a, true) && secret.line(0) == title &&
+                  secret.line(1) == noted_line() && secret.line(2) == blank,
+              "with the secret row: on the upper two lines", secret.all());
+        check(zap::feats_screen_note(a, false) && secret.all() == game, "put back there too");
+    }
+    {
+        FeatsScreen crowded;
+        crowded.hint();
+        at<int16_t>(crowded.panel[2], 0x1D8) = 50;
+        const std::string game = crowded.all();
+        current = crowded.menu;
+        check(zap::feats_screen_note(a, true) && crowded.all() == game,
+              "no room above the rows: left alone");
+        FeatsScreen few;
+        few.hint();
+        at<int32_t>(few.glyphs[3], 0x1BC) = 64;
+        const std::string few_game = few.all();
+        current = few.menu;
+        check(zap::feats_screen_note(a, true) && few.all() == few_game,
+              "a glyph that cannot take text: left alone");
+        FeatsScreen listless;
+        listless.hint();
+        at<BYTE*>(listless.glyphs[100], 0x1A8) = nullptr;
+        const std::string listless_game = listless.all();
+        current = listless.menu;
+        check(zap::feats_screen_note(a, true) && listless.all() == listless_game,
+              "a glyph with no frame list: left alone, not half written");
+        FeatsScreen other(" SOMETHING SHIMMERS ABOVE THE SKY...");
+        for (int i = 0; i < FeatsScreen::kColumns; ++i) {
+            other.glyphs[i][0x1C4] = other.glyphs[FeatsScreen::kColumns + i][0x1C4];
+            at<int32_t>(other.glyphs[FeatsScreen::kColumns + i], 0x1C4) = 0;
+        }
+        const std::string other_game = other.all();
+        current = other.menu;
+        check(!zap::feats_screen_note(a, true) && other.all() == other_game,
+              "another hint: left alone");
+        FeatsScreen untitled;
+        untitled.hint();
+        at<int32_t>(untitled.panel[0], 0x1E8) = 1;
+        current = untitled.menu;
+        check(!zap::feats_screen_note(a, true), "a first panel that is not the title's three");
+    }
 }
 
 // MISSION COMPLETE after an ending (no save loaded, flag 250 set), `screen` over it, looked at.
@@ -779,6 +884,7 @@ int main() {
     test_a_load_from_the_file_select();
     test_refusals();
     test_the_screen_note();
+    test_the_hint_replaced();
     test_the_note_after_an_ending();
     test_put_back();
     return report("feats tests");

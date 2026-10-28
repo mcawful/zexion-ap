@@ -664,21 +664,34 @@ closed, gone with it open.
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
-  - **The Feats of Natu screen.** It still follows an AP ending, by a path not traced, with
-    nothing flashing. The helper writes ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the
-    blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
-    only on that screen as it follows an ending: the top menu with 4 panels, two rows of Feats
-    (7, or by disassembly 6 on top and 5 or 6 below when the game hides some), a live title
-    widget whose label is three equal lines (the middle one naming NATU), and MISSION
-    COMPLETE's statistics under it: a panel of 10 lines and, seen after an ending in a seed with
-    Allow Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the
-    game add it is not traced). With the secret row (a secret Feat earned, or the title screen's
-    code typed since the game started) the top menu has a fifth panel of 5 Feats and the game
-    moves the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still
-    blank, and the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It
-    writes the whole line or nothing, only over a line that is blank or already its note, and
-    only if every glyph of it is writable and has the font's frames. When the title is one of the game's hints instead (as when Ending B has never been
-    seen; by disassembly, not seen), its middle line names no NATU and there is no note.
+  - **The Feats of Natu screen.** It still follows an AP ending, with nothing flashing:
+    MISSION COMPLETE's builder always leads on to it (by disassembly). The helper writes
+    ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the blank last line of its title label,
+    under FEATS OF NATU! (`feats_screen_note`). It writes only on that screen as it follows an
+    ending: the top menu with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7,
+    or 6 on top and 5 or 6 below when the game hides some: 6 and 5 seen), a live title widget
+    whose label is three equal lines (the middle one naming NATU), and MISSION COMPLETE's
+    statistics under it: a panel of 10 lines and, seen after an ending in a seed with Allow
+    Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the game
+    add it is not traced). With the secret row (a secret Feat earned, or the title screen's code
+    typed since the game started) the top menu has a fifth panel of 5 Feats and the game moves
+    the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still blank, and
+    the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It writes the
+    whole line or nothing, only over a line that is blank or already its note, and only if every
+    glyph of it is writable and has the font's frames.
+    - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
+      does not reach it, so a player whose only endings are AP ones), the title is the game's
+      hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
+      label 8 lower. On it the helper writes the whole label: FEATS OF NATU! and the note under
+      it, on the lower two lines (y 40 and 56) when the note's line clears the top row of Feats
+      by 16, else the upper two (y 24 and 40, with the secret row: the game places the hint
+      there either way, by disassembly). It keeps the hint's letters and puts them back when it
+      unloads, if the label still reads as it wrote it. It writes only if every glyph takes
+      text and the hint names EXPANDED ENDING; the game's other hints (`docs/re/memory.md`;
+      when each shows is not decoded) are left alone, with no note. Working in game,
+      2026-10-28 (a fresh save folder: on the lower two lines over rows of 6 and 5, and with the
+      code typed, on the upper two over the secret row; and the hint back, as the game wrote
+      it, on an unload with the screen up).
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
       the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
       ends when a save is loaded, or when the screen has come and gone. It looks every 8th
@@ -759,14 +772,19 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
   ASSISTS USED;
 - 2026-10-28, with the secret row's change (an Abridged Finale AP save, no client): the note
   shown over the secret row, and, after a restart with no code typed, in the usual layout;
-  flag 251 clear and `GameUnlocks.sav` unchanged both times.
+  flag 251 clear and `GameUnlocks.sav` unchanged both times;
+- 2026-10-28, with the hint's change, in a fresh save folder (no Ending B, no Feats on record)
+  and the same save: FEATS OF NATU! and the note in place of the hint, over rows of 6 and 5,
+  and again with the code typed, on the upper two lines over the secret row; flag 251 clear,
+  and `GameUnlocks.sav` given no Feat, no Ending A or B entry and no `+0xCE00A8`; an unload with
+  that screen up put the game's hint back.
 
 Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over shorter rows (by disassembly and stand-in tests only).
+- the note over a bottom row of 6 (by disassembly and stand-in tests only).
 
 ## Building
 
