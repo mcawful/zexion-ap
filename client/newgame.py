@@ -218,5 +218,6 @@ def randomizer_message(plan: sp.SeedPlan) -> str:
     words = " ".join(text[i : i + 4] for i in range(0, len(text), 4))
     return (
         f"in an empty slot choose RANDOMIZER, enter the seed {words} (the menu's other "
-        "settings don't matter: the seed's own are used), and START GAME"
+        "settings don't matter: the seed's own are used), and START GAME (if the game offers "
+        "to play a seed it couldn't make winnable, choose YES)"
     )

@@ -314,10 +314,17 @@ Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in
 
 While a plan is armed (`ap_newgame`), each frame call:
 
-- **RANDOMIZER:** watches for a randomizer new game the game has queued. If the section holds
-  the `expect` bytes (the seed's amounts and checked settings), it writes the `write` edits (the AP seed) once, before
-  the game builds the new game from them; otherwise it writes nothing and drops the plan.
-- **ARCHIPELAGO:** with `menu` lines, offers ARCHIPELAGO in place of RANDOMIZER on the
+- **RANDOMIZER:** watches for a randomizer new game the game has queued (by the player's own
+  START GAME). If the section holds the `identify` bytes (the seed's text, typed into the
+  menu), it places the seed over the player's placement as ARCHIPELAGO does (below: the menu
+  set to the seed's settings, the placement run, the menu put back, `expect` checked), so the
+  game is the seed's down to the Hints' map rectangles, which only the placement draws
+  (`docs/re/randocells.md`, "What each setting does in the game"); then it writes the `write`
+  edits (the AP seed) once, before the game builds the new game from them. Otherwise it
+  writes nothing and drops the plan. A plan without `menu` lines is only checked against
+  `expect` as the player's placement made it (the client always sends them). Built and
+  tested on stand-ins 2026-10-27; not yet run in game.
+- **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven

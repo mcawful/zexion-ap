@@ -124,7 +124,7 @@ play as normal.
 | The mod misbehaves: popups, labels or menus look wrong while the client is connected. | Type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map and try again. |
 | The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
 | There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. |
-| The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, set the menu as the client's message says (your seed's mode and its Safety; for Custom, first the items and Start Keys it lists, then the amounts and the Edit Options settings; typing the seed it gives is optional), and choose START GAME. |
+| The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, enter the 16-character seed the client's message gives, and choose START GAME. The menu's other settings don't matter: the game gets your seed's own. If the game asks whether to play a seed it couldn't make winnable, choose YES. |
 | `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
 | Nothing is sent or received. | Check that the client is connected and the loaded save is from this seed. |
 

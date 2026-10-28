@@ -181,7 +181,8 @@ def test_a_randomizer_plan_leaves_the_start_table_to_the_game() -> None:
 def test_the_randomizer_message_asks_for_the_seed_alone() -> None:
     assert ng.randomizer_message(plan()) == (
         "in an empty slot choose RANDOMIZER, enter the seed 0123 4567 89AB CDEF (the menu's "
-        "other settings don't matter: the seed's own are used), and START GAME"
+        "other settings don't matter: the seed's own are used), and START GAME (if the game "
+        "offers to play a seed it couldn't make winnable, choose YES)"
     )
 
 
