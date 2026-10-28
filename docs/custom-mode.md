@@ -452,8 +452,8 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    `0x21` as a game major does, and `0x1A` once on screen. Found there: while it is on screen, the
    game writes it back as a minor, the helper raises it again, and the minimap dot's border
    flashes (`re/memory.md`, "Map markers"). Since then the helper patches the game's write of an
-   on-screen item's square so a stand-in keeps a major's class there (stand-in tests only, not
-   yet run in game).
+   on-screen item's square so a stand-in keeps a major's class there (working in game
+   2026-10-28: no flash, `re/memory.md`, "Map markers").
 5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.
 6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14).
 

@@ -604,8 +604,11 @@ seen the map named the item (OS INSTALL DISK). Found there: while a stand-in was
 game wrote its square back as a minor (`0x19`) and the helper raised it again (read in both
 seeds), and the border of its dot on the minimap flashed (seen in `live41`; that the flip
 caused it is assumed). The game's write was traced since (the item update's on-screen write,
-"Map markers"), and the helper patches it: stand-in tests only (`tests/mapmarks_tests.cpp`
-runs the game's bytes and the patch side by side), not yet run in game.
+"Map markers"), and the helper patches it (`tests/mapmarks_tests.cpp` runs the game's bytes
+and the patch side by side). Working in game 2026-10-28, the helper built from this change
+(0.30.0, `b5654b77a1c9`), `live41` in slot 5: the patch on from the load, and with the player
+in the cells of another game's progression item (X25 Y25) and of an OS Install Disk (X26 Y26),
+both on screen, their squares stayed `0x1A` and the owner saw no flash.
 
 ### The title screen's lines
 

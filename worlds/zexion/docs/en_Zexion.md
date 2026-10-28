@@ -101,7 +101,7 @@ or Assist Unlock, stops generation with an error that names it.
   one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
-  when you pick it up. While one is on screen, the border of its dot on the minimap may flash.
+  when you pick it up.
 - Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
   around you.
 
