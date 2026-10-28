@@ -420,6 +420,143 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     g_set_target = nullptr;
 }
 
+// The item update's write of an on-screen item's square as on B1 (mapmarks.h).
+constexpr BYTE kSeenGame[zap::kSeenMarkerSize] = {
+    0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83,
+    0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C,
+    0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96,
+    0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00};
+
+// The write run on its own: run(value, id, out) sets dl = value, r9 = id and r14 so that the
+// store (its disp32 the game's, in both) lands on *out (rcx 0), runs the 50 bytes, and returns
+// r9 as they leave it.
+//   mov r11, r14; mov r14, r8; sub r14, disp32; mov r9, rdx; mov rdx, rcx; xor ecx, ecx;
+//   mov al, 0x77; <the write>; mov rax, r9; mov r14, r11; ret
+// No stack is touched, so it needs no unwind information.
+class Runner {
+public:
+    explicit Runner(const BYTE (&write)[zap::kSeenMarkerSize]) {
+        page_ = static_cast<BYTE*>(
+            VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+        const BYTE before[] = {0x4D, 0x89, 0xF3, 0x4D, 0x89, 0xC6, 0x49, 0x81, 0xEE, 0, 0, 0,
+                               0,    0x49, 0x89, 0xD1, 0x48, 0x89, 0xCA, 0x31, 0xC9, 0xB0, 0x77};
+        const BYTE after[] = {0x4C, 0x89, 0xC8, 0x4D, 0x89, 0xDE, 0xC3};
+        std::memcpy(page_, before, sizeof(before));
+        std::memcpy(page_ + 9, kSeenGame + 46, 4);  // the store's disp32
+        std::memcpy(page_ + sizeof(before), write, zap::kSeenMarkerSize);
+        std::memcpy(page_ + sizeof(before) + zap::kSeenMarkerSize, after, sizeof(after));
+        FlushInstructionCache(GetCurrentProcess(), page_, 4096);
+    }
+    ~Runner() { VirtualFree(page_, 0, MEM_RELEASE); }
+    Runner(const Runner&) = delete;
+    Runner& operator=(const Runner&) = delete;
+    uint64_t run(uint64_t value, uint64_t id, BYTE* out) const {
+        using Fn = uint64_t (*)(uint64_t, uint64_t, BYTE*);
+        return reinterpret_cast<Fn>(static_cast<void*>(page_))(value, id, out);
+    }
+
+private:
+    BYTE* page_ = nullptr;
+};
+
+void test_the_seen_marker_runs_as_the_games() {
+    BYTE ours[zap::kSeenMarkerSize] = {};
+    check(zap::seen_marker_patch(kSeenGame, ours), "built from the game's bytes");
+    check(std::memcmp(ours + 35, kSeenGame + 42, 8) == 0, "the game's store, as it is");
+    const Runner game(kSeenGame), patched(ours);
+    int differ = 0, wrong = 0;
+    for (int value = 0; value < 256; ++value) {
+        for (int id : {0, 1, 2, 3, 20, 35, 36, 44, 45, 46, 47, 48, 49, 50, 0x2D, 0x30 + 0x10000}) {
+            BYTE a = 0xEE, b = 0xEE;
+            const uint64_t ra = game.run(value, id, &a), rb = patched.run(value, id, &b);
+            if (ra != rb) ++wrong;  // r9 as the game's leaves it
+            if (a == b) continue;
+            ++differ;
+            // Only item 48 differs, in a revealed square: a major's class where the game's
+            // gives a minor's (value signed, as the game's jl reads it).
+            const auto v = static_cast<int8_t>(value);
+            const BYTE want = v >= 0x18 ? 0x1A : 0x0E;
+            if ((id & 0xFFFF) != 48 || v < 0xC || a != want - 1 || b != want) ++wrong;
+        }
+    }
+    check(wrong == 0, "as the game's but for item 48", std::to_string(wrong));
+    // Item 48 at each value from 0xC to 0x7F, as ID 48 and 0x10030 (r9w 48 either way).
+    check(differ == 2 * (0x80 - 0xC), "item 48 a major in every revealed square",
+          std::to_string(differ));
+    BYTE a = 0xEE;
+    game.run(0x19, 3, &a);
+    check(a == 0x1A, "the stand-in runner runs the game's write");
+    game.run(0x0B, 48, &a);
+    check(a == 0x1A, "an unrevealed square is not written");
+}
+
+void test_the_seen_marker_refuses_other_bytes() {
+    BYTE game[zap::kSeenMarkerSize], out[zap::kSeenMarkerSize] = {};
+    for (size_t i = 0; i < 46; ++i) {
+        std::memcpy(game, kSeenGame, sizeof(game));
+        game[i] ^= 0x01;
+        if (zap::seen_marker_patch(game, out)) {
+            check(false, "a byte other than the game's taken", std::to_string(i));
+            break;
+        }
+    }
+    std::memcpy(game, kSeenGame, sizeof(game));
+    game[47] = 0x12;  // another grid: the store copied as it is
+    check(zap::seen_marker_patch(game, out) && out[35 + 5] == 0x12, "the store's disp32 kept");
+}
+
+void test_the_seen_marker_patched_and_put_back() {
+    auto* site = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ));
+    auto put = [site](const BYTE* bytes) {
+        DWORD old = 0;
+        VirtualProtect(site, 4096, PAGE_EXECUTE_READWRITE, &old);
+        std::memcpy(site, bytes, zap::kSeenMarkerSize);
+        VirtualProtect(site, 4096, old, &old);
+    };
+    put(kSeenGame);
+    BYTE ours[zap::kSeenMarkerSize] = {};
+    zap::seen_marker_patch(kSeenGame, ours);
+    zap::SeenMarker m;
+    m.watch(nullptr, true);
+    check(!m.patched(), "no site: nothing");
+    m.watch(site, false);
+    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0, "off: the game's");
+    m.watch(site, true);
+    check(m.patched() && m.error().empty() && std::memcmp(site, ours, sizeof(ours)) == 0,
+          "on: patched");
+    DWORD protect = 0;
+    MEMORY_BASIC_INFORMATION info{};
+    VirtualQuery(site, &info, sizeof(info));
+    protect = info.Protect;
+    check(protect == PAGE_EXECUTE_READ, "its protection put back");
+    m.watch(site, true);
+    check(m.patched() && std::memcmp(site, ours, sizeof(ours)) == 0, "on again: as it was");
+    m.watch(site, false);
+    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0, "off: put back");
+    m.watch(site, true);
+    m.restore();
+    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0,
+          "restored: the game's");
+    // Something else's bytes there: never patched over, and its own once it rewrites ours.
+    BYTE other[zap::kSeenMarkerSize];
+    std::memcpy(other, kSeenGame, sizeof(other));
+    other[0] = 0xE9;
+    put(other);
+    m.watch(site, true);
+    check(!m.patched() && m.error() == "the on-screen marker reads otherwise" &&
+              std::memcmp(site, other, sizeof(other)) == 0,
+          "another's bytes: left alone");
+    put(kSeenGame);
+    m.watch(site, true);
+    check(m.patched() && m.error().empty(), "the game's again: patched");
+    put(other);
+    m.restore();
+    check(!m.patched() && std::memcmp(site, other, sizeof(other)) == 0,
+          "rewritten by another: not put back over it");
+    VirtualFree(site, 0, MEM_RELEASE);
+}
+
 }  // namespace
 
 int main() {
@@ -435,5 +572,8 @@ int main() {
     test_all_three_settings_read();
     test_majors_on_minors_off();
     test_a_cell_off_the_map_is_skipped();
+    test_the_seen_marker_runs_as_the_games();
+    test_the_seen_marker_refuses_other_bytes();
+    test_the_seen_marker_patched_and_put_back();
     return report("mapmarks tests");
 }

@@ -109,7 +109,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
   map"): unseen squares named as the game names its own, markers kept after a save, a return to
   the title and a load: 2026-10-26. The markers under Obscure Majors on with Minors off, with
   Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
-  stand-in's minimap dot flashing while it is on screen): 2026-10-27.
+  stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
+  helper patches the game's write of an on-screen item's square): stand-in tests only, not run
+  in game.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
 - The helper's escape skip offer (SKIP ESCAPE AND FINAL BATTLE? in any game): 2026-10-23;
   retired 2026-10-27, the owner's decision: the game's own Abridged Finale is the only way to

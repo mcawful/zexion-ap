@@ -379,6 +379,15 @@ TARGETS = (
         # from the instruction at RVA 0x16e976 on B1
         rip("48 8B 05 ?? ?? ?? ?? 48 89 81 68 01 00 00 66 89 91 70 01 00 00 48 8B 87 E0 01 00 00", 3, 7),
     )),
+    Target("seen_marker_code", "the item update's write of the square under an item on screen in a randomizer game (50 bytes, base + 1 or 2 by ID); the helper rewrites it so item 48 takes a major's class in AP saves", {"B1": 0x19E5A5}, (
+        # the item update's last test of the camera's bounds just before it (RVA 0x19e58c on
+        # B1); the write itself is left out, since the helper patches it while it runs
+        at("0F BF 05 ?? ?? ?? ?? F2 0F 5C DA 66 0F 6E C0 F3 0F E6 C0 66 0F 2F D8 77 32", 0x19),
+        # the jmp at RVA 0x19e483 on B1 to the code after it, 0x32 on
+        rip("E9 ?? ?? ?? ?? 48 89 48 08 48 8B 05 ?? ?? ?? ?? 48 89 83 00 02 00 00", 1, 5, -0x32),
+        # the code after it (RVA 0x19e5d7 on B1), its test of +0x34C
+        at("80 BB 4C 03 00 00 00 0F 84 ?? ?? ?? ?? 48 0F BF 83 E8 01 00 00 48 89 6C 24 40", -0x32),
+    )),
     Target("file_panel_fn", "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)", {"B1": 0xB6920}, (
         # from the instruction at RVA 0x17e908 on B1 (the file select's builder)
         rip("4C 8D 05 ?? ?? ?? ?? 41 8B D5 B9 04 00 00 00 49 89 46 68", 3, 7),

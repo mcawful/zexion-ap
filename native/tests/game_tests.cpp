@@ -1124,9 +1124,15 @@ void test_assist_watch() {
     g_current_menu = nullptr;
 }
 
+// Whether the stand-in game's on-screen marker write holds the game's bytes.
+bool seen_marker_games() {
+    return std::memcmp(g_seen_marker_code, kSeenMarkerGame, sizeof(kSeenMarkerGame)) == 0;
+}
+
 // The map's important squares are raised in the labels' seed's save with a menu open too (the
 // player may pause and open the map at once), once two looks in a row (every 16th frame) have
-// read that seed loaded, and not in another seed's save.
+// read that seed loaded, and not in another seed's save. The on-screen marker write is the
+// helper's from the raise on, and the game's again in the first frame another save is loaded.
 void test_map_marks_with_a_menu_open() {
     zap::Game game;
     ready(game);
@@ -1142,19 +1148,35 @@ void test_map_marks_with_a_menu_open() {
     g_menu = 1;  // paused
     game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x19, "the first look: not yet (a load may not have settled)");
+    check(seen_marker_games(), "the on-screen write not yet either");
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x1A, "the next: raised, with a menu open");
+    check(!seen_marker_games() && code_byte(g_seen_marker_code, 0) == 0x80 &&
+              code_byte(g_seen_marker_code, 2) == 0x0C,
+          "and the on-screen write the helper's");
+    check(game.unload_blocker() != nullptr &&
+              std::string(game.unload_blocker()) ==
+                  "the map's on-screen marker is still the helper's",
+          "an unload waits for it");
     g_map_grid[4 * 54 + 3] = 0x19;
     const BYTE was = g_section[0x26D];
     g_section[0x26D] = 0x2F;  // another seed's save
+    game.watch_all(&chosen);
+    check(seen_marker_games(), "another seed's save: the game's write in its first frame");
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x19, "not in another seed's save");
     g_section[0x26D] = was;  // the labels' seed's again: counted afresh
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x19, "a look of another seed starts the count again");
+    check(seen_marker_games(), "nor the write yet");
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x1A, "then the second look raises them");
+    check(!seen_marker_games(), "and patches the write again");
     game.put_back_all(&chosen);
+    check(seen_marker_games() && game.unload_blocker() == nullptr,
+          "a client going away: the game's write");
+    for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
+    check(seen_marker_games(), "and no labels: not patched again");
     g_menu = 0;
     g_rando_marker = 0;
     g_map_grid[4 * 54 + 3] = 0;

@@ -70,6 +70,83 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
 
 namespace {
 
+// The game's write (B1, 0x19E5A5), dl the square's value, r9w the item's ID, the store
+// `mov [rcx+r14+disp32], al` at kSeenStore (its disp32 the grid's, left as read):
+//   cmp dl, 0x18; jl low; sub r9w, 3; cmp r9w, 0x20; setbe al; add al, 0x19; jmp store
+//   low: cmp dl, 0xC; jl end; sub r9w, 3; cmp r9w, 0x20; setbe al; add al, 0xD
+//   store: mov [rcx+r14+disp32], al
+//   end:
+constexpr size_t kSeenStore = 42, kSeenStoreOpcode = 4;
+constexpr BYTE kSeenGame[kSeenStore + kSeenStoreOpcode] = {
+    0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41,
+    0x83, 0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA,
+    0x0C, 0x7C, 0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9,
+    0x20, 0x0F, 0x96, 0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31};
+// The same, ID 48 a major too (48 - 3 = 0x2D), every branch ending where the game's does, r9w
+// and dl left as the game's leaves them:
+//   cmp dl, 0xC; jl end; mov al, 0x19; cmp dl, 0x18; jge id; mov al, 0xD
+//   id: sub r9w, 3; cmp r9w, 0x20; jbe major; cmp r9w, 0x2D; jne store
+//   major: inc al
+//   store: mov [rcx+r14+disp32], al; nop (7 bytes)
+//   end:
+constexpr size_t kSeenOurStore = 35;
+constexpr BYTE kSeenOurs[kSeenOurStore] = {
+    0x80, 0xFA, 0x0C, 0x7C, 0x2D, 0xB0, 0x19, 0x80, 0xFA, 0x18, 0x7D, 0x02,
+    0xB0, 0x0D, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20,
+    0x76, 0x07, 0x66, 0x41, 0x83, 0xF9, 0x2D, 0x75, 0x02, 0xFE, 0xC0};
+constexpr size_t kSeenStoreSize = 8;
+constexpr BYTE kNop7[] = {0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+static_assert(kSeenOurStore + kSeenStoreSize + sizeof(kNop7) == kSeenMarkerSize, "as laid out");
+static_assert(kSeenStore + kSeenStoreSize == kSeenMarkerSize, "the game's, as laid out");
+
+}  // namespace
+
+bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMarkerSize]) {
+    if (std::memcmp(game, kSeenGame, sizeof(kSeenGame)) != 0) return false;
+    std::memcpy(out, kSeenOurs, sizeof(kSeenOurs));
+    std::memcpy(out + kSeenOurStore, game + kSeenStore, kSeenStoreSize);
+    std::memcpy(out + kSeenOurStore + kSeenStoreSize, kNop7, sizeof(kNop7));
+    return true;
+}
+
+void SeenMarker::watch(BYTE* site, bool on) {
+    if (!on || site != site_) restore();
+    if (!on || site == nullptr) return;
+    if (site_ != nullptr) {
+        if (reads_as_written()) return;
+        site_ = nullptr;  // rewritten by something else: no longer ours to put back
+    }
+    BYTE now[kSeenMarkerSize];
+    BYTE patch[kSeenMarkerSize];
+    if (!safe_read(site, now, sizeof(now))) {
+        error_ = "the on-screen marker cannot be read";
+    } else if (!seen_marker_patch(now, patch)) {
+        error_ = "the on-screen marker reads otherwise";
+    } else if (!patch_code(site, patch, sizeof(patch))) {
+        error_ = "the on-screen marker could not be written";
+    } else {
+        std::memcpy(original_, now, sizeof(now));
+        std::memcpy(written_, patch, sizeof(patch));
+        site_ = site;
+        error_.clear();
+    }
+}
+
+bool SeenMarker::reads_as_written() const {
+    BYTE now[kSeenMarkerSize];
+    return site_ != nullptr && safe_read(site_, now, sizeof(now)) &&
+           std::memcmp(now, written_, sizeof(now)) == 0;
+}
+
+void SeenMarker::restore() {
+    if (site_ == nullptr) return;
+    if (reads_as_written()) patch_code(site_, original_, sizeof(original_));
+    // Still held while it reads as written (put back failed): the helper then refuses to unload.
+    if (!reads_as_written()) site_ = nullptr;
+}
+
+namespace {
+
 // The map child's two handler slots: the game's per-frame loop calls +0x168 (0x7ABF3, the child
 // its argument), and 0x46B4F calls +0x178; the map's builder puts its handler in both (0x16E951),
 // read live holding 0x169E50 in both, 2026-10-25.

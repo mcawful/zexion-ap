@@ -187,8 +187,8 @@ play, `lab/ap/live34/client1.log` at 11:35:53 and 11:36:02). It also refuses (`e
 <why>; not unloading`) while the game may still call into the helper, or hold something of the
 helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
-of its wrappers, or the scanner's text, the pause screen's branch, an item record or the
-ending's patch still the helper's. It refuses (`error the ending RETURN HOME WITH THE DISKS?
+of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
+ending's patch or the map's on-screen marker write still the helper's. It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
 game's transition with the ending's patch in place: an unload would drop the ending, or put
@@ -568,16 +568,25 @@ Working in game: 2026-10-25 ("AP saves without the client").
   the seed's Obscure Majors, Obscure Minors and Obscure Class. Under Majors on with Minors and
   Class off a stand-in shown as a minor in a square a hint, a map room or Hints Revealed
   revealed becomes an obscured major and one seen directly a shown major; the value cannot tell
-  an Area Map's reveal (shown) from a hint's ("Map markers"). While the map is open, a wrapper on the map's per-frame
-  handler writes the square's label's name over SCRAP ENERGY or SCRAP CHUNK after the game
-  writes the cursor's name, in the same frame.
+  an Area Map's reveal (shown) from a hint's ("Map markers"). While an item is on screen the
+  game writes its square every frame as a shown item of its ID's class, which took a stand-in
+  back to a minor and made its minimap dot's border flash; so the helper also patches that
+  write (`seen_marker_code`, 50 bytes) to give item 48 a major's class, as an item on screen
+  of IDs 3 to 35 gets (`0x1A`, or `0x0E` in a square a hint revealed). The patch is the game's
+  code with one more compare: it calls and reads nothing of the helper's. While the map is open,
+  a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
+  or SCRAP CHUNK after the game writes the cursor's name, in the same frame.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (during a load the section may still be the last
-  save's while the grid is the new one's); the names while the map is open and this seed's save
-  is loaded.
+  save's while the grid is the new one's); the on-screen write's patch from that same look,
+  until the first frame call that finds no labels or another save loaded; the names while the
+  map is open and this seed's save is loaded.
 - **Put back:** the markers are not: the game saves the map grid, and they stay as the game would
-  have set them. The handler goes back when the names stop and before an unload, which refuses
-  while an open map holds the wrapper.
+  have set them. The on-screen write goes back as above, when a client goes away and before an
+  unload, only while it still reads as the helper wrote it; an unload refuses while it could not
+  be put back (a plain randomizer game's Scrap Chunks would show as majors on screen). The
+  handler goes back when the names stop and before an unload, which refuses while an open map
+  holds the wrapper.
 
 Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
 in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
@@ -589,11 +598,12 @@ game's minor `0x0D`. The helper raised each to `0x15` by the next 0.1 s read, an
 read ADVANCED TECH, with the same marker as the game's hinted majors. With Class on, the game
 put every square at `0x15`, and the cursor read UNKNOWN ITEM on all of them, the helper
 changing nothing. In both, walking into the room gave `0x21`, as for a game major, and once
-seen the map named the item (OS INSTALL DISK). A known flaw, in any mode by the code
-(`important_value` raises every shown minor): while a stand-in is on screen, the game writes
-its square back as a minor (`0x19`) and the helper raises it again (read in both seeds), and
-the border of its dot on the minimap flashes (seen in `live41`; that the flip causes it is
-assumed). Once the item is off screen it stays raised ("Map markers").
+seen the map named the item (OS INSTALL DISK). Found there: while a stand-in was on screen, the
+game wrote its square back as a minor (`0x19`) and the helper raised it again (read in both
+seeds), and the border of its dot on the minimap flashed (seen in `live41`; that the flip
+caused it is assumed). The game's write was traced since (the item update's on-screen write,
+"Map markers"), and the helper patches it: stand-in tests only (`tests/mapmarks_tests.cpp`
+runs the game's bytes and the patch side by side), not yet run in game.
 
 ### The title screen's lines
 
