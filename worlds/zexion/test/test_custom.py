@@ -21,7 +21,7 @@ from ..custom import (
 )
 from ..items import NAMES
 from ..options import CustomItems
-from .bases import ZexionTestBase
+from .bases import SeededZexionTestBase, ZexionTestBase
 from .test_world import fake_world, pool_names
 
 FILLER = {46, 47, 48, 49, 50}
@@ -446,7 +446,7 @@ class CustomSeedShortOfFiller(ZexionTestBase):
         self.assertIn(SCRAP_METAL, self.world.pool_codes)
 
 
-class CustomDoubleTeleportRandomStart(ZexionTestBase):
+class CustomDoubleTeleportRandomStart(SeededZexionTestBase):
     options = {
         "mode": "custom",
         "custom_base": "ohko",
@@ -464,9 +464,10 @@ class CustomDoubleTeleportRandomStart(ZexionTestBase):
 
 class EveryStartFills(ZexionTestBase):
     """Every room the world takes for Standard and OHKO fills and can be beaten, but those
-    from which the starting items reach fewer than 3 locations: Archipelago's fill can fail
-    there, as the owner accepted (docs/re/locations.md, "Which start rooms the world
-    offers"), so a test of them would fail at random."""
+    from which the starting items reach fewer than 3 locations (in OHKO, with the second
+    teleport target drawn, counted as the logic counts it): Archipelago's fill can fail there,
+    as the owner accepted (docs/re/locations.md, "Which start rooms the world offers"), so a
+    test of them would fail at random."""
 
     auto_construct = False
     run_default_tests = False
@@ -475,19 +476,14 @@ class EveryStartFills(ZexionTestBase):
         for mode in ("standard", "ohko"):
             probe = fake_world(mode=mode)
             probe.generate_early()
-            rooms = [
-                r
-                for r in data.START_ROOMS
-                if probe.passes(r)
-                and (
-                    probe.second is not None
-                    or len(probe.seed_reach.sphere0(r["cell"]).locations) >= 3
-                )
-            ]
+            rooms = [r for r in data.START_ROOMS if probe.passes(r)]
             for room in rooms:
                 with self.subTest(mode=mode, room=room["index"]):
                     self.options = {"mode": mode, "start_room": room["index"] + 1}
                     self.world_setup()
+                    w = self.world
+                    if len(w.seed_reach.sphere0_from(w.start, w.second).locations) < 3:
+                        continue
                     distribute_items_restrictive(self.multiworld)
                     self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
 
@@ -497,11 +493,6 @@ class TestTheLogicReviewsFindings(unittest.TestCase):
         seed = reach.Seed.of(Menu.preset("standard").logic_settings(), {7: 2}, [])
         self.assertEqual(seed.start_items, ((7, 1), (12, 1)))
         self.assertEqual(seed.every_item, ((7, 1), (12, 1)))
-
-    def test_gates_off_waits_with_the_core_goal(self) -> None:
-        with self.assertRaisesRegex(OptionError, "gates: off"):
-            fake_world(mode="custom", gates="off").generate_early()
-        fake_world(mode="custom", gates="off", goal=1).generate_early()
 
     def test_the_cores_own_lists_are_judged_with_the_start(self) -> None:
         # Into the core: code 51 (Wall Jump Boots with G-Diffuser or Gravity Harness, or the

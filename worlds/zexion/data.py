@@ -9,15 +9,14 @@ A cell (a, b) is shown in the game as X = b, Y = a (docs/re/randocells.md).
 # The game's 154 locations, in the order of its location list: cell (a, b), X = b, Y = a.
 LOCATIONS = [(8, 1), (13, 1), (37, 2), (38, 2), (47, 2), (21, 3), (23, 5), (39, 5), (53, 5), (8, 6), (9, 6), (14, 6), (14, 9), (21, 9), (45, 9), (49, 9), (14, 10), (39, 10), (45, 12), (53, 12), (18, 13), (22, 13), (29, 14), (23, 15), (25, 15), (29, 16), (41, 16), (46, 16), (23, 17), (26, 18), (32, 18), (41, 18), (11, 19), (0, 20), (16, 20), (45, 20), (10, 21), (41, 21), (1, 22), (7, 22), (9, 22), (13, 22), (26, 22), (14, 23), (21, 23), (10, 24), (19, 24), (24, 24), (29, 24), (10, 25), (11, 25), (19, 25), (25, 25), (44, 25), (47, 25), (26, 26), (38, 26), (46, 26), (48, 26), (0, 27), (18, 27), (24, 27), (9, 28), (14, 28), (1, 29), (9, 29), (15, 29), (30, 29), (48, 29), (18, 30), (45, 30), (14, 32), (23, 32), (28, 32), (33, 32), (40, 32), (12, 33), (44, 33), (15, 34), (21, 34), (27, 34), (51, 34), (22, 35), (28, 35), (16, 36), (18, 36), (25, 36), (30, 36), (37, 36), (44, 36), (45, 36), (21, 37), (28, 37), (4, 38), (11, 38), (16, 38), (23, 38), (16, 39), (53, 39), (17, 40), (24, 40), (28, 40), (2, 41), (7, 41), (8, 41), (10, 41), (12, 41), (17, 41), (24, 41), (25, 41), (45, 41), (46, 41), (2, 42), (2, 43), (12, 43), (14, 43), (17, 43), (20, 43), (22, 43), (23, 43), (17, 44), (24, 44), (27, 44), (42, 44), (51, 44), (26, 45), (46, 45), (13, 46), (31, 46), (34, 47), (44, 47), (50, 47), (11, 48), (14, 48), (15, 49), (32, 49), (30, 50), (10, 51), (11, 51), (12, 51), (21, 51), (37, 51), (47, 51), (10, 52), (11, 52), (13, 52), (24, 52), (38, 52), (44, 52), (53, 52), (19, 53), (20, 53), (29, 53), (50, 53)]
 
-# A start room is offered when every item reaches all 154 locations from it and its
-# mode's starting items at least this many (with a second teleport target, from it and
-# the second together).
+# The earlier rule for a start room, now the tests' oracle: every item reaches all 154
+# locations from it and its mode's starting items at least this many.
 MIN_SPHERE_ZERO = 3
 
 # Per mode, from its fresh save and the exe's preset ('menu'). 'regions' and
 # 'location_indices': what every item reaches from each of the mode's starts, the same
 # from all of them. A mode with a second teleport target lists every candidate, with
-# 'sphere0_indices'. The world works these three out itself when a seed is generated
+# its own 'sphere0_indices'. The world works these out itself when a seed is generated
 # (reach.py); its tests compare the results with them.
 MODES = {
     'easy': {

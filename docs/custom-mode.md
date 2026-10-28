@@ -215,27 +215,38 @@ step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secr
   `start_inventory`, as the game counts only its menu's.
 - `automatic`: Landing Pod, as today, when the rules allow it; otherwise a random start, with a
   warning.
-- Double Teleport: the second target is any room but the start, at random; the logic connects
-  it at once if it is unflagged, and for a flagged room only once the "useful item" score
-  (Energy, doubled by the Magnus Armor, + missiles + bombs + ten per box + the menu items
-  owned but the Navcore and the Magnus Armor) is 27 or more. That rule is new to the world's
-  logic, step D. Until then the world keeps its own rule, for Custom too: a second target that,
-  with the start, lets the starting items reach at least 3 locations, and a start passes when it
-  has one (with the core goal, the start or the target reaching the core's door with every
-  item). Random Start with Double Teleport does not copy the game's bug, which draws the second
-  target in place of the start ("Starting Location and the second teleport target").
+- Double Teleport: the second target is any room but the start, at random, flagged ones too;
+  the logic connects it at once if it is unflagged, and a flagged room only once the "useful
+  item" score (Energy, doubled by the Magnus Armor, + missiles + bombs + ten per box + the menu
+  items owned but the Navcore and the Magnus Armor) is 27 or more. Built in step D
+  (`logic.useful_score`, `reach.second_counts`, the rule on the AP entrance
+  "Second teleport target"), for every mode with Double Teleport, OHKO included. Where the game
+  would offer PLAY ANYWAY for a pair its winnability check fails, the world draws among the
+  rooms with which the pair suits the seed as a start does: the starting items collect a
+  location, and with the core goal every item reaches the core's door (`ZexionWorld.partners`,
+  `reach.second_starts`). OHKO still takes all 34 start rooms. From a start whose starting items
+  reach few locations, with a flagged room drawn, Archipelago's fill can fail: 3 of 300 default
+  OHKO seeds did, all from Landing Pod (`re/locations.md`, "OHKO: two starts, and only the
+  locations they reach"), the risk accepted for start rooms. Random Start with Double Teleport
+  does not copy the game's bug, which draws the second target in place of the start ("Starting
+  Location and the second teleport target").
 - **What the world adds to the game's rules, as built.** An upgrade started without its gun is
   started as the gun: the world holds each gun and its upgrade as one progressive item. Where
   the pool has too little filler for the locations left out (and the OS Install Disks), ten
   Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   makes filler when it runs short (`custom.compress`), in every mode. A pool longer than its
-  places is refused, where the game would drop entries at random. Gates Open is accepted, but
-  the logic does not use the gates yet (step D): stricter than the game's, never looser. Gates
-  Off is refused with the core goal: under it the gates' key check never passes (`re/memory.md`,
-  "Keys, the gates and the key markers"), and whether a gate closes the core is not known
-  (rank 12: play it once). A start room also needs every item to pass the core's own lists
-  after the door (`data.CORE`), and the world counts a started gun and its upgrade as both, as
-  the game does (found by the `logic-reviewer`, 2026-10-27).
+  places is refused, where the game would drop entries at random. Gates follows the game:
+  Open's gate travel is in the logic (step D, `reach.gates_triggered`, entrances among the gate
+  cells' regions), and Off, Vanilla and Unlocked change nothing in it, as in the game's. Gates
+  Off is taken with the core goal since step D: by the game's data files, the core's door is
+  four key slots that read the keys alone, and only the four hyperspace gates read Gates
+  (`re/memory.md`, "Keys, the gates and the key markers"), so Off should disable the gates'
+  travel and not the way to the core, and Unlocked's two-gates-visited check hold back only
+  that travel too (what opens the door once its slots are triggered was not traced, and
+  neither has been played). A start room also needs
+  every item to pass the core's own lists after the door (`data.CORE`), and the world counts a
+  started gun and its upgrade as both, as the game does (found by the `logic-reviewer`,
+  2026-10-27).
 
 **The goal.** The game's winnability check needs a cell holding Zexion and the four keys:
 without Abridged Finale only the ship's, (1, 42), since its logic enters the core only with it;
@@ -266,8 +277,8 @@ step A (`worlds/zexion/reach.py`).
 | 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Run in game (2026-10-27, a seed made in the game's menu, no client): no escape and no prompt; the ending starts 8 s after the grab with flag 250 set and flag 211 clear, which is the client's goal (`re/randocells.md`, "What each setting does in the game"). The player's cell at the grab read (36, 42), Zexion's cell in the core, where the world's goal now is (`re/locations.md`, "The core goal is Zexion's cell in the core"); the game's own logic enters the core only with Abridged Finale on. Refused with the OS Install Disks goal (decided, the owner, 2026-10-27). |
 | 9 | Box Compression, Bulk Missiles, Bulk Bombs, the amounts | medium | low | The pool rules above, in the world, with tests from fresh saves of new seeds (Box Compression off, each Bulk on, both amounts 20 or more): generate them in the menu and read the saves, read-only. Starting missiles are given as the new game splits them, tens as Missile Boxes and the rest as up to 9 containers (`client/newgame.py`, `start_with`), so the world must hand them out in that form; starting Mega Bombs need the client's new-game bombs (`worlds/zexion/starting.py`: not supported yet). |
 | 10 | The 27 items, Random Gun | medium | low | The four states and Random Gun's draw in the world; the start-with array already carries any of the 27. An excluded item is simply absent. |
-| 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as a new entrance rule. The start table stays B1-only (`client/newgame.py`). |
-| 12 | Gates | low (Off, Vanilla, Unlocked); medium (Open) | medium | Pass through. Open adds the game's gate floods to the logic: entrances among (24, 44), (12, 30) and (14, 2) once one of them or (51, 34) is reached. Not known: what stands between the player and the core under Off and Unlocked (`randocells.md`, "Not yet found"); play each once. |
+| 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as an entrance rule (built in step D). The start table stays B1-only (`client/newgame.py`). |
+| 12 | Gates | low (Off, Vanilla, Unlocked); medium (Open) | medium | Pass through. Open adds the game's gate floods to the logic: entrances from (24, 44), (12, 30), (14, 2) and (51, 34) to the first three, once one of them is reached (built in step D). Off and Unlocked act on the gates' travel only: the core's door reads the keys alone (`re/memory.md`, "Keys, the gates and the key markers", from the data files; not run in game under Off or Unlocked). Open: the game's logic lets reaching R'Talva's gate at (51, 34) open the travel, though its script waits for flag 155 (Aesos, by the menu's blurb); the world follows the logic, and whether play allows it is open (`re/randocells.md`, "Not yet found"). |
 | 13 | Guns First off | high | medium | With it off the game applies no item redirects: each of the five upgrades is its own item, useless without its gun, and the guns are no longer progressive. New items for Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst; `logic.py`'s redirects conditional; the client's inventory writes and reconciliation for upgrades as their own bytes. A mistake here can lose or double an item. |
 | 14 | Secret Shuffle | high | high | A 155th location, the Bomb Box at X48 Y20, enters the game's location list at position 134 and moves the 20 after it up by one. The client, the helper and the save patch index everything by that list and count 154 (`client/ids.py`, `save_patch.py`, `newgame.py`). The location ids would stay by cell, with a per-seed map to the game's list. A mistake sends or gives the wrong item. |
 | — | No Guarantee | none | none | Not offered (not on B1's menu). |
@@ -348,7 +359,7 @@ game for this review.
 | The `escape_skip` option (discussed, never in the repo) | — | Abridged Finale (t32) | Fully | Nothing: dropped by the owner, 2026-10-27 ("The YAML", Abridged Finale). | None |
 | The escape skip offer (event 3665's else branch pointed at the offer; retired 2026-10-27) | Removed: it was `native/src/skip.cpp`, the offline look's part, the client's check and the Goal option's text | Abridged Finale (t32) | Fully in a Custom seed with it on: event 3583 sets flag 289 at the grab, and event 3668 offers nothing while 289 is set, the helper's patch included (measured by disassembly; in game, 2026-10-27, flag 289 was set at the grab and the ending followed with no escape and no prompt, the helper's patch off at the time). No for presets, and for Custom with it off | Done, 2026-10-27, by the owner's decision (below): the patch, the offline look's part, the client's check of it, their tests and the Goal text removed; the event table's targets stay, since RETURN HOME WITH THE DISKS? uses them. This review had advised keeping the patch until the escape's needs were measured and put in the goal's rule, since the world's logic does not cover the escape and the final battle | Accepted by the owner: a preset core-goal seed can reach Zexion before the player has what the escape needs ("The YAML", Abridged Finale) |
 | The start room (`start_room`, `AUTOMATIC_ROOM`, the start record write) | `worlds/zexion/options.py`, `world.py` (`choose_starts`); `client/newgame.py` (`write` of `START_RECORD`) | Starting Location (t22 to t27) | Partly. The game's 34 rooms are the option's values (`options.ROOM_NAMES`), and a named value writes a start record of the same form (room index, column, row: `re/randocells.md`, "Starting Location and the second teleport target"). But ARCHIPELAGO skips the step that reads it, and the world's fill must know the room, so the world chooses it, by the game's Random Start rule (`custom.random_start`) for `random_start` | Not retirable: the world still chooses and the client still writes. What the setting adds is the view: since step B the world sets it to its room in the menu (`ZexionWorld.menu_setup`), which names the start in RANDO SETTINGS, in a preset seed too, since the mode check skips it (above) | Low |
-| The second teleport target (`ZexionWorld.partners`, `reach.second_starts`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is step D. The writes stay | Medium (a new entrance rule) |
+| The second teleport target (`ZexionWorld.partners`, `reach.second_starts`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. Since step D the rule is the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them"); the world's own part is drawing among the rooms with which the pair suits the seed, where the game would offer PLAY ANYWAY | The writes stay | Done (step D) |
 | Starting keys | `client/newgame.py` (`start_with`; writes t34 to t36); `worlds/zexion/starting.py` (the first keys from the Alpha Key) | Start Keys (t34 to t36) | Fully, by the code: the client gives starting keys by writing the game's own Start Keys bits (`client/newgame.py`), and the new game gives the first *k* keys from them (`0xA11A5`, by disassembly: `re/randocells.md`, "What each setting does in the game"). The game's own Start Keys 4 gave the four keys in a seed made in its menu (2026-10-27); the client's write of the bits has not been run with keys | Nothing to retire. In Custom, `start_keys` is the menu's value and start_inventory keys add to the count | None |
 | The key markers, the scanner | the game's new game (event chain 3329 to 3378, from the item table); `client/save_patch.py` (the offline reference only) | Start Keys, Gates | Not an AP feature: the game draws the markers from AP's item table already, so a key in another world or started with has none. Gates changes which gates pass, and with Open the logic (`re/memory.md`, "Keys, the gates and the key markers"), not the markers, and the core goal's four keys are the game's winnability check's own | — | — |
 | The starting items and amounts (the start-with array and the amounts written over the placement) | `client/newgame.py` (`start_with`) | The 27 items' Start state, Random Gun, the six amounts | Partly: the menu holds the seed's starting items and amounts, and the new game gives them. But the game resolves `random` items and Random Gun from its own seed text, and the world from its random numbers, and start_inventory is AP's alone | Only if the world reproduced the game's generator from the seed text (`lab/rando-options/agentB/sim_pool.py` does steps 1 to 7) so both agree; not worth it. Keep the writes | Medium if retired: wrong starting items |
@@ -455,6 +466,16 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    on-screen item's square so a stand-in keeps a major's class there (working in game
    2026-10-28: no flash, `re/memory.md`, "Map markers").
 5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.
+   **Built, 2026-10-28; not run in game:** the useful-item score from `0xE57AB` (`logic.py`,
+   `useful_score`, with the menu's 27 items from the table at `0x20DA68`); a flagged second
+   target behind it (`reach.second_counts`, the AP entrance's rule), the second drawn from all
+   33 other rooms (`reach.second_starts`, the game's one-location rule instead of the world's
+   3); Gates Open's floods (`reach.gates_triggered`, `ZexionWorld.connect_gates`), checked
+   against `tools/randocells.py`, which models both now, in 6,120 random inventories; and Gates
+   Off taken with the core goal, after the four gates' rooms and the core's key slots were
+   traced in the data files (`re/memory.md`, "Keys, the gates and the key markers"). Found on
+   the way: the event chain that marks the gates visited sets the fourth gate's flag 307 only
+   once flag 155 is set.
 6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14).
 
 ## Open questions for the owner

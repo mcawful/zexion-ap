@@ -74,14 +74,16 @@ class TestStartRooms(unittest.TestCase):
         for room in data.START_ROOMS:
             self.assertIn(room["cell"], data.CELL_REGION)
 
-    def test_second_starts_reach_enough_with_the_first(self) -> None:
+    def test_second_starts_collect_a_location_with_the_first(self) -> None:
         seed = preset("ohko")
         for start in data.START_ROOMS:
-            first = seed.sphere0(start["cell"]).locations
-            for room in reach.second_starts(seed, start["cell"], data.START_ROOMS):
+            rooms = reach.second_starts(seed, start, data.START_ROOMS)
+            for room in rooms:
                 self.assertNotEqual(room["cell"], start["cell"])
-                both = first | seed.sphere0(room["cell"]).locations
-                self.assertGreaterEqual(len(both), reach.MIN_SPHERE_ZERO)
+                self.assertTrue(seed.sphere0_from(start, room).locations)
+            others = [r for r in data.START_ROOMS if r is not start]
+            if seed.sphere0(start["cell"]).locations:
+                self.assertEqual(rooms, others)
 
 
 class TestSettingsChangeTheResults(unittest.TestCase):

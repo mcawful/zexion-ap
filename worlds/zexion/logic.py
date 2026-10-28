@@ -45,9 +45,44 @@ class Settings:
     energy_total: int = 20  # starting Energy + Energy in the pool
     mode69: int = 0  # the menu's Safety; 0 or 3: code 69 always passes; 1 or 2: checks energy
     options: bytes = field(default=bytes(64))
+    gates_open: bool = False  # Gates Open (t72 and t73 both set): the logic travels by gate
 
 
 DEFAULT_SETTINGS = Settings()
+
+# Double Teleport's second target (docs/re/randocells.md, "Starting Location and the second
+# teleport target"): the logic floods from it when its room is unflagged, or once the "useful
+# item" score is this or more (0xE6D20, 0xE8850).
+SECOND_TARGET_SCORE = 27
+# The randomizer menu's 27 items in its order (the table at RVA 0x20DA68, the same as
+# custom.MENU_ITEMS); the score counts each one owned but these two: the Navcore and the
+# Magnus Armor (0xE57F9 onward).
+MENU_ITEM_CODES = (16, 19, 21, 32, 3, 4, 5, 6, 7, 11, 22, 20, 17, 9, 14, 15, 10, 12, 34, 24)
+MENU_ITEM_CODES += (26, 25, 13, 33, 8, 23, 18)
+NOT_SCORED = (32, 25)
+ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX, MAGNUS_ARMOR = 0, 1, 2, 36, 37, 25
+
+
+def useful_score(have: Mapping[int, int]) -> int:
+    """The "useful item" score the logic recounts with the items (0xE5680, from 0xE57AB): the
+    Energy count, doubled with the Magnus Armor, + the Missile Containers and Mega Bombs + 10
+    per Missile Box and Bomb Box + one for each menu item owned but the Navcore and the Magnus
+    Armor. ``have`` is counted as the game counts it (``collect``)."""
+    energy = have.get(ENERGY_TANK, 0) * (2 if have.get(MAGNUS_ARMOR, 0) else 1)
+    supplies = have.get(MISSILE_CONTAINER, 0) + have.get(MEGA_BOMB, 0)
+    boxes = have.get(MISSILE_BOX, 0) + have.get(BOMB_BOX, 0)
+    owned = sum(1 for code in MENU_ITEM_CODES if code not in NOT_SCORED and have.get(code, 0))
+    return energy + supplies + 10 * boxes + owned
+
+
+# Gates Open (docs/re/randocells.md, "What each setting does in the game"): once any of these
+# cells counts as reached, the logic floods from GATE_TARGETS too (0xE6F5C in 0xE6D20, and in
+# 0xE8850). The game reads (24, 44) and (51, 34) as "collectible" (their location's own list,
+# if any, passes) and (12, 30) and (14, 2) as reached; each holds one of the four key-gate
+# objects (docs/re/memory.md, "Keys, the gates and the key markers"). The fourth gate's cell,
+# (51, 34), opens the travel but is not flooded from.
+GATE_TRIGGERS = (((24, 44), True), ((12, 30), False), ((14, 2), False), ((51, 34), True))
+GATE_TARGETS = ((24, 44), (12, 30), (14, 2))
 
 
 def f32(v: float) -> float:

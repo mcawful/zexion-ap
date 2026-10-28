@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from . import data, logic
+from .reach import flagged
 
 # The 27 items of the menu's first screen, in its order (the word table at .rdata 0x20DA68):
 # their names as the screen shows them and their item codes. Entry i is byte i of the
@@ -52,6 +53,7 @@ START_LOCATION = (22, 23, 24, 25, 26, 27)
 START_KEYS = (34, 35, 36)
 SAFETY = (42, 43)
 GATES = (72, 73)
+GATES_OFF, GATES_OPEN = 0, 3  # Gates' first and last values (Vanilla 1, Unlocked 2)
 LIGHT = 0  # Safety's first value
 # The settings the logic reads, which a new game must have as the seed's (client/newgame.py,
 # the expect lines): Guns First's item redirects, code 68's settings, Double Teleport, Safety
@@ -131,11 +133,12 @@ class Menu:
         return LOCATIONS + self.setting(SECRET_SHUFFLE)
 
     def logic_settings(self) -> logic.Settings:
-        """What the logic reads: the Energy total, Safety (code 69's mode) and the settings
-        code 68 reads (bytes t0 to t63; t0 to t9 are no settings)."""
+        """What the logic reads: the Energy total, Safety (code 69's mode), the settings
+        code 68 reads (bytes t0 to t63; t0 to t9 are no settings) and Gates Open."""
         options = bytes(FIRST_SETTING) + bytes(self.settings[: SETTINGS - FIRST_SETTING])
         energy = self.amounts[START_ENERGY] + self.amounts[POOL_ENERGY]
-        return logic.Settings(energy, self.value(SAFETY), options)
+        gates_open = self.value(GATES) == GATES_OPEN
+        return logic.Settings(energy, self.value(SAFETY), options, gates_open)
 
     def checked(self) -> dict[int, int]:
         return {t: self.setting(t) for t in CHECKED}
@@ -370,10 +373,6 @@ def compress(items: list[int], needed: int, filler: Iterable[int]) -> list[int]:
         else:
             raise PoolError("not enough filler, and no ten Missile Containers or Mega Bombs left")
     return out
-
-
-def flagged(room: dict) -> bool:
-    return bool(data.START_TABLE[room["index"]][2])
 
 
 def tower(room: dict) -> bool:

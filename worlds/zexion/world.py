@@ -56,7 +56,6 @@ from .options import (
     RANDOM_START,
     SETTINGS,
     Amount,
-    Gates,
     Goal,
     Safety,
     StartRoom,
@@ -193,13 +192,6 @@ class ZexionWorld(World):
                 f"{who}: abridged_finale ends the game when Zexion is grabbed, so it cannot go "
                 f"with the OS Install Disks goal"
             )
-        if not self.disc_hunt and menu.value(custom.GATES) == Gates.option_off:
-            # The gates' key check never passes under Off (docs/re/memory.md, "Keys, the gates
-            # and the key markers"), and whether a gate closes the core is not known.
-            raise OptionError(
-                f"{who}: gates: off is not supported with the core goal yet: whether the "
-                f"disabled gates close the way to Zexion is not known"
-            )
         if not is_custom:
             return menu
         unsupported = []
@@ -236,13 +228,14 @@ class ZexionWorld(World):
     def double_teleport(self) -> bool:
         return bool(self.menu.setting(custom.DOUBLE_TELEPORT))
 
-    def reaches_the_door(self, room: dict) -> bool:
-        """With the core goal, whether every item reaches the core's door from this room and
-        passes the core's own lists on the way to Zexion (data.CORE)."""
+    def reaches_the_door(self, room: dict, second: dict | None = None) -> bool:
+        """With the core goal, whether every item reaches the core's door from this room (and
+        its second teleport target, as the logic counts it) and passes the core's own lists on
+        the way to Zexion (data.CORE)."""
         if self.disc_hunt:
             return True
         door = data.CELL_REGION[data.CORE["door"]]
-        every = self.seed_reach.every(room["cell"])
+        every = self.seed_reach.every_from(room, second)
         have = dict(self.seed_reach.every_item)
         return door in every.regions and all(
             logic.satisfied(entries, have, self.logic_settings, cell)
@@ -250,14 +243,17 @@ class ZexionWorld(World):
         )
 
     def partners(self, room: dict) -> list[dict]:
-        """With Double Teleport, the second teleport targets for this start: rooms that,
-        together with it, let the starting items reach at least reach.MIN_SPHERE_ZERO locations
-        (reach.second_starts), and with the core goal, from which or from the start every item
-        reaches the core's door."""
-        rooms = reach.second_starts(self.seed_reach, room["cell"], data.START_ROOMS)
+        """With Double Teleport, the second teleport targets for this start. The game draws one
+        of the other 33 rooms, flagged ones too, and judges the pair by its winnability check;
+        where that fails it offers PLAY ANYWAY, which Archipelago's fill cannot. So the world
+        draws among the rooms with which the pair suits the seed as ``passes`` judges a start:
+        with the start, the starting items collect a location (reach.second_starts), and with
+        the core goal every item reaches the core, the target counted as the logic counts it
+        (reach.second_counts)."""
+        rooms = reach.second_starts(self.seed_reach, room, data.START_ROOMS)
         if self.reaches_the_door(room):
             return rooms
-        return [other for other in rooms if self.reaches_the_door(other)]
+        return [other for other in rooms if self.reaches_the_door(room, other)]
 
     def passes(self, room: dict) -> bool:
         """Whether a start room suits the seed, as the game's START GAME judges one: its
@@ -265,8 +261,8 @@ class ZexionWorld(World):
         the core and Zexion, the world's part of the game's winnability check. From a room with
         one such location Archipelago's fill can fail (up to one time in four, solo, in tests):
         the owner chose the game's rule over a higher minimum, 2026-10-27 (docs/re/locations.md,
-        "Which start rooms the world offers"). With Double Teleport, the world's own rule for
-        the pair: ``partners``."""
+        "Which start rooms the world offers"). With Double Teleport, the same for the start and
+        a second teleport target: ``partners``."""
         if self.double_teleport:
             return bool(self.partners(room))
         return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_door(room)
@@ -314,10 +310,9 @@ class ZexionWorld(World):
         little filler, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as
         the game makes filler (custom.compress); that changes what the items reach, so it is
         worked out again."""
-        cells = [self.start["cell"]] + ([] if self.second is None else [self.second["cell"]])
         disks = self.options.os_install_disks.value if self.disc_hunt else 0
         while True:
-            every = self.seed_reach.every(*cells)
+            every = self.seed_reach.every_from(self.start, self.second)
             left_out = len(data.LOCATIONS) - len(every.locations)
             # With the disks, the pool's keys become Scrap Metal and Energy Shields give way too.
             spare = 0
@@ -358,8 +353,14 @@ class ZexionWorld(World):
         }
         self.multiworld.regions += [menu, *by_index.values()]
         menu.connect(by_index[cells[self.start["cell"]]], "Start")
-        if self.second is not None:
-            menu.connect(by_index[cells[self.second["cell"]]], "Second teleport target")
+        second = cells[self.second["cell"]] if self.second is not None else None
+        if second in by_index:
+            # The logic counts a flagged room only from a useful-item score of 27 (reach.py,
+            # second_counts); the pause menu's teleport itself is always there.
+            rule = rules.second_target(self) if reach.flagged(self.second) else None
+            menu.connect(by_index[second], "Second teleport target", rule)
+        if self.logic_settings.gates_open:
+            self.connect_gates(by_index)
 
         for (a, b), ways in data.ENTRANCES.items():
             if a not in self.created_regions or b not in self.created_regions:
@@ -406,6 +407,28 @@ class ZexionWorld(World):
             ZexionItem("Victory", ItemClassification.progression, None, self.player)
         )
         core.locations.append(goal)
+
+    def connect_gates(self, by_index: dict[int, Region]) -> None:
+        """Gates Open: once any gate cell counts as reached, the game's logic floods from the
+        three gate cells of logic.GATE_TARGETS too (reach.py, gates_triggered), so each gate
+        cell's region leads to theirs."""
+        cells = data.CELL_REGION
+        targets = [by_index[cells[c]] for c in logic.GATE_TARGETS if cells[c] in by_index]
+        for cell, as_location in logic.GATE_TRIGGERS:
+            source = by_index.get(cells[cell])
+            if source is None:
+                continue
+            rule = rules.gate_trigger(self, cell) if as_location else None
+            for target in targets:
+                if target is source:
+                    continue
+                entrance = source.connect(
+                    target, f"Gate from X{cell[1]} Y{cell[0]} to {target.name}", rule
+                )
+                if rule is not None:
+                    entries = data.LOCATION_RULES[reach.LOCATION_AT[cell]]
+                    for r in rules.neighbor_regions(entries, cell) & self.created_regions:
+                        self.multiworld.register_indirect_condition(by_index[r], entrance)
 
     def create_items(self) -> None:
         for code, count in self.start_inventory.items():

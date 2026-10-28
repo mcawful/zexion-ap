@@ -191,9 +191,9 @@ def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
 def mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double) -> list:
     """A mode's starts, each with the cells and locations every item reaches from it alone, and
     the locations its starting inventory reaches: the valid candidates, or for a mode with a
-    second teleport target (``double``) every candidate. The world picks a pair there and
-    combines two of these; flooding from both at once can only reach more (codes 64-67 look at
-    reached cells), so the combination is on the safe side."""
+    second teleport target (``double``) every candidate. The world picks the pair itself at
+    generation (worlds/zexion/reach.py, ``second_starts``); these lists are its tests'
+    oracle."""
     full = full_inventory(start_inv, pool)
     starts = []
     for cand in candidates:
@@ -424,7 +424,8 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
                 "cell": tuple(st["cell"]),
                 "column": st["column"],
                 "row": st["row"],
-                # Only a mode with a second teleport target picks a pair by these.
+                # A mode with a second teleport target: each start's own sphere 0, which
+                # the world's tests compare with reach.py's.
                 **({"sphere0_indices": st["sphere0_indices"]} if mode["double_teleport"] else {}),
             }
             for st in starts
@@ -463,15 +464,14 @@ def render(d: dict, source: str) -> str:
         "# The game's 154 locations, in the order of its location list: cell (a, b), X = b, Y = a.",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
         "",
-        "# A start room is offered when every item reaches all 154 locations from it and its",
-        "# mode's starting items at least this many (with a second teleport target, from it and",
-        "# the second together).",
+        "# The earlier rule for a start room, now the tests' oracle: every item reaches all 154",
+        "# locations from it and its mode's starting items at least this many.",
         f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
         "",
         "# Per mode, from its fresh save and the exe's preset ('menu'). 'regions' and",
         "# 'location_indices': what every item reaches from each of the mode's starts, the same",
         "# from all of them. A mode with a second teleport target lists every candidate, with",
-        "# 'sphere0_indices'. The world works these three out itself when a seed is generated",
+        "# its own 'sphere0_indices'. The world works these out itself when a seed is generated",
         "# (reach.py); its tests compare the results with them.",
         "MODES = {",
     ]
