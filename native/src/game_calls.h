@@ -315,6 +315,7 @@ public:
         if (scan_written()) return "the scanner's message is still the helper's";
         if (keys_branch_patched()) return "the pause screen's branch is still the helper's";
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
+        if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
         return nullptr;
     }
 
@@ -426,6 +427,7 @@ private:
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
     MapCursorNames map_names_;
+    SeenMarker seen_marker_;  // the on-screen square's write, in the labels' seed's save
     bool discs_told_ = true;
     MissionPrompt mission_;
     int mission_save_ = -1;  // *save_loaded when last watched (0 or 0xFF; -1: not yet)

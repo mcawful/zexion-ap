@@ -138,6 +138,7 @@ constexpr ConfigKey kConfigKeys[] = {
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
+    code("seen_marker_code", &G::seen_marker_code),
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
@@ -927,6 +928,10 @@ void* Game::map_original(void* child) const {
 
 void Game::watch_map_marks() {
     constexpr int kMapFrames = 15;
+    const bool seed = ap_items_.active() && labels_seed_loaded();
+    // The on-screen write goes back to the game's in the first frame the seed's save is not
+    // loaded: a plain randomizer game's Scrap Chunks are minors.
+    if (!seed) seen_marker_.watch(at_.seen_marker_code, false);
     if (!ap_items_.active()) {
         map_seed_passes_ = 0;
         return;
@@ -937,12 +942,15 @@ void Game::watch_map_marks() {
     // in play or in a menu, once it has read so on two passes in a row: during a load the
     // section may still be the last save's while the grid is the new one's (which the game then
     // saves). A player who pauses at once and opens the map sees them raised within ~32 frames.
-    if (!labels_seed_loaded()) {
+    if (!seed) {
         map_seed_passes_ = 0;
         return;
     }
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;
+    // Before the raise: an item on screen is then written with a major's class from the next
+    // frame on, and stays as raised.
+    seen_marker_.watch(at_.seen_marker_code, true);
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
 }
 
@@ -1175,6 +1183,7 @@ void Game::restore_ap_items() {
     looks_.restore(at_);  // the objects first, while their records are still ours
     looks_.set_items({});
     ap_items_.restore(at_.item_records, at_.sprite_texture, gl_, texture_check_);
+    seen_marker_.restore();  // no labels: no stand-ins
     set_popup_width(kGamePopupWidth);
     label_widths_.clear();
     item_labels_.clear();
