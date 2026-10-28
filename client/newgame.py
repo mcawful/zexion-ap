@@ -243,8 +243,37 @@ def paste_text(plan: sp.SeedPlan) -> str:
     settings code with nothing between them, as Copy->Clipboard writes them, since Paste reads
     the code from the character after the seed's 16th. Pasted, it sets the seed text, the
     items' states, the six amounts and every setting t10 to t73 at once (by the disassembly of
-    Copy and Paste; not yet run in game)."""
-    return check_menu(plan).seed_text + settings_code(plan.menu, plan.amounts)
+    Copy and Paste; not yet run in game). Refused for amounts the decoder would change, which
+    the ``expect`` lines would then refuse (``paste_keeps_amounts``)."""
+    menu = check_menu(plan)
+    if not paste_keeps_amounts(menu, plan.amounts):
+        raise NewGameError("the game's Paste would change this seed's amounts")
+    return menu.seed_text + settings_code(menu, plan.amounts)
+
+
+MENU_PLACES, MAX_ENERGY, MAX_AMMO, SECRET_SHUFFLE = 150, 40, 999, 37
+
+
+def paste_keeps_amounts(menu: sp.MenuSetup, amounts: tuple[int, ...]) -> bool:
+    """Whether the settings code's decoder (0x1465A0) keeps these amounts as they are: it caps
+    each Energy amount and their sum at 40 and each missile and bomb amount and its pair's sum
+    at 999 (0x147A53 to 0x147AFB), then lowers the pool missiles and bombs when their singles
+    and boxes, M // 10 + M % 10 + B // 10 + B % 10, are more than the free places: 150, plus
+    Start Keys (0 above 4), plus 1 with Secret Shuffle, less every entry set in the pool array
+    and the pool Energy (0x147B02 to 0x147C52). The menu itself allows ten per free place
+    (0xD2110), so a Custom seed can hold amounts the decoder lowers; its last clamp is that
+    limit again, which the world refuses beyond (worlds/zexion/custom.py, ``problems``)."""
+    start_e, pool_e, start_m, pool_m, start_b, pool_b = amounts
+    if start_e + pool_e > MAX_ENERGY or max(start_m + pool_m, start_b + pool_b) > MAX_AMMO:
+        return False
+    keys = sum(menu.settings[t - MENU_FIRST_SETTING] << i for i, t in enumerate(START_KEYS))
+    free = (
+        MENU_PLACES
+        + (keys if keys <= 4 else 0)
+        + menu.settings[SECRET_SHUFFLE - MENU_FIRST_SETTING]
+    )
+    free -= sum(1 for v in menu.pool if v) + pool_e
+    return sum(divmod(pool_m, 10)) + sum(divmod(pool_b, 10)) <= free
 
 
 def randomizer_message(plan: sp.SeedPlan, mode: str) -> list[str]:

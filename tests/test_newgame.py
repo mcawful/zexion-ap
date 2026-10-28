@@ -342,3 +342,22 @@ def test_the_randomizer_message_puts_the_paste_text_on_a_line_of_its_own() -> No
     )
     assert text == "0123456789ABCDEFFCCgBLLBBBBBLcJcPcNcNcNmVLFBjFBBQB"
     assert steps.startswith("Or, without pasting, pick Standard mode, set Safety")
+
+
+@pytest.mark.parametrize(
+    ("amounts", "kept"),
+    [
+        ((3, 17, 0, 990, 0, 0), True),  # 99 + 0 singles and boxes, of 107 free places
+        ((3, 17, 0, 999, 0, 0), False),  # 99 + 9: the decoder would lower it to 989
+        ((3, 17, 0, 500, 0, 75), True),  # 50 + 0 + 7 + 5
+        ((3, 17, 0, 509, 0, 498), False),  # 50 + 9 + 49 + 8 = 116
+        ((4, 37, 0, 0, 0, 0), False),  # Energy above 40 together
+        ((3, 17, 500, 500, 0, 0), False),  # missiles above 999 together
+    ],
+)
+def test_paste_is_held_back_where_the_decoder_would_change_the_amounts(amounts, kept) -> None:
+    # Standard's items and Energy leave 150 - 26 pooled - 17 = 107 free places (0x147B02 on).
+    standard = preset_plan("standard")
+    p = plan(options=standard.options, amounts=amounts, menu=standard.menu)
+    assert ng.paste_keeps_amounts(p.menu, amounts) is kept
+    assert len(ng.randomizer_message(p, "custom")) == (3 if kept else 1)

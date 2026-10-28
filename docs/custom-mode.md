@@ -317,7 +317,10 @@ include Starting Location as the world's start room, so START GAME tries only th
 client writes the start over it anyway. Colorizer (t12), which ARCHIPELAGO leaves as the player
 set it, comes out off (no option sets it), and the player may turn it on after pasting: the
 mode check ignores it. Below the line, the message still lists what to set by hand: the items,
-Start Keys, amounts and checked settings (`randomizer_steps`). The seed text is optional either
+Start Keys, amounts and checked settings (`randomizer_steps`). For a Custom seed whose pool
+missiles and bombs Paste's decoder would lower (the menu allows ten per free place, the decoder
+counts the singles too: `re/randocells.md`, "The settings code"), the client prints those
+steps alone, since a pasted game would fail the checks (`paste_keeps_amounts`). The seed text is optional either
 way (the owner's decision, 2026-10-27): the line carries the seed's own, since Paste needs 16
 characters before the code, and nothing depends on the player keeping it.
 Either way the game's placement runs from the text the menu holds, and the client then writes
