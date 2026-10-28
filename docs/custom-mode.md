@@ -317,7 +317,9 @@ include Starting Location as the world's start room, so START GAME tries only th
 client writes the start over it anyway. Colorizer (t12), which ARCHIPELAGO leaves as the player
 set it, comes out off (no option sets it), and the player may turn it on after pasting: the
 mode check ignores it. Below the line, the message still lists what to set by hand: the items,
-Start Keys, amounts and checked settings (`randomizer_steps`), with the seed text optional.
+Start Keys, amounts and checked settings (`randomizer_steps`). The seed text is optional either
+way (the owner's decision, 2026-10-27): the line carries the seed's own, since Paste needs 16
+characters before the code, and nothing depends on the player keeping it.
 Either way the game's placement runs from the text the menu holds, and the client then writes
 the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27,
 after two RANDOMIZER games of one seed showed the same items under different seed texts), so

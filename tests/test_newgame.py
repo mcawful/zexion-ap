@@ -337,5 +337,8 @@ def test_the_randomizer_message_puts_the_paste_text_on_a_line_of_its_own() -> No
     p = preset_plan("standard")
     first, text, steps = ng.randomizer_message(p, "standard")
     assert "choose RANDOMIZER" in first and "Paste from Clipboard" in first
+    assert first.endswith(
+        "the seed, which is optional: the new game gets this seed's text whatever the menu shows."
+    )
     assert text == "0123456789ABCDEFFCCgBLLBBBBBLcJcPcNcNcNmVLFBjFBBQB"
     assert steps.startswith("Or, without pasting, pick Standard mode, set Safety")

@@ -249,7 +249,10 @@ def paste_text(plan: sp.SeedPlan) -> str:
 def randomizer_message(plan: sp.SeedPlan, mode: str) -> list[str]:
     """The client's lines for starting this seed from RANDOMIZER: the text to paste, on a line
     of its own (a click on a line in AP's client window copies it), and the menu to set by
-    hand as the fallback; the steps alone if the seed's menu state has no code."""
+    hand as the fallback; the steps alone if the seed's menu state has no code. The seed text
+    is optional either way (the owner's decision, 2026-10-27): ``plan_text`` writes the seed's
+    text and hash over the new game's. Paste still needs 16 characters before the code, so the
+    line carries the seed's own."""
     steps = randomizer_steps(plan, mode)
     start = (
         "To play, load this seed's save, or start a new game: in an empty slot choose RANDOMIZER"
@@ -260,7 +263,8 @@ def randomizer_message(plan: sp.SeedPlan, mode: str) -> list[str]:
         return [f"{start}, {steps}, and START GAME."]
     return [
         f"{start}, copy the next line (in the client's window, click it), press the menu's "
-        "Paste from Clipboard, and START GAME:",
+        "Paste from Clipboard, and START GAME. Its first 16 characters are the seed, which is "
+        "optional: the new game gets this seed's text whatever the menu shows.",
         paste,
         f"Or, without pasting, {steps}, and START GAME.",
     ]
