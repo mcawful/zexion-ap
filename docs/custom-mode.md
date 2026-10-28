@@ -4,7 +4,7 @@
 build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
 `world.py`), with Secret Shuffle on refused until step E's second part, and starting Mega
-Bombs until the client can give them; Guns First off is built (step E, not yet run in game).
+Bombs until the client can give them; Guns First off is built and working in game (step E, 2026-10-28).
 This page set out how the YAML offers every setting of the game's own randomizer, following
 the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
@@ -484,7 +484,7 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    "for the sake of AP"): a flagged second target only when it counts from the start, and no
    gate travel from R'Talva's gate (ranks 11 and 12).
 6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14). **Guns First off built,
-   2026-10-28; not run in game yet:** the five upgrades as items of their own (`items.py`,
+   2026-10-28, and working in game (below):** the five upgrades as items of their own (`items.py`,
    codes 9, 10, 12, 14 and 15, named as the game names them), the logic's redirects only with
    Guns First (`logic.collect`, `logic.Settings.guns_first`), the pool and starting items
    without the swap or the upgrade-as-gun (`custom.pool_items`, `starting_items`), and the
@@ -495,7 +495,15 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    than once in the starting items (`starting.problems`). Found on the way, by disassembly:
    in play an upgrade is always handed out as itself, and an owned gun turns into its upgrade
    at pickup by the menu's Guns First byte, not the save's (`re/randocells.md`, "The evaluator
-   works on a table of 64 counts"). Secret Shuffle is next.
+   works on a table of 64 counts"). **In game** (B1, 2026-10-28, a Custom seed with Guns
+   First off and Random Gun off, through the client and the helper): the start held the
+   Machine Gun and the Pentashot and no Force Blaster; RANDO SETTINGS showed Guns First
+   off; the Tunneler and the Pulse Wave picked up without their guns each set only its
+   own byte, as did the Pulse Wave picked up again after a reload with the Force Blaster
+   owned; a Force Blaster and a Plasma Burst sent from the server's console each set only
+   its own byte, with popups naming them; after the reload the client gave back what the
+   save lost and left the Pulse Wave, its location uncollected again, in its room (read
+   with `grant.py show`). Secret Shuffle is next.
 
 ## Open questions for the owner
 
