@@ -52,10 +52,10 @@
 // screen's code typed since the game started) there is a fifth panel of 5, and the game moves the
 // title up 8 (lines at y 8, 24 and 40) and the rows up 16, so the last line stays blank and free
 // (read live, 2026-10-28). By disassembly the rows can also be shorter: 6 or 7 on top, 5 to 7
-// below (not seen). And in a game that has never reached Ending B, which an AP ending does not
+// below (6 and 5 seen, 2026-10-28). And in a game that has never reached Ending B, which an AP ending does not
 // reach, the title is a hint instead, COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!,
 // on the upper two lines of a label 8 lower (y 24, 40 and 56): the helper writes FEATS OF NATU!
-// and the note over it, and puts the hint back on an unload (by disassembly, not seen)
+// and the note over it (working in game, 2026-10-28), and puts the hint back on an unload
 // (docs/re/memory.md, "Feats and achievements").
 #pragma once
 

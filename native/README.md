@@ -669,7 +669,7 @@ closed, gone with it open.
     ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the blank last line of its title label,
     under FEATS OF NATU! (`feats_screen_note`). It writes only on that screen as it follows an
     ending: the top menu with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7,
-    or by disassembly 6 on top and 5 or 6 below when the game hides some), a live title widget
+    or 6 on top and 5 or 6 below when the game hides some: 6 and 5 seen), a live title widget
     whose label is three equal lines (the middle one naming NATU), and MISSION COMPLETE's
     statistics under it: a panel of 10 lines and, seen after an ending in a seed with Allow
     Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the game
@@ -688,8 +688,9 @@ closed, gone with it open.
       there either way, by disassembly). It keeps the hint's letters and puts them back when it
       unloads, if the label still reads as it wrote it. It writes only if every glyph takes
       text and the hint names EXPANDED ENDING; the game's other hints (`docs/re/memory.md`;
-      when each shows is not decoded) are left alone, with no note. By disassembly and stand-in
-      tests only: the hint has not been seen in game.
+      when each shows is not decoded) are left alone, with no note. Working in game,
+      2026-10-28 (a fresh save folder: FEATS OF NATU! and the note on the lower two lines, over
+      rows of 6 and 5); putting the hint back on an unload is in stand-in tests only.
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
       the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
       ends when a save is loaded, or when the screen has come and gone. It looks every 8th
@@ -770,16 +771,19 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
   ASSISTS USED;
 - 2026-10-28, with the secret row's change (an Abridged Finale AP save, no client): the note
   shown over the secret row, and, after a restart with no code typed, in the usual layout;
-  flag 251 clear and `GameUnlocks.sav` unchanged both times.
+  flag 251 clear and `GameUnlocks.sav` unchanged both times;
+- 2026-10-28, with the hint's change, in a fresh save folder (no Ending B, no Feats on record)
+  and the same save: FEATS OF NATU! and the note in place of the hint, over rows of 6 and 5;
+  flag 251 clear, and `GameUnlocks.sav` given no Feat, no Ending A or B entry and no `+0xCE00A8`.
 
 Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over shorter rows (by disassembly and stand-in tests only);
-- the hint at the title replaced by FEATS OF NATU! and the note (by disassembly and stand-in
-  tests only).
+- the note over a bottom row of 6, and the hint replaced on the upper two lines (with the secret
+  row) (by disassembly and stand-in tests only);
+- the hint put back on an unload (stand-in tests only).
 
 ## Building
 
