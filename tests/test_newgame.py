@@ -14,9 +14,10 @@ MENU_SIZE = 0x114  # the randomizer menu's state (native/src/requests.h, kMenuSi
 
 
 def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> list[str]:
-    """Apply an ap_newgame request to a save's section (and its menu lines to `menu`), as the
-    helper does; the failed expectations, if any."""
-    lines = text.splitlines()
+    """Apply an ap_newgame request to a save's section (and its menu lines to `menu`, if
+    given), as the helper does without running a placement; the failed expectations, if any.
+    The identify lines are the helper's to check (``identify``)."""
+    lines = [line for line in text.splitlines() if line != "choice"]
     assert lines[0] == "ap_newgame"
     failed = []
     for line in lines[1:]:
@@ -25,8 +26,7 @@ def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> lis
         raw = bytes.fromhex(data)
         if op == "expect" and save[at : at + len(raw)] != raw:
             failed.append(offset)
-        if op == "menu":
-            assert menu is not None, "menu lines without a menu"
+        if op == "menu" and menu is not None:
             start = int(offset, 0)
             assert start + len(raw) <= MENU_SIZE
             menu[start : start + len(raw)] = raw
@@ -151,8 +151,38 @@ def test_a_one_start_mode_carries_no_start_table() -> None:
 
 def test_the_randomizer_path_writes_the_second_targets_flag_too() -> None:
     lines = ng.plan_text(ohko(), B1, offer_choice=False).splitlines()
-    assert not any(line.startswith(("menu", "start_table")) for line in lines)
     assert f"write {ng.section(sp.SECOND_START):#x} 020086000f0001" in lines
+
+
+def identify(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.startswith("identify")]
+
+
+@pytest.mark.parametrize("offer", [True, False])
+def test_every_plan_identifies_the_seed_by_its_text_and_places_it(offer) -> None:
+    p = plan()
+    text = ng.plan_text(p, offer_choice=offer)
+    assert identify(text) == [f"identify {ng.section(sp.SEED_TEXT):#x} {b'0123456789ABCDEF'.hex()}"]
+    assert any(line.startswith("menu ") for line in text.splitlines()), "the seed's settings"
+    assert ("choice" in text.splitlines()) is offer, "ARCHIPELAGO offered only with the choice"
+
+
+def test_a_randomizer_plan_leaves_the_start_table_to_the_game() -> None:
+    # RANDOMIZER is the fallback when the game's table differs from the seed's, or was never
+    # measured on this build: the game's own, built when the menu opened, is used.
+    for build in (B1, "ab" * 32):
+        lines = ng.plan_text(ohko(), build, offer_choice=False).splitlines()
+        assert not any(line.startswith("start_table") for line in lines)
+        assert any(line.startswith("menu ") for line in lines)
+    with pytest.raises(ng.NewGameError, match="no start table"):
+        ng.plan_text(ohko(), "ab" * 32)
+
+
+def test_the_randomizer_message_asks_for_the_seed_alone() -> None:
+    assert ng.randomizer_message(plan()) == (
+        "in an empty slot choose RANDOMIZER, enter the seed 0123 4567 89AB CDEF (the menu's "
+        "other settings don't matter: the seed's own are used), and START GAME"
+    )
 
 
 @pytest.mark.parametrize(
@@ -191,36 +221,6 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
 def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
     with pytest.raises(ng.NewGameError, match=why):
         ng.plan_text(plan(**changes))
-
-
-def test_randomizer_steps_name_a_presets_safety() -> None:
-    p = plan(options={10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 1, 43: 0, 72: 0, 73: 1})
-    assert ng.randomizer_steps(p, "easy") == (
-        "pick Easy mode, set Safety Early and change no other options (the seed, optional: "
-        "0123 4567 89AB CDEF)"
-    )
-
-
-def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings() -> None:
-    options = {10: 1, 30: 1, 31: 0, 32: 1, 33: 0, 37: 0, 42: 0, 43: 1, 72: 1, 73: 1}
-    settings = bytearray(64)
-    settings[34 - 10] = settings[35 - 10] = 1  # Start Keys 3
-    menu = menu_setup(
-        start=bytes([0] * 3 + [1] + [1, 1] + [0] * 21),
-        pool=bytes([1] * 4 + [0, 1] + [1] * 18 + [0] + [1] * 2),
-        settings=bytes(settings),
-    )
-    p = plan(options=options, amounts=(6, 20, 25, 200, 0, 30), menu=menu)
-    steps = ng.randomizer_steps(p, "custom")
-    assert steps.startswith(
-        "set Custom, first the items (Starting Item: Machine Gun; Random: Navcore, Force "
-        "Blaster; Excluded: Power Core; the rest in the Item Pool) and Start Keys 3"
-    )
-    assert "then Starting Items 6 Energy Tanks, 25 missiles, 0 Mega Bombs" in steps
-    assert "Item Pool 20, 200, 30" in steps
-    for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
-        assert part in steps
-    assert steps.endswith("Safety Normal, Gates Open (the seed, optional: 0123 4567 89AB CDEF)")
 
 
 @pytest.mark.parametrize("text", ["6d03fb8f34d40bca", "6D03FB8F34D40BC", "6D03FB8F34D40BCG"])

@@ -3,9 +3,7 @@
 When the player starts a new randomizer game, the game builds the new game, and writes its
 first save, from the randomizer section in memory (``+0xCDD6D0``): the item table, the start,
 the starting items and amounts (docs/re/memory.md, "Starting a new game"). The helper writes
-the edits built here into that section just before, so the new game holds the AP seed; it
-first checks that the section holds the seed's amounts and the settings the logic reads
-(``expect``), as ``save_patch.check_mode`` does for a save file.
+the edits built here into that section just before, so the new game holds the AP seed.
 
 The starting items have to be expressed the way the new-game routine reads them:
 - most upgrades as entries of the 27-byte start-with array (1 = start with it);
@@ -19,12 +17,21 @@ Anything else (filler, other key sets, more than 9 containers or Mega Bombs) can
 expressed: ``NewGameError``. The world refuses such starting items in generation
 (worlds/zexion/starting.py), so the client meeting one is a bug to report.
 
-With ``offer_choice`` (ARCHIPELAGO) the request also carries ``menu`` lines, the randomizer
-menu's state as the seed's settings (its mode's, or Custom's), which the helper sets around the
-game's placement
-(docs/re/memory.md, "The game-mode panel"), and what START GAME's skipped first step would
-write: the second target, or for Double Teleport (OHKO) the start table the placement reads,
-used only on the build it was measured on.
+The helper runs the game's placement itself with the randomizer menu set to the seed's
+settings (its mode's, or Custom's: the ``menu`` lines), checks that the section then holds the
+seed's amounts and the settings the logic reads (``expect``, as ``save_patch.check_mode`` does
+for a save file), and writes the AP seed over it. So the new game is the game's own for the
+seed's text, settings and start, down to the Hints' map rectangles, which the placement draws
+from where its random numbers ended (docs/re/randocells.md, "What each setting does in the
+game"). The request also carries what START GAME's skipped first step would write: the second
+target, or for Double Teleport (OHKO) the start table the placement reads, used only on the
+build it was measured on (docs/re/memory.md, "The game-mode panel"). Two ways in:
+
+- with ``offer_choice``, the ``choice`` line: ARCHIPELAGO on the game-mode panel;
+- always, the ``identify`` line: a new game the player starts from RANDOMIZER with the seed's
+  text typed in is placed again as the seed, whatever else the player's menu holds. Its plan
+  carries no start table: the game's own, built when the menu opened, is used, as its START
+  GAME uses it (ARCHIPELAGO falls back to RANDOMIZER when the two differ).
 
 Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
 start (``save_patch.SECTION``).
@@ -87,8 +94,8 @@ def start_with(start_items: dict[int, int]) -> tuple[bytes, dict[int, int]]:
 
 def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = True) -> str:
     """The helper's ``ap_newgame`` request for this seed, in the game build whose exe has the
-    SHA-256 ``build_sha256``. With ``offer_choice`` it carries the
-    ARCHIPELAGO choice's lines too; without, the seed is started from RANDOMIZER."""
+    SHA-256 ``build_sha256``. With ``offer_choice`` ARCHIPELAGO is offered too; without, the
+    seed is started from RANDOMIZER only."""
     if len(plan.location_items) != ids.LOCATIONS:
         raise NewGameError(f"the seed lists {len(plan.location_items)} locations")
     seed_text = plan.menu.seed_text
@@ -97,7 +104,10 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     array, start = start_with(plan.start_items)
     table = start_table(plan, build_sha256)
     lines = ["ap_newgame"]
-    # The new game must be the seed's: its amounts and the settings the logic reads.
+    # A RANDOMIZER new game is this seed's when the player typed in its text.
+    lines.append(f"identify {section(sp.SEED_TEXT):#x} {seed_text.encode('ascii').hex()}")
+    # After the seed's placement the section must hold its amounts and the settings the logic
+    # reads.
     lines.append(f"expect {section(sp.AMOUNTS):#x} {struct.pack('<6h', *plan.amounts).hex()}")
     for t, value in sorted(plan.options.items()):
         lines.append(f"expect {section(sp.OPTIONS + t):#x} {value:02x}")
@@ -124,8 +134,9 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
         )
     for bit, t in enumerate(START_KEY_OPTIONS):
         lines.append(f"write {section(sp.OPTIONS + t):#x} {(start['keys'] >> bit) & 1:02x}")
+    lines += menu_lines(plan, table if offer_choice else None, need_table=offer_choice)
     if offer_choice:
-        lines += menu_lines(plan, table)
+        lines.append("choice")
     return "\n".join(lines)
 
 
@@ -155,12 +166,14 @@ def start_table(plan: sp.SeedPlan, build_sha256: str) -> tuple[tuple[int, int, i
     return table
 
 
-def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None) -> list[str]:
-    """The ARCHIPELAGO choice's lines: the menu's state as the seed's settings, and what START
+def menu_lines(
+    plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None, need_table: bool = True
+) -> list[str]:
+    """The seed's placement's lines: the menu's state as the seed's settings, and what START
     GAME's skipped first step would write: in a mode with one start, the menu setup's second
     target and 0 after it; with a second teleport target, the start table the placement reads
     (``plan_text`` writes the second start and its flag), which the helper fills in if the
-    menu never built it."""
+    menu never built it. Without ``need_table`` a missing table is left to the game's own."""
     menu = plan.menu
     if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
         raise NewGameError(f"the seed text {menu.seed_text!r} is not 16 hex digits")
@@ -174,9 +187,11 @@ def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None
             raise NewGameError(f"the menu's setting {t} is not the seed's")
     lines = []
     if plan.second_start is not None:
-        if table is None:
+        if table is not None:
+            rooms = b"".join(struct.pack("<hhB", *room) for room in table)
+            lines.append(f"start_table {rooms.hex()}")
+        elif need_table:
             raise NewGameError("no start table measured on this game build")
-        lines.append(f"start_table {b''.join(struct.pack('<hhB', *room) for room in table).hex()}")
     else:
         target = menu.second_target
         if target is None:
@@ -196,70 +211,12 @@ def menu_lines(plan: sp.SeedPlan, table: tuple[tuple[int, int, int], ...] | None
     ]
 
 
-# What the RANDOMIZER menu must hold for the expect lines to pass: the settings the logic reads,
-# by their menu labels (docs/re/randocells.md, "The randomizer menu's settings").
-ON_OFF_LABELS = {
-    10: "Guns First", 30: "X Crystals", 31: "X Blocks", 32: "Abridged Finale",
-    33: "Double Teleport", 37: "Secret Shuffle",
-}  # fmt: skip
-SAFETY, GATES = (
-    ((42, 43), ("Light", "Early", "Normal", "Off")),
-    ((72, 73), ("Off", "Vanilla", "Unlocked", "Open")),
-)
-PRESETS = {"easy": "Easy", "standard": "Standard", "ohko": "OHKO"}
-
-
-# The menu's 27 items, by the first screen's names, in START_WITH_ORDER's order.
-ITEM_LABELS = (
-    "Slide Mod", "Wall Jump Boots", "Marine Jets", "Navcore", "Machine Gun", "Force Blaster",
-    "Snake", "Lance", "Arc Plasma", "Rocket Slide", "Jump Booster", "Phaser", "S-Blade",
-    "Pulse Wave", "Pentashot", "Tunneler", "Focal Crystal", "Plasma Burst", "G-Diffuser",
-    "Gravity Harness", "Zenith Thrusters", "Magnus Armor", "Power Cartridge", "Power Chip",
-    "Power Core", "Javelin Missiles", "X-Missile",
-)  # fmt: skip
-START_KEYS = (34, 35, 36)
-
-
-def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
-    """How to set RANDOMIZER's menu for this seed, for a player starting it by hand: a preset
-    with its Safety (the one checked setting a preset may change), or for Custom the six
-    amounts and every checked setting, and first the items' states and Start Keys, which the
-    menu's limits on the pool missiles and Mega Bombs depend on (docs/re/randocells.md, "The
-    randomizer menu's first screen: items and amounts"). The rest is not checked: the client
-    writes the seed's own starting items and item table over the game's."""
-
-    def value(bits: tuple[int, ...], labels: tuple[str, ...]) -> str:
-        return labels[sum(plan.options.get(t, 0) << i for i, t in enumerate(bits))]
-
-    safety = f"Safety {value(*SAFETY)}"
+def randomizer_message(plan: sp.SeedPlan) -> str:
+    """How to start this seed from RANDOMIZER: the seed's text is all the menu needs, since
+    the helper places the new game again with the seed's settings."""
     text = plan.menu.seed_text
-    # Optional: the client writes the seed's text over the menu's (plan_text); typed in, the
-    # game's own placement runs from it too, as ARCHIPELAGO's does (the Hints' rectangles).
-    seed = f" (the seed, optional: {' '.join(text[i : i + 4] for i in range(0, len(text), 4))})"
-    if mode in PRESETS:
-        return f"pick {PRESETS[mode]} mode, set {safety} and change no other options{seed}"
-    menu = plan.menu
-    states: dict[tuple[int, int], list[str]] = {}
-    for label, start, pool in zip(ITEM_LABELS, menu.start, menu.pool, strict=True):
-        states.setdefault((start, pool), []).append(label)
-    groups = [
-        f"{name} {', '.join(states[key])}"
-        for key, name in (((1, 0), "Starting Item:"), ((1, 1), "Random:"), ((0, 0), "Excluded:"))
-        if states.get(key)
-    ]
-    items = "; ".join(groups) or "every item in the Item Pool"
-    keys = sum(menu.settings[t - MENU_FIRST_SETTING] << i for i, t in enumerate(START_KEYS))
-    a = plan.amounts
-    amounts = (
-        f"Starting Items {a[0]} Energy Tanks, {a[2]} missiles, {a[4]} Mega Bombs; Item Pool "
-        f"{a[1]}, {a[3]}, {a[5]}"
-    )
-    settings = [
-        f"{label} {'on' if plan.options.get(t) else 'off'}" for t, label in ON_OFF_LABELS.items()
-    ]
-    settings += [safety, f"Gates {value(*GATES)}"]
+    words = " ".join(text[i : i + 4] for i in range(0, len(text), 4))
     return (
-        f"set Custom, first the items ({items}; the rest in the Item Pool) and Start Keys {keys} "
-        f"(the menu limits the amounts by them), then {amounts}; Edit Options: "
-        f"{', '.join(settings)}{seed}"
+        f"in an empty slot choose RANDOMIZER, enter the seed {words} (the menu's other "
+        "settings don't matter: the seed's own are used), and START GAME"
     )

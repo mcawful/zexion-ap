@@ -490,7 +490,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 if offer:
                     logger.info(
                         "This seed can't be started with ARCHIPELAGO, so start it from "
-                        "RANDOMIZER (see the next message)."
+                        "RANDOMIZER (see below)."
                     )
                     continue
                 conn.newgame = state.NewGame.UNAVAILABLE
@@ -518,8 +518,8 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             )
         else:
             logger.info(
-                "To play, load this seed's save, or start a new game: in an empty slot "
-                f"choose RANDOMIZER, {newgame.randomizer_steps(plan, conn.mode)}, and START GAME."
+                "To play, load this seed's save, or start a new game: "
+                f"{newgame.randomizer_message(plan)}."
             )
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
@@ -533,19 +533,21 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         conn.newgame = None  # arm again for the next try
         why = status[len("refused ") :]
         log.warning(f"No new game with the AP seed: {why}.")
-        if why.startswith("the new game is not the seed's mode"):  # RANDOMIZER's START GAME
+        if why.startswith("the new game is not this seed"):  # RANDOMIZER's START GAME
             logger.warning(
-                "That new game isn't this seed (other amounts or settings), so it plays "
-                "as an ordinary randomizer game. Start another in an empty slot."
+                "That new game isn't this seed (another seed in the menu), so it plays as an "
+                "ordinary randomizer game. To play this seed, "
+                f"{newgame.randomizer_message(conn.plan)}."
             )
         elif "start table" in why:
             conn.choice_refused = True  # the game's own table differs: RANDOMIZER from now on
             logger.warning(
-                "ARCHIPELAGO couldn't start this seed, so start it from RANDOMIZER (see the next "
-                "message)."
+                "ARCHIPELAGO couldn't start this seed, so start it from RANDOMIZER (see below)."
             )
         else:
-            logger.warning("ARCHIPELAGO couldn't start this seed; try again in an empty slot.")
+            logger.warning(
+                "That new game couldn't be made this seed; start another in an empty slot."
+            )
     elif status == "idle":
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
 

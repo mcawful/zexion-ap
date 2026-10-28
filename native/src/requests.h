@@ -52,16 +52,20 @@ struct StartRoom {
     uint8_t flag;
 };
 
-// What an AP new game needs: the section must already hold `expect` (the seed's amounts and
-// checked settings), and
-// then gets `write` (the AP item table, start, starting items, seed text and hash). `menu` (offsets into the
-// randomizer menu's state) sets the menu up as the seed's settings for the ARCHIPELAGO choice;
-// without it the choice is not offered and only a RANDOMIZER game started by hand gets the
-// plan.
+// What an AP new game needs. `identify`: what the section of a new game the player started
+// from RANDOMIZER must hold to be this seed (its seed text). `menu` (offsets into the
+// randomizer menu's state) sets the menu up as the seed's settings for the game's placement,
+// which the helper runs itself: for the ARCHIPELAGO choice, offered only with `choice`, and
+// again over a matching RANDOMIZER game's own. After the seed's placement the section must hold
+// `expect` (the seed's amounts and checked settings), and then gets `write` (the AP item table,
+// start, starting items, seed text and hash). Without `menu`, a RANDOMIZER game is checked
+// against `expect` as the player's placement made it.
 struct NewGamePlan {
+    std::vector<SectionBytes> identify;
     std::vector<SectionBytes> expect;
     std::vector<SectionBytes> write;
     std::vector<SectionBytes> menu;
+    bool choice = false;
     // The menu's start table as it builds it when it opens; for a mode with Double Teleport,
     // whose placement reads it. Filled in before the placement if the menu has not built it.
     std::vector<StartRoom> start_table;
@@ -72,10 +76,12 @@ constexpr size_t kStartTableMax = 64;  // the rooms the menu's builder allows
 constexpr size_t kSectionSize = 0x908;
 constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game saves it
 
-// "ap_newgame" followed by lines "expect OFFSET HEX", "write OFFSET HEX" (in the section) and
-// "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex, HEX an even number of hex
-// digits; every range must lie inside its block. Also "start_table HEX": 5 bytes per room
-// (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x 54 map, flags 0 or 1.
+// "ap_newgame" followed by lines "identify OFFSET HEX", "expect OFFSET HEX", "write OFFSET
+// HEX" (in the section) and "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex,
+// HEX an even number of hex digits; every range must lie inside its block. Also "start_table
+// HEX": 5 bytes per room (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x
+// 54 map, flags 0 or 1; and "choice" alone, which needs menu lines. Menu lines need identify
+// lines.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in

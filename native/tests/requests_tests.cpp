@@ -75,6 +75,26 @@ void test_newgame_parser() {
           "an offset whose end wraps around is refused");
     check(!zap::parse_newgame("ap_newgame\nexpect 0x10 00", bad).empty(), "nothing to write");
     check(!zap::parse_newgame("ap_newgame\npoke 0x10 00", bad).empty(), "unknown lines");
+    zap::NewGamePlan full;
+    check(zap::parse_newgame("ap_newgame\nidentify 0x658 4142\nwrite 0x10 00\nmenu 0x88 03\nchoice",
+                             full)
+                  .empty() &&
+              full.identify.size() == 1 && full.identify[0].offset == 0x658 && full.choice &&
+              full.menu.size() == 1,
+          "identify lines and choice");
+    zap::NewGamePlan no_identify;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nmenu 0x88 03", no_identify).empty(),
+          "menu lines without identify lines are refused");
+    zap::NewGamePlan no_menu;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nidentify 0x658 41\nchoice", no_menu)
+               .empty(),
+          "choice without menu lines is refused");
+    zap::NewGamePlan extra;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nchoice now", extra).empty(),
+          "choice takes nothing after it");
+    zap::NewGamePlan past;
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nidentify 0x907 0000", past).empty(),
+          "an identify past the section is refused");
 }
 
 void test_popup_text_breaks_before_the_sender() {

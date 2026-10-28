@@ -158,7 +158,15 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
             }
             continue;
         }
-        if (op != "expect" && op != "write" && op != "menu") return "unknown line " + line;
+        if (op == "choice") {
+            std::string extra;
+            if (words >> extra) return "bad line " + line;
+            out.choice = true;
+            continue;
+        }
+        if (op != "identify" && op != "expect" && op != "write" && op != "menu") {
+            return "unknown line " + line;
+        }
         uint64_t offset = 0;
         SectionBytes edit;
         size_t room = op == "menu" ? kMenuSize : kSectionSize;
@@ -167,10 +175,16 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
             return "bad line " + line;
         }
         edit.offset = static_cast<uint16_t>(offset);
-        (op == "expect" ? out.expect : op == "write" ? out.write : out.menu)
+        (op == "identify" ? out.identify
+         : op == "expect" ? out.expect
+         : op == "write"  ? out.write
+                          : out.menu)
             .push_back(std::move(edit));
     }
     if (out.write.empty()) return "nothing to write";
+    if (out.choice && out.menu.empty()) return "choice without menu lines";
+    // Menu lines place the seed over a RANDOMIZER game: only over one that is this seed.
+    if (!out.menu.empty() && out.identify.empty()) return "menu lines without identify lines";
     return "";
 }
 

@@ -120,8 +120,10 @@ public:
     std::string newgame_status() const;
 
     // Game thread, every frame: applies an armed plan when a randomizer new game is queued and
-    // its timer has more than one frame left. A section that does not hold the plan's
-    // `expect` bytes (another mode) is left as the game made it, and the plan is dropped.
+    // its timer has more than one frame left. One the player started from RANDOMIZER must hold
+    // the plan's `identify` bytes (the seed text); with menu lines it is then placed again as
+    // the seed (place_seed), else checked against `expect`. A section that does not match is
+    // left as the game made it, and the plan is dropped.
     void watch_newgame();
 
     // Game thread, each frame call (dllmain.cpp, until an unload begins), if configured: every
@@ -157,8 +159,8 @@ public:
     void watch_assists();
     void restore_assists();
 
-    // Game thread, from ARCHIPELAGO's callback: runs the game's placement with the menu set to
-    // the seed's settings, checks `expect`, writes the plan over it and queues the new game
+    // Game thread, from ARCHIPELAGO's callback: places the seed (place_seed) and queues the
+    // new game
     // (watch_newgame reports "applied slot N" next frame). Anything off: "refused <why>", the
     // plan dropped, nothing queued.
     void start_archipelago(WidgetCallback callback);
@@ -401,6 +403,10 @@ private:
     // The start table: filled from the plan if the game has not built it, or checked against
     // it. Returns "" or why not.
     std::string ensure_start_table();
+    // The seed's placement: the start table ensured, the menu set to the seed's settings and the
+    // plan written, the game's placement run, the player's menu put back (however it ends);
+    // then, if the section holds `expect`, the plan written over it. Returns "" or why not.
+    std::string place_seed();
     ScanText scan_;
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;

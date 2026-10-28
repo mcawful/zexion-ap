@@ -303,6 +303,66 @@ void test_newgame_watch() {
     check(game.newgame_status() == "idle", "disarming");
 }
 
+// A new game the player started from RANDOMIZER, with a plan that has menu lines: identified by
+// its seed text, then placed again as the seed (the menu set to its settings), as ARCHIPELAGO
+// places it, and the plan written over it.
+void test_randomizer_by_seed() {
+    zap::Game game;
+    ready(game);
+    const std::string request =
+        "ap_newgame\nidentify 0x658 4142\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\n"
+        "write 0x310 110022\nmenu 0x88 0300";
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame(request, plan).empty() && !plan.choice, "parses a RANDOMIZER plan");
+    auto started = [](const char* seed_text, uint8_t energy) {
+        // The player's placement: the menu's text and amounts, its own item table.
+        std::memset(g_section, 0, sizeof(g_section));
+        std::memcpy(g_section + 0x658, seed_text, 2);
+        g_section[0x6C0] = energy;
+        g_section[0x26C] = 0x55;
+        std::memset(g_randomizer_menu, 0, sizeof(g_randomizer_menu));
+        g_randomizer_menu[0x88] = energy;
+        g_steps.clear();
+        g_start_seen = 0;
+        queue_new_game(1, 39);
+    };
+
+    // The seed's text, the player's menu another mode's (5 Energy): placed again as the seed.
+    started("AB", 5);
+    game.arm_newgame(plan);
+    game.watch_newgame();
+    check(g_steps == "placement ", "the seed's placement runs once, nothing else queued");
+    check(g_start_seen == 0x11, "the placement saw the AP seed's start");
+    check(g_section[0x6C0] == 3 && g_section[0x26C] == 0x2E && g_section[0x312] == 0x22,
+          "the section is the seed's placement with the plan written over it");
+    check(g_randomizer_menu[0x88] == 5, "the player's menu is put back");
+    check(game.newgame_status() == "applied slot 7", "reported with the slot");
+    game.watch_newgame();
+    check(g_steps == "placement ", "applied once only");
+
+    // Another seed's text: left as the game made it.
+    started("AC", 3);
+    game.arm_newgame(plan);
+    game.watch_newgame();
+    check(g_steps.empty() && g_section[0x26C] == 0x55, "another seed text: nothing placed");
+    check(game.newgame_status().rfind("refused the new game is not this seed", 0) == 0,
+          "and reported refused");
+
+    // The seed's placement not the seed's mode: refused, the menu put back.
+    zap::NewGamePlan other;
+    zap::parse_newgame(request + "\nmenu 0x88 0500", other);
+    started("AB", 3);
+    game.arm_newgame(other);
+    game.watch_newgame();
+    check(g_steps == "placement ", "placed");
+    check(g_section[0x26C] == 0x77 && g_randomizer_menu[0x88] == 3,
+          "the plan not written, the player's menu put back");
+    check(game.newgame_status().rfind("refused the placement is not the seed's mode", 0) == 0,
+          "and reported refused");
+    g_transition_fn = nullptr;
+    g_rando_marker = 0;
+}
+
 zap::Game* g_choice_game = nullptr;
 void chosen(void* widget, int event) {
     (void)widget;
@@ -368,12 +428,21 @@ void test_archipelago_choice() {
     game.watch_menu(&chosen);
     check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
           "a plan without menu lines offers no ARCHIPELAGO");
+    zap::NewGamePlan without_choice;
+    zap::parse_newgame("ap_newgame\nwrite 0x310 110022\nmenu 0x88 0300\nidentify 0x658 41",
+                       without_choice);
+    game.arm_newgame(without_choice);
+    game.watch_menu(&chosen);
+    check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
+          "menu lines without choice offer no ARCHIPELAGO (a RANDOMIZER seed)");
+    screen.press();
+    check(g_steps.empty(), "and its press does nothing");
 
     // The seed's mode starts with 3 Energy: the menu line sets it, the placement copies it. The
     // AP seed starts with 5, written over it afterwards.
     const char* request =
         "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0300\n"
-        "write 0x6C0 0500";
+        "write 0x6C0 0500\nidentify 0x658 41\nchoice";
     zap::NewGamePlan plan;
     check(zap::parse_newgame(request, plan).empty(), "parses menu lines");
     game.arm_newgame(plan);
@@ -407,7 +476,8 @@ void test_archipelago_choice() {
     screen.visit_again();
     zap::NewGamePlan other;
     zap::parse_newgame(
-        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0500",
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022\nmenu 0x88 0500\n"
+        "identify 0x658 41\nchoice",
         other);
     screen.start(other);
     check(g_steps == "placement ", "another mode: no new game queued");
@@ -455,7 +525,7 @@ void test_start_table() {
     std::memset(g_start_flags, 0, sizeof(g_start_flags));
     const char* request =
         "ap_newgame\nexpect 0x6C0 0000\nwrite 0x26C 2E1B\nmenu 0x88 0000\n"
-        "start_table 01001900010600290000";
+        "start_table 01001900010600290000\nidentify 0x658 41\nchoice";
     zap::NewGamePlan plan;
     check(zap::parse_newgame(request, plan).empty() && plan.start_table.size() == 2,
           "parses the start table");
@@ -1080,7 +1150,8 @@ void test_refused_unload_rearms() {
     zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
     game.set_labels(labels);
     zap::NewGamePlan plan;
-    zap::parse_newgame("ap_newgame\nexpect 0 00\nwrite 2 01\nmenu 0 01", plan);
+    zap::parse_newgame("ap_newgame\nexpect 0 00\nwrite 2 01\nmenu 0 01\nidentify 0x658 41\nchoice",
+                       plan);
     game.arm_newgame(plan);
     game.set_assists_locked(true);
     game.set_intel(true);
@@ -1123,7 +1194,8 @@ void test_refused_unload_keeps_a_start() {
     ModeScreen screen(game);
     zap::NewGamePlan plan;
     zap::parse_newgame(
-        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nmenu 0x88 0300\nwrite 0x6C0 0500",
+        "ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nmenu 0x88 0300\nwrite 0x6C0 0500\n"
+        "identify 0x658 41\nchoice",
         plan);
     screen.start(plan);
     check(g_steps == "placement queue ", "ARCHIPELAGO pressed: the new game queued");
@@ -1500,6 +1572,7 @@ int main() {
     test_received_death();
     test_assist_watch();
     test_newgame_watch();
+    test_randomizer_by_seed();
     test_archipelago_choice();
     test_scanner_line();
     test_start_table();
