@@ -37,19 +37,37 @@ Set with the Goal option.
 ## Which modes are there?
 
 The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings. OHKO has no Energy Tanks and gives you a second room to teleport
-to; the 4 locations it can't reach are left out.
+starting items and settings, or Custom. OHKO has no Energy Tanks and gives you a second room to
+teleport to; the 4 locations it can't reach are left out.
+
+With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
+names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27
+items as `start`, `random`, `pool` or `excluded` (`custom_items`), and the settings of Edit
+Options (Random Gun, Box Compression, Hints, Gates, Start Keys, X Crystals, X Blocks, Abridged
+Finale and the rest). Each starts as `preset`: the value of `custom_base`, the mode Custom
+starts from. The seed is built from them as the game builds its own: the coin flips, Random
+Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
+Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
+error that names them. Not yet: Guns First off, Secret Shuffle on, and starting Mega Bombs.
+Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
+goal.
+
+With Easy, Standard or OHKO, only Starting Location (`start_room`) and Safety can be changed,
+as in the game (OHKO takes Safety `light` or `off`).
 
 ## Where does the game start?
 
-In one of the game's own start rooms, chosen with the Start Room option: by default
-`kresezoa_16_13`. Easy and Standard can start in 9 of them, OHKO in all 34. If your mode can't
-use the room you pick, a random one it can use is chosen. The spoiler log names the start room
-(and OHKO's second room).
+In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`),
+by its name in the game's menu, as in `landing_pod`: by default Landing Pod. Any room works
+from which your starting items reach at least 3 locations (and, with the core goal, from
+which you can reach Zexion's core); another stops generation with an error. With Easy's or
+Standard's items that is 9 of the rooms; with a second room to teleport to, all 34. `random_start` (or
+`random`) picks a room as the game's Random Start does. The spoiler log names the start room
+(and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
+as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.
 
-Rooms are named by their area and their X and Y as the pause screen shows them, as in
-`kresezoa_16_13`. Locations are named the same way, as in "Guardia 22,7", so you can find them
-on the in-game map.
+Locations are named by their area and their X and Y as the pause screen shows them, as in
+"Guardia 22,7", so you can find them on the in-game map.
 
 ## Can I add starting items?
 
@@ -57,7 +75,8 @@ Yes, with `start_inventory`, as long as a new game can start with them (counted 
 the mode's own starting items):
 
 - one of each upgrade, and at most two of each weapon (the second is its upgrade);
-- Energy Tanks, Missile Boxes, and up to 9 Missile Containers;
+- Energy Tanks, Missile Boxes, and up to 9 Missile Containers (Custom's starting missiles
+  come as Missile Boxes of ten and the rest as containers, and count toward the 9);
 - keys, in order from the Alpha Key;
 - OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
 

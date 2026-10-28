@@ -113,6 +113,21 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         more = sum(len(crystals.sphere0(r["cell"]).locations) for r in data.START_ROOMS)
         self.assertGreater(more, total)
 
+    def test_x_blocks_short_way_needs_only_the_snake(self) -> None:
+        # (7, 27) -> (7, 26) (code 68, X Blocks) -> (6, 26) (the Snake) -> (6, 27), the graph's
+        # two cells X Blocks opens (docs/re/locations.md, "The region graph holds what the
+        # settings reach").
+        settings = preset("standard").settings
+        options = bytearray(settings.options)
+        options[31] = 1
+        blocks = replace(settings, options=bytes(options))
+        snake = reach.inventory({5: 1})
+        target = data.CELL_REGION[(6, 27)]
+        self.assertIn((6, 26), data.CELL_REGION)
+        self.assertIn(target, reach.reach(blocks, snake, ((7, 27),)).regions)
+        self.assertNotIn(target, reach.reach(settings, snake, ((7, 27),)).regions)
+        self.assertNotIn(target, reach.reach(blocks, (), ((7, 27),)).regions)
+
 
 class TestCollect(unittest.TestCase):
     def test_a_weapon_twice_counts_as_its_upgrade(self) -> None:

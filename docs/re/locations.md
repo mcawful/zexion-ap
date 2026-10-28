@@ -54,7 +54,7 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 | Field | |
 |---|---|
-| Value | The graph's 1,641 cells are those every item reaches from some start of the three modes ("Regions are cells joined by open passages"). Flooded cell by cell from all 34 start rooms with every item of the Easy and Standard pools together over Standard's starting items, under each code-69 mode (0 to 3), Energy totals 0, 1, 5, 10, 20, 40, 99 and 200, and every combination of X Crystals, X Blocks and Secret Shuffle (settings 30, 31, 37), the cells reached outside the graph are only X Blocks' (6, 26) and (7, 26), entered from (7, 27) by a list of code 68 tier 31 alone, and Secret Shuffle's (20, 46) to (21, 48), entered from (19, 46) by code 68 tier 37 alone, which hold its 155th location at (20, 48) (`randocells.md`, "The pool"). Abridged Finale (setting 32) adds the core's 17 cells ("The core goal is Zexion's cell in the core"). None of the 154 locations is among these cells. But X Blocks' two cells are a way through, not a pocket: (7, 27) → (7, 26) (code 68 tier 31) → (6, 26) (item 5, the Snake, alone) → (6, 27) (open), from region 182 into region 183, where the graph's own way asks for X-Missile and the Snake together, the Zenith Thrusters or item 15. So with X Blocks on, the world's rules there would be stricter than the game's (never looser) until those cells join the graph. Secret Shuffle's six lead nowhere else. So the world can work out a seed's reach over the graph under Safety, the Energy total and X Crystals as the game does; X Blocks needs its two cells added, and Secret Shuffle's own location its six. Gates Open's gate travel is not in the graph either (`randocells.md`, "What each setting does in the game"). |
+| Value | The graph's cells are those every item reaches from some start of the three modes, and since 2026-10-27 also with X Crystals and X Blocks on (`tools/gen_world_data.py`, `opened_cells`: 1,641 cells before, 1,643 with X Blocks' two) ("Regions are cells joined by open passages"). Flooded cell by cell from all 34 start rooms with every item of the Easy and Standard pools together over Standard's starting items, under each code-69 mode (0 to 3), Energy totals 0, 1, 5, 10, 20, 40, 99 and 200, and every combination of X Crystals, X Blocks and Secret Shuffle (settings 30, 31, 37), the cells reached outside the graph are only X Blocks' (6, 26) and (7, 26), entered from (7, 27) by a list of code 68 tier 31 alone, and Secret Shuffle's (20, 46) to (21, 48), entered from (19, 46) by code 68 tier 37 alone, which hold its 155th location at (20, 48) (`randocells.md`, "The pool"). Abridged Finale (setting 32) adds the core's 17 cells ("The core goal is Zexion's cell in the core"). None of the 154 locations is among these cells. But X Blocks' two cells are a way through, not a pocket: (7, 27) → (7, 26) (code 68 tier 31) → (6, 26) (item 5, the Snake, alone) → (6, 27) (open), from region 182 into region 183, where the graph's own way asks for X-Missile and the Snake together, the Zenith Thrusters or item 15. So with X Blocks on, the world's rules there would be stricter than the game's (never looser) until those cells join the graph. Secret Shuffle's six lead nowhere else. So the world can work out a seed's reach over the graph under Safety, the Energy total, X Crystals and, with its two cells now in the graph (region 174 from region 172 by code 68 tier 31, then region 175 by the Snake: `worlds/zexion/test/test_reach.py`), X Blocks as the game does; Secret Shuffle's own location needs its six. Gates Open's gate travel is not in the graph either (`randocells.md`, "What each setting does in the game"). |
 | Status | measured (by the flood fill, for the settings listed and that inventory); not measured: other pools, OHKO's among them, and any with more copies of an item |
 | Method | `tools/randocells.py`'s `reachable_cells` over `RandoCells`, compared with `data.CELL_REGION` |
 | Build | B1 |
@@ -74,11 +74,11 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 | Field | |
 |---|---|
-| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out for Easy mode, with slot 28's starting inventory and settings (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore; energy total 40). The world offers each mode the rooms valid for it, worked out by this rule from the mode's settings, starting items and pool when a seed is generated ("The world works out what a seed reaches when it is generated"), so the settings can change them: with Standard's items, code 69's mode 0 or 3 (Safety) or an Energy total of 5 offers a tenth room (`worlds/zexion/test/test_reach.py`). For each mode and each of its rooms, an Archipelago placement replayed through `randocells.sweep` reached 154/154 (18 games, seeds 300 to 308, 2026-10-21). |
-| Status | measured (by the flood fill); assumed (that 3 locations is enough for Archipelago's fill: it was in every generation tried) |
-| Method | `tools/gen_world_data.py`; at generation time, `worlds/zexion/reach.py` (`offered_starts`) |
+| Value | **Since step B of Custom mode (2026-10-27), the world takes a room as the game does** (`docs/custom-mode.md`, "Starts, as the game picks them"): any of the 34 from which the seed's starting items collect at least 3 locations (the game asks for 1: from a room with 1, Archipelago's fill failed in 1 to 5 of 20 solo generations for six of Standard's ten such rooms, and never from a room with 2 or more, 2026-10-27, a scratch script not kept) and, with the core goal, every item reaches the core's door (`ZexionWorld.passes`); with Double Teleport, a room with a second target that together with it lets the starting items reach at least 3 (`reach.second_starts`). Random Start draws by the game's rule (`custom.random_start`) among those. The locations every item does not reach from the room are left out (Scrap), as OHKO's are. Easy and Standard then take the 9 rooms below and OHKO all 34; Archipelago's fill succeeded and the seed could be beaten from each room of Standard and OHKO (`worlds/zexion/test/test_custom.py`, `EveryStartFills`). **The earlier rule**, still the tests' check of `reach.py` against `data.MODES` (`reach.offered_starts`): of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations; the world offered the 9 that reach at least 3, including the three starts seen in real seeds, and the same 9 for Easy (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore; energy total 40). With Standard's items, code 69's mode 0 or 3 (Safety) or an Energy total of 5 offers a tenth room by it (`worlds/zexion/test/test_reach.py`). For each mode and each of its 9 rooms, an Archipelago placement replayed through `randocells.sweep` reached 154/154 (18 games, seeds 300 to 308, 2026-10-21). |
+| Status | measured (by the flood fill); built, not run in game (the game's rule, 2026-10-27); assumed (that 3 locations in sphere 0 are enough for Archipelago's fill: they were in every generation tried) |
+| Method | `tools/gen_world_data.py`; at generation time, `worlds/zexion/world.py` (`choose_starts`) over `worlds/zexion/reach.py` |
 | Build | B1 |
-| Evidence | Generator output, 2026-10-21; `test_reach.py`, 2026-10-27. |
+| Evidence | Generator output, 2026-10-21; `test_reach.py`, 2026-10-27; `test_custom.py` and `test_world.py` (`TestStartRooms`), 2026-10-27. |
 
 ## One-way pockets are escaped by teleporting to the start
 
@@ -133,13 +133,15 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 - **Items lost on death.** A grant the game has not saved is gone after a death
   (`memory.md`, "Granting each kind of item, and what keeps it"). The world treats every item
   as permanent once received, so the client must give items again after a reload.
-- **The starting inventory and settings.** The world's logic assumes the chosen mode's
-  starting inventory and settings (`worlds/zexion/data.py`, `MODES`, sent as `mode` in the slot
-  data). The new game must hold exactly those, or sphere 0 is wrong; in OHKO also the second
-  teleport target (`second_start`), and Scrap at every location the world left out (those not
-  in `kept_locations`). The helper writes the seed into a new game only after checking that its
-  randomizer section holds the seed's mode (`expect`, `client/newgame.py`; `memory.md`,
-  "Starting a new game"; `native/README.md`, "New games").
+- **The starting inventory and settings.** The world's logic assumes the seed's starting
+  inventory and settings: a preset mode's (`worlds/zexion/data.py`, `MODES`), or Custom's
+  (`worlds/zexion/custom.py`), sent as `mode`, `amounts`, `options` and `menu` in the slot
+  data. The new game must hold exactly those, or sphere 0 is wrong; with Double Teleport also
+  the second teleport target (`second_start`), and Scrap at every location the world left out
+  (those not in `kept_locations`). The helper writes the seed into a new game only after
+  checking that its randomizer section holds the seed's amounts and checked settings
+  (`expect`, `client/newgame.py`; `memory.md`, "Starting a new game"; `native/README.md`, "New
+  games").
 - **What the slot data gives the client for that.** `location_items`: for each of the 154
   locations, the game's item ID to place there: this world's own item (a progressive weapon as
   the weapon, which the game turns into the upgrade on a second copy, `randocells.md`; an Intel
@@ -154,9 +156,11 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   any `start_inventory` (a second copy of a progressive weapon as its upgrade). The world
   refuses a `start_inventory` the client does not give through a new game (the limits and
   their reasons: `worlds/zexion/starting.py`). `amounts` and
-  `options`: the mode's six Energy, missile and bomb amounts and the settings the logic depends
-  on (code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43, Gates 72 and 73),
-  as the mode's fresh save holds them, for the client to compare with the player's new game.
+  `options`: the seed's six Energy, missile and bomb amounts and the settings the logic depends
+  on (Guns First 10, code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43,
+  Gates 72 and 73; `custom.CHECKED`), for the client to compare with the player's new game.
+  `menu`: the randomizer menu as the seed's settings, its Starting Location the world's start
+  room.
   The Energy Shield can be placed in any world: it is no inventory byte (its pickup counts as
   Scrap Metal and spawns the shield), so a received one is counted as Scrap Metal and spawned by
   the client's helper (`memory.md`, "Received Energy Shields").
@@ -165,8 +169,7 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 - **Modes and settings.** The world offers Easy, Standard and OHKO, each as one fresh save of
   that mode had it: its settings, its item pool and its starting items (in Standard, the Force
-  Blaster that "Random Gun" gave that seed). The individual settings (`randocells.md`,
-  "The randomizer menu's settings", with how the game builds a seed from them in "The pool"
-  and the sections after it) are not separate options yet; a Custom mode is drafted in
-  [`../custom-mode.md`](../custom-mode.md).
+  Blaster that "Random Gun" gave that seed); and Custom, every setting of the menu, built by
+  the game's rules ([`../custom-mode.md`](../custom-mode.md); not yet run in game). Guns First
+  off, Secret Shuffle on and Gates Open's gate travel are not in the logic yet.
 - **Missile and Bomb Boxes in groups:** not modeled (`randocells.md`, "Not yet found").

@@ -1,12 +1,13 @@
 """What a seed's settings and items reach, worked out when the seed is generated.
 
 The world keeps the locations the game's logic reaches with every item from the seed's start
-(and its second teleport target), creates the regions that reach takes, and offers the start
-rooms the rules below allow (docs/re/locations.md, "Which start rooms the world offers"). All
-of it depends on the seed's settings (``logic.Settings``: the Energy total, Safety and code
-68's settings), so it is worked out here, over the region graph ``data.py`` holds, rather than
-read from per-mode lists. ``data.MODES`` still lists each mode's results, computed cell by cell
-by ``tools/gen_world_data.py``; the world's tests compare these with them.
+(and its second teleport target), creates the regions that reach takes, and judges start
+rooms by what they reach (worlds/zexion/world.py, ``passes``; docs/re/locations.md, "Which start
+rooms the world offers"). All of it depends on the seed's settings (``logic.Settings``: the
+Energy total, Safety and code 68's settings), so it is worked out here, over the region graph
+``data.py`` holds, rather than read from per-mode lists. ``data.MODES`` still lists each mode's
+results, computed cell by cell by ``tools/gen_world_data.py``; the world's tests compare these
+with them.
 
 The flood is the game's (``tools/randocells.py``, ``reachable_cells``) on regions instead of
 cells: a region is cells joined by passages that are always open, so reaching one cell of it
@@ -150,7 +151,9 @@ class Seed:
 
 
 def offered_starts(seed: Seed, double_teleport: bool) -> list[dict]:
-    """The start rooms (``data.START_ROOMS`` entries) the world offers: those from which every
+    """The start rooms (``data.START_ROOMS`` entries) the world offered before it followed the
+    game's rule, which ``tools/gen_world_data.py`` still computes into ``data.MODES``, so the
+    tests check this module against it: those from which every
     item reaches all the game's locations and the starting items at least MIN_SPHERE_ZERO; with
     a second teleport target, every room, the pair being chosen by what the two reach together
     (``second_starts``)."""

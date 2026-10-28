@@ -267,8 +267,9 @@ Running it may load the helper into the game: the one already there if it is thi
 ```
 
 - `--verbose` also shows what the client sets up in the game for the seed.
-- `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it in
-  the seed's mode, with no options changed, gets the seed. From the Launcher:
+- `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it
+  with the menu set as the client says (the seed's mode and Safety; for Custom, the amounts and
+  the settings the logic reads: `client/newgame.py`, `randomizer_steps`) gets the seed. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
@@ -350,5 +351,5 @@ path) is reviewed as named. The review subagents in `.claude/agents/` follow thi
   reverse-engineering record. `worlds/zexion/`: the APWorld and the player docs.
   Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
 - When the game is patched: [`docs/re/new-build.md`](re/new-build.md).
-- A Custom mode with every setting of the game's randomizer, drafted and not built:
+- Custom mode, every setting of the game's randomizer (step B built, not yet run in game):
   [`docs/custom-mode.md`](custom-mode.md).

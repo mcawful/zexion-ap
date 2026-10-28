@@ -173,3 +173,20 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
 def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
     with pytest.raises(ng.NewGameError, match=why):
         ng.plan_text(plan(**changes))
+
+
+def test_randomizer_steps_name_a_presets_safety() -> None:
+    p = plan(options={10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 1, 43: 0, 72: 0, 73: 1})
+    assert ng.randomizer_steps(p, "easy") == (
+        "pick Easy mode, set Safety Early and change no other options"
+    )
+
+
+def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings() -> None:
+    options = {10: 1, 30: 1, 31: 0, 32: 1, 33: 0, 37: 0, 42: 0, 43: 1, 72: 1, 73: 1}
+    steps = ng.randomizer_steps(plan(options=options, amounts=(6, 20, 25, 200, 0, 30)), "custom")
+    assert steps.startswith("set Custom: Starting Items 6 Energy Tanks, 25 missiles, 0 Mega")
+    assert "Item Pool 20, 200, 30" in steps
+    for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
+        assert part in steps
+    assert steps.endswith("Safety Normal, Gates Open")

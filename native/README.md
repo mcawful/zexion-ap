@@ -315,14 +315,14 @@ Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in
 While a plan is armed (`ap_newgame`), each frame call:
 
 - **RANDOMIZER:** watches for a randomizer new game the game has queued. If the section holds
-  the `expect` bytes (the seed's mode), it writes the `write` edits (the AP seed) once, before
+  the `expect` bytes (the seed's amounts and checked settings), it writes the `write` edits (the AP seed) once, before
   the game builds the new game from them; otherwise it writes nothing and drops the plan.
 - **ARCHIPELAGO:** with `menu` lines, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. Choosing it sets the menu's
-  state to the seed's mode, writes the edits, runs the game's placement, checks the `expect`
+  state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game. For Double Teleport (OHKO) it first fills in the menu's start table from
   `start_table` if the menu never built it, and refuses the start if it differs.

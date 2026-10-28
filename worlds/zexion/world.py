@@ -13,7 +13,7 @@ from Options import OptionError
 from worlds.AutoWorld import World
 from worlds.generic.Rules import add_item_rule
 
-from . import data, logic, reach, rules, starting, web_world
+from . import custom, data, logic, reach, rules, starting, web_world
 from .items import (
     AREA_MAP,
     ASSIST_UNLOCK,
@@ -47,10 +47,22 @@ from .locations import (
     location_name_groups,
     location_name_to_id,
 )
-from .options import AUTOMATIC, START_CELLS, Goal, ZexionOptions
+from .options import (
+    AMOUNTS,
+    AUTOMATIC,
+    AUTOMATIC_ROOM,
+    OHKO_SAFETY,
+    PRESETS,
+    RANDOM_START,
+    SETTINGS,
+    Amount,
+    Goal,
+    Safety,
+    StartRoom,
+    ZexionOptions,
+)
 
 CORE_REGION = "The Core"  # where Zexion is grabbed: data.CORE
-AUTOMATIC_START = (13, 16)  # where one of the owner's seeds started
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
@@ -96,43 +108,30 @@ class ZexionWorld(World):
     kept_locations: set[int]  # location indices this world creates
     seed_reach: reach.Seed
     mode_name: str
-    mode: dict
+    menu: custom.Menu  # the randomizer menu as this seed's settings
+    start_inventory: dict[int, int]  # the seed's starting items, by item code
+    pool_codes: list[int]  # the seed's item pool, one code per location, before create_items
     logic_settings: logic.Settings  # not World.settings, the host.yaml settings
 
     def generate_early(self) -> None:
         self.mode_name = self.options.mode.current_key
-        self.mode = data.MODES[self.mode_name]
-        self.logic_settings = logic.Settings(
-            self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
-        )
+        self.menu = self.read_menu()
+        self.logic_settings = self.menu.logic_settings()
+        if self.mode_name == "custom":
+            start, pool = custom.resolve(self.menu, self.random)
+            self.start_inventory = custom.starting_items(self.menu, start)
+            try:
+                self.pool_codes = custom.pool_items(self.menu, pool, self.random)
+            except custom.PoolError as error:
+                raise OptionError(f"Zexion ({self.player_name}): {error}") from error
+        else:
+            # A preset is one fresh save's items, as the game generated them.
+            self.start_inventory = dict(data.MODES[self.mode_name]["start_inventory"])
+            self.pool_codes = list(data.MODES[self.mode_name]["pool"])
         self.check_start_inventory()
-        self.seed_reach = reach.Seed.of(
-            self.logic_settings, self.mode["start_inventory"], self.mode["pool"]
-        )
-        double = self.mode["double_teleport"]
-        starts = {room["cell"]: room for room in reach.offered_starts(self.seed_reach, double)}
-        if not starts:
-            raise OptionError(
-                f"Zexion ({self.player_name}): no start room suits {self.mode_name} mode's settings"
-            )
-        choice = self.options.start_room.value
-        cell = AUTOMATIC_START if choice == AUTOMATIC else START_CELLS[choice]
-        if cell not in starts:
-            # A room this mode does not offer, typed or rolled by 'random' over every mode's
-            # rooms (the two cannot be told apart), or automatic's should the mode not offer
-            # it: take one the mode offers instead.
-            replacement = self.random.choice(sorted(starts))
-            logging.warning(
-                f"Zexion ({self.player_name}): start room {cell_name(cell)} is not offered "
-                f"in {self.mode_name} mode; using {cell_name(replacement)}"
-            )
-            cell = replacement
-        self.start = starts[cell]
-        self.second = self.pick_second_start(starts) if double else None
-        cells = [self.start["cell"]] + ([] if self.second is None else [self.second["cell"]])
-        every = self.seed_reach.every(*cells)
-        self.created_regions = set(every.regions)
-        self.kept_locations = set(every.locations)
+        self.seed_reach = reach.Seed.of(self.logic_settings, self.start_inventory, self.pool_codes)
+        self.choose_starts()
+        self.fit_pool()
         door = data.CELL_REGION[data.CORE["door"]]
         if not self.disc_hunt and door not in self.created_regions:
             # The core is entered from there (create_regions).
@@ -143,17 +142,75 @@ class ZexionWorld(World):
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
         # Starting disks count toward the goal (set_rules; the client's discs_start).
-        start = self.options.start_inventory.value.get(NAMES[DATA_DISC], 0)
-        if self.disc_hunt and required > placed + start:
+        start_disks = self.options.start_inventory.value.get(NAMES[DATA_DISC], 0)
+        if self.disc_hunt and required > placed + start_disks:
             raise OptionError(
                 f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
                 f"more than OS Install Disks ({placed})"
-                + (f" plus the {start} in start_inventory" if start else "")
+                + (f" plus the {start_disks} in start_inventory" if start_disks else "")
             )
+
+    def read_menu(self) -> custom.Menu:
+        """The randomizer menu as this seed's settings: a preset's, with Starting Location and
+        Safety the YAML's, or Custom's. Refuses a Custom-only option set with a preset, and a
+        state the game's menu cannot hold (custom.problems)."""
+        o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
+        is_custom = name == "custom"
+        menu = custom.Menu.preset(PRESETS[o.custom_base.value] if is_custom else name)
+        toggles = [getattr(o, n) for n in SETTINGS if hasattr(getattr(o, n), "setting")]
+        changed = [n for n in AMOUNTS if getattr(o, n).value != Amount.default]
+        changed += [n for n in SETTINGS if getattr(o, n).value != getattr(o, n).default]
+        changed += ["custom_items"] if o.custom_items.value else []
+        if changed and not is_custom:
+            raise OptionError(
+                f"{who}: {', '.join(changed)} can be set with mode: custom only. Easy, Standard "
+                f"and OHKO are the game's presets; leave these 'preset' (any of them changed "
+                f"makes the game's mode Custom)"
+            )
+        for which, option_name in enumerate(AMOUNTS):
+            value = getattr(o, option_name).value
+            if value != Amount.default:
+                menu = menu.with_amount(which, value)
+        entries = {item: i for i, (item, _) in enumerate(custom.MENU_ITEMS)}
+        for item, state in o.custom_items.value.items():
+            if state not in custom.STATES:
+                raise OptionError(
+                    f"{who}: custom_items {item}: {state!r} is not one of "
+                    f"{', '.join(custom.STATES)}"
+                )
+            menu = menu.with_item(entries[item], state)
+        for option in toggles:
+            if option.value != option.option_preset:
+                menu = menu.with_settings({option.setting: option.value})
+        for option in (o.hints, o.gates, o.safety, o.start_keys):
+            if option.value != option.default:
+                menu = menu.with_value(option.bits, option.value)
+        if name == "ohko" and o.safety.value not in (Safety.default, *OHKO_SAFETY):
+            raise OptionError(f"{who}: OHKO mode takes Safety light or off only, as the game does")
+        if self.disc_hunt and menu.setting(custom.ABRIDGED_FINALE):
+            raise OptionError(
+                f"{who}: abridged_finale ends the game when Zexion is grabbed, so it cannot go "
+                f"with the OS Install Disks goal"
+            )
+        if not is_custom:
+            return menu
+        unsupported = []
+        if not menu.setting(custom.GUNS_FIRST):
+            unsupported.append("guns_first: off (each upgrade its own item)")
+        if menu.setting(custom.SECRET_SHUFFLE):
+            unsupported.append("secret_shuffle: on (a 155th location)")
+        if menu.amounts[custom.START_BOMBS]:
+            unsupported.append("starting_mega_bombs above 0 (the client cannot give them)")
+        if unsupported:
+            raise OptionError(f"{who}: not supported yet: {'; '.join(unsupported)}")
+        found = custom.problems(menu)
+        if found:
+            raise OptionError(f"{who}: the game's menu cannot hold this: {'; '.join(found)}")
+        return menu
 
     def check_start_inventory(self) -> None:
         """Refuse a start_inventory the client could not give (worlds/zexion/starting.py)."""
-        counts = Counter(self.mode["start_inventory"])
+        counts = Counter(self.start_inventory)
         for name, n in self.options.start_inventory.value.items():
             counts[code_of[name]] += n
         found = starting.problems(counts, self.disc_hunt)
@@ -167,18 +224,110 @@ class ZexionWorld(World):
     def disc_hunt(self) -> bool:
         return self.options.goal.value == Goal.option_os_install_disks
 
-    def pick_second_start(self, starts: dict) -> dict:
-        """The second teleport target: a room that, together with the start, lets the starting
-        items reach at least reach.MIN_SPHERE_ZERO locations (reach.second_starts)."""
-        rooms = [room for _, room in sorted(starts.items())]
-        partners = reach.second_starts(self.seed_reach, self.start["cell"], rooms)
-        if not partners:
-            # Every OHKO room has one on build B1 (the tests try each).
-            raise OptionError(
-                f"Zexion: no second teleport target suits start room "
-                f"{cell_name(self.start['cell'])} in {self.mode_name} mode"
+    @property
+    def double_teleport(self) -> bool:
+        return bool(self.menu.setting(custom.DOUBLE_TELEPORT))
+
+    def reaches_the_door(self, room: dict) -> bool:
+        """With the core goal, whether every item reaches the core's door from this room."""
+        door = data.CELL_REGION[data.CORE["door"]]
+        return self.disc_hunt or door in self.seed_reach.every(room["cell"]).regions
+
+    def partners(self, room: dict) -> list[dict]:
+        """With Double Teleport, the second teleport targets for this start: rooms that,
+        together with it, let the starting items reach at least reach.MIN_SPHERE_ZERO locations
+        (reach.second_starts), and with the core goal, from which or from the start every item
+        reaches the core's door."""
+        rooms = reach.second_starts(self.seed_reach, room["cell"], data.START_ROOMS)
+        if self.reaches_the_door(room):
+            return rooms
+        return [other for other in rooms if self.reaches_the_door(other)]
+
+    def passes(self, room: dict) -> bool:
+        """Whether a start room suits the seed, much as the game's START GAME judges one: its
+        starting items collect locations from it, and with the core goal every item reaches the
+        core's door, the world's part of the game's winnability check. The game asks for one
+        location; the world asks for reach.MIN_SPHERE_ZERO, since Archipelago's fill failed up
+        to one time in four from a room with one, and never from one with two or three, in
+        tests (docs/re/locations.md, "Which start rooms the world offers"). With Double
+        Teleport, the world's own rule for the pair: ``partners``."""
+        if self.double_teleport:
+            return bool(self.partners(room))
+        sphere0 = self.seed_reach.sphere0(room["cell"]).locations
+        return len(sphere0) >= reach.MIN_SPHERE_ZERO and self.reaches_the_door(room)
+
+    def choose_starts(self) -> None:
+        """The start room by the start_room option, and with Double Teleport the second
+        teleport target (docs/custom-mode.md, "Starts, as the game picks them")."""
+        who = f"Zexion ({self.player_name})"
+        choice = self.options.start_room.value
+        start = None
+        if choice not in (RANDOM_START, AUTOMATIC):
+            room = data.START_ROOMS[choice - 1]
+            if not self.passes(room):
+                raise OptionError(
+                    f"{who}: start room {StartRoom.name_lookup[choice]} does not suit "
+                    f"{self.mode_name} mode's settings: from it the starting items reach fewer "
+                    f"than {reach.MIN_SPHERE_ZERO} locations, or every item does not reach the "
+                    f"core"
+                )
+            start = room
+        elif choice == AUTOMATIC:
+            room = data.START_ROOMS[AUTOMATIC_ROOM]
+            if self.passes(room):
+                start = room
+            else:
+                logging.warning(
+                    f"{who}: start room {StartRoom.name_lookup[AUTOMATIC_ROOM + 1]} does not "
+                    f"suit {self.mode_name} mode's settings; starting in a random room instead"
+                )
+        if start is None:
+            # The seed's own starting items, as the game's score counts them: not start_inventory.
+            score = custom.score(self.start_inventory)
+            safety = self.menu.value(custom.SAFETY)
+            start = custom.random_start(data.START_ROOMS, score, safety, self.passes, self.random)
+            if start is None:
+                raise OptionError(f"{who}: no start room suits {self.mode_name} mode's settings")
+        self.start = start
+        self.second = None
+        if self.double_teleport:
+            self.second = self.random.choice(self.partners(start))
+
+    def fit_pool(self) -> None:
+        """The locations every item reaches from the start(s), which this world creates, and
+        the pool made to fit them: each location left out takes a filler item with it, and with
+        the OS Install Disks goal each disk takes one too (create_items). Where the pool has too
+        little filler, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as
+        the game makes filler (custom.compress); that changes what the items reach, so it is
+        worked out again."""
+        cells = [self.start["cell"]] + ([] if self.second is None else [self.second["cell"]])
+        disks = self.options.os_install_disks.value if self.disc_hunt else 0
+        while True:
+            every = self.seed_reach.every(*cells)
+            left_out = len(data.LOCATIONS) - len(every.locations)
+            # With the disks, the pool's keys become Scrap Metal and Energy Shields give way too.
+            spare = 0
+            if self.disc_hunt:
+                spare = sum(1 for c in self.pool_codes if c in (*KEY_CODES, ENERGY_SHIELD))
+            needed = max(left_out, left_out + disks - spare)
+            try:
+                codes = custom.compress(self.pool_codes, needed, FILLER_ORDER)
+            except custom.PoolError as error:
+                what = f"{left_out} locations the items do not reach"
+                if disks:
+                    what += f" and {disks} OS Install Disks"
+                raise OptionError(
+                    f"Zexion ({self.player_name}): the pool has too little filler for the "
+                    f"{what}: {error}"
+                ) from error
+            if codes == self.pool_codes:
+                break
+            self.pool_codes = codes
+            self.seed_reach = reach.Seed.of(
+                self.logic_settings, self.start_inventory, self.pool_codes
             )
-        return self.random.choice(partners)
+        self.created_regions = set(every.regions)
+        self.kept_locations = set(every.locations)
 
     def create_item(self, name: str) -> Item:
         return ZexionItem(name, classification(code_of[name]), item_name_to_id[name], self.player)
@@ -245,16 +394,18 @@ class ZexionWorld(World):
         core.locations.append(goal)
 
     def create_items(self) -> None:
-        for code, count in self.mode["start_inventory"].items():
+        for code, count in self.start_inventory.items():
             for _ in range(count):
                 self.multiworld.push_precollected(self.create_item(NAMES[code]))
-        codes = list(self.mode["pool"])
-        # A location left out takes a filler item out of the pool with it.
+        codes = list(self.pool_codes)
+        # A location left out takes a filler item out of the pool with it (fit_pool made sure
+        # there are enough).
         for _ in range(len(data.LOCATIONS) - len(self.kept_locations)):
             codes.remove(next(c for c in FILLER_ORDER if c in codes))
         if self.disc_hunt:
             # The keys' places become Scrap Metal, then each disc takes one of DISC_REPLACES.
-            codes = [c for c in codes if c not in KEY_CODES] + [SCRAP_METAL] * len(KEY_CODES)
+            keys = sum(1 for c in codes if c in KEY_CODES)
+            codes = [c for c in codes if c not in KEY_CODES] + [SCRAP_METAL] * keys
             for _ in range(self.options.os_install_disks.value):
                 codes.remove(next(c for c in DISC_REPLACES if c in codes))
             codes += [DATA_DISC] * self.options.os_install_disks.value
@@ -321,6 +472,11 @@ class ZexionWorld(World):
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:
         spoiler_handle.write(f"Mode:                            {self.mode_name}\n")
+        if self.mode_name == "custom":
+            amounts = ", ".join(str(n) for n in self.menu.amounts)
+            spoiler_handle.write(f"Amounts:                         {amounts}\n")
+            started = ", ".join(f"{NAMES[c]} x{n}" for c, n in self.start_inventory.items())
+            spoiler_handle.write(f"Starting items:                  {started}\n")
         spoiler_handle.write(f"Start room:                      {cell_name(self.start['cell'])}\n")
         if self.second is not None:
             target = cell_name(self.second["cell"])
@@ -340,8 +496,8 @@ class ZexionWorld(World):
             "locations": [list(c) for c in data.LOCATIONS],
             "location_items": self.location_items(),
             "start_items": {str(k): v for k, v in sorted(self.start_items().items())},
-            "amounts": list(self.mode["amounts"]),
-            "options": {str(t): v for t, v in self.mode["checked_options"].items()},
+            "amounts": list(self.menu.amounts),
+            "options": {str(t): v for t, v in self.menu.checked().items()},
             "menu": self.menu_setup(),
             # Other players' items are this item in location_items (client/aplabels.py).
             "stand_in": FOREIGN,
@@ -395,18 +551,23 @@ class ZexionWorld(World):
         return out
 
     def menu_setup(self) -> dict[str, Any] | None:
-        """The randomizer menu as this seed's mode, for the client's ARCHIPELAGO choice
-        (client/newgame.py): the mode's preset and a seed text of 16 hex digits from this
-        seed and player. In a mode with a second teleport target, whose placement reads the
-        menu's start table, the table instead of a second target (the seed's second start is
-        written)."""
+        """The randomizer menu as this seed's settings, for the client's ARCHIPELAGO choice
+        (client/newgame.py): the seed's own menu state (a preset's, or Custom's, its coin-flip
+        items and amounts as the menu holds them), with Starting Location the world's start
+        room, so the pause menu's view of the settings names it (the game's mode check skips
+        Starting Location, so a preset still reads as itself), and a seed text of 16 hex digits
+        from this seed and player. With Double Teleport, whose placement reads the menu's start
+        table, the table instead of a second target (the seed's second start is written)."""
         name = f"{self.multiworld.seed_name}:{self.player}".encode()
-        double = self.mode["double_teleport"]
+        menu = self.menu.with_value(custom.START_LOCATION, self.start["index"] + 1)
+        double = self.double_teleport
+        first = data.START_ROOMS[0]  # without Double Teleport, START GAME writes room 0's place
         setup = {
             "seed_text": hashlib.sha256(name).hexdigest()[:16].upper(),
-            # start, pool and settings
-            **{key: list(value) for key, value in self.mode["menu"].items()},
-            "second_target": None if double else list(self.mode["second_target"]),
+            "start": list(menu.start),
+            "pool": list(menu.pool),
+            "settings": list(menu.settings),
+            "second_target": None if double else [0, first["column"], first["row"]],
         }
         if double:
             setup["start_table"] = [list(room) for room in data.START_TABLE]

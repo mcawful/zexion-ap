@@ -14,7 +14,7 @@ from .. import data, reach, rules
 from ..items import DRAWN_AS, GAME, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
-from ..options import START_CELLS, Goal, Mode, StartRoom
+from ..options import AUTOMATIC, ROOM_NAMES, Goal, Mode, StartRoom
 from ..world import (
     CORE_REGION,
     DISC_REPLACES,
@@ -27,22 +27,30 @@ from .bases import ZexionTestBase
 
 
 def fake_world(
-    mode: int = Mode.option_standard,
-    start_room: int = StartRoom.option_automatic,
+    mode: int | str = Mode.option_standard,
+    start_room: int | str = StartRoom.option_automatic,
     goal: int = Goal.option_core,
     start_inventory: dict[str, int] | None = None,
     placed: int = 16,
     required: int = 12,
+    **options: Any,
 ) -> ZexionWorld:
-    """A world with just the options generate_early reads, to run it alone."""
+    """A world with its options, every other one at its default, to run generate_early alone."""
     world = ZexionWorld.__new__(ZexionWorld)
+    values = {
+        "mode": mode,
+        "start_room": start_room,
+        "goal": goal,
+        "start_inventory": dict(start_inventory or {}),
+        "os_install_disks": placed,
+        "os_install_disks_required": required,
+        **options,
+    }
     world.options = types.SimpleNamespace(
-        mode=Mode(mode),
-        start_room=StartRoom(start_room),
-        goal=Goal(goal),
-        start_inventory=types.SimpleNamespace(value=dict(start_inventory or {})),
-        os_install_disks=types.SimpleNamespace(value=placed),
-        os_install_disks_required=types.SimpleNamespace(value=required),
+        **{
+            name: option.from_any(values.get(name, option.default))
+            for name, option in ZexionWorld.options_dataclass.type_hints.items()
+        }
     )
     world.random = random.Random(1)
     world.player = 1
@@ -154,8 +162,15 @@ class TestDefaultStart(ZexionTestBase):
         self.assertEqual(len(menu["seed_text"]), 16)
         self.assertLessEqual(set(menu["seed_text"]), set("0123456789ABCDEF"))
         self.assertEqual((len(menu["start"]), len(menu["pool"])), (27, 27))
-        for t, value in self.world.mode["checked_options"].items():
-            self.assertEqual(menu["settings"][t - 10], value, f"setting {t}")
+        standard = data.MODES["standard"]["menu"]
+        self.assertEqual((menu["start"], menu["pool"]), (standard["start"], standard["pool"]))
+        # Starting Location names the start room, Landing Pod (value 7); nothing else changes.
+        location = [t - 10 for t in range(22, 28)]
+        self.assertEqual([menu["settings"][i] for i in location], [1, 1, 1, 0, 0, 0])
+        others = [i for i in range(64) if i not in location]
+        self.assertEqual(
+            [menu["settings"][i] for i in others], [standard["settings"][i] for i in others]
+        )
         self.assertEqual(menu["second_target"], [0, 20, 509])
 
     def test_no_discs_and_the_keys_in_the_pool(self) -> None:
@@ -194,27 +209,41 @@ class TestEasy(ZexionTestBase):
 
 
 class TestOtherStart(ZexionTestBase):
-    options = {"start_room": START_CELLS.index(tuple(data.MODES["standard"]["starts"][-1]["cell"]))}
+    options = {"start_room": "open_cave"}
 
     def test_start_follows_the_option(self) -> None:
         self.assertEqual(self.world.start, data.MODES["standard"]["starts"][-1])
+        self.assertEqual(self.world.start["cell"], (23, 22))
 
 
-class TestStartRoomNotOffered(unittest.TestCase):
-    def test_a_room_the_mode_does_not_offer_is_replaced(self) -> None:
-        starts = [s for s in data.MODES["standard"]["starts"] if s["cell"] != START_CELLS[0]]
-        with mock.patch.object(reach, "offered_starts", return_value=starts):
-            world = fake_world(start_room=0)
-            with self.assertLogs(level="WARNING"):
-                world.generate_early()
-            self.assertIn(world.start, starts)
+class TestStartRooms(unittest.TestCase):
+    """The game's rules for a start room (docs/custom-mode.md, "Starts, as the game picks
+    them")."""
 
-    def test_settings_that_offer_no_room_are_refused(self) -> None:
-        with (
-            mock.patch.object(reach, "offered_starts", return_value=[]),
-            self.assertRaisesRegex(OptionError, "no start room"),
-        ):
-            fake_world().generate_early()
+    def test_a_room_the_starting_items_reach_too_little_from_is_refused(self) -> None:
+        world = fake_world()
+        world.generate_early()
+        few = [
+            r for r in data.START_ROOMS if len(world.seed_reach.sphere0(r["cell"]).locations) < 3
+        ]
+        one = [r for r in few if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
+        self.assertTrue(one)
+        for room in (few[0], one[0]):
+            with self.assertRaisesRegex(OptionError, "fewer than 3"):
+                fake_world(start_room=room["index"] + 1).generate_early()
+
+    def test_every_room_the_starting_items_reach_three_from_is_taken(self) -> None:
+        # With Standard's settings and items, the nine of the earlier rule.
+        world = fake_world()
+        world.generate_early()
+        rooms = [r for r in data.START_ROOMS if world.passes(r)]
+        self.assertEqual(rooms, data.MODES["standard"]["starts"])
+        for room in rooms:
+            chosen = fake_world(start_room=room["index"] + 1)
+            chosen.generate_early()
+            self.assertEqual(chosen.start, room)
+            every = chosen.seed_reach.every(room["cell"])
+            self.assertEqual(chosen.kept_locations, set(every.locations))
 
     def test_settings_that_do_not_reach_the_cores_door_are_refused(self) -> None:
         door = data.CELL_REGION[data.CORE["door"]]
@@ -224,25 +253,48 @@ class TestStartRoomNotOffered(unittest.TestCase):
             got = real(seed, *starts)
             return reach.Reach(got.regions - {door}, got.locations)
 
-        with (
-            mock.patch.object(reach.Seed, "every", without_door),
-            self.assertRaisesRegex(OptionError, "core's door"),
-        ):
-            fake_world().generate_early()
+        with mock.patch.object(reach.Seed, "every", without_door):
+            with self.assertRaisesRegex(OptionError, "does not suit"):
+                fake_world(start_room="landing_pod").generate_early()
+            with self.assertRaisesRegex(OptionError, "no start room"):
+                fake_world(start_room="random_start").generate_early()
+            # The disk goal does not enter the core.
+            fake_world(start_room="landing_pod", goal=Goal.option_os_install_disks).generate_early()
 
-    def test_every_room_random_can_roll_gives_a_start_of_the_mode(self) -> None:
-        # 'random' rolls any of StartRoom's values, in any mode.
-        for mode, name in Mode.name_lookup.items():
-            offered = {s["cell"] for s in data.MODES[name]["starts"]}
-            for value in StartRoom.name_lookup:
-                world = fake_world(mode=mode, start_room=value)
-                with self.subTest(mode=name, room=value):
-                    with mock.patch("logging.warning"):  # for a room not offered
-                        world.generate_early()
-                    self.assertIn(world.start["cell"], offered)
+    def test_automatic_is_landing_pod_or_else_a_random_start(self) -> None:
+        world = fake_world()
+        world.generate_early()
+        self.assertEqual(world.start["cell"], (13, 16))
+        landing = data.START_ROOMS[6]
+        real = ZexionWorld.passes
+
+        def not_landing(w: ZexionWorld, room: dict) -> bool:
+            return room is not landing and real(w, room)
+
+        with mock.patch.object(ZexionWorld, "passes", not_landing):
+            world = fake_world()
+            with self.assertLogs(level="WARNING"):
+                world.generate_early()
+        self.assertNotEqual(world.start, landing)
+
+    def test_random_start_never_picks_a_flagged_room_below_the_score(self) -> None:
+        for mode in ("easy", "standard", "ohko"):
+            for seed in range(10):
+                world = fake_world(mode=mode, start_room="random_start")
+                world.random = random.Random(seed)
+                world.generate_early()
+                with self.subTest(mode=mode, seed=seed):
+                    self.assertFalse(data.START_TABLE[world.start["index"]][2])
+                    self.assertTrue(world.passes(world.start))
                     if world.second is not None:
-                        self.assertIn(world.second["cell"], offered)
                         self.assertNotEqual(world.start["cell"], world.second["cell"])
+
+    def test_random_is_random_start_and_the_earlier_names_are_aliases(self) -> None:
+        self.assertEqual(StartRoom.from_any("random").value, StartRoom.option_random_start)
+        self.assertEqual(StartRoom.from_any("kresezoa_16_13").value, StartRoom.option_landing_pod)
+        self.assertEqual(StartRoom.from_any("guardia_41_6").value, StartRoom.option_upper_tower)
+        self.assertEqual(len(ROOM_NAMES), len(data.START_ROOMS))
+        self.assertEqual(StartRoom.default, AUTOMATIC)
 
 
 class TestNames(unittest.TestCase):
@@ -255,7 +307,7 @@ class TestNames(unittest.TestCase):
         names = [location_name(i) for i in range(len(data.LOCATIONS))]
         self.assertEqual(len(set(names)), len(names))
 
-    def test_start_rooms_are_named_the_same_way(self) -> None:
+    def test_start_rooms_keep_their_earlier_names(self) -> None:
         self.assertIn("kresezoa_16_13", StartRoom.options)
 
 
@@ -357,8 +409,12 @@ class TestSlotDataForTheClient(ZexionTestBase):
         self.assertEqual(start, data.MODES["standard"]["start_inventory"])
         self.assertEqual(slot["amounts"], [3, 17, 3, 122, 0, 12])
         options = {int(t): v for t, v in slot["options"].items()}
-        self.assertEqual(options, data.MODES["standard"]["checked_options"])
+        # Guns First, X Crystals, X Blocks, Abridged Finale, Double Teleport, Secret Shuffle,
+        # Safety Normal and Gates Unlocked.
+        want = {10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 0, 43: 1, 72: 0, 73: 1}
+        self.assertEqual(options, want)
         self.assertIn(72, options)  # Gates
+        self.assertIn(10, options)  # Guns First
 
     def test_the_energy_shield_can_go_to_any_world(self) -> None:
         # Received, the client's helper runs its pickup event, which gives the shield.
