@@ -272,7 +272,8 @@ Running it may load the helper into the game: the one already there if it is thi
   menu's Paste←Clipboard (the seed text and the game's settings code: `client/newgame.py`,
   `paste_text`), or set by hand (the seed's mode and Safety; for Custom, the items and Start
   Keys, which the amounts' limits depend on, the amounts and the settings the logic reads:
-  `randomizer_steps`). From the Launcher:
+  `randomizer_steps`). The paste line is built from the disassembly of Copy and Paste and not
+  yet run in game. From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or

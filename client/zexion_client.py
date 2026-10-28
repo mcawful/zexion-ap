@@ -561,7 +561,8 @@ def launch(*args: str) -> None:
     parser.add_argument(
         "--keep-randomizer",
         action="store_true",
-        help="Do not offer ARCHIPELAGO: start the seed from RANDOMIZER, its mode and START GAME.",
+        help="Do not offer ARCHIPELAGO: start the seed from RANDOMIZER, pasting the line the "
+        "client prints or setting the menu by hand, then START GAME.",
     )
     parser.add_argument(
         "--verbose",

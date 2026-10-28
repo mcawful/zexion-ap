@@ -242,7 +242,8 @@ def paste_text(plan: sp.SeedPlan) -> str:
     """The text to paste with the randomizer menu's Paste<-Clipboard: the seed text and the
     settings code with nothing between them, as Copy->Clipboard writes them, since Paste reads
     the code from the character after the seed's 16th. Pasted, it sets the seed text, the
-    items' states, the six amounts and every setting t10 to t73 at once."""
+    items' states, the six amounts and every setting t10 to t73 at once (by the disassembly of
+    Copy and Paste; not yet run in game)."""
     return check_menu(plan).seed_text + settings_code(plan.menu, plan.amounts)
 
 
@@ -263,7 +264,7 @@ def randomizer_message(plan: sp.SeedPlan, mode: str) -> list[str]:
         return [f"{start}, {steps}, and START GAME."]
     return [
         f"{start}, copy the next line (in the client's window, click it), press the menu's "
-        "Paste from Clipboard, and START GAME. Its first 16 characters are the seed, which is "
+        "Paste<-Clipboard, and START GAME. Its first 16 characters are the seed, which is "
         "optional: the new game gets this seed's text whatever the menu shows.",
         paste,
         f"Or, without pasting, {steps}, and START GAME.",

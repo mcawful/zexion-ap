@@ -336,7 +336,7 @@ def test_a_state_the_code_cannot_hold_leaves_the_steps_alone(amounts, settings) 
 def test_the_randomizer_message_puts_the_paste_text_on_a_line_of_its_own() -> None:
     p = preset_plan("standard")
     first, text, steps = ng.randomizer_message(p, "standard")
-    assert "choose RANDOMIZER" in first and "Paste from Clipboard" in first
+    assert "choose RANDOMIZER" in first and "Paste<-Clipboard" in first
     assert first.endswith(
         "the seed, which is optional: the new game gets this seed's text whatever the menu shows."
     )

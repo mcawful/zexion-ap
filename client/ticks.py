@@ -490,7 +490,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 if offer:
                     logger.info(
                         "This seed can't be started with ARCHIPELAGO, so start it from "
-                        "RANDOMIZER (see the next message)."
+                        "RANDOMIZER (see below)."
                     )
                     continue
                 conn.newgame = state.NewGame.UNAVAILABLE
