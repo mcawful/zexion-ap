@@ -519,8 +519,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         else:
             logger.info(
                 "To play, load this seed's save, or start a new game: in an empty slot "
-                "choose RANDOMIZER, pick this seed's mode with no options changed, and "
-                "START GAME."
+                f"choose RANDOMIZER, {newgame.randomizer_steps(plan, conn.mode)}, and START GAME."
             )
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
@@ -536,7 +535,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         log.warning(f"No new game with the AP seed: {why}.")
         if why.startswith("the new game is not the seed's mode"):  # RANDOMIZER's START GAME
             logger.warning(
-                "That new game isn't this seed (another mode, or options changed), so it plays "
+                "That new game isn't this seed (other amounts or settings), so it plays "
                 "as an ordinary randomizer game. Start another in an empty slot."
             )
         elif "start table" in why:

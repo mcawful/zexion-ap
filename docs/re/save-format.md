@@ -36,6 +36,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | `0x12B1C` (`+0x308`) | the seed | Randomizer data is appended after the two blocks |
 | `0x12B24` (`+0x310`) | the start record | The continue point and the seed's start |
 | `0x12B2A`, `0x12B2C` (`+0x316`, `+0x318`) | a map-rectangle count and table | `memory.md`, "Starting a new game" |
+| `0x12E6C` (`+0x658`) | the 16-character seed text (then 0), whose hash is at `+0x308` (measured in six saves, 2026-10-27: each text's hash by the formula in `randocells.md`, "The pool", equals the stored value; copied from the menu at `0xF2E71`, by disassembly) | `randocells.md`, "The pool" |
 | `0x12E9D`, `0x12EB8` (`+0x689`, `+0x6A4`) | the start-with and pool arrays | The randomizer section holds the seed's settings |
 | `0x12ED4` (`+0x6C0`) | the amounts | The randomizer section holds the seed's settings |
 | `0x12EE0` (`+0x6CC`) | the second teleport target | The continue point and the seed's start |

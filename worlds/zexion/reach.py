@@ -1,12 +1,13 @@
 """What a seed's settings and items reach, worked out when the seed is generated.
 
 The world keeps the locations the game's logic reaches with every item from the seed's start
-(and its second teleport target), creates the regions that reach takes, and offers the start
-rooms the rules below allow (docs/re/locations.md, "Which start rooms the world offers"). All
-of it depends on the seed's settings (``logic.Settings``: the Energy total, Safety and code
-68's settings), so it is worked out here, over the region graph ``data.py`` holds, rather than
-read from per-mode lists. ``data.MODES`` still lists each mode's results, computed cell by cell
-by ``tools/gen_world_data.py``; the world's tests compare these with them.
+(and its second teleport target), creates the regions that reach takes, and judges start
+rooms by what they reach (worlds/zexion/world.py, ``passes``; docs/re/locations.md, "Which start
+rooms the world offers"). All of it depends on the seed's settings (``logic.Settings``: the
+Energy total, Safety and code 68's settings), so it is worked out here, over the region graph
+``data.py`` holds, rather than read from per-mode lists. ``data.MODES`` still lists each mode's
+results, computed cell by cell by ``tools/gen_world_data.py``; the world's tests compare these
+with them.
 
 The flood is the game's (``tools/randocells.py``, ``reachable_cells``) on regions instead of
 cells: a region is cells joined by passages that are always open, so reaching one cell of it
@@ -52,10 +53,20 @@ def inventory(counts: Mapping[int, int]) -> Inventory:
     return tuple(sorted((code, n) for code, n in counts.items() if n))
 
 
+def collected(start_inventory: Mapping[int, int]) -> dict[int, int]:
+    """Starting items by item code, counted as the game counts them (``logic.collect``): a
+    progressive weapon held twice as the weapon and its upgrade."""
+    have: dict[int, int] = {}
+    for code, n in sorted(start_inventory.items()):
+        for _ in range(n):
+            logic.collect(have, code)
+    return have
+
+
 def every_item(start_inventory: Mapping[int, int], pool: Iterable[int]) -> Inventory:
     """The starting items and every item of the pool, counted as the game's generator counts
     them (a weapon picked up twice as its upgrade: ``logic.collect``)."""
-    have = dict(start_inventory)
+    have = collected(start_inventory)
     for item in pool:
         logic.collect(have, item)
     return inventory(have)
@@ -138,7 +149,8 @@ class Seed:
     def of(
         cls, settings: logic.Settings, start_inventory: Mapping[int, int], pool: Iterable[int]
     ) -> Seed:
-        return cls(settings, inventory(start_inventory), every_item(start_inventory, pool))
+        start = inventory(collected(start_inventory))
+        return cls(settings, start, every_item(start_inventory, pool))
 
     def every(self, *starts: Cell) -> Reach:
         """What every item reaches from these starts."""
@@ -150,7 +162,9 @@ class Seed:
 
 
 def offered_starts(seed: Seed, double_teleport: bool) -> list[dict]:
-    """The start rooms (``data.START_ROOMS`` entries) the world offers: those from which every
+    """The start rooms (``data.START_ROOMS`` entries) the world offered before it followed the
+    game's rule, which ``tools/gen_world_data.py`` still computes into ``data.MODES``, so the
+    tests check this module against it: those from which every
     item reaches all the game's locations and the starting items at least MIN_SPHERE_ZERO; with
     a second teleport target, every room, the pair being chosen by what the two reach together
     (``second_starts``)."""

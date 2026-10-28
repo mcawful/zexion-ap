@@ -1,9 +1,11 @@
-# A Custom mode: design draft
+# Custom mode: design and build
 
-**Status: a proposal, not built,** but for its prerequisite, step A of "The build plan"
-(`worlds/zexion/reach.py`); none of Custom's options is in the world, the client or the helper yet.
-It drafts how the YAML could offer every setting of the game's own randomizer, following the
-game's rules for them, for the owner to agree before any of it is implemented. The game's side
+**Status: steps A and B of "The build plan" built and run in game, 2026-10-27** ("The
+build plan", step B, for what the run covered). `mode:
+custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
+`world.py`), with Guns First off and Secret Shuffle on refused until step E, and starting Mega
+Bombs until the client can give them. This page set out how the YAML offers every setting of
+the game's own randomizer, following the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
 [`re/randocells.md`](re/randocells.md), from "The randomizer menu's settings" to "What each
 setting does in the game". Measured there means seen on build B1, by disassembly or live.
@@ -63,7 +65,8 @@ Zexion:
   custom_base: standard       # Custom only: the preset whose values 'preset' below means
 
   # The six amounts (the game's limits: Energy 40 in all; missiles and bombs 999 in all,
-  # and the pool's no more than its free places allow, ten to a place)
+  # and the pool's no more than its free places allow, ten to a place). starting_mega_bombs
+  # above 0 is refused for now: the client cannot start a game with Mega Bombs.
   starting_energy_tanks: preset   # or 0..40
   pool_energy_tanks: preset
   starting_missiles: preset       # 0..999
@@ -79,22 +82,23 @@ Zexion:
     Navcore: pool
 
   random_gun: preset          # on | off
-  guns_first: preset
+  guns_first: preset          # off refused until step E
   bulk_missiles: preset
   bulk_bombs: preset
   box_compression: preset
   hints: preset               # none | vanilla | vanilla_plus | small | normal | large |
                               # full_map | revealed
   gates: preset               # off | vanilla | unlocked | open
-  start_room: automatic       # any mode. random_start | exodia | ... | waste_zone: the
-                              # game's 34 room names (randocells.md, "Starting Location and
-                              # the second teleport target"); today's names (kresezoa_16_13)
-                              # kept as aliases; automatic: Landing Pod
+  start_room: automatic       # any mode. random_start (and 'random') | exodia | ... |
+                              # waste_zone: the game's 34 room names (randocells.md,
+                              # "Starting Location and the second teleport target"); the
+                              # earlier names (kresezoa_16_13) kept as aliases; automatic:
+                              # Landing Pod, or a random start where the rules refuse it
   double_teleport: preset
   start_keys: preset          # 0..4
   x_crystals: preset
   x_blocks: preset
-  secret_shuffle: preset
+  secret_shuffle: preset      # on refused until step E
   safety: preset              # any mode (OHKO: light | off). light | early | normal | off
   obscure_majors: preset
   obscure_minors: preset
@@ -180,25 +184,58 @@ into `data.py` are the tests' oracles. The graph holds every cell the presets re
 item; with every item, no Safety or Energy total reaches a cell outside it, X Blocks reaches two
 and Secret Shuffle six, none holding one of the 154 locations, and Abridged Finale the core,
 which the world enters by its own entrance (`re/locations.md`, "The region graph holds what the
-settings reach"). X Blocks' two cells are a shorter way between two regions (the Snake alone),
-so step B adds them to the graph, or the world's rules stay stricter than the game's there;
-Secret Shuffle's 155th location needs its cells added (step E).
+settings reach"). X Blocks' two cells are a shorter way between two regions (the Snake alone):
+step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secret Shuffle's
+155th location needs its cells added (step E).
 
 **Starts, as the game picks them** ("Starting Location and the second teleport target"):
 
 - A named room: any of the 34, as in the game, which checks nothing more than its winnability
   check. The world refuses one from which the starting items reach no location: Archipelago's
-  fill cannot start there (the game would offer PLAY ANYWAY).
+  fill cannot start there (the game would offer PLAY ANYWAY); and with the core goal one from
+  which every item does not reach the core and Zexion, the world's part of that check. Built
+  for every mode (`ZexionWorld.passes`): Easy takes 17 rooms, Standard 19 and OHKO all 34 (by
+  the pair rule below), where the world offered 9, 9 and 34 before (the earlier rule, every
+  item reaching all 154 locations and the starting items 3, stays in `reach.offered_starts` as
+  the tests' check on `data.MODES`). **Archipelago's fill can fail from a room whose starting
+  items reach one location:** it did in 1 to 5 of 20 solo generations for six of Standard's
+  ten such rooms (the other four, and every room reaching 2 or more, 20 of 20; 2026-10-27, AP
+  0.6.8, seeds 0 to 19, every other option at its default; a scratch script, not kept, so not
+  reproducible as is), where the game's own placement repairs its fill. Decided (the owner,
+  2026-10-27): follow the game's one location and accept an occasional failed generation,
+  rather than ask for 3. Archipelago's fill succeeded from each room Standard and OHKO take
+  whose starting items reach 3 or more, in tests (`worlds/zexion/test/test_custom.py`,
+  `EveryStartFills`).
 - `random_start` (and `random`; decided, the owner, 2026-10-27): the game's rule: the
   unflagged rooms unless the starting
   score (starting Energy + missiles + bombs + starting items) is 27 or more; a room from which
-  the starting items reach at least one location; with Safety other than Light, Upper Tower,
-  Tower Gauntlet, Guardia Tower and Lower Tower kept one time in three.
-- `automatic`: Landing Pod, as today, when the rules allow it.
+  the starting items reach at least one location; with Safety other than Light, the first of
+  Upper Tower, Tower Gauntlet, Guardia Tower and Lower Tower to pass kept one time in three, once
+  per seed (`custom.random_start`). The score counts the seed's own starting items, not
+  `start_inventory`, as the game counts only its menu's.
+- `automatic`: Landing Pod, as today, when the rules allow it; otherwise a random start, with a
+  warning.
 - Double Teleport: the second target is any room but the start, at random; the logic connects
   it at once if it is unflagged, and for a flagged room only once the "useful item" score
   (Energy, doubled by the Magnus Armor, + missiles + bombs + ten per box + the menu items
-  owned but the Navcore and the Magnus Armor) is 27 or more. That rule is new to the world's logic.
+  owned but the Navcore and the Magnus Armor) is 27 or more. That rule is new to the world's
+  logic, step D. Until then the world keeps its own rule, for Custom too: a second target that,
+  with the start, lets the starting items reach at least 3 locations, and a start passes when it
+  has one (with the core goal, the start or the target reaching the core's door with every
+  item). Random Start with Double Teleport does not copy the game's bug, which draws the second
+  target in place of the start ("Starting Location and the second teleport target").
+- **What the world adds to the game's rules, as built.** An upgrade started without its gun is
+  started as the gun: the world holds each gun and its upgrade as one progressive item. Where
+  the pool has too little filler for the locations left out (and the OS Install Disks), ten
+  Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
+  makes filler when it runs short (`custom.compress`), in every mode. A pool longer than its
+  places is refused, where the game would drop entries at random. Gates Open is accepted, but
+  the logic does not use the gates yet (step D): stricter than the game's, never looser. Gates
+  Off is refused with the core goal: under it the gates' key check never passes (`re/memory.md`,
+  "Keys, the gates and the key markers"), and whether a gate closes the core is not known
+  (rank 12: play it once). A start room also needs every item to pass the core's own lists
+  after the door (`data.CORE`), and the world counts a started gun and its upgrade as both, as
+  the game does (found by the `logic-reviewer`, 2026-10-27).
 
 **The goal.** The game's winnability check needs a cell holding Zexion and the four keys:
 without Abridged Finale only the ship's, (1, 42), since its logic enters the core only with it;
@@ -224,7 +261,7 @@ step A (`worlds/zexion/reach.py`).
 | 3 | Show Obtainable | low | low | Pass through. Display only, but what the game's map flood shows over an AP item table (other players' items as Scrap Chunk) is not known: check in game. |
 | 4 | Hints | low | low | Pass through: the game's own placement, which the helper runs, makes the rectangles. Revealed sets flag 291 from the start, which also sets the scanner's flag 39, so the OS Install Disks goal's count message never runs (`memory.md`, "The scanner"). The client takes flag 39 for "told" (`client/session.py`, `SCANNED_FLAG`), so the disks' popups give the number needed from the start (`client/discs.py`): check it in game with Revealed. |
 | 5 | Safety | low | low | `logic.Settings.mode69` already, and the prerequisite is built (step A: Safety changes the start rooms the world offers, `worlds/zexion/test/test_reach.py`); what is left is the option. |
-| 6 | Start Keys | low | low | Start with the first *k* keys from the Alpha Key; the pool drops the Omega Key first. The client already writes keys as a count (`client/newgame.py`, `start_with`). Start Keys 4 gave all four keys in a seed made in the game's menu (2026-10-27). |
+| 6 | Start Keys | low | low | Start with the first *k* keys from the Alpha Key; the pool keeps the Omega Key longest (it holds the keys from the Omega Key down). The client already writes keys as a count (`client/newgame.py`, `start_with`). Start Keys 4 gave all four keys in a seed made in the game's menu (2026-10-27). |
 | 7 | X Crystals, X Blocks | low | medium | Code 68 already in `logic.py`; pass through. The removal runs in the new game's event chain from the section's settings, so it comes with the menu's settings. Measured in game (2026-10-27): the slot state 4 is "gone" (two rooms seen clear), and with X Blocks on, Abridged Finale's goal came as usual; its object of type 2095 at (32, 45), a Crysmoon room, changed nothing the owner saw. |
 | 8 | Abridged Finale | low | medium | Code 68; pass through; Custom only, the game's own form of the discussed `escape_skip`. Run in game (2026-10-27, a seed made in the game's menu, no client): no escape and no prompt; the ending starts 8 s after the grab with flag 250 set and flag 211 clear, which is the client's goal (`re/randocells.md`, "What each setting does in the game"). The player's cell at the grab read (36, 42), Zexion's cell in the core, where the world's goal now is (`re/locations.md`, "The core goal is Zexion's cell in the core"); the game's own logic enters the core only with Abridged Finale on. Refused with the OS Install Disks goal (decided, the owner, 2026-10-27). |
 | 9 | Box Compression, Bulk Missiles, Bulk Bombs, the amounts | medium | low | The pool rules above, in the world, with tests from fresh saves of new seeds (Box Compression off, each Bulk on, both amounts 20 or more): generate them in the menu and read the saves, read-only. Starting missiles are given as the new game splits them, tens as Missile Boxes and the rest as up to 9 containers (`client/newgame.py`, `start_with`), so the world must hand them out in that form; starting Mega Bombs need the client's new-game bombs (`worlds/zexion/starting.py`: not supported yet). |
@@ -249,15 +286,19 @@ Disks), the start room and the second teleport target the world chose, the start
 amounts (the coin flips and Random Gun as the world resolved them, and any `start_inventory`),
 and the starting keys; and the client checks that the settings the logic reads came out as the
 seed's. In play, the client and the helper add what AP needs on top: received items, the OS
-Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the assist lock. One small addition would help: setting the menu's Starting Location to the world's start
-room, so the pause menu's view names the room instead of reading Random Start (seen in an AP
-save: `re/randocells.md`, "The settings code").
+Install Disks goal, the map's markers for stand-ins, Intel Chips, DeathLink, the assist lock. One small addition, built in step B (`ZexionWorld.menu_setup`): the menu's
+Starting Location set to the world's start room, so the pause menu's view names the room
+instead of reading Random Start (seen in an AP save before it: `re/randocells.md`, "The
+settings code"). Opening that view leaves the seed's state in the menu (same section), so a
+RANDOMIZER game started afterwards tries only that room, not Random Start (by the code; not
+tried).
 
 **ARCHIPELAGO** already sets the whole menu state (seed text, both item arrays, the six amounts
 and settings t10 to t73 but Colorizer) from the slot data, runs the game's placement, checks
 the section and writes the seed over it (`memory.md`, "The game-mode panel"). A Custom seed's
 slot data carries its own settings there instead of a preset's; the checks (`expect` lines)
-grow to every setting the logic reads: t30 to t33, t37, Safety, Gates and the amounts.
+cover every setting the logic reads: t10 (Guns First, added in step B), t30 to t33, t37,
+Safety, Gates and the amounts (`custom.CHECKED`).
 
 **The seed's settings in game.** The pause menu's OPTION MENU, RANDO, RANDO SETTINGS shows a
 save's seed, mode, items, amounts and settings, decoded from the settings code the save keeps
@@ -268,7 +309,7 @@ with nothing more to build; today's AP seeds show their preset.
 **RANDOMIZER**, the fallback, has the player set the menu by hand: easy for a preset, slow for
 Custom (20 settings, 27 items, six amounts). The game's Paste←Clipboard takes the seed text and
 the settings code ("The settings code"), whose format is known exactly, so the client could put
-that on the clipboard, or print it, for the player to paste.
+that on the clipboard, or print it, for the player to paste. As built, the client's message lists the items, Start Keys, amounts and checked settings to set (`client/newgame.py`, `randomizer_steps`), and the seed text as optional: the game's placement runs from whatever text the menu holds, and the client then writes the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27, after two RANDOMIZER games of one seed showed the same items under different seed texts), so RANDO SETTINGS and Colorizer's colors are an ARCHIPELAGO game's (working in game, 2026-10-27: RANDO SETTINGS showed the seed's text in a RANDOMIZER game). The Hints' map rectangles the placement drew from the menu's text stay (typing the seed's text makes them ARCHIPELAGO's too); they follow the game's own placement, not AP's, in either path.
 
 ## What the settings make redundant in zexion-ap
 
@@ -294,8 +335,8 @@ game for this review.
 |---|---|---|---|---|---|
 | The `escape_skip` option (discussed, never in the repo) | — | Abridged Finale (t32) | Fully | Nothing: dropped by the owner, 2026-10-27 ("The YAML", Abridged Finale). | None |
 | The escape skip offer (event 3665's else branch pointed at the offer; retired 2026-10-27) | Removed: it was `native/src/skip.cpp`, the offline look's part, the client's check and the Goal option's text | Abridged Finale (t32) | Fully in a Custom seed with it on: event 3583 sets flag 289 at the grab, and event 3668 offers nothing while 289 is set, the helper's patch included (measured by disassembly; in game, 2026-10-27, flag 289 was set at the grab and the ending followed with no escape and no prompt, the helper's patch off at the time). No for presets, and for Custom with it off | Done, 2026-10-27, by the owner's decision (below): the patch, the offline look's part, the client's check of it, their tests and the Goal text removed; the event table's targets stay, since RETURN HOME WITH THE DISKS? uses them. This review had advised keeping the patch until the escape's needs were measured and put in the goal's rule, since the world's logic does not cover the escape and the final battle | Accepted by the owner: a preset core-goal seed can reach Zexion before the player has what the escape needs ("The YAML", Abridged Finale) |
-| The start room (`start_room`, `AUTOMATIC_START`, the start record write) | `worlds/zexion/options.py`, `world.py` (`generate_early`); `client/newgame.py` (`write` of `START_RECORD`) | Starting Location (t22 to t27) | Partly. The game's 34 rooms hold every room the world offers (Easy and Standard 9, OHKO all 34, as `worlds/zexion/reach.py` works them out and `data.MODES` records them), and a named value writes a start record of the same form (room index, column, row: `re/randocells.md`, "Starting Location and the second teleport target"). But ARCHIPELAGO skips the step that reads it, Random Start's rule differs from the world's, and the world's fill must know the room | Not retirable: the world still chooses and the client still writes. What the setting adds is the view: setting it to the world's room names the start in RANDO SETTINGS, in a preset seed too, since the mode check skips it (above) | Low |
-| The second teleport target (`pick_second_start`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is in the draft already. The writes stay | Medium (a new entrance rule) |
+| The start room (`start_room`, `AUTOMATIC_ROOM`, the start record write) | `worlds/zexion/options.py`, `world.py` (`choose_starts`); `client/newgame.py` (`write` of `START_RECORD`) | Starting Location (t22 to t27) | Partly. The game's 34 rooms are the option's values (`options.ROOM_NAMES`), and a named value writes a start record of the same form (room index, column, row: `re/randocells.md`, "Starting Location and the second teleport target"). But ARCHIPELAGO skips the step that reads it, and the world's fill must know the room, so the world chooses it, by the game's Random Start rule (`custom.random_start`) for `random_start` | Not retirable: the world still chooses and the client still writes. What the setting adds is the view: since step B the world sets it to its room in the menu (`ZexionWorld.menu_setup`), which names the start in RANDO SETTINGS, in a preset seed too, since the mode check skips it (above) | Low |
+| The second teleport target (`ZexionWorld.partners`, `reach.second_starts`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is step D. The writes stay | Medium (a new entrance rule) |
 | Starting keys | `client/newgame.py` (`start_with`; writes t34 to t36); `worlds/zexion/starting.py` (the first keys from the Alpha Key) | Start Keys (t34 to t36) | Fully, by the code: the client gives starting keys by writing the game's own Start Keys bits (`client/newgame.py`), and the new game gives the first *k* keys from them (`0xA11A5`, by disassembly: `re/randocells.md`, "What each setting does in the game"). The game's own Start Keys 4 gave the four keys in a seed made in its menu (2026-10-27); the client's write of the bits has not been run with keys | Nothing to retire. In Custom, `start_keys` is the menu's value and start_inventory keys add to the count | None |
 | The key markers, the scanner | the game's new game (event chain 3329 to 3378, from the item table); `client/save_patch.py` (the offline reference only) | Start Keys, Gates | Not an AP feature: the game draws the markers from AP's item table already, so a key in another world or started with has none. Gates changes which gates pass, and with Open the logic (`re/memory.md`, "Keys, the gates and the key markers"), not the markers, and the core goal's four keys are the game's winnability check's own | — | — |
 | The starting items and amounts (the start-with array and the amounts written over the placement) | `client/newgame.py` (`start_with`) | The 27 items' Start state, Random Gun, the six amounts | Partly: the menu holds the seed's starting items and amounts, and the new game gives them. But the game resolves `random` items and Random Gun from its own seed text, and the world from its random numbers, and start_inventory is AP's alone | Only if the world reproduced the game's generator from the seed text (`lab/rando-options/agentB/sim_pool.py` does steps 1 to 7) so both agree; not worth it. Keep the writes | Medium if retired: wrong starting items |
@@ -308,7 +349,7 @@ game for this review.
 | Allow Assists (the ASSIST lock, Assist Unlock) | `worlds/zexion/options.py`, `items.py`; `client/`; `native/src/menu.cpp` | — | No: the randomizer menu has no assist setting, and the game lets a randomizer save use ASSIST (its MISSION COMPLETE has shown ASSISTS USED: `native/README.md`, "Feats and achievements in AP saves"). By the owner's principle it is a protection the game does not have: whether to keep it is the owner's call, not a redundancy | If dropped: the option, item 100 and its rule, the client's lock and the helper's menu part, with their tests and docs; YAMLs that set `allow_assists` need updating | Low |
 | No Feats or achievements in AP saves | `native/src/feats.cpp` | — | No: the game earns Feats in every randomizer ending (`re/memory.md`, "The ending: flag 250") | — | — |
 | The ARCHIPELAGO new game; the RANDOMIZER fallback | `native/src/menu.cpp`; `client/newgame.py` | — | No. For RANDOMIZER only, Paste←Clipboard with the settings code could replace setting a Custom menu by hand ("The new game") | — | — |
-| The `expect` checks (Abridged Finale and the others the logic reads must be the preset's) | `client/newgame.py`; `world.py` (`checked_options`) | Every setting the logic reads | Not redundant: in Custom they check the seed's values instead and grow ("The new game") | — | — |
+| The `expect` checks (Abridged Finale and the others the logic reads must be the seed's) | `client/newgame.py`; `worlds/zexion/custom.py` (`CHECKED`) | Every setting the logic reads | Not redundant: they check the seed's values, Custom's included, and grew by Guns First (step B, "The new game") | — | — |
 | Received items and popups, Energy Shields, DeathLink, the title lines, the file select's logo, the offline look | `client/`, `native/` | — | No | — | — |
 
 **Recommendation.** Retire nothing in the world, the client or the helper for Custom. Only the
@@ -323,7 +364,8 @@ game do it and the AP feature stays out of the way, as it already does:
 2. **Start Keys** through the bits the client already writes (by the code; Start Keys 4 gave
    the four keys in a seed made in the game's menu, 2026-10-27).
 3. **Starting Location** set to the world's room, for the settings view, in Custom and, since
-   the mode check skips it, in the presets too (the small addition in "The new game").
+   the mode check skips it, in the presets too (the small addition in "The new game"; built
+   in step B).
 4. **Obscure** passed through; the helper's markers follow Obscure Majors while Minors is on,
    and the Majors-on, Minors-off case still needs handling (`re/memory.md`, "Map markers").
 
@@ -359,13 +401,25 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    at (36, 42) (`re/locations.md`, "The core goal is Zexion's cell in the core").
 2. **A. Reachability at generation time:** the reachable locations and the start rooms worked
    out when a seed is generated, not per preset in `data.py`; tests show the same results for
-   Easy, Standard and OHKO. **Built, 2026-10-27; not yet run in game:** `worlds/zexion/reach.py`
+   Easy, Standard and OHKO. **Built, 2026-10-27; run in game with step B:** `worlds/zexion/reach.py`
    floods the region graph with the seed's `logic.Settings`, cached by settings, inventory and
    starts; `worlds/zexion/test/test_reach.py` finds the
    presets' start rooms, regions and locations equal to `data.MODES` from every start, and in
    OHKO from every pair of rooms, and shows Safety, the Energy total and X Crystals changing the
    results.
-3. **B. `mode: custom`:** the options in the game's words, refusing what the game's menu cannot
+3. **B. `mode: custom`:** **built, and run in game 2026-10-27** (B1, helper 0.30.0 built
+   from the branch with #30's retirement, client from source, seed `lab/ap/live37`, four
+   players): a Custom seed with every item started, Start Keys 4, Abridged Finale, X Crystals,
+   X Blocks and Hints Revealed started through ARCHIPELAGO with RANDO SETTINGS showing exactly
+   its settings and Landing Pod, the four keys, 20 Energy Tanks and 25 missiles as 2 Missile
+   Boxes and 5 containers, and the map revealed; at the grab of Zexion the ending began with no
+   prompt and the client sent the goal (the first Abridged Finale run with the client); Easy
+   with Safety Light and Vallahar read EASY MODE and started there; Custom on OHKO's base with
+   Random Start started in Top of Pulsava and the pause menu offered TELEPORT TO VALLAHAR; a
+   Custom seed set by hand from RANDOMIZER with the client's steps took the seed, twice, and
+   one with Safety wrong was refused (the world's tests also
+   generate and fill Custom seeds and check the measured seeds' pools; `test_custom.py`). The
+   options in the game's words, refusing what the game's menu cannot
    hold, the game's pool rules, the game's Random Start rule, `start_room` and `safety` with the
    presets, the slot data carrying the seed's settings, and the client's checks of them in the
    new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, Allow

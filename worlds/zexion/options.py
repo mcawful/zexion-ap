@@ -1,74 +1,420 @@
-"""Player options."""
+"""Player options.
+
+The randomizer's own settings are named as the game's menu labels them, described with the
+blurb the game shows for each, and their values named by the game's labels for them
+(docs/re/randocells.md, "The randomizer menu's settings"; docs/custom-mode.md, "The YAML").
+Every one of them but Starting Location (start_room) and Safety is Custom mode's: with a preset
+mode it must stay 'preset', as in the game, where changing one makes the mode Custom.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
-from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Range, Toggle
+from Options import (
+    Choice,
+    DeathLink,
+    DefaultOnToggle,
+    NamedRange,
+    OptionDict,
+    PerGameCommonOptions,
+    Range,
+    Toggle,
+)
 
-from . import logic, reach
-from .data import CELL_AREAS, MODES, START_ROOMS
+from . import custom
+from .data import CELL_AREAS, START_ROOMS
 
 
 class Mode(Choice):
     """The game's own randomizer mode, with its items, starting items and settings.
-    Easy: start with 5 Energy Tanks and a few more items; more Energy Tanks and Missile Boxes
-    to find, but fewer Missile Containers.
-    Standard: the game's default.
-    OHKO: no Energy Tanks at all, and a second room to teleport to; the 4 locations it can't
-    reach are left out."""
+    Easy: "An easier mode. Start with Navcore and Power Cartridge. More energy tanks and
+    missiles to be found."
+    Standard: "Standard difficulty. Start with a random weapon."
+    OHKO: "No energy tanks at all. Can teleport to two locations."
+    Custom: "Use custom rules.": every setting below, from custom_base's.
+    Easy, Standard and OHKO are each the game's preset exactly, with one fresh save's items:
+    only Starting Location (start_room) and Safety can be changed with them, as in the game."""
 
     display_name = "Mode"
+    option_easy = 0
+    option_standard = 1
+    option_ohko = 2
+    option_custom = 3
+    default = 1
+
+
+PRESETS = ("easy", "standard", "ohko")
+
+
+class CustomBase(Choice):
+    """Custom mode only: the preset whose items, amounts and settings Custom starts from, the
+    values every 'preset' below stands for."""
+
+    display_name = "Custom Base"
     option_easy = 0
     option_standard = 1
     option_ohko = 2
     default = 1
 
 
-# Every start room, in a fixed order; which ones a mode accepts, the world works out from the
-# mode's settings (reach.offered_starts).
-START_CELLS = sorted(room["cell"] for room in START_ROOMS)
-AUTOMATIC = len(START_CELLS)
-MODE_NAMES = {"easy": "Easy", "standard": "Standard", "ohko": "OHKO"}
+class Amount(NamedRange):
+    """An amount of the menu's first screen; 'preset': the mode's (Custom: custom_base's)."""
+
+    range_start = 0
+    special_range_names = {"preset": -1}
+    default = -1
+    amount: int  # custom.START_ENERGY and so on
+
+    @classmethod
+    def get_option_name(cls, value: int) -> str:
+        return "Preset" if value == cls.default else str(value)
 
 
-def _room_option(a: int, b: int) -> str:
-    """kresezoa_16_13: the area, then X and Y as the game displays them."""
+class StartingEnergyTanks(Amount):
+    """Choose the items you start the game with.
+    Custom mode only. 0 to 40, with Item Pool Energy Tanks 40 at most together."""
+
+    display_name = "Starting Energy Tanks"
+    range_end = custom.MAX_ENERGY
+    amount = custom.START_ENERGY
+
+
+class PoolEnergyTanks(Amount):
+    """Choose the items to find throughout the world.
+    Custom mode only. 0 to 40, with Starting Energy Tanks 40 at most together."""
+
+    display_name = "Item Pool Energy Tanks"
+    range_end = custom.MAX_ENERGY
+    amount = custom.POOL_ENERGY
+
+
+class StartingMissiles(Amount):
+    """Choose the items you start the game with.
+    Custom mode only. 0 to 999, with Item Pool Missiles 999 at most together. You start with
+    each ten as a Missile Box and the rest as Missile Containers."""
+
+    display_name = "Starting Missiles"
+    range_end = custom.MAX_AMMO
+    amount = custom.START_MISSILES
+
+
+class PoolMissiles(Amount):
+    """Choose the items to find throughout the world.
+    Custom mode only. 0 to 999, with Starting Missiles 999 at most together, and no more than
+    the menu allows: ten for each place the pool's keys, items, Energy Tanks and Mega Bombs
+    leave free. Above what fits, some come in Missile Boxes of ten."""
+
+    display_name = "Item Pool Missiles"
+    range_end = custom.MAX_AMMO
+    amount = custom.POOL_MISSILES
+
+
+class StartingMegaBombs(Amount):
+    """Choose the items you start the game with.
+    Custom mode only. 0 to 999, with Item Pool Mega Bombs 999 at most together. Not supported
+    yet: anything above 0 is refused, as the client cannot start a game with Mega Bombs."""
+
+    display_name = "Starting Mega Bombs"
+    range_end = custom.MAX_AMMO
+    amount = custom.START_BOMBS
+
+
+class PoolMegaBombs(Amount):
+    """Choose the items to find throughout the world.
+    Custom mode only. 0 to 999, with Starting Mega Bombs 999 at most together, and no more
+    than the menu allows: ten for each place the pool's keys, items, Energy Tanks and missiles
+    leave free. Above what fits, some come in Bomb Boxes of ten."""
+
+    display_name = "Item Pool Mega Bombs"
+    range_end = custom.MAX_AMMO
+    amount = custom.POOL_BOMBS
+
+
+AMOUNTS = (
+    "starting_energy_tanks", "pool_energy_tanks", "starting_missiles", "pool_missiles",
+    "starting_mega_bombs", "pool_mega_bombs",
+)  # fmt: skip
+
+
+class CustomItems(OptionDict):
+    """Custom mode only: each of the menu's 27 items, by the game's name, and its state:
+    start (":Starting Item": "Choose the items you start the game with."), pool (found
+    throughout the world: "Choose the items to find throughout the world."), random
+    (":Random": a coin flip between the two) or excluded (":Excluded": neither). Items not
+    listed keep custom_base's state. An upgrade started without its gun starts as the gun:
+    the world holds each gun and its upgrade as one progressive item."""
+
+    display_name = "Starting Items and Item Pool"
+    valid_keys = [name for name, _ in custom.MENU_ITEMS]
+    default: dict[str, Any] = {}
+
+
+class Setting(Choice):
+    """A setting of the menu's Edit Options screen (``setting``: its byte t)."""
+
+    option_off = 0
+    option_on = 1
+    option_preset = 2
+    default = 2
+    setting: int
+
+
+class RandomGun(Setting):
+    """Start the game with a random gun.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Random Gun"
+    setting = custom.RANDOM_GUN
+
+
+class GunsFirst(Setting):
+    """Guns will be found before their upgrade that specifically requires them.
+    Custom mode only; 'preset': the mode's. Off is not supported yet."""
+
+    display_name = "Guns First"
+    setting = custom.GUNS_FIRST
+
+
+class BulkMissiles(Setting):
+    """Missile containers will all be in boxes of ten.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Bulk Missiles"
+    setting = custom.BULK_MISSILES
+
+
+class BulkBombs(Setting):
+    """All mega bombs will be in boxes of ten.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Bulk Bombs"
+    setting = custom.BULK_BOMBS
+
+
+class BoxCompression(Setting):
+    """Missiles and bombs will be put into boxes more. Other items will also appear.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Box Compression"
+    setting = custom.BOX_COMPRESSION
+
+
+class DoubleTeleport(Setting):
+    """Be able to teleport to a random second location.
+    Custom mode only; 'preset': the mode's. The second location is chosen so that the two
+    starts together reach at least 3 locations with the starting items."""
+
+    display_name = "Double Teleport"
+    setting = custom.DOUBLE_TELEPORT
+
+
+class XCrystals(Setting):
+    """Removes crystal blocks that are destroyed by plasma.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "X Crystals"
+    setting = custom.X_CRYSTALS
+
+
+class XBlocks(Setting):
+    """Removes cracked blocks that are destroyed by missiles.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "X Blocks"
+    setting = custom.X_BLOCKS
+
+
+class AbridgedFinale(Setting):
+    """Victory is achieved when you first grab Zexion in the core.
+    Custom mode only; 'preset': the mode's. Not with the OS Install Disks goal."""
+
+    display_name = "Abridged Finale"
+    setting = custom.ABRIDGED_FINALE
+
+
+class SecretShuffle(Setting):
+    """Allows an item to be placed in the 7th layer.
+    Custom mode only; 'preset': the mode's. On is not supported yet."""
+
+    display_name = "Secret Shuffle"
+    setting = custom.SECRET_SHUFFLE
+
+
+class ObscureMajors(Setting):
+    """Major items will not be identified when revealed on map.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Obscure Majors"
+    setting = 29
+
+
+class ObscureMinors(Setting):
+    """Minor items will not be identified when revealed on map.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Obscure Minors"
+    setting = 38
+
+
+class ObscureClass(Setting):
+    """Obscures whether or not items are major or minor.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Obscure Class"
+    setting = 41
+
+
+class ShowObtainable(Setting):
+    """The map screen will display the items currently obtainable to you according to logic.
+    Custom mode only; 'preset': the mode's."""
+
+    display_name = "Show Obtainable"
+    setting = 11
+
+
+class Hints(Choice):
+    """Custom mode only; 'preset': the mode's.
+    None: Navigation rooms will give no hints.
+    Vanilla: Navigation rooms will reveal the same sections of the map that they do in the base
+    game.
+    Vanilla+: Navigation rooms reveal the sections of the map that they do in the base game
+    plus hidden items.
+    Small: Navigation rooms will give small sized hints.
+    Normal: Navigation rooms will give normal sized hints.
+    Large: Navigation rooms will give large sized hints.
+    Full Map: Navigation rooms will reveal the full map.
+    Revealed: Map will be fully revealed from the start."""
+
+    display_name = "Hints"
+    option_none = 0
+    option_vanilla = 1
+    option_vanilla_plus = 2
+    option_small = 3
+    option_normal = 4
+    option_large = 5
+    option_full_map = 6
+    option_revealed = 7
+    option_preset = 8
+    default = 8
+    bits = custom.HINTS
+
+
+class Gates(Choice):
+    """Custom mode only; 'preset': the mode's.
+    Off: Hyperspace gates are disabled.
+    Vanilla: Gates require the four keys to access all like in the base game.
+    Unlocked: Gates can be opened one by one by visiting their locations.
+    Open: Gates can be moved through freely. (The R'talva gate is locked before defeating
+    Aesos) The seed's logic does not use the gates yet.
+    Off is refused with the core goal for now: whether the disabled gates close the way to
+    Zexion is not known."""
+
+    display_name = "Gates"
+    option_off = 0
+    option_vanilla = 1
+    option_unlocked = 2
+    option_open = 3
+    option_preset = 4
+    default = 4
+    bits = custom.GATES
+
+
+class Safety(Choice):
+    """Any mode; 'preset': the mode's. OHKO takes Light or Off only.
+    Light: Energy Tanks and items are taken into account for some combat encounters.
+    Early: More Energy Tanks and Equipment are required for certain tough early game
+    situations.
+    Normal: More Energy Tanks and Equipment are required for certain tough situations.
+    Off: Energy Tanks and Equipment are not taken into account for tough combat encounters."""
+
+    display_name = "Safety"
+    option_light = 0
+    option_early = 1
+    option_normal = 2
+    option_off = 3
+    option_preset = 4
+    default = 4
+    bits = custom.SAFETY
+
+
+OHKO_SAFETY = (Safety.option_light, Safety.option_off)
+
+
+class StartKeys(NamedRange):
+    """Custom mode only; 'preset': the mode's. Keys in your start_inventory add to these, which
+    are the first ones from the Alpha Key.
+    0: Start the game with no keys.
+    1: Start the game with 1 key.
+    2: Start the game with 2 keys.
+    3: Start the game with 3 keys.
+    4: Start the game with all 4 keys."""
+
+    display_name = "Start Keys"
+    range_start = 0
+    range_end = 4
+    special_range_names = {"preset": -1}
+    default = -1
+    bits = custom.START_KEYS
+
+    @classmethod
+    def get_option_name(cls, value: int) -> str:
+        return "Preset" if value == cls.default else str(value)
+
+
+# Starting Location's rooms, in the menu's order: value n is start-table room n - 1
+# (docs/re/randocells.md, "Starting Location and the second teleport target").
+ROOM_NAMES = (
+    "exodia", "upper_tower", "below_junkyard", "below_arena", "tower_gauntlet",
+    "top_of_pulsava", "landing_pod", "guardia_lab", "ocean_cliff", "vallahar", "jungle_entry",
+    "guardia_tower", "kresezoa_cave", "tarazors_nest", "lower_tower", "ktarel_sub",
+    "spider_caves", "open_cave", "machinus_entry", "upper_machinus", "near_colossus",
+    "near_orballus", "crysmoon_entry", "lower_machinus", "white_crysmoon", "below_machinus",
+    "fijedar_lab", "fijedar_entry", "deep_crysmoon", "rtalva", "phobyss_entry",
+    "magma_chamber", "vulknor_entry", "waste_zone",
+)  # fmt: skip
+RANDOM_START = 0
+AUTOMATIC = len(ROOM_NAMES) + 1
+AUTOMATIC_ROOM = ROOM_NAMES.index("landing_pod")  # where one of the owner's seeds started
+
+
+def old_room_name(room: dict) -> str:
+    """The room's earlier name, kept as an alias: its area, then X and Y as the game displays
+    them (kresezoa_16_13)."""
+    a, b = room["cell"]
     area = CELL_AREAS[(a, b)].lower().replace("'", "")
-    return f"option_{area}_{b}_{a}"
-
-
-def _rooms_by_mode() -> str:
-    """Which rooms each mode can start in, by option name, for the description."""
-    groups: dict[tuple, list[str]] = {}
-    for mode, m in MODES.items():
-        settings = logic.Settings(m["energy_total"], m["mode69"], m["options"])
-        seed = reach.Seed.of(settings, m["start_inventory"], m["pool"])
-        cells = tuple(sorted(r["cell"] for r in reach.offered_starts(seed, m["double_teleport"])))
-        groups.setdefault(cells, []).append(MODE_NAMES[mode])
-    parts = []
-    for cells, modes in groups.items():
-        if len(cells) == len(START_CELLS):
-            rooms = "all of them"
-        else:
-            rooms = ", ".join(_room_option(a, b).removeprefix("option_") for a, b in cells)
-        parts.append(f"{' and '.join(modes)}: {rooms}")
-    return "; ".join(parts)
+    return f"{area}_{b}_{a}"
 
 
 def _make_start_room() -> type[Choice]:
-    attrs = {_room_option(a, b): i for i, (a, b) in enumerate(START_CELLS)}
+    attrs: dict[str, Any] = {"option_random_start": RANDOM_START}
+    attrs |= {f"option_{name}": i + 1 for i, name in enumerate(ROOM_NAMES)}
+    attrs |= {f"alias_{old_room_name(room)}": room["index"] + 1 for room in START_ROOMS}
     attrs["option_automatic"] = AUTOMATIC
     attrs["default"] = AUTOMATIC
-    attrs["display_name"] = "Start Room"
+    attrs["display_name"] = "Starting Location"
     attrs["__module__"] = __name__  # so the class pickles: it is found as options.StartRoom
     attrs["__qualname__"] = "StartRoom"
     attrs["__doc__"] = (
-        "Where you start: one of the game's start rooms, named by its area and its X and Y as "
-        f"the pause screen shows them. The rooms each mode can use: {_rooms_by_mode()}. If your "
-        "mode can't use the room you pick, a random one it can use is chosen. 'automatic' "
-        "(the default): kresezoa_16_13. 'random': a random room your mode can use."
+        "Any mode. random_start: Start in a random location: the game's own rule, a room from "
+        "which your starting items reach locations, and no room the game flags unless you "
+        "start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together ("
+        "'random' is random_start too). Or one of the game's 34 rooms, by its name in the "
+        "menu: a room from which your starting items reach no location, or every item does "
+        "not reach Zexion's core with the core goal, is refused. From a room where they reach "
+        "only one, generation can fail now and then: try again or pick another. automatic (the "
+        "default): landing_pod, or a random start where that room is refused. The earlier names "
+        "(kresezoa_16_13: the area, then X and Y as the pause screen shows them) still work."
     )
+
+    @classmethod
+    def from_text(cls: type[Choice], text: str) -> Choice:
+        if text.lower() == "random":
+            return cls(RANDOM_START)
+        return Choice.from_text.__func__(cls, text)
+
+    attrs["from_text"] = from_text
     return type("StartRoom", (Choice,), attrs)
 
 
@@ -82,7 +428,7 @@ class AllowAssists(Toggle):
     archipelago.gg, the command box on the room page, which only whoever created the room
     sees)."""
 
-    display_name = "Allow Assists"
+    display_name = "Enable Assist Options"
 
 
 class AreaMapHints(DefaultOnToggle):
@@ -116,7 +462,9 @@ class OSInstallDisks(Range):
     (or Area Maps), and above 25 in Standard, Energy Shields. In OHKO they replace filler
     items only. Excluded locations can hold only filler items, of which Standard keeps 25
     minus the disks (Easy 30, OHKO 36): exclude more locations than that, and generation stops
-    with an error saying so, unless the other players' filler makes up the difference."""
+    with an error saying so, unless the other players' filler makes up the difference. Where
+    there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
+    and nine Scrap Metal, as the game makes filler when it runs short."""
 
     display_name = "OS Install Disks"
     range_start = 1
@@ -134,10 +482,44 @@ class OSInstallDisksRequired(Range):
     default = 12
 
 
+# The settings of Edit Options, by option name: Custom only but for start_room and safety.
+SETTINGS = (
+    "random_gun", "guns_first", "bulk_missiles", "bulk_bombs", "box_compression", "hints",
+    "gates", "double_teleport", "start_keys", "x_crystals", "x_blocks", "abridged_finale",
+    "secret_shuffle", "obscure_majors", "obscure_minors", "obscure_class", "show_obtainable",
+)  # fmt: skip
+
+
 @dataclass
 class ZexionOptions(PerGameCommonOptions):
     mode: Mode
+    custom_base: CustomBase
+    starting_energy_tanks: StartingEnergyTanks
+    pool_energy_tanks: PoolEnergyTanks
+    starting_missiles: StartingMissiles
+    pool_missiles: PoolMissiles
+    starting_mega_bombs: StartingMegaBombs
+    pool_mega_bombs: PoolMegaBombs
+    custom_items: CustomItems
+    random_gun: RandomGun
+    guns_first: GunsFirst
+    bulk_missiles: BulkMissiles
+    bulk_bombs: BulkBombs
+    box_compression: BoxCompression
+    hints: Hints
+    gates: Gates
     start_room: StartRoom
+    double_teleport: DoubleTeleport
+    start_keys: StartKeys
+    x_crystals: XCrystals
+    x_blocks: XBlocks
+    abridged_finale: AbridgedFinale
+    secret_shuffle: SecretShuffle
+    safety: Safety
+    obscure_majors: ObscureMajors
+    obscure_minors: ObscureMinors
+    obscure_class: ObscureClass
+    show_obtainable: ShowObtainable
     death_link: DeathLink
     allow_assists: AllowAssists
     area_map_hints: AreaMapHints

@@ -44,8 +44,26 @@ def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
     save = fresh()
     assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
     patched = sp.patch(bytes(fresh()), p)
-    for start, size in ((sp.ITEM_TABLE, sp.LOCATIONS), (sp.START_RECORD, 6), (sp.SECOND_START, 6)):
+    for start, size in (
+        (sp.ITEM_TABLE, sp.LOCATIONS),
+        (sp.START_RECORD, 6),
+        (sp.SECOND_START, 6),
+        (sp.SEED_TEXT, 16),
+        (sp.SEED_HASH, 8),
+    ):
         assert save[start : start + size] == patched[start : start + size]
+
+
+def test_the_seed_text_and_its_hash_are_the_seeds() -> None:
+    # Two saves of 2026-10-27 (lab/ap/live37): their seed texts and the hashes the game stored.
+    assert sp.seed_hash("6D03FB8F34D40BCA") == 0xACB04D43F8BF30D6
+    assert sp.seed_hash("A923AEC2C81578A7") == 0x7A87518C2CEA329A
+    save = fresh()
+    p = plan()
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
+    at = sp.SEED_TEXT
+    assert bytes(save[at : at + 16]).decode() == p.menu.seed_text
+    assert struct.unpack_from("<Q", save, sp.SEED_HASH)[0] == sp.seed_hash(p.menu.seed_text)
 
 
 def test_starting_items_become_the_array_amounts_and_keys() -> None:
@@ -173,3 +191,43 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
 def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
     with pytest.raises(ng.NewGameError, match=why):
         ng.plan_text(plan(**changes))
+
+
+def test_randomizer_steps_name_a_presets_safety() -> None:
+    p = plan(options={10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 1, 43: 0, 72: 0, 73: 1})
+    assert ng.randomizer_steps(p, "easy") == (
+        "pick Easy mode, set Safety Early and change no other options (the seed, optional: "
+        "0123 4567 89AB CDEF)"
+    )
+
+
+def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings() -> None:
+    options = {10: 1, 30: 1, 31: 0, 32: 1, 33: 0, 37: 0, 42: 0, 43: 1, 72: 1, 73: 1}
+    settings = bytearray(64)
+    settings[34 - 10] = settings[35 - 10] = 1  # Start Keys 3
+    menu = menu_setup(
+        start=bytes([0] * 3 + [1] + [1, 1] + [0] * 21),
+        pool=bytes([1] * 4 + [0, 1] + [1] * 18 + [0] + [1] * 2),
+        settings=bytes(settings),
+    )
+    p = plan(options=options, amounts=(6, 20, 25, 200, 0, 30), menu=menu)
+    steps = ng.randomizer_steps(p, "custom")
+    assert steps.startswith(
+        "set Custom, first the items (Starting Item: Machine Gun; Random: Navcore, Force "
+        "Blaster; Excluded: Power Core; the rest in the Item Pool) and Start Keys 3"
+    )
+    assert "then Starting Items 6 Energy Tanks, 25 missiles, 0 Mega Bombs" in steps
+    assert "Item Pool 20, 200, 30" in steps
+    for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
+        assert part in steps
+    assert steps.endswith("Safety Normal, Gates Open (the seed, optional: 0123 4567 89AB CDEF)")
+
+
+@pytest.mark.parametrize("text", ["6d03fb8f34d40bca", "6D03FB8F34D40BC", "6D03FB8F34D40BCG"])
+def test_a_seed_text_the_game_would_read_otherwise_is_refused(text) -> None:
+    with pytest.raises(ValueError):
+        sp.seed_hash(text)
+    with pytest.raises(sp.PatchError):
+        sp.patch(bytes(fresh()), plan(menu=menu_setup(seed_text=text)))
+    with pytest.raises(ng.NewGameError):
+        ng.plan_text(plan(menu=menu_setup(seed_text=text)), offer_choice=False)

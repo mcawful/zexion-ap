@@ -19,11 +19,12 @@ Reads (all copies in lab/, never the game folder):
   MapData for the cells holding Zexion (the core goal, ``CORE``: docs/re/locations.md, "The
   core goal is Zexion's cell in the core").
 
-Cells joined by always-open passages are merged into one region (strongly connected
-components of the open passages); each conditional passage between two regions becomes an
-entrance carrying the requirement list of the cell it leaves from. The map is shared by all
-modes; a mode's settings only change how the rules evaluate. Only cells reachable with every
-item from some mode's valid start are kept. A start is valid for a mode when, with every item
+Cells joined by always-open passages are merged into one region (strongly connected components
+of the open passages); each conditional passage between two regions becomes an entrance carrying
+the requirement list of the cell it leaves from. The map is shared by all modes; a mode's
+settings only change how the rules evaluate. Only cells reachable with every item from some
+mode's valid start are kept, and those every item of a mode reaches from any start room with X
+Crystals and X Blocks on (``opened_cells``). A start is valid for a mode when, with every item
 of that mode, all 154 locations are reachable from it, and with only that mode's starting
 inventory at least ``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions
 and locations with every item, which the mode then holds once; the generator refuses data where
@@ -37,6 +38,7 @@ map and the 34 start rooms (``START_ROOMS``) written here; each mode's lists her
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import struct
@@ -112,10 +114,6 @@ def components(cells: set, grid) -> dict:
     return comp
 
 
-# The settings the logic depends on (option index; docs/re/randocells.md): code 68's tiers,
-# Double Teleport, Safety (code 69's mode) and Gates. The helper refuses a new game whose
-# settings differ (client/newgame.py, expect lines).
-CHECKED_OPTIONS = (30, 31, 32, 33, 37, 42, 43, 72, 73)
 ARRAY = 27
 # The section's 27-entry arrays, the start-with array then the pool (docs/re/save-format.md).
 START_WITH, POOL = newgame.START_WITH, newgame.START_WITH + ARRAY
@@ -330,6 +328,29 @@ def core_goal(grid, kept: set, zexion: list) -> dict:
     return {"door": door, "cell": goal, "needs": needs}
 
 
+# Settings that open cells no preset reaches (docs/re/locations.md, "The region graph holds what
+# the settings reach"): X Crystals and X Blocks, whose cells (6, 26) and (7, 26) are a shorter way
+# between two regions. Abridged Finale stays off: it opens the core, which the world enters by its
+# own entrance (``core_goal``). Secret Shuffle's cells hold its 155th location, which the world
+# does not have yet.
+OPENING = (30, 31)
+
+
+def opened_cells(grid, modes: dict, candidates: list) -> set:
+    """The cells each mode's every item reaches from every start room with OPENING on."""
+    cells = set()
+    for mode in modes.values():
+        settings = mode["settings"]
+        options = bytearray(settings.options)
+        for t in OPENING:
+            options[t] = 1
+        opened = dataclasses.replace(settings, options=bytes(options))
+        full = full_inventory(Counter(mode["start_inventory"]), mode["pool"])
+        for cand in candidates:
+            cells |= rc.reachable_cells(grid, full, opened, tuple(cand["cell"]))
+    return cells
+
+
 def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_path: Path) -> dict:
     grid = rc.parse(cells_path.read_bytes())
     exe = exe_path.read_bytes()
@@ -351,7 +372,6 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             union |= st["cells"]
         modes[name] = {
             "amounts": struct.unpack_from("<6h", data, sp.AMOUNTS),
-            "checked_options": {t: data[sp.OPTIONS + t] for t in CHECKED_OPTIONS},
             "double_teleport": double,
             "settings": settings,
             "pool": pool,
@@ -361,6 +381,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
             "second_target": None if double else struct.unpack_from("<3H", data, sp.SECOND_START),
         }
 
+    union |= opened_cells(grid, modes, candidates)
     comp = components(union, grid)
     cell_region = {c: comp[c] for c in sorted(union)}
 
@@ -447,7 +468,7 @@ def render(d: dict, source: str) -> str:
         "# the second together).",
         f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
         "",
-        "# Per mode ('checked_options': the settings a new game must match). 'regions' and",
+        "# Per mode, from its fresh save and the exe's preset ('menu'). 'regions' and",
         "# 'location_indices': what every item reaches from each of the mode's starts, the same",
         "# from all of them. A mode with a second teleport target lists every candidate, with",
         "# 'sphere0_indices'. The world works these three out itself when a seed is generated",
@@ -459,7 +480,6 @@ def render(d: dict, source: str) -> str:
         out += [
             f"    {name!r}: {{",
             f"        'amounts': {m['amounts']!r},",
-            f"        'checked_options': {m['checked_options']!r},",
             f"        'double_teleport': {m['double_teleport']},",
             f"        'energy_total': {s.energy_total},",
             f"        'mode69': {s.mode69},",

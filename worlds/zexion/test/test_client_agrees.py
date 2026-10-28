@@ -119,10 +119,17 @@ class TestClientReadsTheSlotData(ZexionTestBase):
     def test_each_mode_and_goal(self) -> None:
         # A build whose start table the world's data was measured on, so plan_text uses it.
         build = next(b for b in patterns.KNOWN_BUILDS if b.sha256.startswith(data.DATA_BUILD))
-        for mode in ("easy", "standard", "ohko"):
+        custom = {"mode": "custom", "x_blocks": "on", "hints": "revealed", "start_keys": 1}
+        for options in (
+            *({"mode": mode} for mode in ("easy", "standard", "ohko")),
+            custom,
+            {**custom, "custom_base": "ohko", "safety": "off"},
+        ):
             for goal in ("core", "os_install_disks"):
-                with self.subTest(mode=mode, goal=goal):
-                    self.options = {"mode": mode, "goal": goal}
+                with self.subTest(**options, goal=goal):
+                    self.options = {**options, "goal": goal}
+                    if goal == "core" and options["mode"] == "custom":
+                        self.options["abridged_finale"] = "on"
                     self.world_setup()
                     distribute_items_restrictive(self.multiworld)
                     self.check(self.world.fill_slot_data(), goal, build.sha256)
@@ -141,10 +148,17 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         self.assertTrue(newgame.plan_text(plan, build_sha256).startswith("ap_newgame\n"))
         self.assertTrue(newgame.plan_text(plan, offer_choice=False).startswith("ap_newgame\n"))
         self.assertIsNotNone(newgame.start_table(plan, build_sha256) or plan.menu.second_target)
-        # The new game must have Abridged Finale (setting 32) off: the client's goal is the
-        # ending's flag with the finale's clear (client/session.py, ENDING_FLAG).
-        abridged = f"expect {newgame.section(save_patch.OPTIONS + 32):#x} 00"
-        self.assertIn(abridged, newgame.plan_text(plan, offer_choice=False).splitlines())
+        # The new game must have every setting the logic reads as the seed's, Abridged Finale
+        # (setting 32) among them; the client's goal, the ending's flag with the finale's clear,
+        # holds with it on or off (client/session.py, ENDING_FLAG).
+        lines = newgame.plan_text(plan, offer_choice=False).splitlines()
+        for t in (10, 30, 31, 32, 33, 37, 42, 43, 72, 73):
+            value = slot["options"][str(t)]
+            self.assertIn(f"expect {newgame.section(save_patch.OPTIONS + t):#x} {value:02x}", lines)
+        self.assertEqual(slot["options"]["32"], int(slot["mode"] == "custom" and goal == "core"))
+        # Starting Location in the menu names the start room.
+        location = sum(plan.menu.settings[t - 10] << i for i, t in enumerate(range(22, 28)))
+        self.assertEqual(location, slot["start_index"] + 1)
 
         self.assertEqual(aplabels.stand_ins(slot), {ids.STAND_IN, ids.STAND_IN_PROGRESSION})
         kept = frozenset(slot["kept_locations"])
