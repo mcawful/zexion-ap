@@ -98,8 +98,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
   one connection: 2026-10-24.
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
   modes: 2026-10-22. That was the earlier path, checked against the player's own placement;
-  identifying the game by its seed text and placing it again (2026-10-27) is not yet run in
-  game.
+  identifying the game by its seed text and placing it again: 2026-10-27, a Custom seed (the
+  same as its ARCHIPELAGO game byte for byte) and a Standard one, and another seed's text
+  refused.
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
   2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
   three-game seed (other games' items, no owner on the map, other Zexion players' supplies
@@ -272,7 +273,7 @@ Running it may load the helper into the game: the one already there if it is thi
 - `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it
   with the seed's text typed into the menu gets the seed: the helper places it again with the
   seed's settings, whatever else the menu holds (`client/newgame.py`; `native/README.md`, "New
-  games"; not yet run in game). From the Launcher:
+  games"; working in game, 2026-10-27). From the Launcher:
   `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or

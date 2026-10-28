@@ -321,7 +321,7 @@ carries no start table: RANDOMIZER is the fallback when the game's own table dif
 seed's or was never measured on the build, and the game's own, built when the menu opened, is
 used, as its START GAME uses it. This replaced (2026-10-27) the message's list of what to set
 by hand (items, Start Keys, amounts, checked settings), with which a Custom seed set by hand
-took the seed twice in game. Built and tested on stand-ins; not yet run in game.
+took the seed twice in game. Now working in game, 2026-10-27, B1 (helper built from `claude/randomizer-by-seed` a56a25e, client from source, `--keep-randomizer`; seed `lab/ap/live38`): a Custom seed's text typed over a menu set to Easy took the seed (slot 4), and its section was byte for byte the same as an ARCHIPELAGO game of that seed (slot 5), the Hints' rectangles included; a Standard seed's text over a menu set to OHKO took the seed (slot 6); another seed's text was refused and left the player's own OHKO game (slot 7). The live run's evidence: the slots' first saves, copied read-only to `lab/work/Save_Game_4-20261027-222549.sav`, `_5-20261027-222832`, `_6-20261027-222953` and `_7-20261027-223107`, and the client logs in `lab/ap/live38`.
 
 ## What the settings make redundant in zexion-ap
 
