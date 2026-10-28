@@ -143,8 +143,9 @@ class CustomItems(OptionDict):
     start (":Starting Item": "Choose the items you start the game with."), pool (found
     throughout the world: "Choose the items to find throughout the world."), random
     (":Random": a coin flip between the two) or excluded (":Excluded": neither). Items not
-    listed keep custom_base's state. An upgrade started without its gun starts as the gun:
-    the world holds each gun and its upgrade as one progressive item."""
+    listed keep custom_base's state. With Guns First on, an upgrade started without its gun
+    starts as the gun: the world holds each gun and its upgrade as one progressive item. With
+    it off, each upgrade starts as itself."""
 
     display_name = "Starting Items and Item Pool"
     valid_keys = [name for name, _ in custom.MENU_ITEMS]

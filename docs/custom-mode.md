@@ -4,8 +4,9 @@
 build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
 `world.py`), with Secret Shuffle on refused until step E's second part, and starting Mega
-Bombs until the client can give them; Guns First off is built (step E, not yet run in game). This page set out how the YAML offers every setting of
-the game's own randomizer, following the game's rules for them, and records what was built. The game's side
+Bombs until the client can give them; Guns First off is built (step E, not yet run in game).
+This page set out how the YAML offers every setting of the game's own randomizer, following
+the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
 [`re/randocells.md`](re/randocells.md), from "The randomizer menu's settings" to "What each
 setting does in the game". Measured there means seen on build B1, by disassembly or live.

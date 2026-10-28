@@ -14,8 +14,10 @@ right: an item the save lost is given again, and one the game handed out is neve
 An inventory above what the player should own is left alone.
 
 With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
-item: the game turns a second copy into the upgrade (docs/re/randocells.md; seen for the Machine
-Gun only); should another weapon not, the upgrade is still owed and given. With it off the game
+item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works
+on a table of 64 counts": on the item's update by the save's Guns First, at pickup by the
+randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is still owed and
+given. With it off the game
 redirects nothing in the seed's own items, and each upgrade is an item, and a byte, of its own
 (docs/re/randocells.md, "The evaluator works on a table of 64 counts"): every item is counted as
 itself.
