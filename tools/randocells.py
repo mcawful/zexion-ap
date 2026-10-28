@@ -180,20 +180,7 @@ def reachable_cells(
 
 
 # A weapon and its upgrade are progressive (logic.WEAPON_UPGRADES; docs/re/randocells.md).
-REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in logic.WEAPON_UPGRADES.items()}
-
-
-def collect(have: Counter, item: int) -> None:
-    """Add one picked-up item to the counts, as the generator does (RVA 0xE5680)."""
-    upgrade = logic.WEAPON_UPGRADES.get(item)
-    if upgrade is not None and have[item] > 0:
-        have[upgrade] += 1
-        return
-    base = REDIRECT_IF_MISSING.get(item)
-    if base is not None and have[base] == 0:
-        have[base] = 1
-        return
-    have[item] += 1
+collect = logic.collect
 
 
 def sweep(

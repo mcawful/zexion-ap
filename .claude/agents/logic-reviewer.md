@@ -21,7 +21,11 @@ rule is only as good as the path to it.
 `docs/re/locations.md` is the evidence. The world's rules are not written per location:
 `tools/gen_world_data.py` derives every location, region, entrance and requirement list at once from
 the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
-`worlds/zexion/logic.py` checks those lists the way the game does. `locations.md` records how that
+`worlds/zexion/logic.py` checks those lists the way the game does. Which of the locations and
+regions a seed keeps, and which start rooms it offers, `worlds/zexion/reach.py` works out when the
+seed is generated, from the seed's settings, over that region graph; each mode's lists in
+`data.py` (`regions`, `location_indices`, `starts`) are the generator's cell-by-cell results,
+which `worlds/zexion/test/test_reach.py` compares with it. `locations.md` records how that
 derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
 playthroughs it was checked against), section by section, including the world's deliberate
 exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come from

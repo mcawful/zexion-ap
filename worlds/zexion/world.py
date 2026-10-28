@@ -13,7 +13,7 @@ from Options import OptionError
 from worlds.AutoWorld import World
 from worlds.generic.Rules import add_item_rule
 
-from . import data, logic, rules, starting, web_world
+from . import data, logic, reach, rules, starting, web_world
 from .items import (
     AREA_MAP,
     ASSIST_UNLOCK,
@@ -90,10 +90,11 @@ class ZexionWorld(World):
     item_name_groups = item_name_groups
     location_name_groups = location_name_groups
 
-    created_regions: set[int]
-    start: dict
+    created_regions: set[int]  # what every item reaches from the start(s): reach.py
+    start: dict  # a data.START_ROOMS entry
     second: dict | None  # the second teleport target, in a mode that has one
     kept_locations: set[int]  # location indices this world creates
+    seed_reach: reach.Seed
     mode_name: str
     mode: dict
     logic_settings: logic.Settings  # not World.settings, the host.yaml settings
@@ -105,7 +106,15 @@ class ZexionWorld(World):
             self.mode["energy_total"], self.mode["mode69"], self.mode["options"]
         )
         self.check_start_inventory()
-        starts = {s["cell"]: s for s in self.mode["starts"]}
+        self.seed_reach = reach.Seed.of(
+            self.logic_settings, self.mode["start_inventory"], self.mode["pool"]
+        )
+        double = self.mode["double_teleport"]
+        starts = {room["cell"]: room for room in reach.offered_starts(self.seed_reach, double)}
+        if not starts:
+            raise OptionError(
+                f"Zexion ({self.player_name}): no start room suits {self.mode_name} mode's settings"
+            )
         choice = self.options.start_room.value
         cell = AUTOMATIC_START if choice == AUTOMATIC else START_CELLS[choice]
         if cell not in starts:
@@ -119,8 +128,18 @@ class ZexionWorld(World):
             )
             cell = replacement
         self.start = starts[cell]
-        self.second = self.pick_second_start(starts) if self.mode["double_teleport"] else None
-        self.kept_locations = set(self.mode["location_indices"])
+        self.second = self.pick_second_start(starts) if double else None
+        cells = [self.start["cell"]] + ([] if self.second is None else [self.second["cell"]])
+        every = self.seed_reach.every(*cells)
+        self.created_regions = set(every.regions)
+        self.kept_locations = set(every.locations)
+        door = data.CELL_REGION[data.CORE["door"]]
+        if not self.disc_hunt and door not in self.created_regions:
+            # The core is entered from there (create_regions).
+            raise OptionError(
+                f"Zexion ({self.player_name}): {self.mode_name} mode's settings do not reach "
+                f"the core's door from start room {cell_name(self.start['cell'])}"
+            )
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
         # Starting disks count toward the goal (set_rules; the client's discs_start).
@@ -150,15 +169,9 @@ class ZexionWorld(World):
 
     def pick_second_start(self, starts: dict) -> dict:
         """The second teleport target: a room that, together with the start, lets the starting
-        items reach at least data.MIN_SPHERE_ZERO locations. Every item reaches the same
-        locations and regions from each room, which the mode holds (docs/re/locations.md)."""
-        reached = set(self.start["sphere0_indices"])
-        partners = [
-            b
-            for c, b in sorted(starts.items())
-            if b is not self.start
-            and len(reached | set(b["sphere0_indices"])) >= data.MIN_SPHERE_ZERO
-        ]
+        items reach at least reach.MIN_SPHERE_ZERO locations (reach.second_starts)."""
+        rooms = [room for _, room in sorted(starts.items())]
+        partners = reach.second_starts(self.seed_reach, self.start["cell"], rooms)
         if not partners:
             # Every OHKO room has one on build B1 (the tests try each).
             raise OptionError(
@@ -175,7 +188,6 @@ class ZexionWorld(World):
 
     def create_regions(self) -> None:
         cells = data.CELL_REGION
-        self.created_regions = set(self.mode["regions"])
         menu = Region("Menu", self.player, self.multiworld)
         by_index = {
             r: Region(rules.region_name(r), self.player, self.multiworld)

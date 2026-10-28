@@ -2,7 +2,9 @@
 
 The APWorld's locations and rules are not written by hand: `tools/gen_world_data.py` generates
 `worlds/zexion/data.py` from the game's `RandoCells` file, and `worlds/zexion/logic.py` checks
-the requirement lists the way the game does. This page records how that data is derived and
+the requirement lists the way the game does. Which locations a seed keeps, which regions it
+creates and which start rooms it offers, the world works out when the seed is generated, from
+its settings (`worlds/zexion/reach.py`). This page records how that data is derived and
 what backs it. The format of `RandoCells` and the meaning of every code are in
 [`randocells.md`](randocells.md); the save fields in [`save-format.md`](save-format.md). Cells
 are this repo's (x, y), or as the game shows them (X26 Y22, "Machinus 27,24"); axes and
@@ -38,6 +40,26 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 | Build | B1 |
 | Evidence | Generator output, 2026-10-21. |
 
+## The world works out what a seed reaches when it is generated
+
+| Field | |
+|---|---|
+| Value | `worlds/zexion/reach.py` floods the region graph (`CELL_REGION`, `ENTRANCES`) from the seed's start, or its start and second teleport target together, with an inventory and the seed's `logic.Settings` (the Energy total, code 69's mode, the 64 option bytes code 68 reads): a way passes when its list does (`logic.satisfied`, checked at the cell it leaves from); a list with codes 64 to 67 is checked as the flood goes, which repeats until nothing new is reached, as `tools/randocells.py`'s cell-by-cell flood does. A location counts when its region is reached and its own list, if any, passes. With every item (the starting items, then the pool collected as the game's generator counts it: `logic.collect`) this gives the regions the world creates and the locations it keeps; with the starting items alone, what the start rooms are judged by ("Which start rooms the world offers"). Each result is cached by settings, inventory and starts. `data.MODES` keeps what `tools/gen_world_data.py` computed cell by cell for each mode, for the tests. |
+| Status | measured (equal to the cell-by-cell results for every mode: the start rooms offered, and the regions and locations every item reaches from each of them; in OHKO, the starting items' locations from each of the 34 rooms, and every item's regions and locations from each of the 1,122 ordered pairs of rooms); not run in game |
+| Method | `worlds/zexion/test/test_reach.py` against `data.MODES` |
+| Build | B1 |
+| Evidence | The tests, 2026-10-27. |
+
+## The region graph holds what the settings reach
+
+| Field | |
+|---|---|
+| Value | The graph's 1,641 cells are those every item reaches from some start of the three modes ("Regions are cells joined by open passages"). Flooded cell by cell from all 34 start rooms with every item of the Easy and Standard pools together over Standard's starting items, under each code-69 mode (0 to 3), Energy totals 0, 1, 5, 10, 20, 40, 99 and 200, and every combination of X Crystals, X Blocks and Secret Shuffle (settings 30, 31, 37), the cells reached outside the graph are only X Blocks' (6, 26) and (7, 26), entered from (7, 27) by a list of code 68 tier 31 alone, and Secret Shuffle's (20, 46) to (21, 48), entered from (19, 46) by code 68 tier 37 alone, which hold its 155th location at (20, 48) (`randocells.md`, "The pool"). Abridged Finale (setting 32) adds the core's 17 cells ("The core goal is Zexion's cell in the core"). None of the 154 locations is among these cells. But X Blocks' two cells are a way through, not a pocket: (7, 27) → (7, 26) (code 68 tier 31) → (6, 26) (item 5, the Snake, alone) → (6, 27) (open), from region 182 into region 183, where the graph's own way asks for X-Missile and the Snake together, the Zenith Thrusters or item 15. So with X Blocks on, the world's rules there would be stricter than the game's (never looser) until those cells join the graph. Secret Shuffle's six lead nowhere else. So the world can work out a seed's reach over the graph under Safety, the Energy total and X Crystals as the game does; X Blocks needs its two cells added, and Secret Shuffle's own location its six. Gates Open's gate travel is not in the graph either (`randocells.md`, "What each setting does in the game"). |
+| Status | measured (by the flood fill, for the settings listed and that inventory); not measured: other pools, OHKO's among them, and any with more copies of an item |
+| Method | `tools/randocells.py`'s `reachable_cells` over `RandoCells`, compared with `data.CELL_REGION` |
+| Build | B1 |
+| Evidence | `lab/data/6d8a94bd4d64/RandoCells`, 2026-10-27; the script was in the session's scratchpad and was not kept (rerun with the method above). |
+
 ## The translation matches the game's logic on every start
 
 | Field | |
@@ -52,11 +74,11 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 | Field | |
 |---|---|
-| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out for Easy mode, with slot 28's starting inventory and settings (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore; energy total 40). The world offers each mode the rooms valid for it. For each mode and each of its rooms, an Archipelago placement replayed through `randocells.sweep` reached 154/154 (18 games, seeds 300 to 308, 2026-10-21). |
+| Value | Of the game's 34 start candidates (`save-format.md`, "The continue point and the seed's start"), every one reaches all 154 locations with every item, but with only Standard mode's starting inventory as seed 29 had it (3 Energy Tanks, 3 Missile Containers, the Force Blaster), 25 reach fewer than 3 locations. The world offers the 9 that reach at least 3, including the three starts seen in real seeds. The same 9 come out for Easy mode, with slot 28's starting inventory and settings (5 Energy Tanks, 3 Missile Containers, the Machine Gun, the Power Cartridge, the Navcore; energy total 40). The world offers each mode the rooms valid for it, worked out by this rule from the mode's settings, starting items and pool when a seed is generated ("The world works out what a seed reaches when it is generated"), so the settings can change them: with Standard's items, code 69's mode 0 or 3 (Safety) or an Energy total of 5 offers a tenth room (`worlds/zexion/test/test_reach.py`). For each mode and each of its rooms, an Archipelago placement replayed through `randocells.sweep` reached 154/154 (18 games, seeds 300 to 308, 2026-10-21). |
 | Status | measured (by the flood fill); assumed (that 3 locations is enough for Archipelago's fill: it was in every generation tried) |
-| Method | `tools/gen_world_data.py` |
+| Method | `tools/gen_world_data.py`; at generation time, `worlds/zexion/reach.py` (`offered_starts`) |
 | Build | B1 |
-| Evidence | Generator output, 2026-10-21. |
+| Evidence | Generator output, 2026-10-21; `test_reach.py`, 2026-10-27. |
 
 ## One-way pockets are escaped by teleporting to the start
 
@@ -97,11 +119,11 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 | Field | |
 |---|---|
-| Value | **Which locations.** An OHKO seed starts in one room and can teleport to a second (`save-format.md`, "The continue point and the seed's start"), and some of its locations are unreachable (`randocells.md`, "The randomizer's modes"). For OHKO the generator records every one of the 34 candidates with the locations every item reaches from it alone and those its starting items (3 Missile Containers and the Machine Gun) reach: every candidate reaches the same 150 locations with every item, and 0 to 9 with the starting items. The world creates only the locations every item reaches from one of its two rooms, and removes as many filler items from the pool (Scrap Metal first), as the game fills unreachable locations with Scrap. |
+| Value | **Which locations.** An OHKO seed starts in one room and can teleport to a second (`save-format.md`, "The continue point and the seed's start"), and some of its locations are unreachable (`randocells.md`, "The randomizer's modes"). For OHKO the generator records every one of the 34 candidates with the locations every item reaches from it alone and those its starting items (3 Missile Containers and the Machine Gun) reach: every candidate reaches the same 150 locations with every item, and 0 to 9 with the starting items. The world creates only the locations every item reaches from its two rooms, flooded from both at once, and removes as many filler items from the pool (Scrap Metal first), as the game fills unreachable locations with Scrap. |
 | | **Which second room.** The world takes the first room from the Start Room option and picks the second at random among those that, together with the first, let the starting items reach at least 3 locations; both connect to the start of the logic. That the second target can be used from the first moment is from the game's own text (`LargeText.txt` entry 283, OHKO: "No energy tanks at all. Can teleport to two locations.") and from the real OHKO seed, whose first start alone reaches no location. |
-| | **Why combining two single-start results is exact** for the locations and regions: every candidate reaches the same 443 regions and 150 locations with every item (so `worlds/zexion/data.py` holds them once for the mode, as it holds Easy's and Standard's, which every start of each shares too; `tools/gen_world_data.py` refuses data where a mode's starts differ); for the starting items it can only undercount what the pair reaches together. |
+| | **What the pair reaches.** For the locations and regions the world floods from both rooms at once; that gives what each room gives alone: every candidate reaches the same 443 regions and 150 locations with every item, and so does every one of the 1,122 ordered pairs (`worlds/zexion/test/test_reach.py`; `worlds/zexion/data.py` holds them once for the mode, as it holds Easy's and Standard's, which every start of each shares too; `tools/gen_world_data.py` refuses data where a mode's starts differ). For choosing the second room, the starting items' locations from each room alone are combined, which can only undercount what the pair reaches together. |
 | | **Gates Vanilla** does not loosen anything: the gates can be switched off entirely (entries 349 to 352) while `RandoCells` stays the same file, so the logic does not count on gate travel (the game's generator does only under Gates Open, which no preset uses: `randocells.md`, "What each setting does in the game"); and the goal's key rule matches Vanilla's "require the four keys". |
-| Status | measured (computed with `tools/randocells.py`: the 150 locations; twelve OHKO games with random start rooms, seeds 400 to 411, replayed through `randocells.sweep` from both their starts with the left-out locations as Scrap, reaching all 150 placed locations and all four keys); working in game (a second target written at `0x12EE0`: a patched OHKO save in slot 6 teleported the owner to the patched room, 2026-10-21, `save-format.md`; an OHKO seed started from ARCHIPELAGO, its second target found on the pause screen at Pulsava 29,17, 2026-10-23, `memory.md`, "The game-mode panel: NORMAL / RANDOMIZER"); open (an OHKO seed played through) |
+| Status | measured (computed with `tools/randocells.py`: the 150 locations; the 1,122 pairs, flooded together by `worlds/zexion/reach.py`, in `test_reach.py`, 2026-10-27; twelve OHKO games with random start rooms, seeds 400 to 411, replayed through `randocells.sweep` from both their starts with the left-out locations as Scrap, reaching all 150 placed locations and all four keys); working in game (a second target written at `0x12EE0`: a patched OHKO save in slot 6 teleported the owner to the patched room, 2026-10-21, `save-format.md`; an OHKO seed started from ARCHIPELAGO, its second target found on the pause screen at Pulsava 29,17, 2026-10-23, `memory.md`, "The game-mode panel: NORMAL / RANDOMIZER"); open (an OHKO seed played through) |
 | Method | `tools/gen_world_data.py` with the fresh OHKO save; `Generate.py --spoiler 1`, the start rooms read from the spoiler header the world writes |
 | Build | B1 |
 | Evidence | `lab/work/slot5-ohko-fresh.sav`; generator output and replays, 2026-10-21; the OHKO start, `lab/ap/live8/`, 2026-10-23. |

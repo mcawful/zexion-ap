@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Range, Toggle
 
-from .data import CELL_AREAS, MODES
+from . import logic, reach
+from .data import CELL_AREAS, MODES, START_ROOMS
 
 
 class Mode(Choice):
@@ -24,9 +25,9 @@ class Mode(Choice):
     default = 1
 
 
-# Every start room valid in some mode, in a fixed order; which ones a mode accepts is in
-# data.MODES[mode]["starts"].
-START_CELLS = sorted({s["cell"] for m in MODES.values() for s in m["starts"]})
+# Every start room, in a fixed order; which ones a mode accepts, the world works out from the
+# mode's settings (reach.offered_starts).
+START_CELLS = sorted(room["cell"] for room in START_ROOMS)
 AUTOMATIC = len(START_CELLS)
 MODE_NAMES = {"easy": "Easy", "standard": "Standard", "ohko": "OHKO"}
 
@@ -41,7 +42,9 @@ def _rooms_by_mode() -> str:
     """Which rooms each mode can start in, by option name, for the description."""
     groups: dict[tuple, list[str]] = {}
     for mode, m in MODES.items():
-        cells = tuple(sorted(s["cell"] for s in m["starts"]))
+        settings = logic.Settings(m["energy_total"], m["mode69"], m["options"])
+        seed = reach.Seed.of(settings, m["start_inventory"], m["pool"])
+        cells = tuple(sorted(r["cell"] for r in reach.offered_starts(seed, m["double_teleport"])))
         groups.setdefault(cells, []).append(MODE_NAMES[mode])
     parts = []
     for cells, modes in groups.items():
