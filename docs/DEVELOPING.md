@@ -163,13 +163,12 @@ fault found later that day, the Feats screen's note missing when the assist menu
   game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. The
   note with the secret Feats row shown (0.30.0 showed none there), and in the usual layout, no
   Feat earned: 2026-10-28. In a fresh save folder (Ending B never reached), FEATS OF NATU! and
-  the note in place of the game's hint, over the shorter rows of a game with no Feats, no Feat
-  earned: 2026-10-28. Not
+  the note in place of the game's hint, over the shorter rows of a game with no Feats and, with
+  the code typed, over the secret row, no Feat earned: 2026-10-28. Not
   seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in
   tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
   no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests), and the
-  hint put back on an unload, or replaced on the upper two lines with the secret row (by
-  disassembly and stand-in tests)
+  hint put back on an unload (stand-in tests)
   (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
   without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
   the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be
