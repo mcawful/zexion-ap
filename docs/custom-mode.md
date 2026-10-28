@@ -306,10 +306,22 @@ save's seed, mode, items, amounts and settings, decoded from the settings code t
 state it ran with, so a Custom seed started through ARCHIPELAGO shows its own settings there
 with nothing more to build; today's AP seeds show their preset.
 
-**RANDOMIZER**, the fallback, has the player set the menu by hand: easy for a preset, slow for
-Custom (20 settings, 27 items, six amounts). The game's Paste←Clipboard takes the seed text and
-the settings code ("The settings code"), whose format is known exactly, so the client could put
-that on the clipboard, or print it, for the player to paste. As built, the client's message lists the items, Start Keys, amounts and checked settings to set (`client/newgame.py`, `randomizer_steps`), and the seed text as optional: the game's placement runs from whatever text the menu holds, and the client then writes the seed's text and its hash into the new game with the rest (`plan_text`, since 2026-10-27, after two RANDOMIZER games of one seed showed the same items under different seed texts), so RANDO SETTINGS and Colorizer's colors are an ARCHIPELAGO game's (working in game, 2026-10-27: RANDO SETTINGS showed the seed's text in a RANDOMIZER game). The Hints' map rectangles the placement drew from the menu's text stay (typing the seed's text makes them ARCHIPELAGO's too); they follow the game's own placement, not AP's, in either path.
+**RANDOMIZER**, the fallback, needs only the seed's text (the owner's design, 2026-10-27). The
+client's message gives the 16 characters to type (or paste) into an empty slot's RANDOMIZER
+menu; the menu's other settings do not matter. When the player presses START GAME, the game
+runs its placement from their menu; then the helper, seeing a queued new game whose section
+holds the seed's text (`identify`), places it again as ARCHIPELAGO does: the menu set to the
+seed's settings, the game's placement run, the player's menu put back, the checks, and the AP
+seed written over it (`native/README.md`, "New games"; `client/newgame.py`). So the new game is
+the same as an ARCHIPELAGO one of the seed. That includes the Hints' map rectangles: the
+placement draws them from where its random numbers ended, which depends on the whole placement
+run (`re/randocells.md`, "What each setting does in the game"), so writing the seed's settings
+after the player's placement could not give them; running the placement again does. Its plan
+carries no start table: RANDOMIZER is the fallback when the game's own table differs from the
+seed's or was never measured on the build, and the game's own, built when the menu opened, is
+used, as its START GAME uses it. This replaced (2026-10-27) the message's list of what to set
+by hand (items, Start Keys, amounts, checked settings), with which a Custom seed set by hand
+took the seed twice in game. Now working in game, 2026-10-27, B1 (helper built from `claude/randomizer-by-seed` a56a25e, client from source, `--keep-randomizer`; seed `lab/ap/live38`): a Custom seed's text typed over a menu set to Easy took the seed (slot 4), and its section was byte for byte the same as an ARCHIPELAGO game of that seed (slot 5), the Hints' rectangles included; a Standard seed's text over a menu set to OHKO took the seed (slot 6); another seed's text was refused and left the player's own OHKO game (slot 7). The live run's evidence: the slots' first saves, copied read-only to `lab/work/Save_Game_4-20261027-222549.sav`, `_5-20261027-222832`, `_6-20261027-222953` and `_7-20261027-223107`, and the client logs in `lab/ap/live38`.
 
 ## What the settings make redundant in zexion-ap
 
@@ -348,7 +360,7 @@ game for this review.
 | The OS Install Disks goal (the count, the scanner's line, the pause row, the equipment screen, the file select, RETURN HOME WITH THE DISKS?) | `client/discs.py`, `ticks.py`; `native/src/scan.cpp`, `pause.cpp`, `equip.cpp`, `files.cpp`, `mission.cpp` | — | No. Abridged Finale is another ending (at the grab), not the pod. Hints Revealed sets flag 39 from the start, which the client already takes for "told" (`client/session.py`, `SCANNED_FLAG`), so the popups give the number needed from the start while the scanner's message never runs (by the code; not seen in game) | — | — |
 | Allow Assists (the ASSIST lock, Assist Unlock) | `worlds/zexion/options.py`, `items.py`; `client/`; `native/src/menu.cpp` | — | No: the randomizer menu has no assist setting, and the game lets a randomizer save use ASSIST (its MISSION COMPLETE has shown ASSISTS USED: `native/README.md`, "Feats and achievements in AP saves"). By the owner's principle it is a protection the game does not have: whether to keep it is the owner's call, not a redundancy | If dropped: the option, item 100 and its rule, the client's lock and the helper's menu part, with their tests and docs; YAMLs that set `allow_assists` need updating | Low |
 | No Feats or achievements in AP saves | `native/src/feats.cpp` | — | No: the game earns Feats in every randomizer ending (`re/memory.md`, "The ending: flag 250") | — | — |
-| The ARCHIPELAGO new game; the RANDOMIZER fallback | `native/src/menu.cpp`; `client/newgame.py` | — | No. For RANDOMIZER only, Paste←Clipboard with the settings code could replace setting a Custom menu by hand ("The new game") | — | — |
+| The ARCHIPELAGO new game; the RANDOMIZER fallback | `native/src/menu.cpp`; `client/newgame.py` | — | No. RANDOMIZER needs only the seed's text: the helper places the seed over the player's placement ("The new game") | — | — |
 | The `expect` checks (Abridged Finale and the others the logic reads must be the seed's) | `client/newgame.py`; `worlds/zexion/custom.py` (`CHECKED`) | Every setting the logic reads | Not redundant: they check the seed's values, Custom's included, and grew by Guns First (step B, "The new game") | — | — |
 | Received items and popups, Energy Shields, DeathLink, the title lines, the file select's logo, the offline look | `client/`, `native/` | — | No | — | — |
 
@@ -416,7 +428,8 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    prompt and the client sent the goal (the first Abridged Finale run with the client); Easy
    with Safety Light and Vallahar read EASY MODE and started there; Custom on OHKO's base with
    Random Start started in Top of Pulsava and the pause menu offered TELEPORT TO VALLAHAR; a
-   Custom seed set by hand from RANDOMIZER with the client's steps took the seed, twice, and
+   Custom seed set by hand from RANDOMIZER with the client's steps (since replaced by the seed
+   text alone: "The new game") took the seed, twice, and
    one with Safety wrong was refused (the world's tests also
    generate and fill Custom seeds and check the measured seeds' pools; `test_custom.py`). The
    options in the game's words, refusing what the game's menu cannot

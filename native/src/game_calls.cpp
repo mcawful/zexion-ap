@@ -478,15 +478,40 @@ void Game::watch_newgame() {
     if (!newgame_queued()) return;
     if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
     if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
-    // Check the section has the seed's amounts and settings, unless ARCHIPELAGO started it
-    // (starting_): that was checked before the plan went in, and the plan's own writes now
-    // differ from them.
-    int differs = starting_ ? -1 : first_difference(at_.rando_blob, newgame_.expect);
-    if (differs >= 0) {
-        newgame_status_ = "refused the new game is not the seed's mode (section +" +
-                          hex_offset(differs) + " differs)";
-        disarm_newgame();
-        return;
+    // ARCHIPELAGO started it (starting_): placed and checked already, the plan written over it.
+    // Otherwise the player started it from RANDOMIZER: it must be this seed (its seed text),
+    // and is then placed again as the seed, as ARCHIPELAGO places it, or without menu lines
+    // checked for the seed's amounts and settings as the player's placement made it.
+    if (!starting_) {
+        int differs = first_difference(at_.rando_blob, newgame_.identify);
+        if (differs >= 0) {
+            newgame_status_ = "refused the new game is not this seed (section +" +
+                              hex_offset(differs) + " differs)";
+            disarm_newgame();
+            return;
+        }
+        std::string why;
+        if (!newgame_.menu.empty()) {
+            // The player's own placement, put back if the seed's is refused (or throws), so the
+            // queued game is the one the player made, not a mix of the two.
+            std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
+            try {
+                why = place_seed();
+            } catch (...) {
+                std::memcpy(at_.rando_blob, players.data(), kSectionSize);
+                disarm_newgame();
+                throw;
+            }
+            if (!why.empty()) std::memcpy(at_.rando_blob, players.data(), kSectionSize);
+        } else if ((differs = first_difference(at_.rando_blob, newgame_.expect)) >= 0) {
+            why = "the new game is not the seed's mode (section +" + hex_offset(differs) +
+                  " differs)";
+        }
+        if (!why.empty()) {
+            newgame_status_ = "refused " + why;
+            disarm_newgame();
+            return;
+        }
     }
     write_edits(at_.rando_blob, newgame_.write);
     newgame_status_ = "applied slot " + std::to_string(at<int32_t>(at_.current_slot, 0) + 1);
@@ -495,7 +520,7 @@ void Game::watch_newgame() {
 
 void Game::watch_menu(WidgetCallback callback) {
     if (!configured_) return;
-    if (newgame_armed_ && !newgame_.menu.empty() && !starting_) {
+    if (newgame_armed_ && newgame_.choice && !newgame_.menu.empty() && !starting_) {
         choice_.install(at_, callback);
         if (choice_.installed()) choice_.fit_border(at_);
     } else if (choice_.installed() || choice_.holds_hook()) {
@@ -545,21 +570,27 @@ void Game::restore_assists() {
 }
 
 std::string Game::ensure_start_table() {
-    const std::vector<StartRoom>& rooms = newgame_.start_table;
-    if (rooms.empty()) return "";
+    // Over a RANDOMIZER game (not starting_) the game's own table is used, as its START GAME
+    // used it: that path is the client's fallback when the game's table differs from the seed's.
+    static const std::vector<StartRoom> kNone;
+    const std::vector<StartRoom>& rooms = starting_ ? newgame_.start_table : kNone;
+    int16_t count = at<int16_t>(at_.start_count, 0);
     // The second target (+0x6CC) names a room of the start table by index; the placement reads
-    // that room's flag, so the index must be in the table.
+    // that room's flag, so the index must be in the table: the seed's, or else the game's own
+    // once it has built one.
+    const size_t rooms_in_table = !rooms.empty() ? rooms.size() : static_cast<size_t>(count);
     constexpr uint16_t kSecondTarget = 0x6CC;
     for (const SectionBytes& e : newgame_.write) {
-        if (e.offset == kSecondTarget && e.bytes.size() >= 2) {
+        if ((!rooms.empty() || count > 0) && e.offset == kSecondTarget && e.bytes.size() >= 2) {
             int16_t index;
             std::memcpy(&index, e.bytes.data(), sizeof(index));
-            if (index < 0 || static_cast<size_t>(index) >= rooms.size()) {
-                return "the second start is outside the start table";
+            if (index < 0 || static_cast<size_t>(index) >= rooms_in_table) {
+                return rooms.empty() ? "the second start is not a room of the game's own table"
+                                     : "the second start is outside the start table";
             }
         }
     }
-    int16_t count = at<int16_t>(at_.start_count, 0);
+    if (rooms.empty()) return "";
     if (count == 0) {
         // The menu never opened in this run: build the table as it would, count last.
         // rooms.size() <= kStartTableMax (parse_newgame, requests.cpp), the room configure
@@ -589,7 +620,9 @@ std::string Game::ensure_start_table() {
 void Game::start_archipelago(WidgetCallback callback) {
     // The game calls the choice's callback once per press; a press after the plan was dropped,
     // or while a new game is queued, does nothing.
-    if (!configured_ || !newgame_armed_ || newgame_.menu.empty() || starting_) return;
+    if (!configured_ || !newgame_armed_ || !newgame_.choice || newgame_.menu.empty() || starting_) {
+        return;
+    }
     if (newgame_queued()) return;
     starting_ = true;
     // Refused: RANDOMIZER back, the plan dropped, nothing queued.
@@ -598,37 +631,11 @@ void Game::start_archipelago(WidgetCallback callback) {
         choice_.restore(at_, callback);
         disarm_newgame();
     };
-    // The menu's state is the player's own (the game keeps it in its preferences): set to the
-    // seed's settings for the placement, then put back, however it ends.
-    BYTE menu_state[kMenuSize];
-    bool menu_taken = false;
-    auto put_menu_back = [&] {
-        if (std::exchange(menu_taken, false)) {
-            std::memcpy(at_.randomizer_menu, menu_state, kMenuSize);
-        }
-    };
     try {
-        std::string table = ensure_start_table();
-        if (!table.empty()) return refuse(table);
-        std::memcpy(menu_state, at_.randomizer_menu, kMenuSize);
-        menu_taken = true;
-        write_edits(at_.randomizer_menu, newgame_.menu);
-        // START GAME's first step would pick a start; the placement reads the AP seed's instead,
-        // so the plan goes in first. Then the placement, which builds the rest of the section
-        // from the menu (the location list, the settings, the map tables). START GAME's
-        // winnability check is skipped: the AP generator made the seed beatable.
-        write_edits(at_.rando_blob, newgame_.write);
-        reinterpret_cast<void (*)()>(at_.placement_fn)();
-        const int differs = first_difference(at_.rando_blob, newgame_.expect);
-        put_menu_back();
-        if (differs >= 0) {
-            return refuse("the placement is not the seed's mode (section +" +
-                          hex_offset(differs) + " differs)");
-        }
-        // The AP seed over the placement now, so the game is the seed's even if the plan is
-        // dropped before the next frame; then the new game in the chosen slot, as the
-        // play-anyway path queues it. watch_newgame reports it in the next frame.
-        write_edits(at_.rando_blob, newgame_.write);
+        std::string why = place_seed();
+        if (!why.empty()) return refuse(why);
+        // The new game in the chosen slot, as the play-anyway path queues it; watch_newgame
+        // reports it in the next frame.
         reinterpret_cast<void (*)()>(at_.rando_newgame_fn)();
         if (!newgame_queued()) {
             return refuse("the game did not queue a new game (is the slot empty?)");
@@ -637,11 +644,46 @@ void Game::start_archipelago(WidgetCallback callback) {
         // and only RANDOMIZER's callback goes back, so the closing menu holds nothing of ours.
         choice_.release(at_, callback);
     } catch (...) {
-        put_menu_back();
         choice_.restore(at_, callback);
         disarm_newgame();
         throw;
     }
+}
+
+std::string Game::place_seed() {
+    std::string table = ensure_start_table();
+    if (!table.empty()) return table;
+    // The menu's state is the player's own (the game keeps it in its preferences): set to the
+    // seed's settings for the placement, then put back, however it ends.
+    struct MenuBack {
+        BYTE* menu;
+        BYTE saved[kMenuSize];
+        explicit MenuBack(BYTE* m) : menu(m) { std::memcpy(saved, menu, kMenuSize); }
+        ~MenuBack() { std::memcpy(menu, saved, kMenuSize); }
+        MenuBack(const MenuBack&) = delete;
+        MenuBack& operator=(const MenuBack&) = delete;
+    };
+    int differs;
+    {
+        MenuBack back(at_.randomizer_menu);
+        write_edits(at_.randomizer_menu, newgame_.menu);
+        // START GAME's first step would pick a start; the placement reads the AP seed's
+        // instead, so the plan goes in first. Then the placement, which builds the rest of the
+        // section from the menu (the location list, the settings and their code, the map
+        // tables, the Hints' rectangles). START GAME's winnability check is skipped: the AP
+        // generator made the seed beatable.
+        write_edits(at_.rando_blob, newgame_.write);
+        reinterpret_cast<void (*)()>(at_.placement_fn)();
+        differs = first_difference(at_.rando_blob, newgame_.expect);
+    }
+    if (differs >= 0) {
+        return "the placement is not the seed's mode (section +" + hex_offset(differs) +
+               " differs)";
+    }
+    // The AP seed over the placement now, so the game is the seed's even if the plan is dropped
+    // before the next frame.
+    write_edits(at_.rando_blob, newgame_.write);
+    return "";
 }
 
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {

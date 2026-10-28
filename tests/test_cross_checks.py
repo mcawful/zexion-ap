@@ -105,7 +105,8 @@ def client_only_keys() -> set[str]:
 # Where the client's parts read the client-only members, by file: the definitions there that may
 # (a function, or "Class::" for its methods).
 # - game_calls.cpp: the grants (apply, refresh_hud), DeathLink (kill), the Energy Shield
-#   (run_item_event) and the new game (watch_newgame, start_archipelago, ensure_start_table).
+#   (run_item_event) and the new game (watch_newgame, start_archipelago, place_seed,
+#   ensure_start_table).
 # - game_calls.h: panel_handler, for the wrapper ARCHIPELAGO's choice installs.
 # - menu.cpp: ARCHIPELAGO's choice, installed only with a new game armed.
 # - mission.cpp: RETURN HOME's fade (fade_frames, MissionPrompt::fade), reached only once a
@@ -122,6 +123,7 @@ CLIENT_READERS = {
         "Game::run_item_event",
         "Game::watch_newgame",
         "Game::start_archipelago",
+        "Game::place_seed",
         "Game::ensure_start_table",
     ),
     "game_calls.h": ("panel_handler",),

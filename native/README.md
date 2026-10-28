@@ -90,7 +90,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
-| `ap_newgame` and lines `expect`, `write` or `menu OFFSET HEX`, `start_table HEX` (frame) | `armed`, `refused <why>`, `error <why>` | New games |
+| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; `menu` lines need `identify` lines, `choice` needs `menu` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
@@ -314,10 +314,22 @@ Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in
 
 While a plan is armed (`ap_newgame`), each frame call:
 
-- **RANDOMIZER:** watches for a randomizer new game the game has queued. If the section holds
-  the `expect` bytes (the seed's amounts and checked settings), it writes the `write` edits (the AP seed) once, before
-  the game builds the new game from them; otherwise it writes nothing and drops the plan.
-- **ARCHIPELAGO:** with `menu` lines, offers ARCHIPELAGO in place of RANDOMIZER on the
+- **RANDOMIZER:** watches for a randomizer new game the game has queued (by the player's own
+  START GAME). If the section holds the `identify` bytes (the seed's text, typed into the
+  menu), it places the seed over the player's placement as ARCHIPELAGO does (below: the menu
+  set to the seed's settings, the placement run, the menu put back, `expect` checked), so the
+  game is the seed's down to the Hints' map rectangles, which only the placement draws
+  (`docs/re/randocells.md`, "What each setting does in the game"); then it writes the `write`
+  edits (the AP seed) once, before the game builds the new game from them. Otherwise it
+  writes nothing and drops the plan; if the seed's placement is refused (or throws), the
+  player's own placement is put back first, so the queued game is the one they made. Over a
+  RANDOMIZER game the game's own start table is used, not the plan's (the client's fallback
+  when the two differ), and the seed's second start must be one of its rooms. A plan without `menu` lines is only checked against
+  `expect` as the player's placement made it (the client always sends them). Working in
+  game: 2026-10-27, a Custom and a Standard seed by their text, the Custom one the same as its
+  ARCHIPELAGO game byte for byte, and another seed's text refused (`docs/custom-mode.md`, "The
+  new game").
+- **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
@@ -327,8 +339,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
   Double Teleport (OHKO) it first fills in the menu's start table from
   `start_table` if the menu never built it, and refuses the start if it differs.
-- A section of another mode, or a slot the game will not start a game in, drops the plan with
-  nothing queued, and the client arms it again.
+- A section of another seed (its text) or mode, or a slot the game will not start a game in,
+  drops the plan with nothing of the seed written, and the client arms it again.
 - **Put back:** RANDOMIZER and the game's handler go back as soon as the menu is not on top, on
   `disarm` and before an unload, but only while that menu is still open (the game frees a closed
   menu's widgets without clearing them). While the panel may still hold the wrapper, the helper
