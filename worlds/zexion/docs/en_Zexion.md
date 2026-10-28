@@ -62,9 +62,11 @@ as in the game (OHKO takes Safety `light` or `off`).
 
 In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`),
 by its name in the game's menu, as in `landing_pod`: by default Landing Pod. Any room works
-from which your starting items reach at least 3 locations (and, with the core goal, from
-which you can reach Zexion's core); another stops generation with an error. With Easy's or
-Standard's items that is 9 of the rooms; with a second room to teleport to, all 34. `random_start` (or
+from which your starting items reach at least one location (and, with the core goal, from
+which you can reach Zexion's core); another stops generation with an error. With Easy's items
+that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
+room where your starting items reach only one location, generation sometimes fails: generate
+again, or pick another room. `random_start` (or
 `random`) picks a room as the game's Random Start does. The spoiler log names the start room
 (and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
 as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.

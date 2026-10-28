@@ -260,17 +260,16 @@ class ZexionWorld(World):
         return [other for other in rooms if self.reaches_the_door(other)]
 
     def passes(self, room: dict) -> bool:
-        """Whether a start room suits the seed, much as the game's START GAME judges one: its
-        starting items collect locations from it, and with the core goal every item reaches the
-        core's door, the world's part of the game's winnability check. The game asks for one
-        location; the world asks for reach.MIN_SPHERE_ZERO, since Archipelago's fill failed up
-        to one time in four from a room with one, and never from one with two or three, in
-        tests (docs/re/locations.md, "Which start rooms the world offers"). With Double
-        Teleport, the world's own rule for the pair: ``partners``."""
+        """Whether a start room suits the seed, as the game's START GAME judges one: its
+        starting items collect a location from it, and with the core goal every item reaches
+        the core and Zexion, the world's part of the game's winnability check. From a room with
+        one such location Archipelago's fill can fail (up to one time in four, solo, in tests):
+        the owner chose the game's rule over a higher minimum, 2026-10-27 (docs/re/locations.md,
+        "Which start rooms the world offers"). With Double Teleport, the world's own rule for
+        the pair: ``partners``."""
         if self.double_teleport:
             return bool(self.partners(room))
-        sphere0 = self.seed_reach.sphere0(room["cell"]).locations
-        return len(sphere0) >= reach.MIN_SPHERE_ZERO and self.reaches_the_door(room)
+        return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_door(room)
 
     def choose_starts(self) -> None:
         """The start room by the start_room option, and with Double Teleport the second
@@ -283,9 +282,8 @@ class ZexionWorld(World):
             if not self.passes(room):
                 raise OptionError(
                     f"{who}: start room {StartRoom.name_lookup[choice]} does not suit "
-                    f"{self.mode_name} mode's settings: from it the starting items reach fewer "
-                    f"than {reach.MIN_SPHERE_ZERO} locations, or every item does not reach the "
-                    f"core"
+                    f"{self.mode_name} mode's settings: from it the starting items reach no "
+                    f"location, or every item does not reach the core"
                 )
             start = room
         elif choice == AUTOMATIC:

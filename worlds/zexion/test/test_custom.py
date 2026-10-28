@@ -463,7 +463,10 @@ class CustomDoubleTeleportRandomStart(ZexionTestBase):
 
 
 class EveryStartFills(ZexionTestBase):
-    """Every room the world takes for Standard and OHKO fills and can be beaten."""
+    """Every room the world takes for Standard and OHKO fills and can be beaten, but those
+    from which the starting items reach fewer than 3 locations: Archipelago's fill can fail
+    there, as the owner accepted (docs/re/locations.md, "Which start rooms the world
+    offers"), so a test of them would fail at random."""
 
     auto_construct = False
     run_default_tests = False
@@ -472,7 +475,15 @@ class EveryStartFills(ZexionTestBase):
         for mode in ("standard", "ohko"):
             probe = fake_world(mode=mode)
             probe.generate_early()
-            rooms = [r for r in data.START_ROOMS if probe.passes(r)]
+            rooms = [
+                r
+                for r in data.START_ROOMS
+                if probe.passes(r)
+                and (
+                    probe.second is not None
+                    or len(probe.seed_reach.sphere0(r["cell"]).locations) >= 3
+                )
+            ]
             for room in rooms:
                 with self.subTest(mode=mode, room=room["index"]):
                     self.options = {"mode": mode, "start_room": room["index"] + 1}

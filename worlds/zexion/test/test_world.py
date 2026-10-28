@@ -220,24 +220,26 @@ class TestStartRooms(unittest.TestCase):
     """The game's rules for a start room (docs/custom-mode.md, "Starts, as the game picks
     them")."""
 
-    def test_a_room_the_starting_items_reach_too_little_from_is_refused(self) -> None:
+    def test_a_room_the_starting_items_reach_nothing_from_is_refused(self) -> None:
         world = fake_world()
         world.generate_early()
-        few = [
-            r for r in data.START_ROOMS if len(world.seed_reach.sphere0(r["cell"]).locations) < 3
-        ]
-        one = [r for r in few if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
-        self.assertTrue(one)
-        for room in (few[0], one[0]):
-            with self.assertRaisesRegex(OptionError, "fewer than 3"):
-                fake_world(start_room=room["index"] + 1).generate_early()
+        empty = [r for r in data.START_ROOMS if not world.seed_reach.sphere0(r["cell"]).locations]
+        self.assertTrue(empty)
+        with self.assertRaisesRegex(OptionError, "reach no location"):
+            fake_world(start_room=empty[0]["index"] + 1).generate_early()
 
-    def test_every_room_the_starting_items_reach_three_from_is_taken(self) -> None:
-        # With Standard's settings and items, the nine of the earlier rule.
+    def test_any_room_the_starting_items_reach_from_is_taken(self) -> None:
+        # Not only the nine rooms of the earlier rule, from which every item reaches all 154
+        # locations and the starting items 3: one location is enough, as in the game.
         world = fake_world()
         world.generate_early()
         rooms = [r for r in data.START_ROOMS if world.passes(r)]
-        self.assertEqual(rooms, data.MODES["standard"]["starts"])
+        self.assertEqual(len(rooms), 19)
+        self.assertLess(
+            {r["index"] for r in data.MODES["standard"]["starts"]}, {r["index"] for r in rooms}
+        )
+        one = [r for r in rooms if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
+        self.assertTrue(one)
         for room in rooms:
             chosen = fake_world(start_room=room["index"] + 1)
             chosen.generate_early()

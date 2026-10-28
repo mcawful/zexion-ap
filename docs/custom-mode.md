@@ -192,23 +192,23 @@ step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secr
 - A named room: any of the 34, as in the game, which checks nothing more than its winnability
   check. The world refuses one from which the starting items reach no location: Archipelago's
   fill cannot start there (the game would offer PLAY ANYWAY); and with the core goal one from
-  which every item does not reach the core's door, the world's part of that check. **As
-  built, the world asks for 3 locations, not 1** (`ZexionWorld.passes`, every mode): from a
-  room whose starting items reach one location, Archipelago's fill failed in 1 to 5 of 20
-  solo generations for six of Standard's ten such rooms (the other four, and every room
-  reaching 2 or more, 20 of 20; 2026-10-27, AP 0.6.8, seeds 0 to 19, every other option at
-  its default; a scratch script, not kept, so not reproducible as is), where the game's own
-  placement repairs its fill. With 3, Easy and Standard take the 9 rooms the world offered
-  before and OHKO all 34 (by the pair rule below); the earlier rule (every item reaching all
-  154 locations as well) stays in `reach.offered_starts` as the tests' check on `data.MODES`.
-  Archipelago's fill succeeded from each room Standard and OHKO take, in tests
-  (`worlds/zexion/test/test_custom.py`, `EveryStartFills`). For the owner: keep 3, or follow
-  the game's 1 and accept failed generations.
+  which every item does not reach the core and Zexion, the world's part of that check. Built
+  for every mode (`ZexionWorld.passes`): Easy takes 17 rooms, Standard 19 and OHKO all 34 (by
+  the pair rule below), where the world offered 9, 9 and 34 before (the earlier rule, every
+  item reaching all 154 locations and the starting items 3, stays in `reach.offered_starts` as
+  the tests' check on `data.MODES`). **Archipelago's fill can fail from a room whose starting
+  items reach one location:** it did in 1 to 5 of 20 solo generations for six of Standard's
+  ten such rooms (the other four, and every room reaching 2 or more, 20 of 20; 2026-10-27, AP
+  0.6.8, seeds 0 to 19, every other option at its default; a scratch script, not kept, so not
+  reproducible as is), where the game's own placement repairs its fill. Decided (the owner,
+  2026-10-27): follow the game's one location and accept an occasional failed generation,
+  rather than ask for 3. Archipelago's fill succeeded from each room Standard and OHKO take
+  whose starting items reach 3 or more, in tests (`worlds/zexion/test/test_custom.py`,
+  `EveryStartFills`).
 - `random_start` (and `random`; decided, the owner, 2026-10-27): the game's rule: the
   unflagged rooms unless the starting
   score (starting Energy + missiles + bombs + starting items) is 27 or more; a room from which
-  the starting items reach at least one location (as built, 3: above); with Safety other than
-  Light, the first of
+  the starting items reach at least one location; with Safety other than Light, the first of
   Upper Tower, Tower Gauntlet, Guardia Tower and Lower Tower to pass kept one time in three, once
   per seed (`custom.random_start`). The score counts the seed's own starting items, not
   `start_inventory`, as the game counts only its menu's.

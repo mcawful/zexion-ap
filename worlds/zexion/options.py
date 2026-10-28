@@ -393,10 +393,10 @@ def _make_start_room() -> type[Choice]:
         "which your starting items reach locations, and no room the game flags unless you "
         "start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together ("
         "'random' is random_start too). Or one of the game's 34 rooms, by its name in the "
-        "menu: a room from which your starting items reach fewer than 3 locations (the game "
-        "asks for 1; Archipelago needs a few more), or every item does not reach Zexion's "
-        "core with the core goal, is refused. automatic (the default): "
-        "landing_pod, or a random start where that room is refused. The earlier names "
+        "menu: a room from which your starting items reach no location, or every item does "
+        "not reach Zexion's core with the core goal, is refused. From a room where they reach "
+        "only one, generation can fail now and then: try again or pick another. automatic (the "
+        "default): landing_pod, or a random start where that room is refused. The earlier names "
         "(kresezoa_16_13: the area, then X and Y as the pause screen shows them) still work."
     )
 
