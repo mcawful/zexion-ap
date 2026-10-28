@@ -675,7 +675,7 @@ closed, gone with it open.
     game add it is not traced). With the secret row (a secret Feat earned, or the title screen's
     code typed since the game started) the top menu has a fifth panel of 5 Feats and the game
     moves the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still
-    blank, and the note goes there (stand-in tests only; 0.30.0 showed no note on it). It
+    blank, and the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It
     writes the whole line or nothing, only over a line that is blank or already its note, and
     only if every glyph of it is writable and has the font's frames. When the title is one of the game's hints instead (as when Ending B has never been
     seen; by disassembly, not seen), its middle line names no NATU and there is no note.
@@ -756,15 +756,17 @@ Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `l
   fixed in d451e6b;
 - with d451e6b, the same save's ending through the escape skip with a client of another seed
   connected: flag 251 clear, `GameUnlocks.sav` unchanged, nothing lit, and the note shown over
-  ASSISTS USED.
+  ASSISTS USED;
+- 2026-10-28, with the secret row's change (an Abridged Finale AP save, no client): the note
+  shown over the secret row, and, after a restart with no code typed, in the usual layout;
+  flag 251 clear and `GameUnlocks.sav` unchanged both times.
 
 Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over the secret row and over shorter rows (stand-in tests only; 0.30.0 showed none
-  over the secret row).
+- the note over shorter rows (by disassembly and stand-in tests only).
 
 ## Building
 
