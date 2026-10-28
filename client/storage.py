@@ -90,7 +90,8 @@ def stored_indices(ctx: ZexionContext, key: str | None) -> set[int]:
     stored = ctx.stored_data.get(key) if key else None
     if not isinstance(stored, dict):
         return set()
-    return {int(k) for k in stored if isinstance(k, str) and k.isdigit() and int(k) < ids.LOCATIONS}
+    size = len(ctx.conn.plan.location_items) if ctx.conn else ids.LOCATIONS
+    return {int(k) for k in stored if isinstance(k, str) and k.isdigit() and int(k) < size}
 
 
 def hints_used(ctx: ZexionContext) -> dict[str, tuple[int, int]] | None:

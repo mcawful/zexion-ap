@@ -96,8 +96,9 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     """The helper's ``ap_newgame`` request for this seed, in the game build whose exe has the
     SHA-256 ``build_sha256``. With ``offer_choice`` ARCHIPELAGO is offered too; without, the
     seed is started from RANDOMIZER only."""
-    if len(plan.location_items) != ids.LOCATIONS:
-        raise NewGameError(f"the seed lists {len(plan.location_items)} locations")
+    wrong = plan.check_size()
+    if wrong:
+        raise NewGameError(wrong)
     seed_text = plan.menu.seed_text
     if len(seed_text) != sp.SEED_DIGITS or not set(seed_text) <= HEX_DIGITS:
         raise NewGameError(f"the seed text {seed_text!r} is not 16 hex digits")
@@ -111,8 +112,9 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     lines.append(f"expect {section(sp.AMOUNTS):#x} {struct.pack('<6h', *plan.amounts).hex()}")
     for t, value in sorted(plan.options.items()):
         lines.append(f"expect {section(sp.OPTIONS + t):#x} {value:02x}")
-    # The AP seed.
-    lines.append(f"write {section(sp.ITEM_TABLE):#x} {bytes(plan.location_items).hex()}")
+    # The AP seed, in the game's list order: with Secret Shuffle (an ``expect`` above) the
+    # placement's list holds the 155th location at position 134 (save_patch.game_order).
+    lines.append(f"write {section(sp.ITEM_TABLE):#x} {plan.table.hex()}")
     # The seed text and its hash: the seed's placement already ran from them (the helper's,
     # for ARCHIPELAGO and over a RANDOMIZER game alike); written again for a plan without menu
     # lines, whose game ran from the menu's own text.

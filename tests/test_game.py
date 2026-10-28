@@ -135,6 +135,16 @@ def test_a_malformed_seed_is_refused(broken) -> None:
         game.parse_seed(bytes(b))
 
 
+def test_secret_shuffles_155_locations_parse_only_with_its_byte() -> None:
+    cells = [(x, y) for y in range(3) for x in range(54)][: game.LOCATIONS + 1]
+    b = blob(cells, [46] * (game.LOCATIONS + 1))
+    with pytest.raises(game.GameError):  # without Secret Shuffle: no zero gap
+        game.parse_seed(bytes(b))
+    b[game.SETTINGS_AT + game.SECRET_SHUFFLE] = 1
+    seed = game.parse_seed(bytes(b))
+    assert seed.locations == tuple(cells) and len(seed.items) == game.LOCATIONS + 1
+
+
 # --- reads and writes through a fake process ------------------------------------------------
 
 

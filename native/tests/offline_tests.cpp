@@ -35,6 +35,15 @@ std::string seed_text(const std::string& discs = "discs 3 12 434F4C4C454354",
            "label 23 14 4150204954454D0A464F5220414C494345\n";
 }
 
+// A seed of a table of `n` entries and a start, as offline_seed_of reads a section.
+zap::OfflineSeed seed_of(const uint8_t* table, const uint8_t* start, int n = 154) {
+    zap::OfflineSeed s;
+    s.locations = n;
+    std::memcpy(s.table, table, static_cast<size_t>(n));
+    std::memcpy(s.start, start, sizeof(s.start));
+    return s;
+}
+
 // A cached config: `first` (the `config` request), keys k0 to k7, and a check line for each.
 std::string cached_config(const std::string& first) {
     std::string text = first;
@@ -61,13 +70,33 @@ void test_the_file() {
               s.scan_line == "COLLECT" && s.unfound.size() == 2 && s.unfound[0] == 1312,
           "its fields");
     check(s.labels.rfind("ap_labels\nlabel 23 14 ", 0) == 0, "the labels as a request");
-    check(zap::offline_matches(s, g_table, g_start), "matches its own table and start");
+    check(s.locations == 154 && zap::offline_matches(s, seed_of(g_table, g_start)),
+          "matches its own table and start");
     uint8_t other[154];
     std::memcpy(other, g_table, sizeof(other));
     other[5] ^= 1;
-    check(!zap::offline_matches(s, other, g_start), "another table does not");
+    check(!zap::offline_matches(s, seed_of(other, g_start)), "another table does not");
     uint8_t moved[6] = {6, 0, 191, 0, 0x4A, 1};
-    check(!zap::offline_matches(s, g_table, moved), "another start does not");
+    check(!zap::offline_matches(s, seed_of(g_table, moved)), "another start does not");
+
+    // Secret Shuffle's 155 locations: a table of 155, matched only by a section of 155.
+    uint8_t secret[155];
+    std::memcpy(secret, g_table, sizeof(g_table));
+    secret[154] = 0;
+    std::string text = seed_text();
+    text.replace(text.find("table ") + 6, 2 * 154, hex(secret, sizeof(secret)));
+    zap::OfflineSeed shuffled;
+    check(zap::parse_offline_seed(text, shuffled).empty() && shuffled.locations == 155,
+          "a table of 155 parses");
+    check(zap::offline_matches(shuffled, seed_of(secret, g_start, 155)), "matches its own");
+    check(!zap::offline_matches(shuffled, s) && !zap::offline_matches(s, shuffled),
+          "a seed of 154 does not match one of 155, the 155th entry 0 or not");
+    text.replace(text.find("table ") + 6, 1, "");
+    zap::OfflineSeed short_table;
+    check(!zap::parse_offline_seed(text, short_table).empty(), "a table of 154.5: refused");
+    std::string longer = seed_text();
+    longer.insert(longer.find("table ") + 6, "0000");
+    check(!zap::parse_offline_seed(longer, short_table).empty(), "a table of 156: refused");
 
     uint8_t grid[54 * 54] = {};
     check(zap::offline_disk_count(s, grid) == 3, "the count as the client left it");
@@ -116,7 +145,7 @@ void test_the_helper_writes_what_the_client_sends() {
     const std::string seed_put = "offline_put seed AP_1-0-1\n" + seed_text();
     zap::OfflineSeed put;
     check(zap::put_offline_file(folder, "B1", seed_put, &put) == "stored", "a seed stored");
-    check(put.name == "AP_1-0-1" && zap::offline_matches(put, g_table, g_start),
+    check(put.name == "AP_1-0-1" && zap::offline_matches(put, seed_of(g_table, g_start)),
           "and handed back, named (for the AP-save test)");
     zap::OfflineSeed again;
     check(zap::put_offline_file(folder, "B1", seed_put, &again) == "unchanged" &&

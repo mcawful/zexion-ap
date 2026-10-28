@@ -22,7 +22,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from . import ids, pe, process
-from .ids import LOCATIONS, MAP_SIZE, SECTION_SIZE, WRITABLE_ITEMS
+from .ids import LOCATIONS, MAP_SIZE, SECRET_SHUFFLE, SECTION_SIZE, WRITABLE_ITEMS
 from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Target
 
 SLOTS = 30  # save slots
@@ -37,6 +37,7 @@ FLAGS = 0x9C4  # the loaded game's flags, one byte each
 # The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
 RANDO_BLOB_SIZE = SECTION_SIZE
 ITEM_TABLE_AT = 0x26C  # file 0x12A80 - 0x12814
+SETTINGS_AT = 0x87B  # setting t at + t: file 0x1308F - 0x12814
 # Player state fields, by offset from the player state, which starts 0x108E before the
 # inventory (docs/re/memory.md).
 INVENTORY_IN_PLAYER_STATE = 0x108E
@@ -210,19 +211,21 @@ def parse_seed(blob: bytes) -> Seed:
     """Check the randomizer section looks right before anything uses it.
 
     154 distinct (x, y) cells on the map, sorted by y then x, then 4 zero bytes, then 154 item
-    IDs from 0 to 50. Anything else means the section is not where it was located, or no
-    randomizer save is loaded.
+    IDs from 0 to 50; with Secret Shuffle (setting t37 set) 155 cells, filling those 4 bytes,
+    and 155 item IDs (docs/re/randocells.md, "The pool"). Anything else means the section is not
+    where it was located, or no randomizer save is loaded.
     """
     if len(blob) != RANDO_BLOB_SIZE:
         raise GameError(f"randomizer section is {len(blob)} bytes, expected {RANDO_BLOB_SIZE}")
-    cells = tuple(struct.unpack_from("<HH", blob, 4 * i) for i in range(LOCATIONS))
+    n = LOCATIONS + bool(blob[SETTINGS_AT + SECRET_SHUFFLE])
+    cells = tuple(struct.unpack_from("<HH", blob, 4 * i) for i in range(n))
     if any(not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE) for x, y in cells):
         raise GameError("randomizer section: a location cell is off the map")
-    if len(set(cells)) != LOCATIONS or list(cells) != sorted(cells, key=lambda c: (c[1], c[0])):
+    if len(set(cells)) != n or list(cells) != sorted(cells, key=lambda c: (c[1], c[0])):
         raise GameError("randomizer section: location cells are not distinct and sorted")
-    if any(blob[4 * LOCATIONS : ITEM_TABLE_AT]):
+    if any(blob[4 * n : ITEM_TABLE_AT]):
         raise GameError("randomizer section: no zero gap after the location list")
-    items = bytes(blob[ITEM_TABLE_AT : ITEM_TABLE_AT + LOCATIONS])
+    items = bytes(blob[ITEM_TABLE_AT : ITEM_TABLE_AT + n])
     if any(i not in ids.GAME_ITEMS for i in items):
         raise GameError("randomizer section: an item ID is out of range")
     return Seed(cells, items)

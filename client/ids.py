@@ -38,6 +38,10 @@ INTEL_CHIP = 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 
 LOCATIONS = 154  # the randomizer's locations (RandoCells; docs/re/randocells.md)
+# With Secret Shuffle (setting t37) the game's list holds a 155th, at list position 134 in grid
+# order (docs/re/randocells.md, "The pool"); the world gives it location index 154.
+SECRET_SHUFFLE = 37
+MAX_LOCATIONS = LOCATIONS + 1
 MAP_SIZE = 54  # the map grid's cells along each side
 COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memory.md)
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from fakes import CELLS, fresh, plan
+from fakes import CELLS, SECRET_CELLS, SECRET_LIST, fresh, plan, secret_plan, secret_section
 
 from client import game, native
 from client import save_patch as sp
@@ -119,6 +119,22 @@ def test_collected_cells_are_reported_as_checks(setup) -> None:
     g.collect(60)
     step = session.step(g, [], gap=0)
     assert step.checked == {5, 60} and step.seed_matches and not step.goal
+
+
+def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
+    p = secret_plan()
+    session, g = ss.Session(p, [list(c) for c in SECRET_CELLS]), FakeGame(PLAN)
+    g.blob = bytes(secret_section(p))
+    x, y = SECRET_LIST[100]  # list position 100: location index 154
+    g.grid[y * 54 + x] = 0x1B
+    x, y = SECRET_LIST[101]  # list position 101: location index 100
+    g.grid[y * 54 + x] = 0x1B
+    step = session.step(g, [], gap=0)
+    assert step.seed_matches and step.checked == {154, 100}
+    # The same cells in another order are not this seed's list.
+    other = ss.Session(p, [list(c) for c in SECRET_CELLS])
+    other.listed = list(SECRET_CELLS)
+    assert other.step(g, [], gap=0).left_seed
 
 
 def test_a_received_item_is_given_once(setup) -> None:

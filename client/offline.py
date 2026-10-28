@@ -50,9 +50,10 @@ def seed_text(
     discs: tuple[int, int, str, Sequence[int]] | None,
     labels: str | None,
 ) -> str:
-    """A seed file: ``discs`` is (the count, the number needed, the scanner's line, the grid
-    cells of this player's own disks not in the count), None without the disks; ``labels`` the
-    helper's ``ap_labels`` request (aplabels.labels_request), or None."""
+    """A seed file: ``table`` is the item table in the game's list order (SeedPlan.table);
+    ``discs`` is (the count, the number needed, the scanner's line, the grid cells of this
+    player's own disks not in the count), None without the disks; ``labels`` the helper's
+    ``ap_labels`` request (aplabels.labels_request), or None."""
     lines = [
         "zexion-ap offline 1",
         "table " + bytes(table).hex(),

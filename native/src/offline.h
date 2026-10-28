@@ -5,12 +5,13 @@
 // "AP saves without the client"). The helper reads them at start and each time a client goes
 // away. With no client (or one that sent `other_save`), a loaded save of one of those seeds gets
 // the client's look, from the cached addresses for the build they were made on. A seed file
-// matches a save by the section's item table and start record (client/save_patch.py,
-// section_matches).
+// matches a save by the section's location count, item table and start record
+// (client/save_patch.py, section_matches).
 //
 // A seed file, one line each, then the labels:
 //   zexion-ap offline 1
-//   table HEX          the item table, 154 bytes (the section's +0x26C)
+//   table HEX          the item table, 154 bytes, or 155 with Secret Shuffle (the section's
+//                      +0x26C)
 //   start HEX          the start record, 6 bytes (+0x310)
 //   intel 0|1          the Area Map named INTEL CHIP
 //   assists lock|free  the ASSIST lock
@@ -29,18 +30,19 @@
 #include <string>
 #include <vector>
 
-#include "game_layout.h"  // kMapCells
+#include "game_layout.h"  // kMapCells, rando
 
 namespace zap {
 
-constexpr int kOfflineLocations = 154;
+constexpr int kOfflineLocations = rando::kMaxLocations;
 constexpr int kOfflineStartSize = 6;
 constexpr ptrdiff_t kOfflineTableAt = 0x26C, kOfflineStartAt = 0x310;  // in the section
 constexpr uint8_t kCollectedCell = 0x1B;
 
 struct OfflineSeed {
     std::string name;  // the file's name, for `hello` and logs
-    uint8_t table[kOfflineLocations] = {};
+    int locations = rando::kLocations;  // the table's length: 154, or 155 with Secret Shuffle
+    uint8_t table[kOfflineLocations] = {};  // past `locations`, 0
     uint8_t start[kOfflineStartSize] = {};
     bool intel = false;
     bool lock_assists = false;
@@ -54,10 +56,11 @@ struct OfflineSeed {
 // "" or what is wrong.
 std::string parse_offline_seed(const std::string& text, OfflineSeed& out);
 
-// Whether `table` (154 bytes) and `start` (6 bytes) are this seed's.
-bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start);
-// A seed made of a randomizer section's item table and start (nothing else set), to match
-// another section against.
+// Whether `other` (offline_seed_of a section, or another seed) is `seed`: the same location
+// count, item table and start.
+bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other);
+// A seed made of a randomizer section's location count, item table and start (nothing else
+// set), to match another section against.
 OfflineSeed offline_seed_of(const uint8_t* section);
 
 // The disk count with the map `grid` (54 * 54 cells) as it is.

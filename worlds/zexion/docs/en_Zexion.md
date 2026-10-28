@@ -4,7 +4,7 @@
 
 Zexion has its own randomizer. This world uses its map and its rules for what each item opens
 up, but lets Archipelago decide what is at each of the game's 154 item locations (150 in
-OHKO; in Custom, those your settings and start room reach: the others hold Scrap, as the game
+OHKO; in Custom, those your settings and start room reach, 155 with Secret Shuffle: the others hold Scrap, as the game
 leaves them). Items found in Zexion can belong to other players, and their games can send items to
 you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
 Chips): exclude more locations than you have filler, and generation stops with an error that
@@ -50,7 +50,8 @@ Finale and the rest). Each starts as `preset`: the value of `custom_base`, the m
 starts from. The seed is built from them as the game builds its own: the coin flips, Random
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them. Not yet: Secret Shuffle on and starting Mega Bombs.
+error that names them. Not yet: starting Mega Bombs. Secret Shuffle adds a 155th
+location, the Bomb Box at X48 Y20, named ??? from the game's area table ("??? 48,20").
 With Guns First on (every preset), each gun and its upgrade are one item, Progressive
 Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
 the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are

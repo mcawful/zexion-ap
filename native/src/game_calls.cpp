@@ -833,10 +833,11 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
     constexpr size_t kMaxKnownSeeds = 1024;
     for (const OfflineSeed& seed : seeds) {
         bool known = std::any_of(known_seeds_.begin(), known_seeds_.end(), [&](const auto& k) {
-            return offline_matches(k, seed.table, seed.start);
+            return offline_matches(k, seed);
         });
         if (known) continue;
         OfflineSeed key;
+        key.locations = seed.locations;
         std::memcpy(key.table, seed.table, sizeof(key.table));
         std::memcpy(key.start, seed.start, sizeof(key.start));
         known_seeds_.push_back(std::move(key));

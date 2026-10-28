@@ -240,8 +240,10 @@ def second_counts(have: Counter, flagged: bool) -> bool:
 
 
 def seed_from_save(data: bytes) -> tuple[list[tuple[int, int]], list[int]]:
-    """The seed's location cells and the item at each (docs/re/save-format.md)."""
-    cells, items, count = save_patch.SECTION, save_patch.ITEM_TABLE, save_patch.LOCATIONS
+    """The seed's location cells and the item at each, in the game's list order: 154, or 155
+    with Secret Shuffle (docs/re/save-format.md; docs/re/randocells.md, "The pool")."""
+    cells, items = save_patch.SECTION, save_patch.ITEM_TABLE
+    count = save_patch.LOCATIONS + bool(data[save_patch.OPTIONS + save_patch.SECRET_SHUFFLE])
     locations = [struct.unpack_from("<HH", data, cells + 4 * i) for i in range(count)]
     return locations, list(data[items : items + count])
 
@@ -342,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         counted = second_counts(have, flagged)
         print(f"second teleport target {cell}, flagged {flagged}, counted in the end {counted}")
     print(
-        f"{len(got)}/{save_patch.LOCATIONS} locations reachable from {start}; starting inventory "
+        f"{len(got)}/{len(locations)} locations reachable from {start}; starting inventory "
         f"{dict(initial) or 'empty'}; energy total {settings.energy_total}, code-69 mode "
         f"{settings.mode69}, options on {on}, gates open {settings.gates_open}"
     )

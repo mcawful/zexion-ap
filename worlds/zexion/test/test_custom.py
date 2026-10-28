@@ -339,7 +339,6 @@ class TestTheOptionsRefuse(unittest.TestCase):
         self.assertIn("OS Install Disks", self.refused(mode="custom", abridged_finale="on", goal=1))
 
     def test_what_is_not_supported_yet(self) -> None:
-        self.assertIn("secret_shuffle", self.refused(mode="custom", secret_shuffle="on"))
         self.assertIn("starting_mega_bombs", self.refused(mode="custom", starting_mega_bombs=5))
 
     def test_what_the_menu_cannot_hold(self) -> None:
@@ -497,6 +496,28 @@ class CustomSeedGunsFirstOff(ZexionTestBase):
             self.assertEqual(table[location.address - LOCATION_ID_BASE], names[item.name])
             held += 1
         self.assertLessEqual(held, 4)
+
+
+class CustomSeedSecretShuffle(ZexionTestBase):
+    """Secret Shuffle on: the Bomb Box at X48 Y20 is a 155th location, location index 154, which
+    the game's list holds at position 134 (docs/re/randocells.md, "The pool")."""
+
+    options = {"mode": "custom", "secret_shuffle": "on", "start_room": "landing_pod"}
+
+    def test_the_155th_location(self) -> None:
+        self.assertEqual(len(self.world.location_cells), 155)
+        self.assertEqual(self.world.location_cells[154], data.SECRET_LOCATION)
+        self.assertIn(154, self.world.kept_locations)
+        location = self.multiworld.get_location("??? 48,20", self.player)
+        self.assertEqual(location.address, LOCATION_ID_BASE + 154)
+        self.assertEqual(len(pool_names(self)), len(self.world.kept_locations))
+
+    def test_the_slot_data(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["options"]["37"], 1)
+        self.assertEqual(len(slot["locations"]), 155)
+        self.assertEqual(slot["locations"][154], list(data.SECRET_LOCATION))
+        self.assertEqual(len(slot["location_items"]), 155)
 
 
 class CustomSeedShortOfFiller(ZexionTestBase):

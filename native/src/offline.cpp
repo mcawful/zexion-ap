@@ -134,7 +134,12 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
         words >> key;
         if (key.empty()) continue;
         if (key == "table") {
-            if (!(words >> a) || !hex_bytes(a, out.table, sizeof(out.table))) return "bad table";
+            if (!(words >> a)) return "bad table";
+            out.locations = static_cast<int>(a.size() / 2);
+            if (out.locations != rando::kLocations && out.locations != rando::kMaxLocations) {
+                return "bad table";
+            }
+            if (!hex_bytes(a, out.table, static_cast<size_t>(out.locations))) return "bad table";
             table = true;
         } else if (key == "start") {
             if (!(words >> a) || !hex_bytes(a, out.start, sizeof(out.start))) return "bad start";
@@ -166,14 +171,16 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     return "";
 }
 
-bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start) {
-    return std::memcmp(seed.table, table, sizeof(seed.table)) == 0 &&
-           std::memcmp(seed.start, start, sizeof(seed.start)) == 0;
+bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other) {
+    return seed.locations == other.locations &&
+           std::memcmp(seed.table, other.table, sizeof(seed.table)) == 0 &&
+           std::memcmp(seed.start, other.start, sizeof(seed.start)) == 0;
 }
 
 OfflineSeed offline_seed_of(const uint8_t* section) {
     OfflineSeed seed;
-    std::memcpy(seed.table, section + kOfflineTableAt, sizeof(seed.table));
+    seed.locations = rando::locations(section);
+    std::memcpy(seed.table, section + kOfflineTableAt, static_cast<size_t>(seed.locations));
     std::memcpy(seed.start, section + kOfflineStartAt, sizeof(seed.start));
     return seed;
 }

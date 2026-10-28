@@ -61,6 +61,23 @@ def test_components_number_each_strongly_connected_group_once() -> None:
     assert sorted(set(comp.values())) == [0, 1]
 
 
+def test_extra_cells_regions_come_after_the_others_and_may_not_join_them() -> None:
+    # Five cells in a row: 0 <-> 1, 2 -> 3 (one way), 3 <-> 4; 1 and 2 walled apart. The extra
+    # cells 3 and 4 make one region, numbered after the base's; cell 2 joining 3 is refused.
+    def cell(**open_to):
+        passage = {d: gwd.rc.OPEN if open_to.get(d) else gwd.rc.WALL for d in "NSWE"}
+        return types.SimpleNamespace(passage=passage)
+
+    row = [cell(E=True), cell(W=True), cell(E=True), cell(E=True), cell(W=True)]
+    base, extra = {(0, 0), (1, 0), (2, 0)}, {(3, 0), (4, 0)}
+    comp = gwd.components_after(base, extra, [row])
+    assert {c: comp[c] for c in base} == gwd.components(base, [row])
+    assert comp[(3, 0)] == comp[(4, 0)] == 2
+    row[3] = cell(W=True, E=True)  # 2 <-> 3: the extra cells join a base region
+    with pytest.raises(SystemExit):
+        gwd.components_after(base, extra, [row])
+
+
 def test_a_mode_holds_what_its_starts_share_and_refuses_what_they_do_not() -> None:
     assert gwd.shared([[1, 2], [1, 2]], "ohko", "regions") == [1, 2]
     with pytest.raises(SystemExit, match="ohko: its starts differ in regions"):

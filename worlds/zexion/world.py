@@ -106,6 +106,7 @@ class ZexionWorld(World):
     start: dict  # a data.START_ROOMS entry
     second: dict | None  # the second teleport target, in a mode that has one
     kept_locations: set[int]  # location indices this world creates
+    location_cells: tuple[tuple[int, int], ...]  # the seed's locations by index (reach.py)
     seed_reach: reach.Seed
     mode_name: str
     menu: custom.Menu  # the randomizer menu as this seed's settings
@@ -117,6 +118,7 @@ class ZexionWorld(World):
         self.mode_name = self.options.mode.current_key
         self.menu = self.read_menu()
         self.logic_settings = self.menu.logic_settings()
+        self.location_cells = reach.seed_locations(self.logic_settings)
         if self.mode_name == "custom":
             start, pool = custom.resolve(self.menu, self.random)
             self.start_inventory = custom.starting_items(self.menu, start)
@@ -195,8 +197,6 @@ class ZexionWorld(World):
         if not is_custom:
             return menu
         unsupported = []
-        if menu.setting(custom.SECRET_SHUFFLE):
-            unsupported.append("secret_shuffle: on (a 155th location)")
         if menu.amounts[custom.START_BOMBS]:
             unsupported.append("starting_mega_bombs above 0 (the client cannot give them)")
         if unsupported:
@@ -322,7 +322,7 @@ class ZexionWorld(World):
         disks = self.options.os_install_disks.value if self.disc_hunt else 0
         while True:
             every = self.seed_reach.every_from(self.start, self.second)
-            left_out = len(data.LOCATIONS) - len(every.locations)
+            left_out = len(self.location_cells) - len(every.locations)
             # With the disks, the pool's keys become Scrap Metal and Energy Shields give way too.
             spare = 0
             if self.disc_hunt:
@@ -383,7 +383,7 @@ class ZexionWorld(World):
                         self.multiworld.register_indirect_condition(by_index[r], entrance)
 
         for i in sorted(self.kept_locations):
-            cell = data.LOCATIONS[i]
+            cell = self.location_cells[i]
             region = by_index[cells[cell]]
             location = ZexionLocation(
                 self.player, location_name(i), location_name_to_id[location_name(i)], region
@@ -446,7 +446,7 @@ class ZexionWorld(World):
         codes = list(self.pool_codes)
         # A location left out takes a filler item out of the pool with it (fit_pool made sure
         # there are enough).
-        for _ in range(len(data.LOCATIONS) - len(self.kept_locations)):
+        for _ in range(len(self.location_cells) - len(self.kept_locations)):
             codes.remove(next(c for c in FILLER_ORDER if c in codes))
         if self.disc_hunt:
             # The keys' places become Scrap Metal, then each disc takes one of DISC_REPLACES.
@@ -539,7 +539,9 @@ class ZexionWorld(World):
             if self.second is None
             else {k: self.second[k] for k in ("index", "column", "row")},
             "kept_locations": sorted(self.kept_locations),
-            "locations": [list(c) for c in data.LOCATIONS],
+            # By location index (the 155th, with Secret Shuffle, last): the client puts the
+            # game's list in its own order (client/save_patch.py, ``game_order``).
+            "locations": [list(c) for c in self.location_cells],
             "location_items": self.location_items(),
             "start_items": {str(k): v for k, v in sorted(self.start_items().items())},
             "amounts": list(self.menu.amounts),
@@ -626,7 +628,7 @@ class ZexionWorld(World):
         FOREIGN_PROGRESSION for another world's item and for this world's own OS Install Disk,
         and Scrap Metal at a left-out location."""
         out = []
-        for i in range(len(data.LOCATIONS)):
+        for i in range(len(self.location_cells)):
             if i not in self.kept_locations:
                 out.append(SCRAP_METAL)
                 continue

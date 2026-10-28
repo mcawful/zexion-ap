@@ -8,7 +8,8 @@ named pipe. With no client it changes only the title screen and the look of AP s
 Feats and Steam achievements out of AP saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
-played. A **wrapper** is a helper function the game's menus are pointed at in place of their
+played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
+`rando::locations`). A **wrapper** is a helper function the game's menus are pointed at in place of their
 own; it calls the game's and adds the helper's part.
 
 **Status:** B1 only. "Working in game" below gives the date of the run on B1 and the
@@ -524,7 +525,7 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 
 - **What the client leaves:** while connected, `offline_put` (when they change) sends the
   addresses it resolved for this build, with the first 16 bytes of each game function, and a
-  small file per seed: its item table and start, the Intel Chip and ASSIST settings, the OS
+  small file per seed: its item table (154 bytes, or 155 with Secret Shuffle) and start, the Intel Chip and ASSIST settings, the OS
   Install Disks (count, number needed, scanner's line, and this player's own disks not counted
   yet) and the item labels.
 - **Where:** `offline_put` checks each file as the reader will (the config with at least 8
@@ -561,7 +562,8 @@ Working in game: 2026-10-25 ("AP saves without the client").
 ### The map
 
 - **What:** in an AP save holding the seed the labels are for, in play or in a menu (a plain
-  randomizer save is never touched), raises the map squares of item 48 (this player's OS
+  randomizer save is never touched), raises the map squares of item 48 at the section's
+  locations (154, or 155 with Secret Shuffle) (this player's OS
   Install Disks and other players' progression items, but not a Zexion player's supplies:
   `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
   important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors are under
