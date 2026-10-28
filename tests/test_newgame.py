@@ -196,7 +196,8 @@ def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
 def test_randomizer_steps_name_a_presets_safety() -> None:
     p = plan(options={10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 1, 43: 0, 72: 0, 73: 1})
     assert ng.randomizer_steps(p, "easy") == (
-        "pick Easy mode, set Safety Early and change no other options"
+        "pick Easy mode, set Safety Early and change no other options (the seed, optional: "
+        "0123 4567 89AB CDEF)"
     )
 
 
@@ -219,7 +220,7 @@ def test_randomizer_steps_for_custom_name_the_amounts_and_the_checked_settings()
     assert "Item Pool 20, 200, 30" in steps
     for part in ("Guns First on", "X Crystals on", "X Blocks off", "Abridged Finale on"):
         assert part in steps
-    assert steps.endswith("Safety Normal, Gates Open")
+    assert steps.endswith("Safety Normal, Gates Open (the seed, optional: 0123 4567 89AB CDEF)")
 
 
 @pytest.mark.parametrize("text", ["6d03fb8f34d40bca", "6D03FB8F34D40BC", "6D03FB8F34D40BCG"])

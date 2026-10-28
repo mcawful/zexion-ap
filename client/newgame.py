@@ -232,8 +232,12 @@ def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
         return labels[sum(plan.options.get(t, 0) << i for i, t in enumerate(bits))]
 
     safety = f"Safety {value(*SAFETY)}"
+    text = plan.menu.seed_text
+    # Optional: the client writes the seed's text over the menu's (plan_text); typed in, the
+    # game's own placement runs from it too, as ARCHIPELAGO's does (the Hints' rectangles).
+    seed = f" (the seed, optional: {' '.join(text[i : i + 4] for i in range(0, len(text), 4))})"
     if mode in PRESETS:
-        return f"pick {PRESETS[mode]} mode, set {safety} and change no other options"
+        return f"pick {PRESETS[mode]} mode, set {safety} and change no other options{seed}"
     menu = plan.menu
     states: dict[tuple[int, int], list[str]] = {}
     for label, start, pool in zip(ITEM_LABELS, menu.start, menu.pool, strict=True):
@@ -257,5 +261,5 @@ def randomizer_steps(plan: sp.SeedPlan, mode: str) -> str:
     return (
         f"set Custom, first the items ({items}; the rest in the Item Pool) and Start Keys {keys} "
         f"(the menu limits the amounts by them), then {amounts}; Edit Options: "
-        f"{', '.join(settings)}"
+        f"{', '.join(settings)}{seed}"
     )
