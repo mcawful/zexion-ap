@@ -21,7 +21,7 @@ from ..custom import (
 )
 from ..items import NAMES
 from ..options import CustomItems
-from .bases import SeededZexionTestBase, ZexionTestBase
+from .bases import ZexionTestBase
 from .test_world import fake_world, pool_names
 
 FILLER = {46, 47, 48, 49, 50}
@@ -446,7 +446,7 @@ class CustomSeedShortOfFiller(ZexionTestBase):
         self.assertIn(SCRAP_METAL, self.world.pool_codes)
 
 
-class CustomDoubleTeleportRandomStart(SeededZexionTestBase):
+class CustomDoubleTeleportRandomStart(ZexionTestBase):
     options = {
         "mode": "custom",
         "custom_base": "ohko",

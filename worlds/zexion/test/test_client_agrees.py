@@ -130,8 +130,7 @@ class TestClientReadsTheSlotData(ZexionTestBase):
                     self.options = {**options, "goal": goal}
                     if goal == "core" and options["mode"] == "custom":
                         self.options["abridged_finale"] = "on"
-                    # One seed: an OHKO fill can fail about one time in a hundred (bases.py).
-                    self.world_setup(1)
+                    self.world_setup()
                     distribute_items_restrictive(self.multiworld)
                     self.check(self.world.fill_slot_data(), goal, build.sha256)
 

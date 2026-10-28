@@ -203,11 +203,11 @@ class BoxCompression(Setting):
 
 class DoubleTeleport(Setting):
     """Be able to teleport to a random second location.
-    Custom mode only; 'preset': the mode's. As in the game, the second location is any room but
-    the start, and the logic counts one of the eight flagged rooms only once your Energy (doubled
-    with the Magnus Armor), missiles, Mega Bombs, 10 per box and the menu's items owned (but the
-    Navcore and the Magnus Armor) add up to 27. The world draws among the rooms with which the
-    starting items collect a location."""
+    Custom mode only; 'preset': the mode's. The second location is any room but the start; the
+    game's logic counts one of the eight flagged rooms only once your Energy (doubled with the
+    Magnus Armor), missiles, Mega Bombs, 10 per box and the menu's items owned (but the Navcore
+    and the Magnus Armor) add up to 27, so the world draws one only when your starting items do.
+    It draws among the rooms with which the starting items collect a location."""
 
     display_name = "Double Teleport"
     setting = custom.DOUBLE_TELEPORT
@@ -310,7 +310,8 @@ class Gates(Choice):
     Vanilla: Gates require the four keys to access all like in the base game.
     Unlocked: Gates can be opened one by one by visiting their locations.
     Open: Gates can be moved through freely. (The R'talva gate is locked before defeating
-    Aesos) The seed's logic then travels by gate, as the game's logic does.
+    Aesos) The seed's logic then travels by gate, as the game's logic does, but not from the
+    R'talva gate.
     By the game's data, the core's own door takes the four keys whatever this is (not played
     yet with Off or Unlocked)."""
 

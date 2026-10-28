@@ -111,14 +111,23 @@ def collectible(
     return rule is None or logic.satisfied(rule, counts, settings, data.LOCATIONS[i], at)
 
 
+# R'Talva's gate: the game's logic lets reaching it open the gate travel (logic.GATE_TRIGGERS),
+# but its script does nothing until its visited flag 307 is set, which outside Unlocked waits
+# for flag 155 (by the menu's blurb, Aesos beaten; docs/re/randocells.md, "What each setting
+# does in the game"). The world leaves it out, stricter than the game's logic (decided, the
+# owner, 2026-10-28): a seed that counted on it could not be beaten in play.
+RTALVA_GATE = (51, 34)
+GATE_TRIGGERS = tuple(t for t in logic.GATE_TRIGGERS if t[0] != RTALVA_GATE)
+
+
 def gates_triggered(
     counts: Mapping[int, int], settings: logic.Settings, at: Callable[[Cell], bool]
 ) -> bool:
-    """Under Gates Open, whether a gate cell counts as reached, as the game's logic reads it
-    (logic.GATE_TRIGGERS): then it floods from logic.GATE_TARGETS too."""
+    """Under Gates Open, whether a gate cell counts as reached, as the game's logic reads it,
+    but for R'Talva's (GATE_TRIGGERS): then the flood goes on from logic.GATE_TARGETS too."""
     return settings.gates_open and any(
         at(cell) and (not as_location or collectible(LOCATION_AT[cell], counts, settings, at))
-        for cell, as_location in logic.GATE_TRIGGERS
+        for cell, as_location in GATE_TRIGGERS
     )
 
 
@@ -234,14 +243,20 @@ def offered_starts(seed: Seed, double_teleport: bool) -> list[dict]:
 
 
 def second_starts(seed: Seed, start: dict, rooms: Iterable[dict]) -> list[dict]:
-    """The rooms that can be the second teleport target for ``start``: the game draws from
-    every room but the start, flagged ones too; the world keeps those from which, with the
-    start, the starting items collect at least one location, the target counted as the logic
-    counts it (``Seed.sphere0_from``), which is the game's one-location rule for a start."""
+    """The rooms that can be the second teleport target for ``start``. The game draws from
+    every room but the start, flagged ones too. The world takes a flagged room only when the
+    logic counts it from the start (``second_counts`` with the starting items: a useful-item
+    score of 27), since one the logic counts only later adds nothing to sphere 0, and
+    Archipelago's fill then failed 28 times in 360 OHKO generations, against none in 680 with
+    an unflagged room (decided, the owner, 2026-10-28; docs/re/locations.md, "OHKO: two starts,
+    and only the locations they reach"). Of those, it keeps the rooms with which the starting
+    items collect at least one location (``Seed.sphere0_from``), the game's one-location rule
+    for a start."""
     alone = bool(seed.sphere0(start["cell"]).locations)
     return [
         room
         for room in rooms
         if room["cell"] != start["cell"]
+        and second_counts(seed.start_items, room)
         and (alone or bool(seed.sphere0_from(start, room).locations))
     ]

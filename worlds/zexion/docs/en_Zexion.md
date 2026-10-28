@@ -51,7 +51,8 @@ starts from. The seed is built from them as the game builds its own: the coin fl
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
 error that names them. Not yet: Guns First off, Secret Shuffle on and starting Mega Bombs.
-With Gates Open the seed's logic travels by gate, as the game's logic does. Gates Off is
+With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
+R'Talva's gate, which the game keeps locked until Aesos is beaten. Gates Off is
 taken with the core goal: by the game's data, the core's door needs the four keys whatever
 Gates is, and the gates are only a way to travel. Neither has been played yet.
 Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
@@ -68,10 +69,10 @@ from which your starting items reach at least one location (and, with the core g
 which you can reach Zexion's core); another stops generation with an error. With Easy's items
 that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
 room where your starting items reach only a few locations, generation sometimes fails: generate
-again, or pick another room. With Double Teleport the second room is any other, as in the game;
-one of the eight the game's menu flags counts in the logic only once your Energy (doubled with
+again, or pick another room. With Double Teleport the second room is any other but the eight
+the game's menu flags: the game's logic counts one of those only once your Energy (doubled with
 the Magnus Armor), missiles, Mega Bombs, 10 per box and the menu's items owned (but the Navcore
-and the Magnus Armor) add up to 27, and such a draw can make generation fail the same way. `random_start` (or
+and the Magnus Armor) add up to 27, so the world draws one only when your starting items do. `random_start` (or
 `random`) picks a room as the game's Random Start does. The spoiler log names the start room
 (and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
 as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.

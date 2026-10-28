@@ -23,7 +23,7 @@ from ..world import (
     NOT_HINTED,
     ZexionWorld,
 )
-from .bases import SeededZexionTestBase, ZexionTestBase
+from .bases import ZexionTestBase
 
 
 def fake_world(
@@ -313,7 +313,7 @@ class TestNames(unittest.TestCase):
         self.assertIn("kresezoa_16_13", StartRoom.options)
 
 
-class TestOHKO(SeededZexionTestBase):
+class TestOHKO(ZexionTestBase):
     options = {"mode": "ohko"}
 
     def test_ohko_has_two_starts_and_leaves_unreachable_locations_out(self) -> None:
@@ -690,7 +690,7 @@ class TestDiscHuntEasyFull(TestDiscHuntStandardFull):
     options = disks("easy", 30, 30)
 
 
-class TestDiscHuntOHKO(SeededZexionTestBase):
+class TestDiscHuntOHKO(ZexionTestBase):
     options = disks("ohko", 30, 30)
 
     def test_ohko_fits_30_in_scrap_after_its_left_out_locations(self) -> None:

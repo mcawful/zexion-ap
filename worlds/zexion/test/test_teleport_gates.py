@@ -58,15 +58,19 @@ class TestTheSecondTarget(unittest.TestCase):
             # Every item reaches the score, so the room counts then.
             self.assertEqual(seed.every_from(start, room), seed.every(start["cell"], room["cell"]))
 
-    def test_every_room_but_the_start_can_be_drawn(self) -> None:
-        # From Landing Pod the starting items collect a location alone, so every other room,
-        # flagged ones too, is a second target, as the game draws from all 33.
+    def test_a_flagged_room_only_when_it_counts_from_the_start(self) -> None:
+        # From Landing Pod the starting items collect a location alone, so every other room is
+        # a second target but the flagged ones, which OHKO's starting score leaves out of the
+        # logic (the world's guard; the game draws from all 33).
         seed = preset("ohko")
         start = data.START_ROOMS[6]
         self.assertTrue(seed.sphere0(start["cell"]).locations)
         rooms = reach.second_starts(seed, start, data.START_ROOMS)
-        self.assertEqual(len(rooms), 33)
-        self.assertNotIn(start, rooms)
+        self.assertEqual({r["index"] for r in rooms}, set(range(34)) - FLAGGED - {6})
+        energy = reach.inventory({**dict(seed.start_items), 0: 27})
+        rich = dataclasses.replace(seed, start_items=energy)
+        rooms = reach.second_starts(rich, start, data.START_ROOMS)
+        self.assertEqual({r["index"] for r in rooms}, set(range(34)) - {6})
 
     def test_a_start_that_reaches_nothing_needs_a_target_that_does(self) -> None:
         seed = preset("ohko")
@@ -82,7 +86,7 @@ class TestTheSecondTarget(unittest.TestCase):
 class TestGatesOpen(unittest.TestCase):
     def test_a_reached_gate_cell_leads_to_the_gate_cells(self) -> None:
         targets = {data.CELL_REGION[c] for c in logic.GATE_TARGETS}
-        triggers = [c for c, _ in logic.GATE_TRIGGERS]
+        triggers = [c for c, _ in reach.GATE_TRIGGERS]
         added = 0
         for name in ("standard", "ohko"):
             shut = preset(name)
@@ -105,6 +109,13 @@ class TestGatesOpen(unittest.TestCase):
         for cell, as_location in logic.GATE_TRIGGERS:
             if as_location:
                 self.assertNotIn(reach.LOCATION_AT[cell], data.LOCATION_RULES)
+
+    def test_rtalvas_gate_opens_no_travel(self) -> None:
+        # The game's logic counts it; the world does not (the owner's guard, 2026-10-28).
+        self.assertIn((reach.RTALVA_GATE, True), logic.GATE_TRIGGERS)
+        settings = logic.Settings(gates_open=True)
+        self.assertFalse(reach.gates_triggered({}, settings, lambda c: c == reach.RTALVA_GATE))
+        self.assertTrue(reach.gates_triggered({}, settings, lambda c: c == (12, 30)))
 
     def test_every_gate_cell_is_in_the_region_graph(self) -> None:
         for cell, _ in logic.GATE_TRIGGERS:
@@ -131,8 +142,9 @@ class CustomGatesOpen(ZexionTestBase):
     def test_the_gate_cells_lead_to_each_other(self) -> None:
         names = {e.name for e in self.multiworld.get_entrances(self.player)}
         gates = {n for n in names if n.startswith("Gate from")}
-        # Each of the four cells leads to the three targets but itself: 4 x 3 - 3.
-        self.assertEqual(len(gates), 9)
+        # Each of the three cells leads to the other two; not from R'Talva's (51, 34).
+        self.assertEqual(len(gates), 6)
+        self.assertFalse(any(n.startswith("Gate from X34 Y51") for n in gates))
 
 
 REAL_PARTNERS = ZexionWorld.partners
@@ -147,27 +159,25 @@ def plain_partners(world: ZexionWorld, room: dict) -> list[dict]:
 
 
 class CustomFlaggedSecondTarget(ZexionTestBase):
-    """A Custom seed on OHKO's base (Double Teleport on) whose second target the draw makes a
-    flagged room: the default tests fill it and beat it with the score rule. It starts in Ocean
-    Cliff, from which OHKO's starting items collect 9 locations: below the score the flagged
-    room adds none, and from fewer Archipelago's fill can fail (docs/re/locations.md, "Which
-    start rooms the world offers")."""
+    """A Custom seed on OHKO's base (Double Teleport on) whose starting Energy brings the
+    useful-item score to 27, so the world may draw a flagged room, here made the draw: it
+    counts from the start, and the default tests fill and beat it."""
 
-    options = {"mode": "custom", "custom_base": "ohko", "start_room": "ocean_cliff"}
+    options = {"mode": "custom", "custom_base": "ohko", "starting_energy_tanks": 27}
 
     def world_setup(self, *args, **kwargs) -> None:
         with mock.patch.object(ZexionWorld, "partners", flagged_partners):
             super().world_setup(*args, **kwargs)
 
-    def test_the_entrance_waits_for_the_score(self) -> None:
+    def test_the_entrance_has_the_score_rule_and_passes_from_the_start(self) -> None:
         self.assertIn(self.world.second["index"], FLAGGED)
         entrance = self.multiworld.get_entrance("Second teleport target", self.player)
         start = logic.useful_score(dict(self.world.seed_reach.start_items))
-        self.assertLess(start, logic.SECOND_TARGET_SCORE)
-        self.assertFalse(entrance.access_rule(self.multiworld.state))
-        for name in ("Magnus Armor", "Energy Tank", "Energy Tank", "Missile Box", "Missile Box"):
-            self.collect_by_name(name)
+        self.assertGreaterEqual(start, logic.SECOND_TARGET_SCORE)
         self.assertTrue(entrance.access_rule(self.multiworld.state))
+        empty = self.multiworld.state.__class__(self.multiworld)
+        empty.prog_items[self.player].clear()
+        self.assertFalse(entrance.access_rule(empty))
 
 
 class CustomUnflaggedSecondTarget(ZexionTestBase):

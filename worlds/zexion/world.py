@@ -247,9 +247,9 @@ class ZexionWorld(World):
         of the other 33 rooms, flagged ones too, and judges the pair by its winnability check;
         where that fails it offers PLAY ANYWAY, which Archipelago's fill cannot. So the world
         draws among the rooms with which the pair suits the seed as ``passes`` judges a start:
-        with the start, the starting items collect a location (reach.second_starts), and with
-        the core goal every item reaches the core, the target counted as the logic counts it
-        (reach.second_counts)."""
+        with the start, the starting items collect a location, and with the core goal every
+        item reaches the core, the target counted as the logic counts it (reach.second_counts);
+        a flagged room only when the logic counts it from the start (reach.second_starts)."""
         rooms = reach.second_starts(self.seed_reach, room, data.START_ROOMS)
         if self.reaches_the_door(room):
             return rooms
@@ -410,11 +410,11 @@ class ZexionWorld(World):
 
     def connect_gates(self, by_index: dict[int, Region]) -> None:
         """Gates Open: once any gate cell counts as reached, the game's logic floods from the
-        three gate cells of logic.GATE_TARGETS too (reach.py, gates_triggered), so each gate
-        cell's region leads to theirs."""
+        three gate cells of logic.GATE_TARGETS too, so each gate cell's region leads to theirs;
+        R'Talva's gate is left out (reach.py, GATE_TRIGGERS)."""
         cells = data.CELL_REGION
         targets = [by_index[cells[c]] for c in logic.GATE_TARGETS if cells[c] in by_index]
-        for cell, as_location in logic.GATE_TRIGGERS:
+        for cell, as_location in reach.GATE_TRIGGERS:
             source = by_index.get(cells[cell])
             if source is None:
                 continue

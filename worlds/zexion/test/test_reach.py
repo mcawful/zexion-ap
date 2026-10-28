@@ -81,7 +81,8 @@ class TestStartRooms(unittest.TestCase):
             for room in rooms:
                 self.assertNotEqual(room["cell"], start["cell"])
                 self.assertTrue(seed.sphere0_from(start, room).locations)
-            others = [r for r in data.START_ROOMS if r is not start]
+            # OHKO's starting items count no flagged room, which the world then leaves out.
+            others = [r for r in data.START_ROOMS if r is not start and not reach.flagged(r)]
             if seed.sphere0(start["cell"]).locations:
                 self.assertEqual(rooms, others)
 
