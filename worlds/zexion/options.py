@@ -312,8 +312,7 @@ class Gates(Choice):
     Open: Gates can be moved through freely. (The R'talva gate is locked before defeating
     Aesos) The seed's logic then travels by gate, as the game's logic does, but not from the
     R'talva gate.
-    By the game's data, the core's own door takes the four keys whatever this is (not played
-    yet with Off or Unlocked)."""
+    The core's own door takes the four keys whatever this is."""
 
     display_name = "Gates"
     option_off = 0

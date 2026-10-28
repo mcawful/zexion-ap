@@ -52,9 +52,9 @@ Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
 error that names them. Not yet: Guns First off, Secret Shuffle on and starting Mega Bombs.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
-R'Talva's gate, which the game keeps locked until Aesos is beaten. Gates Off is
-taken with the core goal: by the game's data, the core's door needs the four keys whatever
-Gates is, and the gates are only a way to travel. Neither has been played yet.
+R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off is
+taken with the core goal: the core's door needs the four keys whatever Gates is, and the
+gates are only a way to travel.
 Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
 goal.
 

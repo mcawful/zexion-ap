@@ -115,7 +115,8 @@ def collectible(
 # but its script does nothing until its visited flag 307 is set, which outside Unlocked waits
 # for flag 155 (by the menu's blurb, Aesos beaten; docs/re/randocells.md, "What each setting
 # does in the game"). The world leaves it out, stricter than the game's logic (decided, the
-# owner, 2026-10-28): a seed that counted on it could not be beaten in play.
+# owner, 2026-10-28): in game the fourth gate appears only after a boss (2026-10-28), so a seed
+# that counted on it early could not be beaten.
 RTALVA_GATE = (51, 34)
 GATE_TRIGGERS = tuple(t for t in logic.GATE_TRIGGERS if t[0] != RTALVA_GATE)
 
