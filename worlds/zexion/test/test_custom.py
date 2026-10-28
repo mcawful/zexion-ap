@@ -466,7 +466,8 @@ class CustomSeedGunsFirstOff(ZexionTestBase):
         "mode": "custom",
         "guns_first": "off",
         "random_gun": "off",
-        "custom_items": {"Pulse Wave": "start", "Snake": "excluded"},
+        # The Arc Plasma is a coin flip in Standard: pooled here, so the test is the same each run.
+        "custom_items": {"Pulse Wave": "start", "Snake": "excluded", "Arc Plasma": "pool"},
     }
 
     def test_the_items(self) -> None:
