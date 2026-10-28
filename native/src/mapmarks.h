@@ -46,8 +46,8 @@ uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5
 // to 0x19E5D7 on B1, in 0x19E2E0, each frame the item is in view): a revealed square (base 0xC
 // or 0x18, not collected) gets base + 2 for IDs 3 to 35 and base + 1 for any other, so item 48
-// went back to a minor every frame and its minimap dot flashed against mark_important's raise
-// (docs/re/memory.md, "Map markers").
+// went back to a minor every frame against mark_important's raise, and its minimap dot was seen
+// to flash (assumed to be this: docs/re/memory.md, "Map markers").
 constexpr size_t kSeenMarkerSize = 50;
 
 // That write with ID 48 a major too, built from the game's bytes `game` (its store copied as it

@@ -570,7 +570,8 @@ Working in game: 2026-10-25 ("AP saves without the client").
   revealed becomes an obscured major and one seen directly a shown major; the value cannot tell
   an Area Map's reveal (shown) from a hint's ("Map markers"). While an item is on screen the
   game writes its square every frame as a shown item of its ID's class, which took a stand-in
-  back to a minor and made its minimap dot's border flash; so the helper also patches that
+  back to a minor (measured live), and its minimap dot's border was seen to flash (assumed to be
+  this); so the helper also patches that
   write (`seen_marker_code`, 50 bytes) to give item 48 a major's class, as an item on screen
   of IDs 3 to 35 gets (`0x1A`, or `0x0E` in a square a hint revealed). The patch is the game's
   code with one more compare: it calls and reads nothing of the helper's. While the map is open,
@@ -579,8 +580,9 @@ Working in game: 2026-10-25 ("AP saves without the client").
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (during a load the section may still be the last
   save's while the grid is the new one's); the on-screen write's patch from that same look,
-  until the first frame call that finds no labels or another save loaded; the names while the
-  map is open and this seed's save is loaded.
+  until the first frame call that finds no labels or another save loaded (bytes there other than
+  the game's write as traced are left alone, and nothing reports it: the stand-in then flips as
+  before); the names while the map is open and this seed's save is loaded.
 - **Put back:** the markers are not: the game saves the map grid, and they stay as the game would
   have set them. The on-screen write goes back as above, when a client goes away and before an
   unload, only while it still reads as the helper wrote it; an unload refuses while it could not
