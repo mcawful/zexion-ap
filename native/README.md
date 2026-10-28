@@ -582,8 +582,18 @@ Working in game: 2026-10-25 ("AP saves without the client").
 Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
 in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
 two-look check, the unseen squares named as the game names its own and the markers still raised
-after a save, a return to the title and a load. Obscure Majors on with Minors off, and Obscure
-Class: stand-in tests only (`tests/mapmarks_tests.cpp`), not run in game.
+after a save, a return to the title and a load; 2026-10-27, helper 0.30.0 from develop, two
+Custom seeds with Obscure Majors on, Minors off and Hints Large (`live40`, Class off;
+`live41`, Class on). With Class off, a navigation room's reveal left the stand-ins at the
+game's minor `0x0D`. The helper raised each to `0x15` by the next 0.1 s read, and the cursor
+read ADVANCED TECH, with the same marker as the game's hinted majors. With Class on, the game
+put every square at `0x15`, and the cursor read UNKNOWN ITEM on all of them, the helper
+changing nothing. In both, walking into the room gave `0x21`, as for a game major, and once
+seen the map named the item (OS INSTALL DISK). A known flaw, in any mode by the code
+(`important_value` raises every shown minor): while a stand-in is on screen, the game writes
+its square back as a minor (`0x19`) and the helper raises it again (read in both seeds), and
+the border of its dot on the minimap flashes (seen in `live41`; that the flip causes it is
+assumed). Once the item is off screen it stays raised ("Map markers").
 
 ### The title screen's lines
 
