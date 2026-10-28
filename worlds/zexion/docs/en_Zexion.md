@@ -136,7 +136,9 @@ client closed too.
 
 No Feats: the mod keeps Zexion's Feats for the game as it ships, so an Archipelago save's
 ending earns none. The Feats of Natu screen may still come after it, showing your Feats so far
-and ARCHIPELAGO SAVE: NO FEATS EARNED. Your normal saves earn them as usual.
+and ARCHIPELAGO SAVE: NO FEATS EARNED. If you have never seen the game's expanded ending, the
+screen may show a hint in place of its title, and no such line. Your normal saves earn them as
+usual.
 
 The mod also stops Steam achievements in Archipelago saves (for items, the map and the
 ending). The ending's has been checked in game; the others so far only in the mod's own tests.

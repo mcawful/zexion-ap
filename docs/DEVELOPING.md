@@ -163,7 +163,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
   game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. Not
   seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in
   tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
-  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests)
+  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests), and the
+  note over the secret Feats row or shorter rows (stand-in tests only; 0.30.0 showed none over
+  the secret row, 2026-10-28)
   (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
   without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
   the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be

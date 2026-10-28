@@ -667,13 +667,18 @@ closed, gone with it open.
   - **The Feats of Natu screen.** It still follows an AP ending, by a path not traced, with
     nothing flashing. The helper writes ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the
     blank last line of its title label, under FEATS OF NATU! (`feats_screen_note`). It writes
-    only on that screen as it follows an ending: the top menu with 4 panels, two rows of 7
-    Feats, a live title widget whose label is three equal lines (the middle one naming NATU),
-    and MISSION COMPLETE's statistics under it: a panel of 10 lines and, seen after an ending in a
-    seed with Allow Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what
-    makes the game add it is not traced). It writes the whole line or nothing, only over a line
-    that is blank or already its note, and only if every glyph of it is writable and has the
-    font's frames.
+    only on that screen as it follows an ending: the top menu with 4 panels, two rows of Feats
+    (7, or by disassembly 6 on top and 5 or 6 below when the game hides some), a live title
+    widget whose label is three equal lines (the middle one naming NATU), and MISSION
+    COMPLETE's statistics under it: a panel of 10 lines and, seen after an ending in a seed with
+    Allow Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the
+    game add it is not traced). With the secret row (a secret Feat earned, or the title screen's
+    code typed since the game started) the top menu has a fifth panel of 5 Feats and the game
+    moves the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still
+    blank, and the note goes there (stand-in tests only; 0.30.0 showed no note on it). It
+    writes the whole line or nothing, only over a line that is blank or already its note, and
+    only if every glyph of it is writable and has the font's frames. When the title is one of the game's hints instead (as when Ending B has never been
+    seen; by disassembly, not seen), its middle line names no NATU and there is no note.
     - **When:** after an ending the patch jumped over. The guard went off as the save left with
       the patch in place, flag 250 set and flag 251 clear; a refused patch gives no note. It
       ends when a save is loaded, or when the screen has come and gone. It looks every 8th
@@ -757,7 +762,9 @@ Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
-  (by disassembly and the stand-in only; the owner's 15Explorer is earned already).
+  (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
+- the note over the secret row and over shorter rows (stand-in tests only; 0.30.0 showed none
+  over the secret row).
 
 ## Building
 
