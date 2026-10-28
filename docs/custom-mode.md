@@ -3,8 +3,8 @@
 **Status: steps A and B of "The build plan" built and run in game, 2026-10-27** ("The
 build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
-`world.py`), with Guns First off and Secret Shuffle on refused until step E, and starting Mega
-Bombs until the client can give them. This page set out how the YAML offers every setting of
+`world.py`), with Secret Shuffle on refused until step E's second part, and starting Mega
+Bombs until the client can give them; Guns First off is built (step E, not yet run in game). This page set out how the YAML offers every setting of
 the game's own randomizer, following the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
 [`re/randocells.md`](re/randocells.md), from "The randomizer menu's settings" to "What each
@@ -82,7 +82,7 @@ Zexion:
     Navcore: pool
 
   random_gun: preset          # on | off
-  guns_first: preset          # off refused until step E
+  guns_first: preset          # off: the five upgrades are items of their own
   bulk_missiles: preset
   bulk_bombs: preset
   box_compression: preset
@@ -232,8 +232,10 @@ step B added them to the graph (`tools/gen_world_data.py`, `opened_cells`). Secr
   locations they reach"). Random Start with Double Teleport
   does not copy the game's bug, which draws the second target in place of the start ("Starting
   Location and the second teleport target").
-- **What the world adds to the game's rules, as built.** An upgrade started without its gun is
-  started as the gun: the world holds each gun and its upgrade as one progressive item. Where
+- **What the world adds to the game's rules, as built.** With Guns First on, an upgrade
+  started without its gun is started as the gun: the world holds each gun and its upgrade as
+  one progressive item. With it off, each upgrade is an item of its own, started as itself, as
+  the game starts it (step E). Where
   the pool has too little filler for the locations left out (and the OS Install Disks), ten
   Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   makes filler when it runs short (`custom.compress`), in every mode. A pool longer than its
@@ -281,7 +283,7 @@ step A (`worlds/zexion/reach.py`).
 | 10 | The 27 items, Random Gun | medium | low | The four states and Random Gun's draw in the world; the start-with array already carries any of the 27. An excluded item is simply absent. |
 | 11 | Starting Location, Double Teleport | medium | medium | The game's room rules above at generation time; the flagged second target's score rule as an entrance rule (built in step D). The start table stays B1-only (`client/newgame.py`). |
 | 12 | Gates | low (Off, Vanilla, Unlocked); medium (Open) | medium | Pass through. Open adds the game's gate floods to the logic: entrances among (24, 44), (12, 30) and (14, 2) once one of them is reached (built in step D); the game's logic also counts reaching (51, 34), which the world does not (below). Off and Unlocked act on the gates' travel only: the core's door reads the keys alone (`re/memory.md`, "Keys, the gates and the key markers", from the data files; run in game under Off, 2026-10-28: the core reached with the keys; Unlocked not played). Open: the game's logic lets reaching R'Talva's gate at (51, 34) open the travel, though its script waits for flag 155 (Aesos, by the menu's blurb); **a guard the game does not have** (decided, the owner, 2026-10-28): the world does not count it (`reach.GATE_TRIGGERS`), since a seed that did could not be beaten if the gate cannot be used then. In game (2026-10-28, the owner): under Open three gates work without keys, and the fourth appears only after a boss, so the guard stays. |
-| 13 | Guns First off | high | medium | With it off the game applies no item redirects: each of the five upgrades is its own item, useless without its gun, and the guns are no longer progressive. New items for Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst; `logic.py`'s redirects conditional; the client's inventory writes and reconciliation for upgrades as their own bytes. A mistake here can lose or double an item. |
+| 13 | Guns First off | high | medium | With it off the game applies no item redirects: each of the five upgrades is its own item, useless without its gun, and the guns are no longer progressive. New items for Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst; `logic.py`'s redirects conditional; the client's inventory writes and reconciliation for upgrades as their own bytes. A mistake here can lose or double an item. Built in step E (`logic.collect`, `Settings.guns_first`; `items.UPGRADES`; `client/reconcile.py` with `SeedPlan.guns_first`): in play an upgrade is always picked up as itself, its record having no owned-redirect, and the gun's own redirect reads the menu's Guns First byte (`re/randocells.md`, "The evaluator works on a table of 64 counts"). The gun items keep their name, "Progressive Machine Gun" and so on, in every seed. |
 | 14 | Secret Shuffle | high | high | A 155th location, the Bomb Box at X48 Y20, enters the game's location list at position 134 and moves the 20 after it up by one. The client, the helper and the save patch index everything by that list and count 154 (`client/ids.py`, `save_patch.py`, `newgame.py`). The location ids would stay by cell, with a per-seed map to the game's list. A mistake sends or gives the wrong item. |
 | — | No Guarantee | none | none | Not offered (not on B1's menu). |
 
@@ -480,7 +482,19 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    once flag 155 is set. Two guards the game does not have (decided, the owner, 2026-10-28,
    "for the sake of AP"): a flagged second target only when it counts from the start, and no
    gate travel from R'Talva's gate (ranks 11 and 12).
-6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14).
+6. **E. Guns First off**, then **Secret Shuffle** (ranks 13 and 14). **Guns First off built,
+   2026-10-28; not run in game yet:** the five upgrades as items of their own (`items.py`,
+   codes 9, 10, 12, 14 and 15, named as the game names them), the logic's redirects only with
+   Guns First (`logic.collect`, `logic.Settings.guns_first`), the pool and starting items
+   without the swap or the upgrade-as-gun (`custom.pool_items`, `starting_items`), and the
+   client counting each item as itself in such a seed (`client/reconcile.py`, `session.py`;
+   `SeedPlan.guns_first` from slot data `options`). The start-with array already held the
+   upgrades (`client/newgame.py`). The world refuses an upgrade in `start_inventory` with Guns
+   First on (the game's Guns First seeds hold none) and, with it off, a gun or upgrade more
+   than once in the starting items (`starting.problems`). Found on the way, by disassembly:
+   in play an upgrade is always handed out as itself, and an owned gun turns into its upgrade
+   at pickup by the menu's Guns First byte, not the save's (`re/randocells.md`, "The evaluator
+   works on a table of 64 counts"). Secret Shuffle is next.
 
 ## Open questions for the owner
 

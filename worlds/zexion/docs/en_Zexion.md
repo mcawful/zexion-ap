@@ -50,7 +50,11 @@ Finale and the rest). Each starts as `preset`: the value of `custom_base`, the m
 starts from. The seed is built from them as the game builds its own: the coin flips, Random
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them. Not yet: Guns First off, Secret Shuffle on and starting Mega Bombs.
+error that names them. Not yet: Secret Shuffle on and starting Mega Bombs.
+With Guns First on (every preset), each gun and its upgrade are one item, Progressive
+Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
+the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
+items of their own, and each does nothing until you have its gun, as in the game.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
 R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off is
 taken with the core goal: the core's door needs the four keys whatever Gates is, and the

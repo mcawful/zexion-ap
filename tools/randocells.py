@@ -92,6 +92,7 @@ RANDO_BLOB_RVA = 0xCDD6D0
 ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
 OPTIONS_RVA = 0xCDDF4B  # one byte per option, indexed by a code-68 entry's tier byte
 GATES = (72, 73)  # Gates' two bits; both set is Open
+GUNS_FIRST = 10  # Guns First: the logic's item redirects apply only with it on (0xE5680)
 MODE_BITS_RVA = (0xCDDF76, 0xCDDF75)  # code 69's mode = first * 2 + second
 
 
@@ -113,7 +114,8 @@ def settings_from_save(data: bytes) -> logic.Settings:
     hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
     options = bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64])
     gates_open = all(data[at(OPTIONS_RVA) + t] for t in GATES)
-    return logic.Settings(start + pool, hi * 2 + lo, options, gates_open)
+    guns_first = bool(options[GUNS_FIRST])
+    return logic.Settings(start + pool, hi * 2 + lo, options, gates_open, guns_first)
 
 
 def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
@@ -196,7 +198,8 @@ def gates_triggered(grid, have: Counter, settings: logic.Settings, seen: set) ->
     )
 
 
-# A weapon and its upgrade are progressive (logic.WEAPON_UPGRADES; docs/re/randocells.md).
+# With Guns First, a weapon and its upgrade are progressive (logic.WEAPON_UPGRADES;
+# docs/re/randocells.md); without it, each is its own item.
 collect = logic.collect
 
 
@@ -224,7 +227,7 @@ def sweep(
             if i in got or cell not in cells or not collectible(grid, cell, have, settings, cells):
                 continue
             got.add(i)
-            collect(have, items[i])
+            collect(have, items[i], settings.guns_first)
             new = True
         if not new:
             return got
@@ -334,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     if second is not None:
         have = Counter(initial)
         for i in sorted(got):
-            collect(have, items[i])
+            collect(have, items[i], settings.guns_first)
         cell, flagged = second
         counted = second_counts(have, flagged)
         print(f"second teleport target {cell}, flagged {flagged}, counted in the end {counted}")

@@ -102,6 +102,31 @@ def test_should_own_counts_start_and_upgrade_codes_under_the_weapon() -> None:
     assert rc.should_own({9: 1}, TABLE, set(), [3]) == Counter({3: 2})
 
 
+# Guns First off (setting t10 0): each upgrade is an item, and a byte, of its own.
+@pytest.mark.parametrize(
+    ("collected", "received", "extra", "owed"),
+    [
+        pytest.param(set(), [9], {}, {9: 1}, id="an-upgrade-without-its-weapon-is-itself"),
+        pytest.param(set(), [14], {}, {14: 1}, id="the-starting-weapons-upgrade"),
+        pytest.param(set(), [5, 15], {}, {5: 1, 15: 1}, id="a-weapon-and-its-upgrade"),
+        # Location 0 holds the Machine Gun; the game handed it out as itself.
+        pytest.param({0}, [], dict(i3=1), {}, id="a-native-pickup-is-not-given-again"),
+        pytest.param({0}, [9], dict(i3=1, i9=1), {}, id="an-upgrade-held-is-not-given-again"),
+    ],
+)
+def test_without_guns_first_every_item_is_itself(collected, received, extra, owed) -> None:
+    target = rc.should_own(START, TABLE, collected, received, guns_first=False)
+    have = inv(**{**STARTED, **extra})
+    assert rc.grants(have, target, guns_first=False).inventory == owed
+
+
+def test_without_guns_first_an_upgrade_does_not_stand_for_its_weapon() -> None:
+    # With Guns First, a held Pulse Wave would count as the Machine Gun owed here.
+    target = rc.should_own({}, TABLE, set(), [3], guns_first=False)
+    assert rc.grants(inv(i9=1), target, guns_first=False).inventory == {3: 1}
+    assert rc.should_own({9: 1}, TABLE, set(), [3], guns_first=False) == Counter({3: 1, 9: 1})
+
+
 BEFORE = rc.Supplies(energy=30, energy_max=48, missiles=2, missiles_max=3, bombs=0, bombs_max=0)
 
 

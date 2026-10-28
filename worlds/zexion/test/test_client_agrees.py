@@ -14,7 +14,7 @@ import unittest
 
 from Fill import distribute_items_restrictive
 
-from .. import data, items, locations, logic, starting
+from .. import custom, data, items, locations, logic, starting
 from ..locations import location_name
 from ..world import FOREIGN, FOREIGN_PROGRESSION
 from .bases import ZexionTestBase
@@ -81,6 +81,7 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(ids.GAME_ITEMS, range(0, 51))
         self.assertEqual(ids.PROGRESSIVE, items.PROGRESSIVE)
         self.assertEqual(ids.PROGRESSIVE, logic.WEAPON_UPGRADES)
+        self.assertEqual(save_patch.GUNS_FIRST, custom.GUNS_FIRST)
         self.assertEqual(ids.DATA_DISC, items.DATA_DISC)
         self.assertEqual(ids.DATA_DISC, 44)
         self.assertEqual(ids.KEYS, items.KEY_CODES)
@@ -106,6 +107,11 @@ class TestClientCodes(unittest.TestCase):
             newgame.start_with({ids.MISSILE_CONTAINER: most + 1})
         self.assertEqual(starting.problems({ids.MISSILE_CONTAINER: most}, False), [])
         self.assertNotEqual(starting.problems({ids.MISSILE_CONTAINER: most + 1}, False), [])
+        # Without Guns First, the upgrades are started as themselves: one each, in the array.
+        one_each = dict.fromkeys(newgame.START_WITH_ORDER, 1)
+        self.assertEqual(starting.problems(one_each, False, guns_first=False), [])
+        array, _ = newgame.start_with(one_each)
+        self.assertEqual(array, bytes([1] * len(newgame.START_WITH_ORDER)))
 
 
 @unittest.skipIf(CLIENT is None, WHY)
@@ -120,10 +126,12 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         # A build whose start table the world's data was measured on, so plan_text uses it.
         build = next(b for b in patterns.KNOWN_BUILDS if b.sha256.startswith(data.DATA_BUILD))
         custom = {"mode": "custom", "x_blocks": "on", "hints": "revealed", "start_keys": 1}
+        guns_first_off = {"guns_first": "off", "custom_items": {"Pentashot": "start"}}
         for options in (
             *({"mode": mode} for mode in ("easy", "standard", "ohko")),
             custom,
             {**custom, "custom_base": "ohko", "safety": "off"},
+            {**custom, **guns_first_off},
         ):
             for goal in ("core", "os_install_disks"):
                 with self.subTest(**options, goal=goal):
@@ -136,6 +144,10 @@ class TestClientReadsTheSlotData(ZexionTestBase):
 
     def check(self, slot: dict, goal: str, build_sha256: str) -> None:
         plan = save_patch.plan_from_slot_data(slot)
+        guns_first = self.world.logic_settings.guns_first
+        self.assertEqual(plan.guns_first, guns_first)
+        if not guns_first:  # the started Pentashot, as itself
+            self.assertEqual(plan.start_items.get(14), 1)
         self.assertEqual(len(plan.location_items), ids.LOCATIONS)
         self.assertLessEqual(set(plan.location_items), set(ids.GAME_ITEMS))
         self.assertLessEqual(set(plan.start_items), set(ids.WRITABLE_ITEMS))

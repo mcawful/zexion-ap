@@ -800,5 +800,18 @@ class TestStartInventoryChecked(unittest.TestCase):
         self.assertIn("Power Cartridge", self.refused({"Power Cartridge": 1}, mode=0))
         self.assertIn("Progressive Lance", self.refused({"Progressive Lance": 3}))
 
+    def test_an_upgrade_is_a_second_weapon_with_guns_first(self) -> None:
+        # Every preset has Guns First: its seeds hold no upgrade of its own.
+        self.assertIn("second Progressive Machine Gun", self.refused({"Pulse Wave": 1}))
+
+    def test_without_guns_first_one_of_each_weapon_and_upgrade(self) -> None:
+        off = {"mode": "custom", "guns_first": "off", "random_gun": "off"}
+        fine = {"Pulse Wave": 1, "Progressive Lance": 1, "Focal Crystal": 1}
+        fake_world(start_inventory=fine, **off).generate_early()
+        # Standard starts with the Machine Gun (Random Gun off).
+        machine_gun = {"Progressive Machine Gun": 1}
+        self.assertIn("Progressive Machine Gun", self.refused(machine_gun, **off))
+        self.assertIn("Tunneler", self.refused({"Tunneler": 2}, **off))
+
     def test_a_disk_needs_the_disk_goal(self) -> None:
         self.assertIn("OS Install Disk", self.refused({"OS Install Disk": 1}))

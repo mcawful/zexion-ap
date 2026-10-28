@@ -19,14 +19,20 @@ FIRST_SPECIAL = 50
 Entry = tuple[int, int]  # (code, tier/count byte)
 Cell = tuple[int, int]
 
-# Item definition redirects (docs/re/randocells.md): a weapon picked up again counts as its
-# upgrade, and an upgrade picked up first counts as its weapon, so each pair is progressive.
+# Item definition redirects (docs/re/randocells.md): with Guns First on, a weapon picked up again
+# counts as its upgrade, and an upgrade picked up first counts as its weapon, so each pair is
+# progressive. With Guns First off the logic applies neither (0xE5680), and each upgrade is an
+# item of its own, which counts only with its weapon (``derive``).
 WEAPON_UPGRADES = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in WEAPON_UPGRADES.items()}
 
 
-def collect(have: MutableMapping[int, int], item: int) -> None:
-    """Add one picked-up item to the counts, as the generator does (RVA 0xE5680)."""
+def collect(have: MutableMapping[int, int], item: int, guns_first: bool = True) -> None:
+    """Add one picked-up item to the counts, as the generator does (RVA 0xE5680): the
+    redirects only with Guns First (setting t10)."""
+    if not guns_first:
+        have[item] = have.get(item, 0) + 1
+        return
     upgrade = WEAPON_UPGRADES.get(item)
     if upgrade is not None and have.get(item, 0) > 0:
         have[upgrade] = have.get(upgrade, 0) + 1
@@ -46,6 +52,7 @@ class Settings:
     mode69: int = 0  # the menu's Safety; 0 or 3: code 69 always passes; 1 or 2: checks energy
     options: bytes = field(default=bytes(64))
     gates_open: bool = False  # Gates Open (t72 and t73 both set): the logic travels by gate
+    guns_first: bool = True  # Guns First (t10): the item redirects (``collect``)
 
 
 DEFAULT_SETTINGS = Settings()

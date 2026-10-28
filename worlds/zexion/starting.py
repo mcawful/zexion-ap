@@ -6,9 +6,10 @@ client/newgame.py); the server does not send it the start inventory (the client 
 other worlds' items). The client refuses what it cannot write, but only at play time, so the
 world refuses those items in generation (``problems``, from generate_early), with its limits:
 
-- an upgrade, the Navcore or another item of the new game's start-with array: one at most (the
-  array holds 1 for "start with it"), and a progressive weapon twice at most (the weapon and its
-  upgrade);
+- the Navcore or another item of the new game's start-with array: one at most (the array holds
+  1 for "start with it"); with Guns First on, a progressive weapon twice at most (the weapon and
+  its upgrade) and no upgrade as an item of its own (the game's Guns First seeds hold none:
+  docs/re/randocells.md, "The pool", step 8); with it off, a weapon and an upgrade once each;
 - Missile Containers: 9 at most, the mode's own included (the new game takes one missile amount,
   containers plus 10 per Missile Box, and the game splits it back into tens and containers);
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
@@ -28,12 +29,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .items import ASSIST_UNLOCK, DATA_DISC, INTEL_CHIP, KEY_CODES, NAMES, PROGRESSIVE
+from .items import ASSIST_UNLOCK, DATA_DISC, INTEL_CHIP, KEY_CODES, NAMES, PROGRESSIVE, UPGRADES
 
 MISSILE_CONTAINER = 1
 MAX_CONTAINERS = 9
 # The new game's start-with array (client/newgame.py, START_WITH_ORDER), less the upgrades,
-# which this world hands out as a progressive weapon's second copy.
+# which with Guns First this world hands out as a progressive weapon's second copy.
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
 START_WITH |= {32, 33, 34}
 NEVER = {
@@ -49,10 +50,12 @@ NEVER = {
 }
 
 
-def problems(counts: Mapping[int, int], disc_hunt: bool) -> list[str]:
+def problems(counts: Mapping[int, int], disc_hunt: bool, guns_first: bool = True) -> list[str]:
     """Why the client could not give these starting items (item code -> count, the mode's own
-    and start_inventory together), one line each; empty when it can."""
+    and start_inventory together), one line each; empty when it can. ``guns_first``: the seed's
+    Guns First setting (t10)."""
     out = []
+    single = (START_WITH - PROGRESSIVE.keys()) if guns_first else (START_WITH | UPGRADES)
     for code, n in sorted(counts.items()):
         if n <= 0:
             continue
@@ -61,9 +64,15 @@ def problems(counts: Mapping[int, int], disc_hunt: bool) -> list[str]:
             out.append(f"{name}: {NEVER[code]}")
         elif code == DATA_DISC and not disc_hunt:
             out.append(f"{name}: only the OS Install Disks goal counts them")
-        elif code in PROGRESSIVE and n > 2:
+        elif code in UPGRADES and guns_first:
+            weapon = NAMES[next(w for w, u in PROGRESSIVE.items() if u == code)]
+            out.append(
+                f"{name}: with Guns First on, the upgrade is a second {weapon} (the game's "
+                f"Guns First seeds hold no upgrade of its own)"
+            )
+        elif code in PROGRESSIVE and guns_first and n > 2:
             out.append(f"{n} {name}: a weapon and its upgrade are 2")
-        elif code in START_WITH and code not in PROGRESSIVE and n > 1:
+        elif code in single and n > 1:
             out.append(f"{n} {name}: a new game starts with one at most")
         elif code == MISSILE_CONTAINER and n > MAX_CONTAINERS:
             out.append(

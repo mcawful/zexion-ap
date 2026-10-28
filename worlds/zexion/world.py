@@ -195,8 +195,6 @@ class ZexionWorld(World):
         if not is_custom:
             return menu
         unsupported = []
-        if not menu.setting(custom.GUNS_FIRST):
-            unsupported.append("guns_first: off (each upgrade its own item)")
         if menu.setting(custom.SECRET_SHUFFLE):
             unsupported.append("secret_shuffle: on (a 155th location)")
         if menu.amounts[custom.START_BOMBS]:
@@ -213,7 +211,7 @@ class ZexionWorld(World):
         counts = Counter(self.start_inventory)
         for name, n in self.options.start_inventory.value.items():
             counts[code_of[name]] += n
-        found = starting.problems(counts, self.disc_hunt)
+        found = starting.problems(counts, self.disc_hunt, self.logic_settings.guns_first)
         if found:
             raise OptionError(
                 f"Zexion ({self.player_name}): the client cannot start a seed with this "
@@ -638,7 +636,8 @@ class ZexionWorld(World):
 
     def start_items(self) -> dict[int, int]:
         """Inventory bytes for everything this player starts with: the mode's starting items
-        and any start_inventory, a progressive weapon's second copy as its upgrade."""
+        and any start_inventory, with Guns First a progressive weapon's second copy as its
+        upgrade."""
         counts = Counter(
             code_of[item.name]
             for item in self.multiworld.precollected_items[self.player]
@@ -646,4 +645,4 @@ class ZexionWorld(World):
             and code_of[item.name] in GAME_ITEMS
             and code_of[item.name] != DATA_DISC
         )
-        return as_inventory(counts.items())
+        return as_inventory(counts.items(), self.logic_settings.guns_first)

@@ -261,8 +261,11 @@ class Session:
         notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
         plan = self.plan
-        target = reconcile.should_own(plan.start_items, plan.location_items, collected, received)
-        result = reconcile.grants(snap.inventory, target)
+        guns_first = plan.guns_first
+        target = reconcile.should_own(
+            plan.start_items, plan.location_items, collected, received, guns_first
+        )
+        result = reconcile.grants(snap.inventory, target, guns_first)
         for item, missing in result.not_grantable.items():
             self.say_once(
                 f"stuck {item} {missing}",
@@ -317,12 +320,13 @@ class Session:
     ) -> dict[int, int]:
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
         start = self.announced if self.announced is not None else len(received)
-        # A progressive weapon received while its weapon is owned arrives as the upgrade, so
-        # its popup names the upgrade.
+        # With Guns First, a progressive weapon received while its weapon is owned arrives as
+        # the upgrade, so its popup names the upgrade. Without it, each item is itself.
+        guns_first = self.plan.guns_first
         weapons = {w for w in ids.PROGRESSIVE if snap.inventory[w]}
         for index in range(start, len(received)):
             item = received[index]
-            if item in ids.PROGRESSIVE:
+            if item in ids.PROGRESSIVE and guns_first:
                 if item in weapons:
                     item = ids.PROGRESSIVE[item]
                 # The weapon is owned from now on, whichever byte this one set.

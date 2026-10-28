@@ -55,22 +55,24 @@ def inventory(counts: Mapping[int, int]) -> Inventory:
     return tuple(sorted((code, n) for code, n in counts.items() if n))
 
 
-def collected(start_inventory: Mapping[int, int]) -> dict[int, int]:
-    """Starting items by item code, counted as the game counts them (``logic.collect``): a
-    progressive weapon held twice as the weapon and its upgrade."""
+def collected(start_inventory: Mapping[int, int], guns_first: bool = True) -> dict[int, int]:
+    """Starting items by item code, counted as the game counts them (``logic.collect``): with
+    Guns First, a progressive weapon held twice as the weapon and its upgrade."""
     have: dict[int, int] = {}
     for code, n in sorted(start_inventory.items()):
         for _ in range(n):
-            logic.collect(have, code)
+            logic.collect(have, code, guns_first)
     return have
 
 
-def every_item(start_inventory: Mapping[int, int], pool: Iterable[int]) -> Inventory:
+def every_item(
+    start_inventory: Mapping[int, int], pool: Iterable[int], guns_first: bool = True
+) -> Inventory:
     """The starting items and every item of the pool, counted as the game's generator counts
-    them (a weapon picked up twice as its upgrade: ``logic.collect``)."""
-    have = collected(start_inventory)
+    them (with Guns First, a weapon picked up twice as its upgrade: ``logic.collect``)."""
+    have = collected(start_inventory, guns_first)
     for item in pool:
-        logic.collect(have, item)
+        logic.collect(have, item, guns_first)
     return inventory(have)
 
 
@@ -184,8 +186,9 @@ class Seed:
     def of(
         cls, settings: logic.Settings, start_inventory: Mapping[int, int], pool: Iterable[int]
     ) -> Seed:
-        start = inventory(collected(start_inventory))
-        return cls(settings, start, every_item(start_inventory, pool))
+        guns_first = settings.guns_first
+        start = inventory(collected(start_inventory, guns_first))
+        return cls(settings, start, every_item(start_inventory, pool, guns_first))
 
     def every(self, *starts: Cell) -> Reach:
         """What every item reaches from these starts."""

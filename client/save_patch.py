@@ -38,6 +38,7 @@ SEED_DIGITS = 16
 SECOND_START = 0x12EE0  # the same, for the second teleport target
 AMOUNTS = 0x12ED4  # starting and pool Energy, missiles, bombs (six 16-bit values)
 OPTIONS = 0x1308F  # setting t at OPTIONS + t
+GUNS_FIRST = 10  # setting t10: the item redirects (docs/re/randocells.md)
 
 SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
@@ -80,6 +81,12 @@ class SeedPlan:
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value
     menu: MenuSetup
+
+    @property
+    def guns_first(self) -> bool:
+        """Guns First (setting t10): a weapon and its upgrade are one progressive item. On in
+        every preset, and in slot data from before Custom mode, which does not list it."""
+        return bool(self.options.get(GUNS_FIRST, 1))
 
 
 def plan_from_slot_data(slot: dict) -> SeedPlan:

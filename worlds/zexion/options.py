@@ -171,7 +171,10 @@ class RandomGun(Setting):
 
 class GunsFirst(Setting):
     """Guns will be found before their upgrade that specifically requires them.
-    Custom mode only; 'preset': the mode's. Off is not supported yet."""
+    Custom mode only; 'preset': the mode's. On, each gun and its upgrade are one progressive
+    item ("Progressive Machine Gun": the gun, then its upgrade); off, each upgrade (Pulse Wave,
+    Pentashot, Tunneler, Focal Crystal, Plasma Burst) is an item of its own, of no use without
+    its gun."""
 
     display_name = "Guns First"
     setting = custom.GUNS_FIRST

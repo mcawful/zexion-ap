@@ -134,11 +134,13 @@ class Menu:
 
     def logic_settings(self) -> logic.Settings:
         """What the logic reads: the Energy total, Safety (code 69's mode), the settings
-        code 68 reads (bytes t0 to t63; t0 to t9 are no settings) and Gates Open."""
+        code 68 reads (bytes t0 to t63; t0 to t9 are no settings), Gates Open and Guns First
+        (the item redirects)."""
         options = bytes(FIRST_SETTING) + bytes(self.settings[: SETTINGS - FIRST_SETTING])
         energy = self.amounts[START_ENERGY] + self.amounts[POOL_ENERGY]
         gates_open = self.value(GATES) == GATES_OPEN
-        return logic.Settings(energy, self.value(SAFETY), options, gates_open)
+        guns_first = bool(self.setting(GUNS_FIRST))
+        return logic.Settings(energy, self.value(SAFETY), options, gates_open, guns_first)
 
     def checked(self) -> dict[int, int]:
         return {t: self.setting(t) for t in CHECKED}
@@ -251,21 +253,24 @@ def resolve(menu: Menu, rng: random.Random) -> tuple[list[int], list[int]]:
     return start, pool
 
 
-def as_progressive(code: int) -> int:
-    """An upgrade as its gun's progressive item: the world holds each gun and its upgrade as
-    two copies of one item (worlds/zexion/items.py)."""
-    return logic.REDIRECT_IF_MISSING.get(code, code)
+def as_progressive(code: int, guns_first: bool = True) -> int:
+    """With Guns First, an upgrade as its gun's progressive item: the world holds each gun and
+    its upgrade as two copies of one item (worlds/zexion/items.py). Without it, each upgrade is
+    an item of its own."""
+    return logic.REDIRECT_IF_MISSING.get(code, code) if guns_first else code
 
 
 def starting_items(menu: Menu, start: Sequence[int]) -> dict[int, int]:
-    """The starting items, by item code, as the world holds them: the started entries (an
-    upgrade as a copy of its gun's progressive item), the starting Energy as Energy Tanks,
-    the starting missiles and Mega Bombs as the new game splits them (tens as boxes, the rest
-    singly: client/newgame.py), and the first Start Keys keys from the Alpha Key."""
+    """The starting items, by item code, as the world holds them: the started entries (with
+    Guns First an upgrade as a copy of its gun's progressive item), the starting Energy as
+    Energy Tanks, the starting missiles and Mega Bombs as the new game splits them (tens as
+    boxes, the rest singly: client/newgame.py), and the first Start Keys keys from the Alpha
+    Key."""
+    guns_first = bool(menu.setting(GUNS_FIRST))
     have: Counter[int] = Counter()
     for i, on in enumerate(start):
         if on:
-            have[as_progressive(MENU_CODES[i])] += 1
+            have[as_progressive(MENU_CODES[i], guns_first)] += 1
     a = menu.amounts
     have[ENERGY_TANK] += a[START_ENERGY]
     have[MISSILE_BOX] += a[START_MISSILES] // 10
@@ -279,7 +284,8 @@ def starting_items(menu: Menu, start: Sequence[int]) -> dict[int, int]:
 
 def score(items: Mapping[int, int]) -> int:
     """Random Start's starting score (0xF2F30): starting Energy + missiles + Mega Bombs + the
-    started entries of the menu's 27 items (a progressive gun twice: the gun and its upgrade),
+    started entries of the menu's 27 items (a progressive gun twice: the gun and its upgrade;
+    without Guns First, a gun and its upgrade one each),
     from the starting items as ``starting_items`` gives them."""
     energy = items.get(ENERGY_TANK, 0)
     missiles = items.get(MISSILE_CONTAINER, 0) + 10 * items.get(MISSILE_BOX, 0)
@@ -341,9 +347,9 @@ def pool_items(menu: Menu, pool: Sequence[int], rng: random.Random) -> list[int]
     """The item pool, by item code, from the resolved pool array ("The pool", steps 4 to 6 and
     8): the keys not started (Omega first), the pooled entries, the pool Energy Tanks, the
     missiles and Mega Bombs (``supplies``), then filler to the places with the game's odds;
-    with Guns First, each upgrade is its gun's progressive item."""
-    if not menu.setting(GUNS_FIRST):
-        raise PoolError("the pool without Guns First needs items the world does not have yet")
+    with Guns First, each upgrade is its gun's progressive item (the game's step 8 makes it
+    the gun), and without it each upgrade is its own item."""
+    guns_first = bool(menu.setting(GUNS_FIRST))
     items = [KEY_CODES[3 - i] for i in range(4 - menu.start_keys)]
     items += [MENU_CODES[i] for i in range(ARRAY) if pool[i]]
     items += [ENERGY_TANK] * menu.amounts[POOL_ENERGY]
@@ -354,7 +360,7 @@ def pool_items(menu: Menu, pool: Sequence[int], rng: random.Random) -> list[int]
             f"more than its {menu.places} places, and the game would drop some at random"
         )
     items += [rng.choice(FILLER_ODDS) for _ in range(menu.places - len(items))]
-    return [as_progressive(code) for code in items]
+    return [as_progressive(code, guns_first) for code in items]
 
 
 def compress(items: list[int], needed: int, filler: Iterable[int]) -> list[int]:
