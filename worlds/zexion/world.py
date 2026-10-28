@@ -222,8 +222,8 @@ class ZexionWorld(World):
 
         # The core goal is the grab of Zexion in the core, behind the four keys (RandoCells
         # does not model the keys); the client sends the goal at the ending (docs/re/memory.md,
-        # "The ending: flag 250"), reached through the helper's escape skip or the escape
-        # itself. RandoCells opens the core only with Abridged Finale, so it has no region of its
+        # "The ending: flag 250"), after the escape and final battle, which no rule covers.
+        # RandoCells opens the core only with Abridged Finale, so it has no region of its
         # own: it is entered from the last cell the world keeps, with the requirement lists on
         # the way to Zexion (data.CORE; docs/re/locations.md, "The core goal is Zexion's cell in
         # the core"). The OS Install Disks goal has no event.

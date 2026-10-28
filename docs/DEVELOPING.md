@@ -106,7 +106,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
   map"): unseen squares named as the game names its own, markers kept after a save, a return to
   the title and a load: 2026-10-26.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
-- The escape skip (SKIP ESCAPE AND FINAL BATTLE?): 2026-10-23.
+- The helper's escape skip offer (SKIP ESCAPE AND FINAL BATTLE? in any game): 2026-10-23;
+  retired 2026-10-27, the owner's decision: the game's own Abridged Finale is the only way to
+  skip the escape (`docs/custom-mode.md`).
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.
@@ -139,8 +141,8 @@ fault found later that day, the Feats screen's note missing when the assist menu
   the screen unchanged, then reloaded in play, 2026-10-27. Refused while RETURN HOME WITH THE
   DISKS?'s ending was on its way (after YES, with received items' popups holding it), the helper
   kept and the ending run: 2026-10-27.
-- What the helper changed put back when the client goes away (item records, ASSIST, the escape
-  skip): 2026-10-25.
+- What the helper changed put back when the client goes away (item records, ASSIST):
+  2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
   CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27.
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
@@ -149,8 +151,8 @@ fault found later that day, the Feats screen's note missing when the assist menu
   ending. An achievement reaching Steam at the title after an AP save was quit (13SecretCode,
   with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
   client connected:
-  2026-10-27. AP endings through the escape skip with no client, and with a client of another
-  seed, no Feat earned: 2026-10-27; the first, in a seed with Allow Assists on, showed no note
+  2026-10-27. AP endings through the helper's escape skip (since retired) with no client, and
+  with a client of another seed, no Feat earned: 2026-10-27; the first, in a seed with Allow Assists on, showed no note
   (MISSION COMPLETE had ASSISTS USED under it, which the screen check refused; what makes the
   game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. Not
   seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in

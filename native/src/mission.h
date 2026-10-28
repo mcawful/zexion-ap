@@ -1,9 +1,10 @@
 // RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
-// Disks (docs/re/memory.md, "The mission prompt"). When idle in play (timer 0, routine table
-// entry 2 the pause opener, no menu; the game's last message far enough in,
-// kFadeMessageLeft), the helper opens it as the escape skip's prompt opens:
-// event 3666 sets the transition routine (its opener here, routine 15 0x1668A0 there) with
-// timer 60, and runs event 3667, the game's fade to black, through the area-event handlers.
+// Disks (docs/re/memory.md, "The mission prompt"). The prompt is the game's own SKIP ESCAPE AND
+// FINAL BATTLE? (built by routine 15, 0x1668A0), relabeled. When idle in play (timer 0, routine
+// table entry 2 the pause opener, no menu; the game's last message far enough in,
+// kFadeMessageLeft), the helper opens it as the game's event 3666 does: that event sets the
+// transition routine (the helper's opener here, routine 15 there) with timer 60, and runs event
+// 3667, the game's fade to black, through the area-event handlers.
 // If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
 // builder, relabels the question and points YES at the helper; YES runs the game's NO (which
 // fades the screen back in) and then, once idle, starts routine 4 (0x94A30, which records the
@@ -11,7 +12,7 @@
 // unload) becomes the idle routine, and its fade is turned back to the normal level; one another
 // transition took the place of (a save sets the pause opener back) has its fade turned back only
 // while the game's fade is still event 3667's (fade_state); on unload a wrapped YES points at NO
-// (never the escape skip's YES, which would end the escape).
+// (never the game's own YES, which skips the escape and final battle).
 #pragma once
 
 #include <windows.h>
@@ -29,8 +30,9 @@ constexpr int kFadeEvent = 3667;
 constexpr int32_t kFadeDelay = 60;
 // The fade starts with this many frames of the game's last message (GAME SAVED, 180 frames,
 // 0x1FC876) left: 30 frames (half a second) after it appears, the owner's pick in game
-// (2026-10-27). Before that it was 70 left, as far in as Zexion's popup is when the escape skip
-// fades (docs/re/memory.md, "The mission prompt"), which felt slow after a save.
+// (2026-10-27). Before that it was 70 left, as far in as Zexion's popup is when the game's own
+// prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
+// after a save.
 constexpr int32_t kFadeMessageLeft = 150;
 extern const char kMissionQuestion[];
 

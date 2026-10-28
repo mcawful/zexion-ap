@@ -6,7 +6,7 @@
 
 namespace zap {
 
-// Centered in the escape skip's 30-glyph line (0x166D9F).
+// Centered in the 30-glyph line the prompt's builder gives the question (0x166D9F).
 const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
 
 namespace {
@@ -218,8 +218,8 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     if (children_of(panel_at(menu, 0), child, kPromptChildren) != kPromptChildren) {
         return status_ = "not the prompt as traced";
     }
-    // First of all, YES does what NO does: whatever else is not as traced, the escape skip's
-    // YES never stays on a prompt outside the escape.
+    // First of all, YES does what NO does: whatever else is not as traced, the game's own
+    // YES (which skips the escape and final battle) never stays on a prompt outside the escape.
     void* first_no = nullptr;
     if (read(child[1], widget::kCallback, first_no) && first_no != nullptr &&
         writable(child[0] + widget::kCallback, sizeof(void*))) {

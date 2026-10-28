@@ -39,7 +39,6 @@ void Game::leave_offline_seed() {
     offline_index_ = -1;
     offline_count_ = -1;
     offline_told_ = -1;
-    offline_skip_ = false;
     drop_save_look();
 }
 
@@ -110,8 +109,7 @@ void Game::watch_offline() {
     if (seed != offline_index_ && (seed < 0 || in_play())) {
         leave_offline_seed();
         offline_index_ = seed;
-        if (seed >= 0) {
-            offline_skip_ = true;  // the look itself: below
+        if (seed >= 0) {  // the look itself: below
             // Once a load: the player is told why received items and hints wait (with a
             // client of another seed, its own notice said so: other_save).
             if (!offline_warned_ && !other) {

@@ -30,7 +30,6 @@
 #include "scan.h"
 #include "mapmarks.h"
 #include "title.h"
-#include "skip.h"
 #include "text.h"
 
 namespace zap {
@@ -81,7 +80,6 @@ public:
     // menu). Unload refuses then (dllmain.cpp, undo_for_unload).
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
-    // Gates the escape skip (also on while the offline look dresses a save: offline_skip_).
     bool active() const { return active_; }
     void set_active(bool active) { active_ = active; }  // tests
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
@@ -164,12 +162,6 @@ public:
     // (watch_newgame reports "applied slot N" next frame). Anything off: "refused <why>", the
     // plan dropped, nothing queued.
     void start_archipelago(WidgetCallback callback);
-
-    // Game thread, every frame (checked every 31st): offers the escape skip in this game
-    // (skip.h). restore_skip puts the event back (before an unload).
-    void watch_skip();
-    void restore_skip();
-    bool skip_offered() const { return skip_.patched(); }
 
     // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show
     // and the scanner's line ("" turns it off); the watch runs every frame (checked every 31st),
@@ -338,8 +330,7 @@ private:
     // A font glyph painted while wanted, cleared once not (if it was painted).
     void show_glyph(FontGlyph& glyph, bool wanted);
     // The look a save gets from a client or the offline look put back: the stand-ins, INTEL
-    // CHIP, the ASSIST lock, the disks (`discs` off: a prompt asked for dropped) and the escape
-    // skip.
+    // CHIP, the ASSIST lock and the disks (`discs` off: a prompt asked for dropped).
     void drop_save_look();
     // A randomizer save loaded (its marker set): the loaded section is its own.
     bool rando_save_loaded() const;
@@ -385,7 +376,6 @@ private:
     int offline_index_ = -1;  // the seed whose save is loaded
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
-    bool offline_skip_ = false;
     // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
@@ -411,7 +401,6 @@ private:
     // The start table: filled from the plan if the game has not built it, or checked against
     // it. Returns "" or why not.
     std::string ensure_start_table();
-    EscapeSkip skip_;
     ScanText scan_;
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;
@@ -452,7 +441,6 @@ private:
     void set_popup_width(int width);
     GlFunctions gl_;
     TextureCheck texture_check_;  // for everything painted into the sprite texture
-    int skip_frames_ = 0;  // frames until the next escape-skip check
     FeatsGuard feats_;
     int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
     int feats_other_ = 0;   // and that found another save loaded (to 2)

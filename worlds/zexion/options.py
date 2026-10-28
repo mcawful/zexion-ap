@@ -95,9 +95,10 @@ class AreaMapHints(DefaultOnToggle):
 
 class Goal(Choice):
     """What wins the game.
-    Core: find the four keys, grab Zexion in the core and reach the ending. When the game asks
-    SKIP ESCAPE AND FINAL BATTLE?, answer YES unless you have what the escape needs (such as
-    the Zenith Thrusters): the seed only makes sure you can reach Zexion.
+    Core: find the four keys, grab Zexion in the core and reach the ending. The seed only makes
+    sure you can reach the four keys and Zexion: the escape and final battle after the grab are
+    yours to finish, and may need items it doesn't make sure of (such as the Zenith Thrusters).
+    The game's Abridged Finale, a Custom-mode setting, ends the game at the grab instead.
     OS Install Disks: find enough OS Install Disks (the next two options), then save at the
     start room (your landing pod) and answer YES to RETURN HOME WITH THE DISKS?. The keys are
     not placed. The scanner room at Vallahar 6,8, which shows where the keys are in the normal

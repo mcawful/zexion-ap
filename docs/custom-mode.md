@@ -127,8 +127,8 @@ repo) was for: no SKIP ESCAPE prompt (measured by disassembly) and the ending so
 escape and no final battle (run in game, 2026-10-27, in a seed made in the game's menu). It is a Custom
 setting like the rest: no preset has it, and turning it on in the game's menu makes the mode
 Custom. Decided (the owner, 2026-10-27): Abridged Finale is the only way to skip the escape.
-There is no `escape_skip` option, and the helper's escape skip offer (it offers SKIP ESCAPE AND
-FINAL BATTLE? in any game today, `native/README.md`, "The escape skip") is retired. A preset
+There is no `escape_skip` option, and the helper's escape skip offer (SKIP ESCAPE AND FINAL
+BATTLE? in any game) is retired: removed 2026-10-27 (`re/memory.md`, "The escape skip"). A preset
 seed with the core goal is then played as the game's own randomizer plays it: the escape and
 the final battle are the player's to finish, and the world's logic makes sure only that
 Zexion and the four keys can be reached: a seed can reach Zexion before the player has what the
@@ -293,7 +293,7 @@ game for this review.
 | Feature | Where it lives | Game setting | Covers it? | What retiring it would take | Risk |
 |---|---|---|---|---|---|
 | The `escape_skip` option (discussed, never in the repo) | — | Abridged Finale (t32) | Fully | Nothing: dropped by the owner, 2026-10-27 ("The YAML", Abridged Finale). | None |
-| The escape skip offer (event 3665's else branch pointed at the offer) | `native/src/skip.cpp`; the offline look; the Goal option's text in `worlds/zexion/options.py` | Abridged Finale (t32) | Fully in a Custom seed with it on: event 3583 sets flag 289 at the grab, and event 3668 offers nothing while 289 is set, the helper's patch included (measured by disassembly; in game, 2026-10-27, flag 289 was set at the grab and the ending followed with no escape and no prompt, the helper's patch off at the time). No for presets, and for Custom with it off | Keep the patch: under Abridged Finale it changes nothing. Dropping it everywhere would leave the core goal's seeds with the escape and the final battle to play, which the world's logic does not cover ("the seed only makes sure you can reach Zexion", the Goal option): their needs would have to be measured and put in the goal's rule first. The patch, the offline look's part, the client's check of it (`client/ticks.py`; `skip_check_at` in `client/state.py`), its tests and the Goal text would then go; the event table's targets stay, since RETURN HOME WITH THE DISKS? uses them | High if dropped before the escape's needs are known (a seed that reaches Zexion but cannot be finished); none if kept |
+| The escape skip offer (event 3665's else branch pointed at the offer; retired 2026-10-27) | Removed: it was `native/src/skip.cpp`, the offline look's part, the client's check and the Goal option's text | Abridged Finale (t32) | Fully in a Custom seed with it on: event 3583 sets flag 289 at the grab, and event 3668 offers nothing while 289 is set, the helper's patch included (measured by disassembly; in game, 2026-10-27, flag 289 was set at the grab and the ending followed with no escape and no prompt, the helper's patch off at the time). No for presets, and for Custom with it off | Done, 2026-10-27, by the owner's decision (below): the patch, the offline look's part, the client's check of it, their tests and the Goal text removed; the event table's targets stay, since RETURN HOME WITH THE DISKS? uses them. This review had advised keeping the patch until the escape's needs were measured and put in the goal's rule, since the world's logic does not cover the escape and the final battle | Accepted by the owner: a preset core-goal seed can reach Zexion before the player has what the escape needs ("The YAML", Abridged Finale) |
 | The start room (`start_room`, `AUTOMATIC_START`, the start record write) | `worlds/zexion/options.py`, `world.py` (`generate_early`); `client/newgame.py` (`write` of `START_RECORD`) | Starting Location (t22 to t27) | Partly. The game's 34 rooms hold every room the world offers (Easy and Standard 9, OHKO all 34, as `worlds/zexion/reach.py` works them out and `data.MODES` records them), and a named value writes a start record of the same form (room index, column, row: `re/randocells.md`, "Starting Location and the second teleport target"). But ARCHIPELAGO skips the step that reads it, Random Start's rule differs from the world's, and the world's fill must know the room | Not retirable: the world still chooses and the client still writes. What the setting adds is the view: setting it to the world's room names the start in RANDO SETTINGS, in a preset seed too, since the mode check skips it (above) | Low |
 | The second teleport target (`pick_second_start`; the second start and the start table) | `world.py`; `client/newgame.py`; `native/src/menu.cpp` (the start table filled in) | Double Teleport (t33) | Partly: the setting turns it on, but the game draws the room from its own seed and ARCHIPELAGO skips that draw. The world's rule (the two starts reach at least `MIN_SPHERE_ZERO` locations together) is the world's own | Replacing the world's rule with the game's (any room but the start; a flagged one in the logic only from a score of 27: "Starts, as the game picks them") is in the draft already. The writes stay | Medium (a new entrance rule) |
 | Starting keys | `client/newgame.py` (`start_with`; writes t34 to t36); `worlds/zexion/starting.py` (the first keys from the Alpha Key) | Start Keys (t34 to t36) | Fully, by the code: the client gives starting keys by writing the game's own Start Keys bits (`client/newgame.py`), and the new game gives the first *k* keys from them (`0xA11A5`, by disassembly: `re/randocells.md`, "What each setting does in the game"). The game's own Start Keys 4 gave the four keys in a seed made in its menu (2026-10-27); the client's write of the bits has not been run with keys | Nothing to retire. In Custom, `start_keys` is the menu's value and start_inventory keys add to the count | None |
@@ -317,8 +317,9 @@ is partial, or holds only in a Custom seed with one setting on, and the presets,
 the game has them, still need the feature. Where a setting does the job, Custom should let the
 game do it and the AP feature stays out of the way, as it already does:
 
-1. **Abridged Finale** in place of the escape skip in Custom: the patch is inert there (by
-   disassembly; flag 289 seen set at the grab in game), so nothing changes in the helper.
+1. **Abridged Finale** in place of the escape skip in Custom: the helper's patch was inert there
+   (by disassembly; flag 289 seen set at the grab in game). The offer has since been retired
+   everywhere (below).
 2. **Start Keys** through the bits the client already writes (by the code; Start Keys 4 gave
    the four keys in a seed made in the game's menu, 2026-10-27).
 3. **Starting Location** set to the world's room, for the settings view, in Custom and, since
@@ -367,10 +368,10 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
 3. **B. `mode: custom`:** the options in the game's words, refusing what the game's menu cannot
    hold, the game's pool rules, the game's Random Start rule, `start_room` and `safety` with the
    presets, the slot data carrying the seed's settings, and the client's checks of them in the
-   new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, the
-   escape skip offer retired (the helper's patch, its offline part, the client's check of it,
-   their tests, and the Goal option's mention of SKIP ESCAPE) and Allow Assists shown as "Enable Assist
-   Options".
+   new game (ranks 2 to 12 above, except Double Teleport's rule and Gates Open); with it, Allow
+   Assists shown as "Enable Assist Options". The escape skip offer was retired on its own ahead
+   of it, 2026-10-27 (the helper's patch, its offline part, the client's check of it, their
+   tests, and the Goal option's mention of SKIP ESCAPE).
 4. **C. The helper's markers** read all three Obscure settings and handle Majors on with Minors
    off (alongside B: the helper only).
 5. **D. Double Teleport's second target** and **Gates Open's** gate travel in the logic.

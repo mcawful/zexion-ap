@@ -79,8 +79,7 @@ shows ARCHIPELAGO CLIENT NOT CONNECTED.
   your goal if you reached the core goal's ending meanwhile.
 - Items from other players, hints and RETURN HOME WITH THE DISKS? wait for the client.
 
-With the client closed, your other saves play as normal. While it is connected, every game
-offers SKIP ESCAPE AND FINAL BATTLE? after you grab Zexion.
+With the client closed, your other saves play as normal.
 
 ## Updating
 

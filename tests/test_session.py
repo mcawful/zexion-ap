@@ -195,8 +195,9 @@ def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     assert session.step(g, [], gap=0).goal
 
 
-def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
+def test_the_games_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
     session, g = setup
+    # The game's own SKIP ESCAPE AND FINAL BATTLE? (a game that has reached the ending before).
     g.flags[ss.ENDING_FLAG] = 1  # YES: flag 250 at once, flags 185 to 212 set
     g.flags[ss.FINALE_FLAG] = 1
     assert not session.step(g, [], gap=0).goal

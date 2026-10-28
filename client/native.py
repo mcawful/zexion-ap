@@ -312,9 +312,9 @@ class Helper:
                 raise HelperError(f"the helper's pipe closed: {_last_error()}")
 
     def hello(self) -> dict[str, str]:
-        """The helper's hello as fields: version, build, hooked, configured, skip, feats,
-        folder, offline, active, title, reads, cache_missing when configured from a cache that
-        lacks client-only keys, and read_error after a failed read (native/README.md)."""
+        """The helper's hello as fields: version, build, hooked, configured, feats, folder,
+        offline, active, title, reads, cache_missing when configured from a cache that lacks
+        client-only keys, and read_error after a failed read (native/README.md)."""
         words = self.request("hello").split()
         if len(words) < 2 or words[0] != "zexion-ap":
             raise HelperError(f"unexpected hello: {' '.join(words)!r}")

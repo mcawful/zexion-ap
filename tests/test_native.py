@@ -73,8 +73,8 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
         native.load(handle, process.pid, BUILT)
     with native.Helper(process.pid) as helper:
         assert helper.request("hello").endswith(
-            "build=unknown hooked=0 configured=0 skip=0 feats=off folder=0 offline=- active=0 "
-            "title=0 reads=0/-1"
+            "build=unknown hooked=0 configured=0 feats=off folder=0 offline=- active=0 title=0 "
+            "reads=0/-1"
         )
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.HelperError, match="unknown request"):
