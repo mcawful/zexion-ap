@@ -492,12 +492,17 @@ void Game::watch_newgame() {
         }
         std::string why;
         if (!newgame_.menu.empty()) {
+            // The player's own placement, put back if the seed's is refused (or throws), so the
+            // queued game is the one the player made, not a mix of the two.
+            std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
             try {
                 why = place_seed();
             } catch (...) {
+                std::memcpy(at_.rando_blob, players.data(), kSectionSize);
                 disarm_newgame();
                 throw;
             }
+            if (!why.empty()) std::memcpy(at_.rando_blob, players.data(), kSectionSize);
         } else if ((differs = first_difference(at_.rando_blob, newgame_.expect)) >= 0) {
             why = "the new game is not the seed's mode (section +" + hex_offset(differs) +
                   " differs)";
@@ -565,21 +570,27 @@ void Game::restore_assists() {
 }
 
 std::string Game::ensure_start_table() {
-    const std::vector<StartRoom>& rooms = newgame_.start_table;
-    if (rooms.empty()) return "";
+    // Over a RANDOMIZER game (not starting_) the game's own table is used, as its START GAME
+    // used it: that path is the client's fallback when the game's table differs from the seed's.
+    static const std::vector<StartRoom> kNone;
+    const std::vector<StartRoom>& rooms = starting_ ? newgame_.start_table : kNone;
+    int16_t count = at<int16_t>(at_.start_count, 0);
     // The second target (+0x6CC) names a room of the start table by index; the placement reads
-    // that room's flag, so the index must be in the table.
+    // that room's flag, so the index must be in the table: the seed's, or else the game's own
+    // once it has built one.
+    const size_t rooms_in_table = !rooms.empty() ? rooms.size() : static_cast<size_t>(count);
     constexpr uint16_t kSecondTarget = 0x6CC;
     for (const SectionBytes& e : newgame_.write) {
-        if (e.offset == kSecondTarget && e.bytes.size() >= 2) {
+        if ((!rooms.empty() || count > 0) && e.offset == kSecondTarget && e.bytes.size() >= 2) {
             int16_t index;
             std::memcpy(&index, e.bytes.data(), sizeof(index));
-            if (index < 0 || static_cast<size_t>(index) >= rooms.size()) {
-                return "the second start is outside the start table";
+            if (index < 0 || static_cast<size_t>(index) >= rooms_in_table) {
+                return rooms.empty() ? "the second start is not a room of the game's own table"
+                                     : "the second start is outside the start table";
             }
         }
     }
-    int16_t count = at<int16_t>(at_.start_count, 0);
+    if (rooms.empty()) return "";
     if (count == 0) {
         // The menu never opened in this run: build the table as it would, count last.
         // rooms.size() <= kStartTableMax (parse_newgame, requests.cpp), the room configure

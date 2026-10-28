@@ -539,6 +539,12 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 "ordinary randomizer game. To play this seed, "
                 f"{newgame.randomizer_message(conn.plan)}."
             )
+        elif "game's own table" in why:  # RANDOMIZER's table lacks the seed's second room
+            conn.newgame = state.NewGame.UNAVAILABLE
+            logger.warning(
+                "This seed's second teleport target isn't a room this game can offer, so it "
+                f"can't be started as a new game: please report it at {state.REPORT}."
+            )
         elif "start table" in why:
             conn.choice_refused = True  # the game's own table differs: RANDOMIZER from now on
             logger.warning(

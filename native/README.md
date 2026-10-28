@@ -321,7 +321,10 @@ While a plan is armed (`ap_newgame`), each frame call:
   game is the seed's down to the Hints' map rectangles, which only the placement draws
   (`docs/re/randocells.md`, "What each setting does in the game"); then it writes the `write`
   edits (the AP seed) once, before the game builds the new game from them. Otherwise it
-  writes nothing and drops the plan. A plan without `menu` lines is only checked against
+  writes nothing and drops the plan; if the seed's placement is refused (or throws), the
+  player's own placement is put back first, so the queued game is the one they made. Over a
+  RANDOMIZER game the game's own start table is used, not the plan's (the client's fallback
+  when the two differ), and the seed's second start must be one of its rooms. A plan without `menu` lines is only checked against
   `expect` as the player's placement made it (the client always sends them). Built and
   tested on stand-ins 2026-10-27; not yet run in game.
 - **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the

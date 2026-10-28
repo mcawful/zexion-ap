@@ -355,10 +355,34 @@ void test_randomizer_by_seed() {
     game.arm_newgame(other);
     game.watch_newgame();
     check(g_steps == "placement ", "placed");
-    check(g_section[0x26C] == 0x77 && g_randomizer_menu[0x88] == 3,
-          "the plan not written, the player's menu put back");
+    check(g_section[0x26C] == 0x55 && g_section[0x6C0] == 3 && g_section[0x310] == 0 &&
+              g_randomizer_menu[0x88] == 3,
+          "the player's own placement and menu put back, nothing of the plan left");
     check(game.newgame_status().rfind("refused the placement is not the seed's mode", 0) == 0,
           "and reported refused");
+
+    // Double Teleport: the game's own start table is used, not the plan's; the second start
+    // must be one of its rooms.
+    g_start_count = 2;
+    std::memset(g_start_flags, 0, sizeof(g_start_flags));
+    zap::NewGamePlan teleport;
+    zap::parse_newgame(request + "\nstart_table 0100190001\nwrite 0x6CC 0100", teleport);
+    started("AB", 3);
+    game.arm_newgame(teleport);
+    game.watch_newgame();
+    check(g_steps == "placement " && game.newgame_status() == "applied slot 7",
+          "a plan's table that differs from the game's is not compared");
+    check(g_start_count == 2 && g_start_flags[0] == 0, "and the game's own is left as it is");
+    zap::NewGamePlan outside;
+    zap::parse_newgame(request + "\nwrite 0x6CC 0200", outside);
+    started("AB", 3);
+    game.arm_newgame(outside);
+    game.watch_newgame();
+    check(g_steps.empty() && g_section[0x26C] == 0x55, "a second start outside it: nothing placed");
+    check(game.newgame_status().rfind("refused the second start is not a room of the game's own", 0) ==
+              0,
+          "and reported refused");
+    g_start_count = 0;
     g_transition_fn = nullptr;
     g_rando_marker = 0;
 }
