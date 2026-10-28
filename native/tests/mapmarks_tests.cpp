@@ -25,26 +25,57 @@ struct Save {
     BYTE& at(int x, int y) { return grid[y * 54 + x]; }
 };
 
+// The Obscure settings: Majors, Minors, Class.
+constexpr zap::Obscure kNone{}, kPresets{true, true, false}, kMajorsOnly{true, false, false},
+    kMinorsOnly{false, true, false}, kClass{false, false, true}, kAll{true, true, true},
+    kMajorsAndClass{true, false, true};
+
 void test_the_values() {
-    // Shown minors become shown majors, in each base (0, 0xC, 0x18); obscured minors obscured
-    // majors when majors are obscured, else shown majors.
+    // Each value as the game would have set it for a major. Bases: 0xC a square a hint or map
+    // revealed, 0x18 one seen directly.
     struct Row {
         BYTE in;
-        bool obscured, finished;
+        zap::Obscure obscure;
+        bool finished;
         BYTE out;
         const char* what;
     };
-    for (const Row& r : {Row{0x01, false, false, 0x02, "1 -> 2"},
-                         Row{0x0D, false, false, 0x0E, "0xD -> 0xE"},
-                         Row{0x19, false, false, 0x1A, "0x19 -> 0x1A"},
-                         Row{0x13, true, false, 0x15, "0x13 -> 0x15, majors obscured"},
-                         Row{0x13, false, false, 0x0E, "0x13 -> 0xE, majors shown"},
-                         Row{0x1F, true, true, 0x1A, "finished game: shown"}}) {
-        check(zap::important_value(r.in, r.obscured, r.finished) == r.out, r.what);
+    for (const Row& r : {
+             // Shown minors become shown majors, in each base.
+             Row{0x01, kNone, false, 0x02, "1 -> 2"},
+             Row{0x0D, kNone, false, 0x0E, "0xD -> 0xE"},
+             Row{0x19, kNone, false, 0x1A, "0x19 -> 0x1A"},
+             // Obscured minors: obscured majors if majors are obscured, else shown majors.
+             Row{0x13, kPresets, false, 0x15, "0x13 -> 0x15, majors obscured"},
+             Row{0x1F, kPresets, false, 0x21, "0x1F -> 0x21, seen after a hint"},
+             Row{0x13, kMinorsOnly, false, 0x0E, "0x13 -> 0xE, majors shown"},
+             Row{0x1F, kPresets, true, 0x1A, "finished game: shown"},
+             // Minors obscured too: a shown minor was a mode-3 reveal, a major shown there.
+             Row{0x0D, kPresets, false, 0x0E, "presets: shown stays shown"},
+             Row{0x19, kPresets, false, 0x1A, "presets: seen, shown"},
+             // Majors on, Minors and Class off: a hinted square is obscured, a seen one shown.
+             Row{0x0D, kMajorsOnly, false, 0x15, "majors only: hinted -> obscured major"},
+             Row{0x19, kMajorsOnly, false, 0x1A, "majors only: seen -> shown major"},
+             Row{0x01, kMajorsOnly, false, 0x02, "majors only: base 0 shown"},
+             Row{0x0D, kMajorsOnly, true, 0x0E, "majors only, finished game: shown"},
+             // Under Obscure Class the game sent the minor down the major's path unless the
+             // mode was 3 (or the player's room revealed it), where a major is shown too.
+             Row{0x0D, kClass, false, 0x0E, "class: shown stays shown"},
+             Row{0x0D, kMajorsAndClass, false, 0x0E, "majors and class: shown stays shown"},
+             Row{0x0D, kAll, false, 0x0E, "all three: shown stays shown"},
+             Row{0x13, kClass, false, 0x15, "class: obscured stays obscured"},
+             Row{0x0D, kMinorsOnly, false, 0x0E, "minors only: shown stays shown"},
+         }) {
+        check(zap::important_value(r.in, r.obscure, r.finished) == r.out, r.what);
     }
-    // Majors, collected items, unrevealed squares and values above the classes stay.
-    for (BYTE v : std::vector<BYTE>{0x00, 0x02, 0x09, 0x0E, 0x15, 0x1A, 0x1B, 0x22, 0x24, 0x30}) {
-        check(zap::important_value(v, true, false) == v, "left alone");
+    // Majors, collected items, unrevealed squares and values above the classes stay, under
+    // every setting.
+    for (zap::Obscure o : {kNone, kPresets, kMajorsOnly, kMinorsOnly, kClass, kAll}) {
+        for (BYTE v :
+             std::vector<BYTE>{0x00, 0x02, 0x09, 0x0C, 0x0E, 0x15, 0x18, 0x1A, 0x1B, 0x21, 0x22,
+                               0x24, 0x30, 0x33, 0x81}) {
+            check(zap::important_value(v, o, false) == v, "left alone");
+        }
     }
 }
 
@@ -72,6 +103,52 @@ void test_obscure_majors_from_the_settings() {
     s.section[0x87B + 29] = 1;
     zap::mark_important(s.section.data(), s.grid.data(), false);
     check(s.at(1, 1) == 0x15, "obscured as a major");
+}
+
+void test_all_three_settings_read() {
+    const zap::Obscure none = zap::obscure_settings(nullptr);
+    check(!none.majors && !none.minors && !none.by_class, "no section: all off");
+    Save s;
+    s.section[0x87B + 29] = 1;
+    s.section[0x87B + 38] = 1;
+    s.section[0x87B + 41] = 1;
+    const zap::Obscure all = zap::obscure_settings(s.section.data());
+    check(all.majors && all.minors && all.by_class, "t29, t38, t41");
+    s.section[0x87B + 38] = 0;
+    s.section[0x87B + 41] = 0;
+    const zap::Obscure majors = zap::obscure_settings(s.section.data());
+    check(majors.majors && !majors.minors && !majors.by_class, "t29 alone");
+}
+
+void test_majors_on_minors_off() {
+    // A hinted stand-in (0xD) and a seen one (0x19): obscured and shown majors, as the game's
+    // majors there.
+    Save s;
+    s.place(0, 1, 1, 48);
+    s.place(1, 2, 2, 48);
+    s.at(1, 1) = 0x0D;
+    s.at(2, 2) = 0x19;
+    s.section[0x87B + 29] = 1;
+    check(zap::mark_important(s.section.data(), s.grid.data(), false) == 2, "both changed");
+    check(s.at(1, 1) == 0x15, "hinted: an obscured major");
+    check(s.at(2, 2) == 0x1A, "seen: a shown major");
+    // With Minors or Class on too, a shown minor in a hinted square was shown on purpose.
+    for (int setting : {38, 41}) {
+        Save t;
+        t.place(0, 1, 1, 48);
+        t.at(1, 1) = 0x0D;
+        t.section[0x87B + 29] = 1;
+        t.section[0x87B + setting] = 1;
+        zap::mark_important(t.section.data(), t.grid.data(), false);
+        check(t.at(1, 1) == 0x0E, "minors or class on: a shown major");
+    }
+    // After the ending nothing is obscured.
+    Save e;
+    e.place(0, 1, 1, 48);
+    e.at(1, 1) = 0x0D;
+    e.section[0x87B + 29] = 1;
+    zap::mark_important(e.section.data(), e.grid.data(), true);
+    check(e.at(1, 1) == 0x0E, "finished: a shown major");
 }
 
 void test_a_cell_off_the_map_is_skipped() {
@@ -355,6 +432,8 @@ int main() {
     test_the_values();
     test_only_the_stand_ins_squares();
     test_obscure_majors_from_the_settings();
+    test_all_three_settings_read();
+    test_majors_on_minors_off();
     test_a_cell_off_the_map_is_skipped();
     return report("mapmarks tests");
 }
