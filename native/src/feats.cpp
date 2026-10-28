@@ -72,12 +72,79 @@ constexpr int32_t kTitleLines = 3, kMaxColumns = 64;
 constexpr char kScreenName[] = "NATU";
 constexpr int32_t kStatsLines = 10, kAssistLines = 8;
 constexpr int32_t kFontFrames = 128;  // every character of the note has its frame
+constexpr int32_t kTitleChildren = 3, kExitPanel = 1;  // panel 0: title, name, description
 
-// The note's frame at column `i` of a line `columns` wide: its character, or blank (0).
-int32_t note_frame(int32_t i, int32_t columns) {
-    const auto length = static_cast<int32_t>(sizeof(kFeatsNote) - 1);
+// The title's hint for a game that has never reached Ending B (the Text file's description 219,
+// COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!), named by its second line; and what
+// the helper writes over it: FEATS OF NATU! and the note on two lines that clear the top row of
+// Feats (a line's glyphs span its y to 7 below it, the row's icons start 6 above the row's y:
+// measured on the owner's screenshots, docs/re/memory.md).
+constexpr char kHintName[] = "EXPANDED ENDING";
+constexpr char kScreenTitle[] = "FEATS OF NATU!";
+constexpr double kRoom = 16;
+
+// The frame at column `i` of a line `columns` wide holding `text` centered: its character, or
+// blank (0).
+int32_t centered_frame(const char* text, int32_t i, int32_t columns) {
+    const auto length = static_cast<int32_t>(std::strlen(text));
     const int32_t left = (columns - length + 1) / 2;
-    return i >= left && i < left + length ? static_cast<uint8_t>(kFeatsNote[i - left]) : 0;
+    return i >= left && i < left + length ? static_cast<uint8_t>(text[i - left]) : 0;
+}
+
+int32_t note_frame(int32_t i, int32_t columns) { return centered_frame(kFeatsNote, i, columns); }
+
+// Glyph `i` of the hint's stand-in: FEATS OF NATU! on line `first`, the note under it, the
+// other line blank.
+int32_t stand_in_frame(int32_t i, int32_t columns, int32_t first) {
+    const int32_t line = i / columns, column = i % columns;
+    if (line == first) return centered_frame(kScreenTitle, column, columns);
+    if (line == first + 1) return note_frame(column, columns);
+    return 0;
+}
+
+// The hint the helper wrote over (game thread only): its label and the frames to put back.
+struct Replaced {
+    const BYTE* label = nullptr;
+    int32_t length = 0, first = 0;
+    int32_t frames[kTitleLines * kMaxColumns] = {};
+};
+Replaced g_replaced;
+
+// Whether every glyph can take any character: writable, with the font's frames and a frame list
+// (what set_frame needs), so a write over all of them lands whole.
+bool takes_text(BYTE* const* glyphs, int32_t count) {
+    for (int32_t i = 0; i < count; ++i) {
+        int32_t frames = 0;
+        BYTE* list = nullptr;
+        if (!writable(glyphs[i], sprite::kSize) || !read(glyphs[i], sprite::kFrameCount, frames) ||
+            frames < kFontFrames || !read(glyphs[i], sprite::kFrameList, list) ||
+            list == nullptr) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The hint at the title (feats.h), when `show`: its frames kept to put back, then FEATS OF NATU!
+// and the note written over it, on the lower two lines if the note clears the top row of Feats
+// there, else the upper two. Nothing written unless every glyph takes text and one pair has room.
+void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32_t* frames,
+                  int32_t columns, bool show) {
+    const int32_t length = kTitleLines * columns;
+    if (!show || !takes_text(glyphs, length)) return;
+    int16_t row = 0;
+    if (!read(panel_at(top, kFeatRows[0].panel), panel::kY, row)) return;
+    int32_t first = -1;
+    for (int32_t pair = kTitleLines - 2; pair >= 0 && first < 0; --pair) {
+        double y = 0;
+        if (read(glyphs[(pair + 1) * columns], sprite::kY, y) && row - y >= kRoom) first = pair;
+    }
+    if (first < 0) return;
+    g_replaced.label = label;
+    g_replaced.length = length;
+    g_replaced.first = first;
+    std::memcpy(g_replaced.frames, frames, sizeof(int32_t) * static_cast<size_t>(length));
+    for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], stand_in_frame(i, columns, first));
 }
 
 }  // namespace
@@ -100,6 +167,10 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         (stats == 2 && child_count(panel_at(below, 1)) != kAssistLines)) {
         return false;
     }
+    if (child_count(panel_at(top, 0)) != kTitleChildren ||
+        child_count(panel_at(top, kExitPanel)) != 1) {
+        return false;
+    }
     BYTE* title = child_at(panel_at(top, 0), 0);
     if (!live_widget(title, a.widget_handler_fn)) return false;
     BYTE* label = pointer_at(title, widget::kLabel);
@@ -110,29 +181,47 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         return false;
     }
     const int32_t length = kTitleLines * columns;
-    std::string middle;
+    int32_t frames[kTitleLines * kMaxColumns] = {};
+    std::string text;  // the label's characters, line by line, blank as a space
     for (int32_t i = 0; i < length; ++i) {
         if (glyphs[i] == nullptr) return false;
-        if (i >= columns && i < 2 * columns) {
-            const int32_t f = frame_of(glyphs[i]);
-            middle += f > 0 && f < 128 ? static_cast<char>(f) : ' ';
-        }
+        frames[i] = frame_of(glyphs[i]);
+        text += frames[i] > 0 && frames[i] < 128 ? static_cast<char>(frames[i]) : ' ';
     }
-    if (middle.find(kScreenName) == std::string::npos) return false;
+    if (static_cast<int32_t>(sizeof(kFeatsNote) - 1) > columns) {
+        return text.substr(columns, columns).find(kScreenName) != std::string::npos;
+    }
+    // A hint the helper replaced, still as it wrote it: kept while shown, else put back.
+    if (g_replaced.label == label && g_replaced.length == length) {
+        bool ours = true;
+        for (int32_t i = 0; i < length && ours; ++i) {
+            ours = frames[i] == stand_in_frame(i, columns, g_replaced.first);
+        }
+        if (ours) {
+            if (!show && takes_text(glyphs, length)) {
+                for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], g_replaced.frames[i]);
+                g_replaced = {};
+            }
+            return true;
+        }
+        g_replaced = {};  // the game's own text again: nothing to put back
+    }
+    if (text.substr(columns, columns).find(kScreenName) == std::string::npos) {
+        // Not FEATS OF NATU! on the middle line: the hint, or not this screen.
+        if (text.find(kHintName) == std::string::npos) return false;
+        replace_hint(top, label, glyphs, frames, columns, show);
+        return true;
+    }
     // The last line: blank (frame 0), or the note centered with blank glyphs around it.
-    if (static_cast<int32_t>(sizeof(kFeatsNote) - 1) > columns) return true;
     BYTE** last = glyphs + 2 * columns;
-    bool blank = true, noted = true, fits = true;
+    bool blank = true, noted = true;
     for (int32_t i = 0; i < columns; ++i) {
-        const int32_t f = frame_of(last[i]);
-        int32_t frames = 0;
+        const int32_t f = frames[2 * columns + i];
         blank = blank && f == 0;
         noted = noted && f == note_frame(i, columns);
-        fits = fits && writable(last[i], sprite::kSize) &&
-               read(last[i], sprite::kFrameCount, frames) && frames >= kFontFrames;
     }
     // The game's own text there, or glyphs the whole note cannot be written into: left alone.
-    if ((!blank && !noted) || !fits || show == noted) return true;
+    if ((!blank && !noted) || show == noted || !takes_text(last, columns)) return true;
     for (int32_t i = 0; i < columns; ++i) set_frame(last[i], show ? note_frame(i, columns) : 0);
     return true;
 }

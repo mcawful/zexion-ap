@@ -66,9 +66,11 @@ constexpr ptrdiff_t kPanelCount = 0x08;  // 32-bit
 constexpr ptrdiff_t kBelow = 0x78;
 }  // namespace menu
 
-// A panel: its children (widgets), their count, the first so many the cursor reaches, and its
-// handler (docs/re/memory.md, "The game-mode panel", "The assist menu").
+// A panel: its place, its children (widgets), their count, the first so many the cursor reaches,
+// and its handler (docs/re/memory.md, "The game-mode panel", "The assist menu", "Feats and
+// achievements").
 namespace panel {
+constexpr ptrdiff_t kY = 0x1D8, kX = 0x1DA;  // 16-bit, pixels
 constexpr ptrdiff_t kChildren = 0x1E0;
 constexpr ptrdiff_t kCapacity = 0x1E8;    // 32-bit; the child count, read and written as such
 constexpr ptrdiff_t kSelectable = 0x1EC;  // 32-bit

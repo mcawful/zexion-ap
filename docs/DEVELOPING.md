@@ -165,7 +165,8 @@ fault found later that day, the Feats screen's note missing when the assist menu
   tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
   no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests), and the
   note over the secret Feats row or shorter rows (stand-in tests only; 0.30.0 showed none over
-  the secret row, 2026-10-28)
+  the secret row, 2026-10-28), and the hint at the title (for a game that has never reached
+  Ending B) replaced by FEATS OF NATU! and the note (by disassembly and stand-in tests)
   (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
   without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
   the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be
