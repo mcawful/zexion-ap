@@ -348,6 +348,17 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
 
 
+def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
+    # Zenith Thrusters (26) sent again from the console: its byte stays 1 (B1, 2026-10-28, a
+    # console copy left it at 2 before the cap).
+    session, g, helper, _ = with_helper
+    assert give(session, g, [26], senders=["Bob"]) == {26: 1}
+    assert give(session, g, [26, 26], senders=["Bob", "Bob"]) == {}
+    assert g.inv[26] == 1
+    assert helper.requests[-1].splitlines()[1:] == ["popup 26 FROM Bob"]
+    assert session.announced == 2
+
+
 def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     session, g, helper, _ = with_helper
     received, senders = [17, 49], ["Bob", "Alice"]

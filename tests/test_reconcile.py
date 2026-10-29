@@ -80,6 +80,40 @@ def test_a_third_copy_of_a_weapon_is_reported() -> None:
     assert g.not_grantable == {3: 1}
 
 
+@pytest.mark.parametrize("guns_first", [True, False])
+@pytest.mark.parametrize(
+    ("collected", "received", "extra", "owed"),
+    [
+        # Zenith Thrusters (26) sent twice from the console: one byte of 1.
+        pytest.param(set(), [26, 26], {}, {26: 1}, id="a-single-item-received-twice"),
+        pytest.param(set(), [26, 26], dict(i26=1), {}, id="then-held-nothing-more"),
+        # Location 3's Alpha Key picked up, then a copy sent from the console.
+        pytest.param({3}, [27], dict(i27=1), {}, id="a-picked-up-key-received-again"),
+        # A byte of 2 already there (the live test before this cap) is left alone.
+        pytest.param(set(), [26, 26], dict(i26=2), {}, id="a-byte-of-two-is-left-alone"),
+    ],
+)
+def test_an_item_held_once_is_never_written_above_one(
+    collected, received, extra, owed, guns_first
+) -> None:
+    target = rc.should_own(START, TABLE, collected, received, guns_first)
+    have = inv(**{**STARTED, **extra})
+    g = rc.grants(have, target, guns_first)
+    assert g.inventory == owed and g.not_grantable == {}
+
+
+@pytest.mark.parametrize("guns_first", [True, False])
+def test_supplies_and_scrap_still_count_up(guns_first) -> None:
+    # Energy Tanks (0), Missile Containers (1), Mega Bombs (2), Missile Boxes (36), Bomb Boxes
+    # (37) and Scrap Metal (46) received twice each, on top of the starting 3 tanks and 3
+    # containers and location 1's Energy Tank, picked up.
+    received = [0, 0, 1, 1, 2, 2, 36, 36, 37, 37, 46, 46]
+    target = rc.should_own(START, TABLE, {1}, received, guns_first)
+    g = rc.grants(inv(**{**STARTED, "i0": 4}), target, guns_first)
+    assert g.inventory == {0: 6, 1: 5, 2: 2, 36: 2, 37: 2, 46: 2}
+    assert g.not_grantable == {}
+
+
 def test_items_that_cannot_be_written_are_reported() -> None:
     target = rc.should_own(START, TABLE, set(), [31])
     g = rc.grants(inv(**STARTED), target)
