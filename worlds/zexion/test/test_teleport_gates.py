@@ -94,12 +94,14 @@ class TestGatesOpen(unittest.TestCase):
             self.assertIn(cell, data.CELL_REGION)
 
     def test_only_open_travels(self) -> None:
-        # Off is taken with the core goal: the core's door is four key slots that read the keys
-        # alone (docs/re/memory.md, "Keys, the gates and the key markers").
-        for gates in ("off", "vanilla", "unlocked", "open"):
-            world = fake_world(mode="custom", gates=gates)
-            world.generate_early()
-            self.assertEqual(world.logic_settings.gates_open, gates == "open")
+        # Off is taken with either goal, the core's too: the core's door is four key slots that
+        # read the keys alone (docs/re/memory.md, "Keys, the gates and the key markers").
+        for goal in ("core", "os_install_disks"):
+            for gates in ("off", "vanilla", "unlocked", "open"):
+                world = fake_world(mode="custom", gates=gates, goal=goal)
+                world.generate_early()
+                with self.subTest(goal=goal, gates=gates):
+                    self.assertEqual(world.logic_settings.gates_open, gates == "open")
 
 
 class CustomGatesOpen(ZexionTestBase):
