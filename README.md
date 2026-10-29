@@ -52,6 +52,19 @@ troubleshooting) and `zexion-game-page.md` (goals, options, what changes in the 
 Something wrong? Check the troubleshooting section of `zexion-setup-guide.md`, then
 [open an issue](https://github.com/mcawful/zexion-ap/issues).
 
+## AI disclosure
+
+This project is developed with AI assistance. Claude (Anthropic), working through Claude Code
+under the maintainer's direction, writes nearly all of the code, tests and documentation,
+and almost every commit carries a `Co-Authored-By: Claude` trailer. The reverse engineering of
+the game was done the same way, with the tools in `tools/`, a disassembler and a debugger.
+Every fact in [`docs/re/`](docs/re/README.md) records how it was established and on which
+build of the game, and nothing is called working in game until it has run in the real game,
+played by the maintainer. The maintainer decides what goes in, and reviews and merges every change.
+
+The Claude Code setup used here (review subagents, skills, and a hook that blocks writes to the
+game and save folders) is committed in `.claude/`; [`CLAUDE.md`](CLAUDE.md) describes it.
+
 ## Contributing
 
 How it works, how to build and test it, and what has been checked in the game:
