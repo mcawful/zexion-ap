@@ -66,7 +66,7 @@ void load_save(uint8_t salt) {
 
 zap::OfflineSeed seed_of_save() { return zap::offline_seed_of(g_section); }
 
-// The 12 bytes at the stand-in ending's call, read through volatile (stand_in.h, write_code).
+// The 12 bytes at the stand-in ending's call, read through volatile (check.h, write_code).
 std::vector<unsigned char> call_bytes() {
     std::vector<unsigned char> out;
     for (size_t i = 0; i < zap::kEndingPatchSize; ++i) {
