@@ -173,13 +173,14 @@ with one atomic exchange, and only one thread at a time does the work.
 
 ### A client going away
 
-When the pipe's client disconnects (the client exited or crashed, or `tools/helper.py` was
-done), the next frame call, before it serves any request, puts back everything the parts below
-set (`Game::put_back_all` in `src/game_calls.cpp`). A change held by a menu no longer open is
-gone with it. It goes inactive until a client sends `config` again (the client resends every
-request after it attaches). The client's popups not shown yet stay queued and still show
-("Popups"): their items are already given. The offline look then applies
-again (AP saves without the client). The helper stays loaded and hooked.
+When the pipe's client disconnects (the client exited or crashed, let the helper go while it
+had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
+any request, puts back everything the parts below set (`Game::put_back_all` in
+`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. It goes inactive
+until a client sends `config` again (the client resends every request after it attaches). The
+client's popups not shown yet stay queued and still show ("Popups"): their items are already
+given. The offline look then applies again (AP saves without the client). The helper stays
+loaded and hooked.
 
 The client's popups staying queued, and showing: working in game 2026-10-26 (0.30.0).
 
@@ -573,6 +574,15 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
   save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
+  A client with no server connection (the server down, say) lets the helper go, as if it had
+  closed, while a save it has not dressed is loaded: one loaded after a drop's save was left, or
+  the one in play when the player disconnects. Such a save then gets this look and its notice
+  too. The client keeps the helper for a save it dressed before a drop (its look stays), in the
+  ending (its hold), and at the title, where after a drop an armed new game stays armed until a
+  save is loaded. It attaches again on connecting, before it gives any item; an attach that
+  fails holds the items back for up to 30 s, then they are given as with no helper
+  (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
+  `tests/test_zexion_client.py`; not run in game yet).
   The file select shows each such save's count, from its map in the game's copy of the slot,
   and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off

@@ -75,7 +75,8 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 
 You can keep playing your seed's save with the client closed: what you find is sent the next
 time you connect. This works once you have connected to that seed at least once; the game then
-shows ARCHIPELAGO CLIENT NOT CONNECTED.
+shows ARCHIPELAGO CLIENT NOT CONNECTED. The same goes for a save you load while the client is
+open but not connected (the server down, say), and for the one you are in when you disconnect.
 
 - Locations you check are sent the next time you connect with that save loaded, and so is
   your goal if you reached the core goal's ending meanwhile.

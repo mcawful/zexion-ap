@@ -46,7 +46,10 @@ worlds/zexion/ → generation → slot data → client
   made, the Energy Shields given, and this world's locations found in game, which the OS Install
   Disks count and the Area Map hints read; sent again until the server holds them). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on.
+  and the goal go on. With no server connection, while a save it has not dressed is loaded and
+  no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
+  with no client, and attaches it again on connecting
+  ([`native/README.md`](../native/README.md), "AP saves without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -201,7 +204,9 @@ line says.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
-  with a client connected (no notice, no look): 2026-10-27.
+  with a client connected (no notice, no look): 2026-10-27. A save loaded while the client is
+  open but not connected, the client having let the helper go (`leave_helper_tick`): not run in
+  game yet.
 
 ## Platforms
 
@@ -307,7 +312,8 @@ Running it may load the helper into the game: the one already there if it is thi
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
   while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
-  and the mod stays loaded.
+  and the mod stays loaded. While the client is not connected and has let the helper go (the
+  client, above), it says so and does nothing.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its

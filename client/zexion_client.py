@@ -71,6 +71,7 @@ from .ticks import (  # noqa: E402
 GAME = "Zexion"
 POLL_SECONDS = 0.25
 HELPER_RETRY_SECONDS = 30.0
+BACK_RETRY_SECONDS = 1.0  # between attaches after a time away (poll)
 RELOAD_SECONDS = 3.0  # /reload_mod: the game loop's wait while it unloads, then loaded again
 HELPER_LOST = (
     f"The Zexion mod stopped responding; trying again in {HELPER_RETRY_SECONDS:.0f} seconds. "
@@ -90,6 +91,9 @@ class ZexionCommandProcessor(ClientCommandProcessor):
                     "The Zexion mod in the game doesn't match this client: close Zexion, put "
                     "the matching mod in its folder, and start it again."
                 )
+                return False
+            if self.ctx.helper_left:  # leave_helper_tick
+                self.output("Not connected: the client uses the Zexion mod again once it is.")
                 return False
             self.output("The Zexion mod isn't loaded; the client loads it as soon as it can.")
             return False
@@ -122,6 +126,9 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
+        # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
+        self.helper_left = False
+        self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
         # /reload_mod: the game loop unloads it and loads it again (poll).
         self.reload_mod_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
@@ -348,6 +355,13 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.said.clear("loop")
 
 
+def game_alive(ctx: ZexionContext) -> bool:
+    """Whether the attached game is still running (False if it can't be told)."""
+    with contextlib.suppress(Exception):
+        return bool(ctx.game_conn.pm.alive())
+    return False
+
+
 def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
     """The attached game has exited: nothing of this game's carries into the next one's,
     ``kept``'s load (the ending's hold, and the save dressed: the next game's helper is not to
@@ -360,6 +374,7 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
     ctx.drop_helper()
+    ctx.helper_left, ctx.helper_back_by = False, 0.0  # the next game's is attached with it
     ctx.said.clear("read", "read detail", "mismatch")  # the next game's failures are news
 
 
@@ -378,6 +393,35 @@ async def away_tick(ctx: ZexionContext) -> None:
         game_closed(ctx, kept)
     except game.GameError as exc:  # looked at again on the next poll
         log.debug(f"Reading Zexion while disconnected failed: {exc}")
+
+
+async def leave_helper_tick(ctx: ZexionContext) -> None:
+    """While no connection steps a session: while a save is loaded that the client has not
+    dressed (one loaded after a drop's save was left, or the one in play at a disconnect), the
+    client lets the helper go, as if it had closed. With no client, the helper gives an AP save
+    its look itself, from the file the client left, and says the client is not connected
+    (native/README.md, "AP saves without the client"); a client still attached would leave it
+    undressed. A save dressed before a drop stays as the client dressed it (state.carry_over),
+    an ending keeps the helper that holds it, and at the title after a drop the helper keeps an
+    armed new game. The next connection attaches it again before its first step (poll)."""
+    kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
+    if ctx.helper is None or ctx.game_conn is None:
+        return
+    if kept is not None and (kept.dressed or kept.session.holding):
+        return  # the client's look, or its ending (the Feats guard, RETURN HOME): kept as is
+    try:
+        no_save = await asyncio.to_thread(ctx.game_conn.state) == game.NO_SAVE
+    except game.GameNotRunning:
+        if kept is not None:
+            game_closed(ctx, kept)
+        return
+    except game.GameError:  # read again on the next poll
+        return
+    if no_save:
+        return
+    ctx.drop_helper()
+    ctx.helper_left = True  # attached again as soon as a connection steps
+    detail("Not connected: the mod gives this save its look until the client connects.")
 
 
 async def poll(ctx: ZexionContext) -> None:
@@ -406,6 +450,7 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
         await away_tick(ctx)
+        await leave_helper_tick(ctx)
         return
     # The helper's files for this seed's saves without the client.
     await side_tick(ctx, "offline files", lambda: offline_tick(ctx, p))
@@ -423,6 +468,21 @@ async def poll(ctx: ZexionContext) -> None:
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
         await attach_helper(ctx)
+    elif ctx.helper is None and ctx.helper_left:
+        # Let go while no connection stepped (leave_helper_tick): attached again before any
+        # step, as a step with no helper writes the items received meanwhile with no popup. An
+        # attach that fails (no frame comes while the game is in the background, say) is tried
+        # again each BACK_RETRY_SECONDS for HELPER_RETRY_SECONDS before the step goes on without
+        # it, as after any failed attach; not for a mod that doesn't match, or a closed game.
+        now = time.monotonic()
+        if ctx.helper_back_by == 0.0:
+            ctx.helper_back_by = now + HELPER_RETRY_SECONDS
+        await attach_helper(ctx)
+        waiting = ctx.helper_retry_at < math.inf and now < ctx.helper_back_by
+        if ctx.helper is None and waiting and game_alive(ctx):
+            await asyncio.sleep(BACK_RETRY_SECONDS)
+            return
+        ctx.helper_left, ctx.helper_back_by = False, 0.0
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
