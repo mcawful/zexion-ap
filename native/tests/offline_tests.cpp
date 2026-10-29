@@ -97,6 +97,11 @@ void test_the_file() {
     std::string longer = seed_text();
     longer.insert(longer.find("table ") + 6, "0000");
     check(!zap::parse_offline_seed(longer, short_table).empty(), "a table of 156: refused");
+    // A table of 155, then one of 154: refused, not the 154 with the first's 155th entry kept.
+    const size_t first = seed_text().find("table ");
+    std::string twice = seed_text();
+    twice.insert(first, "table " + hex(secret, sizeof(secret)) + "\n");
+    check(!zap::parse_offline_seed(twice, short_table).empty(), "a second table line: refused");
 
     uint8_t grid[54 * 54] = {};
     check(zap::offline_disk_count(s, grid) == 3, "the count as the client left it");

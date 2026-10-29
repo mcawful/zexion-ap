@@ -315,7 +315,7 @@ and settings t10 to t73 but Colorizer) from the slot data, runs the game's place
 the section and writes the seed over it (`memory.md`, "The game-mode panel"). A Custom seed's
 slot data carries its own settings there instead of a preset's; the checks (`expect` lines)
 cover every setting the logic reads: t10 (Guns First, added in step B), t30 to t33, t37,
-Safety, Gates and the amounts (`custom.CHECKED`).
+Safety, Gates and the amounts (`custom.CHECKED`), and the location list.
 
 **The seed's settings in game.** The pause menu's OPTION MENU, RANDO, RANDO SETTINGS shows a
 save's seed, mode, items, amounts and settings, decoded from the settings code the save keeps

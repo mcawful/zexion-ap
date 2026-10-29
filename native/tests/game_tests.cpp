@@ -348,7 +348,7 @@ void test_randomizer_by_seed() {
     check(game.newgame_status().rfind("refused the new game is not this seed", 0) == 0,
           "and reported refused");
 
-    // The seed's placement not the seed's mode: refused, the menu put back.
+    // The seed's placement not the seed's (its amounts here): refused, the menu put back.
     zap::NewGamePlan other;
     zap::parse_newgame(request + "\nmenu 0x88 0500", other);
     started("AB", 3);
@@ -358,7 +358,8 @@ void test_randomizer_by_seed() {
     check(g_section[0x26C] == 0x55 && g_section[0x6C0] == 3 && g_section[0x310] == 0 &&
               g_randomizer_menu[0x88] == 3,
           "the player's own placement and menu put back, nothing of the plan left");
-    check(game.newgame_status().rfind("refused the placement is not the seed's mode", 0) == 0,
+    check(game.newgame_status().rfind("refused the placement is not the seed's (section +", 0) ==
+              0,
           "and reported refused");
 
     // Double Teleport: the game's own start table is used, not the plan's; the second start
@@ -1158,8 +1159,18 @@ void test_map_marks_with_a_menu_open() {
               std::string(game.unload_blocker()) ==
                   "the map's on-screen marker is still the helper's",
           "an unload waits for it");
+    // Another save for one frame call between two passes: counted afresh all the same.
     g_map_grid[4 * 54 + 3] = 0x19;
     const BYTE was = g_section[0x26D];
+    g_section[0x26D] = 0x2F;
+    game.watch_all(&chosen);
+    g_section[0x26D] = was;
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x19 && seen_marker_games(),
+          "another save for one frame between passes: the next pass is the first again");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A && !seen_marker_games(), "and the one after raises");
+    g_map_grid[4 * 54 + 3] = 0x19;
     g_section[0x26D] = 0x2F;  // another seed's save
     game.watch_all(&chosen);
     check(seen_marker_games(), "another seed's save: the game's write in its first frame");

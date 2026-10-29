@@ -482,7 +482,8 @@ void Game::watch_newgame() {
     // ARCHIPELAGO started it (starting_): placed and checked already, the plan written over it.
     // Otherwise the player started it from RANDOMIZER: it must be this seed (its seed text),
     // and is then placed again as the seed, as ARCHIPELAGO places it, or without menu lines
-    // checked for the seed's amounts and settings as the player's placement made it.
+    // checked for the seed's location list, amounts and settings as the player's placement
+    // made it.
     if (!starting_) {
         int differs = first_difference(at_.rando_blob, newgame_.identify);
         if (differs >= 0) {
@@ -505,8 +506,7 @@ void Game::watch_newgame() {
             }
             if (!why.empty()) std::memcpy(at_.rando_blob, players.data(), kSectionSize);
         } else if ((differs = first_difference(at_.rando_blob, newgame_.expect)) >= 0) {
-            why = "the new game is not the seed's mode (section +" + hex_offset(differs) +
-                  " differs)";
+            why = "the new game is not the seed's (section +" + hex_offset(differs) + " differs)";
         }
         if (!why.empty()) {
             newgame_status_ = "refused " + why;
@@ -678,8 +678,7 @@ std::string Game::place_seed() {
         differs = first_difference(at_.rando_blob, newgame_.expect);
     }
     if (differs >= 0) {
-        return "the placement is not the seed's mode (section +" + hex_offset(differs) +
-               " differs)";
+        return "the placement is not the seed's (section +" + hex_offset(differs) + " differs)";
     }
     // The AP seed over the placement now, so the game is the seed's even if the plan is dropped
     // before the next frame.
@@ -849,8 +848,9 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
 }
 
 void Game::watch_feats() {
-    // On once two frame calls in a row have found an AP save loaded: during a load the section
-    // may still be the last save's for a moment. Off at once.
+    // On once two frame calls in a row have found an AP save loaded, a precaution: a load
+    // writes the section and the marker in one game call (docs/re/memory.md, "The loaded
+    // save's randomizer section is at +0xCDD6D0"). Off at once.
     const bool ap = ap_save_loaded();
     if (ap) {
         if (feats_passes_ < 2) ++feats_passes_;
@@ -930,23 +930,24 @@ void* Game::map_original(void* child) const {
 void Game::watch_map_marks() {
     constexpr int kMapFrames = 15;
     const bool seed = ap_items_.active() && labels_seed_loaded();
-    // The on-screen write goes back to the game's in the first frame the seed's save is not
-    // loaded: a plain randomizer game's Scrap Chunks are minors.
-    if (!seed) seen_marker_.watch(at_.seen_marker_code, false);
-    if (!ap_items_.active()) {
+    // The on-screen write goes back to the game's, and the count of passes to 0, in the first
+    // frame the seed's save is not loaded: a plain randomizer game's Scrap Chunks are minors.
+    if (!seed) {
+        seen_marker_.watch(at_.seen_marker_code, false);
         map_seed_passes_ = 0;
-        return;
     }
+    if (!ap_items_.active()) return;
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // Only in the labels' seed's save (a plain randomizer game has the game's own Scrap Chunks),
-    // in play or in a menu, once it has read so on two passes in a row: during a load the
-    // section may still be the last save's while the grid is the new one's (which the game then
-    // saves). A player who pauses at once and opens the map sees them raised within ~32 frames.
-    if (!seed) {
-        map_seed_passes_ = 0;
-        return;
-    }
+    // in play or in a menu, once it has read so on two passes in a row. A precaution: the load
+    // routine writes the section, the marker and the grid in one game call (docs/re/memory.md,
+    // "The loaded save's randomizer section is at +0xCDD6D0"; the file select's own grid merge
+    // around it is not traced). The count and the write go back together above, in every frame
+    // call that finds the seed's save not loaded, so the write is the helper's only after two
+    // passes in a row. A player who pauses at once and opens the map sees them raised within
+    // ~32 frames.
+    if (!seed) return;
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;
     // Before the raise: an item on screen is then written with a major's class from the next

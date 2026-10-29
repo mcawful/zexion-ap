@@ -134,7 +134,9 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
         words >> key;
         if (key.empty()) continue;
         if (key == "table") {
-            if (!(words >> a)) return "bad table";
+            // Only one: a second, shorter one would leave the first's 155th entry past
+            // `locations`, which must be 0 (offline_matches compares the whole table).
+            if (table || !(words >> a)) return "bad table";
             out.locations = static_cast<int>(a.size() / 2);
             if (out.locations != rando::kLocations && out.locations != rando::kMaxLocations) {
                 return "bad table";

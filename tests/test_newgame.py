@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from fakes import SECRET_LIST, fresh, menu_setup, plan, secret_plan
+from fakes import CELLS, SECRET_LIST, fresh, menu_setup, plan, secret_plan
 
 from client import newgame as ng
 from client import save_patch as sp
@@ -70,6 +70,34 @@ def test_a_secret_shuffle_seed_writes_its_155_in_the_games_order() -> None:
         ng.plan_text(secret_plan(options={42: 2, 72: 1}))  # 155 listed, Secret Shuffle off
 
 
+def test_the_placement_must_list_the_seeds_locations() -> None:
+    # The 154: the list, then the 4 zero bytes before the item table.
+    p = plan(cells=tuple(CELLS))
+    assert f"expect 0x0 {b''.join(struct.pack('<HH', *c) for c in CELLS).hex()}00000000" in (
+        ng.plan_text(p, offer_choice=False).splitlines()
+    )
+    assert apply_text(ng.plan_text(p, offer_choice=False), fresh(cells=True)) == []
+    moved = fresh(cells=True)
+    struct.pack_into("<HH", moved, sp.SECTION + 4 * 20, 53, 53)  # another cell at position 20
+    assert apply_text(ng.plan_text(p, offer_choice=False), moved) == ["0x0"]
+    # Secret Shuffle's 155: the 155th (location index 154) at its list position, filling the gap.
+    p = secret_plan()
+    save = fresh()
+    for i, (x, y) in enumerate(SECRET_LIST):
+        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1
+    assert apply_text(ng.plan_text(p, offer_choice=False), bytearray(save)) == []
+    struct.pack_into("<HH", save, sp.SECTION + 4 * 154, 0, 0)  # the 155th missing
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) == ["0x0"]
+    # A plan without cells (the 154 in the game's order already) has no such check.
+    assert not any(line.startswith("expect 0x0 ") for line in ng.plan_text(plan()).splitlines())
+
+
+def test_a_location_cell_off_the_map_is_refused() -> None:
+    with pytest.raises(ng.NewGameError, match="off the map"):
+        ng.plan_text(plan(cells=tuple(CELLS[:-1]) + ((54, 0),)))
+
+
 def test_the_seed_text_and_its_hash_are_the_seeds() -> None:
     # Two saves of 2026-10-27 (lab/ap/live37): their seed texts and the hashes the game stored.
     assert sp.seed_hash("6D03FB8F34D40BCA") == 0xACB04D43F8BF30D6
@@ -117,6 +145,9 @@ def test_another_mode_fails_the_expectations() -> None:
         ({28: 1}, "first ones"),
         ({1: 10}, "more than 9"),
         ({2: 10}, "more than 9"),
+        ({36: 5000}, "past what"),  # 50,000 missiles, past a 16-bit signed number
+        ({0: 0x8000}, "past what"),
+        ({37: 3277}, "past what"),
     ],
 )
 def test_starting_items_it_cannot_express_are_refused(start_items, why) -> None:
