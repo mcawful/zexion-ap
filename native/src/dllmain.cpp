@@ -203,21 +203,9 @@ void set_hooks() {
     g_game.set_hooks(hooks);
 }
 
-// Game thread: the files read last, if new. With no client yet, the cached addresses for this
-// build configure the helper (inactive: only the offline look uses them).
-void take_offline() {
-    if (!TryAcquireSRWLockExclusive(&g_offline_lock)) return;
-    bool ready = g_offline_ready;
-    zap::OfflineFiles files;
-    if (ready) {
-        files = std::move(g_offline_files);
-        g_offline_ready = false;
-    }
-    std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
-    ReleaseSRWLockExclusive(&g_offline_lock);
-    // Known to the AP-save test, and to the look (other_save), at once.
-    if (!put.empty()) g_game.merge_offline(std::move(put));
-    if (!ready) return;
+// Game thread: the files read last. With no client yet, the cached addresses for this build
+// configure the helper (inactive: only the offline look uses them).
+void take_files(zap::OfflineFiles files) {
     g_offline_reads.fetch_add(1);
     if (!g_game.configured() && !files.config.empty()) {
         std::string why = zap::check_offline_cache(GetModuleHandleW(nullptr), files);
@@ -236,6 +224,23 @@ void take_offline() {
     } else {
         g_game.set_offline(std::move(files.seeds));
     }
+}
+
+// Game thread: the files read last and the seeds put since, if new.
+void take_offline() {
+    if (!TryAcquireSRWLockExclusive(&g_offline_lock)) return;
+    bool ready = g_offline_ready;
+    zap::OfflineFiles files;
+    if (ready) {
+        files = std::move(g_offline_files);
+        g_offline_ready = false;
+    }
+    std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
+    ReleaseSRWLockExclusive(&g_offline_lock);
+    if (ready) take_files(std::move(files));
+    // Known to the AP-save test, and to the look (other_save), at once; after the files, which
+    // may have been read before these were put.
+    if (!put.empty()) g_game.merge_offline(std::move(put));
 }
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).

@@ -107,7 +107,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `feats`: Feats and achievements kept out of the AP save loaded (off, on, or on with why a
   change could not be made).
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
-- `offline`: the seeds read for AP saves without the client, and the file of the one dressed.
+- `offline`: the seeds known to the offline look (read from the folder, and any a client put or
+  that were read while it was connected), and the file of the one dressed.
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `reads`: the reads a frame has taken, and the seeds the last one found.
@@ -536,14 +537,14 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   writes them, not the client: a client run from a packaged app has its AppData writes
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
 - **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
-  first. Read with no client, they take the last ones' place; read while a client is connected,
-  and a seed file a client puts, they are added to them from the next frame call
+  first. Seed files read with no client replace the last ones; those read while a client is
+  connected, and any seed file a client puts, are added to them from the next frame call
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
-  (`other_save`). With no client yet, the cached addresses configure it if they are for its build and the
-  game holds every checked function's bytes, even if the cache lacks the client-only keys (a
-  cache from before a release that added one: "The pipe"). So the offline look, the map markers
-  and the title lines all run with no client once the cache checks out.
+  (`other_save`). With no client yet, the cached addresses configure it if they are for its
+  build and the game holds every checked function's bytes, even if the cache lacks the
+  client-only keys (a cache from before a release that added one: "The pipe"). So the offline
+  look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock, the disk count
@@ -837,8 +838,9 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots, and the file select's logo through the frame call: painted,
-  whitened through a new game's fade, and cleared by `restore_files`).
+  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots,
+  and the file select's logo through the frame call: painted, whitened through a new game's
+  fade, and cleared by `restore_files`).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
