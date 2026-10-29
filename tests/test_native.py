@@ -103,7 +103,7 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
             "reads=0/-1"
         )
         assert helper.request("ping") == "pong frames=0"
-        with pytest.raises(native.HelperError, match="unknown request"):
+        with pytest.raises(native.ModMismatch, match="doesn.t know the request nonsense"):
             helper.request("nonsense")
         # Hooked to nothing, it has no frames to work in: config and apply are refused.
         rvas = {key: 0x1000 for key in native.CONFIG_KEYS}
