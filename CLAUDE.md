@@ -239,7 +239,8 @@ Committed under `.claude/`, so they apply to anyone working here:
   `.py`. An allowlist runs `git status`, `diff`, `log`, `show` and `branch`, `ruff check`,
   `ruff format --check`, pytest, `build_id.py` and `save_lab.py slots`/`diff` without asking.
   Its rules match by prefix, so they also pass forms that write: `git branch -D`, `git diff
-  --output=FILE`, `ruff check --fix`.
+  --output=FILE`, `ruff check --fix` (or `--config "fix = true"`), and pytest's
+  `--basetemp=DIR`, which empties DIR.
 - Both hook commands run through `.claude/hooks/run_python.sh` (in `sh` on Linux and macOS,
   Git Bash on Windows, as Claude Code runs hook commands), not a bare `python`: that is missing
   on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,

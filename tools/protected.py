@@ -80,6 +80,20 @@ def _plain(text: str) -> str:
     return re.sub(r"(?<=[^/.\s])[. ]+(?=/)", "", text)
 
 
+# A folder name and the ``..`` after it: ``a/x/../b`` is ``a/b``, whether or not ``x`` exists
+# (Windows and Git Bash fold it away). Not a ``..`` itself.
+_UP = re.compile(r"/(?!\.\.(?:/|\s|$))[^/\n]+/\.\.(?=/|\s|$)")
+
+
+def _fold_up(text: str) -> str:
+    for _ in range(32):  # one ``..`` a pass; deeper chains are not worth the time
+        folded = _UP.sub("", text)
+        if folded == text:
+            break
+        text = folded
+    return text
+
+
 def _join_run(m: re.Match) -> str:
     run = m.group()
     if "," in run or "/" in run:
@@ -92,12 +106,13 @@ def mentions_protected(text: str) -> bool:
 
     It also reads the text with quotes and backticks removed, ``/./`` collapsed, and dots and
     spaces dropped from the end of each folder name (Windows ignores them: ``Gallant Leaf.``),
-    so none of those hide the folder. And it reads it once more with the folder names joined
-    from quoted pieces: string prefixes (``r'…'``) are dropped, PowerShell's ``-ChildPath``
-    and ``-AdditionalChildPath`` read as a ``,``, quotes that meet (``'Zex' 'ion'``) close up,
-    and then any run of quotes, spaces, parentheses, ``$``, ``,``, ``+`` and ``/`` becomes one
-    ``/`` if it holds a ``,`` or ``/``, or nothing if it holds a ``+`` but neither; any other
-    run is left as it is. So
+    so none of those hide the folder; that reading is read again with each name and the ``..``
+    after it folded away (``…/Gallant Leaf/"$(echo 1)"/../Zexion``). And it reads it once
+    more with the folder names joined from quoted pieces: string prefixes (``r'…'``) are
+    dropped, PowerShell's ``-ChildPath`` and ``-AdditionalChildPath`` read as a ``,``, quotes
+    that meet (``'Zex' 'ion'``) close up, and then any run of quotes, spaces, parentheses,
+    ``$``, ``,``, ``+`` and ``/`` becomes one ``/`` if it holds a ``,`` or ``/``, or nothing if
+    it holds a ``+`` but neither; any other run is left as it is. So
     ``os.path.join(os.path.join(…, 'Gallant Leaf'), r'Zexion')``, ``Path(…) / 'Gallant Leaf' /
     'Zexion'``, ``[IO.Path]::Combine(…)``, ``Join-Path … -AdditionalChildPath 'Zexion'``,
     ``'Zex' + 'ion'`` and ``'…/common/' + 'Zexion'`` name the folder too.
@@ -107,7 +122,8 @@ def mentions_protected(text: str) -> bool:
     joined = re.sub(r"\s-(?:additional)?childpath\s", ",", joined)
     joined = re.sub(r"([\"'])\s*\1", "", joined)
     joined = re.sub(r"[\"'\s,+/()$]+", _join_run, joined)  # one pass per run: stays linear
-    readings = (norm, _plain(norm), _plain(joined))
+    plain = _plain(norm)
+    readings = (norm, plain, _fold_up(plain), _plain(joined))
     return any(p.search(t) for t in readings for p in _PROTECTED)
 
 

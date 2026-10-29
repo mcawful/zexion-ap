@@ -419,7 +419,25 @@ BASH_BLOCKED = [
     f"echo '$((' ; rm -f \"{SAVES}/x\" ; echo '))'",
     f'$((0)) "{SAVES}/x"',
     f'xxd -s $((0x10)) "{SAVES}/Save Game 4.sav" "{SAVES}/x"',
+    # A name the command sets runs as arithmetic, its subscript's substitution included.
+    "x='a[$''(rm -f \"$APPDATA/Gallant Leaf/Zexion/Save Game 1.sav\")]'; echo $((x))",
+    "x=$'a[\\x24(rm -f \"$APPDATA/Gallant Leaf/Zexion/x\")]'; echo $((x))",
+    ": ${x:='a[$''(rm -f \"$APPDATA/Gallant Leaf/Zexion/x\")]'}; echo $((x))",
+    "printf -v x '%s' 'a[$''(rm -f \"$APPDATA/Gallant Leaf/Zexion/x\")]'; echo $((x))",
+    # Arithmetic text Bash leaves alone still names the folder.
+    "p='$((Gallant Leaf/Zexion))'; cp lab/a.sav \"$APPDATA/${p:3:-2}/Save Game 3.sav\"",
+    "python3 - <<'EOF'\nimport os, shutil\nshutil.copy2('lab/a.sav', os.path.join("
+    "os.environ['APPDATA'], '$((Gallant Leaf/Zexion))'[3:-2], 'Save Game 3.sav'))\nEOF",
+    # A .. after a substitution or a variable: Git Bash's cp writes through a missing 1/.. .
+    'cp lab/a.sav "$APPDATA/Gallant Leaf/"$(echo 1)"/../Zexion/x.sav"',
+    'cp lab/a.sav "$APPDATA/Gallant Leaf/"$((1))"/../Zexion/x.sav"',
+    'cp lab/a.sav "$APPDATA/Gallant Leaf/"$x"/../Zexion/x.sav"',
+    'cp lab/a.sav "$APPDATA/Gallant Leaf/"$(echo 1/2)"/../../Zexion/x.sav"',
     # The app id as a path, also next to a URL or a product.
+    'wget -x -nH -P "D:/Steam" https://example.com/%75serdata/123/3392510/remote/x',
+    "rm -rf ab://x/3392510",
+    'python3 -c \'import shutil; shutil.rmtree("C:/Program Files (x86)/St" + "eam/user" + '
+    '"data/123/" + "xx://3392510"[5:])\'',
     'cd "$UD" && rm -r 3392510',
     'rm -rf "$UD/3392510"',
     'rm -r $((3392510)) && ls "$UD"',
@@ -612,6 +630,11 @@ def test_may_be_above_protected(path: str, expected: bool) -> None:
         ("[IO.Path]::Combine($a,'Gallant Leaf','Zexion')", True),
         ("'E:/Steam/steamapps/common/' + 'Zexion/zlib.dll'", True),
         ("join('C:/Steam/userdata', '123', '3392510')", True),
+        ('"$APPDATA/Gallant Leaf/"$(echo 1)"/../Zexion/x"', True),
+        ("'Gallant Leaf/a b/c/../../Zexion'", True),
+        ("Gallant Leaf/Zexion/../Other", True),  # names it on the way
+        ("Gallant Leaf/x/../../Zexion", False),  # one level too many
+        ("Gallant Leaf/../../Zexion", False),
         ("'Gallant Leaf/Zex' 'ion'", True),
         ("os.path.join(appdata, 'Gallant Leaf', 'Other')", False),
         ("os.path.join(root, 'worlds', 'zexion')", False),

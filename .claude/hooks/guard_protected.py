@@ -207,10 +207,10 @@ _HEREDOC = re.compile(rf"<<(-?)[ \t]*({_DELIM_WORD})")
 _CAT_HEREDOC = re.compile(rf"\$\(\s*cat\s*<<-?[ \t]*{_DELIM_WORD}[ \t]*\n\s*\)")
 # A ``>&`` that duplicates or closes a descriptor (2>&1, >&-) rather than naming a file.
 _FD_DUP = re.compile(r"\d*-?(?=$|[\s;&|()<>])")
-# A URL, up to a space or a quote: at the start of a word or a quoted piece of one (not
-# ``$d/x://``), with a scheme of two letters or more (``C://x`` is a path), and no ``..``
-# (Windows reads ``x://../y`` as ``y``).
-_URL = re.compile(r"(?<![^\s\"'(=,])[a-z][\w+.-]+://(?![^\s\"']*\.\.)[^\s\"']*", re.I)
+# A web or Steam URL, up to a space or a quote: at the start of a word or a quoted piece of one
+# (not ``$d/x://``), with no ``..`` (Windows reads ``x://../y`` as ``y``) and no ``%`` (``wget
+# -x`` saves ``%75serdata`` as ``userdata``).
+_URL = re.compile(r"(?<![^\s\"'(=,])(?:https?|ftp|steam)://(?![^\s\"']*(?:\.\.|%))[^\s\"']*", re.I)
 # A Bash ``$((`` and a PowerShell ``$( $name.Member )``: neither runs a command.
 _ARITH_START = re.compile(r"(?<!\\)\$\(\(")
 _ARITH_BODY = re.compile(r"[\w \t+\-*/%<>=!&|^~?:,.\[\]$()]*")
@@ -626,16 +626,13 @@ def _cut_heredocs(command: str) -> str:
     return "".join(out)
 
 
-def _arithmetic_to_numbers(command: str, protected) -> str:
-    """Bash ``$((…))`` expansions that only compute (``xxd -s $((0x9360))``) as the word ``0``,
-    padded to the same length, so they read as a number and not as command substitution.
-
-    Only when the body has numbers, names, ``$name`` and operators alone (no ``$(``, backtick,
-    quote, brace, ``;`` or newline), and closes as Bash closes arithmetic: on a ``))`` where
-    its own parentheses balance. Bash reads ``$((a) | (b))`` as ``$(`` and two subshells, so
-    that one stays. So does a body holding the app id, a piece of a path.
-    """
-    out: list[str] = []
+def _arithmetic_spans(command: str, protected) -> list[tuple[int, int, str]]:
+    """Each Bash ``$((…))`` that only computes, as (start, end, body): a body of numbers,
+    names, ``$name`` and operators alone (no ``$(``, backtick, quote, brace, ``;`` or newline)
+    that closes as Bash closes arithmetic, on a ``))`` where its own parentheses balance. Bash
+    reads ``$((a) | (b))`` as ``$(`` and two subshells, so that one is not. Nor is a body
+    holding the app id, a piece of a path."""
+    spans: list[tuple[int, int, str]] = []
     pos = 0
     for m in _ARITH_START.finditer(command):
         if m.start() < pos:
@@ -658,10 +655,47 @@ def _arithmetic_to_numbers(command: str, protected) -> str:
             or str(protected.STEAM_APP_ID) in body
         ):
             continue
-        out.append(command[pos : m.start()] + "0".ljust(end - m.start()))
+        spans.append((m.start(), end, body))
+        pos = end
+    return spans
+
+
+def _arithmetic_to_numbers(command: str, protected) -> str:
+    """Bash ``$((…))`` expansions that only compute (``xxd -s $((0x9360))``:
+    ``_arithmetic_spans``) as the word ``0``, padded to the same length, so they read as a
+    number and not as command substitution.
+
+    Bash reads a name in the body as an expression of its own, and that runs a substitution in
+    an array subscript: ``x='a[$(…)]'; echo $((x))``. So a body keeps its ``$((`` when the
+    command uses one of its names other than to set it to a number (``OFF=0x9360``) or in
+    other arithmetic: ``x='…'``, ``${x:=…}``, ``read x``, ``printf -v x``, ``$x``. A name the
+    command does not mention comes from before it, which the guard can't see anyway.
+    """
+    spans = _arithmetic_spans(command, protected)
+    outside = command
+    for start, end, _ in spans:
+        outside = outside[:start] + " " * (end - start) + outside[end:]
+    out: list[str] = []
+    pos = 0
+    for start, end, body in spans:
+        names = set(re.findall(r"(?<![\w])[A-Za-z_]\w*", body))
+        if any(_used_other_than_numbers(name, outside) for name in names):
+            continue
+        out.append(command[pos:start] + "0".ljust(end - start))
         pos = end
     out.append(command[pos:])
     return "".join(out)
+
+
+def _used_other_than_numbers(name: str, outside: str) -> bool:
+    """Whether ``outside`` (a command, its arithmetic blanked) uses ``name`` anywhere but in
+    ``name=<number>`` at the start of a word."""
+    for m in re.finditer(rf"(?<![\w]){re.escape(name)}(?![\w])", outside):
+        before = outside[: m.start()]
+        assigned = re.match(r"=(?:0[xX][0-9a-fA-F]+|\d+)(?=$|[\s;&|)])", outside[m.end() :])
+        if not (assigned and re.search(r"(?:^|[\s;&|(])$", before)):
+            return True
+    return False
 
 
 def _here_strings_to_quotes(command: str) -> str:
@@ -965,7 +999,8 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
     """Whether a word holds the app id as a path component (the cloud cache is
     ``userdata/<account>/3392510``), split as ``_builds_from_pieces`` splits words.
 
-    URLs are left out (``steam://rungameid/3392510``, ``…/app/3392510/``). So is the id
+    Web and Steam URLs are left out (``steam://rungameid/3392510``, ``https://…/app/3392510/``;
+    ``_URL``). So is the id
     multiplied by a number inside one word, as code builds a location id (``python -c
     "print(3392510 * 1000 + 154)"``), with no slash or quote right next to it, unless the
     command, URLs left out, names ``steam``, ``userdata`` or ``compatdata``. Any other use
@@ -1118,10 +1153,7 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     powershell = SHELL_TOOLS[tool_name]
     command = str(tool_input.get("command") or "")
     cwd = str(tool_input.get("cwd") or session_cwd or "")
-    if powershell:
-        code = _here_strings_to_quotes(command)
-    else:
-        code = _arithmetic_to_numbers(_cut_heredocs(command), protected)
+    code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
     words = [w for s in segments for w in s if id(w) not in text_ids]
@@ -1132,6 +1164,13 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     folders = ([cwd] if cwd else []) + cds
     if not _may_reach_protected(text, words, targets, folders, protected):
         return None
+
+    # The checks above read Bash arithmetic as written, so the names in its body count. From
+    # here, one that only computes is a number (``_arithmetic_to_numbers``).
+    if not powershell:
+        code = _arithmetic_to_numbers(code, protected)
+        segments, targets = lex(code, powershell)
+        text_ids = _text_words(segments, powershell)
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
     if powershell:  # "$($_.Name)" only reads a member
