@@ -50,6 +50,7 @@ try:
         from client import zexion_client as zc
 finally:
     sys.modules.pop("client.zexion_client", None)
+    vars(sys.modules["client"]).pop("zexion_client", None)  # the package's name for it too
     for name, module in saved.items():
         if module is None:
             del sys.modules[name]
