@@ -19,9 +19,8 @@
 
 namespace zap {
 
-// The loaded randomizer section (its 154 or 155 location cells at +0, x then y, 16-bit each; its
-// item table at +0x26C; its settings at +0x87B + t: game_layout.h, rando) and the map grid (54 x
-// 54, index y * 54 + x).
+// The loaded randomizer section (game_layout.h, rando) and the map grid (54 x 54, index
+// y * 54 + x).
 // `ended`: flag 250 (the game does not obscure once the game has been finished). Returns how
 // many squares changed.
 int mark_important(const BYTE* section, BYTE* grid, bool ended);

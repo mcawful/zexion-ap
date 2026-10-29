@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from fakes import FakeGame, FakeProcess, pe_image
+from fakes import CELLS, SECRET_LIST, FakeGame, FakeProcess, pe_image
 
 from client import game
 from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
@@ -104,7 +104,7 @@ def test_known_build_is_identified_and_others_refused() -> None:
 
 
 def blob(cells=None, items=None) -> bytearray:
-    cells = cells or [(x, y) for y in range(3) for x in range(54)][: game.LOCATIONS]
+    cells = cells or CELLS
     items = items or [46] * game.LOCATIONS
     b = bytearray(game.RANDO_BLOB_SIZE)
     for i, (x, y) in enumerate(cells):
@@ -136,13 +136,12 @@ def test_a_malformed_seed_is_refused(broken) -> None:
 
 
 def test_secret_shuffles_155_locations_parse_only_with_its_byte() -> None:
-    cells = [(x, y) for y in range(3) for x in range(54)][: game.LOCATIONS + 1]
-    b = blob(cells, [46] * (game.LOCATIONS + 1))
+    b = blob(SECRET_LIST, [46] * (game.LOCATIONS + 1))
     with pytest.raises(game.GameError):  # without Secret Shuffle: no zero gap
         game.parse_seed(bytes(b))
     b[game.SETTINGS_AT + game.SECRET_SHUFFLE] = 1
     seed = game.parse_seed(bytes(b))
-    assert seed.locations == tuple(cells) and len(seed.items) == game.LOCATIONS + 1
+    assert seed.locations == tuple(SECRET_LIST) and len(seed.items) == game.LOCATIONS + 1
 
 
 # --- reads and writes through a fake process ------------------------------------------------

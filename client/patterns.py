@@ -309,7 +309,7 @@ TARGETS = (
         # from the function's start on B1
         at("40 53 55 56 57 48 83 EC 28 48 8B F9"),
     )),
-    Target("routine_table", "the transition routines: 2 the pause (idle), 4 the ending, 15 the escape skip's prompt", {"B1": 0x3CF5F0}, (
+    Target("routine_table", "the transition routines: 2 the pause (idle), 4 the ending, 15 the SKIP ESCAPE prompt's builder, which RETURN HOME reuses", {"B1": 0x3CF5F0}, (
         # from the instruction at RVA 0x9498f on B1 (entry 8)
         rip("48 8B 05 ?? ?? ?? ?? 48 0F 4F 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 C7 05 ?? ?? ?? ?? 00 00 00 00", 3, 7, -0x40),
         # from the instruction at RVA 0x1a355 on B1 (entry 5)

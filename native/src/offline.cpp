@@ -182,8 +182,8 @@ bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other) {
 OfflineSeed offline_seed_of(const uint8_t* section) {
     OfflineSeed seed;
     seed.locations = rando::locations(section);
-    std::memcpy(seed.table, section + kOfflineTableAt, static_cast<size_t>(seed.locations));
-    std::memcpy(seed.start, section + kOfflineStartAt, sizeof(seed.start));
+    std::memcpy(seed.table, section + rando::kItemTable, static_cast<size_t>(seed.locations));
+    std::memcpy(seed.start, section + rando::kStart, sizeof(seed.start));
     return seed;
 }
 

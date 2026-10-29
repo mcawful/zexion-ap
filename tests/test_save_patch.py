@@ -138,10 +138,7 @@ def test_a_secret_shuffle_section_matches_its_seed_only() -> None:
 
 
 def test_a_secret_shuffle_save_gets_its_table_in_the_games_order() -> None:
-    save = fresh()
-    for i, (x, y) in enumerate(SECRET_LIST):
-        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
-    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1
+    save = fresh(cells=SECRET_LIST, secret=True)
     items = [46] * 155
     items[154] = ids.KEYS[0]  # the Alpha Key at the 155th location
     p = secret_plan(location_items=tuple(items))
@@ -175,7 +172,7 @@ def test_plan_from_slot_data() -> None:
 
 
 def test_key_markers_follow_the_seed() -> None:
-    save = fresh(cells=True)
+    save = fresh(cells=CELLS)
     save[sp.KEY_MARKERS : sp.KEY_MARKERS + 8] = bytes([1, 2, 3, 4, 5, 6, 7, 8])  # the old seed's
     items = [46] * sp.LOCATIONS
     items[60] = 27  # Alpha here, Beta in another world, Gamma here, Omega owned from the start

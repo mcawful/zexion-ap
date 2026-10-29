@@ -179,16 +179,8 @@ inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
 __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
 // The item update's write of an on-screen item's square (mapmarks.h), as on B1.
-constexpr unsigned char kSeenMarkerGame[50] = {
-    0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83,
-    0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C,
-    0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96,
-    0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00};
-__declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = {
-    0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83,
-    0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C,
-    0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96,
-    0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00};
+constexpr unsigned char kSeenMarkerGame[50] = ZAP_SEEN_MARKER_GAME;
+__declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = ZAP_SEEN_MARKER_GAME;
 inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
@@ -327,18 +319,6 @@ inline const char* g_victory = "14Victory";
 // 250's store 0x11 past it.
 constexpr ptrdiff_t kEndingCall = 0x0B, kEndingJoin = 0x28, kEndingSize = 0x45;
 __declspec(allocate(".zapcode")) inline unsigned char g_ending[0x50] = {};
-
-// Writes `bytes` over code at `at`, as the helper does. Byte by byte through volatile: the
-// section packs these arrays more tightly than the compiler assumes when it copies into them with
-// aligned stores. (Read them back with code_byte or through a pointer, check.h.)
-inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) {
-    DWORD old = 0;
-    VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
-    auto* to = static_cast<volatile unsigned char*>(at);
-    for (size_t i = 0; i < n; ++i) to[i] = bytes[i];
-    VirtualProtect(at, n, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), at, n);
-}
 
 // The init functions' names, and the ending, calling through `slot`:
 //   00 sub rsp, 0x28              04 lea rcx, [stats context]

@@ -435,11 +435,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
 }
 
 // The item update's write of an on-screen item's square as on B1 (mapmarks.h).
-constexpr BYTE kSeenGame[zap::kSeenMarkerSize] = {
-    0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83,
-    0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C,
-    0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96,
-    0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00};
+constexpr BYTE kSeenGame[zap::kSeenMarkerSize] = ZAP_SEEN_MARKER_GAME;
 
 // The write run on its own: run(value, id, out) sets dl = value, r9 = id and r14 so that the
 // store (its disp32 the game's, in both) lands on *out (rcx 0), runs the 50 bytes, and returns
@@ -522,13 +518,7 @@ void test_the_seen_marker_refuses_other_bytes() {
 void test_the_seen_marker_patched_and_put_back() {
     auto* site = static_cast<BYTE*>(
         VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ));
-    auto put = [site](const BYTE* bytes) {
-        DWORD old = 0;
-        VirtualProtect(site, 4096, PAGE_EXECUTE_READWRITE, &old);
-        std::memcpy(site, bytes, zap::kSeenMarkerSize);
-        VirtualProtect(site, 4096, old, &old);
-    };
-    put(kSeenGame);
+    write_code(site, kSeenGame, sizeof(kSeenGame));
     BYTE ours[zap::kSeenMarkerSize] = {};
     zap::seen_marker_patch(kSeenGame, ours);
     zap::SeenMarker m;
@@ -556,15 +546,15 @@ void test_the_seen_marker_patched_and_put_back() {
     BYTE other[zap::kSeenMarkerSize];
     std::memcpy(other, kSeenGame, sizeof(other));
     other[0] = 0xE9;
-    put(other);
+    write_code(site, other, sizeof(other));
     m.watch(site, true);
     check(!m.patched() && m.error() == "the on-screen marker reads otherwise" &&
               std::memcmp(site, other, sizeof(other)) == 0,
           "another's bytes: left alone");
-    put(kSeenGame);
+    write_code(site, kSeenGame, sizeof(kSeenGame));
     m.watch(site, true);
     check(m.patched() && m.error().empty(), "the game's again: patched");
-    put(other);
+    write_code(site, other, sizeof(other));
     m.restore();
     check(!m.patched() && std::memcmp(site, other, sizeof(other)) == 0,
           "rewritten by another: not put back over it");

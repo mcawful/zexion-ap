@@ -43,6 +43,7 @@ START_RECORD = 0x12B24  # start-candidate index - 1, tile column, tile row
 SEED_HASH = 0x12B1C  # the seed text's hash, 64-bit, which the game's random numbers start from
 SEED_TEXT = 0x12E6C  # the 16-character seed text the menu showed (section +0x658)
 SEED_DIGITS = 16
+HEX_DIGITS = frozenset("0123456789ABCDEF")
 SECOND_START = 0x12EE0  # the same, for the second teleport target
 AMOUNTS = 0x12ED4  # starting and pool Energy, missiles, bombs (six 16-bit values)
 OPTIONS = 0x1308F  # setting t at OPTIONS + t
@@ -61,8 +62,8 @@ class PatchError(ValueError):
 
 @dataclass(frozen=True)
 class MenuSetup:
-    """The randomizer menu as the seed's settings, for the helper's ARCHIPELAGO choice
-    (client/newgame.py), from the slot data."""
+    """The randomizer menu as the seed's settings, which the helper sets the menu to on either
+    path, ARCHIPELAGO or RANDOMIZER (client/newgame.py, ``menu_lines``), from the slot data."""
 
     seed_text: str  # 16 characters, 0-9 and A-F
     start: bytes  # the menu's 27-entry start-with array (0/1)
@@ -159,7 +160,7 @@ def seed_hash(text: str) -> int:
     """The game's hash of a seed text of 16 characters 0-9 and A-F (docs/re/randocells.md, "The
     pool"): the characters a number in base 16, the first the least significant, modulo 2**64.
     Raises ValueError for another text (the game would read a lowercase letter otherwise)."""
-    if len(text) != SEED_DIGITS or not set(text) <= set("0123456789ABCDEF"):
+    if len(text) != SEED_DIGITS or not set(text) <= HEX_DIGITS:
         raise ValueError(f"the seed text {text!r} is not 16 characters 0-9 and A-F")
     value = 0
     for i, c in enumerate(text):
