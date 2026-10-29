@@ -580,8 +580,9 @@ Working in game: 2026-10-25 ("AP saves without the client").
   a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
   or SCRAP CHUNK after the game writes the cursor's name, in the same frame.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
-  row have found the seed's save loaded (during a load the section may still be the last
-  save's while the grid is the new one's); the on-screen write's patch from that same look,
+  row have found the seed's save loaded (a precaution: a load writes the section, the marker
+  and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section is
+  at +0xCDD6D0"); the on-screen write's patch from that same look,
   until the first frame call that finds no labels or another save loaded (bytes there other than
   the game's write as traced are left alone, and nothing reports it: the stand-in then flips as
   before); the names while the map is open and this seed's save is loaded.
@@ -712,7 +713,8 @@ closed, gone with it open.
   alone. Not covered: an AP save played without the helper, or one whose seed the helper has
   no file for (every new game from ARCHIPELAGO is made with a client, which leaves the file).
 - **When:** every frame call while configured. It goes on once two frame calls in a row have
-  found an AP save loaded, since during a load the section may still be the last save's. It
+  found an AP save loaded, a precaution: a load writes the section and the marker in one game
+  call (`docs/re/memory.md`, "The loaded save's randomizer section is at +0xCDD6D0"). It
   goes off at once: no save loaded (MISSION COMPLETE onward, the title), a normal save, a
   randomizer save of no known seed. The load test (above) is set with no save loaded, while the
   guard is off. `hello` reports `feats=off`, `on`, or `on:` and why a change could not be made:

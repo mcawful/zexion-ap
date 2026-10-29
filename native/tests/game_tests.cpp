@@ -1158,8 +1158,18 @@ void test_map_marks_with_a_menu_open() {
               std::string(game.unload_blocker()) ==
                   "the map's on-screen marker is still the helper's",
           "an unload waits for it");
+    // Another save for one frame call between two passes: counted afresh all the same.
     g_map_grid[4 * 54 + 3] = 0x19;
     const BYTE was = g_section[0x26D];
+    g_section[0x26D] = 0x2F;
+    game.watch_all(&chosen);
+    g_section[0x26D] = was;
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x19 && seen_marker_games(),
+          "another save for one frame between passes: the next pass is the first again");
+    for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
+    check(g_map_grid[4 * 54 + 3] == 0x1A && !seen_marker_games(), "and the one after raises");
+    g_map_grid[4 * 54 + 3] = 0x19;
     g_section[0x26D] = 0x2F;  // another seed's save
     game.watch_all(&chosen);
     check(seen_marker_games(), "another seed's save: the game's write in its first frame");

@@ -13,13 +13,14 @@ The starting items have to be expressed the way the new-game routine reads them:
 - Mega Bombs and Bomb Boxes likewise;
 - keys as a count, the first N keys from the Alpha Key on.
 
-Anything else (filler, other key sets, more than 9 containers or Mega Bombs) cannot be
-expressed: ``NewGameError``. The world refuses such starting items in generation
-(worlds/zexion/starting.py), so the client meeting one is a bug to report.
+Anything else (filler, other key sets, more than 9 containers or Mega Bombs, an amount past
+the section's 16-bit signed numbers) cannot be expressed: ``NewGameError``. The world refuses
+such starting items in generation (worlds/zexion/starting.py; Missile Boxes and Energy Tanks past
+those amounts not yet), so the client meeting one is a bug to report.
 
 The helper runs the game's placement itself with the randomizer menu set to the seed's
 settings (its mode's, or Custom's: the ``menu`` lines), checks that the section then holds the
-seed's amounts and the settings the logic reads (``expect``, as ``save_patch.check_mode`` does
+seed's location list, amounts and logic settings (``expect``, as ``save_patch.check_mode`` does
 for a save file), and writes the AP seed over it. So the new game is the game's own for the
 seed's text, settings and start, down to the Hints' map rectangles, which the placement draws
 from where its random numbers ended (docs/re/randocells.md, "What each setting does in the
@@ -60,6 +61,7 @@ MENU_SEED, MENU_START, MENU_POOL, MENU_AMOUNTS, MENU_SETTINGS = 0x0, 0x51, 0x6C,
 MENU_FIRST_SETTING, COLOR_SETTING = 10, 12
 HEX_DIGITS = frozenset("0123456789ABCDEF")
 START_TABLE_MAX = 64  # the room count the menu's builder allows
+AMOUNT_MAX = 0x7FFF  # the section's amounts are 16-bit signed
 
 
 class NewGameError(ValueError):
@@ -89,6 +91,8 @@ def start_with(start_items: dict[int, int]) -> tuple[bytes, dict[int, int]]:
     if items:
         raise NewGameError(f"starting items {sorted(items)} cannot be given in a new game")
     amounts = {"energy": tanks, "missiles": containers + 10 * boxes, "bombs": bombs + 10 * packs}
+    if any(not 0 <= n <= AMOUNT_MAX for n in amounts.values()):
+        raise NewGameError(f"starting amounts {amounts} past what the new game can hold")
     return bytes(array), {**amounts, "keys": len(keys)}
 
 
@@ -107,8 +111,15 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     lines = ["ap_newgame"]
     # A RANDOMIZER new game is this seed's when the player typed in its text.
     lines.append(f"identify {section(sp.SEED_TEXT):#x} {seed_text.encode('ascii').hex()}")
-    # After the seed's placement the section must hold its amounts and the settings the logic
-    # reads.
+    # After the seed's placement the section must hold its location list (the cells the world
+    # placed the seed at, in the game's list order, then zeros to the item table: the 4 bytes
+    # the 155th fills with Secret Shuffle), its amounts and the settings the logic reads.
+    if plan.cells:
+        if not all(0 <= v < ids.MAP_SIZE for cell in plan.cells for v in cell):
+            raise NewGameError("a location cell of the seed is off the map")
+        listed = b"".join(struct.pack("<HH", *plan.cells[i]) for i in plan.order)
+        gap = section(sp.ITEM_TABLE) - len(listed)
+        lines.append(f"expect 0x0 {(listed + bytes(gap)).hex()}")
     lines.append(f"expect {section(sp.AMOUNTS):#x} {struct.pack('<6h', *plan.amounts).hex()}")
     for t, value in sorted(plan.options.items()):
         lines.append(f"expect {section(sp.OPTIONS + t):#x} {value:02x}")

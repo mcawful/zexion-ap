@@ -167,7 +167,7 @@ void test_on_and_off() {
     game.add_known_seeds({seed_of_save()});
     game.watch_feats();
     check(!game.feats().on() && !game.feats().ending_patched() && !game.feats().steam_hooked(),
-          "one frame call is not enough: during a load the section may be the last save's");
+          "one frame call is not enough (a precaution)");
     game.watch_feats();
     check(game.feats().on() && game.feats_state() == "on", "on at the second", game.feats_state());
     check(game.feats().ending_patched() && game.feats().steam_hooked(), "both changes made");
@@ -331,7 +331,7 @@ void test_a_load_from_the_file_select() {
     std::memcpy(g_section, rando_copy(5), 0x908);
     g_save_loaded = 0;
     game.watch_feats();
-    check(game.feats().load_test(), "one frame call: kept, the section may be the last save's");
+    check(game.feats().load_test(), "one frame call: kept (a precaution)");
     game.watch_feats();
     check(!game.feats().steam_hooked() && !game.feats().load_test() &&
               slot_value() == steam_function(),

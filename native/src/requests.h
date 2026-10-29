@@ -57,7 +57,7 @@ struct StartRoom {
 // randomizer menu's state) sets the menu up as the seed's settings for the game's placement,
 // which the helper runs itself: for the ARCHIPELAGO choice, offered only with `choice`, and
 // again over a matching RANDOMIZER game's own. After the seed's placement the section must hold
-// `expect` (the seed's amounts and checked settings), and then gets `write` (the AP item table,
+// `expect` (the seed's location list, amounts and checked settings), and then gets `write` (the AP item table,
 // start, starting items, seed text and hash). Without `menu`, a RANDOMIZER game is checked
 // against `expect` as the player's placement made it.
 struct NewGamePlan {

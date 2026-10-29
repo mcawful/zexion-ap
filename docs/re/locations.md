@@ -139,9 +139,9 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   data. The new game must hold exactly those, or sphere 0 is wrong; with Double Teleport also
   the second teleport target (`second_start`), and Scrap at every location the world left out
   (those not in `kept_locations`). The helper writes the seed into a new game only after
-  checking that its randomizer section holds the seed's amounts and checked settings
-  (`expect`, `client/newgame.py`; `memory.md`, "Starting a new game"; `native/README.md`, "New
-  games").
+  checking that its randomizer section holds the seed's location list (`locations`, in the
+  game's order), amounts and checked settings (`expect`, `client/newgame.py`; `memory.md`,
+  "Starting a new game"; `native/README.md`, "New games").
 - **What the slot data gives the client for that.** `location_items`: for each of the 154
   locations (155 with Secret Shuffle), by location index, the game's item ID to place
   there, which the client writes in the game's list order (`client/save_patch.py`,

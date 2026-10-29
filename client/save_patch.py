@@ -80,9 +80,9 @@ class MenuSetup:
 
 def game_order(cells) -> tuple[int, ...]:
     """The location indices of ``cells`` (by index, as the slot data lists them) in the game's
-    list order: grid order, by Y then X, a cell (a, b) being X = b, Y = a (docs/re/randocells.md,
-    "The pool"). The identity for the game's 154; with Secret Shuffle the 155th, location index
-    154, goes to list position 134."""
+    list order: grid order, a cell (a, b) by b then a, the game's X then Y (X = b, Y = a:
+    docs/re/randocells.md, "Grid order" and "The pool"). The identity for the game's 154; with
+    Secret Shuffle the 155th, location index 154, goes to list position 134."""
     return tuple(sorted(range(len(cells)), key=lambda i: (cells[i][1], cells[i][0])))
 
 
