@@ -27,7 +27,7 @@ DLL_NAME = "zexion_ap.dll"
 # looks for it in its own folder): while it exists neither the proxy nor the client loads the
 # game folder's helper.
 DISABLED_NAME = "zexion_ap.disabled"
-VERSION = "0.30.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "1.0.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order).
 CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
