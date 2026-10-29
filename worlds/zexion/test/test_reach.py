@@ -85,6 +85,13 @@ class TestSettingsChangeTheResults(unittest.TestCase):
             with self.subTest(mode69=mode69):
                 self.assert_reaches_more(seed, with_settings(seed, mode69=mode69))
         self.assertEqual(sphere0_rooms(with_settings(seed, mode69=1)), sphere0_rooms(seed))
+        light, off = (sphere0_rooms(with_settings(seed, mode69=m)) for m in (0, 3))
+        self.assertEqual(sum(map(len, sphere0_rooms(seed))), 64)
+        self.assertEqual(sum(map(len, light)), 75)
+        self.assertEqual(sum(map(len, off)), 76)
+        # Off also counts as combat tier 4 (code 62): from Below Arena, location 60 too.
+        more = {r["index"]: b - a for r, a, b in zip(data.START_ROOMS, light, off, strict=True)}
+        self.assertEqual({i: d for i, d in more.items() if d}, {3: {60}})
 
     def test_a_lower_energy_total_counts_the_same_tanks_for_more(self) -> None:
         # Code 69 scales Energy up when the seed's total is under 20: 64 become 75.
@@ -96,6 +103,26 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         options = bytearray(seed.settings.options)
         options[30] = 1
         self.assert_reaches_more(seed, with_settings(seed, options=bytes(options)))
+
+    def test_a_neighbor_looked_at_leads_back_to_the_ways_source(self) -> None:
+        # A way that looks at a neighbor (codes 64 to 67) opens only from its own region
+        # (reach.reach: ``a in reached``). In B1 that test never decides: each neighbor's region
+        # leads back to the way's source with no items. If a build's data changes that, the
+        # test of ``a in reached`` needs a case of its own.
+        settings = preset("standard").settings
+        looking = 0
+        for (a, _), ways in data.ENTRANCES.items():
+            for way in ways:
+                if way is None or way[1] is None:
+                    continue
+                for code, _ in way[0]:
+                    other = logic.neighbor(code, way[1]) if 64 <= code <= 67 else None
+                    if other is None:
+                        continue
+                    looking += 1
+                    with self.subTest(source=a, looks_at=other):
+                        self.assertIn(a, reach.reach(settings, (), (other,)).regions)
+        self.assertEqual(looking, 4)  # B1: region 390's four ways
 
     def test_secret_shuffle_adds_its_location_only_when_on(self) -> None:
         # The 155th location, index 154 (data.SECRET_LOCATION), in six cells only code 68

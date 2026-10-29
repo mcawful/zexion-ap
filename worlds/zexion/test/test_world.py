@@ -11,7 +11,17 @@ from Options import OptionError
 from worlds.AutoWorld import call_all
 
 from .. import data, reach, rules
-from ..items import DRAWN_AS, GAME, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL, ZexionItem, code_of
+from ..items import (
+    DRAWN_AS,
+    GAME,
+    NAMES,
+    SCRAP_CHUNK,
+    SCRAP_ENERGY,
+    SCRAP_METAL,
+    UPGRADES,
+    ZexionItem,
+    code_of,
+)
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
 from ..options import AUTOMATIC, ROOM_NAMES, Goal, Mode, StartRoom
@@ -20,6 +30,7 @@ from ..world import (
     DISC_REPLACES,
     FOREIGN,
     FOREIGN_PROGRESSION,
+    MAX_DISKS,
     NOT_HINTED,
     ZexionWorld,
 )
@@ -148,6 +159,36 @@ class TestDefaultStart(ZexionTestBase):
                 state.collect(self.world.create_item(name), True)
             with self.subTest(names=names):
                 self.assertEqual(entrance.access_rule(state), expected)
+
+    def test_ways_that_look_at_a_neighbor_are_rechecked_when_it_is_reached(self) -> None:
+        # Codes 64 to 67 pass once the neighboring cell is reached: Archipelago rechecks the way
+        # when that cell's region is reached (an indirect condition).
+        registered = 0
+        for (a, b), ways in data.ENTRANCES.items():
+            if not {a, b} <= self.world.created_regions:
+                continue
+            for k, way in enumerate(ways):
+                if way is None or not rules.neighbor_regions(*way):
+                    continue
+                name = f"{rules.region_name(a)} to {b}" + (f" #{k + 1}" if len(ways) > 1 else "")
+                entrance = self.multiworld.get_entrance(name, self.player)
+                for r in rules.neighbor_regions(*way) & self.world.created_regions:
+                    region = self.multiworld.get_region(rules.region_name(r), self.player)
+                    self.assertIn(entrance, self.multiworld.indirect_connections.get(region, ()))
+                    registered += 1
+        self.assertGreaterEqual(registered, 4)  # B1: region 390's four ways
+
+    def test_every_item_a_rule_reads_is_progression(self) -> None:
+        # Directly in a list, or through a derived code (logic.derive): the weapon upgrades
+        # count only with their weapons, but are items of their own with Guns First off.
+        read = {
+            code for ways in data.ENTRANCES.values() for way in ways if way for code, _ in way[0]
+        }
+        read |= {code for entries in data.LOCATION_RULES.values() for code, _ in entries}
+        read = {code for code in read if code < FIRST_SPECIAL} | UPGRADES
+        for code in sorted(read):
+            with self.subTest(item=NAMES[code]):
+                self.assertTrue(self.world.create_item(NAMES[code]).advancement)
 
     def test_slot_data_says_death_link_is_off_and_assists_are_locked(self) -> None:
         slot = self.world.fill_slot_data()
@@ -739,6 +780,26 @@ class TestDiscOptionsChecked(unittest.TestCase):
         with self.assertRaises(OptionError) as caught:
             world(16).generate_early()
         self.assertIn("plus the 5 in start_inventory", str(caught.exception))
+
+    def test_99_disks_at_most_placed_and_starting(self) -> None:
+        # The helper's counts show two digits (world.MAX_DISKS).
+        def world(start: int, from_pool: int = 0) -> ZexionWorld:
+            return fake_world(
+                goal=Goal.option_os_install_disks,
+                start_inventory={"OS Install Disk": start},
+                start_inventory_from_pool={"OS Install Disk": from_pool},
+                placed=30,
+            )
+
+        self.assertEqual(MAX_DISKS, 99)
+        world(69).generate_early()  # 30 placed and 69 to start with
+        with self.assertRaises(OptionError) as caught:
+            world(70).generate_early()
+        self.assertIn("come to 100, more than the 99", str(caught.exception))
+        # From the pool, only the disks past the placed ones are more.
+        world(59, from_pool=40).generate_early()
+        with self.assertRaises(OptionError):
+            world(60, from_pool=40).generate_early()
 
     def test_what_discs_replace_is_read_by_no_rule(self) -> None:
         codes = set()

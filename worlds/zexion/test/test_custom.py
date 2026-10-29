@@ -4,6 +4,7 @@ refusals, and whole Custom seeds (docs/re/randocells.md, "The pool")."""
 import random
 import unittest
 from collections import Counter
+from unittest import mock
 
 from Fill import distribute_items_restrictive
 from Options import OptionError
@@ -356,6 +357,123 @@ class TestTheMenusLimits(unittest.TestCase):
         self.assertEqual(custom.most_pooled(menu), 26)
         self.assertEqual(custom.most_pooled(menu.with_settings({custom.RANDOM_GUN: 0})), 27)
 
+    @staticmethod
+    def with_free(free: int, keys: int = 0, secret: int = 0) -> Menu:
+        """Standard with Box Compression off, these Start Keys and Secret Shuffle, 40 pool
+        Energy Tanks, and pool Mega Bombs in boxes (two or more) leaving the missiles ``free``
+        places by the menu's count (0xD2110)."""
+        menu = Menu.preset("standard").with_settings({custom.BOX_COMPRESSION: 0})
+        menu = menu.with_value(custom.START_KEYS, keys)
+        menu = menu.with_settings({custom.SECRET_SHUFFLE: secret})
+        for which in (custom.START_ENERGY, custom.START_MISSILES, custom.START_BOMBS):
+            menu = menu.with_amount(which, 0)
+        menu = menu.with_amount(custom.POOL_ENERGY, 40)
+        pooled = sum(1 for v in menu.pool if v)
+        # The count, written out: the 150 places, the started keys and Secret Shuffle's 155th.
+        boxes = 150 + keys + secret - pooled - 40 - free
+        return menu.with_amount(custom.POOL_BOMBS, 10 * boxes)
+
+    @staticmethod
+    def missiles_refused(menu: Menu, missiles: int) -> bool:
+        found = custom.problems(menu.with_amount(custom.POOL_MISSILES, missiles))
+        return any(line.startswith("Item Pool Missiles") for line in found)
+
+    def test_ten_per_place_from_two_free_places(self) -> None:
+        two, one = self.with_free(2), self.with_free(1)
+        self.assertFalse(self.missiles_refused(two, 20))
+        self.assertTrue(self.missiles_refused(two, 21))
+        self.assertFalse(self.missiles_refused(one, 1))  # one place: one missile
+        self.assertTrue(self.missiles_refused(one, 2))
+
+    def test_start_keys_and_secret_shuffle_free_places(self) -> None:
+        for keys, secret in ((4, 0), (0, 1), (4, 1)):
+            with self.subTest(keys=keys, secret=secret):
+                menu = self.with_free(10, keys, secret)
+                self.assertFalse(self.missiles_refused(menu, 100))
+                self.assertTrue(self.missiles_refused(menu, 101))
+
+    def test_started_keys_take_no_place_in_the_list(self) -> None:
+        # Every item pooled, singles to the last place: with Start Keys 4, the four places the
+        # keys would take hold missiles.
+        base = Menu.preset("standard").with_settings(
+            {custom.RANDOM_GUN: 0, custom.BOX_COMPRESSION: 0}
+        )
+        for i in range(custom.ARRAY):
+            base = base.with_item(i, "pool")
+        base = base.with_amount(custom.START_ENERGY, 0).with_amount(custom.POOL_BOMBS, 0)
+        base = base.with_amount(custom.POOL_ENERGY, 40)
+        for keys in (0, 4):
+            with self.subTest(keys=keys):
+                menu = base.with_value(custom.START_KEYS, keys)
+                room = 154 - (4 - keys) - 27 - 40
+                full = menu.with_amount(custom.POOL_MISSILES, room)
+                self.assertEqual(custom.problems(full), [])
+                self.assertEqual(custom.most_entries(full), 154)
+
+
+class TestCompressionIsReachedAgain(unittest.TestCase):
+    def test_the_kept_locations_are_the_compressed_pools(self) -> None:
+        # Without the Lance and the Arc Plasma (and their upgrades, which Guns First would make
+        # them), location 91 needs the X-Missile, which needs five Missile Containers. The pool's
+        # 10 and the 3 started make 13; the locations left out need filler, and with none the
+        # ten become a Missile Box (no Missile Container in the logic), so 91 and one more are
+        # left out too.
+        out = ("Lance", "Arc Plasma", "Focal Crystal", "Plasma Burst")
+        world = fake_world(
+            mode="custom",
+            custom_items=dict.fromkeys(out, "excluded"),
+            box_compression="off",
+            pool_missiles=10,
+            pool_mega_bombs=100,  # with the 17 pool Energy Tanks, no filler
+        )
+        world.generate_early()
+        self.assertEqual(Counter(world.pool_codes)[MISSILE_BOX], 1)
+        every = world.seed_reach.every_from(world.start, world.second)
+        self.assertEqual(world.kept_locations, set(every.locations))
+        self.assertEqual(len(world.kept_locations), 124)
+        self.assertNotIn(91, world.kept_locations)
+
+
+class TestTheCoinFlips(unittest.TestCase):
+    def test_an_item_set_both_ways_ends_in_one_place(self) -> None:
+        # Not a gun, which Random Gun draws again from the menu's states: the flip alone.
+        menu = Menu.preset("standard").with_item(ENTRY["Slide Mod"], "random")
+        i, seen = ENTRY["Slide Mod"], set()
+        for seed in range(40):
+            start, pool = custom.resolve(menu, random.Random(seed))
+            self.assertEqual(start[i] + pool[i], 1, seed)
+            seen.add(start[i])
+        self.assertEqual(seen, {0, 1})
+
+
+class TestFillerAndBoxes(unittest.TestCase):
+    def test_the_filler_odds(self) -> None:
+        # One draw in 16 per place (0xF25AC): Scrap metal 8, Scrap energy and Scrap chunk 1 each,
+        # Area Map and Energy Shield 3 each.
+        self.assertEqual(Counter(custom.FILLER_ODDS), {SCRAP_METAL: 8, 47: 1, 48: 1, 49: 3, 50: 3})
+
+    def test_compression_takes_missile_containers_first_and_ten_are_enough(self) -> None:
+        items = [MISSILE_CONTAINER] * 10 + [MEGA_BOMB] * 10
+        out = custom.compress(items, 9, FILLER)
+        self.assertEqual(Counter(out)[MISSILE_BOX], 1)
+        self.assertEqual(Counter(out)[MEGA_BOMB], 10)
+        self.assertEqual(Counter(out)[SCRAP_METAL], 9)
+        with self.assertRaises(custom.PoolError):
+            custom.compress([MISSILE_CONTAINER] * 9, 9, FILLER)
+
+    def test_a_box_draw_of_the_bombs_left_is_a_missile_box(self) -> None:
+        # Boxes drawn (no bulk, 20 or more of each): a draw at or above the bombs left is a
+        # Missile Box (0xF2079 to 0xF25A0). 100 + 30 in 121 places: one box.
+        menu = Menu.preset("standard").with_settings({custom.BOX_COMPRESSION: 0})
+        menu = menu.with_amount(custom.POOL_MISSILES, 100).with_amount(custom.POOL_BOMBS, 30)
+
+        class Draw:
+            @staticmethod
+            def randrange(n: int) -> int:
+                return 30
+
+        self.assertEqual(supplies(custom.supplies(menu, 121, Draw()))[:2], (1, 0))
+
 
 class TestRandomStart(unittest.TestCase):
     rooms = data.START_ROOMS
@@ -389,6 +507,31 @@ class TestRandomStart(unittest.TestCase):
             for s in range(3000)
         )
         self.assertAlmostEqual(light[1] / 3000, 1 / 2, delta=0.04)
+
+    def test_the_tower_check_is_once_per_start_game(self) -> None:
+        # Two tower rooms only: once the first drawn is put back, the second is kept.
+        towers = [r for r in self.rooms if custom.tower(r)][:2]
+        for seed in range(200):
+            self.assertIsNotNone(
+                custom.random_start(towers, 0, 2, lambda r: True, random.Random(seed)), seed
+            )
+
+    def test_the_world_draws_with_its_safety_and_its_own_score(self) -> None:
+        # The seed's Safety, and the score of the mode's own starting items (Standard: 3 Energy
+        # Tanks, 3 missiles and the Force Blaster), not start_inventory's.
+        world = fake_world(
+            start_room="random_start", safety="early", start_inventory={"Energy Tank": 30}
+        )
+        calls = []
+        draw = custom.random_start
+
+        def random_start(rooms, score, safety, passes, rng):
+            calls.append((score, safety))
+            return draw(rooms, score, safety, passes, rng)
+
+        with mock.patch.object(custom, "random_start", random_start):
+            world.generate_early()
+        self.assertEqual(calls, [(7, 1)])
 
     def test_none_when_no_room_passes(self) -> None:
         self.assertIsNone(custom.random_start(self.rooms, 0, 2, lambda r: False, random.Random()))
@@ -469,15 +612,19 @@ class TestCustomAsItsBase(unittest.TestCase):
                 self.assertEqual(len(world.pool_codes), 154)
 
     def test_each_setting_lands_in_its_byte(self) -> None:
+        # Values whose bits differ when two are swapped, read back by the byte numbers
+        # docs/re/randocells.md gives ("Where each setting is stored"), lowest bit first.
         world = fake_world(
             mode="custom",
-            hints="revealed",
-            gates="open",
-            safety="early",
-            start_keys=3,
+            start_room="open_cave",  # Starting Location 18: 010010
+            hints="large",  # 5: 0101
+            gates="vanilla",  # 1: 01
+            safety="early",  # 1: 01
+            start_keys=1,  # 001
             x_crystals="on",
             x_blocks="on",
             abridged_finale="on",
+            obscure_majors="off",
             obscure_minors="off",
             obscure_class="on",
             show_obtainable="off",
@@ -487,16 +634,24 @@ class TestCustomAsItsBase(unittest.TestCase):
         )
         world.generate_early()
         menu = world.menu
-        self.assertEqual(menu.value(custom.HINTS), 7)
-        self.assertEqual(menu.value(custom.GATES), 3)
+        self.assertEqual(menu.value(custom.HINTS), 5)
+        self.assertEqual(menu.value(custom.GATES), 1)
         self.assertEqual(menu.value(custom.SAFETY), 1)
-        self.assertEqual(menu.start_keys, 3)
-        for t, v in ((30, 1), (31, 1), (32, 1), (38, 0), (41, 1), (11, 0), (17, 1), (28, 0)):
+        self.assertEqual(menu.start_keys, 1)
+        written = {18: 1, 19: 0, 20: 1, 21: 0, 72: 1, 73: 0, 42: 1, 43: 0, 34: 1, 35: 0, 36: 0}
+        written |= {30: 1, 31: 1, 32: 1, 29: 0, 38: 0, 41: 1, 11: 0, 17: 1, 28: 0}
+        for t, v in written.items():
             self.assertEqual(menu.setting(t), v, t)
         self.assertEqual(world.logic_settings.mode69, 1)
+        self.assertFalse(world.logic_settings.gates_open)
         self.assertEqual(world.logic_settings.options[31], 1)
-        self.assertEqual(world.start_inventory.get(29), 1)  # the Gamma Key: Alpha onward
-        self.assertNotIn(30, world.start_inventory)
+        self.assertEqual(world.start_inventory.get(27), 1)  # the Alpha Key
+        self.assertNotIn(28, world.start_inventory)
+        # Starting Location, in the menu the client sets up: room 17, value 18.
+        world.multiworld.seed_name = "1"
+        settings = world.menu_setup()["settings"]
+        location = {t: settings[t - 10] for t in range(22, 28)}
+        self.assertEqual(location, {22: 0, 23: 1, 24: 0, 25: 0, 26: 1, 27: 0})
 
 
 class CustomSeed(ZexionTestBase):
@@ -556,7 +711,7 @@ class CustomSeed(ZexionTestBase):
         self.assertEqual(menu["start"][ENTRY["Machine Gun"]], 1)
         self.assertEqual(menu["pool"][ENTRY["Machine Gun"]], 1)  # the menu holds the coin flip
         self.assertEqual(menu["pool"][ENTRY["Power Core"]], 0)
-        location = sum(menu["settings"][t - 10] << i for i, t in enumerate(custom.START_LOCATION))
+        location = sum(menu["settings"][t - 10] << i for i, t in enumerate(range(22, 28)))
         self.assertEqual(location, self.world.start["index"] + 1)
         self.assertEqual(menu["settings"][custom.BOX_COMPRESSION - 10], 0)
         keys = {int(k): v for k, v in slot["start_items"].items()}

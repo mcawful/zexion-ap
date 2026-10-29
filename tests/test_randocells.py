@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import struct
 from collections import Counter
 
@@ -11,6 +12,17 @@ import randocells as rc
 from client import save_patch as sp
 
 logic = rc.logic  # worlds/zexion/logic.py, as the tool loads it
+
+
+def _load_data():
+    """worlds/zexion/data.py (generated from B1's RandoCells), loaded by path: literals only."""
+    spec = importlib.util.spec_from_file_location("zexion_data", rc.ROOT / "worlds/zexion/data.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+world_data = _load_data()
 
 
 def blank() -> bytearray:
@@ -69,26 +81,71 @@ def test_lists_and_passages_parse() -> None:
         ([(54, 1), (55, 1)], {24: 1, 22: 1}, False),  # 55: without the Gravity Harness
         ([(50, 1)], {26: 1}, True),  # Zenith Thrusters stands in for jump upgrades
         ([(19, 4), (16, 1)], {16: 1}, False),  # tier 4 is required, whatever else holds
+        # ...and never enough alone: the list still passes only by a tier-1 entry, a count or
+        # its group (docs/re/randocells.md, "Entry values").
+        ([(16, 4), (57, 1), (23, 1)], {16: 1}, False),
+        ([(16, 4), (57, 1), (23, 1)], {16: 1, 23: 1}, True),
+        ([(16, 4), (19, 2)], {16: 1}, False),
+        ([(16, 4), (19, 2)], {16: 1, 19: 1}, True),
+        ([(16, 4), (1, 13)], {16: 1, 1: 3}, True),
+        ([(16, 4)], {16: 1}, False),  # no tier 1, count or group: never passes
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
     assert logic.satisfied(entries, Counter(have)) is expected
 
 
+# B1's six lists with a tier-4 entry and another way to pass (worlds/zexion/data.py): the tier-4
+# item alone opens none of them, as in the game's evaluator.
+B1_TIER_4 = [
+    # X24 Y22 to X24 Y21: code 57 (here the Lance), and the Gravity Harness or the Wall Jump Boots.
+    (world_data.ENTRANCES[(118, 137)][0][0], {6: 1}, False),
+    (world_data.ENTRANCES[(118, 137)][0][0], {6: 1, 19: 1}, True),
+    (world_data.ENTRANCES[(118, 137)][0][0], {6: 1, 24: 1}, True),
+    (world_data.ENTRANCES[(118, 137)][0][0], {19: 1, 24: 1}, False),  # no code 57
+    # Location 65: the Jump Booster, and 12 Missile Containers or the Arc Plasma.
+    (world_data.LOCATION_RULES[65], {22: 1}, False),
+    (world_data.LOCATION_RULES[65], {22: 1, 1: 12}, True),
+    (world_data.LOCATION_RULES[65], {22: 1, 7: 1}, True),
+    # Location 77: the Slide Mod, and code 57 or the Javelin Missiles.
+    (world_data.LOCATION_RULES[77], {16: 1}, False),
+    (world_data.LOCATION_RULES[77], {16: 1, 23: 1}, True),
+    (world_data.LOCATION_RULES[77], {16: 1, 17: 1}, True),  # the S-Blade, with the Slide Mod: 57
+    # Regions 72 to 171: the Slide Mod, and one of 52, 54, 51 or the group.
+    (world_data.ENTRANCES[(72, 171)][0][0], {16: 1}, False),
+    (world_data.ENTRANCES[(72, 171)][0][0], {16: 1, 19: 1, 25: 1, 0: 6}, True),
+    # Regions 82 and 84, each way: the Slide Mod, and the Tunneler, the Plasma Burst or (one
+    # way) the Lance with the S-Blade.
+    (world_data.ENTRANCES[(82, 84)][0][0], {16: 1}, False),
+    (world_data.ENTRANCES[(82, 84)][0][0], {16: 1, 6: 1}, False),
+    (world_data.ENTRANCES[(82, 84)][0][0], {16: 1, 6: 1, 17: 1}, True),
+    (world_data.ENTRANCES[(84, 82)][0][0], {16: 1}, False),
+    (world_data.ENTRANCES[(84, 82)][0][0], {16: 1, 5: 1, 15: 1}, True),
+]
+
+
+def test_b1_lists_with_a_tier_4_entry_are_listed() -> None:
+    lists = [w[0] for ways in world_data.ENTRANCES.values() for w in ways if w]
+    lists += world_data.LOCATION_RULES.values()
+    with_tier_4 = {tuple(e) for e in lists if any(t == 4 for _, t in e)}
+    assert with_tier_4 == {tuple(entries) for entries, _, _ in B1_TIER_4}
+
+
+@pytest.mark.parametrize(("entries", "have", "expected"), B1_TIER_4)
+def test_b1_tier_4_lists(entries, have, expected) -> None:
+    assert logic.satisfied(entries, Counter(have)) is expected
+
+
 def test_sweep_collects_in_order_of_access() -> None:
     data = blank()
-    # Start (25,25) -> east needs item 16; (26,25) holds item 16 behind nothing, reached
-    # only through (25,25) -> north (open) -> east (open) -> south (open).
+    # Start (25,25): north (open) to (25,24), which holds the item; east, the only way to
+    # (26,25)'s location, needs it.
     open_passage(data, 25, 25, "N")
-    open_passage(data, 25, 24, "E")
-    open_passage(data, 26, 24, "S")
     open_passage(data, 25, 25, "E", [(16, 1)])
-    open_passage(data, 26, 25, "E")  # (27,25) only via (26,25)
     grid = rc.parse(bytes(data))
-    locations = [(26, 25), (27, 25)]
-    items = [16, 46]
-    got = rc.sweep(grid, locations, items, (25, 25))
-    assert got == {0, 1}
+    locations = [(25, 24), (26, 25)]
+    assert rc.sweep(grid, locations, [16, 46], (25, 25)) == {0, 1}
+    assert rc.sweep(grid, locations, [46, 16], (25, 25)) == {0}  # the item behind its own way
 
 
 def test_item_requirements_gate_collection() -> None:
@@ -176,9 +233,34 @@ def test_second_target_reads_its_flag() -> None:
     struct.pack_into("<3H", save, sp.START_RECORD, 6, 191, 329)
     struct.pack_into("<3H", save, sp.SECOND_START, 0, 20, 509)  # Exodia, cell (1, 25)
     assert rc.second_from_save(bytes(save)) is None
-    save[sp.OPTIONS + rc.DOUBLE_TELEPORT] = 1
-    save[sp.SECOND_START + rc.SECOND_FLAG] = 1
+    save[sp.OPTIONS + 33] = 1  # Double Teleport, t33
+    assert rc.second_from_save(bytes(save)) == ((1, 25), False)
+    save[sp.SECTION + 0x6D2] = 1  # the second target's room flag
     assert rc.second_from_save(bytes(save)) == ((1, 25), True)
+
+
+def test_a_custom_saves_seed_and_settings() -> None:
+    save = bytearray(0x13200)
+    locations, items = rc.seed_from_save(bytes(save))
+    assert (len(locations), len(items)) == (154, 154)
+    save[sp.OPTIONS + 37] = 1  # Secret Shuffle: the 155th location
+    locations, items = rc.seed_from_save(bytes(save))
+    assert (len(locations), len(items)) == (155, 155)
+    struct.pack_into("<hh", save, sp.SECTION + 0x6C0, 3, 17)  # starting and pool Energy
+    assert rc.settings_from_save(bytes(save)).energy_total == 20
+
+
+def test_the_sweep_follows_guns_first() -> None:
+    # The Pulse Wave, picked up without the Machine Gun, counts as it with Guns First only;
+    # the second location needs the Machine Gun.
+    data = blank()
+    open_passage(data, 25, 25, "E", [(3, 1)])
+    grid = rc.parse(bytes(data))
+    locations, items = [(25, 25), (26, 25)], [9, 46]
+    on = logic.Settings(guns_first=True)
+    off = logic.Settings(guns_first=False)
+    assert rc.sweep(grid, locations, items, (25, 25), settings=on) == {0, 1}
+    assert rc.sweep(grid, locations, items, (25, 25), settings=off) == {0}
 
 
 def test_a_flagged_second_target_waits_for_the_score() -> None:
