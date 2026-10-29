@@ -347,7 +347,10 @@ While a plan is armed (`ap_newgame`), each frame call:
   label reads ARCHIPELAGO through the fade.
 
 Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label through the fade
-("Starting a new game", "The game-mode panel").
+("Starting a new game", "The game-mode panel"); 2026-10-29, a Custom seed with Secret Shuffle
+by ARCHIPELAGO and by RANDOMIZER with its text, each passing the client's `expect` on the
+section's 155 cells, the two sections equal byte for byte (develop e088773, the helper loaded by
+the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
 
 ### Other players' items
 
@@ -555,7 +558,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
 
-Working in game: 2026-10-25 ("AP saves without the client").
+Working in game: 2026-10-25 ("AP saves without the client"); 2026-10-29, a Secret Shuffle
+seed's file (a 155-byte table, one `table` line): the save dressed with the client closed, its
+notice shown, the map's unseen squares named as the game names its own (develop e088773,
+`9b609b92…`; `lab/ap/live46`).
 
 ### The map
 

@@ -111,7 +111,13 @@ line says.
     gave back only what the save lost: 2026-10-28.
   - Secret Shuffle: the client taking the 155-entry list as the seed's, and the 155th location,
     "??? 48,20", and three others near it in the list giving their items and checked under
-    their names: 2026-10-28.
+    their names: 2026-10-28. A Secret Shuffle seed with the new game's `expect` on the location
+    list (`client/newgame.py`): its ARCHIPELAGO game and its game by the seed's text through
+    `--keep-randomizer` both accepted, with randomizer sections equal byte for byte (155 cells),
+    RANDO SETTINGS showing Secret Shuffle and Guns First on, and the client matching both saves:
+    2026-10-29 (`lab/ap/live46`, slots 4 and 5, develop e088773).
+  - Guns First on: a gun sent twice from the server's console, the first popup naming the gun
+    (FORCE BLASTER, byte 4), the second its upgrade (PENTASHOT, byte 14): 2026-10-29.
 - `start_inventory_from_pool`: the start held the pool's items with the mode's own, and a
   `start_inventory` copy of an item the pool holds refused at generation: 2026-10-28
   ([`docs/re/locations.md`](re/locations.md), "What the world needs from the client").
