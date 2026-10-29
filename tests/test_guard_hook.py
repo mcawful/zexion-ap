@@ -152,6 +152,16 @@ BASH_ALLOWED = [
     "du -sh E:/SteamLibrary/steamapps/common",
     "rm -rf native/build/* lab/ap/*",
     "rm -rf native/build lab/work/*",
+    # Arithmetic only computes: reading the markers at their offsets.
+    f'xxd -s $((0x9360)) -l 4 "{SAVES}/Save Game 4.sav"',
+    f'od -An -tx1 -j $((0x9402)) -N 2 "{SAVES}/Save Game 4.sav"',
+    f'hexdump -C -s $((0x9360)) -n 16 "{SAVES}/Save Game 4.sav"',
+    f'printf "%x\\n" $((0x9360 + 2)); xxd -s 0x9362 -l 2 "{SAVES}/Save Game 4.sav"',
+    f'OFF=0x9360; xxd -s "$(( (OFF + 2) * 1 ))" -l 2 "{SAVES}/Save Game 4.sav"',
+    # The app id in a URL, or as a number in code.
+    "start steam://rungameid/3392510",
+    "curl -sL https://steamdb.info/app/3392510/patchnotes/ -o lab/patchnotes.html",
+    '.venv/Scripts/python -c "print(3392510 * 1000 + 154)"',
 ]
 
 PS_ALLOWED = [
@@ -187,6 +197,15 @@ PS_ALLOWED = [
     f'Get-ChildItem "{PS_SAVES}" | Format-Wide',
     f'Get-ChildItem "{PS_SAVES}" | Out-Host',
     f'if (Test-Path "{PS_SAVES}") {{ Get-ChildItem "{PS_SAVES}" }}',
+    # Subexpressions that only read a member; Get-Date and DateTime's arithmetic.
+    f'Get-ChildItem "{PS_SAVES}" | ForEach-Object {{ "$($_.Name): $($_.Length)" }}',
+    f'$f = Get-Item "{PS_SAVES}\\Save Game 4.sav"; "size $($f.Length)"',
+    f'Get-Date; Get-ChildItem "{PS_SAVES}" | Select-Object Name, LastWriteTime',
+    f'$t = Get-Date; Get-ChildItem "{PS_SAVES}"',
+    f'(Get-Date) - (Get-Item "{PS_SAVES}\\Save Game 4.sav").LastWriteTime',
+    f'Get-ChildItem "{PS_SAVES}" | ? {{ $_.LastWriteTime -gt (Get-Date).AddMinutes(-10) }}',
+    f'Get-ChildItem "{PS_SAVES}" | Select Name, @{{n="Age";e={{(Get-Date) - $_.LastWriteTime}}}}',
+    "Start-Process 'steam://rungameid/3392510'",
 ]
 
 BASH_BLOCKED = [
@@ -391,6 +410,25 @@ BASH_BLOCKED = [
     'cd "$APPDATA" && rm -r "Gallant Leaf"',
     'cp -r --target-directory="$APPDATA/Gallant Leaf" lab/Zexion',
     'git -C "$APPDATA/Gallant Leaf" clean -fdx',
+    # Substitution inside arithmetic, or what Bash reads as $( and a subshell.
+    f'x=$(( $(rm -f "{SAVES}/x") ))',
+    f'x=$(( `rm -f "{SAVES}/x"` ))',
+    f'echo $((a) | (rm -f "{SAVES}/x"))',
+    f'echo $(( $((1)) + $(rm -f "{SAVES}/x") ))',
+    f'echo $((x[$(rm -f "{SAVES}/x")]))',
+    f"echo '$((' ; rm -f \"{SAVES}/x\" ; echo '))'",
+    f'$((0)) "{SAVES}/x"',
+    f'xxd -s $((0x10)) "{SAVES}/Save Game 4.sav" "{SAVES}/x"',
+    # The app id as a path, also next to a URL or a product.
+    'cd "$UD" && rm -r 3392510',
+    'rm -rf "$UD/3392510"',
+    'rm -r $((3392510)) && ls "$UD"',
+    "start steam://rungameid/3392510; rm -rf 3392510",
+    'cp -r lab/x "$UD/x://../3392510"',
+    "bash -c 'cd \"$UD\" && rm -rf 3392510 && echo'",
+    ".venv/Scripts/python -c \"import shutil; u='http://x'; shutil.rmtree(d + '/3392510')\"",
+    '.venv/Scripts/python -c "import shutil, os; shutil.rmtree(os.path.join(d, str(3392510)))"',
+    '.venv/Scripts/python -c "import shutil; shutil.rmtree(steam + 3392510 * 1)"',
 ]
 
 PS_BLOCKED = [
@@ -454,6 +492,18 @@ PS_BLOCKED = [
     'Copy-Item -Recurse lab\\Zexion "$env:APPDATA\\Gallant Leaf"',
     "Copy-Item -Recurse -Force lab\\Zexion E:\\SteamLibrary\\steamapps\\common\\",
     'Remove-Item -Recurse "$env:APPDATA\\Gallant Leaf"',
+    # Subexpressions that run something; operators, Get-Date and DateTime around writes.
+    f'"$(Remove-Item "{SAVES}/x")"',
+    f'$f = Get-Item "{SAVES}/x"; "$($f.Delete())"',
+    f'"$(Get-Item "{SAVES}/x" | Remove-Item)"',
+    f'(Get-Date) - (Remove-Item "{SAVES}/x")',
+    f'(Get-Date) - Remove-Item "{SAVES}/x"',
+    f'$f = Get-Item "{SAVES}/x"; (Get-Date) - $f.IsReadOnly = $true',
+    f'Get-Date | Remove-Item "{SAVES}/x"',
+    f'Set-Date (Get-Date); Get-ChildItem "{SAVES}"',
+    f'(Get-Item "{SAVES}/x").LastWriteTime = (Get-Date).AddDays(-1)',
+    f'Get-ChildItem "{SAVES}" | % {{ $_.Replace("x", "y") }}',
+    "Remove-Item -Recurse (Join-Path $ud 3392510)",
 ]
 
 

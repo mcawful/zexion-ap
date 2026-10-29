@@ -31,17 +31,20 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``, ``…/userdata/123``:
     ``protected.may_be_above_protected``, ``_names_parent``), so copying into, moving or
     deleting the parent blocks while reading it does not; when it may build one from pieces
-    (``_builds_from_pieces``); when it makes a link next to a folder named like ``gallant`` or
-    ``steam``; or when it runs in or changes directory to a folder in a protected one or a
-    parent of one. Other names in the folder's path don't count, so a worktree named
-    ``steam-achievements`` works as any other.
+    (``_builds_from_pieces``; the app id counts as a path component, but not in a URL such as
+    ``steam://rungameid/3392510`` or as a number in code: ``_names_app_id``); when it makes a
+    link next to a folder named like ``gallant`` or ``steam``; or when it runs in or changes
+    directory to a folder in a protected one or a parent of one. Other names in the folder's
+    path don't count, so a worktree named ``steam-achievements`` works as any other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
     (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
     diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
     ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's rules for script
     blocks, ``ForEach-Object``, expressions and ``&``: ``_ps_segment_is_read_only``.
   - Blocked outright, when the command may reach a protected folder: command substitution
-    (``$(``, or a backtick in Bash) but the message form above; a PowerShell ``::`` call other
+    (``$(``, or a backtick in Bash) but the message form above, Bash arithmetic that only
+    computes (``xxd -s $((0x9360))``: ``_arithmetic_to_numbers``) and PowerShell's
+    ``"$($_.Name)"``, which only reads a member; a PowerShell ``::`` call other
     than a known reader or a method call other than a few string ones (``_ps_calls_block``);
     output redirected to a path that still holds a variable after the hook's own environment is
     applied (the guard can't see where it leads); and in Bash an environment prefix or
@@ -109,7 +112,7 @@ READ_ONLY_PS = {
     "set-location", "cd", "sl", "chdir", "push-location", "pushd", "pop-location", "popd",
     "resolve-path", "split-path", "join-path", "compare-object", "get-location", "pwd",
     "get-acl", "in", "group-object", "group", "get-member", "gm", "convertto-json",
-    "convertto-csv",
+    "convertto-csv", "get-date",
 }  # fmt: skip
 # Readers whose stdin is only data (not a shell, an interpreter, or sed's script) and that write
 # no file a later command could run: a heredoc may go to one, and pipe on into more.
@@ -143,7 +146,11 @@ PS_SAFE_METHODS = {
     "tostring", "trim", "trimstart", "trimend", "substring", "split", "tolower", "toupper",
     "startswith", "endswith", "contains", "indexof", "gettype", "padleft", "padright", "equals",
     "getstring", "getbytes",
+    "addseconds", "addminutes", "addhours", "adddays",  # DateTime's; no file object has them
 }  # fmt: skip
+# Operators that continue an expression after a parenthesis: ``(Get-Date) - $t``. After one,
+# PowerShell reads a value, never a command, so the rest is an expression too.
+PS_OPERATORS = {"+", "-", "*", "/", "%", "-eq", "-ne", "-gt", "-ge", "-lt", "-le"}
 # ``[Type]::Member`` calls that only read, by type (``System.`` dropped); None: any member.
 PS_STATIC_READERS: dict[str, set[str] | None] = {
     "io.file": {"readallbytes", "readalltext", "readalllines", "exists", "getattributes",
@@ -199,6 +206,14 @@ _HEREDOC = re.compile(rf"<<(-?)[ \t]*({_DELIM_WORD})")
 _CAT_HEREDOC = re.compile(rf"\$\(\s*cat\s*<<-?[ \t]*{_DELIM_WORD}[ \t]*\n\s*\)")
 # A ``>&`` that duplicates or closes a descriptor (2>&1, >&-) rather than naming a file.
 _FD_DUP = re.compile(r"\d*-?(?=$|[\s;&|()<>])")
+# A URL, up to a space or a quote: at the start of a word or a quoted piece of one (not
+# ``$d/x://``), with a scheme of two letters or more (``C://x`` is a path), and no ``..``
+# (Windows reads ``x://../y`` as ``y``).
+_URL = re.compile(r"(?<![^\s\"'(=,])[a-z][\w+.-]+://(?![^\s\"']*\.\.)[^\s\"']*", re.I)
+# A Bash ``$((`` and a PowerShell ``$( $name.Member )``: neither runs a command.
+_ARITH_START = re.compile(r"(?<!\\)\$\(\(")
+_ARITH_BODY = re.compile(r"[\w \t+\-*/%<>=!&|^~?:,.\[\]$()]*")
+_PS_MEMBER_SUBEXPR = re.compile(r"\$\(\s*\$(?:env:)?\w+(?:\.\w+)*\s*\)", re.I)
 _ENV_REF = re.compile(r"\$\{env:(\w+)\}|\$env:(\w+)|\$\{(\w+)\}|\$(\w+)|%(\w+)%", re.I)
 
 
@@ -610,6 +625,44 @@ def _cut_heredocs(command: str) -> str:
     return "".join(out)
 
 
+def _arithmetic_to_numbers(command: str, protected) -> str:
+    """Bash ``$((…))`` expansions that only compute (``xxd -s $((0x9360))``) as the word ``0``,
+    padded to the same length, so they read as a number and not as command substitution.
+
+    Only when the body has numbers, names, ``$name`` and operators alone (no ``$(``, backtick,
+    quote, brace, ``;`` or newline), and closes as Bash closes arithmetic: on a ``))`` where
+    its own parentheses balance. Bash reads ``$((a) | (b))`` as ``$(`` and two subshells, so
+    that one stays. So does a body holding the app id, a piece of a path.
+    """
+    out: list[str] = []
+    pos = 0
+    for m in _ARITH_START.finditer(command):
+        if m.start() < pos:
+            continue
+        depth, i, end = 0, m.end(), None
+        while i < len(command):
+            if command[i] == "(":
+                depth += 1
+            elif command[i] == ")":
+                if depth == 0:
+                    end = i + 2 if command.startswith("))", i) else None
+                    break
+                depth -= 1
+            i += 1
+        body = command[m.end() : i]
+        if (
+            end is None
+            or not _ARITH_BODY.fullmatch(body)
+            or "$(" in body
+            or str(protected.STEAM_APP_ID) in body
+        ):
+            continue
+        out.append(command[pos : m.start()] + "0".ljust(end - m.start()))
+        pos = end
+    out.append(command[pos:])
+    return "".join(out)
+
+
 def _here_strings_to_quotes(command: str) -> str:
     """PowerShell here-strings (``@'…'@``) as ordinary quoted strings, for the lexer."""
 
@@ -761,7 +814,9 @@ def _ps_segment_is_read_only(words: list[Word]) -> bool:
     """A read-only verb (a script block's contents are checked as commands of their own);
     ``ForEach-Object`` (``foreach``, ``%``) only with script blocks (``| foreach Delete`` calls
     a method); an expression (it starts with a variable, a literal, a ``[Type]``, a member of a
-    parenthesis, or a hashtable's ``key=``) unless it assigns; never ``& $variable``."""
+    parenthesis, or a hashtable's ``key=``) unless it assigns; after an operator that
+    continues an expression (``(Get-Date) - $t``: ``PS_OPERATORS``), what follows it; never
+    ``& $variable``."""
     called = words[:1] == ["&"]
     words = _strip_prefix(words, True)
     if not words:
@@ -776,6 +831,8 @@ def _ps_segment_is_read_only(words: list[Word]) -> bool:
         if not rest and len(words) == 1:
             return True
         return _ps_segment_is_read_only(([rest] if rest else []) + words[1:])
+    if first.bare.lower() in PS_OPERATORS:  # (Get-Date) - $_.LastWriteTime: a value follows
+        return _ps_segment_is_read_only(words[1:])
     if (
         first.startswith("$")
         or first.bare == ""  # a quoted literal: "{0,-24}" -f $_.Name
@@ -903,20 +960,43 @@ def _repo_checkout(folder: str | None) -> bool:
     return folder is not None and os.path.isfile(os.path.join(folder, "tools", "protected.py"))
 
 
-def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
-    """Whether words may build a protected path from pieces: the app id as a path component;
-    or, in a command that mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts
-    a word or a quoted or comma-separated piece of one, or follows a variable or a ``…Leaf`` or
-    ``…common`` piece (``base = join(…, 'Gallant Leaf'); join(base, 'Zexion')``), or a
-    ``common`` component after a variable."""
-    low = protected.normalize(text)
+def _names_app_id(text: str, words: list[Word], protected) -> bool:
+    """Whether a word holds the app id as a path component (the cloud cache is
+    ``userdata/<account>/3392510``), split as ``_builds_from_pieces`` splits words.
+
+    URLs are left out (``steam://rungameid/3392510``, ``…/app/3392510/``). So is the id
+    multiplied by a number inside one word, as code builds a location id (``python -c
+    "print(3392510 * 1000 + 154)"``), with no slash or quote right next to it, unless the
+    command, URLs left out, names ``steam``, ``userdata`` or ``compatdata``. Any other use
+    counts: ``str(3392510)``, ``d + 3392510``, ``rm -r 3392510 && …`` in a ``sh -c`` string.
+    """
     app_id = str(protected.STEAM_APP_ID)
+    steam = re.search(r"steam|userdata|compatdata", protected.normalize(_URL.sub(" ", text)))
+    for w in words:
+        norm = protected.normalize(_URL.sub(" ", w))
+        for m in re.finditer(rf"(?<![^\"'\s,+()/]){app_id}(?![^\"'\s,+()/])", norm):
+            near = norm[m.start() - 1 : m.start()] + norm[m.end() : m.end() + 1]
+            product = re.match(r"[ \t]*\*[ \t]*\d", norm[m.end() :]) or re.search(
+                r"\d[ \t]*\*[ \t]*$", norm[: m.start()]
+            )
+            if steam or not product or re.search(r"[/\"']", near):
+                return True
+    return False
+
+
+def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
+    """Whether words may build a protected path from pieces: the app id as a path component
+    (``_names_app_id``); or, in a command that mentions ``gallant`` or ``steamapps``, a
+    ``Zexion`` piece that starts a word or a quoted or comma-separated piece of one, or follows
+    a variable or a ``…Leaf`` or ``…common`` piece (``base = join(…, 'Gallant Leaf');
+    join(base, 'Zexion')``), or a ``common`` component after a variable."""
+    low = protected.normalize(text)
+    if _names_app_id(text, words, protected):
+        return True
     # Each word's pieces, split at quotes, commas, plus signs, parentheses and spaces as well
     # (code: join(base, 'Zexion', …)), then each piece's path components.
     pieces = [s for w in words for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))]
     parts = [[c for c in s.split("/") if c] for s in pieces if s]
-    if any(app_id in p for p in parts):
-        return True
     if "gallant" not in low and "steamapps" not in low:
         return False
     for p in parts:
@@ -1037,7 +1117,10 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     powershell = SHELL_TOOLS[tool_name]
     command = str(tool_input.get("command") or "")
     cwd = str(tool_input.get("cwd") or session_cwd or "")
-    code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
+    if powershell:
+        code = _here_strings_to_quotes(command)
+    else:
+        code = _arithmetic_to_numbers(_cut_heredocs(command), protected)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
     words = [w for s in segments for w in s if id(w) not in text_ids]
@@ -1050,6 +1133,8 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         return None
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
+    if powershell:  # "$($_.Name)" only reads a member
+        substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
     if "$(" in substitution or (not powershell and "`" in substitution):
         return f"{BLOCK_HINT}\nCommand substitution next to a protected path."
     if powershell and (call := _ps_calls_block(code)):
