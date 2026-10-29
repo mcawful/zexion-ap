@@ -36,9 +36,9 @@ Set with the Goal option.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
     Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
-    stop generation, as above (the OS Install Disks option gives the numbers). Where there is
-    too little filler for the disks, ten Missile Containers or Mega Bombs become a box and nine
-    Scrap Metal, as the game makes filler.
+    stop generation, as above (the OS Install Disks option gives the numbers). Where filler
+    runs short, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, in any
+    mode ("Which modes are there?").
 
 ## Which modes are there?
 
@@ -47,27 +47,28 @@ starting items and settings, or Custom. OHKO has no Energy Tanks and gives you a
 teleport to; the 4 locations it can't reach are left out.
 
 With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
-names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27
-items as `start`, `random`, `pool` or `excluded` (`custom_items`), and the settings of Edit
-Options (Random Gun, Box Compression, Hints, Gates, Start Keys, X Crystals, X Blocks, Abridged
-Finale and the rest). Each starts as `preset`: the value of `custom_base`, the mode Custom
-starts from. The seed is built from them as the game builds its own: the coin flips, Random
-Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
-Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them, and so do a few the menu allows: missiles and Mega Bombs (with Bulk
-Missiles, Bulk Bombs or Box Compression) that would make more items than the pool has places,
-which the game would cut at random, keys included, or leave too little filler for the
-locations your start leaves out. Not yet: starting Mega Bombs. Secret Shuffle adds a 155th
-location, the Bomb Box at X48 Y20, named ??? from the game's area table ("??? 48,20").
+names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
+as `start`, `random`, `pool` or `excluded` (`custom_items`), and the settings of Edit Options
+(Random Gun, Box Compression, Hints, Gates, Start Keys, X Crystals, X Blocks, Abridged Finale
+and the rest). Each starts as `preset`: the value of `custom_base`, the mode Custom starts
+from. The seed is built from them as the game builds its own: the coin flips, Random Gun's
+draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40 Energy
+Tanks, more missiles than the pool has room for, and so on) stop generation with an error that
+names them, and so do a few the menu allows: missiles and Mega Bombs (with Bulk Missiles, Bulk
+Bombs or Box Compression) that would make more items than the pool has places, which the game
+would cut at random, keys included. Where the filler runs short, in any mode, for the locations
+your start leaves out and the disks, ten Missile Containers or Mega Bombs become a box and nine
+Scrap Metal, as the game makes filler; with none to spare, generation stops. Not yet: starting
+Mega Bombs. Secret Shuffle adds a 155th location, the Bomb Box at X48 Y20, named ??? from the
+game's area table ("??? 48,20").
 With Guns First on (every preset), each gun and its upgrade are one item, Progressive
 Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
 the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
 items of their own, and the seed's logic counts each only once you have its gun, as the
 game's own logic does.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
-R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off is
-taken with the core goal: the core's door needs the four keys whatever Gates is, and the
-gates are only a way to travel.
+R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off works with the
+core goal: the core's door needs only the four keys.
 Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
 goal.
 
@@ -84,10 +85,10 @@ from which your starting items reach at least one location (and, with the core g
 which you can reach Zexion's core); another stops generation with an error. With Easy's items
 that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
 room where your starting items reach only a few locations, generation sometimes fails: generate
-again, or pick another room. With Double Teleport the second room is any other but the eight
-the game's menu flags: the game's logic counts one of those only once your Energy (doubled with
-the Magnus Armor), missiles, Mega Bombs, 10 per box and the menu's items owned (but the Navcore
-and the Magnus Armor) add up to 27, so the world draws one only when your starting items do. `random_start` (or
+again, or pick another room. With Double Teleport the second room is any other, but one of
+the eight the game's menu flags only when your starting items score 27 or more, as the game's
+logic counts them: Energy Tanks (doubled with the Magnus Armor), Missile Containers and Mega
+Bombs one each, 10 per box, and one per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or
 `random`) picks a room as the game's Random Start does. The spoiler log names the start room
 (and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
 as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.

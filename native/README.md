@@ -327,9 +327,7 @@ While a plan is armed (`ap_newgame`), each frame call:
   RANDOMIZER game the game's own start table is used, not the plan's (the client's fallback
   when the two differ), and the seed's second start must be one of its rooms. A plan without `menu` lines is only checked against
   `expect` as the player's placement made it (the client always sends them). Working in
-  game: 2026-10-27, a Custom and a Standard seed by their text, the Custom one the same as its
-  ARCHIPELAGO game byte for byte, and another seed's text refused (`docs/custom-mode.md`, "The
-  new game").
+  game: 2026-10-27 (`docs/re/memory.md`, "Starting a new game").
 - **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
@@ -597,22 +595,11 @@ Working in game: 2026-10-25 ("AP saves without the client").
 Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
 in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
 two-look check, the unseen squares named as the game names its own and the markers still raised
-after a save, a return to the title and a load; 2026-10-27, helper 0.30.0 from develop, two
-Custom seeds with Obscure Majors on, Minors off and Hints Large (`live40`, Class off;
-`live41`, Class on). With Class off, a navigation room's reveal left the stand-ins at the
-game's minor `0x0D`. The helper raised each to `0x15` by the next 0.1 s read, and the cursor
-read ADVANCED TECH, with the same marker as the game's hinted majors. With Class on, the game
-put every square at `0x15`, and the cursor read UNKNOWN ITEM on all of them, the helper
-changing nothing. In both, walking into the room gave `0x21`, as for a game major, and once
-seen the map named the item (OS INSTALL DISK). Found there: while a stand-in was on screen, the
-game wrote its square back as a minor (`0x19`) and the helper raised it again (read in both
-seeds), and the border of its dot on the minimap flashed (seen in `live41`; that the flip
-caused it is assumed). The game's write was traced since (the item update's on-screen write,
-"Map markers"), and the helper patches it (`tests/mapmarks_tests.cpp` runs the game's bytes
-and the patch side by side). Working in game 2026-10-28, the helper built from this change
-(0.30.0, `b5654b77a1c9`), `live41` in slot 5: the patch on from the load, and with the player
-in the cells of another game's progression item (X25 Y25) and of an OS Install Disk (X26 Y26),
-both on screen, their squares stayed `0x1A` and the owner saw no flash.
+after a save, a return to the title and a load; 2026-10-27, two Custom seeds under Obscure
+Majors on and Minors off, Class off and on (`live40`, `live41`), the stand-ins marked as the
+game's own majors, a stand-in's minimap dot flashing while on screen; 2026-10-28, with the
+on-screen write's patch (`tests/mapmarks_tests.cpp` runs the game's bytes and the patch side by
+side), no flash ("Map markers").
 
 ### The title screen's lines
 
