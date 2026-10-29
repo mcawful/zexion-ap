@@ -54,7 +54,10 @@ Finale and the rest). Each starts as `preset`: the value of `custom_base`, the m
 starts from. The seed is built from them as the game builds its own: the coin flips, Random
 Gun's draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40
 Energy Tanks, more missiles than the pool has room for, and so on) stop generation with an
-error that names them. Not yet: starting Mega Bombs. Secret Shuffle adds a 155th
+error that names them, and so do a few the menu allows: missiles and Mega Bombs (with Bulk
+Missiles, Bulk Bombs or Box Compression) that would make more items than the pool has places,
+which the game would cut at random, keys included, or leave too little filler for the
+locations your start leaves out. Not yet: starting Mega Bombs. Secret Shuffle adds a 155th
 location, the Bomb Box at X48 Y20, named ??? from the game's area table ("??? 48,20").
 With Guns First on (every preset), each gun and its upgrade are one item, Progressive
 Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
@@ -109,8 +112,10 @@ What a new game can start with:
 - with Guns First on (every preset), at most two of each Progressive weapon (the second is its
   upgrade), and none of the five upgrades as items of their own; with it off, one of each
   gun and one of each of the five upgrades;
-- Energy Tanks, Missile Boxes, and up to 9 Missile Containers (Custom's starting missiles
-  come as Missile Boxes of ten and the rest as containers, and count toward the 9);
+- up to 40 Energy Tanks, and missiles up to 999 in all, ten per Missile Box, with up to 9
+  Missile Containers (Custom's starting missiles come as Missile Boxes of ten and the rest as
+  containers, and count toward these): the most the game's randomizer menu starts a game
+  with;
 - keys, in order from the Alpha Key;
 - OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
 

@@ -105,7 +105,9 @@ class PoolMissiles(Amount):
     """Choose the items to find throughout the world.
     Custom mode only. 0 to 999, with Starting Missiles 999 at most together, and no more than
     the menu allows: ten for each place the pool's keys, items, Energy Tanks and Mega Bombs
-    leave free. Above what fits, some come in Missile Boxes of ten."""
+    leave free. Above what fits, some come in Missile Boxes of ten. Refused, though the menu
+    allows it, where the boxes and the rest would be more items than the pool's places (see
+    Bulk Missiles and Box Compression)."""
 
     display_name = "Item Pool Missiles"
     range_end = custom.MAX_AMMO
@@ -126,7 +128,9 @@ class PoolMegaBombs(Amount):
     """Choose the items to find throughout the world.
     Custom mode only. 0 to 999, with Starting Mega Bombs 999 at most together, and no more
     than the menu allows: ten for each place the pool's keys, items, Energy Tanks and missiles
-    leave free. Above what fits, some come in Bomb Boxes of ten."""
+    leave free. Above what fits, some come in Bomb Boxes of ten. Refused, though the menu
+    allows it, where the boxes and the rest would be more items than the pool's places (see
+    Bulk Bombs and Box Compression)."""
 
     display_name = "Item Pool Mega Bombs"
     range_end = custom.MAX_AMMO

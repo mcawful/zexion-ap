@@ -96,6 +96,19 @@ class TestPoolDuplicatesRefused(unittest.TestCase):
         excluded = {"mode": "custom", "custom_items": {"Snake": "excluded", "Tunneler": "excluded"}}
         fake_world(start_inventory={"Progressive Snake": 2}, **excluded).generate_early()
 
+    def test_energy_and_missiles_past_the_menus_most(self) -> None:
+        # Standard starts with 3 Energy Tanks and 3 Missile Containers: 40 Energy and 999
+        # missiles at most, as the randomizer menu starts a game with.
+        fake_world(start_inventory={"Energy Tank": 37, "Missile Box": 99}).generate_early()
+        self.assertIn("41 Energy Tanks", self.refused({"Energy Tank": 38}))
+        self.assertIn("1003 missiles", self.refused({"Missile Box": 100}))
+        self.assertIn("50003 missiles", self.refused({"Missile Box": 5000}))
+        world = fake_world(
+            start_inventory_from_pool={"Energy Tank": 17}, start_inventory={"Energy Tank": 21}
+        )
+        with self.assertRaises(OptionError):
+            world.generate_early()
+
     def test_from_pool_items_meet_the_new_games_limits(self) -> None:
         world = fake_world(start_inventory_from_pool={"Scrap Metal": 1})
         with self.assertRaises(OptionError) as caught:

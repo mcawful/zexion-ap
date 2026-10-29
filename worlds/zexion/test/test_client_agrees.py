@@ -115,6 +115,16 @@ class TestClientCodes(unittest.TestCase):
             newgame.start_with({ids.MISSILE_CONTAINER: most + 1})
         self.assertEqual(starting.problems({ids.MISSILE_CONTAINER: most}, False), [])
         self.assertNotEqual(starting.problems({ids.MISSILE_CONTAINER: most + 1}, False), [])
+        # The most Energy and missiles generation accepts are amounts the client writes (16
+        # bits each, plan_text).
+        top = {starting.ENERGY_TANK: starting.MAX_ENERGY, starting.MISSILE_BOX: 99}
+        top[starting.MISSILE_CONTAINER] = most
+        self.assertEqual(starting.problems(top, False), [])
+        _, amounts = newgame.start_with(top)
+        self.assertEqual((amounts["energy"], amounts["missiles"]), (40, 999))
+        self.assertTrue(all(-(2**15) <= v < 2**15 for v in amounts.values()))
+        over = {starting.ENERGY_TANK: 41, starting.MISSILE_BOX: 100}
+        self.assertEqual(len(starting.problems(over, False)), 2)
         # Without Guns First, the upgrades are started as themselves: one each, in the array.
         one_each = dict.fromkeys(newgame.START_WITH_ORDER, 1)
         self.assertEqual(starting.problems(one_each, False, guns_first=False), [])

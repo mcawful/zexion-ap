@@ -13,6 +13,9 @@ with its limits:
   docs/re/randocells.md, "The pool", step 8); with it off, a weapon and an upgrade once each;
 - Missile Containers: 9 at most, the mode's own included (the new game takes one missile amount,
   containers plus 10 per Missile Box, and the game splits it back into tens and containers);
+- that missile amount 999 at most, and Energy Tanks 40 at most (the new game's Energy amount):
+  the most the randomizer menu starts a game with (docs/re/randocells.md, "The randomizer
+  menu's first screen: items and amounts"); the client writes each amount as 16 bits;
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
 - no Mega Bombs or Bomb Boxes, not supported yet: client/newgame.py writes them as the new
   game's bomb amount, but the game's use of that amount is from disassembly only (docs/re/
@@ -50,8 +53,10 @@ from .items import (
     UPGRADES,
 )
 
-MISSILE_CONTAINER = 1
+ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
 MAX_CONTAINERS = 9
+# The randomizer menu's most starting Energy and missiles (custom.MAX_ENERGY, MAX_AMMO).
+MAX_ENERGY, MAX_MISSILES = 40, 999
 # The new game's start-with array (client/newgame.py, START_WITH_ORDER), less the upgrades,
 # which with Guns First this world hands out as a progressive weapon's second copy.
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
@@ -102,6 +107,18 @@ def problems(counts: Mapping[int, int], disc_hunt: bool, guns_first: bool = True
                 f"{n} Missile Containers, the mode's own included: a new game starts with "
                 f"{MAX_CONTAINERS} at most"
             )
+    tanks = max(counts.get(ENERGY_TANK, 0), 0)
+    if tanks > MAX_ENERGY:
+        out.append(
+            f"{tanks} Energy Tanks, the mode's own included: a new game starts with "
+            f"{MAX_ENERGY} at most"
+        )
+    missiles = max(counts.get(MISSILE_CONTAINER, 0), 0) + 10 * max(counts.get(MISSILE_BOX, 0), 0)
+    if missiles > MAX_MISSILES:
+        out.append(
+            f"{missiles} missiles (10 per Missile Box), the mode's own included: a new game "
+            f"starts with {MAX_MISSILES} at most"
+        )
     keys = [k for k in KEY_CODES if counts.get(k, 0) > 0]
     if keys != list(KEY_CODES[: len(keys)]):
         out.append("keys: a new game starts with the first ones from the Alpha Key on")

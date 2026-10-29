@@ -15,11 +15,12 @@ A list entry is a code: 0-49 an item, 50-63 derived from the items (``derive``),
 to the cell, the options and energy (``cell_code``; decided before anything else in the
 list). Tier/count byte: 1 = enough alone; 2 = part of the group needed together; 3 = this
 item does not count here; 4 = required; 11-40 = enough alone with (value - 10) of the item;
-41-90 = in the group, with (value - 40). Not modeled yet: Missile and Bomb Boxes adding 10
-to a group's count. Modeled, as the game's logic has them: Gates Open's travel between the gate
-cells, and a flagged second teleport target counted only from a useful-item score of 27
-(docs/re/randocells.md, "What each setting does in the game" and "Starting Location and the
-second teleport target").
+41-90 = in the group, with (value - 40). Not modeled: a Missile or Bomb Box entry, which
+raises another entry's need by ten per box (no B1 list has one); a held box never counts as
+Missile Containers or Mega Bombs, as in the game. Modeled, as the game's logic has them:
+Gates Open's travel between the gate cells, and a flagged second teleport target counted only
+from a useful-item score of 27 (docs/re/randocells.md, "What each setting does in the game"
+and "Starting Location and the second teleport target").
 
     randocells.py SAVE.sav --fresh            a save made at the start of its seed
     randocells.py SAVE.sav --start X,Y        any randomizer save, from one given cell

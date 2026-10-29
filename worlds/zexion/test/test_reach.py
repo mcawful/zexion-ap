@@ -157,6 +157,35 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         self.assertNotIn(target, reach.reach(blocks, (), ((7, 27),)).regions)
 
 
+class TestBoxesInTheRules(unittest.TestCase):
+    """The generator counts a held box only as ten missiles or bombs for code 62, never as
+    Missile Containers or Mega Bombs in a list, and a box entry in a list only raises another
+    entry's need, which no B1 list has (docs/re/randocells.md, "The evaluator works on a table
+    of 64 counts", 0xE3C80, 0xE3530)."""
+
+    def test_a_held_box_is_no_containers(self) -> None:
+        # Tier 50 in a group: ten Missile Containers ("??? 48,20" by region 452).
+        self.assertFalse(logic.satisfied([(12, 2), (1, 50)], {7: 1, 12: 1, 36: 10}))
+        self.assertTrue(logic.satisfied([(12, 2), (1, 50)], {7: 1, 12: 1, 1: 10}))
+
+    def test_the_x_missile_needs_five_containers(self) -> None:
+        self.assertFalse(logic.satisfied([(18, 1)], {18: 1, 36: 5, 1: 4}))
+        self.assertTrue(logic.satisfied([(18, 1)], {18: 1, 1: 5}))
+
+    def test_no_list_has_a_box_entry(self) -> None:
+        lists = [
+            entries
+            for ways in data.ENTRANCES.values()
+            for way in ways
+            if way
+            for entries in way[:1]
+        ]
+        lists += list(data.LOCATION_RULES.values()) + [way[0] for way in data.CORE["needs"]]
+        self.assertTrue(lists)
+        boxes = [entries for entries in lists if {36, 37} & {code for code, _ in entries}]
+        self.assertEqual(boxes, [])
+
+
 class TestCollect(unittest.TestCase):
     def test_a_weapon_twice_counts_as_its_upgrade(self) -> None:
         have: dict[int, int] = {}

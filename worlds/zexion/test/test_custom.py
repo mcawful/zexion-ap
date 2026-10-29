@@ -129,6 +129,107 @@ class TestTheGeneratedSeeds(unittest.TestCase):
                 )
 
 
+def every_outcome(m: int, b: int, boxes: int) -> set[int]:
+    """The entries step 5 can end with, the boxes drawn, over every draw: each draw's 0, its
+    top and the bombs left less 1 cover both of the rule's outcomes."""
+    states = {(0, m, b)}
+    for _ in range(boxes):
+        after = set()
+        for n, mm, bb in states:
+            draws = {0, mm + bb, bb - 1} & set(range(mm + bb + 1)) if mm + bb >= 0 else {0}
+            for d in draws:
+                if (d >= bb or bb < 10) and mm >= 10:
+                    after.add((n + 1, mm - 10, bb))
+                else:
+                    after.add((n + (bb != 0), mm, bb - 10))
+        states = after
+    return {n + max(mm, 0) + max(bb, 0) for n, mm, bb in states}
+
+
+class TestMoreBoxesThanTens(unittest.TestCase):
+    """Box Compression's 25 can make more boxes than the missiles and bombs have tens: the game
+    makes them all, a box drawn once both are below 0 a Bomb Box (0xF2350 to 0xF23BF;
+    docs/re/randocells.md, "The pool", step 5)."""
+
+    def menu(self, missiles: int, bombs: int) -> Menu:
+        menu = Menu.preset("standard").with_amount(custom.POOL_MISSILES, missiles)
+        return menu.with_amount(custom.POOL_BOMBS, bombs)
+
+    def test_the_box_past_the_bombs_is_a_bomb_box(self) -> None:
+        # 40 for 6 places: ceil((40 - 6 + 25) / 9) = 7 boxes, at most 6, for 4 tens. The fifth
+        # box finds the bombs at exactly 0 and is not counted; the sixth is drawn from below 0.
+        menu = self.menu(20, 20)
+        for seed in range(30):
+            got = Counter(custom.supplies(menu, 6, random.Random(seed)))
+            self.assertEqual(got, Counter({MISSILE_BOX: 2, BOMB_BOX: 3}), seed)
+
+    def test_standard_with_900_mega_bombs_generates(self) -> None:
+        # The finding's state: once a crash in the draw. R = 107: 94 boxes for 92 tens.
+        menu = self.menu(20, 900)
+        self.assertEqual(custom.problems(menu), [])
+        self.assertEqual(
+            Counter(custom.supplies(menu, 107, random.Random(1))),
+            Counter({MISSILE_BOX: 2, BOMB_BOX: 91}),
+        )
+        for seed in range(20):
+            _, pool = custom.resolve(menu, random.Random(seed))
+            self.assertEqual(len(custom.pool_items(menu, pool, random.Random(seed))), 154)
+
+    def test_bombs_first_is_the_longest_list(self) -> None:
+        rng = random.Random(5)
+        for _ in range(300):
+            m, b, room = rng.randrange(20, 300), rng.randrange(20, 300), rng.randrange(1, 60)
+            if m + b <= room:
+                continue
+            menu = self.menu(m, b)
+            boxes = min(custom._ceil9(m + b - room + 25), room)
+            with self.subTest(m=m, b=b, room=room):
+                self.assertEqual(
+                    len(custom.supplies(menu, room, custom._BombsFirst())),
+                    max(every_outcome(m, b, boxes)),
+                )
+
+
+class TestListsLongerThanThePlaces(unittest.TestCase):
+    """The menu allows states whose list can be longer than the places, which the game cuts at
+    random, keys and items among them (step 7); problems refuses them."""
+
+    def test_bulk_missiles_past_the_places(self) -> None:
+        # Bulk Missiles: 46 boxes and 9 containers; the bombs' 53 boxes take them below 0.
+        menu = Menu.preset("standard").with_settings({custom.BULK_MISSILES: 1})
+        menu = menu.with_amount(custom.POOL_MISSILES, 469).with_amount(custom.POOL_BOMBS, 499)
+        self.assertEqual(custom.most_entries(menu), 155)
+        found = custom.problems(menu)
+        self.assertTrue(any("can come to 155, more than its 154 places" in f for f in found))
+        fits = menu.with_amount(custom.POOL_MISSILES, 459)
+        self.assertEqual(custom.problems(fits), [])
+
+    def test_the_coin_flips_counted(self) -> None:
+        menu = Menu.preset("standard")
+        self.assertEqual(custom.pooled_counts(menu), range(26, 27))  # Random Gun's guns
+        off = menu.with_settings({custom.RANDOM_GUN: 0})
+        self.assertEqual(custom.pooled_counts(off), range(25, 27))  # the Arc Plasma's flip
+
+    def test_whatever_problems_passes_builds(self) -> None:
+        rng = random.Random(7)
+        for trial in range(400):
+            menu = Menu.preset(rng.choice(("easy", "standard", "ohko")))
+            for i in rng.sample(range(custom.ARRAY), 6):
+                menu = menu.with_item(i, rng.choice(list(custom.STATES)))
+            flags = (custom.BULK_MISSILES, custom.BULK_BOMBS, custom.BOX_COMPRESSION)
+            menu = menu.with_settings({t: rng.randrange(2) for t in flags})
+            menu = menu.with_settings({custom.SECRET_SHUFFLE: rng.randrange(2)})
+            menu = menu.with_amount(custom.POOL_MISSILES, rng.randrange(1000))
+            menu = menu.with_amount(custom.POOL_BOMBS, rng.randrange(1000))
+            if custom.problems(menu):
+                continue
+            for seed in range(3):
+                _, pool = custom.resolve(menu, random.Random(seed))
+                with self.subTest(trial=trial, seed=seed):
+                    items = custom.pool_items(menu, pool, random.Random(seed))
+                    self.assertEqual(len(items), menu.places)
+
+
 class TestRandomGun(unittest.TestCase):
     def guns(self, menu: Menu, starts: int, seeds: int = 60) -> tuple[Counter, Counter]:
         """How often each gun is started and pooled. Guns First is off here: with it, a started
@@ -238,8 +339,14 @@ class TestTheMenusLimits(unittest.TestCase):
 
     def test_ten_per_free_place(self) -> None:
         # Standard: 150 places less 17 Energy Tanks and 26 pooled entries leave 107; the 12 Mega
-        # Bombs take 12, so missiles may be 950.
+        # Bombs take 12, so missiles may be 950. Box Compression off: with it, the 25 make 98
+        # Missile Boxes, and with the 12 Mega Bombs the list is longer than the places
+        # (TestListsLongerThanThePlaces).
         menu = Menu.preset("standard").with_amount(custom.START_MISSILES, 0)
+        menu = menu.with_settings({custom.BOX_COMPRESSION: 0})
+        compressed = menu.with_amount(custom.POOL_MISSILES, 950)
+        found = custom.problems(compressed.with_settings({custom.BOX_COMPRESSION: 1}))
+        self.assertTrue(found and "can come to 157" in found[0], found)
         self.assertEqual(custom.problems(menu.with_amount(custom.POOL_MISSILES, 950)), [])
         found = custom.problems(menu.with_amount(custom.POOL_MISSILES, 951))
         self.assertTrue(found and "950" in found[0], found)
@@ -351,6 +458,26 @@ class TestTheOptionsRefuse(unittest.TestCase):
     def test_an_unknown_state(self) -> None:
         self.assertIn("'maybe'", self.refused(mode="custom", custom_items={"Navcore": "maybe"}))
         self.assertEqual(len(CustomItems.valid_keys), 27)
+
+    def test_a_state_that_is_not_text(self) -> None:
+        for state in (["start"], 1, None):
+            with self.subTest(state=state):
+                found = self.refused(mode="custom", custom_items={"Slide Mod": state})
+                self.assertIn(f"{state!r} is not one of", found)
+
+    def test_a_list_longer_than_the_places(self) -> None:
+        found = self.refused(
+            mode="custom", bulk_missiles="on", pool_missiles=469, pool_mega_bombs=499
+        )
+        self.assertIn("the game's randomizer cannot hold or build this", found)
+        self.assertIn("more than its 154 places", found)
+
+    def test_too_little_filler_for_what_is_left_out(self) -> None:
+        # Bulk Missiles with 949: the Mega Bombs' formula makes them all boxes, so a location
+        # needing Mega Bombs is left out, and the pool has no filler and no ten singles.
+        found = self.refused(mode="custom", bulk_missiles="on", pool_missiles=949)
+        self.assertIn("too little filler for the 1 locations", found)
+        self.assertIn("Bulk Missiles and Bulk Bombs off", found)
 
 
 class TestCustomAsItsBase(unittest.TestCase):
