@@ -221,12 +221,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     mission_.set_image(image);
     // A client's config: the offline look put back first, with the addresses it was set with.
-    if (configured_ && active) {
-        leave_offline();
-        drop_offline_warning();
-        other_save_ = false;  // the new client says again, and is told again
-        other_warned_ = false;
-    }
+    if (configured_ && active) leave_offline_for_client();
     at_ = found;
     gl_ = load_gl();
     configured_ = true;
@@ -1214,6 +1209,7 @@ void Game::put_back_all(WidgetCallback callback) {
 
 void Game::client_gone(WidgetCallback callback) {
     put_back_all(callback);
+    drop_client_notices();
     active_ = false;
 }
 

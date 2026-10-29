@@ -2,7 +2,7 @@
 // another seed), the file select's counts, and the notices.
 #include "game_calls.h"
 
-#include <iterator>
+#include <algorithm>
 
 namespace zap {
 
@@ -27,10 +27,57 @@ void Game::set_offline(std::vector<OfflineSeed> seeds) {
     offline_seeds_ = std::move(seeds);
 }
 
-void Game::drop_offline_warning() {
-    for (auto it = popups_.begin(); it != popups_.end();) {
-        it = it->silent && it->suffix == kOfflineWarning ? popups_.erase(it) : std::next(it);
+void Game::merge_offline(std::vector<OfflineSeed> seeds) {
+    add_known_seeds(seeds);
+    // Each seed in place of its old record, or after the others: the indices stay, so the
+    // dressed seed (offline_index_) is still the one dressed, and its record is kept as it is.
+    for (OfflineSeed& seed : seeds) {
+        auto same = [&](const OfflineSeed& k) { return offline_matches(k, seed); };
+        auto it = std::find_if(offline_seeds_.begin(), offline_seeds_.end(), same);
+        if (it == offline_seeds_.end()) {
+            offline_seeds_.push_back(std::move(seed));
+        } else if (it - offline_seeds_.begin() != offline_index_) {
+            *it = std::move(seed);
+        }
     }
+}
+
+bool Game::drop_notice(const char* text) {
+    // The helper's notices are the only silent popups (a client's never are: parse_batch).
+    bool dropped = false;
+    for (auto it = popups_.begin(); it != popups_.end();) {
+        if (it->silent && it->suffix == text) {
+            it = popups_.erase(it);
+            dropped = true;
+        } else {
+            ++it;
+        }
+    }
+    return dropped;
+}
+
+void Game::drop_offline_warning() {
+    // Withdrawn before it showed: told again when a save is next dressed with no client this
+    // load (after a client of another seed goes away, say).
+    if (drop_notice(kOfflineWarning)) offline_warned_ = false;
+}
+
+void Game::leave_offline_for_client() {
+    leave_offline();
+    // The new client says other_save again, and is told again: a notice not shown yet is the
+    // last client's.
+    drop_notice(kOtherSeedNotice);
+    other_save_ = false;
+    other_warned_ = false;
+}
+
+void Game::drop_client_notices() {
+    // Not shown yet when its client went away: the other-seed notice is told again to the next
+    // client that says so, and CLIENT CONNECTED. is no longer so.
+    drop_notice(kOtherSeedNotice);
+    drop_notice(kOnlineNotice);
+    other_save_ = false;
+    other_warned_ = false;
 }
 
 void Game::leave_offline_seed() {
@@ -86,7 +133,11 @@ std::string Game::known_disk_row() const {
 void Game::watch_offline() {
     if (!configured_) return;
     if (*at_.save_loaded == kNoSaveLoaded) {
-        // No save: each notice comes again with the next load.
+        // No save: each notice comes again with the next load, and one not shown yet is
+        // withdrawn (it was for the save just left; pump_popups would show it in the next).
+        for (const char* notice : {kOfflineWarning, kOnlineNotice, kOtherSeedNotice}) {
+            drop_notice(notice);
+        }
         offline_warned_ = false;
         other_warned_ = false;
         offline_played_ = -1;

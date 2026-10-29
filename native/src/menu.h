@@ -72,7 +72,7 @@ private:
 };
 
 // The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
-// the helper draws its label like STYLE: AUTO (style 5, palette 0, its grey tint; re-applied
+// the helper draws its label like STYLE: AUTO (style 5, palette 0, its gray tint; re-applied
 // while its menu is up, as the menu changes palette after some screens) and puts a padlock in
 // its eighth glyph. It clears the callback, which the generic widget handler then skips
 // (0xD0270), so nothing in the menu points into the helper, and moves the entry past the

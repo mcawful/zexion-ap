@@ -338,10 +338,11 @@ void test_a_save_of_the_seed_dressed_offline() {
     g_save_loaded = 3;
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on(), "a new load: the client's again until it says otherwise");
-    check(other.other_save() == "told" && other.queued_popups() == 2,
-          "and told again for this load");
+    check(other.other_save() == "told" && other.queued_popups() == 1,
+          "and told again for this load (the last load's notice withdrawn)");
     configure(other);  // a reconnect
-    check(other.other_save() == "told" && other.queued_popups() == 3, "and again on a reconnect");
+    check(other.queued_popups() == 0, "the last client's notice withdrawn");
+    check(other.other_save() == "told" && other.queued_popups() == 1, "and told again");
     {
         // A randomizer save of no known seed (a plain randomizer game): nothing said or done.
         zap::Game plain;
@@ -360,6 +361,170 @@ void test_a_save_of_the_seed_dressed_offline() {
     other.set_disk_slots({});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
           "the client's taken back: the offline one stays");
+}
+
+// The helper's notices are each for the load they were queued in: one the player leaves before
+// it shows is withdrawn, not shown in the next save (the client's own seed's).
+void test_a_notice_not_shown_goes_with_its_save() {
+    reset_game();
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    auto frames = [](zap::Game& game, int n) {
+        for (int i = 0; i < n; ++i) {
+            game.watch_all(nullptr);
+            game.pump_popups();
+        }
+    };
+    {
+        zap::Game game;
+        check(configure(game).empty(), "a client's config");
+        game.set_offline({s});
+        std::memset(g_section, 0, sizeof(g_section));
+        put_seed(g_section);
+        g_rando_marker = 1;
+        g_save_loaded = 3;
+        g_menu = 0;
+        check(game.other_save() == "told" && game.queued_popups() == 1,
+              "another seed's save: the notice queued");
+        g_menu = 1;  // paused before it shows
+        frames(game, 40);
+        check(g_messages == 0 && game.queued_popups() == 1, "not shown while paused");
+        g_menu = 0;
+        g_save_loaded = 0xFF;  // quit to the title
+        frames(game, 1);
+        check(game.queued_popups() == 0, "withdrawn as the save goes");
+        std::memset(g_section + 0x26C, 7, sizeof(g_table));  // the client's own seed's save
+        g_save_loaded = 3;
+        frames(game, 40);
+        check(g_messages == 0, "not shown in the client's own seed's save", g_text);
+        game.put_back_all(nullptr);
+    }
+    {
+        // A client going away before its notice shows: withdrawn with it, not shown before the
+        // not-connected warning that follows.
+        zap::Game game;
+        configure(game);
+        game.set_offline({s});
+        put_seed(g_section);
+        g_messages = 0;
+        check(game.other_save() == "told" && game.queued_popups() == 1, "the notice queued");
+        g_menu = 1;  // paused
+        frames(game, 40);
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        g_menu = 0;
+        frames(game, 200);
+        // (The box's lines may join words: its start is enough to tell the two apart.)
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "only the not-connected warning shown", g_text);
+        configure(game);
+        check(game.other_save() == "told", "the next client is told again");
+        game.put_back_all(nullptr);
+    }
+    {
+        // Warned with no client, but paused before it showed; a client of another seed comes and
+        // goes meanwhile: the warning is given again once the save is dressed without it.
+        g_messages = 0;
+        zap::Game game;
+        configure(game, false);
+        game.set_offline({s});
+        put_seed(g_section);
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        check(game.queued_popups() == 1, "warned with no client");
+        g_menu = 1;
+        configure(game);
+        check(game.other_save() == "told" && game.queued_popups() == 1,
+              "a client of another seed: its notice in the warning's place");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as it goes");
+        g_menu = 0;
+        frames(game, 200);
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "the not-connected warning given again", g_text);
+        game.put_back_all(nullptr);
+    }
+    {
+        // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
+        zap::Game game;
+        configure(game, false);
+        game.set_offline({s});
+        put_seed(g_section);
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        game.put_back_all(nullptr);
+    }
+    {
+        // CLIENT CONNECTED, for a save played offline, likewise.
+        g_messages = 0;
+        zap::Game game;
+        configure(game, false);
+        game.set_offline({s});
+        put_seed(g_section);
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        g_save_loaded = 0xFF;
+        frames(game, 1);
+        check(game.queued_popups() == 0, "withdrawn as the save goes");
+        g_save_loaded = 3;
+        frames(game, 40);
+        check(g_messages == 0, "not shown in the next save", g_text);
+        game.put_back_all(nullptr);
+    }
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
+// A seed file put (or read) while a client is connected reaches the look at once, not only the
+// AP-save test: another seed's save is told and dressed as one, and a dressed save keeps its own.
+void test_a_seed_put_with_a_client_reaches_the_look() {
+    reset_game();
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    std::memset(g_section, 0, sizeof(g_section));
+    put_seed(g_section);
+    g_rando_marker = 1;
+    g_save_loaded = 3;
+    g_menu = 0;
+    check(game.other_save() == "unknown", "no file for the save's seed: unknown");
+    zap::OfflineSeed b;
+    zap::parse_offline_seed(seed_text(), b);
+    b.name = "b";
+    game.merge_offline({b});
+    check(game.known_seeds() == 1 && game.ap_save_loaded(), "known to the AP-save test");
+    check(game.other_save() == "told", "and to the look: told");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.intel_on() && game.assists_locked() && game.offline_state() == "1:b",
+          "the save dressed");
+    // The same seed again (its look changed) and another: the dressed save keeps its record.
+    zap::OfflineSeed newer = b;
+    newer.name = "b2";
+    newer.intel = false;
+    zap::OfflineSeed c = b;
+    c.name = "c";
+    c.table[0] ^= 1;
+    game.merge_offline({newer, c});
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.intel_on() && game.offline_state() == "2:b", "the dressed record kept; one added");
+    check(game.known_seeds() == 2, "both known");
+    // Not dressed: the newer record takes the old one's place.
+    g_save_loaded = 0xFF;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    game.merge_offline({newer});
+    check(game.offline_state() == "2", "in place, not added");
+    g_save_loaded = 3;
+    check(game.other_save() == "told", "told on the next load");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.intel_on() && game.assists_locked() && game.offline_state() == "2:b2",
+          "dressed with the newer record");
+    game.put_back_all(nullptr);
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
 }
 
 void test_the_ap_saves_slots() {
@@ -607,6 +772,8 @@ int main() {
     test_the_cache_must_fit_the_game();
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
+    test_a_notice_not_shown_goes_with_its_save();
+    test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();
     test_a_cache_without_the_client_only_keys();

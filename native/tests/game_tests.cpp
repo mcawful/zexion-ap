@@ -1308,8 +1308,8 @@ void test_pause_row_from_the_seed_file() {
     g_rando_marker = 0;
 }
 
-// The popups queued, the client's and the helper's own notices; a client going away leaves them
-// to show.
+// The popups queued, the client's and the helper's own notices; a client going away leaves its
+// popups to show (their items are given) and takes its other-seed notice with it.
 void test_queued_popups() {
     zap::Game game;
     check(game.queued_popups() == 0, "none before a config");
@@ -1324,9 +1324,10 @@ void test_queued_popups() {
           "the helper's own notice queued");
     g_rando_marker = 0;
     game.client_gone(&chosen);
-    check(!game.active() && game.queued_popups() == 3, "the client gone: its popups stay queued");
+    check(!game.active() && game.queued_popups() == 2,
+          "the client gone: its popups stay queued, its other-seed notice withdrawn");
     for (int i = 0; i < 100; ++i) game.pump_popups();
-    check(game.queued_popups() == 0 && g_messages >= 4, "and show without it");
+    check(game.queued_popups() == 0 && g_messages >= 3, "and show without it");
     zap::Batch batch;
     zap::parse_batch("apply\npopup 36 X\nnotice 36 Y", batch);
     check(batch.popups.size() == 2 && batch.popups[0].counted && batch.popups[1].counted,

@@ -92,7 +92,8 @@ public:
     void put_back_all(WidgetCallback callback);
     // Game thread: the client went away. Puts back what it set (put_back_all) and goes
     // inactive until a client configures again; its popups not shown yet stay queued, as their
-    // items are already given (the client counts popups handed over, not shown).
+    // items are already given (the client counts popups handed over, not shown). The helper's
+    // notices for that client go (drop_client_notices).
     void client_gone(WidgetCallback callback);
     // Game thread: what clients set, before put_back_all drops it, and set again after it (an
     // unload refused).
@@ -243,12 +244,15 @@ public:
     // were earned (feats_screen_note). Until a save is loaded, or that screen has come and gone.
     bool feats_ended() const { return feats_ended_; }
 
-    // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files;
+    // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files
+    // in place of the last ones (with no client); merge_offline adds seeds to them (with a
+    // client: seed files read or put while it is connected), leaving the dressed save as it is;
     // the watch (every 16th frame call) dresses a save of one of them while no client is there
     // or the client said other_save, and sets the file select's counts with or without a
     // client. `offline_state`, for `hello`: "-", or the count (then ":" and the dressed seed's
     // file, if any).
     void set_offline(std::vector<OfflineSeed> seeds);
+    void merge_offline(std::vector<OfflineSeed> seeds);
     void watch_offline();
     void leave_offline();
     std::string offline_state() const;
@@ -359,7 +363,16 @@ private:
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
     void leave_offline_seed();
+    // Withdraws one of the helper's queued notices (game_offline.cpp), as its flag is reset:
+    // each is for the load it was queued in, and the other-seed one and CLIENT CONNECTED. for
+    // their client too (withdrawn at a client's config or when it goes away). Whether one was.
+    bool drop_notice(const char* text);
+    // The not-connected warning withdrawn; if it had not shown, given again with the next dress.
     void drop_offline_warning();
+    // A client's config: the offline look put back first, and its notices for this load reset.
+    void leave_offline_for_client();
+    // A client gone (client_gone): its notices not shown yet withdrawn, other_save reset.
+    void drop_client_notices();
     bool offline_warned_ = false;  // this load's warning queued
     // The seed whose save this load was dressed offline (-1: none), kept through a client's
     // short connections (they undress it): `client_back` tells the player the client is back.
