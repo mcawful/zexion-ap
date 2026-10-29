@@ -159,7 +159,7 @@ void test_the_helpers_disc() {
 }
 
 // The disc not painted, or a sprite without its template (whose list the game would free): the
-// game's frame 829, 16 x 16, as before.
+// game's frame 829, 16 x 16, as before; a sprite with no frame 829: no disc at all.
 void test_the_games_disc_otherwise() {
     zap::PauseDiskRow row;
     {
@@ -182,6 +182,14 @@ void test_the_games_disc_otherwise() {
         check(p.frame(p.sprite[4]) == 829 && at<BYTE*>(p.sprite[4], 0x1A8) == g_frames &&
                   row.disc_entry() == nullptr,
               "no template: frame 829, the game's list kept");
+    }
+    {
+        Pause p;
+        at<int32_t>(p.sprite[4], 0x1BC) = 829;  // frames 0 to 828 only
+        row.watch(p.addresses(), true);
+        check(p.frame(p.sprite[4]) == 384 && at<BYTE*>(p.sprite[4], 0x1A8) == g_frames &&
+                  row.disc_entry() == nullptr,
+              "a sprite without frame 829: neither disc");
     }
     row.set("");
     Pause p;

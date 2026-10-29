@@ -106,6 +106,8 @@ bool is_open(const BYTE* current_menu, const BYTE* wanted);
 
 // A sprite's frame (sprite::kFrameIndex), or -1 if it cannot be read.
 int32_t frame_of(const BYTE* sprite);
+// A sprite's frame list (sprite::kFrameList), if it has frame `frame`; else null.
+BYTE* frame_list(const BYTE* sprite, int32_t frame);
 // Shows frame `frame` of a sprite's frame list (its index and its frame pointer), if the list
 // has that many; false, with nothing written, otherwise.
 bool set_frame(BYTE* sprite, int32_t frame);
@@ -125,5 +127,13 @@ bool in_image_code(HMODULE image, const void* p);
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page
 // could not be made writable. Game thread, so the game is not running the code meanwhile.
 bool patch_code(BYTE* at, const void* bytes, size_t size);
+// Whether the code at `at` reads `bytes` (`size` of them, up to kMaxCodePatch).
+constexpr size_t kMaxCodePatch = 64;
+bool code_reads(const BYTE* at, const void* bytes, size_t size);
+// Puts `original` back where the code at `at` still reads `written` (patch_code): whether it is
+// no longer the helper's (put back, or changed by something else since). False while it still
+// reads as written, the put-back failed (or `size` is over kMaxCodePatch): the helper then holds
+// it and refuses to unload.
+bool put_back_code(BYTE* at, const void* written, const void* original, size_t size);
 
 }  // namespace zap

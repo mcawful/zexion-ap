@@ -1,5 +1,6 @@
 #include "pause.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "game_mem.h"
@@ -36,7 +37,8 @@ const char kDiscRows[kDiscSize][kDiscSize + 1] = {
 
 namespace {
 
-constexpr uint8_t kJne = 0x75, kJmp = 0xEB, kSkip = 0x2E;
+// The branch: `jne` over the row (+0x2E), as the game has it, and `jmp` while on.
+constexpr BYTE kGameBranch[2] = {0x75, 0x2E}, kOurBranch[2] = {0xEB, 0x2E};
 // The KEYS row's panel: its sprites and their count, at the offsets a widget uses for its label
 // and record (docs/re/memory.md, "The pause screen's KEYS row"; B1).
 constexpr ptrdiff_t kPanelSprites = 0x1F0, kPanelSpriteCount = 0x1F8;
@@ -80,15 +82,6 @@ std::string pause_row_text(int count, int required) {
     return out;
 }
 
-bool PauseDiskRow::patch(const GameAddresses& a, uint8_t from, uint8_t to) {
-    BYTE now[2] = {};
-    if (a.keys_branch == nullptr || !safe_read(a.keys_branch, now, sizeof(now)) ||
-        now[1] != kSkip || now[0] != from) {
-        return false;
-    }
-    return patch_code(a.keys_branch, &to, 1);
-}
-
 void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
     const std::string& text = text_.empty() ? prepared_ : text_;
     if (text.empty()) {
@@ -96,17 +89,17 @@ void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
         return;
     }
     entry_shows(disc);
-    if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
+    if (!patched_ && code_reads(a.keys_branch, kGameBranch, 2) &&
+        patch_code(a.keys_branch, kOurBranch, 1)) {
+        patched_ = true;
+    }
     if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text, disc);
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
     entry_shows(false);  // the image is cleared next: a sprite still on the entry shows 829's
-    if (!patched_) return;
-    patch(a, kJmp, kJne);  // only where it still reads as written
-    BYTE now = 0;
-    // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
+    // Only where it still reads as written; still held while it does (put back failed).
+    if (patched_ && put_back_code(a.keys_branch, kOurBranch, kGameBranch, 2)) patched_ = false;
 }
 
 void PauseDiskRow::entry_shows(bool disc) {
@@ -117,12 +110,8 @@ void PauseDiskRow::entry_shows(bool disc) {
 bool PauseDiskRow::show_disc(BYTE* s) {
     // Only a sprite that keeps its template: the game frees the frame list of one that does not
     // (0x745C0), and must never free the helper's entry.
-    BYTE* list = pointer_at(s, sprite::kFrameList);
-    int32_t frames = 0;
-    if (pointer_at(s, sprite::kTemplate) == nullptr || !read(s, sprite::kFrameCount, frames) ||
-        frames <= kDiskIcon || list == nullptr) {
-        return false;
-    }
+    BYTE* list = frame_list(s, kDiskIcon);
+    if (pointer_at(s, sprite::kTemplate) == nullptr || list == nullptr) return false;
     if (entry_ == nullptr) {
         // Made once, from frame 829's entry, and never freed (pause.h).
         BYTE copy[sprite::kFrameSize];
@@ -153,14 +142,10 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     BYTE* list[kMaxEntries] = {};
     const int32_t entry_count = children_of(panel_at(menu, 0), list, kMaxEntries);
     if (panel_count(menu) != kPausePanels || entry_count < 1 || entry_count > kMaxEntries) return;
-    bool equipment = false;
-    for (int i = 0; i < entry_count; ++i) {
-        void* cb = nullptr;
-        if (read(list[i], widget::kCallback, cb) &&
-            (cb == a.equipment_fn || (a.hooks.equipment != nullptr && cb == a.hooks.equipment))) {
-            equipment = true;
-        }
-    }
+    const bool equipment = std::any_of(list, list + entry_count, [&](BYTE* entry) {
+        void* cb = pointer_at(entry, widget::kCallback);
+        return cb != nullptr && (cb == a.equipment_fn || cb == a.hooks.equipment);
+    });
     BYTE* keys = child_at(row, 0);
     BYTE* glyph[kKeysGlyphs] = {};
     BYTE* sprite[kRowSprites] = {};

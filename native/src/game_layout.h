@@ -31,8 +31,9 @@ constexpr int kTextureSize = 2048;
 // "The pool").
 namespace rando {
 constexpr ptrdiff_t kItemTable = 0x26C, kStart = 0x310, kSettings = 0x87B;
-constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37;
-static_assert(kItemTable + kMaxLocations <= kStart && kStart + 6 <= kSettings, "in this order");
+constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37, kStartSize = 6;
+static_assert(kItemTable + kMaxLocations <= kStart && kStart + kStartSize <= kSettings,
+              "in this order");
 inline int locations(const uint8_t* section) {
     return kLocations + (section[kSettings + kSecretShuffle] != 0 ? 1 : 0);
 }

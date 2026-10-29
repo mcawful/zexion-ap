@@ -172,6 +172,11 @@ private:
 
 // The logo glyph's ring of dots (kApItemGlyph).
 extern const char kApItemRows[8][9];
+// The AP logo, 16 x 16: Archipelago's six circles, each cutting a gap into the one drawn before,
+// as in its logo (data/icon.png in Archipelago), in glyph_rgb's letters (k the outline, then the
+// circles, r y g b p o). The world's AP items show it, and the file select marks AP saves with
+// it (files.h).
+extern const char kApLogoRows[16][17];
 
 class ApItems {
 public:

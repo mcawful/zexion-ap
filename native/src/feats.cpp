@@ -114,11 +114,8 @@ Replaced g_replaced;
 // (what set_frame needs), so a write over all of them lands whole.
 bool takes_text(BYTE* const* glyphs, int32_t count) {
     for (int32_t i = 0; i < count; ++i) {
-        int32_t frames = 0;
-        BYTE* list = nullptr;
-        if (!writable(glyphs[i], sprite::kSize) || !read(glyphs[i], sprite::kFrameCount, frames) ||
-            frames < kFontFrames || !read(glyphs[i], sprite::kFrameList, list) ||
-            list == nullptr) {
+        if (!writable(glyphs[i], sprite::kSize) ||
+            frame_list(glyphs[i], kFontFrames - 1) == nullptr) {
             return false;
         }
     }
@@ -332,16 +329,10 @@ void FeatsGuard::patch_ending(const GameAddresses& a) {
     ending_error_.clear();
 }
 
-bool FeatsGuard::reads_as_written() const {
-    BYTE now[kEndingPatchSize];
-    return safe_read(site_, now, sizeof(now)) && std::memcmp(now, written_, sizeof(now)) == 0;
-}
+static_assert(kEndingPatchSize <= kMaxCodePatch, "put_back_code reads it whole");
 
 void FeatsGuard::restore_ending() {
-    if (!ending_patched_) return;
-    if (reads_as_written()) patch_code(site_, original_, sizeof(original_));
-    // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (!reads_as_written()) {
+    if (ending_patched_ && put_back_code(site_, written_, original_, sizeof(original_))) {
         ending_patched_ = false;
         site_ = nullptr;
     }

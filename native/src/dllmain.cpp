@@ -16,6 +16,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -82,8 +83,7 @@ bool g_from_game_folder = false;
 // since (`offline_put seed`), which the AP-save test and the look know at once
 // (Game::merge_offline).
 SRWLOCK g_offline_lock = SRWLOCK_INIT;
-bool g_offline_ready = false;
-zap::OfflineFiles g_offline_files;
+std::optional<zap::OfflineFiles> g_offline_files;  // read, not yet taken
 std::vector<zap::OfflineSeed> g_put_seeds;
 // For `hello`: the reads taken by a frame, the seeds the last one found, and its error.
 std::atomic<int> g_offline_reads{0};
@@ -96,7 +96,6 @@ void read_offline() {
     g_offline_error = files.error;
     g_offline_found.store(static_cast<int>(files.seeds.size()));
     g_offline_files = std::move(files);
-    g_offline_ready = true;
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
@@ -229,15 +228,10 @@ void take_files(zap::OfflineFiles files) {
 // Game thread: the files read last and the seeds put since, if new.
 void take_offline() {
     if (!TryAcquireSRWLockExclusive(&g_offline_lock)) return;
-    bool ready = g_offline_ready;
-    zap::OfflineFiles files;
-    if (ready) {
-        files = std::move(g_offline_files);
-        g_offline_ready = false;
-    }
+    std::optional<zap::OfflineFiles> files = std::exchange(g_offline_files, std::nullopt);
     std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
-    if (ready) take_files(std::move(files));
+    if (files) take_files(std::move(*files));
     // Known to the AP-save test, and to the look (other_save), at once; after the files, which
     // may have been read before these were put.
     if (!put.empty()) g_game.merge_offline(std::move(put));
@@ -387,15 +381,13 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     return ran ? result : "refused no frame";
 }
 
-// The requests that run on the game's thread (native/README.md lists them and their replies),
-// each matched by its whole name, or by its first word (the name alone, or then a space or a
-// line break and anything). Most are `game`, run on the
-// game's thread (on_game) as they are; the others `run`, which parse the request on the pipe's
-// thread first, so a bad one gets its error without waiting for a frame.
-enum class Match { kName, kWord };
+// The requests that run on the game's thread (native/README.md lists them and their replies).
+// Most are `game`, matched by their whole name and run on the game's thread (on_game) as they
+// are; the others `run`, matched by their first word (the name alone, or then a space or a line
+// break and anything), which parse the request on the pipe's thread first, so a bad one gets its
+// error without waiting for a frame.
 struct Request {
     const char* name;
-    Match match;
     bool needs_config;  // `game` refused while nothing configured the helper
     std::string (*game)();
     std::string (*run)(const std::string& request) = nullptr;
@@ -475,44 +467,35 @@ std::string apply(const std::string& request) {
 }
 
 const Request kRequests[] = {
-    {"shield", Match::kName, false, [] { return g_game.spawn_shield(GetTickCount64()); }},
-    {"die", Match::kName, false, [] { return g_game.kill(GetTickCount64()); }},
-    {"assists lock", Match::kName, true,
-     [] { g_game.set_assists_locked(true); return std::string("locked"); }},
-    {"assists free", Match::kName, true,
-     [] { g_game.set_assists_locked(false); return std::string("free"); }},
+    {"shield", false, [] { return g_game.spawn_shield(GetTickCount64()); }},
+    {"die", false, [] { return g_game.kill(GetTickCount64()); }},
+    {"assists lock", true, [] { g_game.set_assists_locked(true); return std::string("locked"); }},
+    {"assists free", true, [] { g_game.set_assists_locked(false); return std::string("free"); }},
     // The client's session sees a randomizer save in play that is not its seed's (offline.h).
-    {"other_save", Match::kName, true,
-     [] { return g_game.other_save(); }},
+    {"other_save", true, [] { return g_game.other_save(); }},
     // The client's session sees its seed's save in play: if it was played offline, the player is
     // told the client is back (offline.h).
-    {"client_back", Match::kName, true,
-     [] { return std::string(g_game.client_back() ? "shown" : "none"); }},
+    {"client_back", true, [] { return std::string(g_game.client_back() ? "shown" : "none"); }},
     // The Area Map named INTEL CHIP, its map reveal off (intel.h), or put back.
-    {"intel on", Match::kName, true,
-     [] { g_game.set_intel(true); return std::string("intel on"); }},
-    {"intel off", Match::kName, true,
-     [] { g_game.set_intel(false); return std::string("intel off"); }},
+    {"intel on", true, [] { g_game.set_intel(true); return std::string("intel on"); }},
+    {"intel off", true, [] { g_game.set_intel(false); return std::string("intel off"); }},
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
-    {"mission_prompt", Match::kName, true,
-     [] {
-         return std::string(g_game.request_mission() ? "queued" : "refused not configured");
-     }},
-    {"mission_status", Match::kName, true, [] { return g_game.mission_status(); }},
-    {"disk_slots", Match::kWord, false, nullptr, &disk_slots},
-    {"discs_status", Match::kName, false, [] { return g_game.equipment_status(); }},
-    {"discs", Match::kWord, false, nullptr, &discs},
-    {"ap_labels", Match::kWord, false, nullptr, &ap_labels},
-    {"ap_newgame", Match::kWord, false, nullptr, &ap_newgame},
-    {"disarm", Match::kName, false,
-     [] { g_game.disarm_newgame(); return std::string("disarmed"); }},
-    {"newgame_status", Match::kName, false, [] { return g_game.newgame_status(); }},
-    {"config", Match::kWord, false, nullptr, &config},
-    {"apply", Match::kWord, false, nullptr, &apply},
+    {"mission_prompt", true,
+     [] { return std::string(g_game.request_mission() ? "queued" : "refused not configured"); }},
+    {"mission_status", true, [] { return g_game.mission_status(); }},
+    {"disk_slots", false, nullptr, &disk_slots},
+    {"discs_status", false, [] { return g_game.equipment_status(); }},
+    {"discs", false, nullptr, &discs},
+    {"ap_labels", false, nullptr, &ap_labels},
+    {"ap_newgame", false, nullptr, &ap_newgame},
+    {"disarm", false, [] { g_game.disarm_newgame(); return std::string("disarmed"); }},
+    {"newgame_status", false, [] { return g_game.newgame_status(); }},
+    {"config", false, nullptr, &config},
+    {"apply", false, nullptr, &apply},
 };
 
 bool matches(const Request& r, const std::string& request) {
-    if (r.match == Match::kName) return request == r.name;
+    if (r.run == nullptr) return request == r.name;
     const size_t n = std::strlen(r.name);
     return request.rfind(r.name, 0) == 0 &&
            (request.size() == n || request[n] == ' ' || request[n] == '\n');

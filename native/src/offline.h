@@ -34,15 +34,13 @@
 
 namespace zap {
 
-constexpr int kOfflineLocations = rando::kMaxLocations;
-constexpr int kOfflineStartSize = 6;
 constexpr uint8_t kCollectedCell = 0x1B;
 
 struct OfflineSeed {
     std::string name;  // the file's name, for `hello` and logs
     int locations = rando::kLocations;  // the table's length: 154, or 155 with Secret Shuffle
-    uint8_t table[kOfflineLocations] = {};  // past `locations`, 0
-    uint8_t start[kOfflineStartSize] = {};
+    uint8_t table[rando::kMaxLocations] = {};  // past `locations`, 0
+    uint8_t start[rando::kStartSize] = {};
     bool intel = false;
     bool lock_assists = false;
     bool discs = false;

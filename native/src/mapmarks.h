@@ -70,7 +70,6 @@ public:
     const std::string& error() const { return error_; }
 
 private:
-    bool reads_as_written() const;
     BYTE* site_ = nullptr;
     BYTE original_[kSeenMarkerSize] = {};
     BYTE written_[kSeenMarkerSize] = {};

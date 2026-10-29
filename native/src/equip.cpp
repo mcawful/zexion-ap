@@ -216,11 +216,7 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
 }
 
 void EquipmentScreen::tidy(const GameAddresses& a) {
-    if (panel_ != nullptr && !is_open(a.current_menu, menu_)) {
-        menu_ = nullptr;
-        panel_ = nullptr;
-        disk_ = nullptr;
-    }
+    if (!is_open(a.current_menu, menu_)) restore(a);  // closed: restore only forgets it
 }
 
 void EquipmentScreen::restore(const GameAddresses& a) {

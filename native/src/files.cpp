@@ -15,15 +15,6 @@ const char kDiskHeaderRows[2][8][9] = {
      "........"},
 };
 
-// The world's AP item logo (apitem.cpp kLogo), in glyph_rgb's colors: k the outline, then the
-// six circles, r y g b p o.
-const char kApLogoRows[16][17] = {
-    ".....krrrrk.....", ".....rrrrrr.....", ".kyyk.rrrr.kgkk.", "kyyyyy.rr.gggggk",
-    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yy...yk..kg....g", ".kbbkk....kpppk.",
-    "kbbbbb....pppppk", "bbbbbb.kk.pppppp", "bbbbbkooookppppp", "bbbb.oooooo.pppp",
-    "kbbbkooooookpppk", ".kkkkooooookkkk.", ".....oooooo.....", ".....kooook.....",
-};
-
 namespace {
 
 // An entry's save block (its slot's first block, laid out as slot::) and its slot
@@ -63,10 +54,8 @@ constexpr int32_t kWhiteStyle = 0x15;
 
 // One of the entry handlers: the file select's, COPY FILE's or DELETE FILE's.
 bool is_entry_fn(const GameAddresses& a, void* fn) {
-    for (BYTE* f : {a.file_entry_fn, a.copy_entry_fn, a.delete_entry_fn}) {
-        if (f != nullptr && fn == f) return true;
-    }
-    return false;
+    return fn != nullptr &&
+           (fn == a.file_entry_fn || fn == a.copy_entry_fn || fn == a.delete_entry_fn);
 }
 
 // The entry's label glyphs, if it is an entry as traced.
@@ -76,11 +65,6 @@ bool entry_glyphs(BYTE* entry, BYTE* (&glyphs)[kEntryGlyphs]) {
     return read(entry, sprite::kReleased, released) && released == 0 &&
            read(label, label::kColumns, columns) && columns == kEntryColumns &&
            label_glyphs(label, kEntryGlyphs, glyphs);
-}
-
-bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
-    return frame_of(g[kKeysHeader[0]]) == kDiskHeaderGlyphs[0] &&
-           frame_of(g[kKeysHeader[1]]) == kDiskHeaderGlyphs[1];
 }
 
 int32_t block_frame(BYTE* (&g)[kEntryGlyphs], int k) { return frame_of(g[kBlock[k]]); }
@@ -228,7 +212,7 @@ void FileEntries::update(BYTE* entry, Wrapped& w) {
     forget_fills(g, w);
     // Each part where it is not one to show: the game's frames.
     if (!rewrite(entry, slot, g, w)) put_back(g, w);
-    place_count(g, w.keys_written && shows_disk(g));
+    place_count(g, w.keys_written && shows(g, kKeysHeader, kDiskHeaderGlyphs));
     if (!mark(entry, slot, g, w)) unmark(g, w);
     place_logo(g, w.marked);
 }
@@ -245,14 +229,11 @@ bool FileEntries::mark(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrap
     // Only over blank cells that keep the logo's colors, each of which set_frame can set (so
     // no entry is left half marked).
     for (int i : kLogoCells) {
-        int32_t frame = frame_of(g[i]), style = 0, frames = 0;
+        int32_t frame = frame_of(g[i]), style = 0;
         int16_t palette = 0;
-        BYTE* list = nullptr;
-        if ((frame != kBlank && frame != kSpace) ||
-            !read(g[i], sprite::kFrameList, list) || list == nullptr ||
+        if ((frame != kBlank && frame != kSpace) || frame_list(g[i], kApLogoGlyphs[3]) == nullptr ||
             !read(g[i], sprite::kPaletteNumber, palette) || palette != kOwnColorsPalette ||
             !read(g[i], sprite::kStyle, style) || style != kWhiteStyle ||
-            !read(g[i], sprite::kFrameCount, frames) || frames <= kApLogoGlyphs[3] ||
             !writable(g[i], sprite::kSize)) {
             return false;
         }

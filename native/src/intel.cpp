@@ -17,11 +17,9 @@ constexpr RecordShape kAreaMap = {.kind = 34, .frame = 25, .ticks = 6, .frames =
 constexpr char kOwnName[] = "AREA MAP";
 constexpr int16_t kOwnEvent = 3551, kNoEvent = -1;  // 3551: the map reveal
 
-bool is_own(const BYTE* r) {
-    return record_named(r, kOwnName) && word(r, record::kEvent) == kOwnEvent;
-}
-bool is_ours(const BYTE* r) {
-    return record_named(r, kIntelName) && word(r, record::kEvent) == kNoEvent;
+// The record named `name` with the pickup event `event`: the game's, or the helper's.
+bool reads(const BYTE* r, const char* name, int16_t event) {
+    return record_named(r, name) && word(r, record::kEvent) == event;
 }
 
 }  // namespace
@@ -37,12 +35,12 @@ void IntelChip::watch(BYTE* holder) {
         restyled_ = false;  // not the record as traced: left alone
         return;
     }
-    if (is_own(copy)) {
+    if (reads(copy, kOwnName, kOwnEvent)) {
         set_record_name(r, kIntelName);
         put(r, record::kEvent, kNoEvent);
         restyled_ = true;
     } else {
-        restyled_ = is_ours(copy);  // ours already, or another name: left alone
+        restyled_ = reads(copy, kIntelName, kNoEvent);  // ours already, or another name: left alone
     }
 }
 
@@ -50,7 +48,7 @@ void IntelChip::restore(BYTE* holder) {
     BYTE copy[record::kSize];
     BYTE* r = writable_record(holder, kAreaMapItem, copy);
     // Back to the game's, whether this helper renamed it or an earlier one left it so.
-    if (r != nullptr && matches(copy, kAreaMap) && is_ours(copy)) {
+    if (r != nullptr && matches(copy, kAreaMap) && reads(copy, kIntelName, kNoEvent)) {
         set_record_name(r, kOwnName);
         put(r, record::kEvent, kOwnEvent);
     }

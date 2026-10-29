@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -169,6 +170,22 @@ void test_painting() {
     bool any_opaque = false;
     for (size_t i = 3; i < g_uploads[0].pixels.size(); i += 4) any_opaque |= g_uploads[0].pixels[i] != 0;
     check(any_opaque, "the logo has pixels");
+    // Each of the logo's letters in its entry of Scrap Energy's palette: k 0, g 1, b 2, r 3, p 5,
+    // o 8, y 9.
+    const std::map<char, std::vector<uint8_t>> colors = {
+        {'k', {0, 0, 0}},     {'g', {128, 0, 0}},   {'b', {212, 0, 0}},   {'r', {255, 21, 0}},
+        {'p', {255, 106, 0}}, {'o', {255, 234, 0}}, {'y', {255, 255, 14}}};
+    bool in_colors = true;
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            const uint8_t* px = &g_uploads[0].pixels[(y * 16 + x) * 4];
+            auto color = colors.find(zap::kApLogoRows[y][x]);
+            in_colors &= color == colors.end()
+                             ? px[3] == 0
+                             : std::equal(px, px + 3, color->second.begin()) && px[3] == 0xFF;
+        }
+    }
+    check(in_colors, "in its colors, the rest clear");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and unpack state put back");
 
     check(g_readbacks == 1, "the texture read back before the first paint");
