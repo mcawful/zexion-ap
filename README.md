@@ -22,7 +22,7 @@ your version isn't supported.
 - Start a seed from the game's own menu: pick an empty save slot and choose ARCHIPELAGO.
 - Other players' items show the Archipelago logo, and picking one up says whose it is.
 - Items sent to you pop up in the game with the sender's name.
-- Two goals: reach the core and grab Zexion, or hunt for OS Install Disks.
+- Two goals: grab Zexion in the core and reach the game's ending, or hunt for OS Install Disks.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
 - DeathLink.
 - The game's Easy, Standard and OHKO modes and its start rooms, and Custom mode: every

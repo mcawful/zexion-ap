@@ -8,7 +8,8 @@ description: Experiment with Zexion save files safely - pause Steam Cloud, back 
 The real saves live in `%APPDATA%\Gallant Leaf\Zexion` and Steam Cloud syncs them. The user has
 real progress in some slots. Nothing writes there except `tools/save_lab.py install` and
 `restore` (the Archipelago client never does). The write-guard hook blocks every other route
-Claude could take.
+through Bash, PowerShell and the file tools (not Monitor or the terminal tool: `CLAUDE.md`,
+"Repo tooling").
 
 ## 1. Pause Steam Cloud for Zexion first
 

@@ -36,16 +36,17 @@ worlds/zexion/ → generation → slot data → client
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
   other worlds send, and sends the goal once the save has reached the ending (with the OS
-  Install Disks goal, with enough disks). It never counts its own grants:
-  it gives what the player should own minus what the inventory holds, so an item lost to a
-  death or a reload is given again. Only Energy Tanks, Missile Containers, Mega Bombs, the
-  boxes and Scrap Metal count up: any other item's byte is written as 1 at most, so a second
-  copy (a server console's `/send`) changes nothing in the game but its popup, except that with
-  Guns First a weapon's second copy is its upgrade. It keeps a few records in the server's data storage (the
-  received items handed to the helper for their popup, the follow-up popups shown, the Intel
-  Chip hints made; sent again until the server holds them). A
-  failing side task (labels, disk count, DeathLink, follow-up popups) is logged once while items,
-  checks and the goal go on.
+  Install Disks goal, with enough disks). It never counts its own grants: it gives what the
+  player should own minus what the inventory holds, so an item lost to a death or a reload is
+  given again. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
+  count up: any other item's byte is written as 1 at most, so a second copy (a server console's
+  `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
+  second copy is its upgrade. It keeps a few records in the server's data storage (the received
+  items handed to the helper for their popup, the follow-up popups shown, the Intel Chip hints
+  made, the Energy Shields given, and this world's locations found in game, which the OS Install
+  Disks count and the Area Map hints read; sent again until the server holds them). A failing
+  side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
+  and the goal go on.
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -142,13 +143,13 @@ line says.
   name and no map reveal: 2026-10-25.
 - OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the file
   select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO): 2026-10-24; offered
-  at the landing pod only: 2026-10-25; the fade before it: 2026-10-27, first timed to the escape
-  skip's by disassembly (not compared in game), then started half a second after GAME SAVED
-  appears (the owner's pick, 2026-10-27); the fade turned back after a save at the pod during
-  it: 2026-10-27. A request held by popups lapsing once the player left the pod's room, and one
-  left during GAME SAVED alone, then offered again after the next save there: 2026-10-27. Not
-  seen in game: the fade turned back when the helper takes back a prompt it had not opened yet
-  (stand-in tests only).
+  at the landing pod only: 2026-10-25; the fade before it: 2026-10-27, first timed to the fade
+  before the game's own SKIP ESCAPE AND FINAL BATTLE? by disassembly (not compared in game),
+  then started half a second after GAME SAVED appears (the owner's pick, 2026-10-27); the fade
+  turned back after a save at the pod during it: 2026-10-27. A request held by popups lapsing
+  once the player left the pod's room, and one left during GAME SAVED alone, then offered again
+  after the next save there: 2026-10-27. Not seen in game: the fade turned back when the helper
+  takes back a prompt it had not opened yet (stand-in tests only).
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's

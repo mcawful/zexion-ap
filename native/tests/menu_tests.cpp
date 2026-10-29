@@ -333,7 +333,7 @@ void test_assist_lock_and_unlock() {
     check(at<float>(options.glyphs[0], 0x68) < 0.5f &&
               at<float>(options.glyphs[11], 0x80) < 0.5f &&
               at<float>(options.glyphs[0], 0x74) == 1.0f,
-          "tinted grey, its alpha left alone");
+          "tinted gray, its alpha left alone");
     check(!lock.install(a), "locks once");
     check(lock.restore(a), "unlocks");
     check(options.callback() == reinterpret_cast<void*>(&assist_menu) &&

@@ -120,6 +120,17 @@ def test_items_that_cannot_be_written_are_reported() -> None:
     assert g.inventory == {} and g.not_grantable == {31: 1}
 
 
+def test_a_count_is_raised_up_to_255_and_no_further() -> None:
+    # An inventory byte holds 255 at most: the 255th copy is given, the 256th is stuck.
+    target = Counter({ids.SCRAP_METAL: 255})
+    g = rc.grants(inv(i46=254), target)
+    assert g.inventory == {46: 255} and g.not_grantable == {}
+    g = rc.grants(inv(i46=255), Counter({ids.SCRAP_METAL: 256}))
+    assert g.inventory == {} and g.not_grantable == {46: 1}
+    g = rc.grants(inv(i46=250), Counter({ids.SCRAP_METAL: 256}))
+    assert g.inventory == {} and g.not_grantable == {46: 6}, "all or none, as one byte"
+
+
 def test_a_received_energy_shield_is_given_as_scrap_metal() -> None:
     target = rc.should_own(START, TABLE, set(), [50, 50])
     g = rc.grants(inv(**STARTED), target)

@@ -206,12 +206,13 @@ def problems(menu: Menu) -> list[str]:
     """What the menu could not hold, or what the game would build a broken pool from, one
     line each; empty when neither (docs/re/randocells.md, "The randomizer menu's first screen:
     items and amounts" and "The pool"). The menu's limits: Energy 40 in all, missiles and bombs
-    999 in all, and the pool missiles and bombs ten per free place. The pool: no more keys,
-    items and Energy Tanks than places, and, for every coin flip and draw, no longer list once
-    the supplies are in (``most_entries``), which the menu allows: the game drops the extra
-    entries at random, keys and items among them, and past 155 writes beyond its list. What it
-    does not check is the filler for the locations a seed leaves out, which depends on what the
-    items reach from the start (world.py, ``fit_pool``)."""
+    999 in all, and the pool missiles and bombs ten per free place. The pool: for every coin
+    flip and draw, no longer list than places once the supplies are in (``most_entries``),
+    which the menu allows: the game drops the extra entries at random, keys and items among
+    them, and past 155 writes beyond its list. The keys, items and Energy Tanks alone never
+    are: 4 + 27 + 40 at most, of 154. What it does not check is the filler for the locations a
+    seed leaves out, which depends on what the items reach from the start (world.py,
+    ``fit_pool``)."""
     a = menu.amounts
     out = []
     if a[START_ENERGY] + a[POOL_ENERGY] > MAX_ENERGY:
@@ -228,12 +229,6 @@ def problems(menu: Menu) -> list[str]:
                 f"Starting {kind} ({a[start]}) and Item Pool {kind} ({a[pool]}) are more than "
                 f"{MAX_AMMO} together"
             )
-    fixed = 4 - menu.start_keys + most_pooled(menu) + a[POOL_ENERGY]
-    if fixed > menu.places:
-        out.append(
-            f"the item pool's keys, items and Energy Tanks ({fixed}) are more than its "
-            f"{menu.places} places"
-        )
     # The menu's own count: its places, plus the keys started, plus Secret Shuffle's, less the
     # pool Energy and every entry set in the pool array (0xD2110).
     free = MENU_PLACES + menu.start_keys + menu.setting(SECRET_SHUFFLE)
@@ -248,7 +243,7 @@ def problems(menu: Menu) -> list[str]:
                 f"Item Pool {kind} ({a[pool]}) are more than the {cap} the menu allows with "
                 f"these items and amounts (ten per free place)"
             )
-    if fixed <= menu.places and (longest := most_entries(menu)) > menu.places:
+    if (longest := most_entries(menu)) > menu.places:
         out.append(
             f"the item pool's keys, items, Energy Tanks, missiles and Mega Bombs can come to "
             f"{longest}, more than its {menu.places} places, and the game would drop some at "

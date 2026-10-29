@@ -22,6 +22,10 @@ PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
 AP_ITEM = "AP ITEM"
 PROGRESSION_ITEM = "PROGRESSION ITEM"
+# A scouted item's flags: the progression bit (Archipelago's ItemClassification.progression,
+# checked against it in worlds/zexion/test/test_client_agrees.py), kept here so the client's
+# modules other than zexion_client.py import without Archipelago.
+PROGRESSION = 0b00001
 
 
 def _font_words(text: str) -> list[str]:
@@ -90,7 +94,8 @@ def own_label(item: int, name: str = "") -> str:
 
 
 def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
-    """Whether the helper should hold the labels after a poll: while this seed's save is loaded,
+    """Whether the helper should hold the labels after a poll (and the disk count: state.
+    Connection.dressed): while this seed's save is loaded,
     and not while another save (or none) is, where Scrap Energy and Scrap Chunk are the game's
     own (their refill drop included). A poll that could not tell keeps what was wanted."""
     if seed_matches:

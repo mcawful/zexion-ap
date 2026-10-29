@@ -3,9 +3,10 @@
 ## What does randomization do to this game?
 
 Zexion has its own randomizer. This world uses its map and its rules for what each item opens
-up, but lets Archipelago decide what is at each of the game's 154 item locations (150 in
-OHKO; in Custom, those your settings and start room reach, 155 with Secret Shuffle: the others hold Scrap, as the game
-leaves them). Items found in Zexion can belong to other players, and their games can send items to
+up, but lets Archipelago decide what is at each of the game's 154 item locations. In OHKO there
+are 150, and in Custom the ones your settings and start room can reach, plus a 155th with
+Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's own randomizer.
+Items found in Zexion can belong to other players, and their games can send items to
 you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
 Chips): exclude more locations than you have filler, and generation stops with an error that
 says so, unless the other players' filler makes up the difference.
@@ -30,9 +31,10 @@ Set with the Goal option.
     you how many you need. Until you have been there, the pause screen shows "OF ?". With
     Hints Revealed (Custom), the game counts you as told from the start, so the number shows
     at once (by the game's code; not yet checked in game).
-  - Once you have enough, save at the start room (your landing pod) and answer YES to RETURN
-    HOME WITH THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the
-    question comes back the next time you save there.
+  - Once you have enough, save at the save point in your start room (the reminder that
+    pops up once you have enough calls it the landing pod) and answer YES to RETURN HOME WITH
+    THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
+    back the next time you save there.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
     Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
@@ -43,12 +45,16 @@ Set with the Goal option.
 ## Which modes are there?
 
 The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings, or Custom. OHKO has no Energy Tanks and gives you a second room to
-teleport to; the 4 locations it can't reach are left out.
+starting items and settings, or Custom. The three are the game's presets as one fresh save of
+each had them, so Standard always starts with the Force Blaster, where the game draws a random
+weapon. In Custom, Random Gun draws one as the game does (it is on when Custom starts from
+Standard, the default). OHKO has no Energy Tanks and gives you a second room to teleport to;
+the 4 locations it can't reach are left out.
 
 With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
 names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
-as `start`, `random`, `pool` or `excluded` (`custom_items`), and the settings of Edit Options
+as `start`, `random`, `pool` or `excluded` (`custom_items`: start with it, a coin flip
+between starting with it and finding it, find it, or neither), and the settings of Edit Options
 (Random Gun, Box Compression, Hints, Gates, Start Keys, X Crystals, X Blocks, Abridged Finale
 and the rest). Each starts as `preset`: the value of `custom_base`, the mode Custom starts
 from. The seed is built from them as the game builds its own: the coin flips, Random Gun's
@@ -65,7 +71,8 @@ With Guns First on (every preset), each gun and its upgrade are one item, Progre
 Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
 the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
 items of their own, and the seed's logic counts each only once you have its gun, as the
-game's own logic does.
+game's own logic does. With it off, the guns keep their Progressive names (Progressive
+Machine Gun and the like), but there is one of each and it is the gun alone.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
 R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off works with the
 core goal: the core's door needs only the four keys.
@@ -77,24 +84,27 @@ as in the game (OHKO takes Safety `light` or `off`).
 
 ## Where does the game start?
 
-In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`),
-by its name in the game's menu, as in `landing_pod`. The default, `automatic`, is Landing Pod,
-or where your settings rule Landing Pod out, a random start (as `random_start` below; the
-generator's log warns that it did so). Any room works
-from which your starting items reach at least one location (and, with the core goal, from
-which you can reach Zexion's core); another stops generation with an error. With Easy's items
-that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
-room where your starting items reach only a few locations, generation sometimes fails: generate
-again, or pick another room. With Double Teleport the second room is any other, but one of
-the eight the game's menu flags only when your starting items score 27 or more, as the game's
-logic counts them: Energy Tanks (doubled with the Magnus Armor), Missile Containers and Mega
-Bombs one each, 10 per box, and one per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or
-`random`) picks a room as the game's Random Start does. The spoiler log names the start room
-(and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
-as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.
+In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`), by
+its name in the game's menu, as in `landing_pod`. The default, `automatic`, is Landing Pod, or
+where your settings rule Landing Pod out, a random start (as `random_start` below; the
+generator's log warns that it did so). Any room works from which your starting items reach at
+least one location (and, with the core goal, from which you can reach Zexion's core); another
+stops generation with an error. With Easy's items that is 17 of the rooms, with Standard's 19;
+with a second room to teleport to, all 34. From a room where your starting items reach only a
+few locations, generation sometimes fails: generate again, or pick another room. With Double
+Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
+Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
+only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks
+(doubled with the Magnus Armor), Missile Containers and Mega Bombs one each, 10 per box, and one
+per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or `random`) picks a
+room as the game's Random Start does. The spoiler log names the start room (and a second room to
+teleport to, with Double Teleport, as in OHKO). The earlier names, such as `kresezoa_16_13` (the
+area, then X and Y as the pause screen shows them), still work.
 
 Locations are named by their area and their X and Y as the pause screen shows them, as in
-"Guardia 22,7", so you can find them on the in-game map.
+"Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
+Machinus, and so on) is also a group of its locations, for options such as
+`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies and Scrap.
 
 ## Can I add starting items?
 
@@ -189,5 +199,7 @@ for the whole game, as they would in any save.
 
 Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When
 another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
-received together come one at a time, after you respawn; any still waiting when your ending
-begins are dropped. A death takes you back to your last save.
+received together come one at a time, after you respawn. Any still waiting when your ending
+begins, or sent during it, are dropped, unless the client first saw your save after the ending
+began (opened or connected during it): then they can still reach you during the ending. A death
+takes you back to your last save.

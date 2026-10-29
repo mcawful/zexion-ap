@@ -76,14 +76,17 @@ foreach(target IN ITEMS zap_steam_stub zap_feats_tests)
 endforeach()
 add_test(NAME feats COMMAND zap_feats_tests)
 
-# The whole helper loaded and unloaded under load, and grants applied in its frame calls.
-foreach(name IN ITEMS unload apply)
+# The whole helper loaded and unloaded under load, grants applied in its frame calls, and a seed
+# file put through the pipe.
+foreach(name IN ITEMS unload apply offline_put)
   add_executable(zap_${name}_test tests/${name}_test.cpp)
   target_link_libraries(zap_${name}_test PRIVATE zap_core)
   add_dependencies(zap_${name}_test zexion_ap_hooktest)
 endforeach()
 add_test(NAME unload_under_load COMMAND zap_unload_test $<TARGET_FILE:zexion_ap_hooktest> 300)
 add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hooktest>)
+add_test(NAME offline_put_in_frames
+         COMMAND zap_offline_put_test $<TARGET_FILE:zexion_ap_hooktest>)
 
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE

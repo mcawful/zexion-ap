@@ -15,8 +15,8 @@ The starting items have to be expressed the way the new-game routine reads them:
 
 Anything else (filler, other key sets, more than 9 containers or Mega Bombs, an amount past
 the section's 16-bit signed numbers) cannot be expressed: ``NewGameError``. The world refuses
-such starting items in generation (worlds/zexion/starting.py; Missile Boxes and Energy Tanks past
-those amounts not yet), so the client meeting one is a bug to report.
+such starting items in generation (worlds/zexion/starting.py, which also holds Energy Tanks to
+40 and the missiles to 999), so the client meeting one is a bug to report.
 
 The helper runs the game's placement itself with the randomizer menu set to the seed's
 settings (its mode's, or Custom's: the ``menu`` lines), checks that the section then holds the

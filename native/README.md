@@ -51,6 +51,9 @@ game's folder first (`docs/re/memory.md`, "Loading with the game").
   nothing), and never frees the helper: the helper's own unload is its one reference.
 - Assumed, not tested: Steam's verify and updates check only the game's own files, so both
   DLLs stay. An antivirus may flag the unsigned proxy.
+- Seen 2026-10-29 (develop d6bbdc9, a local build of the proxy, not a release): Windows Defender
+  detected it as `Program:Win32/Contebrew.A!ml` and blocked loading it (error 225); an earlier
+  build of the same sources was not flagged. Not checked against a release build.
 
 Working in game: 2026-10-25, helper 0.20.0 ("Loading with the game").
 
@@ -107,7 +110,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `feats`: Feats and achievements kept out of the AP save loaded (off, on, or on with why a
   change could not be made).
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
-- `offline`: the seeds read for AP saves without the client, and the file of the one dressed.
+- `offline`: the seeds known to the offline look (read from the folder, and any a client put or
+  that were read while it was connected), and the file of the one dressed.
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `reads`: the reads a frame has taken, and the seeds the last one found.
@@ -290,7 +294,8 @@ Working in game: 2026-10-23 ("Received Energy Shields").
   RETURN HOME WITH THE DISKS? is not between its fade and its prompt; otherwise `refused` (`not
   configured`, `not settled`, `halted`, `message showing`, `RETURN HOME WITH THE DISKS?
   opening`, `no frame`). The client queues received deaths and asks once a second, one at a time
-  (`client/deathlink.py`).
+  (`client/deathlink.py`); it drops the queue while an ending that began in this load runs
+  (`Session.holding`), not in a save that had already ended (stand-in tests only).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("DeathLink").
@@ -536,13 +541,18 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   writes them, not the client: a client run from a packaged app has its AppData writes
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
 - **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
-  first. With no client yet, the cached addresses configure it if they are for its build and the
-  game holds every checked function's bytes, even if the cache lacks the client-only keys (a
-  cache from before a release that added one: "The pipe"). So the offline look, the map markers
-  and the title lines all run with no client once the cache checks out.
+  first. Seed files read with no client replace the last ones; those read while a client is
+  connected, and any seed file a client puts, are added to them from the next frame call
+  (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
+  is dressed), so another seed's save started earlier in the same client run is known as one
+  (`other_save`). With no client yet, the cached addresses configure it if they are for its
+  build and the game holds every checked function's bytes, even if the cache lacks the
+  client-only keys (a cache from before a release that added one: "The pipe"). So the offline
+  look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
-  client would: the item labels, INTEL CHIP, the ASSIST lock, the disk count
+  client would: the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
+  received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
   notice a load that the client is not connected (or, for `other_save`, is for another seed;
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
@@ -553,7 +563,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
-  ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed.
+  ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. Each notice is for the load it was
+  queued in: one not shown when the save is left (no save loaded) is withdrawn, not shown in the
+  next save, and the next load is told again. The other-seed notice and CLIENT CONNECTED. are
+  also for their client: one not shown when it goes away is withdrawn. A not-connected warning
+  withdrawn before it showed is given again when the save is next dressed with no client.
 - **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
@@ -808,11 +822,12 @@ is set, a missing build fails the job instead (`test_the_helper_is_built_where_c
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
-(`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h`;
-`tests/fake_gl.h` is the fake OpenGL of `apitem` and `offline`;
-`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
-`unload_under_load`, and the last two's busy threads and wait for an unload.
+(`apply_test.cpp`, `offline_put_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for
+`apply_in_frames`, `offline_put_in_frames`, `unload_under_load` and `proxy`). They share
+`tests/check.h`; `tests/fake_gl.h` is the fake OpenGL of `apitem` and `offline`;
+`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames`,
+`offline_put_in_frames` and `unload_under_load`, and the last three's busy threads and wait for
+an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers and its handler-slot swap, the build check
@@ -832,8 +847,9 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, the AP saves' slots, and the file select's logo through the frame call: painted,
-  whitened through a new game's fade, and cleared by `restore_files`).
+  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots,
+  and the file select's logo through the frame call: painted, whitened through a new game's
+  fade, and cleared by `restore_files`).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
@@ -847,6 +863,9 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
   a batch no frame took, an unload refused while something else is hooked over the
   helper, with what the client had set armed again).
+- `offline_put_in_frames`: the same, with `LOCALAPPDATA` in a folder of its own under `%TEMP%`:
+  a seed file put through the pipe with a client connected is known to the offline look from
+  the next frame call (`other_save` answers `told`, `hello` counts it).
 - `unload_under_load`: a test build, `zexion_ap_hooktest.dll`, hooks the loading program's own
   `GetTickCount` import (it refuses to hook a known game build), counts calls, and survives 300
   loads and unloads while two threads call it nonstop.

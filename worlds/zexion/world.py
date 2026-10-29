@@ -77,6 +77,11 @@ NOT_HINTED = SUPPLIES
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
 # them (worlds/zexion/data.py).
 DISC_REPLACES = (*FILLER_ORDER, custom.ENERGY_SHIELD)
+# The most OS Install Disks a player can hold, placed and starting: the helper's count on the
+# pause screen ("NN OF NN": native/src/pause.cpp) and the equipment screen, and the file select's
+# two digits (native/src/files.cpp, file_disk_digits), hold no more. Not a game rule: the game has
+# no disk count.
+MAX_DISKS = 99
 
 
 def important_elsewhere(item: Item | None) -> bool:
@@ -155,6 +160,12 @@ class ZexionWorld(World):
                 f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
                 f"more than OS Install Disks ({placed})"
                 + (f" plus the {start_disks} in start_inventory" if start_disks else "")
+            )
+        if self.disc_hunt and placed + start_disks > MAX_DISKS:
+            raise OptionError(
+                f"Zexion ({self.player_name}): OS Install Disks ({placed}) and the "
+                f"{start_disks} in start_inventory come to {placed + start_disks}, more than "
+                f"the {MAX_DISKS} the game's screens can show"
             )
 
     def read_menu(self) -> custom.Menu:

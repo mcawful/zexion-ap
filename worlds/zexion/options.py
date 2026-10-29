@@ -34,7 +34,9 @@ class Mode(Choice):
     """The game's own randomizer mode, with its items, starting items and settings.
     Easy: "An easier mode. Start with Navcore and Power Cartridge. More energy tanks and
     missiles to be found."
-    Standard: "Standard difficulty. Start with a random weapon."
+    Standard: "Standard difficulty. Start with a random weapon." Here it always starts with the
+    Force Blaster, as the game's fresh Standard save did; Custom, whose Random Gun is on with
+    Standard's base, draws one.
     OHKO: "No energy tanks at all. Can teleport to two locations."
     Custom: "Use custom rules.": every setting below, from custom_base's.
     Easy, Standard and OHKO are each the game's preset exactly, with one fresh save's items:
@@ -443,9 +445,10 @@ class Goal(Choice):
     yours to finish, and may need items it doesn't make sure of (such as the Zenith Thrusters).
     The game's Abridged Finale, a Custom-mode setting, ends the game at the grab instead.
     OS Install Disks: find enough OS Install Disks (the next two options), then save at the
-    start room (your landing pod) and answer YES to RETURN HOME WITH THE DISKS?. The keys are
-    not placed. The scanner room at Vallahar 6,8, which shows where the keys are in the normal
-    game, tells you how many disks you need."""
+    save point in your start room (the reminder that pops up once you have enough calls it the
+    landing pod) and answer YES to RETURN HOME WITH THE DISKS?. The keys are not placed. The
+    scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
+    how many disks you need."""
 
     display_name = "Goal"
     option_core = 0
@@ -462,7 +465,8 @@ class OSInstallDisks(Range):
     minus the disks (Easy 30, OHKO 36): exclude more locations than that, and generation stops
     with an error saying so, unless the other players' filler makes up the difference. Where
     there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
-    and nine Scrap Metal, as the game makes filler when it runs short."""
+    and nine Scrap Metal, as the game makes filler when it runs short. The disks placed and any
+    in start_inventory can be 99 at most, the most the pause screen and the file select show."""
 
     display_name = "OS Install Disks"
     range_start = 1

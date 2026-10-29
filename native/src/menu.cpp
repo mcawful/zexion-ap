@@ -39,7 +39,7 @@ constexpr int32_t kMaxPanels = 16, kMaxChildren = 64;
 constexpr ptrdiff_t kPanelSelected = 0x2DC;  // 32-bit: the selected child, -1 for none
 constexpr int16_t kLockedPalette = 0;  // as the controls screen's STYLE: AUTO
 // A glyph's color tint: two RGB sets at +0x68 and +0x78 (their alphas at +0x74 and +0x84 left
-// alone), 1.0 for a white entry; STYLE: AUTO's grey, as read live.
+// alone), 1.0 for a white entry; STYLE: AUTO's gray, as read live.
 constexpr ptrdiff_t kGlyphTint[6] = {0x68, 0x6C, 0x70, 0x78, 0x7C, 0x80};
 constexpr float kLockedTint[6] = {0.412f, 0.439f, 0.494f, 0.412f, 0.439f, 0.494f};
 constexpr int32_t kLockedStyle = 5;  // as the controls screen's STYLE: AUTO

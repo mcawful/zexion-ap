@@ -110,21 +110,51 @@ def test_starting_items_become_the_array_amounts_and_keys() -> None:
     assert sum(array) == 3
 
 
-def test_the_amounts_and_key_bits_are_written() -> None:
+def test_the_start_with_array_is_in_the_order_the_new_game_reads_it() -> None:
+    # docs/re/memory.md, "Starting a new game": the new-game routine gives one item per set
+    # entry, in this order (the same as the world's custom.MENU_CODES: test_client_agrees).
+    assert ng.START_WITH_ORDER == (
+        16, 19, 21, 32, 3, 4, 5, 6, 7, 11, 22, 20, 17, 9, 14, 15, 10, 12, 34, 24, 26, 25, 13,
+        33, 8, 23, 18,
+    )  # fmt: skip
+    for i, item in enumerate(ng.START_WITH_ORDER):
+        array, _ = ng.start_with({item: 1})
+        assert array == bytes(i) + b"\x01" + bytes(26 - i)
+
+
+@pytest.mark.parametrize(
+    "keys, bits",
+    [
+        ((), [0, 0, 0]),
+        ((27,), [1, 0, 0]),
+        ((27, 28), [0, 1, 0]),
+        ((27, 28, 29), [1, 1, 0]),
+        ((27, 28, 29, 30), [0, 0, 1]),
+    ],
+)
+def test_the_amounts_and_key_bits_are_written(keys, bits) -> None:
+    # The first N keys, N from settings t34 to t36 as bits (docs/re/memory.md, "Starting a new
+    # game").
     save = fresh()
-    apply_text(
-        ng.plan_text(plan(start_items={0: 5, 1: 3, 27: 1, 28: 1, 29: 1}), offer_choice=False), save
-    )
+    items = {0: 5, 1: 3, **dict.fromkeys(keys, 1)}
+    assert apply_text(ng.plan_text(plan(start_items=items), offer_choice=False), save) == []
     assert struct.unpack_from("<6h", save, sp.AMOUNTS)[0::2] == (5, 3, 0)
-    assert list(save[sp.OPTIONS + 34 : sp.OPTIONS + 37]) == [1, 1, 0]
+    assert list(save[sp.OPTIONS + 34 : sp.OPTIONS + 37]) == bits
 
 
-def test_another_mode_fails_the_expectations() -> None:
+def test_another_amount_alone_fails_the_expectations() -> None:
     save = fresh()
     struct.pack_into("<h", save, sp.AMOUNTS + 2, 35)  # another pool of Energy
-    save[sp.OPTIONS + 72] = 2
     before = bytes(save)
-    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) != []
+    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) == [hex(0x6C0)]
+    assert bytes(save) == before, "nothing written"
+
+
+def test_another_setting_alone_fails_the_expectations() -> None:
+    save = fresh()
+    save[sp.OPTIONS + 72] = 2  # another Gates
+    before = bytes(save)
+    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) == [hex(0x87B + 72)]
     assert bytes(save) == before, "nothing written"
 
 
