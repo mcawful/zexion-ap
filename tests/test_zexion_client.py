@@ -40,15 +40,21 @@ def _archipelago() -> dict[str, types.ModuleType]:
     return {"CommonClient": common, "NetUtils": net, "Utils": types.ModuleType("Utils")}
 
 
-# Only the stand-ins are taken out again: the client's modules stay the ones the other tests use.
+# Only the stand-ins are put back as they were (the client's modules stay the ones the other
+# tests use), and this copy of zexion_client is not left for another test to import.
 STAND_INS = _archipelago()
+saved = {name: sys.modules.get(name) for name in STAND_INS}
 sys.modules.update(STAND_INS)
 try:
     with mock.patch.dict(os.environ, ZEXION_AP_DIR=os.devnull):  # not a folder: not on the path
         from client import zexion_client as zc
 finally:
-    for name in STAND_INS:
-        del sys.modules[name]
+    sys.modules.pop("client.zexion_client", None)
+    for name, module in saved.items():
+        if module is None:
+            del sys.modules[name]
+        else:
+            sys.modules[name] = module
 
 
 class Closed:

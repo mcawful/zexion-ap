@@ -165,7 +165,8 @@ def end_kept_load(kept: Connection, conn: Connection | None) -> None:
     and the save is undressed, so the helper takes back the labels and the disk count from any
     save loaded next. A reconnect may have carried both over meanwhile (carry_over): the
     current connection's too, then, if it has not stepped since (polls run one at a time, so
-    it cannot have yet)."""
+    it cannot have yet). One reconnect is covered: Archipelago waits 5 s, then 10 s, before
+    each, and one read takes seconds at most."""
     ended = [kept]
     if conn is not None and conn.session.carried_from is kept.session:
         ended.append(conn)
