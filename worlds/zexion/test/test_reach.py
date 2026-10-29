@@ -10,9 +10,9 @@ from .. import data, logic, reach
 from .bases import preset, with_settings
 
 
-def sphere0_total(seed: reach.Seed) -> int:
-    """The locations the starting items reach, summed over the 34 start rooms."""
-    return sum(len(seed.sphere0(room["cell"]).locations) for room in data.START_ROOMS)
+def sphere0_rooms(seed: reach.Seed) -> list[frozenset[int]]:
+    """The locations the starting items reach from each of the 34 start rooms."""
+    return [seed.sphere0(room["cell"]).locations for room in data.START_ROOMS]
 
 
 class TestPresetsMatchTheOracles(unittest.TestCase):
@@ -70,30 +70,32 @@ class TestSettingsChangeTheResults(unittest.TestCase):
     """Custom mode varies these settings (docs/re/randocells.md, "What each setting does in the
     game"); the results follow them."""
 
+    def assert_reaches_more(self, seed: reach.Seed, more: reach.Seed) -> None:
+        """From every room ``more``'s starting items reach what ``seed``'s do, and more in all."""
+        before, after = sphere0_rooms(seed), sphere0_rooms(more)
+        for room, a, b in zip(data.START_ROOMS, before, after, strict=True):
+            self.assertLessEqual(a, b, f"room {room['index']}")
+        self.assertGreater(sum(map(len, after)), sum(map(len, before)))
+
     def test_safety_without_energy_checks_reaches_more(self) -> None:
         # Code 69 always passes in modes 0 and 3 (Standard's preset is 2): 64 locations in all
-        # from the 34 rooms become 75 and 76; mode 1 keeps 64.
+        # from the 34 rooms become 75 and 76; mode 1 keeps each room's.
         seed = preset("standard")
-        total = sphere0_total(seed)
         for mode69 in (0, 3):
             with self.subTest(mode69=mode69):
-                self.assertGreater(sphere0_total(with_settings(seed, mode69=mode69)), total)
-        self.assertEqual(sphere0_total(with_settings(seed, mode69=1)), total)
+                self.assert_reaches_more(seed, with_settings(seed, mode69=mode69))
+        self.assertEqual(sphere0_rooms(with_settings(seed, mode69=1)), sphere0_rooms(seed))
 
     def test_a_lower_energy_total_counts_the_same_tanks_for_more(self) -> None:
         # Code 69 scales Energy up when the seed's total is under 20: 64 become 75.
         seed = preset("standard")
-        self.assertGreater(sphere0_total(with_settings(seed, energy_total=5)), sphere0_total(seed))
+        self.assert_reaches_more(seed, with_settings(seed, energy_total=5))
 
     def test_x_crystals_opens_ways_for_the_starting_items(self) -> None:
         seed = preset("standard")
         options = bytearray(seed.settings.options)
         options[30] = 1
-        crystals = with_settings(seed, options=bytes(options))
-        for room in data.START_ROOMS:
-            cell = room["cell"]
-            self.assertLessEqual(seed.sphere0(cell).locations, crystals.sphere0(cell).locations)
-        self.assertGreater(sphere0_total(crystals), sphere0_total(seed))
+        self.assert_reaches_more(seed, with_settings(seed, options=bytes(options)))
 
     def test_secret_shuffle_adds_its_location_only_when_on(self) -> None:
         # The 155th location, index 154 (data.SECRET_LOCATION), in six cells only code 68
