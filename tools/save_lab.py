@@ -11,7 +11,8 @@
 A save is named by slot number (``2``), ``slot:2``, or a file path. Everything except ``install``
 and ``restore`` only reads the save folder. Both refuse while Zexion is running (looked for on
 Windows, the game's platform), and when the process list can't be read: the game keeps the slots
-in memory and writes them back over what they wrote. ``install`` fills only an empty slot, and
+in memory, wrote them back over an install (docs/re/memory.md, "Feats and achievements",
+2026-10-28), and would presumably over a restore. ``install`` fills only an empty slot, and
 only when a backup from the last 12 hours holds that slot as it is now. ``restore`` may
 overwrite slots in use; it refuses a backup of another save folder, checks the backup against
 its manifest, and backs up the present state first.
@@ -371,7 +372,7 @@ def _refused_while_game_runs(command: str) -> bool:
     """True, with the reason printed, when Zexion is running or that can't be told. The game
     keeps the slots in memory and writes them back over the folder: an install made while it
     ran was replaced by the game's own empty slot (docs/re/memory.md, "Feats and
-    achievements", 2026-10-28)."""
+    achievements", 2026-10-28). That a restore would be too is assumed, not measured."""
     try:
         running = game_running()
     except OSError as exc:

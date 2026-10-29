@@ -99,10 +99,11 @@ the user starts the game.
 ```
 
 Ask first, and have the user close the game: like `install`, `restore` refuses while Zexion is
-running, which would write its own copies of the slots back over the restored ones. It refuses
-a backup of another save folder (one taken with `--save-dir` or `ZEXION_SAVE_DIR` set; restore
-it with the same setting), checks the backup against its manifest, then backs up the current
-state before overwriting, so a restore can itself be undone.
+running. The game would presumably write its own copies of the slots back over the restored
+ones, as it did over an install (measured for `install` only, `docs/re/memory.md`, "Feats and
+achievements"). It refuses a backup of another save folder (one taken with `--save-dir` or
+`ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
+manifest, then backs up the current state before overwriting, so a restore can itself be undone.
 
 ## 7. Record what you learned
 

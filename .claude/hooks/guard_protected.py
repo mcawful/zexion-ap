@@ -45,7 +45,8 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     (``$(``, or a backtick in Bash) but the message form above, Bash arithmetic that only
     computes (``xxd -s $((0x9360))``: ``_arithmetic_to_numbers``) and PowerShell's
     ``"$($_.Name)"``, which only reads a member; a PowerShell ``::`` call other
-    than a known reader or a method call other than a few string ones (``_ps_calls_block``);
+    than a known reader or a method call other than a few string and date ones
+    (``_ps_calls_block``);
     output redirected to a path that still holds a variable after the hook's own environment is
     applied (the guard can't see where it leads); and in Bash an environment prefix or
     ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
@@ -1080,8 +1081,8 @@ def _is_repo_vcs(words: list[Word], text_ids: set[int], folders, protected, ps: 
 def _ps_calls_block(code: str) -> str | None:
     """A reason when PowerShell code calls a method or a static member that may write: a ``::``
     call other than a known reader (``[IO.File]::ReadAllBytes``, ``[BitConverter]``, ``[Math]``),
-    or a method outside quotes other than a few string ones (``.Delete()``, ``.'Delete'()``,
-    ``.$name()``)."""
+    or a method outside quotes other than a few string and date ones (``.Delete()``,
+    ``.'Delete'()``, ``.$name()``)."""
     unquoted = _PS_QUOTED.sub(" ", code)
     odd = _PS_ODD_METHOD_CALL.search(code)
     if odd:
