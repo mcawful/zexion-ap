@@ -27,7 +27,7 @@ try:
         raise ImportError("no client package beside this world")
     if _ROOT not in sys.path:
         sys.path.append(_ROOT)
-    from client import aplabels, discs, ids, newgame, patterns, save_patch
+    from client import aplabels, discs, ids, newgame, patterns, reconcile, save_patch
 except ImportError as error:
     CLIENT = None
     WHY = f"the repo's client package is not importable: {error}"
@@ -87,6 +87,8 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(ids.KEYS, items.KEY_CODES)
         self.assertEqual(ids.SCRAP_METAL, items.SCRAP_METAL)
         self.assertEqual(ids.ENERGY_SHIELD, items.ENERGY_SHIELD)
+        # The client writes every other item's byte as 1 at most.
+        self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
 
     def test_the_stand_ins(self) -> None:
         self.assertEqual((ids.STAND_IN, ids.STAND_IN_PROGRESSION), (FOREIGN, FOREIGN_PROGRESSION))

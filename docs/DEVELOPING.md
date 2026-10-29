@@ -33,7 +33,10 @@ worlds/zexion/ → generation → slot data → client
   other worlds send, and sends the goal once the save has reached the ending (with the OS
   Install Disks goal, with enough disks). It never counts its own grants:
   it gives what the player should own minus what the inventory holds, so an item lost to a
-  death or a reload is given again. It keeps a few records in the server's data storage (the
+  death or a reload is given again. Only Energy Tanks, Missile Containers, Mega Bombs, the
+  boxes and Scrap Metal count up: any other item's byte is written as 1 at most, so a second
+  copy (a server console's `/send`) changes nothing in the game but its popup, except that with
+  Guns First a weapon's second copy is its upgrade. It keeps a few records in the server's data storage (the
   received items handed to the helper for their popup, the follow-up popups shown, the Intel
   Chip hints made; sent again until the server holds them). A
   failing side task (labels, disk count, DeathLink, follow-up popups) is logged once while items,

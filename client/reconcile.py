@@ -13,6 +13,17 @@ inventory go back to the last save when the player dies or reloads, so the diffe
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
+Only the supplies and Scrap Metal are counts (``COUNTED``: Energy Tanks, Missile Containers,
+Mega Bombs, Missile Boxes, Bomb Boxes and Scrap Metal, docs/re/save-format.md, "Inventory: one
+byte per item ID at 0x92F3"). Every other item is held once: its byte is 0 or 1, and the game's
+pools hold one of each at most (docs/re/randocells.md, "The pool": one entry per item set in the
+pool array, one per key). So no other byte is written above 1 (with Guns First, a weapon and its
+upgrade are a byte each): a second copy, which only a start_inventory, a plando or a server
+console's ``/send`` can make, is not written. The pickup routine itself only increments the
+byte (docs/re/memory.md, "Granting each kind of item, and what keeps it"), and what the game
+does with a 2 in such a byte is not measured: the cap keeps the bytes as the game's own seeds
+leave them.
+
 With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
 item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works
 on a table of 64 counts": on the item's update by the save's Guns First, at pickup by the
@@ -20,9 +31,7 @@ randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is
 given. With it off the game
 redirects nothing in the seed's own items, and each upgrade is an item, and a byte, of its own
 (docs/re/randocells.md, "The evaluator works on a table of 64 counts"): every item is counted as
-itself, and a gun or an upgrade is never written above 1. A second copy, which the game's own
-pools never hold (only a start_inventory or a server console's copy could make one), is not
-written: the game's byte for a gun held twice is not measured.
+itself, a gun and its upgrade each at most 1 like any other item held once.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -37,7 +46,11 @@ from . import ids
 from .ids import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER, PROGRESSIVE
 
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
-WEAPONS_AND_UPGRADES = frozenset(PROGRESSIVE) | frozenset(UPGRADE_OF)
+
+# The items the game holds as a count (the module's docstring); every other byte is 0 or 1.
+COUNTED = frozenset(
+    {ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX, ids.SCRAP_METAL}
+)
 
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {ids.ZEXION}
@@ -115,8 +128,8 @@ def grants(inventory: bytes, target: Counter[int], guns_first: bool = True) -> G
     new: dict[int, int] = {}
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
-        if not guns_first and item in WEAPONS_AND_UPGRADES:
-            want = min(want, 1)  # one byte of 1 each (the module's docstring)
+        if item not in COUNTED and not (guns_first and item in PROGRESSIVE):
+            want = min(want, 1)  # held once: a byte of 1 (the module's docstring)
         missing = want - have[item]
         if missing <= 0:
             continue
