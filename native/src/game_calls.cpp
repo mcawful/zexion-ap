@@ -220,8 +220,12 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     feats_.set_image(image,
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     mission_.set_image(image);
-    // A client's config: the offline look put back first, with the addresses it was set with.
-    if (configured_ && active) leave_offline_for_client();
+    // A client's config: the offline look put back first, with the addresses it was set with,
+    // and the last client's notices withdrawn (the new one says other_save again).
+    if (configured_ && active) {
+        leave_offline();
+        drop_client_notices();
+    }
     at_ = found;
     gl_ = load_gl();
     configured_ = true;
@@ -366,7 +370,7 @@ void Game::pump_popups() {
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     BYTE* p = player();
     auto sound = at<int16_t>(rec, record::kSound);
-    if (!popup.silent && sound >= 0) {
+    if (popup.counted && sound >= 0) {  // the helper's own notices make no sound
         reinterpret_cast<SoundFn>(at_.sound_fn)(
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);

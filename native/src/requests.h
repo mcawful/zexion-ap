@@ -24,8 +24,8 @@ struct Popup {
     uint8_t item;
     std::string suffix;  // already filtered to the font (see parse_batch)
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
-    bool silent = false;  // no pickup sound (the helper's offline notices, game_offline.cpp)
-    // A client's (from `apply`), not one of the helper's own notices: held for its save.
+    // A client's (from `apply`), with the pickup sound and held for its save; else one of the
+    // helper's own notices (game_offline.cpp), silent.
     bool counted = false;
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.

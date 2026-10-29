@@ -34,15 +34,14 @@ extern const char kDiskHeaderRows[2][8][9];
 
 // The AP logo: four font glyphs empty in the game's art, two by two in the font (0x8C and 0x8D
 // over 0x9C and 0x9D), so that one 16 x 16 image at kApLogoX, kApLogoY covers them; painted
-// while a listed slot is an AP save. The world's AP item logo, in its colors (apitem.h
-// glyph_rgb), painted whiter through a new game's fade to white (Game::watch_files).
+// while a listed slot is an AP save. The world's AP item logo (apitem.h kApLogoRows), in
+// glyph_rgb's colors, painted whiter through a new game's fade to white (Game::watch_files).
 constexpr uint8_t kApLogoGlyphs[4] = {0x8C, 0x8D, 0x9C, 0x9D};
 constexpr int kApLogoX = font_x(kApLogoGlyphs[0]), kApLogoY = font_y(kApLogoGlyphs[0]);
 static_assert(kApLogoGlyphs[1] == kApLogoGlyphs[0] + 1 &&
                   kApLogoGlyphs[2] == kApLogoGlyphs[0] + 16 &&
                   kApLogoGlyphs[3] == kApLogoGlyphs[0] + 17 && kApLogoGlyphs[0] % 16 < 15,
               "the logo's glyphs two by two in the font");
-extern const char kApLogoRows[16][17];
 
 // A new game's transition (newgame_fn queued, a 40-frame timer counting down), during which the
 // screen fades to white: how far toward white the logo is painted (FontGlyph::set_white) with

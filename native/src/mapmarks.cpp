@@ -111,7 +111,7 @@ void SeenMarker::watch(BYTE* site, bool on) {
     if (!on || site != site_) restore();
     if (!on || site == nullptr) return;
     if (site_ != nullptr) {
-        if (reads_as_written()) return;
+        if (code_reads(site_, written_, sizeof(written_))) return;
         site_ = nullptr;  // rewritten by something else: no longer ours to put back
     }
     BYTE now[kSeenMarkerSize];
@@ -130,17 +130,13 @@ void SeenMarker::watch(BYTE* site, bool on) {
     }
 }
 
-bool SeenMarker::reads_as_written() const {
-    BYTE now[kSeenMarkerSize];
-    return site_ != nullptr && safe_read(site_, now, sizeof(now)) &&
-           std::memcmp(now, written_, sizeof(now)) == 0;
-}
+static_assert(kSeenMarkerSize <= kMaxCodePatch, "put_back_code reads it whole");
 
 void SeenMarker::restore() {
-    if (site_ == nullptr) return;
-    if (reads_as_written()) patch_code(site_, original_, sizeof(original_));
     // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (!reads_as_written()) site_ = nullptr;
+    if (site_ != nullptr && put_back_code(site_, written_, original_, sizeof(original_))) {
+        site_ = nullptr;
+    }
 }
 
 namespace {

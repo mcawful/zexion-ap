@@ -121,9 +121,7 @@ std::string parse_batch(const std::string& request, Batch& out) {
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
             if (bare && suffix.empty()) return "bad line " + line;
-            Popup popup{static_cast<uint8_t>(item), suffix, bare};
-            popup.counted = true;  // the client's
-            out.popups.push_back(std::move(popup));
+            out.popups.push_back(Popup{static_cast<uint8_t>(item), suffix, bare, true});
         } else if (!op.empty()) {
             return "unknown line " + line;
         }

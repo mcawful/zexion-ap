@@ -14,6 +14,12 @@ const char kApItemRows[8][9] = {
     "...#....", ".#...#..", "........", "#.....#.",
     "........", ".#...#..", "...#....", "........",
 };
+const char kApLogoRows[16][17] = {
+    ".....krrrrk.....", ".....rrrrrr.....", ".kyyk.rrrr.kgkk.", "kyyyyy.rr.gggggk",
+    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yy...yk..kg....g", ".kbbkk....kpppk.",
+    "kbbbbb....pppppk", "bbbbbb.kk.pppppp", "bbbbbkooookppppp", "bbbb.oooooo.pppp",
+    "kbbbkooooookpppk", ".kkkkooooookkkk.", ".....oooooo.....", ".....kooook.....",
+};
 
 namespace {
 
@@ -46,50 +52,38 @@ constexpr unsigned kUnpackRowLength = 0x0CF2, kUnpackSkipRows = 0x0CF3, kUnpackS
 constexpr unsigned kUnpackBufferBinding = 0x88EF, kPackBufferBinding = 0x88ED;
 constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then skip rows, pixels
 
-// The logo: Archipelago's six circles, each cutting a gap into the one drawn before, as in its
-// logo (data/icon.png in Archipelago), at 16 x 16, each circle in its own color of Scrap
-// Energy's palette. Each value is a palette entry, -1 transparent: items are drawn with
-// Files/tileFragment.glfs, which shows entry int(red * 3 + green * 6 + blue * 9) of the item's
-// 19-color palette (docs/re/memory.md, "Other players' items").
-constexpr int8_t kLogo[16][16] = {
-    {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
-    {-1,  0,  9,  9,  0, -1,  3,  3,  3,  3, -1,  0,  1,  0,  0, -1},
-    { 0,  9,  9,  9,  9,  9, -1,  3,  3, -1,  1,  1,  1,  1,  1,  0},
-    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
-    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
-    { 9,  9, -1, -1, -1,  9,  0, -1, -1,  0,  1, -1, -1, -1, -1,  1},
-    {-1,  0,  2,  2,  0,  0, -1, -1, -1, -1,  0,  5,  5,  5,  0, -1},
-    { 0,  2,  2,  2,  2,  2, -1, -1, -1, -1,  5,  5,  5,  5,  5,  0},
-    { 2,  2,  2,  2,  2,  2, -1,  0,  0, -1,  5,  5,  5,  5,  5,  5},
-    { 2,  2,  2,  2,  2,  0,  8,  8,  8,  8,  0,  5,  5,  5,  5,  5},
-    { 2,  2,  2,  2, -1,  8,  8,  8,  8,  8,  8, -1,  5,  5,  5,  5},
-    { 0,  2,  2,  2,  0,  8,  8,  8,  8,  8,  8,  0,  5,  5,  5,  0},
-    {-1,  0,  0,  0,  0,  8,  8,  8,  8,  8,  8,  0,  0,  0,  0, -1},
-    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  8, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, -1, -1, -1, -1, -1},
+// The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
+// as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
+// flashes itself (palette entries 13 to 15 did not animate when watched).
+constexpr char kLogoArrow[16][17] = {
+    ".....krrrrk.....",
+    ".....rrrrrr.....",
+    ".kyyk.rrrr.kgkk.",
+    "kyyyyy.rr.gggggk",
+    "yyyyyykrrkgggggg",
+    "yyyyyykrrkgggggg",
+    "yy...yk..kg....g",
+    ".kbbkk....kpppk.",
+    "kbbbbb....pkkkpk",
+    "bbbbbb.kk.kk^kkp",
+    "bbbbbkoookk^^^kk",
+    "bbbb.oookk^^^^^k",
+    "kbbbkoook^^^^^^^",
+    ".kkkkoookkk^^^kk",
+    ".....oooook^^^k.",
+    ".....kooook^^^k.",
 };
-// The same with Archipelago's up arrow for a progression item, as in its own icons (Factorio's
-// ap.png in Archipelago), over the lower right; kArrow marks the arrow, which flashes.
-// The helper flashes the arrow itself: palette entries 13 to 15 did not animate when watched.
-constexpr int8_t kLogoArrow[16][16] = {
-    {-1, -1, -1, -1, -1,  0,  3,  3,  3,  3,  0, -1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1,  3,  3,  3,  3,  3,  3, -1, -1, -1, -1, -1},
-    {-1,  0,  9,  9,  0, -1,  3,  3,  3,  3, -1,  0,  1,  0,  0, -1},
-    { 0,  9,  9,  9,  9,  9, -1,  3,  3, -1,  1,  1,  1,  1,  1,  0},
-    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
-    { 9,  9,  9,  9,  9,  9,  0,  3,  3,  0,  1,  1,  1,  1,  1,  1},
-    { 9,  9, -1, -1, -1,  9,  0, -1, -1,  0,  1, -1, -1, -1, -1,  1},
-    {-1,  0,  2,  2,  0,  0, -1, -1, -1, -1,  0,  5,  5,  5,  0, -1},
-    { 0,  2,  2,  2,  2,  2, -1, -1, -1, -1,  5,  0,  0,  0,  5,  0},
-    { 2,  2,  2,  2,  2,  2, -1,  0,  0, -1,  0,  0, 19,  0,  0,  5},
-    { 2,  2,  2,  2,  2,  0,  8,  8,  8,  0,  0, 19, 19, 19,  0,  0},
-    { 2,  2,  2,  2, -1,  8,  8,  8,  0,  0, 19, 19, 19, 19, 19,  0},
-    { 0,  2,  2,  2,  0,  8,  8,  8,  0, 19, 19, 19, 19, 19, 19, 19},
-    {-1,  0,  0,  0,  0,  8,  8,  8,  0,  0,  0, 19, 19, 19,  0,  0},
-    {-1, -1, -1, -1, -1,  8,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
-    {-1, -1, -1, -1, -1,  0,  8,  8,  8,  8,  0, 19, 19, 19,  0, -1},
-};
+// A logo pixel as an entry of Scrap Energy's palette (kEntryLetters[i] is entry i's letter), or
+// -1 (transparent): items are drawn with Files/tileFragment.glfs, which shows entry int(red * 3 +
+// green * 6 + blue * 9) of the item's 19-color palette (docs/re/memory.md, "Other players'
+// items").
+constexpr char kEntryLetters[] = "kgbr-p--oy";
+int8_t logo_entry(char c) {
+    if (c == '^') return kArrow;
+    const char* at = c == '-' ? nullptr : std::strchr(kEntryLetters, c);
+    return at == nullptr ? -1 : static_cast<int8_t>(at - kEntryLetters);
+}
+
 // The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
 // items. Both are filler the game counts as Scrap Metal, and both draw in palette 8.
 struct StandIn {
@@ -97,10 +91,10 @@ struct StandIn {
     int16_t own_frame, own_event;
     const char* own_name;
     int16_t frame;  // the empty item frame its logo is painted into
-    const int8_t (*logo)[16];
+    const char (*logo)[17];
 };
 constexpr StandIn kStandIns[kStandInCount] = {
-    {kStandInItem, 134, 3549, kStandInNames[0], kStandInFrame, kLogo},
+    {kStandInItem, 134, 3549, kStandInNames[0], kStandInFrame, kApLogoRows},
     {kStandInProgression, 142, 3550, kStandInNames[1], kStandInProgressionFrame, kLogoArrow},
 };
 
@@ -265,7 +259,7 @@ void logo_pixels(const StandIn& s, int arrow_phase, bool clear, uint8_t (&rgba)[
     std::memset(rgba, 0, sizeof(rgba));
     for (int y = 0; y < 16 && !clear; ++y) {
         for (int x = 0; x < 16; ++x) {
-            int8_t entry = s.logo[y][x];
+            int8_t entry = logo_entry(s.logo[y][x]);
             if (entry < 0) continue;
             if (entry == kArrow) entry = kArrowColors[arrow_phase];
             std::memcpy(rgba[y][x], kEntryRgb[entry], 3);
@@ -330,7 +324,7 @@ bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& g
 }
 
 bool glyph_rgb(char c, uint8_t (&rgb)[3]) {
-    // The logo's colors as the world's AP items show them (palette 8's entries in kLogo: 1, 2,
+    // The logo's colors as the world's AP items show them (palette 8's entries in the logos: 1, 2,
     // 3, 5, 8, 9, from the Palettes file; docs/re/memory.md, "Other players' items"), and its
     // outline.
     struct Color {
@@ -410,7 +404,7 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, TextureCheck& chec
     auto fits = [&] {
         for (const StandIn& s : kStandIns) {
             if (!check.place_ok(texture, gl, frame_x(s.frame), frame_y(s.frame), 16, 16,
-                                [&](int px, int py) { return s.logo[py][px] >= 0; })) {
+                                [&](int px, int py) { return logo_entry(s.logo[py][px]) >= 0; })) {
                 return false;
             }
         }

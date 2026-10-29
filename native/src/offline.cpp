@@ -121,12 +121,10 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     bool table = false, start = false;
     while (next_line(lines, line)) {
         if (line == "ap_labels") {
-            std::string labels = "ap_labels";
+            out.labels = line;
             while (next_line(lines, line)) {
-                if (line.empty()) continue;
-                labels += "\n" + line;
+                if (!line.empty()) out.labels += "\n" + line;
             }
-            out.labels = labels;
             break;
         }
         std::istringstream words(line);

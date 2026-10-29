@@ -51,11 +51,9 @@ template <int N>
 bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
     if (!label_glyphs(pointer_at(child, widget::kLabel), N, glyphs)) return false;
     for (BYTE* g : glyphs) {
-        int32_t released = 1, count = 0;
-        BYTE* table = nullptr;
+        int32_t released = 1;
         if (!read(g, sprite::kReleased, released) || released != 0 ||
-            !read(g, sprite::kFrameCount, count) ||
-            !read(g, sprite::kFrameList, table) || count <= 'Z' || table == nullptr) {
+            frame_list(g, 'Z') == nullptr) {
             return false;
         }
     }

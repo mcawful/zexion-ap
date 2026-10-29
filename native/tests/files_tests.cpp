@@ -198,6 +198,29 @@ void test_this_seeds_slots_show_the_disks() {
           "off: the game's frames back (slot 5's KEYS and keys)");
 }
 
+// COPY FILE's and DELETE FILE's entries: wrapped as the file select's, each with its own handler
+// put back.
+void test_copy_and_delete_entries() {
+    Screen s;
+    zap::GameAddresses a = s.addresses();
+    auto* copy = reinterpret_cast<void*>(&copy_entry);
+    auto* del = reinterpret_cast<void*>(&delete_entry);
+    at<void*>(s.e[0].widget, 0x2C8) = copy;
+    at<void*>(s.e[1].widget, 0x2C8) = del;
+    for (Entry& e : s.e) e.fill(false);
+    zap::FileEntries f;
+    f.set_counts({{4, 3}, {5, 3}});
+    f.watch(a);
+    check(cells(s.e[0], {kDi, kSk, '0', '3', 0, 0}) && cells(s.e[1], {kDi, kSk, '0', '3', 0, 0}),
+          "COPY FILE's and DELETE FILE's entries: DISK and 03");
+    check(f.original(s.e[0].widget) == copy && f.original(s.e[1].widget) == del,
+          "each one's handler kept");
+    f.set_counts({});
+    f.watch(a);
+    check(at<void*>(s.e[0].widget, 0x2C8) == copy && at<void*>(s.e[1].widget, 0x2C8) == del,
+          "off: their handlers back");
+}
+
 void test_only_what_it_moved_goes_back() {
     Screen s;
     zap::GameAddresses a = s.addresses();
@@ -359,6 +382,8 @@ void test_the_logo_only_where_it_keeps_its_colors() {
         {"a cell not blank", [](Entry& e) { at<int32_t>(e.g(45), 0x1C4) = 'X'; }},
         {"a shader palette (colors lost)", [](Entry& e) { at<int16_t>(e.g(17), 0x1A0) = 2; }},
         {"a style not white (colors tinted)", [](Entry& e) { at<int32_t>(e.g(46), 0x1D0) = 0x17; }},
+        {"a cell whose frames stop before the logo's last glyph",
+         [](Entry& e) { at<int32_t>(e.g(16), 0x1BC) = zap::kApLogoGlyphs[3]; }},
     };
     for (const Case& c : cases) {
         Screen s;
@@ -426,6 +451,7 @@ void test_the_request() {
 
 int main() {
     test_this_seeds_slots_show_the_disks();
+    test_copy_and_delete_entries();
     test_only_what_it_moved_goes_back();
     test_an_entry_not_wrapped_is_not_written();
     test_no_disk_shows_nothing();

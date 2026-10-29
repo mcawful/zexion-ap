@@ -1,10 +1,10 @@
 #include "text.h"
 
 #include <algorithm>
-#include <cstring>
 #include <sstream>
 
 #include "apitem.h"  // kItemNameMax
+#include "game_mem.h"
 
 namespace zap {
 
@@ -132,15 +132,10 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
     const size_t w = static_cast<size_t>(per_line);
     if (text.size() % w != 1 || text.size() / w < 3) return;
     const int lines = static_cast<int>(text.size() / w);
-    int32_t half = 0;
-    double y = 0;
-    std::memcpy(&half, message + kMessageHalfHeight, sizeof(half));
-    std::memcpy(&y, message + kMessageY, sizeof(y));
-    if (half != 4 * lines + 7 || !(y == kPopupY - 1)) return;
-    half = 4 * lines + 4;
-    y -= 4;
-    std::memcpy(message + kMessageHalfHeight, &half, sizeof(half));
-    std::memcpy(message + kMessageY, &y, sizeof(y));
+    const auto y = field<double>(message, kMessageY);
+    if (field<int32_t>(message, kMessageHalfHeight) != 4 * lines + 7 || !(y == kPopupY - 1)) return;
+    put<int32_t>(message, kMessageHalfHeight, 4 * lines + 4);
+    put(message, kMessageY, y - 4);
 }
 
 Label layout_label(const std::string& first, const std::string& who) {

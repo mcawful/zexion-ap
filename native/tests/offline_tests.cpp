@@ -212,6 +212,23 @@ void put_seed(BYTE* section) {
     std::memcpy(section + 0x310, g_start, sizeof(g_start));
 }
 
+// The seed's save loaded, in play.
+void load_seed() {
+    std::memset(g_section, 0, sizeof(g_section));
+    put_seed(g_section);
+    g_rando_marker = 1;
+    g_save_loaded = 3;
+    g_menu = 0;
+}
+
+// `game` configured from the cache with `s` known, and s's save in play, dressed.
+void dress_offline(zap::Game& game, const zap::OfflineSeed& s) {
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+}
+
 void test_a_save_of_the_seed_dressed_offline() {
     reset_game();
     zap::Game game;
@@ -281,12 +298,7 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     // Played offline, then a client connects: told so, and the not-connected warning withdrawn.
     zap::Game again;
-    configure(again, false);
-    again.set_offline({s});
-    g_save_loaded = 3;
-    g_menu = 0;
-    put_seed(g_section);
-    for (int i = 0; i < 16; ++i) again.watch_offline();
+    dress_offline(again, s);
     check(again.intel_on() && again.queued_popups() == 1, "dressed offline, warned");
     // A client's short first connection (its version check) undresses it, as any client going
     // away does; the real one comes next.
@@ -379,11 +391,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         zap::Game game;
         check(configure(game).empty(), "a client's config");
         game.set_offline({s});
-        std::memset(g_section, 0, sizeof(g_section));
-        put_seed(g_section);
-        g_rando_marker = 1;
-        g_save_loaded = 3;
-        g_menu = 0;
+        load_seed();
         check(game.other_save() == "told" && game.queued_popups() == 1,
               "another seed's save: the notice queued");
         g_menu = 1;  // paused before it shows
@@ -426,10 +434,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         // goes meanwhile: the warning is given again once the save is dressed without it.
         g_messages = 0;
         zap::Game game;
-        configure(game, false);
-        game.set_offline({s});
-        put_seed(g_section);
-        for (int i = 0; i < 16; ++i) game.watch_offline();
+        dress_offline(game, s);
         check(game.queued_popups() == 1, "warned with no client");
         g_menu = 1;
         configure(game);
@@ -446,10 +451,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
     {
         // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
         zap::Game game;
-        configure(game, false);
-        game.set_offline({s});
-        put_seed(g_section);
-        for (int i = 0; i < 16; ++i) game.watch_offline();
+        dress_offline(game, s);
         game.leave_offline();
         configure(game);
         check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
@@ -458,13 +460,21 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
+        // Or when a client configures again.
+        zap::Game game;
+        dress_offline(game, s);
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        configure(game);
+        check(game.queued_popups() == 0, "withdrawn as a client configures again");
+        game.put_back_all(nullptr);
+    }
+    {
         // CLIENT CONNECTED, for a save played offline, likewise.
         g_messages = 0;
         zap::Game game;
-        configure(game, false);
-        game.set_offline({s});
-        put_seed(g_section);
-        for (int i = 0; i < 16; ++i) game.watch_offline();
+        dress_offline(game, s);
         game.leave_offline();
         configure(game);
         check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
@@ -486,11 +496,7 @@ void test_a_seed_put_with_a_client_reaches_the_look() {
     reset_game();
     zap::Game game;
     check(configure(game).empty(), "a client's config");
-    std::memset(g_section, 0, sizeof(g_section));
-    put_seed(g_section);
-    g_rando_marker = 1;
-    g_save_loaded = 3;
-    g_menu = 0;
+    load_seed();
     check(game.other_save() == "unknown", "no file for the save's seed: unknown");
     zap::OfflineSeed b;
     zap::parse_offline_seed(seed_text(), b);
@@ -707,9 +713,7 @@ void test_a_cache_without_the_client_only_keys() {
     check(!game.menu_installed(), "no ARCHIPELAGO choice");
 
     // The seed's save in play: dressed, the warning shown.
-    put_seed(g_section);
-    g_save_loaded = 3;
-    g_menu = 0;
+    load_seed();
     g_flags[39] = 0;
     std::memset(g_map_grid, 0, sizeof(g_map_grid));
     for (int i = 0; i < 64; ++i) {

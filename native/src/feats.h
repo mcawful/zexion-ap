@@ -43,20 +43,13 @@
 //
 // The Feats of Natu screen follows MISSION COMPLETE (whose builder always leads on to it, by
 // disassembly), with nothing flashing after such an ending. On it the helper writes kFeatsNote
-// into the blank last line of its title label, under FEATS OF NATU! (feats_screen_note). The screen, as read live on B1: the top menu has 4
-// panels; panel 0's first child is a live widget whose label is three lines of 38 glyphs (y 16,
-// 32 and 48), the title on the middle one and the last all blank (frame 0); panels 2 and 3 hold
-// the two rows of 7 Feat icons; the menu under it is MISSION COMPLETE's statistics: a panel of 10
-// lines, and, after an ending with the assist menu unlocked, a second of 8, ASSISTS USED (its
-// condition in the game not traced). With the secret row (a secret Feat earned, or the title
-// screen's code typed since the game started) there is a fifth panel of 5, and the game moves the
-// title up 8 (lines at y 8, 24 and 40) and the rows up 16, so the last line stays blank and free
-// (read live, 2026-10-28). By disassembly the rows can also be shorter: 6 or 7 on top, 5 to 7
-// below (6 and 5 seen, 2026-10-28). And in a game that has never reached Ending B, which an AP ending does not
-// reach, the title is a hint instead, COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!,
-// on the upper two lines of a label 8 lower (y 24, 40 and 56): the helper writes FEATS OF NATU!
-// and the note over it (working in game, 2026-10-28), and puts the hint back on an unload
-// (docs/re/memory.md, "Feats and achievements").
+// into the blank last line of its title label, under FEATS OF NATU! (feats_screen_note). In a
+// game that has never reached Ending B, which an AP ending does not reach, the title is a hint
+// instead (COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!): the helper writes FEATS OF
+// NATU! and the note over it (working in game, 2026-10-28), and puts the hint back on an unload.
+// The screen's shape (its panels and rows, the secret row, the title's lines, MISSION
+// COMPLETE's statistics under it), read live on B1 and by disassembly: docs/re/memory.md, "Feats
+// and achievements".
 #pragma once
 
 #include <windows.h>
@@ -116,7 +109,6 @@ public:
 private:
     void patch_ending(const GameAddresses& a);
     void restore_ending();
-    bool reads_as_written() const;  // the ending's bytes are still the helper's
     void hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading);
     // The stub's switch: blocking always (`on`), and the load test over `loading` (empty: off).
     void set_switch(const GameAddresses& a, bool on, const std::set<int>& loading);

@@ -65,7 +65,6 @@ public:
     const BYTE* disc_entry() const { return entry_; }  // tests
 
 private:
-    bool patch(const GameAddresses& addresses, uint8_t from, uint8_t to);
     void turn(const GameAddresses& addresses, BYTE* menu, const std::string& text, bool disc);
     // Sprite `s` pointed at the helper's disc entry (made from its frame 829 the first time).
     bool show_disc(BYTE* s);

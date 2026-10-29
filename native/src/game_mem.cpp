@@ -6,17 +6,13 @@ namespace zap {
 
 namespace {
 
-bool readable(const BYTE* p, size_t size) {
-    const BYTE* end = p + size;
-    while (p < end) {
+// Whether `size` bytes at `at` are committed, with no guard page, and every page allows one of
+// `access` (PAGE_ flags).
+bool committed(const void* at, size_t size, DWORD access) {
+    for (auto *p = static_cast<const BYTE*>(at), *end = p + size; p < end;) {
         MEMORY_BASIC_INFORMATION info;
-        if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT) {
-            return false;
-        }
-        DWORD protect = info.Protect;
-        if ((protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 ||
-            (protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
-                        PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
+        if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT ||
+            (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 || (info.Protect & access) == 0) {
             return false;
         }
         p = static_cast<const BYTE*>(info.BaseAddress) + info.RegionSize;
@@ -39,23 +35,15 @@ int copy_or_fault(const void* from, void* to, size_t size) {
 bool safe_read(const void* from, void* to, size_t size) {
     // The query keeps the read off guard pages (another thread's stack), which an exception
     // handler would disarm; the handler covers memory freed in between.
-    return from != nullptr && readable(static_cast<const BYTE*>(from), size) &&
+    constexpr DWORD kReadable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                                PAGE_EXECUTE_WRITECOPY;
+    return from != nullptr && committed(from, size, kReadable) &&
            copy_or_fault(from, to, size) == 1;
 }
 
 bool writable(const void* at, size_t size) {
-    const BYTE* p = static_cast<const BYTE*>(at);
-    const BYTE* end = p + size;
-    while (p < end) {
-        MEMORY_BASIC_INFORMATION info;
-        if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT ||
-            (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 ||
-            (info.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) == 0) {
-            return false;
-        }
-        p = static_cast<const BYTE*>(info.BaseAddress) + info.RegionSize;
-    }
-    return true;
+    return committed(at, size, PAGE_READWRITE | PAGE_EXECUTE_READWRITE);
 }
 
 int32_t panel_count(const BYTE* menu) {
@@ -145,13 +133,16 @@ int32_t frame_of(const BYTE* s) {
     return f;
 }
 
-bool set_frame(BYTE* s, int32_t frame) {
+BYTE* frame_list(const BYTE* s, int32_t frame) {
     int32_t frames = 0;
-    BYTE* list = nullptr;
-    if (!read(s, sprite::kFrameCount, frames) || frame < 0 || frame >= frames ||
-        !read(s, sprite::kFrameList, list) || list == nullptr) {
-        return false;
-    }
+    return read(s, sprite::kFrameCount, frames) && frame >= 0 && frame < frames
+               ? pointer_at(s, sprite::kFrameList)
+               : nullptr;
+}
+
+bool set_frame(BYTE* s, int32_t frame) {
+    BYTE* list = frame_list(s, frame);
+    if (list == nullptr) return false;
     put<int32_t>(s, sprite::kFrameIndex, frame);
     put(s, sprite::kFrameShown, list + frame * sprite::kFrameSize);
     return true;
@@ -209,6 +200,17 @@ bool patch_code(BYTE* at, const void* bytes, size_t size) {
     VirtualProtect(at, size, old, &unused);
     FlushInstructionCache(GetCurrentProcess(), at, size);
     return true;
+}
+
+bool code_reads(const BYTE* at, const void* bytes, size_t size) {
+    BYTE now[kMaxCodePatch];
+    return size <= sizeof(now) && safe_read(at, now, size) && std::memcmp(now, bytes, size) == 0;
+}
+
+bool put_back_code(BYTE* at, const void* written, const void* original, size_t size) {
+    if (size > kMaxCodePatch) return false;  // cannot be checked: held, never let go unread
+    if (code_reads(at, written, size)) patch_code(at, original, size);
+    return !code_reads(at, written, size);
 }
 
 }  // namespace zap

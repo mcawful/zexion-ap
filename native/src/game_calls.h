@@ -369,9 +369,7 @@ private:
     bool drop_notice(const char* text);
     // The not-connected warning withdrawn; if it had not shown, given again with the next dress.
     void drop_offline_warning();
-    // A client's config: the offline look put back first, and its notices for this load reset.
-    void leave_offline_for_client();
-    // A client gone (client_gone): its notices not shown yet withdrawn, other_save reset.
+    // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset.
     void drop_client_notices();
     bool offline_warned_ = false;  // this load's warning queued
     // The seed whose save this load was dressed offline (-1: none), kept through a client's
