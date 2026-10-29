@@ -4,8 +4,7 @@
 build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
 `world.py`), with starting Mega Bombs refused until the client can give them; Guns First off is built
-and working in game (step E, 2026-10-28), and Secret Shuffle built and partly run in game (step E, 2026-10-28: its 155th location's
-own pickup not yet).
+and working in game (step E, 2026-10-28), and Secret Shuffle built and working in game (step E, 2026-10-28).
 This page set out how the YAML offers every setting of the game's own randomizer, following
 the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
@@ -505,7 +504,7 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    owned; a Force Blaster and a Plasma Burst sent from the server's console each set only
    its own byte, with popups naming them; after the reload the client gave back what the
    save lost and left the Pulse Wave, its location uncollected again, in its room (read
-   with `grant.py show`). **Secret Shuffle built, 2026-10-28; run in game in part (below):** the
+   with `grant.py show`). **Secret Shuffle built, 2026-10-28, and working in game (below):** the
    Bomb Box at X48 Y20, "??? 48,20", is location index 154 (`reach.ALL_LOCATIONS`,
    `seed_locations`; `data.SECRET_LOCATION`), so every location keeps its id; its six cells
    joined the region graph as regions 448 to 452 (`tools/gen_world_data.py`,
@@ -522,10 +521,15 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    the client as the seed's (its 155-entry list in the game's order, table and Secret
    Shuffle byte); the locations at list positions 133, 135 and 141 (Pulsava 48,14, 49,15
    and 51,21, location indices 133, 134 and 140) gave the items placed there, S-Blade,
-   Navcore and Power Core, and were checked under their names. Not seen yet: the pickup at
-   the 155th itself (position 134), which the owner left for a later playthrough of the
-   seed (its room is behind a long gauntlet and needs Plasma Burst and 10 Missile
-   Containers).
+   Navcore and Power Core, and were checked under their names; and the 155th itself, "???
+   48,20" (position 134, location index 154), reached through its six cells' gauntlet with
+   the items the logic asks there (Plasma Burst and 10 Missile Containers, sent from the
+   server's console, and the assist menu), gave the Lance placed there and was checked
+   under its name: the Lance's byte 1, no Bomb Box and no bombs from it (the bombs read
+   1 of 1, the one Mega Bomb sent), and the owner's report that the popup and the pause
+   screen looked right. The game's ITEMS counter (`pickup_counter`, read by the tools
+   only) stayed at 4 for that pickup while each of the other four raised it: the game's
+   own count, which the client does not read; not traced.
 
 ## Open questions for the owner
 
