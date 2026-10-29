@@ -20,6 +20,7 @@ from Options import (
     OptionDict,
     PerGameCommonOptions,
     Range,
+    StartInventoryPool,
     Toggle,
 )
 
@@ -351,8 +352,9 @@ OHKO_SAFETY = (Safety.option_light, Safety.option_off)
 
 
 class StartKeys(NamedRange):
-    """Custom mode only; 'preset': the mode's. Keys in your start_inventory add to these, which
-    are the first ones from the Alpha Key.
+    """Custom mode only; 'preset': the mode's. Keys in your start_inventory_from_pool add to these,
+    which are the first ones from the Alpha Key (a start_inventory key the item pool holds is
+    refused: take it from the pool).
     0: Start the game with no keys.
     1: Start the game with 1 key.
     2: Start the game with 2 keys.
@@ -534,3 +536,6 @@ class ZexionOptions(PerGameCommonOptions):
     goal: Goal
     os_install_disks: OSInstallDisks
     os_install_disks_required: OSInstallDisksRequired
+    # Archipelago takes these out of the item pool after create_items, as the game's randomizer
+    # takes a starting item out of its pool (worlds/zexion/starting.py).
+    start_inventory_from_pool: StartInventoryPool

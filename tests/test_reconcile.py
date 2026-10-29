@@ -155,7 +155,7 @@ def test_without_guns_first_every_item_is_itself(collected, received, extra, owe
 
 
 def test_without_guns_first_no_gun_or_upgrade_byte_above_one() -> None:
-    # A second Machine Gun (a start_inventory or console copy) is not written as a byte of 2.
+    # A second Machine Gun (a plando or console copy) is not written as a byte of 2.
     target = rc.should_own(START, TABLE, {0}, [3, 9, 9], guns_first=False)
     assert rc.grants(inv(**STARTED), target, guns_first=False).inventory == {3: 1, 9: 1}
     # A second pickup that the menu's Guns First turned into the upgrade: nothing is owed.

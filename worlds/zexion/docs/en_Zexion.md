@@ -88,14 +88,21 @@ Locations are named by their area and their X and Y as the pause screen shows th
 
 ## Can I add starting items?
 
-Yes, with `start_inventory`, as long as a new game can start with them (counted together with
-the mode's own starting items):
+Yes, as long as a new game can start with them (counted together with the mode's own starting
+items). As in the game's own randomizer, where a starting item is no longer in the item pool,
+take an item the pool holds with `start_inventory_from_pool`: you start with it, and a Scrap
+Metal takes its place in the pool. `start_inventory` adds items on top of the pool, so use it
+only for the items the game holds a number of (Energy Tanks, Missile Containers, Missile Boxes)
+and for those your seed's pool doesn't hold. A `start_inventory` copy of any other item the
+pool holds stops generation with an error: the game holds such an item once, so the pool's copy
+would be a location that gives nothing.
+
+What a new game can start with:
 
 - one of each item such as the Slide Mod or the Power Core;
 - with Guns First on (every preset), at most two of each Progressive weapon (the second is its
   upgrade), and none of the five upgrades as items of their own; with it off, one of each
-  gun and one of each of the five upgrades, and none the item pool already holds (use
-  `start_inventory_from_pool` for those);
+  gun and one of each of the five upgrades;
 - Energy Tanks, Missile Boxes, and up to 9 Missile Containers (Custom's starting missiles
   come as Missile Boxes of ten and the rest as containers, and count toward the 9);
 - keys, in order from the Alpha Key;
