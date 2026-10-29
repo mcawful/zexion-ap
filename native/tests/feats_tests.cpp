@@ -66,7 +66,7 @@ void load_save(uint8_t salt) {
 
 zap::OfflineSeed seed_of_save() { return zap::offline_seed_of(g_section); }
 
-// The 12 bytes at the stand-in ending's call, read through volatile (stand_in.h, write_code).
+// The 12 bytes at the stand-in ending's call, read through volatile (check.h, write_code).
 std::vector<unsigned char> call_bytes() {
     std::vector<unsigned char> out;
     for (size_t i = 0; i < zap::kEndingPatchSize; ++i) {
@@ -531,13 +531,15 @@ struct FeatsScreen {
     }
 };
 
-std::string noted_line() {
-    const std::string note = zap::kFeatsNote;
-    const size_t left = (FeatsScreen::kColumns - note.size() + 1) / 2;
+// `text` centered on a line of the screen's width, '.' for blank.
+std::string centered_line(const std::string& text) {
+    const size_t left = (FeatsScreen::kColumns - text.size() + 1) / 2;
     std::string out(FeatsScreen::kColumns, '.');
-    out.replace(left, note.size(), note);
+    out.replace(left, text.size(), text);
     return out;
 }
+
+std::string noted_line() { return centered_line(zap::kFeatsNote); }
 
 void test_the_screen_note() {
     const std::string blank(FeatsScreen::kColumns, '.');
@@ -546,6 +548,11 @@ void test_the_screen_note() {
     zap::GameAddresses a;
     a.current_menu = reinterpret_cast<BYTE*>(&current);
     a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
+    // A screen the note is refused on: nothing written.
+    const auto refused = [&](FeatsScreen& shown, const char* what) {
+        current = shown.menu;
+        check(!zap::feats_screen_note(a, true) && shown.line(2) == blank, what);
+    };
     check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(),
           "the note under FEATS OF NATU!, centered", screen.line(2));
     check(screen.line(1).find("FEATS OF NATU!") != std::string::npos, "the title left as it is");
@@ -565,18 +572,13 @@ void test_the_screen_note() {
               "with ASSISTS USED under it too", assists.line(2));
         FeatsScreen odd("FEATS OF NATU!", true);
         at<int32_t>(odd.stats_panel[1], 0x1E8) = 7;
-        current = odd.menu;
-        check(!zap::feats_screen_note(a, true) && odd.line(2) == blank,
-              "a second panel under it that is not ASSISTS USED's 8 lines");
+        refused(odd, "a second panel under it that is not ASSISTS USED's 8 lines");
         FeatsScreen short_stats("FEATS OF NATU!", true);
         at<int32_t>(short_stats.stats_panel[0], 0x1E8) = 9;
-        current = short_stats.menu;
-        check(!zap::feats_screen_note(a, true) && short_stats.line(2) == blank,
-              "two panels under it, the first not 10 lines");
+        refused(short_stats, "two panels under it, the first not 10 lines");
         FeatsScreen three("FEATS OF NATU!", true);
         at<int32_t>(three.stats, 8) = 3;
-        current = three.menu;
-        check(!zap::feats_screen_note(a, true) && three.line(2) == blank, "3 panels under it");
+        refused(three, "3 panels under it");
     }
 
     {
@@ -589,18 +591,13 @@ void test_the_screen_note() {
               "and blanked again there");
         FeatsScreen odd_secret("FEATS OF NATU!", false, true);
         at<int32_t>(odd_secret.panel[4], 0x1E8) = 4;
-        current = odd_secret.menu;
-        check(!zap::feats_screen_note(a, true) && odd_secret.line(2) == blank,
-              "a fifth panel that is not 5 Feats");
+        refused(odd_secret, "a fifth panel that is not 5 Feats");
         FeatsScreen six_panels("FEATS OF NATU!", false, true);
         at<int32_t>(six_panels.menu, 8) = 6;
-        current = six_panels.menu;
-        check(!zap::feats_screen_note(a, true) && six_panels.line(2) == blank, "6 panels");
+        refused(six_panels, "6 panels");
         FeatsScreen no_fifth("FEATS OF NATU!", false, true);
         no_fifth.panels[4] = nullptr;
-        current = no_fifth.menu;
-        check(!zap::feats_screen_note(a, true) && no_fifth.line(2) == blank,
-              "5 panels, the fifth missing");
+        refused(no_fifth, "5 panels, the fifth missing");
     }
 
     {
@@ -615,25 +612,19 @@ void test_the_screen_note() {
 
     // Other screens: not this one.
     FeatsScreen other("OPTIONS");
-    current = other.menu;
-    check(!zap::feats_screen_note(a, true) && other.line(2) == blank, "a title without NATU");
+    refused(other, "a title without NATU");
     FeatsScreen top_five;
     at<int32_t>(top_five.panel[2], 0x1E8) = 5;
-    current = top_five.menu;
-    check(!zap::feats_screen_note(a, true) && top_five.line(2) == blank, "a top row of 5");
+    refused(top_five, "a top row of 5");
     FeatsScreen eight;
     at<int32_t>(eight.panel[3], 0x1E8) = 8;
-    current = eight.menu;
-    check(!zap::feats_screen_note(a, true) && eight.line(2) == blank, "a row of 8");
+    refused(eight, "a row of 8");
     FeatsScreen four;
     at<int32_t>(four.panel[3], 0x1E8) = 4;
-    current = four.menu;
-    check(!zap::feats_screen_note(a, true) && four.line(2) == blank, "a second row of 4");
+    refused(four, "a second row of 4");
     FeatsScreen alone;
     at<BYTE*>(alone.menu, 0x78) = nullptr;
-    current = alone.menu;
-    check(!zap::feats_screen_note(a, true) && alone.line(2) == blank,
-          "not after an ending (no MISSION COMPLETE under it)");
+    refused(alone, "not after an ending (no MISSION COMPLETE under it)");
     FeatsScreen few;
     at<int32_t>(few.glyphs[2 * FeatsScreen::kColumns + 5], 0x1BC) = 64;
     current = few.menu;
@@ -641,18 +632,9 @@ void test_the_screen_note() {
           "a glyph that cannot take the note: the line left whole");
     FeatsScreen released;
     at<int32_t>(released.title, 0x1C8) = 1;
-    current = released.menu;
-    check(!zap::feats_screen_note(a, true) && released.line(2) == blank, "a released title");
+    refused(released, "a released title");
     current = nullptr;
     check(!zap::feats_screen_note(a, true), "no menu");
-}
-
-// `text` centered on a line of the screen's width, '.' for blank.
-std::string centered_line(const std::string& text) {
-    const size_t left = (FeatsScreen::kColumns - text.size() + 1) / 2;
-    std::string out(FeatsScreen::kColumns, '.');
-    out.replace(left, text.size(), text);
-    return out;
 }
 
 void test_the_hint_replaced() {

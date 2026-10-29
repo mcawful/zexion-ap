@@ -330,12 +330,9 @@ class Session:
         weapons = {w for w in ids.PROGRESSIVE if snap.inventory[w]}
         for index in range(start, len(received)):
             item = received[index]
-            if guns_first:
-                item = reconcile.UPGRADE_OF.get(item, item)
-            if item in ids.PROGRESSIVE and guns_first:
-                weapon = item
-                if weapon in weapons:
-                    item = ids.PROGRESSIVE[weapon]
+            weapon = reconcile.UPGRADE_OF.get(item, item)
+            if guns_first and weapon in ids.PROGRESSIVE:
+                item = ids.PROGRESSIVE[weapon] if weapon in weapons else weapon
                 # The weapon is owned from now on, whichever byte this one set.
                 weapons.add(weapon)
             sender = senders[index] if senders and index < len(senders) else ""

@@ -248,9 +248,8 @@ bool Game::menu_open() const {
 
 bool Game::away_from_start() const {
     if (!in_play() || !rando_save_loaded()) return false;
-    // The start record: the candidate index, then the tile column and row.
-    const auto column = at<uint16_t>(at_.rando_blob, kOfflineStartAt + 2) / kCellColumns;
-    const auto row = at<uint16_t>(at_.rando_blob, kOfflineStartAt + 4) / kCellRows;
+    const auto column = at<uint16_t>(at_.rando_blob, rando::kStart + 2) / kCellColumns;
+    const auto row = at<uint16_t>(at_.rando_blob, rando::kStart + 4) / kCellRows;
     if (column >= kMapSide || row >= kMapSide) return false;
     // The raw cell can be -1 (off the map) for a moment: not known, so not away.
     BYTE* p = player();

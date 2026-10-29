@@ -74,14 +74,16 @@ AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
 CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by y then x
 
 
-def fresh(start_cell: tuple[int, int] | None = (13, 16), cells: bool = False) -> bytearray:
+def fresh(
+    start_cell: tuple[int, int] | None = (13, 16), cells: list = (), secret: bool = False
+) -> bytearray:
     """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
-    settings, one revealed start cell, a nonzero item table and inventory; with ``cells``,
-    CELLS as its location list."""
+    settings, one revealed start cell, a nonzero item table and inventory; ``cells`` as its
+    location list, and with ``secret`` Secret Shuffle on."""
     save = bytearray(sp.SAVE_SIZE)
-    if cells:
-        for i, (x, y) in enumerate(CELLS):
-            struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    for i, (x, y) in enumerate(cells):
+        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = secret
     save[sp.RANDO_MARKER] = 1
     struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
     save[sp.OPTIONS + 42] = 2  # Safety Normal

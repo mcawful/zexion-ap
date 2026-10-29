@@ -81,7 +81,6 @@ public:
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
     bool active() const { return active_; }
-    void set_active(bool active) { active_ = active; }  // tests
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
     // After configure (which loads opengl32's): the OpenGL functions to paint with (tests).

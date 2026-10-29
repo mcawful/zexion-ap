@@ -188,9 +188,8 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         frames[i] = frame_of(glyphs[i]);
         text += frames[i] > 0 && frames[i] < 128 ? static_cast<char>(frames[i]) : ' ';
     }
-    if (static_cast<int32_t>(sizeof(kFeatsNote) - 1) > columns) {
-        return text.substr(columns, columns).find(kScreenName) != std::string::npos;
-    }
+    const bool titled = text.substr(columns, columns).find(kScreenName) != std::string::npos;
+    if (static_cast<int32_t>(sizeof(kFeatsNote) - 1) > columns) return titled;
     // A hint the helper replaced, still as it wrote it: kept while shown, else put back.
     if (g_replaced.label == label && g_replaced.length == length) {
         bool ours = true;
@@ -206,7 +205,7 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         }
         g_replaced = {};  // the game's own text again: nothing to put back
     }
-    if (text.substr(columns, columns).find(kScreenName) == std::string::npos) {
+    if (!titled) {
         // Not FEATS OF NATU! on the middle line: the hint, or not this screen.
         if (text.find(kHintName) == std::string::npos) return false;
         replace_hint(top, label, glyphs, frames, columns, show);

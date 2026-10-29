@@ -11,7 +11,7 @@ from client import session as ss
 
 
 def blob_for(p: sp.SeedPlan) -> bytes:
-    out = sp.patch(bytes(fresh(cells=True)), p)
+    out = sp.patch(bytes(fresh(cells=CELLS)), p)
     return out[sp.SECTION : sp.SECTION + game.RANDO_BLOB_SIZE]
 
 

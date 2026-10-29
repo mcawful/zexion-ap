@@ -10,8 +10,6 @@ namespace zap {
 
 namespace {
 
-constexpr ptrdiff_t kItemTable = rando::kItemTable;
-constexpr ptrdiff_t kSettings = rando::kSettings;  // +0xCDDF4B less the section's +0xCDD6D0
 constexpr int kObscureMajors = 29, kObscureMinors = 38, kObscureClass = 41;
 constexpr uint8_t kClassLimit = 0x24;  // values below hold an item's class in value % 12
 constexpr uint8_t kRevealed = 0xC;     // the base of a square a hint or map revealed
@@ -21,8 +19,8 @@ constexpr uint8_t kMinorShown = 1, kMajorShown = 2, kMinorObscured = 7, kMajorOb
 
 Obscure obscure_settings(const BYTE* section) {
     if (section == nullptr) return {};
-    return {section[kSettings + kObscureMajors] != 0, section[kSettings + kObscureMinors] != 0,
-            section[kSettings + kObscureClass] != 0};
+    const BYTE* t = section + rando::kSettings;
+    return {t[kObscureMajors] != 0, t[kObscureMinors] != 0, t[kObscureClass] != 0};
 }
 
 uint8_t important_value(uint8_t value, Obscure obscure, bool ended) {
@@ -55,7 +53,7 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
     int changed = 0;
     const int locations = rando::locations(section);
     for (int i = 0; i < locations; ++i) {
-        if (section[kItemTable + i] != kStandInProgression) continue;
+        if (section[rando::kItemTable + i] != kStandInProgression) continue;
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
