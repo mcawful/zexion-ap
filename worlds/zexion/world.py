@@ -161,7 +161,7 @@ class ZexionWorld(World):
     def read_menu(self) -> custom.Menu:
         """The randomizer menu as this seed's settings: a preset's, with Starting Location and
         Safety the YAML's, or Custom's. Refuses a Custom-only option set with a preset, and a
-        state the game's menu cannot hold (custom.problems)."""
+        state the game's menu cannot hold or would build a broken pool from (custom.problems)."""
         o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
         is_custom = name == "custom"
         menu = custom.Menu.preset(PRESETS[o.custom_base.value] if is_custom else name)
@@ -181,7 +181,7 @@ class ZexionWorld(World):
                 menu = menu.with_amount(which, value)
         entries = {item: i for i, (item, _) in enumerate(custom.MENU_ITEMS)}
         for item, state in o.custom_items.value.items():
-            if state not in custom.STATES:
+            if not isinstance(state, str) or state not in custom.STATES:
                 raise OptionError(
                     f"{who}: custom_items {item}: {state!r} is not one of "
                     f"{', '.join(custom.STATES)}"
@@ -209,7 +209,9 @@ class ZexionWorld(World):
             raise OptionError(f"{who}: not supported yet: {'; '.join(unsupported)}")
         found = custom.problems(menu)
         if found:
-            raise OptionError(f"{who}: the game's menu cannot hold this: {'; '.join(found)}")
+            raise OptionError(
+                f"{who}: the game's randomizer cannot hold or build this: {'; '.join(found)}"
+            )
         return menu
 
     def option_start(self, option_name: str) -> Counter[int]:
@@ -358,7 +360,8 @@ class ZexionWorld(World):
                     what += f" and {disks} OS Install Disks"
                 raise OptionError(
                     f"Zexion ({self.player_name}): the pool has too little filler for the "
-                    f"{what}: {error}"
+                    f"{what}: {error} (fewer Item Pool Missiles or Mega Bombs, or Bulk "
+                    f"Missiles and Bulk Bombs off, leave filler)"
                 ) from error
             if codes == self.pool_codes:
                 break

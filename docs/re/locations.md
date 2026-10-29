@@ -189,4 +189,15 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   Shuffle on is not in the logic yet. With Guns First on, an upgrade started without its gun
   is started as the gun (the world's weapons are progressive), more than the game's start
   gives; with it off (step E), each upgrade is its own item, as the game counts it.
-- **Missile and Bomb Boxes in groups:** not modeled (`randocells.md`, "Not yet found").
+- **Missile and Bomb Boxes in the rules:** as the game's generator counts them (`randocells.md`,
+  "The evaluator works on a table of 64 counts", read again 2026-10-29): a held box never counts
+  toward Missile Containers or Mega Bombs (codes 1 and 2) in a list's needs, nor toward the
+  X-Missile's five containers, so with Bulk Missiles a Custom seed can leave out locations
+  whose lists need ten or more containers ("??? 48,20" under Secret Shuffle, by regions 450
+  and 452 to 451), as the game's own logic does; a box entry in a list, which would raise
+  another entry's need, is not modeled, and no B1 list has one. **One difference, stricter
+  than the game:** the generator counts a Custom seed's starting missiles as that many Missile
+  Containers (`0xE5450`), while the world holds them as boxes of ten and the rest as
+  containers (`custom.starting_items`, as the new game gives them), so from 10 starting
+  missiles the world's rules count fewer containers than the game's. No preset starts with 10
+  or more.

@@ -8,7 +8,8 @@ hold. The world builds the seed's pool and starting items from it as the game's 
 (``resolve``, ``starting_items``, ``pool_items``), with the world's own random numbers: the
 counts and odds are the game's, the exact draws are not, which nothing needs (the game's own
 placement is replaced by Archipelago's fill, and the client writes the world's starting items
-over the game's). ``problems`` refuses a state the menu cannot hold.
+over the game's). ``problems`` refuses a state the menu cannot hold, and one the menu allows
+but whose pool the game would cut at random (``most_entries``).
 
 Pure Python with no Archipelago imports.
 """
@@ -19,6 +20,7 @@ import random
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Protocol
 
 from . import data, logic
 from .reach import flagged
@@ -172,10 +174,51 @@ def most_pooled(menu: Menu) -> int:
     return others + guns
 
 
+def pooled_counts(menu: Menu) -> range:
+    """Every count of pooled entries the coin flips can give: ``most_pooled``, less one for each
+    coin-flip entry that went to the start (Random Gun's guns are no coin flips there)."""
+    random_gun = menu.setting(RANDOM_GUN)
+    flips = sum(
+        1 for i in range(ARRAY) if menu.start[i] and menu.pool[i] and not (random_gun and i in GUNS)
+    )
+    most = most_pooled(menu)
+    return range(most - flips, most + 1)
+
+
+class _BombsFirst:
+    """Draws that always come out 0: each box a Bomb Box wherever the rule draws, which leaves
+    the most entries (``most_entries``)."""
+
+    @staticmethod
+    def randrange(n: int) -> int:
+        return 0
+
+
+def most_entries(menu: Menu) -> int:
+    """The longest list steps 4 and 5 can build ("The pool"), over every coin flip and draw:
+    the keys, the pooled entries and the pool Energy Tanks, then the supplies for the places
+    left. Where the boxes are drawn, the list is longest when every draw that can give a Bomb
+    Box does: a Missile Box takes ten from the missiles and leaves no more entries than a Bomb
+    Box would, and the bombs run out sooner. Supplies cannot take places away, so this is
+    above the places only when the supplies are."""
+    longest = 0
+    for pooled in pooled_counts(menu):
+        fixed = 4 - menu.start_keys + pooled + menu.amounts[POOL_ENERGY]
+        room = menu.places - fixed
+        longest = max(longest, fixed + len(supplies(menu, room, _BombsFirst())))
+    return longest
+
+
 def problems(menu: Menu) -> list[str]:
-    """What the menu could not hold, or the game could not build a pool from, one line each;
-    empty when the state is one the menu can be set to (docs/re/randocells.md, "The randomizer
-    menu's first screen: items and amounts")."""
+    """What the menu could not hold, or what the game would build a broken pool from, one
+    line each; empty when neither (docs/re/randocells.md, "The randomizer menu's first screen:
+    items and amounts" and "The pool"). The menu's limits: Energy 40 in all, missiles and bombs
+    999 in all, and the pool missiles and bombs ten per free place. The pool: no more keys,
+    items and Energy Tanks than places, and, for every coin flip and draw, no longer list once
+    the supplies are in (``most_entries``), which the menu allows: the game drops the extra
+    entries at random, keys and items among them, and past 155 writes beyond its list. What it
+    does not check is the filler for the locations a seed leaves out, which depends on what the
+    items reach from the start (world.py, ``fit_pool``)."""
     a = menu.amounts
     out = []
     if a[START_ENERGY] + a[POOL_ENERGY] > MAX_ENERGY:
@@ -212,6 +255,13 @@ def problems(menu: Menu) -> list[str]:
                 f"Item Pool {kind} ({a[pool]}) are more than the {cap} the menu allows with "
                 f"these items and amounts (ten per free place)"
             )
+    if fixed <= menu.places and (longest := most_entries(menu)) > menu.places:
+        out.append(
+            f"the item pool's keys, items, Energy Tanks, missiles and Mega Bombs can come to "
+            f"{longest}, more than its {menu.places} places, and the game would drop some at "
+            f"random, keys and items among them (fewer Item Pool Missiles or Mega Bombs, or "
+            f"Bulk Missiles and Bulk Bombs off, leave them room)"
+        )
     return out
 
 
@@ -299,12 +349,20 @@ def _ceil9(v: int) -> int:
 
 
 class PoolError(ValueError):
-    """The game's pool rule gives more entries than places."""
+    """The game's pool rule gives more entries than places, or too little filler is left."""
 
 
-def supplies(menu: Menu, room: int, rng: random.Random) -> list[int]:
+class Draws(Protocol):
+    def randrange(self, n: int, /) -> int: ...
+
+
+def supplies(menu: Menu, room: int, rng: Draws) -> list[int]:
     """Step 5: the pool missiles and Mega Bombs as boxes, Mega Bombs and Missile Containers,
-    with ``room`` places left after the keys, items and Energy Tanks (0xF2079 to 0xF25A0)."""
+    with ``room`` places left after the keys, items and Energy Tanks (0xF2079 to 0xF25A0).
+    Where the boxes are drawn, each box's draw is below the missiles and bombs left plus one;
+    once they are below 0 (more boxes than tens, which Box Compression's 25 can make) the game
+    takes 0 without drawing (0xF2362), so the box is a Bomb Box, counted unless the bombs left
+    are exactly 0, and the pool holds more bombs than were set."""
     m, b = menu.amounts[POOL_MISSILES], menu.amounts[POOL_BOMBS]
     bulk_m, bulk_b = menu.setting(BULK_MISSILES), menu.setting(BULK_BOMBS)
     extra = 25 if menu.setting(BOX_COMPRESSION) else 0  # "Other items will also appear."
@@ -319,7 +377,7 @@ def supplies(menu: Menu, room: int, rng: random.Random) -> list[int]:
             bomb_boxes, b = boxes, b - 10 * boxes
         else:
             for _ in range(boxes):
-                d = rng.randrange(m + b + 1)
+                d = rng.randrange(m + b + 1) if m + b >= 0 else 0
                 if (d >= b or b < 10) and m >= 10:
                     missile_boxes, m = missile_boxes + 1, m - 10
                 else:
@@ -354,7 +412,7 @@ def pool_items(menu: Menu, pool: Sequence[int], rng: random.Random) -> list[int]
     items += [MENU_CODES[i] for i in range(ARRAY) if pool[i]]
     items += [ENERGY_TANK] * menu.amounts[POOL_ENERGY]
     items += supplies(menu, menu.places - len(items), rng)
-    if len(items) > menu.places:
+    if len(items) > menu.places:  # problems refuses every state that can come to this
         raise PoolError(
             f"the pool's {len(items)} keys, items, Energy Tanks, missiles and Mega Bombs are "
             f"more than its {menu.places} places, and the game would drop some at random"

@@ -161,7 +161,11 @@ rather than clamping. The game clamps in its menu, but a YAML has no menu to sho
   (`randocells.md`, "The pool", step 4), and the helper runs the game's placement before
   writing the seed, so this one must never reach the game;
 - pool missiles or Mega Bombs above ten per free place, the menu's limit
-  (`randocells.md`, "The randomizer menu's first screen: items and amounts").
+  (`randocells.md`, "The randomizer menu's first screen: items and amounts");
+- and one the menu allows: a pool whose list, once the missiles and Mega Bombs are in, can
+  be longer than its places for some coin flip or box draw (`custom.most_entries`), which
+  the game would cut at random, keys and items among them (`randocells.md`, "The pool",
+  step 7).
 
 **Build the pool as the game does** ("The pool"): the coin flips for `random` items, Random
 Gun's draw, Guns First's swap, the keys, the pooled items, the pool Energy Tanks, then missiles
@@ -240,8 +244,14 @@ every other, so the presets' regions keep their numbers (`components_after`).
   the game starts it (step E). Where
   the pool has too little filler for the locations left out (and the OS Install Disks), ten
   Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
-  makes filler when it runs short (`custom.compress`), in every mode. A pool longer than its
-  places is refused, where the game would drop entries at random. Gates follows the game:
+  makes filler when it runs short (`custom.compress`), in every mode; with no ten left, the
+  seed is refused at generation (what is left out depends on the start, which the menu does
+  not know). A state whose pool can be longer than its places, for any coin flip or box draw,
+  is refused (`custom.problems`, `most_entries`), where the game would drop entries at
+  random, keys and items among them, and past 155 write beyond its list. Where Box
+  Compression's 25 makes more boxes than the missiles and bombs have tens, the world makes
+  them all, as the game does (`custom.supplies`): with both amounts 20 or more, the extra
+  ones are Bomb Boxes. Gates follows the game:
   Open's gate travel is in the logic (step D, `reach.gates_triggered`, entrances among the gate
   cells' regions), but for R'Talva's gate (rank 12, a guard), and Off, Vanilla and Unlocked change nothing in it, as in the game's. Gates
   Off is taken with the core goal since step D: by the game's data files, the core's door is
