@@ -10,9 +10,9 @@ Safety, in order:
   the poll reads (``Snapshot``). That covers a load in progress and the moment a pickup is
   being recorded.
 - The loaded save must be a randomizer save (its marker reads 1: loading a normal save leaves
-  the previous seed's section in memory) and hold this seed (the section's item table and
-  start, see ``save_patch.section_matches``); otherwise no check is sent and nothing is
-  given.
+  the previous seed's section in memory) and hold this seed (the section's list size,
+  item table and start, see ``save_patch.section_matches``); otherwise no check is sent and
+  nothing is given.
 - Checks and the goal (the ending's flag) are read in any state with this seed loaded, which
   covers the ending's cutscenes and credits. Grants are made only in
   play (``game.IN_PLAY``), as compare-and-set writes, and only to make up a difference
@@ -134,10 +134,12 @@ class Step:
 
 class Session:
     def __init__(self, plan: save_patch.SeedPlan, cells: list):
-        if len(cells) != ids.LOCATIONS or len(plan.location_items) != len(cells):
-            raise ValueError(f"the slot data does not list {ids.LOCATIONS} locations")
+        if len(cells) != plan.list_size or plan.check_size():
+            raise ValueError(f"the slot data does not list {plan.list_size} locations")
         self.plan = plan
-        self.cells = [tuple(c) for c in cells]
+        self.cells = [tuple(c) for c in cells]  # by location index
+        # As the game's list holds them (save_patch.game_order).
+        self.listed = [self.cells[i] for i in save_patch.game_order(self.cells)]
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
@@ -209,7 +211,7 @@ class Session:
         # Another seed's save is said once a load by ticks.other_save_tick (state.OTHER_SAVE),
         # only when the helper knows its seed (an AP save): nothing for a plain randomizer game
         # ("unknown"), and nothing with no helper, as without it the two can't be told apart.
-        if seed is None or list(seed.locations) != self.cells:
+        if seed is None or list(seed.locations) != self.listed:
             self._due = None
             self.leave()
             if seed is None:

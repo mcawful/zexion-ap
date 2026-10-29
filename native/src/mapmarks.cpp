@@ -10,9 +10,8 @@ namespace zap {
 
 namespace {
 
-constexpr int kLocations = 154;
-constexpr ptrdiff_t kItemTable = 0x26C;
-constexpr ptrdiff_t kSettings = 0x87B;  // +0xCDDF4B less the section's +0xCDD6D0
+constexpr ptrdiff_t kItemTable = rando::kItemTable;
+constexpr ptrdiff_t kSettings = rando::kSettings;  // +0xCDDF4B less the section's +0xCDD6D0
 constexpr int kObscureMajors = 29, kObscureMinors = 38, kObscureClass = 41;
 constexpr uint8_t kClassLimit = 0x24;  // values below hold an item's class in value % 12
 constexpr uint8_t kRevealed = 0xC;     // the base of a square a hint or map revealed
@@ -54,7 +53,8 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
     if (section == nullptr || grid == nullptr) return 0;
     const Obscure obscure = obscure_settings(section);
     int changed = 0;
-    for (int i = 0; i < kLocations; ++i) {
+    const int locations = rando::locations(section);
+    for (int i = 0; i < locations; ++i) {
         if (section[kItemTable + i] != kStandInProgression) continue;
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;

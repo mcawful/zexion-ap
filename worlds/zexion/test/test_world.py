@@ -188,7 +188,9 @@ class TestDefaultStart(ZexionTestBase):
         groups = self.world.location_name_groups
         self.assertIn("Guardia 22,7", groups["Guardia"])
         named = set().union(*(names for g, names in groups.items() if g != "Everywhere"))
-        self.assertEqual(len(named), len(data.LOCATIONS))
+        # The game's 154 and Secret Shuffle's 155th, in its area "???".
+        self.assertEqual(len(named), len(data.LOCATIONS) + 1)
+        self.assertEqual(groups["???"], {"??? 48,20"})
 
 
 class TestDeathLinkAndAssistsOn(ZexionTestBase):

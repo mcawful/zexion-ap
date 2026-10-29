@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from fakes import fresh, menu_setup, plan
+from fakes import SECRET_LIST, fresh, menu_setup, plan, secret_plan
 
 from client import newgame as ng
 from client import save_patch as sp
@@ -52,6 +52,22 @@ def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
         (sp.SEED_HASH, 8),
     ):
         assert save[start : start + size] == patched[start : start + size]
+
+
+def test_a_secret_shuffle_seed_writes_its_155_in_the_games_order() -> None:
+    p = secret_plan()
+    save = fresh()
+    for i, (x, y) in enumerate(SECRET_LIST):
+        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1  # the placement ran with Secret Shuffle on
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
+    assert save[sp.ITEM_TABLE : sp.ITEM_TABLE + 155] == p.table
+    assert save[sp.ITEM_TABLE + 100] == p.location_items[154]
+    # The placement must have run with it on: expected, as every setting the logic reads.
+    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 0
+    assert apply_text(ng.plan_text(p, offer_choice=False), save) != []
+    with pytest.raises(ng.NewGameError):
+        ng.plan_text(secret_plan(options={42: 2, 72: 1}))  # 155 listed, Secret Shuffle off
 
 
 def test_the_seed_text_and_its_hash_are_the_seeds() -> None:

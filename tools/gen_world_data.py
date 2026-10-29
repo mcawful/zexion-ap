@@ -17,22 +17,24 @@ Reads (all copies in lab/, never the game folder):
 - MapData and Text (``game_data.py MapData Text``), for the area each location and start room
   is in, as the pause screen's REGION: names it (docs/re/locations.md, "Location names"), and
   MapData for the cells holding Zexion (the core goal, ``CORE``: docs/re/locations.md, "The
-  core goal is Zexion's cell in the core").
+  core goal is Zexion's cell in the core") and the Bomb Box Secret Shuffle makes a location
+  (``secret_location``, ``SECRET_LOCATION``).
 
-Cells joined by always-open passages are merged into one region (strongly connected components
-of the open passages); each conditional passage between two regions becomes an entrance carrying
-the requirement list of the cell it leaves from. The map is shared by all modes; a mode's
-settings only change how the rules evaluate. Only cells reachable with every item from some
-mode's valid start are kept, and those every item of a mode reaches from any start room with X
-Crystals and X Blocks on (``opened_cells``). A start is valid for a mode when, with every item
-of that mode, all 154 locations are reachable from it, and with only that mode's starting
-inventory at least ``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions
-and locations with every item, which the mode then holds once; the generator refuses data where
-they differ. The output is a Python module of plain data; worlds/zexion turns it into regions
-and rules with worlds/zexion/logic.py. The world works out each seed's reachable regions,
-locations and start rooms itself when the seed is generated (worlds/zexion/reach.py), over the
-map and the 34 start rooms (``START_ROOMS``) written here; each mode's lists here (``regions``,
-``location_indices``, ``starts``) are what its tests compare those results with.
+Cells joined by always-open passages are merged into one region (strongly connected components of
+the open passages); each conditional passage between two regions becomes an entrance carrying the
+requirement list of the cell it leaves from. The map is shared by all modes; a mode's settings only
+change how the rules evaluate. Only cells reachable with every item from some mode's valid start are
+kept, and those every item of a mode reaches from any start room with X Crystals and X Blocks on
+(``opened_cells``), and then with Secret Shuffle on too, whose regions are numbered after the others
+(``components_after``). A start is valid for a mode when, with every item of that mode, all 154
+locations are reachable from it, and with only that mode's starting inventory at least
+``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions and locations with every
+item, which the mode then holds once; the generator refuses data where they differ. The output is a
+Python module of plain data; worlds/zexion turns it into regions and rules with
+worlds/zexion/logic.py. The world works out each seed's reachable regions, locations and start rooms
+itself when the seed is generated (worlds/zexion/reach.py), over the map and the 34 start rooms
+(``START_ROOMS``) written here; each mode's lists here (``regions``, ``location_indices``,
+``starts``) are what its tests compare those results with.
 """
 
 from __future__ import annotations
@@ -331,18 +333,22 @@ def core_goal(grid, kept: set, zexion: list) -> dict:
 # Settings that open cells no preset reaches (docs/re/locations.md, "The region graph holds what
 # the settings reach"): X Crystals and X Blocks, whose cells (6, 26) and (7, 26) are a shorter way
 # between two regions. Abridged Finale stays off: it opens the core, which the world enters by its
-# own entrance (``core_goal``). Secret Shuffle's cells hold its 155th location, which the world
-# does not have yet.
+# own entrance (``core_goal``).
 OPENING = (30, 31)
+# Secret Shuffle (t37) opens six cells of their own, one of them the Bomb Box that is its 155th
+# location (``SECRET_ITEM``). Their regions are numbered after every other region, so the
+# regions the presets reach keep their numbers (``components_after``).
+SECRET_SHUFFLE = 37
+SECRET_ITEM = 37  # MapData's item byte of the cell Secret Shuffle adds to the location list
 
 
-def opened_cells(grid, modes: dict, candidates: list) -> set:
-    """The cells each mode's every item reaches from every start room with OPENING on."""
+def opened_cells(grid, modes: dict, candidates: list, opening: tuple = OPENING) -> set:
+    """The cells each mode's every item reaches from every start room with ``opening`` on."""
     cells = set()
     for mode in modes.values():
         settings = mode["settings"]
         options = bytearray(settings.options)
-        for t in OPENING:
+        for t in opening:
             options[t] = 1
         opened = dataclasses.replace(settings, options=bytes(options))
         full = full_inventory(Counter(mode["start_inventory"]), mode["pool"])
@@ -351,7 +357,42 @@ def opened_cells(grid, modes: dict, candidates: list) -> set:
     return cells
 
 
-def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_path: Path) -> dict:
+def components_after(base: set, extra: set, grid) -> dict:
+    """The regions of ``base`` as ``components`` numbers them, then those of ``extra`` after
+    them. Refuses ``extra`` cells that join a region of ``base``: its regions would change."""
+    comp = components(base, grid)
+    full = components(base | extra, grid)
+    joined = {full[c] for c in base} & {full[c] for c in extra}
+    if joined or len({full[c] for c in base}) != len(set(comp.values())):
+        raise SystemExit(f"the cells {sorted(extra)} join or merge regions of the others")
+    first, renumber = len(set(comp.values())), {}
+    for c in sorted(extra, key=lambda c: (c[1], c[0])):
+        renumber.setdefault(full[c], first + len(renumber))
+        comp[c] = renumber[full[c]]
+    return comp
+
+
+def secret_location(map_data: bytes, locations: list) -> tuple[int, int]:
+    """The cell (a, b) whose item byte is ``SECRET_ITEM``: the location Secret Shuffle adds
+    (docs/re/randocells.md, "The pool"), from MapData of build B1."""
+    check_b1("MapData", map_data, MAP_DATA_SHA256)
+    found = [
+        (i % 54, i // 54)
+        for i in range(54 * 54)
+        if map_data[MAP_ITEM + i * MAP_CELL_SIZE] == SECRET_ITEM
+    ]
+    if len(found) != 1 or found[0] in locations:
+        raise SystemExit(f"expected one cell of item {SECRET_ITEM} outside the list, got {found}")
+    return found[0]
+
+
+def build(
+    cells_path: Path,
+    mode_saves: dict[str, Path],
+    starts_path: Path,
+    exe_path: Path,
+    map_data: bytes,
+) -> dict:
     grid = rc.parse(cells_path.read_bytes())
     exe = exe_path.read_bytes()
     candidates = json.loads(starts_path.read_text(encoding="utf-8"))
@@ -382,7 +423,12 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         }
 
     union |= opened_cells(grid, modes, candidates)
-    comp = components(union, grid)
+    secret = secret_location(map_data, locations)
+    extra = opened_cells(grid, modes, candidates, OPENING + (SECRET_SHUFFLE,)) - union
+    if secret not in extra:
+        raise SystemExit(f"Secret Shuffle's location {secret} is not among the cells it opens")
+    comp = components_after(union, extra, grid)
+    union |= extra
     cell_region = {c: comp[c] for c in sorted(union)}
 
     entrances = {}
@@ -408,7 +454,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
                 ways.append(way)
 
     location_rules = {}
-    for i, (x, y) in enumerate(locations):
+    for i, (x, y) in enumerate([*locations, secret]):  # the secret one is index 154
         if grid[y][x].item_gated:
             location_rules[i] = tuple(grid[y][x].item_needs)
 
@@ -432,6 +478,7 @@ def build(cells_path: Path, mode_saves: dict[str, Path], starts_path: Path, exe_
         ]
     return {
         "locations": locations,
+        "secret_location": secret,
         "modes": modes,
         "cell_region": cell_region,
         "entrances": entrances,
@@ -463,6 +510,9 @@ def render(d: dict, source: str) -> str:
         "# ruff: noqa: E501",
         "# The game's 154 locations, in the order of its location list: cell (a, b), X = b, Y = a.",
         f"LOCATIONS = {[tuple(c) for c in d['locations']]!r}",
+        "# The 155th, a location only with Secret Shuffle: location index 154, at the game's list",
+        '# position 134 (docs/re/randocells.md, "The pool").',
+        f"SECRET_LOCATION = {tuple(d['secret_location'])!r}",
         "",
         "# The earlier rule for a start room, now the tests' oracle: every item reaches all 154",
         "# locations from it and its mode's starting items at least this many.",
@@ -559,11 +609,12 @@ def main(argv: list[str] | None = None) -> int:
     cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
     exe_path = args.exe or cells_path.parent / "Zexion.exe"
-    d = build(cells_path, mode_saves, starts_path, exe_path)
     map_path = args.map_data or cells_path.parent / "MapData"
     text_path = args.text or cells_path.parent / "Text"
-    named = {tuple(c) for c in d["locations"]} | {(x, y) for x, y, _ in d["start_table"]}
     map_data = map_path.read_bytes()
+    d = build(cells_path, mode_saves, starts_path, exe_path, map_data)
+    named = {tuple(c) for c in d["locations"]} | {(x, y) for x, y, _ in d["start_table"]}
+    named.add(d["secret_location"])
     d["cell_areas"] = dict(sorted(cell_areas(map_data, text_path.read_bytes(), named).items()))
     grid = rc.parse(cells_path.read_bytes())
     d["core"] = core_goal(grid, set(d["cell_region"]), zexion_cells(map_data))

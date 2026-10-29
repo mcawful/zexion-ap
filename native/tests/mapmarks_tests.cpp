@@ -96,6 +96,20 @@ void test_only_the_stand_ins_squares() {
     check(zap::mark_important(s.section.data(), s.grid.data(), false) == 0, "once");
 }
 
+void test_secret_shuffles_155th() {
+    // The list's 155th entry, in the four bytes before the item table, is a location only with
+    // Secret Shuffle (t37): game_layout.h, rando::locations.
+    Save s;
+    s.place(154, 20, 48, 48);
+    s.at(20, 48) = 0x19;
+    check(zap::mark_important(s.section.data(), s.grid.data(), false) == 0,
+          "without Secret Shuffle: not a location");
+    s.section[0x87B + 37] = 1;
+    check(zap::mark_important(s.section.data(), s.grid.data(), false) == 1 &&
+              s.at(20, 48) == 0x1A,
+          "with it: its stand-in marked");
+}
+
 void test_obscure_majors_from_the_settings() {
     Save s;
     s.place(0, 1, 1, 48);
@@ -568,6 +582,7 @@ int main() {
     test_one_slot_and_a_read_only_child();
     test_the_values();
     test_only_the_stand_ins_squares();
+    test_secret_shuffles_155th();
     test_obscure_majors_from_the_settings();
     test_all_three_settings_read();
     test_majors_on_minors_off();

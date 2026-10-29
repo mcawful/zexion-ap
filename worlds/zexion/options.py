@@ -243,7 +243,8 @@ class AbridgedFinale(Setting):
 
 class SecretShuffle(Setting):
     """Allows an item to be placed in the 7th layer.
-    Custom mode only; 'preset': the mode's. On is not supported yet."""
+    Custom mode only; 'preset': the mode's. On adds a 155th location, the Bomb Box at X48 Y20
+    ("??? 48,20")."""
 
     display_name = "Secret Shuffle"
     setting = custom.SECRET_SHUFFLE

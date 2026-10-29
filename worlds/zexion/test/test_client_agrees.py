@@ -14,7 +14,7 @@ import unittest
 
 from Fill import distribute_items_restrictive
 
-from .. import custom, data, items, locations, logic, starting
+from .. import custom, data, items, locations, logic, reach, starting
 from ..locations import location_name
 from ..world import FOREIGN, FOREIGN_PROGRESSION
 from .bases import ZexionTestBase
@@ -94,6 +94,11 @@ class TestClientCodes(unittest.TestCase):
 
     def test_the_locations(self) -> None:
         self.assertEqual(ids.LOCATIONS, len(data.LOCATIONS))
+        self.assertEqual(ids.MAX_LOCATIONS, len(reach.ALL_LOCATIONS))
+        self.assertEqual(ids.SECRET_SHUFFLE, reach.SECRET_SHUFFLE)
+        # The game's list order is grid order: the 154 already in it, the 155th at 134.
+        self.assertEqual(save_patch.game_order(data.LOCATIONS), tuple(range(154)))
+        self.assertEqual(save_patch.game_order(reach.ALL_LOCATIONS).index(154), 134)
 
     def test_the_starting_items_generation_accepts(self) -> None:
         # starting.py copies what the client's new game can start with: they must agree, or
@@ -127,11 +132,13 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         build = next(b for b in patterns.KNOWN_BUILDS if b.sha256.startswith(data.DATA_BUILD))
         custom = {"mode": "custom", "x_blocks": "on", "hints": "revealed", "start_keys": 1}
         guns_first_off = {"guns_first": "off", "custom_items": {"Pentashot": "start"}}
+        secret = {"secret_shuffle": "on", "start_room": "landing_pod"}
         for options in (
             *({"mode": mode} for mode in ("easy", "standard", "ohko")),
             custom,
             {**custom, "custom_base": "ohko", "safety": "off"},
             {**custom, **guns_first_off},
+            {**custom, **secret},
         ):
             for goal in ("core", "os_install_disks"):
                 with self.subTest(**options, goal=goal):
@@ -148,12 +155,25 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         self.assertEqual(plan.guns_first, guns_first)
         if not guns_first:  # the started Pentashot, as itself
             self.assertEqual(plan.start_items.get(14), 1)
-        self.assertEqual(len(plan.location_items), ids.LOCATIONS)
+        # 154 locations, or 155 with Secret Shuffle, its 155th last by location index and at
+        # list position 134 in the game's (save_patch.game_order); the 154 in the game's order.
+        self.assertEqual(plan.check_size(), "")
+        if slot["options"]["37"]:
+            self.assertEqual(len(plan.location_items), ids.MAX_LOCATIONS)
+            self.assertEqual(plan.cells[154], data.SECRET_LOCATION)
+            self.assertEqual(plan.order.index(154), 134)
+            self.assertEqual(plan.table[134], plan.location_items[154])
+        else:
+            self.assertEqual(len(plan.location_items), ids.LOCATIONS)
+            self.assertEqual(plan.order, tuple(range(ids.LOCATIONS)))
+            self.assertEqual(plan.table, bytes(plan.location_items))
         self.assertLessEqual(set(plan.location_items), set(ids.GAME_ITEMS))
         self.assertLessEqual(set(plan.start_items), set(ids.WRITABLE_ITEMS))
         self.assertEqual(len(plan.amounts), 6)
         self.assertIsNotNone(plan.menu)
-        self.assertEqual(len(slot["locations"]), ids.LOCATIONS)
+        self.assertEqual(len(slot["locations"]), plan.list_size)
+        table = f"write {newgame.section(save_patch.ITEM_TABLE):#x} {plan.table.hex()}"
+        self.assertIn(table, newgame.plan_text(plan, offer_choice=False).splitlines())
 
         # ARCHIPELAGO on the build the menu's start table was measured on, and RANDOMIZER's
         # request, which needs no table.

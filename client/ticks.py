@@ -242,7 +242,7 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
         unfound = offline.grid_cells(conn.session.cells, hunt.locations - set(p.found))
         disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
     return offline.seed_text(
-        conn.plan.location_items,
+        conn.plan.table,
         conn.plan.start,
         conn.intel_chip,
         conn.lock_assists,

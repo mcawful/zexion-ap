@@ -58,7 +58,7 @@ void Game::apply_file_counts() {
 }
 
 bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
-    return offline_matches(seed, section + kOfflineTableAt, section + kOfflineStartAt);
+    return offline_matches(seed, offline_seed_of(section));
 }
 
 int Game::loaded_seed() const {

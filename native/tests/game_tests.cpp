@@ -1225,8 +1225,7 @@ void test_refused_unload_rearms() {
     check(game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}}, "the file select's counts");
     check(game.label_names().count(4 * 54 + 3) == 1 && again.labels.size() == 1 &&
               saved.labels_seed && again.labels_seed &&
-              zap::offline_matches(*again.labels_seed, saved.labels_seed->table,
-                                   saved.labels_seed->start),
+              zap::offline_matches(*again.labels_seed, *saved.labels_seed),
           "the labels again, for the seed they were set for (the map names follow them)");
     check(game.mission_status() == "asked", "RETURN HOME WITH THE DISKS? asked for again");
     game.put_back_all(&chosen);

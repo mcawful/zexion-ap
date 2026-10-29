@@ -27,7 +27,7 @@ worlds/zexion/ → generation → slot data → client
 ```
 
 - **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
-  other 4; in Custom, those the settings reach from the start), using the game's own randomizer map and rules (`docs/re/locations.md`).
+  other 4; in Custom, those the settings reach from the start, 155 with Secret Shuffle), using the game's own randomizer map and rules (`docs/re/locations.md`).
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
   other worlds send, and sends the goal once the save has reached the ending (with the OS

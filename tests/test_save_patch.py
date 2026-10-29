@@ -5,7 +5,16 @@ from __future__ import annotations
 import struct
 
 import pytest
-from fakes import CELLS, fresh, plan, slot_data
+from fakes import (
+    CELLS,
+    SECRET_CELLS,
+    SECRET_LIST,
+    fresh,
+    plan,
+    secret_plan,
+    secret_section,
+    slot_data,
+)
 
 from client import ids
 from client import save_patch as sp
@@ -97,6 +106,49 @@ def test_section_matches_the_patched_seed_only() -> None:
     assert sp.section_matches(section, p)
     assert not sp.section_matches(section, plan(start=(6, 1, 1)))
     assert not sp.section_matches(section, plan(location_items=(46,) * sp.LOCATIONS))
+
+
+def test_the_games_order_is_grid_order() -> None:
+    # The 154 are in it already; Secret Shuffle's 155th, listed last, goes to its place.
+    assert sp.game_order(CELLS) == tuple(range(sp.LOCATIONS))
+    order = sp.game_order(SECRET_CELLS)
+    assert order.index(154) == 100 and [SECRET_CELLS[i] for i in order] == SECRET_LIST
+
+
+def test_a_secret_shuffle_plans_table_is_in_the_games_order() -> None:
+    p = secret_plan()
+    assert p.list_size == 155 and p.check_size() == ""
+    assert p.table[100] == p.location_items[154] and p.table[101] == p.location_items[100]
+    assert p.table[:100] == bytes(p.location_items[:100])
+    assert plan().table == bytes(plan().location_items)  # no cells: the game's order already
+    # A list that is not the settings' size.
+    assert secret_plan(options={42: 2}).check_size()
+    assert plan(options={sp.SECRET_SHUFFLE: 1}).check_size()
+    assert secret_plan(cells=tuple(CELLS)).check_size()
+
+
+def test_a_secret_shuffle_section_matches_its_seed_only() -> None:
+    p = secret_plan()
+    section = secret_section(p)
+    assert sp.section_matches(bytes(section), p)
+    # The location-index order is not the game's.
+    assert not sp.section_matches(bytes(section), secret_plan(cells=tuple(SECRET_LIST)))
+    section[sp.OPTIONS - sp.SECTION + sp.SECRET_SHUFFLE] = 0
+    assert not sp.section_matches(bytes(section), p)
+
+
+def test_a_secret_shuffle_save_gets_its_table_in_the_games_order() -> None:
+    save = fresh()
+    for i, (x, y) in enumerate(SECRET_LIST):
+        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
+    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1
+    items = [46] * 155
+    items[154] = ids.KEYS[0]  # the Alpha Key at the 155th location
+    p = secret_plan(location_items=tuple(items))
+    out = sp.patch(bytes(save), p)
+    assert out[sp.ITEM_TABLE : sp.ITEM_TABLE + 155] == p.table
+    x, y = SECRET_LIST[100]
+    assert out[sp.KEY_MARKERS : sp.KEY_MARKERS + 2] == bytes((y, x))
 
 
 def test_plan_from_slot_data() -> None:

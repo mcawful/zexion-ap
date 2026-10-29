@@ -116,6 +116,31 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         more = sum(len(crystals.sphere0(r["cell"]).locations) for r in data.START_ROOMS)
         self.assertGreater(more, total)
 
+    def test_secret_shuffle_adds_its_location_only_when_on(self) -> None:
+        # The 155th location, index 154 (data.SECRET_LOCATION), in six cells only code 68
+        # with Secret Shuffle's tier opens (docs/re/locations.md, "The region graph holds what
+        # the settings reach").
+        seed = preset("standard")
+        options = bytearray(seed.settings.options)
+        options[reach.SECRET_SHUFFLE] = 1
+        shuffled = with_settings(seed, options=bytes(options))
+        self.assertEqual(len(reach.seed_locations(seed.settings)), 154)
+        self.assertEqual(reach.seed_locations(shuffled.settings)[154], data.SECRET_LOCATION)
+        for room in data.MODES["standard"]["starts"]:
+            with self.subTest(room=room["cell"]):
+                every = shuffled.every(room["cell"]).locations
+                self.assertEqual(every, frozenset(range(155)))
+                self.assertNotIn(154, seed.every(room["cell"]).locations)
+        self.assertNotIn(data.CELL_REGION[data.SECRET_LOCATION], seed.every((23, 22)).regions)
+
+    def test_the_presets_regions_keep_their_numbers(self) -> None:
+        # Secret Shuffle's cells' regions are numbered after every other (tools/
+        # gen_world_data.py, components_after), so none a preset reaches changed.
+        secret = {data.CELL_REGION[(a, b)] for a in (20, 21) for b in (46, 47, 48)}
+        reached = set().union(*(data.MODES[m]["regions"] for m in data.MODES))
+        self.assertGreater(min(secret), max(reached))
+        self.assertEqual(max(data.CELL_REGION.values()), max(secret))
+
     def test_x_blocks_short_way_needs_only_the_snake(self) -> None:
         # (7, 27) -> (7, 26) (code 68, X Blocks) -> (6, 26) (the Snake) -> (6, 27), the graph's
         # two cells X Blocks opens (docs/re/locations.md, "The region graph holds what the

@@ -13,7 +13,15 @@ import struct
 from dataclasses import dataclass
 
 from . import ids
-from .ids import ENERGY_TANK, KEYS, LOCATIONS, MISSILE_BOX, MISSILE_CONTAINER, WRITABLE_ITEMS
+from .ids import (
+    ENERGY_TANK,
+    KEYS,
+    LOCATIONS,
+    MISSILE_BOX,
+    MISSILE_CONTAINER,
+    SECRET_SHUFFLE,
+    WRITABLE_ITEMS,
+)
 
 SAVE_SIZE = 78108  # a randomizer save
 RANDO_MARKER = 0x9402  # 16-bit: 1 in a randomizer save, 0 in a normal one or a cleared slot
@@ -70,17 +78,51 @@ class MenuSetup:
     table_build: str = ""  # the start of the SHA-256 of the exe the table was measured on
 
 
+def game_order(cells) -> tuple[int, ...]:
+    """The location indices of ``cells`` (by index, as the slot data lists them) in the game's
+    list order: grid order, by Y then X, a cell (a, b) being X = b, Y = a (docs/re/randocells.md,
+    "The pool"). The identity for the game's 154; with Secret Shuffle the 155th, location index
+    154, goes to list position 134."""
+    return tuple(sorted(range(len(cells)), key=lambda i: (cells[i][1], cells[i][0])))
+
+
 @dataclass(frozen=True)
 class SeedPlan:
     """What the seed needs in the save; built from the AP slot data."""
 
-    location_items: tuple[int, ...]  # item ID per location, as the game should hold it
+    location_items: tuple[int, ...]  # item ID per location index, as the game should hold it
     start_items: dict[int, int]  # item ID -> count
     start: tuple[int, int, int]  # start-candidate index - 1, tile column, tile row
     second_start: tuple[int, int, int] | None
     amounts: tuple[int, ...]  # the mode's six amounts, as at AMOUNTS
     options: dict[int, int]  # settings the logic depends on: option index -> value
     menu: MenuSetup
+    # The locations' cells by location index (slot data "locations"); empty: the game's list
+    # order already (the 154 alone).
+    cells: tuple[tuple[int, int], ...] = ()
+
+    @property
+    def list_size(self) -> int:
+        """The locations the game's list holds for this seed: 154, or 155 with Secret Shuffle
+        (setting t37)."""
+        return LOCATIONS + bool(self.options.get(SECRET_SHUFFLE, 0))
+
+    @property
+    def order(self) -> tuple[int, ...]:
+        """The location indices in the game's list order (``game_order``)."""
+        return game_order(self.cells) if self.cells else tuple(range(len(self.location_items)))
+
+    @property
+    def table(self) -> bytes:
+        """The item table as the game holds it: ``location_items`` in the game's list order."""
+        return bytes(self.location_items[i] for i in self.order)
+
+    def check_size(self) -> str:
+        """What is wrong with the seed's list of locations for its settings, or ""."""
+        n = self.list_size
+        if len(self.location_items) != n or (self.cells and len(self.cells) != n):
+            return f"the seed lists {len(self.location_items)} locations, not {n}"
+        return ""
 
     @property
     def guns_first(self) -> bool:
@@ -109,6 +151,7 @@ def plan_from_slot_data(slot: dict) -> SeedPlan:
             start_table=tuple(tuple(room) for room in menu.get("start_table", ())),
             table_build=menu.get("table_build", ""),
         ),
+        cells=tuple(tuple(c) for c in slot["locations"]),
     )
 
 
@@ -160,14 +203,15 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
     """The fresh save with the seed written in. Raises PatchError if it cannot be."""
     check_fresh(save)
     check_mode(save, plan)
-    if len(plan.location_items) != LOCATIONS:
-        raise PatchError(f"the seed lists {len(plan.location_items)} locations, not {LOCATIONS}")
+    wrong = plan.check_size()
+    if wrong:
+        raise PatchError(wrong)
     bad = [i for i, n in plan.start_items.items() if n and i not in WRITABLE_ITEMS]
     bad += [i for i in BOMB_ITEMS if plan.start_items.get(i)]
     if bad:
         raise PatchError(f"starting items {sorted(bad)} cannot be written")
     out = bytearray(save)
-    out[ITEM_TABLE : ITEM_TABLE + LOCATIONS] = bytes(plan.location_items)
+    out[ITEM_TABLE : ITEM_TABLE + plan.list_size] = plan.table
     # The seed text and its hash, as an ARCHIPELAGO game has them (client/newgame.py).
     try:
         hashed = seed_hash(plan.menu.seed_text)
@@ -190,9 +234,9 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
     out[MAP_GRID : MAP_GRID + len(grid)] = grid
     # The key markers must show where this seed puts the keys, not where the fresh game's own
     # seed did; a key that is in another world, or owned from the start, has none.
-    cells = [struct.unpack_from("<HH", save, SECTION + 4 * i) for i in range(LOCATIONS)]
+    cells = [struct.unpack_from("<HH", save, SECTION + 4 * i) for i in range(plan.list_size)]
     for k, key in enumerate(KEYS):
-        at = [i for i, item in enumerate(plan.location_items) if item == key]
+        at = [i for i, item in enumerate(plan.table) if item == key]
         marker = (NO_MARKER, NO_MARKER)
         if at and not plan.start_items.get(key):
             x, y = cells[at[0]]
@@ -210,7 +254,10 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
 
 
 def section_matches(section: bytes, plan: SeedPlan) -> bool:
-    """Whether a randomizer section (as loaded in memory, from SECTION) holds this seed."""
-    table = section[ITEM_TABLE - SECTION : ITEM_TABLE - SECTION + LOCATIONS]
+    """Whether a randomizer section (as loaded in memory, from SECTION) holds this seed: its
+    list's size (Secret Shuffle's byte), item table and start."""
+    if bool(section[OPTIONS - SECTION + SECRET_SHUFFLE]) != (plan.list_size > LOCATIONS):
+        return False
+    table = section[ITEM_TABLE - SECTION : ITEM_TABLE - SECTION + plan.list_size]
     start = struct.unpack_from("<3H", section, START_RECORD - SECTION)
-    return bytes(table) == bytes(plan.location_items) and tuple(start) == plan.start
+    return bytes(table) == plan.table and tuple(start) == plan.start

@@ -165,6 +165,40 @@ def plan(**changes) -> sp.SeedPlan:
     return sp.SeedPlan(**fields)
 
 
+# A Secret Shuffle seed's 155 locations: SECRET_LIST in the game's list order (grid order), and
+# SECRET_CELLS by location index, as the world lists them, its 155th (index 154) last: the cell
+# at list position 100.
+SECRET_LIST = [(i % 54, i // 54) for i in range(sp.LOCATIONS + 1)]
+SECRET_CELLS = SECRET_LIST[:100] + SECRET_LIST[101:] + [SECRET_LIST[100]]
+
+
+def secret_plan(**changes) -> sp.SeedPlan:
+    """plan() with Secret Shuffle on: 155 locations, listed by location index."""
+    settings = bytearray(menu_setup().settings)
+    settings[sp.SECRET_SHUFFLE - 10] = 1
+    fields = dict(
+        location_items=tuple(i % 46 for i in range(sp.LOCATIONS + 1)),
+        options={42: 2, 72: 1, sp.SECRET_SHUFFLE: 1},
+        cells=tuple(SECRET_CELLS),
+        menu=menu_setup(settings=bytes(settings)),
+    )
+    fields.update(changes)
+    return plan(**fields)
+
+
+def secret_section(p: sp.SeedPlan) -> bytearray:
+    """The loaded section of a save of ``p``, a Secret Shuffle seed: its 155 cells, Secret
+    Shuffle's byte, the item table in the game's order and the start record."""
+    section = bytearray(ids.SECTION_SIZE)
+    for i, (x, y) in enumerate(SECRET_LIST):
+        struct.pack_into("<HH", section, 4 * i, x, y)
+    section[sp.OPTIONS - sp.SECTION + sp.SECRET_SHUFFLE] = 1
+    table = sp.ITEM_TABLE - sp.SECTION
+    section[table : table + len(p.table)] = p.table
+    struct.pack_into("<3H", section, sp.START_RECORD - sp.SECTION, *p.start)
+    return section
+
+
 # --- a scripted time.sleep, for the tools' polling loops ---------------------------------------
 
 

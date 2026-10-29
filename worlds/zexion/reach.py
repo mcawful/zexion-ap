@@ -16,10 +16,10 @@ leaves from; a list with codes 64 to 67 looks at whether a neighboring cell is r
 flood repeats until nothing new is reached. Under Gates Open, once a gate cell is reached the
 flood goes on from the gate cells too, as the game's logic does (``gates_triggered``); a second
 teleport target counts as the logic counts it (``second_counts``). The two agree over the
-graph's cells, those every item reaches in some mode; a passage to a cell outside it is not
-followed, so where X Blocks, Secret Shuffle or Abridged Finale lead outside
-(docs/re/locations.md, "The region graph holds what the settings reach"), the result is less
-than the game's, never more. Results are cached by settings, inventory and starts, so a
+graph's cells, those every item reaches in some mode, or with X Crystals, X Blocks or Secret
+Shuffle on; a passage to a cell outside it is not followed, so where Abridged Finale leads into
+the core (docs/re/locations.md, "The region graph holds what the settings reach"), the result is
+less than the game's, never more. Results are cached by settings, inventory and starts, so a
 multiworld of many Zexion players with one mode works each out once.
 
 Pure Python with no Archipelago imports.
@@ -101,7 +101,18 @@ def _ways(settings: logic.Settings, have: Inventory) -> tuple[dict, list]:
     return fixed, looking
 
 
-LOCATION_AT = {cell: i for i, cell in enumerate(data.LOCATIONS)}
+# Every location by location index: the game's 154, then Secret Shuffle's (index 154).
+ALL_LOCATIONS: tuple[Cell, ...] = (*data.LOCATIONS, data.SECRET_LOCATION)
+LOCATION_AT = {cell: i for i, cell in enumerate(ALL_LOCATIONS)}
+SECRET_SHUFFLE = 37  # the setting (t37) that makes the 155th a location
+
+
+def seed_locations(settings: logic.Settings) -> tuple[Cell, ...]:
+    """The seed's locations by location index: the game's 154, and with Secret Shuffle the
+    155th as index 154. The game's own list holds it at position 134, in grid order
+    (docs/re/randocells.md, "The pool"); the client works in location indices and puts the
+    game's list in its order itself (client/save_patch.py, ``game_order``)."""
+    return ALL_LOCATIONS if settings.options[SECRET_SHUFFLE] else ALL_LOCATIONS[:-1]
 
 
 def collectible(
@@ -110,7 +121,7 @@ def collectible(
     """Whether location ``i``'s item can be collected once its cell is reached: its own list,
     if it has one."""
     rule = data.LOCATION_RULES.get(i)
-    return rule is None or logic.satisfied(rule, counts, settings, data.LOCATIONS[i], at)
+    return rule is None or logic.satisfied(rule, counts, settings, ALL_LOCATIONS[i], at)
 
 
 # R'Talva's gate: the game's logic lets reaching it open the gate travel (logic.GATE_TRIGGERS),
@@ -168,7 +179,7 @@ def reach(settings: logic.Settings, have: Inventory, starts: tuple[Cell, ...]) -
         reached.update(opened)
     locations = frozenset(
         i
-        for i, cell in enumerate(data.LOCATIONS)
+        for i, cell in enumerate(seed_locations(settings))
         if at(cell) and collectible(i, counts, settings, at)
     )
     return Reach(frozenset(reached), locations)
@@ -241,7 +252,7 @@ def offered_starts(seed: Seed, double_teleport: bool) -> list[dict]:
     return [
         room
         for room in data.START_ROOMS
-        if len(seed.every(room["cell"]).locations) == len(data.LOCATIONS)
+        if len(seed.every(room["cell"]).locations) == len(seed_locations(seed.settings))
         and len(seed.sphere0(room["cell"]).locations) >= MIN_SPHERE_ZERO
     ]
 

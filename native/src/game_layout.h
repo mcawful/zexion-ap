@@ -23,6 +23,18 @@ constexpr int kCellColumns = 14, kCellRows = 20;
 // pause screen's KEYS row").
 constexpr int kTextureSize = 2048;
 
+// The loaded randomizer section: its location cells at +0, x then y, 16-bit each, in the game's
+// list order; its item table at +0x26C; its settings at +0x87B + t (docs/re/save-format.md). The
+// list holds 154 locations, or 155 with Secret Shuffle (t37), its 155th filling the four zero
+// bytes the others leave before the table (docs/re/randocells.md, "The pool").
+namespace rando {
+constexpr ptrdiff_t kItemTable = 0x26C, kSettings = 0x87B;
+constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37;
+inline int locations(const uint8_t* section) {
+    return kLocations + (section[kSettings + kSecretShuffle] != 0 ? 1 : 0);
+}
+}  // namespace rando
+
 // save_loaded: 0xFF with no save loaded, 0 in one (docs/re/memory.md, "Telling play from menus,
 // the title screen and death"). The flags: 0x9C4 bytes (client/game.py, FLAGS).
 constexpr uint8_t kNoSaveLoaded = 0xFF;
