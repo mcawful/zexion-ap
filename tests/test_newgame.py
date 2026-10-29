@@ -295,3 +295,12 @@ def test_a_seed_text_the_game_would_read_otherwise_is_refused(text) -> None:
         sp.patch(bytes(fresh()), plan(menu=menu_setup(seed_text=text)))
     with pytest.raises(ng.NewGameError):
         ng.plan_text(plan(menu=menu_setup(seed_text=text)), offer_choice=False)
+
+
+def test_the_archipelago_line_also_gives_randomizers_route_with_the_seed_alone_after_it() -> None:
+    line, seed = ng.choice_message(plan())
+    assert "choose ARCHIPELAGO" in line and "RANDOMIZER instead of ARCHIPELAGO" in line
+    assert "next line" in line and "Paste" in line and "START GAME" in line
+    # The seed on a line of its own, unspaced: clicking it in the window copies just these 16
+    # characters, all the menu's Paste reads as the seed.
+    assert seed == "0123456789ABCDEF"

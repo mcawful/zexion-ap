@@ -103,7 +103,7 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
             "reads=0/-1"
         )
         assert helper.request("ping") == "pong frames=0"
-        with pytest.raises(native.HelperError, match="unknown request"):
+        with pytest.raises(native.ModMismatch, match="doesn.t know the request nonsense"):
             helper.request("nonsense")
         # Hooked to nothing, it has no frames to work in: config and apply are refused.
         rvas = {key: 0x1000 for key in native.CONFIG_KEYS}
@@ -156,14 +156,19 @@ def test_a_listing_that_keeps_failing_is_an_error_unless_the_game_died(monkeypat
         native.is_loaded(1)
 
 
+UNREADABLE = "?"  # a stand-in helper's version whose hello this client can't read
+
+
 @dataclass
 class _Game:
     """A stand-in game for attach: which helper version is loaded, the built file's, and
     whether the helper loaded is the game folder's copy (its hello's ``folder``)."""
 
-    loaded: str | None = None  # the version loaded, None for none
+    loaded: str | None = None  # the version loaded, None for none; UNREADABLE: a garbled hello
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
+    build: str = "B1"  # the build the helper knows the game as
+    stays: bool = False  # the helper refuses to unload
     loads: int = 0
     unloads: int = 0
     rva: dict[str, int] = field(default_factory=dict)
@@ -189,10 +194,20 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
             pass
 
         def hello(self) -> dict[str, str]:
-            return {"version": game.loaded or "", "folder": game.folder, "hooked": "1"}
+            if game.loaded == UNREADABLE:
+                raise native.UnreadableHello("garbled")
+            hooked = "1" if game.build != "unknown" else "0"
+            return {
+                "version": game.loaded or "",
+                "folder": game.folder,
+                "build": game.build,
+                "hooked": hooked,
+            }
 
         def request(self, text: str, *args: object) -> str:
             assert text == "unload"
+            if game.stays:
+                raise native.HelperError("a menu is open; not unloading")
             game.unloads += 1
             game.loaded = None
             return "bye"
@@ -220,7 +235,7 @@ def test_an_old_game_folder_copy_is_refused_not_reloaded(tmp_path, monkeypatch) 
     (tmp_path / "zexion_ap.dll").write_bytes(b"")
     monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
     game = stand_in_attach(monkeypatch, loaded="0.0.1", folder="1")
-    with pytest.raises(native.HelperError, match="copy this release's"):
+    with pytest.raises(native.HelperError, match="from this client's release"):
         native.attach(game, tmp_path / "no-build.dll")
     assert game.unloads == game.loads == 0
 
@@ -355,3 +370,115 @@ def test_hello_keeps_the_feats_guards_reason_as_one_field(monkeypatch) -> None:
     assert hello["feats"] == "on:steam_api64_is_not_loaded" and hello["folder"] == "1"
     _, detail = state.FeatsCheck().seen(hello["feats"], True, 0.0, state.SayOnce())
     assert detail == "not all in place: steam_api64_is_not_loaded"
+
+
+# --- a helper that doesn't match the client ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("version", "own_build", "said"),
+    [
+        ("0.29.0", False, ["the mod in Zexion's folder is version 0.29.0", "client is version"]),
+        (
+            "9.0.0",
+            False,
+            ["version 9.0.0", "newer than the client", "release 9.0.0's zexion.apworld"],
+        ),
+        ("", False, ["another version than this client's", "too old or too new"]),
+        ("0.29.0", True, ["the mod built at", "version 0.29.0", "rebuild native/"]),
+    ],
+)
+def test_another_versions_message_names_both_and_what_to_do(version, own_build, said) -> None:
+    exc = native._wrong_version(Path("zexion_ap.dll"), version, own_build)
+    line = state.helper_failed(exc)
+    assert isinstance(exc, native.ModMismatch)
+    assert line.startswith("The Zexion mod and this client don't match: ")
+    assert native.VERSION in line and all(s in line for s in said)
+    assert "zexion_ap.dll and version.dll" in line
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [b"zexion-ap build=B1 hooked=1", b"zexion-ap", b"pong frames=3", b"", b"error unknown request"],
+)
+def test_a_hello_this_client_cant_read_is_another_version(monkeypatch, reply: bytes) -> None:
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: reply)
+    with pytest.raises(native.UnreadableHello, match="another version") as caught:
+        helper.hello()
+    assert "don't match" in state.helper_failed(caught.value)
+
+
+def test_an_unreadable_mod_in_the_game_is_refused_without_a_build(tmp_path, monkeypatch) -> None:
+    # Where it came from is not known, so it is not unloaded for the game folder's copy, likely
+    # the very same file.
+    (tmp_path / "zexion_ap.dll").write_bytes(b"")
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
+    game = stand_in_attach(monkeypatch, loaded=UNREADABLE)
+    with pytest.raises(native.ModMismatch, match="the mod loaded in Zexion is another version"):
+        native.attach(game, tmp_path / "no-build.dll")
+    assert game.unloads == game.loads == 0
+
+
+def test_an_unreadable_mod_in_the_game_is_replaced_by_the_build(tmp_path, monkeypatch) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded=UNREADABLE, file_version=native.VERSION)
+    native.attach(game, built)
+    assert game.unloads == 1 and game.loads == 1 and game.loaded == native.VERSION
+
+
+def test_a_build_that_loads_unreadable_is_not_loaded_again(tmp_path, monkeypatch) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, file_version=UNREADABLE)
+    for _ in range(2):
+        with pytest.raises(native.ModMismatch, match="rebuild native"):
+            native.attach(game, built)
+    assert game.loads == 1
+
+
+def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
+    tmp_path, monkeypatch
+) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded="0.29.0", stays=True)
+    with pytest.raises(native.ModMismatch, match="version 0.29.0, this client") as caught:
+        native.attach(game, built)
+    assert "restart Zexion" in str(caught.value) and game.loads == 0
+
+
+def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monkeypatch) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, file_version=native.VERSION, build="unknown")
+    with pytest.raises(native.ModMismatch, match="different builds"):
+        native.attach(game, built)
+
+
+@pytest.mark.parametrize(
+    ("request_text", "reply", "said"),
+    [
+        ("disk_slots 1 2 3", b"error unknown request", "doesn't know the request disk_slots"),
+        ("ap_newgame\nfoo 1", b"error unknown line foo 1", "a line of ap_newgame (foo)"),
+    ],
+)
+def test_a_request_the_mod_doesnt_know_is_another_build(
+    monkeypatch, request_text: str, reply: bytes, said: str
+) -> None:
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: reply)
+    with pytest.raises(native.ModMismatch, match="different builds") as caught:
+        helper.request(request_text)
+    assert said in str(caught.value) and native.VERSION in str(caught.value)
+
+
+def test_an_address_the_mod_needs_and_the_client_lacks_is_another_build(monkeypatch) -> None:
+    rvas = dict.fromkeys(native.CONFIG_KEYS, 0x1000)
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: b"error missing fade")
+    with pytest.raises(native.ModMismatch, match="needs the address fade"):
+        helper.configure(rvas)
+    # Any other refusal of the addresses is no mismatch: said plainly as before.
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: b"error inventory not writable")
+    with pytest.raises(native.HelperError) as caught:
+        helper.configure(rvas)
+    assert not isinstance(caught.value, native.ModMismatch)

@@ -30,6 +30,17 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   copy with no build to replace it is refused: the player updates it there.
 - A file that loads as another version is not loaded again until it changes; the client says to
   rebuild `native/` or copy this release's DLLs.
+- A helper whose `hello` the client can't read counts as another version. Without a build it is
+  refused, not unloaded: where it came from is not known, and the game folder's copy is likely
+  the same file.
+- A helper of the client's version that disagrees with it is another build of that version:
+  it answers `error unknown request` or `error unknown line …`, refuses `config` with
+  `error missing NAME` (it ignores names it does not know), or reads `build=unknown` for a game
+  build the client knows. Found while attaching, it is refused like another version; found in a
+  later request (a side task's, or giving items), the client stops using it until the game
+  restarts.
+- Each of these, in the client's window: "The Zexion mod and this client don't match", with
+  both versions (or "different builds") and what to do (`state.helper_failed`).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper (a build of the client's own, `native/build` or `ZEXION_DLL`, still
   loads).
@@ -49,6 +60,9 @@ game's folder first (`docs/re/memory.md`, "Loading with the game").
   host is `Zexion.exe`, the file is there, no `zexion_ap.disabled` is beside it and none is
   loaded. It takes the client's mutex for this, waiting at most 5 seconds (else it loads
   nothing), and never frees the helper: the helper's own unload is its one reference.
+- It carries no version (no version resource, and it never talks to the client), so the client
+  can't tell one release's proxy from another's. Its code is unchanged since it was added
+  (0.20.0): every proxy so far does the same.
 - Assumed, not tested: Steam's verify and updates check only the game's own files, so both
   DLLs stay. An antivirus may flag the unsigned proxy.
 - Seen 2026-10-29 (develop d6bbdc9, a local build of the proxy, not a release): Windows Defender

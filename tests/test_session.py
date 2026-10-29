@@ -352,6 +352,19 @@ def test_a_failed_helper_is_dropped_for_direct_writes(with_helper) -> None:
     helper.fail = True
     assert give(session, g, [17]) == {17: 1}
     assert writes == [(17, 0, 1)] and session.helper is None and helper.closed
+    assert session.mismatch is None, "a helper that failed is tried again later"
+
+
+def test_a_helper_that_doesnt_match_is_dropped_and_kept_for_the_poll_to_say(with_helper) -> None:
+    session, g, helper, writes = with_helper
+    mismatch = native.ModMismatch("both are version 0, but from different builds")
+
+    def apply(text: str) -> str:
+        raise mismatch
+
+    helper.apply = apply
+    assert give(session, g, [17]) == {17: 1}, "given directly"
+    assert session.helper is None and session.mismatch is mismatch
 
 
 def test_popups_announce_each_received_item_once(with_helper) -> None:

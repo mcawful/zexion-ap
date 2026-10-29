@@ -434,13 +434,16 @@ def reload_reply(reply: str | None) -> tuple[bool, str]:
 
 def helper_failed(exc: native.HelperError) -> str | None:
     """The client's line when the mod could not be used (the details go to the log), or None
-    when the game has just closed (nothing for the player to do). A cause the player can fix
-    (native.ModFixable) is said as it is; any other gets one plain line."""
+    when the game has just closed (nothing for the player to do). A mod that doesn't match the
+    client (native.ModMismatch) is said to be so, and any other cause the player can fix
+    (native.ModFixable) as it is; any other gets one plain line."""
     if isinstance(exc, native.GameExited):
         return None
     if isinstance(exc, native.ModDisabled):
         return str(exc)
     meanwhile = "new games of this seed can't be started, and items arrive without popups."
+    if isinstance(exc, native.ModMismatch):
+        return f"The Zexion mod and this client don't match: {exc}. Until they do, {meanwhile}"
     if isinstance(exc, native.ModFixable):
         return f"The Zexion mod isn't working: {exc}. Until it is, {meanwhile}"
     return (

@@ -52,6 +52,15 @@ class ModFixable(HelperError):
     says what to do about it."""
 
 
+class ModMismatch(ModFixable):
+    """The helper and this client don't match: another version, or the same version from
+    another build. The message, a clause for the player, says which is which and what to do."""
+
+
+class UnreadableHello(ModMismatch):
+    """A hello this client can't read: a helper too old or too new for this client."""
+
+
 class ModDisabled(HelperError):
     """The player turned the mod off (DISABLED_NAME in the game's folder): the game folder's
     helper is not loaded. The message is for the player as it is."""
@@ -282,7 +291,16 @@ class Helper:
             self.close()  # a late reply must never answer the next request
             raise
         if reply.startswith("error "):
-            raise HelperError(reply[len("error ") :])
+            why = reply[len("error ") :]
+            # A helper that passed attach's version check but doesn't know a request or one of
+            # its lines is another build of this version: the same sources know each other's.
+            name = text.split(None, 1)[0] if text.strip() else text
+            if why == "unknown request":
+                raise _other_build(f"the mod doesn't know the request {name}")
+            if why.startswith("unknown line "):
+                op = why[len("unknown line ") :].split(None, 1)[:1]
+                raise _other_build(f"the mod doesn't know a line of {name} ({' '.join(op)})")
+            raise HelperError(why)
         return reply
 
     def _exchange(self, data: bytes, seconds: float) -> bytes:
@@ -314,10 +332,17 @@ class Helper:
     def hello(self) -> dict[str, str]:
         """The helper's hello as fields: version, build, hooked, configured, feats, folder,
         offline, active, title, reads, cache_missing when configured from a cache that lacks
-        client-only keys, and read_error after a failed read (native/README.md)."""
-        words = self.request("hello").split()
-        if len(words) < 2 or words[0] != "zexion-ap":
-            raise HelperError(f"unexpected hello: {' '.join(words)!r}")
+        client-only keys, and read_error after a failed read (native/README.md). One this
+        client can't read: UnreadableHello."""
+        try:
+            words = self.request("hello").split()
+        except ModMismatch:  # "error unknown request": no helper of any version of ours
+            words = ["error", "unknown", "request"]
+        if len(words) < 2 or words[0] != "zexion-ap" or "=" in words[1]:
+            raise UnreadableHello(
+                f"the mod loaded in Zexion answers in a way this client ({VERSION}) can't read "
+                f"({' '.join(words)[:80]!r}), so it is another version"
+            )
         fields = dict(w.split("=", 1) for w in words[2:] if "=" in w)
         return {"version": words[1], **fields}
 
@@ -338,7 +363,18 @@ class Helper:
             return None
 
     def configure(self, rvas: dict[str, int]) -> None:
-        reply = self.request(config_text(rvas), APPLY_SECONDS)
+        try:
+            reply = self.request(config_text(rvas), APPLY_SECONDS)
+        except HelperError as exc:
+            # The helper needs an address this client doesn't send (it ignores ones it doesn't
+            # know): a helper of this version from another build.
+            why = str(exc)
+            if not isinstance(exc, ModMismatch) and why.startswith("missing "):
+                raise _other_build(
+                    f"the mod needs the address {why.removeprefix('missing ')}, which this "
+                    "client doesn't send"
+                ) from exc
+            raise
         if reply != "ok":
             raise HelperError(f"configuring failed: {reply}")
 
@@ -373,27 +409,86 @@ def _modified(dll: Path) -> int | None:
         return None
 
 
-def _wrong_version(dll: Path, version: str, own_build: bool) -> ModFixable:
-    """What to do about a helper file of another version: rebuild it, or update the game's
-    folder."""
-    if own_build:
-        return ModFixable(
-            f"the helper built at {dll} is version {version}, and this client needs {VERSION}: "
-            "rebuild native/ (native/README.md), or copy this release's zexion_ap.dll and "
-            "version.dll into Zexion's folder"
-        )
-    return ModFixable(
-        f"the copy in Zexion's folder is version {version} and this client needs {VERSION}; "
-        "with Zexion closed, copy this release's zexion_ap.dll and version.dll there"
+def _newer(version: str, than: str) -> bool | None:
+    """Whether ``version`` is newer than ``than``; None if either is not dotted numbers."""
+    try:
+        return tuple(map(int, version.split("."))) > tuple(map(int, than.split(".")))
+    except ValueError:
+        return None
+
+
+COPY_RELEASE = (
+    f"copy zexion_ap.dll and version.dll from this client's release ({VERSION}) into Zexion's "
+    "folder"
+)
+
+
+def _wrong_version(
+    dll: Path, version: str, own_build: bool, where: str = "the mod in Zexion's folder"
+) -> ModMismatch:
+    """What to do about a helper of another ``version`` ("": one whose hello this client can't
+    read) than this client: rebuild it, update the game's folder, or, for a newer one, update
+    the client."""
+    which = (
+        f"is version {version}, and this client is version {VERSION}"
+        if version
+        else f"is another version than this client's {VERSION} (too old or too new for the "
+        "client to read which)"
     )
+    if own_build:
+        return ModMismatch(
+            f"the mod built at {dll} {which}: rebuild native/ (native/README.md), or {COPY_RELEASE}"
+        )
+    if version and _newer(version, VERSION):
+        return ModMismatch(
+            f"{where} {which}, newer than the client: install release {version}'s "
+            f"zexion.apworld in the Archipelago Launcher, or, with Zexion closed, {COPY_RELEASE}"
+        )
+    return ModMismatch(f"{where} {which}; with Zexion closed, {COPY_RELEASE}")
+
+
+def _other_build(why: str) -> ModMismatch:
+    """A helper of this client's version that disagrees with it (``why``): built from other
+    sources."""
+    return ModMismatch(
+        f"both are version {VERSION}, but from different builds ({why}); with Zexion closed, "
+        "copy the zexion_ap.dll and version.dll that came with this client into Zexion's "
+        "folder (from source: rebuild native/)"
+    )
+
+
+def _shown(version: str) -> str:
+    return f"version {version}" if version else "another version"
+
+
+def _unloaded(helper: Helper, handle: int) -> bool:
+    """Whether the helper unloaded when asked (a refusal or a failed request: not)."""
+    try:
+        return helper.request("unload") == "bye" and wait_unloaded(handle)
+    except GameExited:
+        raise
+    except HelperError as exc:
+        log.warning(f"The helper of another version did not unload: {exc}")
+        return False
+
+
+def _hello(helper: Helper) -> dict[str, str]:
+    """The helper's hello; one this client can't read as version "" (another version)."""
+    try:
+        return helper.hello()
+    except UnreadableHello as exc:
+        log.warning(f"Unreadable hello: {exc}")
+        return {"version": ""}
 
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     """The helper in game ``g``, loaded if absent, and configured. A loaded helper of another
     version is replaced by the built ``dll`` if there is one; a game-folder copy with no build
     to replace it, or a ``dll`` known to load as another version (_STALE), is refused; with
-    DISABLED_NAME in the game's folder, no build and none loaded, ModDisabled. ``notes``
-    collects what to tell the player."""
+    DISABLED_NAME in the game's folder, no build and none loaded, ModDisabled. A hello this
+    client can't read counts as another version; every refusal for a helper that doesn't match
+    (another version, or another build of this one) is ModMismatch. ``notes`` collects what to
+    tell the player."""
     handle = g.pm.process_handle
     own_build = dll.is_file()  # this client's own build (not from the Launcher's apworld)
     built = own_build
@@ -412,22 +507,32 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
         stale = None  # rebuilt or replaced since: tried again
     if is_loaded(handle):
         with Helper(g.pid) as old:
-            hello = old.hello()
+            hello = _hello(old)
             version = hello.get("version", "")
             in_folder = hello.get("folder") == "1"
             if version != VERSION:
                 # The game folder's copy can only be replaced by a build of this client's own:
-                # loading that same copy again would give the same version (each retry).
-                if in_folder and not own_build:
-                    raise _wrong_version(dll, version, own_build=False)
+                # loading that same copy again would give the same version (each retry). A
+                # hello this client can't read doesn't say where the helper came from, so
+                # without a build it is refused the same way.
+                if (in_folder or not version) and not own_build:
+                    where = (
+                        "the mod in Zexion's folder" if in_folder else "the mod loaded in Zexion"
+                    )
+                    raise _wrong_version(dll, version, own_build=False, where=where)
                 if stale is not None:  # the same file again: refused, the helper left alone
                     raise _wrong_version(dll, stale[1], own_build)
-                if old.request("unload") != "bye" or not wait_unloaded(handle):
-                    raise HelperError("could not replace a helper of another version")
+                if not _unloaded(old, handle):
+                    raise ModMismatch(
+                        f"the mod loaded in Zexion is {_shown(version)}, this client "
+                        f"{VERSION}, and it didn't unload to make way for the client's build; "
+                        "the client tries again, and if it keeps failing, restart Zexion"
+                    )
                 if in_folder and notes is not None:
                     notes.append(
-                        f"The helper in the game's folder is version {version}; the built "
-                        f"{VERSION} is used instead (update the game folder's copy)."
+                        f"The mod in Zexion's folder is {_shown(version)}, and this client is "
+                        f"{VERSION}: the client's build is used instead (update the game "
+                        "folder's copy)."
                     )
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
@@ -452,7 +557,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
         loaded_here = False
     helper = Helper(g.pid)
     try:
-        hello = helper.hello()
+        hello = _hello(helper)
         version = hello.get("version", "")
         if version != VERSION:
             if loaded_here:  # this file is that version: not loaded again until it changes
@@ -460,12 +565,17 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                 raise _wrong_version(dll, version, own_build)
             # The proxy loaded its copy after the version check above.
             if own_build:
-                raise HelperError(
-                    f"the proxy loaded the game folder's helper {version}, not {VERSION}, "
-                    "meanwhile; trying again puts the built one in its place"
+                raise ModMismatch(
+                    f"the mod in Zexion's folder ({_shown(version)}) loaded meanwhile, and this "
+                    f"client is {VERSION}; the client tries again, putting its build at {dll} "
+                    "in its place"
                 )
             raise _wrong_version(dll, version, own_build=False)
         if hello.get("hooked") != "1":
+            if hello.get("build") == "unknown":  # the client's game.attach knew it
+                raise _other_build(
+                    "the mod doesn't know this version of Zexion, which the client does"
+                )
             raise HelperError(f"the helper did not hook the game: {hello}")
         helper.configure(dict(g.rva))
     except BaseException:

@@ -72,6 +72,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
     ctx.told = state.HelperState()
     if ctx.conn is not None:
         ctx.conn.session.helper = helper
+        ctx.conn.session.mismatch = None  # a new helper's own, if any
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.
@@ -521,10 +522,10 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             return  # armed again after a new game: said once per connection
         conn.newgame_said = offer
         if offer:
-            logger.info(
-                "To play, load this seed's save, or start a new game: pick an empty slot "
-                "and choose ARCHIPELAGO."
-            )
+            # With RANDOMIZER's route too, should ARCHIPELAGO not show (the seed's text alone
+            # on its own line, to copy).
+            for line in newgame.choice_message(plan):
+                logger.info(line)
         else:
             logger.info(
                 "To play, load this seed's save, or start a new game: "

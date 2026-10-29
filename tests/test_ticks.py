@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import types
 from typing import NamedTuple
 
-from fakes import SECRET_LIST, connection, secret_plan, slot_data
+from fakes import SECRET_LIST, connection, plan, secret_plan, slot_data
 
-from client import aplabels, discs, game, ids, offline, session, state, ticks
+from client import aplabels, discs, game, ids, newgame, offline, session, state, ticks
 
 HUNT = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
 
@@ -228,3 +229,53 @@ def test_a_reconnect_to_another_seed_takes_the_save_back() -> None:
     run(ticks.labels_tick(ctx))
     run(ticks.discs_helper_tick(ctx, no_finds()))
     assert ctx.helper.requests == ["ap_labels", discs.OFF]
+
+
+# --- the new game ------------------------------------------------------------------------------
+
+
+class Arming(Helper):
+    """A helper that takes the new game's plan."""
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        self.requests.append(text)
+        return "armed" if text.startswith("ap_newgame") else "none"
+
+
+def arming_ctx(keep_randomizer: bool = False) -> Ctx:
+    conn = connection()
+    conn.plan = plan()
+    ctx = Ctx(conn)
+    ctx.helper = Arming()
+    ctx.game_conn, ctx.keep_randomizer, ctx.disarm_pending = None, keep_randomizer, False
+    return ctx
+
+
+def said(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "Client"]
+
+
+def test_arming_with_archipelago_also_says_randomizers_route_and_the_seed_once(caplog) -> None:
+    ctx = arming_ctx()
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+        assert ctx.conn.newgame is state.NewGame.ARMED
+        assert ctx.helper.requests[-1].endswith("\nchoice")
+        lines = said(caplog)
+        assert len(lines) == 2 and "choose ARCHIPELAGO" in lines[0]
+        assert "RANDOMIZER instead of ARCHIPELAGO" in lines[0]
+        assert lines[1] == "0123456789ABCDEF", "the seed alone, to click and copy"
+        # Armed again after a new game in the same connection: not said again.
+        ctx.conn.newgame = None
+        run(ticks.newgame_tick(ctx))
+        assert ctx.conn.newgame is state.NewGame.ARMED and len(said(caplog)) == 2
+
+
+def test_arming_for_randomizer_only_keeps_its_one_line(caplog) -> None:
+    ctx = arming_ctx(keep_randomizer=True)
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+    assert said(caplog) == [
+        "To play, load this seed's save, or start a new game: "
+        f"{newgame.randomizer_message(ctx.conn.plan)}."
+    ]
