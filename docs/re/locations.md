@@ -161,7 +161,16 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   progressive weapon as its upgrade; without it, each upgrade as itself). The world
   refuses starting items the client does not give through a new game, and a `start_inventory`
   copy of an item held once that the pool holds too (the limits and their reasons:
-  `worlds/zexion/starting.py`). `amounts` and
+  `worlds/zexion/starting.py`). **`start_inventory_from_pool` working in game** (B1,
+  2026-10-28, `lab/ap/live45/`: a Standard seed starting with a Slide Mod, a Progressive Snake
+  and 2 Missile Containers from the pool and 1 Energy Tank from `start_inventory`, the pool's
+  other Snake plando'd at Kresezoa 25,25; the client and helper 0.30.0, a new game from
+  ARCHIPELAGO in slot 4): the spoiler held no Slide Mod at a location and one Snake; the start's
+  bytes, read with `grant.py show`, were Energy Tank 4, Missile Container 5, Force Blaster 1
+  (Standard's), Snake 1, Slide Mod 1 and no Tunneler; the Snake picked up at Kresezoa 25,25 gave
+  the Tunneler (byte 15 at 1, the Snake still 1), the check sent once. The same YAML with a
+  `start_inventory` Slide Mod stopped Archipelago's `Generate.py` with the `pool_duplicates`
+  error (`lab/ap/live45/refused/generate.log`). `amounts` and
   `options`: the seed's six Energy, missile and bomb amounts and the settings the logic depends
   on (Guns First 10, code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43,
   Gates 72 and 73; `custom.CHECKED`), for the client to compare with the player's new game.
