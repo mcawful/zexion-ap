@@ -60,7 +60,6 @@ START_KEY_OPTIONS = (34, 35, 36)  # settings bits: keys count = bit0 + 2*bit1 + 
 # MENU_SETTINGS + t (docs/re/memory.md, "The game-mode panel").
 MENU_SEED, MENU_START, MENU_POOL, MENU_AMOUNTS, MENU_SETTINGS = 0x0, 0x51, 0x6C, 0x88, 0xCA
 MENU_FIRST_SETTING, COLOR_SETTING = 10, 12
-HEX_DIGITS = frozenset("0123456789ABCDEF")
 START_TABLE_MAX = 64  # the room count the menu's builder allows
 AMOUNT_MAX = 0x7FFF  # the section's amounts are 16-bit signed
 
@@ -105,7 +104,7 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     if wrong:
         raise NewGameError(wrong)
     seed_text = plan.menu.seed_text
-    if len(seed_text) != sp.SEED_DIGITS or not set(seed_text) <= HEX_DIGITS:
+    if len(seed_text) != sp.SEED_DIGITS or not set(seed_text) <= sp.HEX_DIGITS:
         raise NewGameError(f"the seed text {seed_text!r} is not 16 hex digits")
     array, start = start_with(plan.start_items)
     table = start_table(plan, build_sha256)
@@ -189,8 +188,6 @@ def menu_lines(
     (``plan_text`` writes the second start and its flag), which the helper fills in if the
     menu never built it. Without ``need_table`` a missing table is left to the game's own."""
     menu = plan.menu
-    if len(menu.seed_text) != 16 or not set(menu.seed_text) <= HEX_DIGITS:
-        raise NewGameError(f"the seed text {menu.seed_text!r} is not 16 hex digits")
     if any(len(a) != len(START_WITH_ORDER) or set(a) - {0, 1} for a in (menu.start, menu.pool)):
         raise NewGameError("the menu's arrays are not 27 entries of 0 or 1")
     if len(menu.settings) != 64:

@@ -36,7 +36,6 @@ namespace zap {
 
 constexpr int kOfflineLocations = rando::kMaxLocations;
 constexpr int kOfflineStartSize = 6;
-constexpr ptrdiff_t kOfflineTableAt = 0x26C, kOfflineStartAt = 0x310;  // in the section
 constexpr uint8_t kCollectedCell = 0x1B;
 
 struct OfflineSeed {

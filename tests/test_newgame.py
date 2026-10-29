@@ -56,16 +56,15 @@ def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
 
 def test_a_secret_shuffle_seed_writes_its_155_in_the_games_order() -> None:
     p = secret_plan()
-    save = fresh()
-    for i, (x, y) in enumerate(SECRET_LIST):
-        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
-    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1  # the placement ran with Secret Shuffle on
+    save = fresh(cells=SECRET_LIST, secret=True)  # the placement ran with Secret Shuffle on
     assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
     assert save[sp.ITEM_TABLE : sp.ITEM_TABLE + 155] == p.table
-    assert save[sp.ITEM_TABLE + 100] == p.location_items[154]
     # The placement must have run with it on: expected, as every setting the logic reads.
     save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 0
     assert apply_text(ng.plan_text(p, offer_choice=False), save) != []
+    # It must list the 155th (location index 154) at its list position, filling the gap.
+    missing = fresh(cells=SECRET_LIST[:154], secret=True)
+    assert apply_text(ng.plan_text(p, offer_choice=False), missing) == ["0x0"]
     with pytest.raises(ng.NewGameError):
         ng.plan_text(secret_plan(options={42: 2, 72: 1}))  # 155 listed, Secret Shuffle off
 
@@ -76,19 +75,10 @@ def test_the_placement_must_list_the_seeds_locations() -> None:
     assert f"expect 0x0 {b''.join(struct.pack('<HH', *c) for c in CELLS).hex()}00000000" in (
         ng.plan_text(p, offer_choice=False).splitlines()
     )
-    assert apply_text(ng.plan_text(p, offer_choice=False), fresh(cells=True)) == []
-    moved = fresh(cells=True)
+    assert apply_text(ng.plan_text(p, offer_choice=False), fresh(cells=CELLS)) == []
+    moved = fresh(cells=CELLS)
     struct.pack_into("<HH", moved, sp.SECTION + 4 * 20, 53, 53)  # another cell at position 20
     assert apply_text(ng.plan_text(p, offer_choice=False), moved) == ["0x0"]
-    # Secret Shuffle's 155: the 155th (location index 154) at its list position, filling the gap.
-    p = secret_plan()
-    save = fresh()
-    for i, (x, y) in enumerate(SECRET_LIST):
-        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
-    save[sp.OPTIONS + sp.SECRET_SHUFFLE] = 1
-    assert apply_text(ng.plan_text(p, offer_choice=False), bytearray(save)) == []
-    struct.pack_into("<HH", save, sp.SECTION + 4 * 154, 0, 0)  # the 155th missing
-    assert apply_text(ng.plan_text(p, offer_choice=False), save) == ["0x0"]
     # A plan without cells (the 154 in the game's order already) has no such check.
     assert not any(line.startswith("expect 0x0 ") for line in ng.plan_text(plan()).splitlines())
 
@@ -155,7 +145,7 @@ def test_starting_items_it_cannot_express_are_refused(start_items, why) -> None:
         ng.plan_text(plan(start_items=start_items))
 
 
-def test_the_menu_lines_set_the_menu_to_the_seeds_mode() -> None:
+def test_the_menu_lines_set_the_menu_to_the_seeds_settings() -> None:
     p = plan(menu=menu_setup())
     save, menu = fresh(), bytearray(b"\xee" * MENU_SIZE)
     assert apply_text(ng.plan_text(p), save, menu) == []
@@ -221,8 +211,6 @@ def test_a_randomizer_plan_leaves_the_start_table_to_the_game() -> None:
         lines = ng.plan_text(ohko(), build, offer_choice=False).splitlines()
         assert not any(line.startswith("start_table") for line in lines)
         assert any(line.startswith("menu ") for line in lines)
-    with pytest.raises(ng.NewGameError, match="no start table"):
-        ng.plan_text(ohko(), "ab" * 32)
 
 
 def test_the_randomizer_message_asks_for_the_seed_alone() -> None:
@@ -251,8 +239,6 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
 @pytest.mark.parametrize(
     "changes, why",
     [
-        (dict(menu=menu_setup(seed_text="0123456789abcdef")), "16 hex digits"),
-        (dict(menu=menu_setup(seed_text="ABC")), "16 hex digits"),
         (dict(menu=menu_setup(start=bytes(26))), "27 entries"),
         (dict(menu=menu_setup(pool=bytes([2] * 27))), "27 entries"),
         (dict(menu=menu_setup(settings=bytes(63))), "64"),

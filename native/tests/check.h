@@ -1,7 +1,7 @@
 // What the native tests share: check() and its failure count, report() at the end of main,
-// unaligned field access, code bytes, hex, the game's sprite-sheet function and the stand-in
-// items' records as the game loads them. The tests write offsets as raw hex, so they
-// cross-check src/game_layout.h rather than repeat it.
+// unaligned field access, code bytes and their writes, the seen marker's bytes, hex, the game's
+// sprite-sheet function and the stand-in items' records as the game loads them. The tests write
+// offsets as raw hex, so they cross-check src/game_layout.h rather than repeat it.
 #pragma once
 
 #include <windows.h>
@@ -61,6 +61,25 @@ inline void set_code_byte(unsigned char* code, int i, unsigned char value) {
     static_cast<volatile unsigned char*>(code)[i] = value;
     VirtualProtect(code + i, 1, old, &old);
 }
+// Writes `bytes` over code at `at`, as the helper does. Byte by byte through volatile: the
+// .zapcode section (stand_in.h) packs its arrays more tightly than the compiler assumes when it
+// copies into them with aligned stores. (Read them back with code_byte or through a pointer.)
+inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) {
+    DWORD old = 0;
+    VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
+    auto* to = static_cast<volatile unsigned char*>(at);
+    for (size_t i = 0; i < n; ++i) to[i] = bytes[i];
+    VirtualProtect(at, n, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), at, n);
+}
+
+// The item update's write of an on-screen item's square as on B1 (src/mapmarks.h), as an
+// array's initializer. src/mapmarks.cpp keeps its own copy, so the two check each other.
+#define ZAP_SEEN_MARKER_GAME                                                       \
+    {0x80, 0xFA, 0x18, 0x7C, 0x11, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, \
+     0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C, \
+     0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96, \
+     0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00}
 
 // Bytes as hex digits (upper-case; the helper's parsers take either case).
 inline std::string hex(const void* bytes, size_t n) {

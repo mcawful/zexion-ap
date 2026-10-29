@@ -24,12 +24,15 @@ constexpr int kCellColumns = 14, kCellRows = 20;
 constexpr int kTextureSize = 2048;
 
 // The loaded randomizer section: its location cells at +0, x then y, 16-bit each, in the game's
-// list order; its item table at +0x26C; its settings at +0x87B + t (docs/re/save-format.md). The
-// list holds 154 locations, or 155 with Secret Shuffle (t37), its 155th filling the four zero
-// bytes the others leave before the table (docs/re/randocells.md, "The pool").
+// list order; its item table at +0x26C; its start record at +0x310 (the start candidate's index,
+// then its tile column and row, 16-bit each); its settings at +0x87B + t
+// (docs/re/save-format.md). The list holds 154 locations, or 155 with Secret Shuffle (t37), its
+// 155th filling the four zero bytes the others leave before the table (docs/re/randocells.md,
+// "The pool").
 namespace rando {
-constexpr ptrdiff_t kItemTable = 0x26C, kSettings = 0x87B;
+constexpr ptrdiff_t kItemTable = 0x26C, kStart = 0x310, kSettings = 0x87B;
 constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37;
+static_assert(kItemTable + kMaxLocations <= kStart && kStart + 6 <= kSettings, "in this order");
 inline int locations(const uint8_t* section) {
     return kLocations + (section[kSettings + kSecretShuffle] != 0 ? 1 : 0);
 }
