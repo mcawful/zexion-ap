@@ -25,8 +25,8 @@ the game can't start a seed.
 
 Right after installing, the title screen looks as it always did. Once the client has connected
 while Zexion runs (Start playing, below), the title screen shows ARCHIPELAGO MOD and its
-version: the mod is in. From then on, while the client isn't connected, the title screen also
-says START THE AP CLIENT TO PLAY A SEED; it goes away once the client connects.
+version: the mod is in. From then on, the title screen also says START THE AP CLIENT TO PLAY A
+SEED until the client connects, and again once you close the client.
 
 ## Make your YAML
 
@@ -131,7 +131,7 @@ play as normal.
 | The client says that new game couldn't be made this seed. | Start another new game in an empty save slot. |
 | The client says the mod couldn't fully turn off Feats and Steam achievements, or doesn't recognize this save as an Archipelago save. | Feats and Steam achievements may be earned in that save. Report it (below), with the client's log. |
 | The client says it can't find what it needs in this version of Zexion. | Report it (below), with the client's log. |
-| `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it: Windows Security has flagged a test build of it as `Program:Win32/Contebrew.A!ml`, a false alarm. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
+| `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it. Windows Security may name it, for example, `Program:Win32/Contebrew.A!ml`: a false alarm. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
 | Nothing is sent or received. | Check that the client is connected and the loaded save is from this seed. |
 
 ## Reporting a bug

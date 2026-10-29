@@ -71,8 +71,8 @@ With Guns First on (every preset), each gun and its upgrade are one item, Progre
 Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
 the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
 items of their own, and the seed's logic counts each only once you have its gun, as the
-game's own logic does. The guns keep their Progressive names, but each is one item, the gun
-alone.
+game's own logic does. With it off, the guns keep their Progressive names (Progressive
+Machine Gun and the like), but there is one of each and it is the gun alone.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
 R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off works with the
 core goal: the core's door needs only the four keys.

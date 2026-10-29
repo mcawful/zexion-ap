@@ -51,6 +51,9 @@ game's folder first (`docs/re/memory.md`, "Loading with the game").
   nothing), and never frees the helper: the helper's own unload is its one reference.
 - Assumed, not tested: Steam's verify and updates check only the game's own files, so both
   DLLs stay. An antivirus may flag the unsigned proxy.
+- Seen 2026-10-29 (develop d6bbdc9, a local build of the proxy, not a release): Windows Defender
+  detected it as `Program:Win32/Contebrew.A!ml` and blocked loading it (error 225); an earlier
+  build of the same sources was not flagged. Not checked against a release build.
 
 Working in game: 2026-10-25, helper 0.20.0 ("Loading with the game").
 

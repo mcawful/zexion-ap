@@ -32,10 +32,10 @@ Where things are:
   only from byte patterns checked to match exactly once. Struct offsets, and per-build offsets
   into an exe copy read offline, are allowed when `docs/re/memory.md` records them for that
   build. `Target.rvas` in `client/patterns.py` is for checks only.
-- **The game install and the real save folder are read-only to us.** Hooks block direct writes.
-  Save experiments work on copies in `lab/` through `tools/save_lab.py`; only its `install`
-  (an empty slot, after a verified backup) and `restore` write the save folder. The client never
-  writes it.
+- **The game install and the real save folder are read-only to us.** Hooks block direct writes
+  (not through Monitor or the terminal tool: "Repo tooling"). Save experiments work on copies
+  in `lab/` through `tools/save_lab.py`; only its `install` (an empty slot, after a verified
+  backup) and `restore` write the save folder. The client never writes it.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
   the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
