@@ -36,7 +36,9 @@ Set with the Goal option.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
     Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
-    stop generation, as above (the OS Install Disks option gives the numbers).
+    stop generation, as above (the OS Install Disks option gives the numbers). Where filler
+    runs short, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, in any
+    mode ("Which modes are there?").
 
 ## Which modes are there?
 
@@ -84,8 +86,9 @@ which you can reach Zexion's core); another stops generation with an error. With
 that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
 room where your starting items reach only a few locations, generation sometimes fails: generate
 again, or pick another room. With Double Teleport the second room is any other, but one of
-the eight the game's menu flags only when you start with a lot (as the game's logic counts
-them, 27 or more of Energy, missiles, Mega Bombs, boxes and items). `random_start` (or
+the eight the game's menu flags only when your starting items score 27 or more, as the game's
+logic counts them: Energy Tanks (doubled with the Magnus Armor), Missile Containers and Mega
+Bombs one each, 10 per box, and one per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or
 `random`) picks a room as the game's Random Start does. The spoiler log names the start room
 (and a second room to teleport to, with Double Teleport, as in OHKO). The earlier names, such
 as `kresezoa_16_13` (the area, then X and Y as the pause screen shows them), still work.
