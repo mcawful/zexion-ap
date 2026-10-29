@@ -560,7 +560,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
   ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. Each notice is for the load it was
   queued in: one not shown when the save is left (no save loaded) is withdrawn, not shown in the
-  next save, and the next load is told again.
+  next save, and the next load is told again. The other-seed notice and CLIENT CONNECTED. are
+  also for their client: one not shown when it goes away is withdrawn.
 - **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
@@ -814,11 +815,12 @@ pipe and unloading. That test skips without a build.
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
-(`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h`;
-`tests/fake_gl.h` is the fake OpenGL of `apitem` and `offline`;
-`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames` and
-`unload_under_load`, and the last two's busy threads and wait for an unload.
+(`apply_test.cpp`, `offline_put_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for
+`apply_in_frames`, `offline_put_in_frames`, `unload_under_load` and `proxy`). They share
+`tests/check.h`; `tests/fake_gl.h` is the fake OpenGL of `apitem` and `offline`;
+`tests/pipe_client.h` is the pipe client of `parts`, `apply_in_frames`,
+`offline_put_in_frames` and `unload_under_load`, and the last three's busy threads and wait for
+an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers and its handler-slot swap, the build check
@@ -854,6 +856,9 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
   a batch no frame took, an unload refused while something else is hooked over the
   helper, with what the client had set armed again).
+- `offline_put_in_frames`: the same, with `LOCALAPPDATA` in a folder of its own under `%TEMP%`:
+  a seed file put through the pipe with a client connected is known to the offline look from
+  the next frame call (`other_save` answers `told`, `hello` counts it).
 - `unload_under_load`: a test build, `zexion_ap_hooktest.dll`, hooks the loading program's own
   `GetTickCount` import (it refuses to hook a known game build), counts calls, and survives 300
   loads and unloads while two threads call it nonstop.

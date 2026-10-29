@@ -1209,6 +1209,7 @@ void Game::put_back_all(WidgetCallback callback) {
 
 void Game::client_gone(WidgetCallback callback) {
     put_back_all(callback);
+    drop_client_notices();
     active_ = false;
 }
 

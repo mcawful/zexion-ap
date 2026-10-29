@@ -59,6 +59,15 @@ void Game::leave_offline_for_client() {
     other_warned_ = false;
 }
 
+void Game::drop_client_notices() {
+    // Not shown yet when its client went away: the other-seed notice is told again to the next
+    // client that says so, and CLIENT CONNECTED. is no longer so.
+    drop_notice(kOtherSeedNotice);
+    drop_notice(kOnlineNotice);
+    other_save_ = false;
+    other_warned_ = false;
+}
+
 void Game::leave_offline_seed() {
     drop_notice(kOfflineWarning);
     if (offline_index_ < 0) return;

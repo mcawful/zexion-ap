@@ -400,7 +400,44 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
+        // A client going away before its notice shows: withdrawn with it, not shown before the
+        // not-connected warning that follows.
+        zap::Game game;
+        configure(game);
+        game.set_offline({s});
+        put_seed(g_section);
+        g_messages = 0;
+        check(game.other_save() == "told" && game.queued_popups() == 1, "the notice queued");
+        g_menu = 1;  // paused
+        frames(game, 40);
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        g_menu = 0;
+        frames(game, 200);
+        // (The box's lines may join words: its start is enough to tell the two apart.)
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "only the not-connected warning shown", g_text);
+        configure(game);
+        check(game.other_save() == "told", "the next client is told again");
+        game.put_back_all(nullptr);
+    }
+    {
+        // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
+        zap::Game game;
+        configure(game, false);
+        game.set_offline({s});
+        put_seed(g_section);
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        game.put_back_all(nullptr);
+    }
+    {
         // CLIENT CONNECTED, for a save played offline, likewise.
+        g_messages = 0;
         zap::Game game;
         configure(game, false);
         game.set_offline({s});
