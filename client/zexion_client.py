@@ -156,14 +156,15 @@ class ZexionContext(CommonContext):
         old = state.left_connection(self.conn, self.left_conn)
         self.left_conn = None
         identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
-        state.carry_over(conn, old, identity == self.seed_state.identity)
+        state.carry_over(conn, old, identity == self.seed_state.identity, self.told)
         self.conn = conn
         # Kept by the server across clients: shields given, locations found, follow-ups shown
         # and item popups handed over.
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
         if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
             self.seed_state = state.SeedState(identity)
-        # Wait for this connection's own read of the stored hints and its item list.
+        # Wait for this connection's own read of the stored hints and its item list, and for
+        # its own first look at the load (what the helper holds for the save stays: carry_over).
         self.stored_data.pop(conn.hints_key, None)
         self.load.seed_loaded = False
         self.load.return_home = discs.ReturnHome()
@@ -193,6 +194,8 @@ class ZexionContext(CommonContext):
         # Nothing of the seed's is wanted now: the helper ticks, which run while a helper is
         # attached, take back the labels, the ASSIST lock and the INTEL CHIP name.
         self.left_conn = state.left_connection(conn, self.left_conn)
+        if self.left_conn is not None:
+            self.left_conn.dressed = False  # nothing held for the next one (carry_over)
         self.conn = None
         self.load.seed_loaded = False
         self.load.save_collected = set()
@@ -202,8 +205,8 @@ class ZexionContext(CommonContext):
     def reset_server_state(self) -> None:
         # A dropped connection comes here (connection_closed), not through disconnect: the
         # received items are gone until the next connection lists them again, so what counts
-        # them waits. What the helper holds for the seed (labels, the ASSIST lock, the armed
-        # new game) stays for the reconnect.
+        # them waits. What the helper holds for the seed (labels, the disk count, the ASSIST
+        # lock, the armed new game) stays for the reconnect (state.carry_over).
         super().reset_server_state()
         conn = getattr(self, "conn", None)  # an Archipelago that calls it from __init__
         if conn is not None:
@@ -330,6 +333,8 @@ def game_closed(ctx: ZexionContext, current: session.Session) -> None:
     logger.info("Zexion has closed.")
     ctx.shields.left()
     ctx.load.leave()
+    if ctx.conn is not None:
+        ctx.conn.dressed = False  # the next game's helper is not to dress a save at its title
     state.end_kept_load(current, ctx.conn)
     with contextlib.suppress(Exception):
         ctx.game_conn.pm.close_process()  # the exited game's handle
@@ -341,13 +346,14 @@ def game_closed(ctx: ZexionContext, current: session.Session) -> None:
 async def away_tick(ctx: ZexionContext) -> None:
     """While no connection steps a session (disconnected, or dropped): the one kept for the
     next connection (connected, state.carry_over) still sees its save leave, so the ending's
-    hold it carries is one of the load still loaded (Session.look_away)."""
+    hold it carries is one of the load still loaded (Session.look_away), and the helper takes
+    back what it held for the save (state.left_while_away)."""
     kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
     if kept is None or ctx.game_conn is None:
         return
     try:
         if await asyncio.to_thread(kept.session.look_away, ctx.game_conn):
-            state.end_kept_load(kept.session, ctx.conn)
+            state.left_while_away(kept, ctx.conn)
     except game.GameNotRunning:
         game_closed(ctx, kept.session)
     except game.GameError as exc:  # looked at again on the next poll
@@ -471,7 +477,7 @@ async def poll(ctx: ZexionContext) -> None:
         load.leave()  # reminded again on the next load, and so on
     if not step.other_seed and (step.left_seed or step.seed_matches):  # not an unsettled read
         ctx.said.clear("other save")  # said again for the next such load (other_save_tick)
-    conn.labels_want = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.labels_want)
+    conn.dressed = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.dressed)
     if conn.death_link_on:
         await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))
     if ctx.helper is not None:

@@ -294,7 +294,8 @@ Working in game: 2026-10-23 ("Received Energy Shields").
   RETURN HOME WITH THE DISKS? is not between its fade and its prompt; otherwise `refused` (`not
   configured`, `not settled`, `halted`, `message showing`, `RETURN HOME WITH THE DISKS?
   opening`, `no frame`). The client queues received deaths and asks once a second, one at a time
-  (`client/deathlink.py`).
+  (`client/deathlink.py`); it drops the queue while an ending that began in this load runs
+  (`Session.holding`), not in a save that had already ended (stand-in tests only).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("DeathLink").
@@ -550,7 +551,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
-  client would: the item labels, INTEL CHIP, the ASSIST lock, the disk count
+  client would: the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
+  received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with one
   notice a load that the client is not connected (or, for `other_save`, is for another seed;
   only for a save of a seed it has a file for, so a plain randomizer game gets no notice).

@@ -78,6 +78,9 @@ class FakeGame:
         self.inv[item] += 1
 
 
+# The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
+# set as its first cutscene begins, and one the finale sets and the ending clears.
+ENDING, FINALE = 250, 211
 PLAN = plan()  # starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun
 
 
@@ -91,7 +94,7 @@ def give(
 def begin_ending(session: ss.Session, g: FakeGame) -> ss.Step:
     """A poll before the ending, then the poll that sees it begin."""
     session.step(g, [], gap=0)
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     return session.step(g, [], gap=0)
 
 
@@ -156,6 +159,18 @@ def test_a_half_recorded_pickup_is_not_taken_for_an_item_owed(setup) -> None:
     assert g.inv[0] == 3
 
 
+def test_a_poll_out_of_play_starts_the_two_poll_wait_over(setup) -> None:
+    # What was owed before a menu (or a load) is not taken as agreed by the first poll after:
+    # the pause may have hidden a pickup half recorded, or a load changed the inventory.
+    session, g = setup
+    assert session.step(g, [17], gap=0).granted == {}  # owed once
+    g.state_value = game.MENU
+    assert session.step(g, [17], gap=0).granted == {}
+    g.state_value = game.IN_PLAY
+    assert session.step(g, [17], gap=0).granted == {}, "owed once again, not twice"
+    assert session.step(g, [17], gap=0).granted == {17: 1}
+
+
 def test_a_received_copy_of_a_native_pickup_is_still_given(setup) -> None:
     # The cells collected count toward what is owned (reconcile.should_own): the pickup at
     # location 0 (an Energy Tank) and the one received are both owed, on top of the start's 2.
@@ -182,7 +197,7 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
     session, g = setup
     g.state_value = game.MENU
     g.collect(5)
-    g.flags[ss.ENDING_FLAG] = 1  # the ending's cutscenes read as menu
+    g.flags[ENDING] = 1  # the ending's cutscenes read as menu
     step = session.step(g, [17], gap=0)
     assert step.granted == {} and g.inv[17] == 0
     assert step.checked == {5} and step.goal
@@ -207,23 +222,23 @@ def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     session, g = setup
     g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead
     assert not session.step(g, [], gap=0).goal
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     assert session.step(g, [], gap=0).goal
 
 
 def test_the_games_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
     session, g = setup
     # The game's own SKIP ESCAPE AND FINAL BATTLE? (a game that has reached the ending before).
-    g.flags[ss.ENDING_FLAG] = 1  # YES: flag 250 at once, flags 185 to 212 set
-    g.flags[ss.FINALE_FLAG] = 1
+    g.flags[ENDING] = 1  # YES: flag 250 at once, flags 185 to 212 set
+    g.flags[FINALE] = 1
     assert not session.step(g, [], gap=0).goal
-    g.flags[ss.FINALE_FLAG] = 0  # the ending clears them as its first cutscene starts
+    g.flags[FINALE] = 0  # the ending clears them as its first cutscene starts
     assert session.step(g, [], gap=0).goal
 
 
 def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
     session, g = setup
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     g.marker = 0  # a normal save, its flags those of another game
     assert not session.step(g, [], gap=0).goal
 
@@ -437,7 +452,7 @@ def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
     for _ in range(3):
         assert after.step(g, [17], gap=0).granted == {}
     assert g.inv[17] == 0
-    g.flags[ss.ENDING_FLAG] = 0  # another save of the seed, before its ending, loaded meanwhile
+    g.flags[ENDING] = 0  # another save of the seed, before its ending, loaded meanwhile
     give(after, g, [17])
     assert not after.holding and g.inv[17] == 1, "the hold was the ending's load's alone"
 
@@ -457,7 +472,7 @@ def test_the_ending_begun_while_disconnected_holds_after_the_reconnect(setup) ->
     session, g = setup
     session.step(g, [], gap=0)  # before the ending
     look_away(session, g)
-    g.flags[ss.ENDING_FLAG] = 1  # it begins while disconnected, in the same load
+    g.flags[ENDING] = 1  # it begins while disconnected, in the same load
     after = reconnect(session)
     assert after.carried_from is session
     after.step(g, [17], gap=0)
@@ -474,7 +489,7 @@ def test_an_ending_played_while_disconnected_holds_nothing_on_the_next_load(setu
     g.state_value = game.NO_SAVE
     look_away(session, g)
     g.state_value = game.IN_PLAY
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     look_away(session, g)
     after = reconnect(session)
     give(after, g, [17])

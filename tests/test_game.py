@@ -308,3 +308,46 @@ def test_shipped_patterns_are_well_formed(target: Target) -> None:
             assert toks[p.disp_at : p.disp_at + 4] == ["??"] * 4, "the address field must be wild"
             assert p.disp_at + 4 <= p.rip_end <= len(toks)
         game.compile_pattern(p.text)
+
+
+def slots_game() -> FakeGame:
+    """A fake with the current slot at 0x10 and the 30 save slots' blocks from 0x100."""
+    g = FakeGame(
+        pm=FakeProcess(0x100 + game.SLOTS * 0x9408),
+        base=0,
+        rva={"current_slot": 0x10, "slot_array": 0x100},
+        pid=1,
+        build=None,
+    )
+    for n in range(game.SLOTS):  # each block's stamp bytes tell its slot
+        at = 0x100 + n * 0x9408 + 0x9354
+        g.pm.memory[at : at + 10] = bytes([n]) * 10
+    return g
+
+
+@pytest.mark.parametrize("slot", [0, 4, 29])
+def test_the_save_stamp_is_the_loaded_slots_own(slot) -> None:
+    # The slot (current_slot, from 0), then its block's 10 bytes from +0x9354 (memory.md, "The
+    # file select"; discs.saved_at_start reads the continue point there).
+    g = slots_game()
+    g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
+    assert g.save_stamp() == struct.pack("<i", slot) + bytes([slot]) * 10
+
+
+@pytest.mark.parametrize("slot", [-1, 30])
+def test_a_current_slot_out_of_range_has_no_stamp(slot) -> None:
+    g = slots_game()
+    g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
+    with pytest.raises(game.GameError, match="current slot"):
+        g.save_stamp()
+
+
+def test_each_slots_marker_and_use_are_read_from_its_own_block() -> None:
+    # A block's randomizer marker at +0x9400 (16-bit) and its empty mark, 0xFF at +0x935E (the
+    # file's 0x9360): docs/re/memory.md, "The file select".
+    g = slots_game()
+    for n in range(game.SLOTS):
+        block = 0x100 + n * 0x9408
+        g.pm.memory[block + 0x935E] = 0xFF if n % 3 == 0 else 0
+        struct.pack_into("<H", g.pm.memory, block + 0x9400, n + 0x100)
+    assert g.slot_markers() == [(n + 0x100, n % 3 != 0) for n in range(game.SLOTS)]

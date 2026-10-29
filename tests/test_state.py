@@ -30,7 +30,7 @@ def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
     assert conn.lock_assists and conn.intel_chip and conn.death_link_on
     assert conn.hunt == discs.DiscHunt(3, 5, 0, frozenset({12}))
     assert not conn.items_listed and conn.awaiting_backlog
-    assert conn.newgame is None and not conn.goal_sent and not conn.labels_want
+    assert conn.newgame is None and not conn.goal_sent and not conn.dressed
 
 
 def test_the_options_off_set_none_of_them() -> None:
@@ -188,6 +188,26 @@ def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_
     assert other_seed.before is None
 
 
+def test_a_reconnect_to_the_same_seed_keeps_what_the_helper_holds_for_the_save() -> None:
+    # A dropped connection while this seed's save is loaded: the labels and the disk count stay
+    # with the helper, so the next connection neither takes them back nor sends them again.
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.dressed, old.discs_told = True, True
+    told = state.HelperState(labels_for=old)
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True, told=told)
+    assert new.dressed and new.discs_told and told.labels_for is new
+    # Another seed or slot starts undressed, its labels not the helper's.
+    told = state.HelperState(labels_for=old)
+    other_seed = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(other_seed, old, same_seed=False, told=told)
+    assert not other_seed.dressed and not other_seed.discs_told and told.labels_for is old
+    # Labels the helper holds for another connection stay that connection's.
+    told = state.HelperState(labels_for=other_seed)
+    state.carry_over(new, old, same_seed=True, told=told)
+    assert told.labels_for is other_seed
+
+
 def test_reload_mod_says_whether_the_mod_unloaded() -> None:
     unloaded, line = state.reload_reply("bye")
     assert unloaded and "loading it again" in line
@@ -259,6 +279,26 @@ def test_a_guard_still_off_in_play_is_said_once() -> None:
     later.seen("off", True, 0.0, said)
     assert later.seen("off", True, 10.0, said) is not None
     assert state.FeatsCheck().seen("", True, 0.0, said) is None, "no field: as off"
+
+
+def test_a_save_left_during_a_drop_is_undressed() -> None:
+    # The connection dropped with this seed's save loaded; the player went back to the title
+    # (Session.look_away): the labels and the disk count go, even from a connection that
+    # carried them over meanwhile.
+    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old.dressed, old.session._goal_before = True, False
+    state.left_while_away(old, old)  # still the dropped one: ctx.conn
+    assert not old.dressed and old.session._goal_before is None
+    old.dressed = True
+    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    state.carry_over(new, old, same_seed=True)
+    state.left_while_away(old, new)
+    assert not old.dressed and not new.dressed
+    # A connection that did not carry it over keeps its own.
+    other = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    other.dressed = True
+    state.left_while_away(old, other)
+    assert other.dressed
 
 
 def test_a_load_ended_while_a_reconnect_carried_it_ends_for_both() -> None:

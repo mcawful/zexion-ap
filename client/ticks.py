@@ -16,8 +16,6 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from BaseClasses import ItemClassification
-
 from . import aplabels, discs, game, ids, native, newgame, offline, reconcile, shields, state
 from .ids import ITEM_ID_BASE, LOCATION_ID_BASE
 from .storage import hint_note, hints_used, popped, store, store_popped
@@ -124,9 +122,9 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
     Sent when that changes, or to a new helper."""
     helper, told, conn = ctx.helper, ctx.told, ctx.conn
     hunt = conn.hunt if conn is not None else None
-    if hunt is not None and ctx.load.seed_loaded and not conn.items_listed:
+    if hunt is not None and conn.dressed and not conn.items_listed:
         return  # the items not listed yet, or a dropped connection: the count waits for them
-    if hunt is not None and ctx.load.seed_loaded:
+    if hunt is not None and conn.dressed:
         have = discs.owned(hunt, p.codes, p.found)
         want = discs.request(have, hunt.required, conn.discs_told)
     else:
@@ -195,7 +193,7 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
             item, name = look
             text = aplabels.zexion_label(item, player, name)
         else:
-            text = aplabels.label(bool(info.flags & ItemClassification.progression), player)
+            text = aplabels.label(bool(info.flags & aplabels.PROGRESSION), player)
         labels[tuple(conn.session.cells[i])] = text
     return labels, own
 
@@ -245,7 +243,9 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
         conn.plan.table,
         conn.plan.start,
         conn.intel_chip,
-        conn.lock_assists,
+        # Assist Unlock lifts the lock in every save of the seed, loaded in this connection or
+        # not (conn.lock_assists is the slot data's until this seed's save is seen).
+        conn.lock_assists and not ctx.assists_unlocked(),
         disc_info,
         labels,
     )
@@ -289,7 +289,7 @@ async def labels_tick(ctx: ZexionContext) -> None:
     the helper a label per map cell (client/aplabels.py), while this seed's save is loaded. While
     another save (or none) is loaded, and after a disconnect, take them back."""
     helper, told, conn = ctx.helper, ctx.told, ctx.conn
-    if conn is None or not conn.labels_want:
+    if conn is None or not conn.dressed:
         if not told.labels_held or time.monotonic() < told.labels_retry_at:
             return
         ours = conn is not None and told.labels_for is conn
@@ -313,10 +313,12 @@ async def labels_tick(ctx: ZexionContext) -> None:
         return  # the server has not answered yet
     labels, own = built
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
+    if reply.startswith("labeled"):
+        told.labels_held = True  # held whatever happened meanwhile, so taken back if not wanted
     if conn is not ctx.conn:
         return  # a reconnect meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
-        told.labels_for, told.labels_held = conn, True
+        told.labels_for = conn
         detail(
             f"Other players' items show as Archipelago items, named at pickup "
             f"({len(labels) - own})"
@@ -445,7 +447,12 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         except Exception as exc:  # a closing connection: this death is not sent
             logger.warning("DeathLink: your death couldn't be sent (connection lost?).")
             log.warning(f"DeathLink: sending the death failed ({exc}).")
-    if step.goal and deaths.owed:
+    conn = ctx.conn
+    if deaths.owed and conn is not None and conn.session.holding:
+        # Only while the ending that began in this load runs (Session.holding): a save past
+        # its ending loaded again later deals them as any load does. A load first seen during
+        # its ending reads the same as that later load, so deaths are dealt there too (the
+        # known gap: docs/re/memory.md, "The ending: flag 250").
         deaths.ending()
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
