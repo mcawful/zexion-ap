@@ -338,8 +338,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
-  Double Teleport (OHKO) it first fills in the menu's start table from
-  `start_table` if the menu never built it, and refuses the start if it differs.
+  Double Teleport (OHKO, or a Custom seed with it on) it first fills in the menu's start table
+  from `start_table` if the menu never built it, and refuses the start if it differs.
 - A section of another seed (its text) or mode, or a slot the game will not start a game in,
   drops the plan with nothing of the seed written, and the client arms it again.
 - **Put back:** RANDOMIZER and the game's handler go back as soon as the menu is not on top, on

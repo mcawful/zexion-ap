@@ -21,20 +21,24 @@ Set with the Goal option.
   Zexion, then escape, win the final battle and board the ship: reaching the ending is your
   goal. The seed only makes sure you can reach the keys and Zexion, not that you have the
   items the escape needs (such as the Zenith Thrusters): the escape and final battle are yours
-  to finish.
+  to finish. With Abridged Finale (Custom), there is no escape: the ending begins when you
+  grab Zexion.
 - **OS Install Disks**: find enough OS Install Disks (the options set how many are placed and
   how many you need). The four keys are not in the seed.
   - Your count shows on each disk's popup, on the pause screen and on the file select.
   - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
-    you how many you need. Until you have been there, the pause screen shows "OF ?".
+    you how many you need. Until you have been there, the pause screen shows "OF ?". With
+    Hints Revealed (Custom), the game counts you as told from the start, so the number shows
+    at once (by the game's code; not yet checked in game).
   - Once you have enough, save at the start room (your landing pod) and answer YES to RETURN
     HOME WITH THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the
     question comes back the next time you save there.
-  - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then in
-    Standard past 25 disks Energy Shields. Excluded locations can hold only filler, so with many
-    disks, excluding many locations can stop generation, as above (the OS Install Disks option
-    gives the numbers). Where there is too little filler for the disks, ten Missile Containers
-    or Mega Bombs become a box and nine Scrap Metal, as the game makes filler.
+  - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
+    Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
+    Excluded locations can hold only filler, so with many disks, excluding many locations can
+    stop generation, as above (the OS Install Disks option gives the numbers). Where there is
+    too little filler for the disks, ten Missile Containers or Mega Bombs become a box and nine
+    Scrap Metal, as the game makes filler.
 
 ## Which modes are there?
 
@@ -70,7 +74,9 @@ as in the game (OHKO takes Safety `light` or `off`).
 ## Where does the game start?
 
 In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`),
-by its name in the game's menu, as in `landing_pod`: by default Landing Pod. Any room works
+by its name in the game's menu, as in `landing_pod`. The default, `automatic`, is Landing Pod,
+or where your settings rule Landing Pod out, a random start (as `random_start` below; the
+generator's log warns that it did so). Any room works
 from which your starting items reach at least one location (and, with the core goal, from
 which you can reach Zexion's core); another stops generation with an error. With Easy's items
 that is 17 of the rooms, with Standard's 19; with a second room to teleport to, all 34. From a
@@ -167,9 +173,10 @@ The mod also stops Steam achievements in Archipelago saves (for items, the map a
 ending). The ending's has been checked in game; the others so far only in the mod's own tests.
 While `/reload_mod` reloads the mod, for a few seconds, they are not stopped.
 
-This needs the mod in the game's folder. It is meant to hold with the client closed too, once
-you have connected to that seed at least once, and to leave plain randomizer saves alone; both
-are not yet checked in game. Lore entries you unlock in the database stay unlocked
+This needs the mod in the game's folder. It holds with the client closed too, once you have
+connected to that seed at least once: endings of Archipelago saves played with no client have
+been checked in game. Plain randomizer saves are left alone: checked in game with the client
+connected, not yet with it closed. Lore entries you unlock in the database stay unlocked
 for the whole game, as they would in any save.
 
 ## Does Zexion support DeathLink?
