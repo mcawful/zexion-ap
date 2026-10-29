@@ -762,12 +762,10 @@ class TestStartInventoryChecked(unittest.TestCase):
             "Energy Tank": 4,
             "Missile Container": 6,  # 9 with Standard's own 3
             "Missile Box": 3,
-            "Progressive Snake": 2,
-            "Slide Mod": 1,
-            "Alpha Key": 1,
-            "Beta Key": 1,
         }
-        fake_world(start_inventory=fine).generate_early()
+        # Items the game holds once, which the pool holds too: from it (test_start_inventory).
+        from_pool = {"Progressive Snake": 2, "Slide Mod": 1, "Alpha Key": 1, "Beta Key": 1}
+        fake_world(start_inventory=fine, start_inventory_from_pool=from_pool).generate_early()
         disks = {"OS Install Disk": 3}
         fake_world(goal=Goal.option_os_install_disks, start_inventory=disks).generate_early()
 

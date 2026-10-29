@@ -18,11 +18,12 @@ Mega Bombs, Missile Boxes, Bomb Boxes and Scrap Metal, docs/re/save-format.md, "
 byte per item ID at 0x92F3"). Every other item is held once: its byte is 0 or 1, and the game's
 pools hold one of each at most (docs/re/randocells.md, "The pool": one entry per item set in the
 pool array, one per key). So no other byte is written above 1 (with Guns First, a weapon and its
-upgrade are a byte each): a second copy, which only a start_inventory, a plando or a server
-console's ``/send`` can make, is not written. The pickup routine itself only increments the
-byte (docs/re/memory.md, "Granting each kind of item, and what keeps it"), and what the game
-does with a 2 in such a byte is not measured: the cap keeps the bytes as the game's own seeds
-leave them.
+upgrade are a byte each): a second copy, which only a plando or a server console's ``/send``
+can make (the world refuses a start_inventory copy of an item the pool holds:
+worlds/zexion/starting.py, ``pool_duplicates``), is not written. The pickup routine itself only
+increments the byte (docs/re/memory.md, "Granting each kind of item, and what keeps it"), and
+what the game does with a 2 in such a byte is not measured: the cap keeps the bytes as the
+game's own seeds leave them.
 
 With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
 item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works

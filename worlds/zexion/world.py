@@ -110,7 +110,9 @@ class ZexionWorld(World):
     seed_reach: reach.Seed
     mode_name: str
     menu: custom.Menu  # the randomizer menu as this seed's settings
-    start_inventory: dict[int, int]  # the seed's starting items, by item code
+    # The mode's own starting items, by item code (start_inventory's and
+    # start_inventory_from_pool's are on the options: reach_of_items counts all three).
+    start_inventory: dict[int, int]
     pool_codes: list[int]  # the seed's item pool, one code per location, before create_items
     logic_settings: logic.Settings  # not World.settings, the host.yaml settings
 
@@ -131,7 +133,7 @@ class ZexionWorld(World):
             self.start_inventory = dict(data.MODES[self.mode_name]["start_inventory"])
             self.pool_codes = list(data.MODES[self.mode_name]["pool"])
         self.check_start_inventory()
-        self.seed_reach = reach.Seed.of(self.logic_settings, self.start_inventory, self.pool_codes)
+        self.seed_reach = self.reach_of_items()
         self.choose_starts()
         self.fit_pool()
         door = data.CELL_REGION[data.CORE["door"]]
@@ -143,8 +145,12 @@ class ZexionWorld(World):
             )
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
-        # Starting disks count toward the goal (set_rules; the client's discs_start).
-        start_disks = self.options.start_inventory.value.get(NAMES[DATA_DISC], 0)
+        # Starting disks count toward the goal (set_rules; the client's discs_start): those of
+        # start_inventory on top of the placed ones, and those of start_inventory_from_pool
+        # past the placed ones, which Archipelago starts with though the pool has none left.
+        disk = NAMES[DATA_DISC]
+        start_disks = self.options.start_inventory.value.get(disk, 0)
+        start_disks += max(0, self.options.start_inventory_from_pool.value.get(disk, 0) - placed)
         if self.disc_hunt and required > placed + start_disks:
             raise OptionError(
                 f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
@@ -206,28 +212,44 @@ class ZexionWorld(World):
             raise OptionError(f"{who}: the game's menu cannot hold this: {'; '.join(found)}")
         return menu
 
+    def option_start(self, option_name: str) -> Counter[int]:
+        """A start option's items by item code: start_inventory or start_inventory_from_pool."""
+        value = getattr(self.options, option_name).value
+        return Counter({code_of[name]: n for name, n in value.items() if n > 0})
+
     def check_start_inventory(self) -> None:
-        """Refuse a start_inventory the client could not give (worlds/zexion/starting.py)."""
-        counts = Counter(self.start_inventory)
-        for name, n in self.options.start_inventory.value.items():
-            counts[code_of[name]] += n
+        """Refuse starting items the client could not give, and a start_inventory item that
+        the pool holds too and the game holds once (worlds/zexion/starting.py)."""
+        added = self.option_start("start_inventory")
+        counts = (
+            Counter(self.start_inventory) + added + self.option_start("start_inventory_from_pool")
+        )
         guns_first = self.logic_settings.guns_first
         found = starting.problems(counts, self.disc_hunt, guns_first)
-        if not guns_first:
-            # Without Guns First a second copy of a gun or an upgrade is nothing to the game's
-            # logic, and a gun picked up again could become its upgrade by the menu's Guns First
-            # (docs/re/randocells.md, "The evaluator works on a table of 64 counts").
-            found += [
-                f"{NAMES[code]}: the item pool holds it, and with Guns First off a second one is "
-                f"nothing (start_inventory_from_pool takes it from the pool)"
-                for code in sorted(starting.WEAPONS_AND_UPGRADES)
-                if self.options.start_inventory.value.get(NAMES[code]) and code in self.pool_codes
-            ]
+        # The pool as create_items makes it, as far as an item held once goes: with the OS
+        # Install Disks goal without the keys.
+        pool = [c for c in self.pool_codes if not (self.disc_hunt and c in KEY_CODES)]
+        found += starting.pool_duplicates(added, self.start_inventory, pool, guns_first)
         if found:
             raise OptionError(
-                f"Zexion ({self.player_name}): the client cannot start a seed with this "
-                f"start_inventory: {'; '.join(found)}"
+                f"Zexion ({self.player_name}): the client cannot start a seed with these "
+                f"starting items (the mode's own, start_inventory and "
+                f"start_inventory_from_pool): {'; '.join(found)}"
             )
+
+    def reach_of_items(self) -> reach.Seed:
+        """What the seed's items reach (reach.Seed), with every item the player starts with as
+        Archipelago counts it: the mode's own, start_inventory's and start_inventory_from_pool's
+        (Main.py precollects both options' items). The from-pool items are taken out of the
+        pool here, as Archipelago takes them out after create_items, a filler item in each one's
+        place; pool_codes keeps them, one code per location, for create_items to put in."""
+        from_pool = self.option_start("start_inventory_from_pool")
+        start = Counter(self.start_inventory) + self.option_start("start_inventory") + from_pool
+        pool = list(self.pool_codes)
+        for code, n in from_pool.items():
+            for _ in range(min(n, pool.count(code))):
+                pool.remove(code)
+        return reach.Seed.of(self.logic_settings, start, pool)
 
     @property
     def disc_hunt(self) -> bool:
@@ -341,9 +363,7 @@ class ZexionWorld(World):
             if codes == self.pool_codes:
                 break
             self.pool_codes = codes
-            self.seed_reach = reach.Seed.of(
-                self.logic_settings, self.start_inventory, self.pool_codes
-            )
+            self.seed_reach = self.reach_of_items()
         self.created_regions = set(every.regions)
         self.kept_locations = set(every.locations)
 
@@ -649,8 +669,8 @@ class ZexionWorld(World):
 
     def start_items(self) -> dict[int, int]:
         """Inventory bytes for everything this player starts with: the mode's starting items
-        and any start_inventory, with Guns First a progressive weapon's second copy as its
-        upgrade."""
+        and any start_inventory or start_inventory_from_pool (Archipelago's precollected items),
+        with Guns First a progressive weapon's second copy as its upgrade."""
         counts = Counter(
             code_of[item.name]
             for item in self.multiworld.precollected_items[self.player]

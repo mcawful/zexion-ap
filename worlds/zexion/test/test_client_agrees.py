@@ -89,6 +89,7 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(ids.ENERGY_SHIELD, items.ENERGY_SHIELD)
         # The client writes every other item's byte as 1 at most.
         self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
+        self.assertEqual(reconcile.COUNTED, starting.COUNTED)  # pool_duplicates counts the same
 
     def test_the_stand_ins(self) -> None:
         self.assertEqual((ids.STAND_IN, ids.STAND_IN_PROGRESSION), (FOREIGN, FOREIGN_PROGRESSION))
