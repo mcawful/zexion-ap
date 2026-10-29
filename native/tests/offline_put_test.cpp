@@ -54,12 +54,21 @@ int wmain(int argc, wchar_t** argv) {
         std::printf("usage: zap_offline_put_test PATH\\zexion_ap_hooktest.dll\n");
         return EXIT_FAILURE;
     }
-    const std::filesystem::path base = std::filesystem::temp_directory_path() / L"zap_put_test";
+    // A folder of this run's own (another worktree's run may be going on).
+    const std::filesystem::path base =
+        std::filesystem::temp_directory_path() /
+        (L"zap_put_test_" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::remove_all(base);
     std::filesystem::create_directories(base);
-    // Read by the helper's offline_folder, in this process.
-    check(SetEnvironmentVariableW(L"LOCALAPPDATA", base.wstring().c_str()) != 0,
-          "LOCALAPPDATA set");
+    // Read by the helper's offline_folder, in this process. Not loaded unless it reads back as
+    // set: the put would go into the real folder.
+    wchar_t now[MAX_PATH] = {};
+    if (SetEnvironmentVariableW(L"LOCALAPPDATA", base.wstring().c_str()) == 0 ||
+        GetEnvironmentVariableW(L"LOCALAPPDATA", now, MAX_PATH) == 0 || base.wstring() != now) {
+        std::printf("FAIL: LOCALAPPDATA not set to the test's folder\n");
+        std::filesystem::remove_all(base);
+        return EXIT_FAILURE;
+    }
 
     stand_in::reset_game();
     // Seed B's AP save loaded, in play.
@@ -91,6 +100,8 @@ int wmain(int argc, wchar_t** argv) {
                              "\nintel 1\nassists lock\ndiscs -\nunfound -\n";
     reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
     check(reply == "stored", "seed B put", reply);
+    check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
+          "written into the test's folder");
     reply = ask_until(pipe, "other_save", "told");
     check(reply == "told", "known to the look from the next frame: told", reply);
     std::string hello = zap_test::ask(pipe, "hello");

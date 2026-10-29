@@ -561,7 +561,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. Each notice is for the load it was
   queued in: one not shown when the save is left (no save loaded) is withdrawn, not shown in the
   next save, and the next load is told again. The other-seed notice and CLIENT CONNECTED. are
-  also for their client: one not shown when it goes away is withdrawn.
+  also for their client: one not shown when it goes away is withdrawn. A not-connected warning
+  withdrawn before it showed is given again when the save is next dressed with no client.
 - **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.

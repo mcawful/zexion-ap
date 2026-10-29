@@ -422,6 +422,28 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
+        // Warned with no client, but paused before it showed; a client of another seed comes and
+        // goes meanwhile: the warning is given again once the save is dressed without it.
+        g_messages = 0;
+        zap::Game game;
+        configure(game, false);
+        game.set_offline({s});
+        put_seed(g_section);
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        check(game.queued_popups() == 1, "warned with no client");
+        g_menu = 1;
+        configure(game);
+        check(game.other_save() == "told" && game.queued_popups() == 1,
+              "a client of another seed: its notice in the warning's place");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as it goes");
+        g_menu = 0;
+        frames(game, 200);
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "the not-connected warning given again", g_text);
+        game.put_back_all(nullptr);
+    }
+    {
         // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
         zap::Game game;
         configure(game, false);

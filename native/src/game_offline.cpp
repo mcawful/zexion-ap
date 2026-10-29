@@ -3,7 +3,6 @@
 #include "game_calls.h"
 
 #include <algorithm>
-#include <iterator>
 
 namespace zap {
 
@@ -43,11 +42,24 @@ void Game::merge_offline(std::vector<OfflineSeed> seeds) {
     }
 }
 
-void Game::drop_notice(const char* text) {
+bool Game::drop_notice(const char* text) {
     // The helper's notices are the only silent popups (a client's never are: parse_batch).
+    bool dropped = false;
     for (auto it = popups_.begin(); it != popups_.end();) {
-        it = it->silent && it->suffix == text ? popups_.erase(it) : std::next(it);
+        if (it->silent && it->suffix == text) {
+            it = popups_.erase(it);
+            dropped = true;
+        } else {
+            ++it;
+        }
     }
+    return dropped;
+}
+
+void Game::drop_offline_warning() {
+    // Withdrawn before it showed: told again when a save is next dressed with no client this
+    // load (after a client of another seed goes away, say).
+    if (drop_notice(kOfflineWarning)) offline_warned_ = false;
 }
 
 void Game::leave_offline_for_client() {
@@ -69,7 +81,7 @@ void Game::drop_client_notices() {
 }
 
 void Game::leave_offline_seed() {
-    drop_notice(kOfflineWarning);
+    drop_offline_warning();
     if (offline_index_ < 0) return;
     offline_index_ = -1;
     offline_count_ = -1;
@@ -211,7 +223,7 @@ std::string Game::other_save() {
     if (!configured_ || loaded_seed() < 0) return "unknown";
     other_save_ = true;
     if (other_warned_) return "already told";
-    drop_notice(kOfflineWarning);
+    drop_offline_warning();
     popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true, true});
     other_warned_ = true;
     return "told";

@@ -365,8 +365,10 @@ private:
     void leave_offline_seed();
     // Withdraws one of the helper's queued notices (game_offline.cpp), as its flag is reset:
     // each is for the load it was queued in, and the other-seed one and CLIENT CONNECTED. for
-    // their client too (withdrawn at a client's config or when it goes away).
-    void drop_notice(const char* text);
+    // their client too (withdrawn at a client's config or when it goes away). Whether one was.
+    bool drop_notice(const char* text);
+    // The not-connected warning withdrawn; if it had not shown, given again with the next dress.
+    void drop_offline_warning();
     // A client's config: the offline look put back first, and its notices for this load reset.
     void leave_offline_for_client();
     // A client gone (client_gone): its notices not shown yet withdrawn, other_save reset.
