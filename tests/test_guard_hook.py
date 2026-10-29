@@ -160,6 +160,12 @@ BASH_ALLOWED = [
     "start steam://rungameid/3392510",
     "curl -sL https://steamdb.info/app/3392510/patchnotes/ -o lab/patchnotes.html",
     '.venv/Scripts/python -c "print(3392510 * 1000 + 154)"',
+    # Quotes, $'…', $[…] and ${…} that hide no substitution.
+    f'echo ${{#arr[@]}}; ls "{SAVES}"',
+    f"cat <<'EOF'\n${{HOME}} and $[1+1] and {SAVES}\nEOF",
+    f"echo $'tab\\there'; ls \"{SAVES}\"",
+    f"printf '%s\\n' \"it's\" 'fine'; ls \"{SAVES}\"",
+    f"echo 'a$' '(b)'; ls \"{SAVES}\"",
 ]
 
 PS_ALLOWED = [
@@ -312,6 +318,28 @@ BASH_BLOCKED = [
     f'grep -c "<<EOF" docs/x.md\nrm "{SAVES}/Save Game 2.sav"\nEOF',
     f'git commit -m "Lexer: cut <<EOF bodies"\nrm "{SAVES}/Save Game 2.sav"\nEOF',
     f'x=$((1<<EOF))\nrm "{SAVES}/Save Game 2.sav"\nEOF',
+    # ... nor is one in $[…] or ${…}, an offset or a subscript: a shift there.
+    f'cat $[1<<EOF]\ntouch "{SAVES}/t"\nEOF',
+    f's=abc; echo ${{s:0:1<<EOF}}\ntouch "{SAVES}/t"\nEOF',
+    f'echo ${{a[1<<EOF]}}\ntouch "{SAVES}/t"\nEOF',
+    # A $( split by quotes in a value Bash later reads as arithmetic, which runs it.
+    *(
+        f"x='a[$''(touch \"{SAVES}/t\")]'; {use}"
+        for use in (
+            "echo $[x]",
+            "echo ${s:x}",
+            "echo ${s:0:x}",
+            "echo ${#a[x]}",
+            "echo ${!x}",
+            "cat ${a[x]}",
+            "ls ${a[x]}",
+            "wc ${a[x]}",
+        )
+    ),
+    f"x=$'a[\\x24(touch \"{SAVES}/t\")]'; echo $[x]",
+    f"x=$'a[\\044(touch \"{SAVES}/t\")]'; wc ${{a[x]}}",
+    f"x=$'a[\\u0024(touch \"{SAVES}/t\")]'; echo ${{s:x}}",
+    f'x="a[$"\'(touch "{SAVES}/t")]\'; echo $[x]',
     # -m is a message only where git takes one.
     f'git log -m --output="{SAVES}/x.txt" -1',
     f'git show -m --output="{GAME}/zlib.dll" HEAD',
