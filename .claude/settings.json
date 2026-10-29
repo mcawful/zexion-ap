@@ -6,7 +6,13 @@
       "Bash(git diff *)",
       "Bash(git log *)",
       "Bash(git show *)",
-      "Bash(git branch *)",
+      "Bash(git branch)",
+      "Bash(git branch -a)",
+      "Bash(git branch -r)",
+      "Bash(git branch -v)",
+      "Bash(git branch -vv)",
+      "Bash(git branch --show-current)",
+      "Bash(git branch --list *)",
       "Bash(.venv/Scripts/python -m pytest *)",
       "Bash(.venv/Scripts/ruff check *)",
       "Bash(.venv/Scripts/ruff format --check *)",
@@ -23,7 +29,33 @@
       "PowerShell(git diff *)",
       "PowerShell(git log *)",
       "PowerShell(git show *)",
-      "PowerShell(git branch *)"
+      "PowerShell(git branch)",
+      "PowerShell(git branch -a)",
+      "PowerShell(git branch -r)",
+      "PowerShell(git branch -v)",
+      "PowerShell(git branch -vv)",
+      "PowerShell(git branch --show-current)",
+      "PowerShell(git branch --list *)"
+    ],
+    "ask": [
+      "Bash(git diff *--output*)",
+      "Bash(git log *--output*)",
+      "Bash(git show *--output*)",
+      "PowerShell(git diff *--output*)",
+      "PowerShell(git log *--output*)",
+      "PowerShell(git show *--output*)",
+      "Bash(.venv/Scripts/ruff check *--fix*)",
+      "Bash(.venv/Scripts/ruff check *--add-noqa*)",
+      "Bash(.venv/Scripts/ruff check *-o*)",
+      "Bash(.venv/Scripts/ruff check *--config*)",
+      "Bash(.venv/bin/ruff check *--fix*)",
+      "Bash(.venv/bin/ruff check *--add-noqa*)",
+      "Bash(.venv/bin/ruff check *-o*)",
+      "Bash(.venv/bin/ruff check *--config*)",
+      "Bash(.venv/Scripts/python -m pytest *--basetemp*)",
+      "Bash(.venv/Scripts/python -m pytest *--junit*)",
+      "Bash(.venv/bin/python -m pytest *--basetemp*)",
+      "Bash(.venv/bin/python -m pytest *--junit*)"
     ],
     "deny": [
       "Edit(//**/Gallant Leaf/Zexion/**)",
@@ -37,7 +69,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor|mcp__terminal__run_in_terminal",
         "hooks": [
           {
             "type": "command",
