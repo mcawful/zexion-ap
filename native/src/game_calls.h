@@ -243,12 +243,15 @@ public:
     // were earned (feats_screen_note). Until a save is loaded, or that screen has come and gone.
     bool feats_ended() const { return feats_ended_; }
 
-    // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files;
+    // Game thread: AP saves without the client (offline.h). set_offline takes the seeds' files
+    // in place of the last ones (with no client); merge_offline adds seeds to them (with a
+    // client: seed files read or put while it is connected), leaving the dressed save as it is;
     // the watch (every 16th frame call) dresses a save of one of them while no client is there
     // or the client said other_save, and sets the file select's counts with or without a
     // client. `offline_state`, for `hello`: "-", or the count (then ":" and the dressed seed's
     // file, if any).
     void set_offline(std::vector<OfflineSeed> seeds);
+    void merge_offline(std::vector<OfflineSeed> seeds);
     void watch_offline();
     void leave_offline();
     std::string offline_state() const;
@@ -359,7 +362,11 @@ private:
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
     void leave_offline_seed();
-    void drop_offline_warning();
+    // Withdraws one of the helper's queued notices (game_offline.cpp), as its flag is reset:
+    // each is for the load (or the client) it was queued in.
+    void drop_notice(const char* text);
+    // A client's config: the offline look put back first, and its notices for this load reset.
+    void leave_offline_for_client();
     bool offline_warned_ = false;  // this load's warning queued
     // The seed whose save this load was dressed offline (-1: none), kept through a client's
     // short connections (they undress it): `client_back` tells the player the client is back.

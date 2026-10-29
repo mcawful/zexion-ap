@@ -536,7 +536,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   writes them, not the client: a client run from a packaged app has its AppData writes
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
 - **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
-  first. With no client yet, the cached addresses configure it if they are for its build and the
+  first. Read with no client, they take the last ones' place; read while a client is connected,
+  and a seed file a client puts, they are added to them from the next frame call
+  (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
+  is dressed), so another seed's save started earlier in the same client run is known as one
+  (`other_save`). With no client yet, the cached addresses configure it if they are for its build and the
   game holds every checked function's bytes, even if the cache lacks the client-only keys (a
   cache from before a release that added one: "The pipe"). So the offline look, the map markers
   and the title lines all run with no client once the cache checks out.
@@ -553,7 +557,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
   first and withdraws a notice not yet shown; the client then asks `client_back`, which pops up
-  ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed.
+  ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. Each notice is for the load it was
+  queued in: one not shown when the save is left (no save loaded) is withdrawn, not shown in the
+  next save, and the next load is told again.
 - **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
@@ -831,7 +837,7 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, the AP saves' slots, and the file select's logo through the frame call: painted,
+  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots, and the file select's logo through the frame call: painted,
   whitened through a new game's fade, and cleared by `restore_files`).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of

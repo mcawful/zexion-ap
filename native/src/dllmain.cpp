@@ -79,7 +79,8 @@ std::atomic<zap::ClientState*> g_rearm{nullptr};
 bool g_from_game_folder = false;
 // The offline files (offline.h), read on the helper's thread at start and after each
 // disconnect, handed to the next frame under g_offline_lock; with the seeds a client has put
-// since (`offline_put seed`), which the AP-save test knows at once (Game::add_known_seeds).
+// since (`offline_put seed`), which the AP-save test and the look know at once
+// (Game::merge_offline).
 SRWLOCK g_offline_lock = SRWLOCK_INIT;
 bool g_offline_ready = false;
 zap::OfflineFiles g_offline_files;
@@ -214,7 +215,8 @@ void take_offline() {
     }
     std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
-    if (!put.empty()) g_game.add_known_seeds(put);
+    // Known to the AP-save test, and to the look (other_save), at once.
+    if (!put.empty()) g_game.merge_offline(std::move(put));
     if (!ready) return;
     g_offline_reads.fetch_add(1);
     if (!g_game.configured() && !files.config.empty()) {
@@ -227,9 +229,10 @@ void take_offline() {
             ReleaseSRWLockExclusive(&g_offline_lock);
         }
     }
-    // The look takes them only with no client; the AP-save test always (set_offline adds them).
+    // With no client, in place of the last ones; with one, added to them, leaving the save it
+    // has dressed (other_save) as it is. Both add them to the AP-save test's.
     if (g_game.active()) {
-        g_game.add_known_seeds(files.seeds);
+        g_game.merge_offline(std::move(files.seeds));
     } else {
         g_game.set_offline(std::move(files.seeds));
     }
@@ -272,8 +275,10 @@ uintptr_t frame(void* argument) {
             g_mailbox.serve();
             g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
-                // Once an unload has begun, no watch runs (nothing is put back in).
-                if (!g_unloading) g_game.watch_all(&archipelago_chosen);
+                // Once an unload has begun, no watch runs (nothing is put back in). Guarded, so
+                // the block always reaches the release: a throw out of a watch (out of memory)
+                // would keep the lock, and the next unload would wait on it for good.
+                if (!g_unloading) guarded([] { g_game.watch_all(&archipelago_chosen); });
                 publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
