@@ -125,6 +125,9 @@ play as normal.
 | The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
 | There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. |
 | The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, enter the 16-character seed the client's message gives, and choose START GAME. The menu's other settings don't matter: the game gets your seed's own. If the game says it couldn't generate a winnable seed and asks whether to play anyway, choose YES. |
+| The client says that new game isn't this seed. | The game was started from RANDOMIZER with another seed in the menu, so it is an ordinary randomizer game, not your Archipelago one. Start again in an empty save slot as the client's message says, with your seed's 16 characters. |
+| The client says this seed's second teleport target isn't a room this game can offer. | The seed can't be started as a new game. Report it (below), with the client's log. |
+| The client says that new game couldn't be made this seed. | Start another new game in an empty save slot. |
 | `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
 | Nothing is sent or received. | Check that the client is connected and the loaded save is from this seed. |
 

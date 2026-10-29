@@ -80,7 +80,8 @@ How the helper works: [`native/README.md`](../native/README.md).
 
 ## Features, and when each was working in game
 
-All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md).
+All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md), or where its
+line says.
 
 Rechecked on 575edbf (0.30.0, after the footprint pass of #20 to #22), 2026-10-27, in a three-game
 seed (`lab/ap/live35`) with the client run from source: a new ARCHIPELAGO game and the AP logo,
@@ -98,7 +99,29 @@ fault found later that day, the Feats screen's note missing when the assist menu
   client closed, the save quit to the title: 2026-10-26). A game closed, or the helper
   unloaded, with popups queued loses them (2026-10-26).
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
-  one connection: 2026-10-24.
+  one connection: 2026-10-24; Custom seeds, RANDO SETTINGS showing the seed's settings:
+  2026-10-27.
+- Custom mode (the runs and their seeds: [`docs/custom-mode.md`](custom-mode.md), "The build
+  plan"; the game's side: [`docs/re/randocells.md`](re/randocells.md), "What each setting does
+  in the game"):
+  - A seed with every item started, Start Keys 4, X Crystals, X Blocks and Hints Revealed:
+    RANDO SETTINGS showing the seed's settings, the starting items and the four keys given and
+    the map revealed (X Crystals and X Blocks removing their blocks was seen only in seeds made
+    in the game's menu, with no client); Abridged Finale's ending at the grab of Zexion, with
+    the goal sent by the client: 2026-10-27.
+  - The helper's map markers under Obscure Majors, Minors and Class (below): 2026-10-27.
+  - Double Teleport's flagged second target, drawn with 27 starting Energy Tanks, offered and
+    teleported to; Gates Open, three gates working without keys and R'Talva's appearing only
+    after a boss; Gates Off with the core goal, the core taken with the four keys under
+    Abridged Finale and the goal sent: 2026-10-28.
+  - Guns First off: each upgrade, picked up or received, set only its own byte, and a reload
+    gave back only what the save lost: 2026-10-28.
+  - Secret Shuffle: the client taking the 155-entry list as the seed's, and the 155th location,
+    "??? 48,20", and three others near it in the list giving their items and checked under
+    their names: 2026-10-28.
+- `start_inventory_from_pool`: the start held the pool's items with the mode's own, and a
+  `start_inventory` copy of an item the pool holds refused at generation: 2026-10-28
+  ([`docs/re/locations.md`](re/locations.md), "What the world needs from the client").
 - `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
   modes: 2026-10-22. That was the earlier path, checked against the player's own placement;
   identifying the game by its seed text and placing it again: 2026-10-27, a Custom seed (the
@@ -366,5 +389,6 @@ path) is reviewed as named. The review subagents in `.claude/agents/` follow thi
   reverse-engineering record. `worlds/zexion/`: the APWorld and the player docs.
   Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
 - When the game is patched: [`docs/re/new-build.md`](re/new-build.md).
-- Custom mode, every setting of the game's randomizer (step B, run in game 2026-10-27):
+- Custom mode, every setting of the game's randomizer (steps A to E built and run in game,
+  2026-10-27 and 2026-10-28: "Features, and when each was working in game"):
   [`docs/custom-mode.md`](custom-mode.md).

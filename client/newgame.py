@@ -24,8 +24,9 @@ for a save file), and writes the AP seed over it. So the new game is the game's 
 seed's text, settings and start, down to the Hints' map rectangles, which the placement draws
 from where its random numbers ended (docs/re/randocells.md, "What each setting does in the
 game"). The request also carries what START GAME's skipped first step would write: the second
-target, or for Double Teleport (OHKO) the start table the placement reads, used only on the
-build it was measured on (docs/re/memory.md, "The game-mode panel"). Two ways in:
+target, or for Double Teleport (OHKO, or Custom with it on) the start table the placement
+reads, used only on the build it was measured on (docs/re/memory.md, "The game-mode panel").
+Two ways in:
 
 - with ``offer_choice``, the ``choice`` line: ARCHIPELAGO on the game-mode panel;
 - always, the ``identify`` line: a new game the player starts from RANDOMIZER with the seed's

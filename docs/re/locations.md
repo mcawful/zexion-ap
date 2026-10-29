@@ -185,8 +185,10 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 - **Modes and settings.** The world offers Easy, Standard and OHKO, each as one fresh save of
   that mode had it: its settings, its item pool and its starting items (in Standard, the Force
   Blaster that "Random Gun" gave that seed); and Custom, every setting of the menu, built by
-  the game's rules ([`../custom-mode.md`](../custom-mode.md); run in game 2026-10-27). Secret
-  Shuffle on is not in the logic yet. With Guns First on, an upgrade started without its gun
+  the game's rules ([`../custom-mode.md`](../custom-mode.md); run in game 2026-10-27). With
+  Secret Shuffle on, its 155th location and six cells are in the logic, as the game's code 68
+  tier 37 opens them ("The region graph holds what the settings reach"; working in game, B1,
+  2026-10-28: `custom-mode.md`, step E). With Guns First on, an upgrade started without its gun
   is started as the gun (the world's weapons are progressive), more than the game's start
   gives; with it off (step E), each upgrade is its own item, as the game counts it.
 - **Missile and Bomb Boxes in groups:** not modeled (`randocells.md`, "Not yet found").
