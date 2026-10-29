@@ -33,6 +33,8 @@ def saves(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (folder / "GameUnlocks.sav").write_bytes(b"unlocks")
     monkeypatch.setenv("ZEXION_SAVE_DIR", str(folder))
     monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path / "lab"))
+    # The game is closed, whatever this machine is running.
+    monkeypatch.setattr(save_lab.process, "find_pid", lambda name: None)
     return folder
 
 
@@ -82,9 +84,11 @@ def test_install_requires_yes_backup_and_empty_slot(saves: Path, tmp_path: Path)
     patched = tmp_path / "patched.sav"
     patched.write_bytes(b"\xe8\x03" + b"\x2e" * (SIZE - 2))
 
-    assert save_lab.main(["install", str(patched), "3"]) == 1  # no --yes
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1  # no backup yet
     save_lab.backup()
+    # With everything else in place, so only the missing --yes refuses it.
+    assert save_lab.main(["install", str(patched), "3"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
     assert save_lab.main(["install", str(patched), "1", "--yes"]) == 1  # slot 1 is in use
     assert save_lab.main(["install", str(patched), "30", "--yes"]) == 1  # no such slot
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
@@ -197,6 +201,106 @@ def test_restore_puts_a_slot_back_and_backs_up_first(saves: Path, tmp_path: Path
     assert (saves / "Save Game 3.sav").read_bytes() == original
     backups = list((tmp_path / "lab" / "backups").iterdir())
     assert len(backups) == 2  # the original, plus the safety copy taken before restoring
+
+
+def test_restore_requires_yes(saves: Path, tmp_path: Path) -> None:
+    first = save_lab.backup()
+    (saves / "Save Game 3.sav").write_bytes(b"x" * SIZE)
+    assert save_lab.main(["restore", str(first), "--slot", "3"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == b"x" * SIZE
+    assert _backups(tmp_path) == [first]  # refused before the safety backup
+    assert save_lab.main(["restore", str(first), "--slot", "3", "--yes"]) == 0
+
+
+def test_backup_refuses_a_copy_unlike_the_original(
+    saves: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    copy2 = shutil.copy2
+
+    def spoiled_copy(src, dst) -> None:
+        copy2(src, dst)
+        if Path(src).name == "Save Game 2.sav":
+            Path(dst).write_bytes(b"spoiled")
+
+    monkeypatch.setattr(save_lab.shutil, "copy2", spoiled_copy)
+    with pytest.raises(RuntimeError, match="Save Game 2.sav does not match the original"):
+        save_lab.backup()
+
+
+# --- with the game running ---------------------------------------------------------------
+
+
+def _game(monkeypatch: pytest.MonkeyPatch, find_pid) -> list[str]:
+    """The game looked for as on Windows, with ``find_pid`` faked; the names it was asked."""
+    asked: list[str] = []
+
+    def find(name: str):
+        asked.append(name)
+        return find_pid(name)
+
+    monkeypatch.setattr(save_lab, "WINDOWS", True)
+    monkeypatch.setattr(save_lab.process, "find_pid", find)
+    return asked
+
+
+def _running(name: str) -> int:
+    return 1234
+
+
+def _unreadable(name: str):
+    raise save_lab.process.ProcessError("listing processes failed")
+
+
+def test_the_game_is_looked_for_by_its_exe() -> None:
+    from client import game
+
+    assert save_lab.GAME_EXE == game.PROCESS
+
+
+@pytest.mark.parametrize(
+    ("find_pid", "said"),
+    [(_running, "Zexion is running"), (_unreadable, "Could not tell")],
+    ids=["running", "unknown"],
+)
+def test_install_refuses_while_the_game_runs(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, find_pid, said
+) -> None:
+    patched = _patched(tmp_path)
+    save_lab.backup()
+    asked = _game(monkeypatch, find_pid)
+    capsys.readouterr()
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+    assert asked == ["Zexion.exe"]
+    assert said in capsys.readouterr().out
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    assert not (tmp_path / "lab" / "installs.log").exists()
+    _game(monkeypatch, lambda name: None)  # closed
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
+
+
+@pytest.mark.parametrize("find_pid", [_running, _unreadable], ids=["running", "unknown"])
+def test_restore_refuses_while_the_game_runs(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, find_pid
+) -> None:
+    first = save_lab.backup()
+    (saves / "Save Game 3.sav").write_bytes(b"x" * SIZE)
+    asked = _game(monkeypatch, find_pid)
+    assert save_lab.main(["restore", str(first), "--yes"]) == 1
+    assert asked == ["Zexion.exe"]
+    assert (saves / "Save Game 3.sav").read_bytes() == b"x" * SIZE
+    assert _backups(tmp_path) == [first]  # refused before the safety backup
+    _game(monkeypatch, lambda name: None)
+    assert save_lab.main(["restore", str(first), "--yes"]) == 0
+
+
+def test_off_windows_the_game_is_not_looked_for(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _game(monkeypatch, _running)
+    monkeypatch.setattr(save_lab, "WINDOWS", False)
+    save_lab.backup()
+    assert save_lab.main(["install", str(_patched(tmp_path)), "3", "--yes"]) == 0
+    assert asked == []
 
 
 def test_restore_refuses_a_backup_unlike_its_manifest(saves: Path, tmp_path: Path) -> None:

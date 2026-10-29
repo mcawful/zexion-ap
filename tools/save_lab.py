@@ -9,10 +9,13 @@
     save_lab.py restore BACKUP [--slot N] --yes   put a backup back (after backing up the present)
 
 A save is named by slot number (``2``), ``slot:2``, or a file path. Everything except ``install``
-and ``restore`` only reads the save folder. ``install`` fills only an empty slot, and only when a
-backup from the last 12 hours holds that slot as it is now. ``restore`` may overwrite slots in
-use; it refuses a backup of another save folder, checks the backup against its manifest, and
-backs up the present state first.
+and ``restore`` only reads the save folder. Both refuse while Zexion is running (looked for on
+Windows, the game's platform), and when the process list can't be read: the game keeps the slots
+in memory, wrote them back over an install (docs/re/memory.md, "Feats and achievements",
+2026-10-28), and would presumably over a restore. ``install`` fills only an empty slot, and
+only when a backup from the last 12 hours holds that slot as it is now. ``restore`` may
+overwrite slots in use; it refuses a backup of another save folder, checks the backup against
+its manifest, and backs up the present state first.
 
 A slot is empty in two ways, and ``slots`` names both. "empty" holds the unused-slot template.
 "empty (deleted, data kept)" holds a save deleted in the game: deleting keeps the file and all
@@ -41,9 +44,14 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from protected import assert_writable, lab_dir, save_dir
+from protected import ROOT, assert_writable, lab_dir, save_dir
+
+sys.path.insert(0, str(ROOT))  # the client package
+from client import process  # noqa: E402
 
 SLOT_NAME = "Save Game {}.sav"
+GAME_EXE = "Zexion.exe"  # client/game.py's PROCESS
+WINDOWS = sys.platform == "win32"  # the game's platform: only there is it looked for
 BACKUP_MAX_AGE_HOURS = 12
 # An unused slot is not all zeros: the game writes one fixed template into every unused slot
 # (docs/re/save-format.md, "Unused slots hold a fixed template"). The template is recognized
@@ -354,6 +362,30 @@ def _write_into_save_dir(target: Path, data: bytes) -> None:
         raise RuntimeError(f"read-back of {target} does not match what was written")
 
 
+def game_running() -> bool:
+    """Whether Zexion is running (looked for on Windows only). ProcessError (an OSError) when
+    the process list can't be read."""
+    return WINDOWS and process.find_pid(GAME_EXE) is not None
+
+
+def _refused_while_game_runs(command: str) -> bool:
+    """True, with the reason printed, when Zexion is running or that can't be told. The game
+    keeps the slots in memory and writes them back over the folder: an install made while it
+    ran was replaced by the game's own empty slot (docs/re/memory.md, "Feats and
+    achievements", 2026-10-28). That a restore would be too is assumed, not measured."""
+    try:
+        running = game_running()
+    except OSError as exc:
+        print(f"Could not tell whether Zexion is running ({exc}); {command} did not write.")
+        return True
+    if running:
+        print(
+            f"Zexion is running; close it first. It keeps the slots in memory and writes them "
+            f"back, over what {command} would write."
+        )
+    return running
+
+
 def _log(line: str) -> None:
     log = lab_dir() / "installs.log"
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -364,6 +396,8 @@ def _log(line: str) -> None:
 def cmd_install(args: argparse.Namespace) -> int:
     if not args.yes:
         print("install writes into the real save folder; pass --yes once the user has agreed")
+        return 1
+    if _refused_while_game_runs("install"):
         return 1
     source = resolve(args.file)
     target = slot_path(args.slot)
@@ -400,6 +434,8 @@ def _same_folder(a: Path, b: Path) -> bool:
 def cmd_restore(args: argparse.Namespace) -> int:
     if not args.yes:
         print("restore writes into the real save folder; pass --yes once the user has agreed")
+        return 1
+    if _refused_while_game_runs("restore"):
         return 1
     chosen = Path(args.backup)
     if not chosen.is_absolute() and not chosen.exists():

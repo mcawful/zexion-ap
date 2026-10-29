@@ -123,3 +123,25 @@ def test_an_untracked_file_stops_the_build(tmp_path: Path, monkeypatch, dlls) ->
     with pytest.raises(SystemExit, match=r"not tracked by git.*data\.py"):
         bap.build(tmp_path / "dist")
     assert not (tmp_path / "dist").exists()
+
+
+def test_a_manifest_naming_another_game_is_refused(tmp_path: Path, monkeypatch, dlls) -> None:
+    world = tmp_path / "world"
+    world.mkdir()
+    info = json.loads((bap.WORLD / "archipelago.json").read_text(encoding="utf-8"))
+    (world / "archipelago.json").write_text(json.dumps({**info, "game": "Other"}), "utf-8")
+    monkeypatch.setattr(bap, "WORLD", world)
+    with pytest.raises(SystemExit, match="does not name the game Zexion"):
+        bap.build(tmp_path / "dist")
+    assert not (tmp_path / "dist").exists()
+
+
+def test_two_files_of_one_name_are_refused(tmp_path: Path, monkeypatch, dlls) -> None:
+    real = bap.packed_files
+    # A client file that would land on the manifest's name.
+    monkeypatch.setattr(
+        bap, "packed_files", lambda: [*real(), (bap.CLIENT / "ids.py", bap.MANIFEST)]
+    )
+    with pytest.raises(SystemExit, match="share a name"):
+        bap.build(tmp_path / "dist")
+    assert not (tmp_path / "dist").exists()
