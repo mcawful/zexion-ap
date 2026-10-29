@@ -48,6 +48,7 @@ from protected import ROOT, assert_writable, lab_dir, save_dir
 
 sys.path.insert(0, str(ROOT))  # the client package
 from client import process  # noqa: E402
+from client.save_patch import RANDO_MARKER  # noqa: E402
 
 SLOT_NAME = "Save Game {}.sav"
 GAME_EXE = "Zexion.exe"  # client/game.py's PROCESS
@@ -66,7 +67,6 @@ EMPTY_TEMPLATE_MIN_COPIES = 3
 SAVE_SIZES = (75_794, 78_108)
 SAVE_HEADER = b"\xe8\x03"
 EMPTY_MARKER = 0x9360
-RANDO_MARKER = 0x9402
 
 # What ``slot_state`` says of a slot.
 TEMPLATE = "empty"

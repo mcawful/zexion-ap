@@ -82,15 +82,13 @@ overwritten, and that the backup keeps it.
 .venv/Scripts/python tools/save_lab.py install lab/work/a-patched.sav 30 --yes
 ```
 
-It fills either kind of empty slot. It refuses while Zexion is running (and when it can't read
-the process list): the game keeps the slots in memory, and one installed while it ran was
-written over by the game's own empty copy of that slot (2026-10-28, `docs/re/memory.md`, "Feats
-and achievements"). So ask the user to close the game first. It also refuses a slot that is in
-use, a slot number that doesn't exist, and a missing or stale backup. Over a deleted save it
-says that the old data is in the backup, and names the file there. It writes through a
-temporary file (removed if the write fails), reads the result back, and logs to
-`lab/installs.log`, with `was=template` or `was=deleted` for the kind of slot it filled. Then
-the user starts the game.
+It fills either kind of empty slot. It refuses while Zexion is running, or when that can't be
+told, as `restore` does (the game writes its copies of the slots back over an install, and
+presumably over a restore: `save_lab.py --help`), so ask the user to close the game first. It
+also refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
+backup. Over a deleted save it names the backup file that now
+holds the old data. It logs to `lab/installs.log`, with `was=template` or `was=deleted` for the
+kind of slot it filled. Then the user starts the game.
 
 ## 6. Put things back
 
@@ -100,9 +98,7 @@ the user starts the game.
 ```
 
 Ask first, and have the user close the game: like `install`, `restore` refuses while Zexion is
-running. The game would presumably write its own copies of the slots back over the restored
-ones, as it did over an install (measured for `install` only, `docs/re/memory.md`, "Feats and
-achievements"). It refuses a backup of another save folder (one taken with `--save-dir` or
+running. It refuses a backup of another save folder (one taken with `--save-dir` or
 `ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
 manifest, then backs up the current state before overwriting, so a restore can itself be undone.
 
