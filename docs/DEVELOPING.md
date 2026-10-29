@@ -28,6 +28,11 @@ worlds/zexion/ → generation → slot data → client
 
 - **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
   other 4; in Custom, those the settings reach from the start, 155 with Secret Shuffle), using the game's own randomizer map and rules (`docs/re/locations.md`).
+  The owner's principles: follow the game's own rules and add no protection the game does not
+  have (where the world departs from them: `docs/re/locations.md`, "Where the world departs
+  from the game"); and in a new game the game's menu holds the seed's settings, so the game
+  derives from them what it derives, and AP writes only what is AP's (`native/README.md`, "New
+  games").
 - **The client** attaches to the running game. While this seed's save is loaded it sends the
   locations the map marks as collected (again until the server holds them), gives the items
   other worlds send, and sends the goal once the save has reached the ending (with the OS
@@ -83,15 +88,6 @@ How the helper works: [`native/README.md`](../native/README.md).
 All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md), or where its
 line says.
 
-Rechecked on 575edbf (0.30.0, after the footprint pass of #20 to #22), 2026-10-27, in a three-game
-seed (`lab/ap/live35`) with the client run from source: a new ARCHIPELAGO game and the AP logo,
-received items with popups, checks sent (another Zexion player's item as itself, another game's as
-an AP item), the map's markers and names, the pause row and the file select's count, a reload,
-Disconnect then Connect, `/reload_mod` in play and refused in the pause screen, RETURN HOME with
-its fade (NO and YES), and the ending with the goal sent and no Feats. All as listed below; one
-fault found later that day, the Feats screen's note missing when the assist menu is unlocked
-(fixed in d451e6b, below).
-
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22.
 - Each received item pops up once, across reconnects and client restarts (the count in data
   storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
@@ -99,17 +95,14 @@ fault found later that day, the Feats screen's note missing when the assist menu
   client closed, the save quit to the title: 2026-10-26). A game closed, or the helper
   unloaded, with popups queued loses them (2026-10-26).
 - ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
-  one connection: 2026-10-24; Custom seeds, RANDO SETTINGS showing the seed's settings:
-  2026-10-27.
-- Custom mode (the runs and their seeds: [`docs/custom-mode.md`](custom-mode.md), "The build
-  plan"; the game's side: [`docs/re/randocells.md`](re/randocells.md), "What each setting does
-  in the game"):
+  one connection: 2026-10-24.
+- Custom mode (the game's side, whose Status points to each run's record:
+  [`docs/re/randocells.md`](re/randocells.md), "What each setting does in the game"):
   - A seed with every item started, Start Keys 4, X Crystals, X Blocks and Hints Revealed:
     RANDO SETTINGS showing the seed's settings, the starting items and the four keys given and
     the map revealed (X Crystals and X Blocks removing their blocks was seen only in seeds made
     in the game's menu, with no client); Abridged Finale's ending at the grab of Zexion, with
     the goal sent by the client: 2026-10-27.
-  - The helper's map markers under Obscure Majors, Minors and Class (below): 2026-10-27.
   - Double Teleport's flagged second target, drawn with 27 starting Energy Tanks, offered and
     teleported to; Gates Open, three gates working without keys and R'Talva's appearing only
     after a boss; Gates Off with the core goal, the core taken with the four keys under
@@ -122,11 +115,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
 - `start_inventory_from_pool`: the start held the pool's items with the mode's own, and a
   `start_inventory` copy of an item the pool holds refused at generation: 2026-10-28
   ([`docs/re/locations.md`](re/locations.md), "What the world needs from the client").
-- `--keep-randomizer` (RANDOMIZER kept; a new game in the seed's mode gets the seed), all three
-  modes: 2026-10-22. That was the earlier path, checked against the player's own placement;
-  identifying the game by its seed text and placing it again: 2026-10-27, a Custom seed (the
-  same as its ARCHIPELAGO game byte for byte) and a Standard one, and another seed's text
-  refused.
+- `--keep-randomizer` (RANDOMIZER kept; a new game by the seed's text gets the seed): a Custom
+  seed (the same as its ARCHIPELAGO game byte for byte) and a Standard one, and another seed's
+  text refused, 2026-10-27; all three modes on an earlier path, 2026-10-22.
 - Other players' items (logo, name at pickup; another Zexion player's item as itself):
   2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
   three-game seed (other games' items, no owner on the map, other Zexion players' supplies
@@ -138,9 +129,6 @@ fault found later that day, the Feats screen's note missing when the assist menu
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
-- The helper's escape skip offer (SKIP ESCAPE AND FINAL BATTLE? in any game): 2026-10-23;
-  retired 2026-10-27, the owner's decision: the game's own Abridged Finale is the only way to
-  skip the escape (`docs/custom-mode.md`).
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.
@@ -183,11 +171,9 @@ fault found later that day, the Feats screen's note missing when the assist menu
   ending. An achievement reaching Steam at the title after an AP save was quit (13SecretCode,
   with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
   client connected:
-  2026-10-27. AP endings through the helper's escape skip (since retired) with no client, and
-  with a client of another seed, no Feat earned: 2026-10-27; the first, in a seed with Allow Assists on, showed no note
-  (MISSION COMPLETE had ASSISTS USED under it, which the screen check refused; what makes the
-  game add it is not traced), fixed in d451e6b, and the second, with that fix, showed it. The
-  note with the secret Feats row shown (0.30.0 showed none there), and in the usual layout, no
+  2026-10-27. AP endings with no client, and with a client of another seed, no Feat earned:
+  2026-10-27; the note, missing under ASSISTS USED (Allow Assists on), shown after the fix in
+  d451e6b. The note with the secret Feats row shown (0.30.0 showed none there), and in the usual layout, no
   Feat earned: 2026-10-28. In a fresh save folder (Ending B never reached), FEATS OF NATU! and
   the note in place of the game's hint, over the shorter rows of a game with no Feats and, with
   the code typed, over the secret row, no Feat earned, and the hint put back on an unload:
@@ -389,6 +375,7 @@ path) is reviewed as named. The review subagents in `.claude/agents/` follow thi
   reverse-engineering record. `worlds/zexion/`: the APWorld and the player docs.
   Module by module, and every tool's command: [`CLAUDE.md`](../CLAUDE.md).
 - When the game is patched: [`docs/re/new-build.md`](re/new-build.md).
-- Custom mode, every setting of the game's randomizer (steps A to E built and run in game,
-  2026-10-27 and 2026-10-28: "Features, and when each was working in game"):
-  [`docs/custom-mode.md`](custom-mode.md).
+- Custom mode, every setting of the game's randomizer: the options in
+  `worlds/zexion/options.py`; the game's side in [`docs/re/randocells.md`](re/randocells.md),
+  from "The randomizer menu's settings"; where the world departs from it,
+  [`docs/re/locations.md`](re/locations.md).
