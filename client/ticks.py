@@ -481,24 +481,25 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         plan = conn.plan
         build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
         choice = not ctx.keep_randomizer and not conn.choice_refused
+        text = None
         for offer in (True, False) if choice else (False,):  # ARCHIPELAGO, else RANDOMIZER
             try:
                 text = newgame.plan_text(plan, build, offer)
                 break
             except newgame.NewGameError as exc:
                 log.info(f"No new game plan (ARCHIPELAGO: {offer}): {exc}")
-                if offer:
-                    logger.info(
-                        "This seed can't be started with ARCHIPELAGO, so start it from "
-                        "RANDOMIZER (see below)."
-                    )
-                    continue
-                conn.newgame = state.NewGame.UNAVAILABLE
-                logger.warning(
-                    "This seed can't be started as a new game: please report it at "
-                    f"{state.REPORT}, with the seed's settings."
-                )
-                return
+        if text is None:  # RANDOMIZER can't either (starting amounts, say)
+            conn.newgame = state.NewGame.UNAVAILABLE
+            logger.warning(
+                "This seed can't be started as a new game: please report it at "
+                f"{state.REPORT}, with the seed's settings."
+            )
+            return
+        if choice and not offer:
+            logger.info(
+                "This seed can't be started with ARCHIPELAGO, so start it from "
+                "RANDOMIZER (see below)."
+            )
         reply = await asyncio.to_thread(helper.request, text)
         if reply != "armed":  # refused (no frame yet, say): asked again in a moment
             conn.newgame_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS

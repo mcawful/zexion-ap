@@ -506,8 +506,7 @@ void Game::watch_newgame() {
             }
             if (!why.empty()) std::memcpy(at_.rando_blob, players.data(), kSectionSize);
         } else if ((differs = first_difference(at_.rando_blob, newgame_.expect)) >= 0) {
-            why = "the new game is not the seed's mode (section +" + hex_offset(differs) +
-                  " differs)";
+            why = "the new game is not the seed's (section +" + hex_offset(differs) + " differs)";
         }
         if (!why.empty()) {
             newgame_status_ = "refused " + why;
@@ -679,8 +678,7 @@ std::string Game::place_seed() {
         differs = first_difference(at_.rando_blob, newgame_.expect);
     }
     if (differs >= 0) {
-        return "the placement is not the seed's mode (section +" + hex_offset(differs) +
-               " differs)";
+        return "the placement is not the seed's (section +" + hex_offset(differs) + " differs)";
     }
     // The AP seed over the placement now, so the game is the seed's even if the plan is dropped
     // before the next frame.
@@ -942,12 +940,13 @@ void Game::watch_map_marks() {
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // Only in the labels' seed's save (a plain randomizer game has the game's own Scrap Chunks),
-    // in play or in a menu, once it has read so on two passes in a row. A precaution: a load
-    // writes the section, the marker and the grid in one game call, so no pass sees one save's
-    // grid with another's section (docs/re/memory.md, "The loaded save's randomizer section is
-    // at +0xCDD6D0"). The count and the write go back together above, in every frame call that
-    // finds the seed's save not loaded, so the write is the helper's only after two passes in a
-    // row. A player who pauses at once and opens the map sees them raised within ~32 frames.
+    // in play or in a menu, once it has read so on two passes in a row. A precaution: the load
+    // routine writes the section, the marker and the grid in one game call (docs/re/memory.md,
+    // "The loaded save's randomizer section is at +0xCDD6D0"; the file select's own grid merge
+    // around it is not traced). The count and the write go back together above, in every frame
+    // call that finds the seed's save not loaded, so the write is the helper's only after two
+    // passes in a row. A player who pauses at once and opens the map sees them raised within
+    // ~32 frames.
     if (!seed) return;
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;

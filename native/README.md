@@ -580,9 +580,10 @@ Working in game: 2026-10-25 ("AP saves without the client").
   a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
   or SCRAP CHUNK after the game writes the cursor's name, in the same frame.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
-  row have found the seed's save loaded (a precaution: a load writes the section, the marker
-  and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section is
-  at +0xCDD6D0"); the on-screen write's patch from that same look,
+  row have found the seed's save loaded (a precaution: the load routine writes the section, the
+  marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
+  section is at +0xCDD6D0"; the file select's own grid merge around it is not traced); the
+  on-screen write's patch from that same look,
   until the first frame call that finds no labels or another save loaded (bytes there other than
   the game's write as traced are left alone, and nothing reports it: the stand-in then flips as
   before); the names while the map is open and this seed's save is loaded.

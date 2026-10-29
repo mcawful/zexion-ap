@@ -348,7 +348,7 @@ void test_randomizer_by_seed() {
     check(game.newgame_status().rfind("refused the new game is not this seed", 0) == 0,
           "and reported refused");
 
-    // The seed's placement not the seed's mode: refused, the menu put back.
+    // The seed's placement not the seed's (its amounts here): refused, the menu put back.
     zap::NewGamePlan other;
     zap::parse_newgame(request + "\nmenu 0x88 0500", other);
     started("AB", 3);
@@ -358,7 +358,8 @@ void test_randomizer_by_seed() {
     check(g_section[0x26C] == 0x55 && g_section[0x6C0] == 3 && g_section[0x310] == 0 &&
               g_randomizer_menu[0x88] == 3,
           "the player's own placement and menu put back, nothing of the plan left");
-    check(game.newgame_status().rfind("refused the placement is not the seed's mode", 0) == 0,
+    check(game.newgame_status().rfind("refused the placement is not the seed's (section +", 0) ==
+              0,
           "and reported refused");
 
     // Double Teleport: the game's own start table is used, not the plan's; the second start
