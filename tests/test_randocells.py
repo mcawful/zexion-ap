@@ -153,11 +153,11 @@ def test_item_requirements_gate_collection() -> None:
 
 def test_weapon_pairs_are_progressive() -> None:
     have = Counter()
-    rc.collect(have, 9)  # Pulse Wave first: counts as the Machine Gun
+    rc.logic.collect(have, 9)  # Pulse Wave first: counts as the Machine Gun
     assert have == Counter({3: 1})
-    rc.collect(have, 3)  # then a Machine Gun: counts as the Pulse Wave
+    rc.logic.collect(have, 3)  # then a Machine Gun: counts as the Pulse Wave
     assert have == Counter({3: 1, 9: 1})
-    rc.collect(have, 24)
+    rc.logic.collect(have, 24)
     assert have[24] == 1
 
 

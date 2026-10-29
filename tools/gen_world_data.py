@@ -68,7 +68,7 @@ DEFAULT_MODES = {
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
     have = Counter(start)
     for item in pool:
-        rc.collect(have, item)
+        rc.logic.collect(have, item)
     return have
 
 
@@ -115,7 +115,7 @@ def components(cells: set, grid) -> dict:
     return comp
 
 
-ARRAY = 27
+ARRAY = len(newgame.START_WITH_ORDER)
 # The section's 27-entry arrays, the start-with array then the pool (docs/re/save-format.md).
 START_WITH, POOL = newgame.START_WITH, newgame.START_WITH + ARRAY
 # Each mode's menu preset in the exe's .rdata, per build: the start-with array, the pool
@@ -178,17 +178,6 @@ def check_fresh(data: bytes, name: str) -> None:
         raise SystemExit(f"{name} has no start record")
 
 
-def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
-    """The cells ``have`` reaches from ``start``, and the indices of the locations it collects."""
-    cells = rc.reachable_cells(grid, have, settings, start)
-    found = [
-        i
-        for i, c in enumerate(locations)
-        if c in cells and rc.collectible(grid, c, have, settings, cells)
-    ]
-    return cells, found
-
-
 def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list:
     """Each start room's reach in a mode: the cells and locations every item reaches from it
     alone, and the locations its starting inventory reaches (the tests' oracle for
@@ -197,8 +186,8 @@ def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) ->
     starts = []
     for cand in candidates:
         start = tuple(cand["cell"])
-        cells, every = reach(grid, locations, full, settings, start)
-        _, sphere0 = reach(grid, locations, start_inv, settings, start)
+        cells, every = rc.reached(grid, locations, full, settings, start)
+        _, sphere0 = rc.reached(grid, locations, start_inv, settings, start)
         print(
             f"{name}: start {cand['index']:2d} {start}: every item reaches {len(every)} "
             f"locations, the starting items {len(sphere0)}"
@@ -326,7 +315,6 @@ OPENING = (30, 31)
 # Secret Shuffle (t37) opens six cells of their own, one of them the Bomb Box that is its 155th
 # location (``SECRET_ITEM``). Their regions are numbered after every other region, so the
 # regions the presets reach keep their numbers (``components_after``).
-SECRET_SHUFFLE = 37
 SECRET_ITEM = 37  # MapData's item byte of the cell Secret Shuffle adds to the location list
 
 
@@ -401,7 +389,7 @@ def build(
 
     union = opened_cells(grid, modes, candidates)
     secret = secret_location(map_data, locations)
-    extra = opened_cells(grid, modes, candidates, OPENING + (SECRET_SHUFFLE,)) - union
+    extra = opened_cells(grid, modes, candidates, OPENING + (sp.SECRET_SHUFFLE,)) - union
     if secret not in extra:
         raise SystemExit(f"Secret Shuffle's location {secret} is not among the cells it opens")
     comp = components_after(union, extra, grid)
@@ -461,6 +449,7 @@ def build(
         "start_table": [
             (c["cell"][0], c["cell"][1], int(OBJECT_25 in c["objects"])) for c in candidates
         ],
+        "core": core_goal(grid, set(cell_region), item_cells(map_data, ZEXION)),
     }
 
 
@@ -567,8 +556,6 @@ def main(argv: list[str] | None = None) -> int:
     named = {tuple(c) for c in d["locations"]} | {(x, y) for x, y, _ in d["start_table"]}
     named.add(d["secret_location"])
     d["cell_areas"] = dict(sorted(cell_areas(map_data, text_path.read_bytes(), named).items()))
-    grid = rc.parse(cells_path.read_bytes())
-    d["core"] = core_goal(grid, set(d["cell_region"]), item_cells(map_data, ZEXION))
     saves = ", ".join(
         f"{name}: {path.name} (SHA-256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]})"
         for name, path in mode_saves.items()

@@ -115,7 +115,7 @@ def test_classify_lines_up_regions_split_differently(lab, capsys) -> None:
 
 def test_bytes_missing_from_one_snapshot_are_not_candidates(lab) -> None:
     base = 0x10000
-    snapshot(lab, "p1", base, [(base + 0x2000, bytes([1, 7]))])
+    snapshot(lab, "p1", base, [(base + 0x2000, bytes([1, 0]))])  # a missing byte reads 0
     snapshot(lab, "p2", base, [(base + 0x2000, bytes([1]))])  # 0x2001 not held
     snapshot(lab, "t1", base, [(base + 0x2000, bytes([2, 9]))])
     snapshot(lab, "t2", base, [(base + 0x2000, bytes([2, 9]))])

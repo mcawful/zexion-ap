@@ -31,9 +31,8 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``, ``…/userdata/123``:
     ``protected.may_be_above_protected``, ``_names_parent``), so copying into, moving or
     deleting the parent blocks while reading it does not; when it may build one from pieces
-    (``_builds_from_pieces``; the app id counts as a path component, but not in a URL such as
-    ``steam://rungameid/3392510`` or as a number in code: ``_names_app_id``); when it makes a
-    link next to a folder named like ``gallant`` or ``steam``; or when it runs in or changes
+    (``_builds_from_pieces``, the app id as a path component: ``_names_app_id``); when it makes
+    a link next to a folder named like ``gallant`` or ``steam``; or when it runs in or changes
     directory to a folder in a protected one or a parent of one. Other names in the folder's
     path don't count, so a worktree named ``steam-achievements`` works as any other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
@@ -42,15 +41,14 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's rules for script
     blocks, ``ForEach-Object``, expressions and ``&``: ``_ps_segment_is_read_only``.
   - Blocked outright, when the command may reach a protected folder: command substitution
-    (``$(``, or a backtick in Bash) but the message form above, Bash arithmetic that only
-    computes (``xxd -s $((0x9360))``: ``_arithmetic_to_numbers``) and PowerShell's
-    ``"$($_.Name)"``, which only reads a member; a PowerShell ``::`` call other
-    than a known reader or a method call other than a few string and date ones
-    (``_ps_calls_block``);
-    output redirected to a path that still holds a variable after the hook's own environment is
-    applied (the guard can't see where it leads); and in Bash an environment prefix or
-    ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
-    ``LESSOPEN``, ``PATH``, …), even before a read-only command.
+    (``$(``, Bash arithmetic ``$((`` included, or a backtick in Bash; ``xxd -s 0x9360`` takes
+    the offset itself) but the message form above and PowerShell's ``"$($_.Name)"``, which
+    only reads a member; a PowerShell ``::`` call other than a known reader or a method call
+    other than a few string and date ones (``_ps_calls_block``); output redirected to a path
+    that still holds a variable after the hook's own environment is applied (the guard can't
+    see where it leads); and in Bash an environment prefix or ``export`` of a variable that
+    names a program (``_PROGRAM_VAR``: ``GIT_PAGER``, ``LESSOPEN``, ``PATH``, …), even before a
+    read-only command.
 
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
 variables or string arithmetic, a link to a parent folder made outside the command, the
@@ -211,9 +209,7 @@ _FD_DUP = re.compile(r"\d*-?(?=$|[\s;&|()<>])")
 # (not ``$d/x://``), with no ``..`` (Windows reads ``x://../y`` as ``y``) and no ``%`` (``wget
 # -x`` saves ``%75serdata`` as ``userdata``).
 _URL = re.compile(r"(?<![^\s\"'(=,])(?:https?|ftp|steam)://(?![^\s\"']*(?:\.\.|%))[^\s\"']*", re.I)
-# A Bash ``$((`` and a PowerShell ``$( $name.Member )``: neither runs a command.
-_ARITH_START = re.compile(r"(?<!\\)\$\(\(")
-_ARITH_BODY = re.compile(r"[\w \t+\-*/%<>=!&|^~?:,.\[\]$()]*")
+# A PowerShell ``$( $name.Member )``: it reads a member and runs no command.
 _PS_MEMBER_SUBEXPR = re.compile(r"\$\(\s*\$(?:env:)?\w+(?:\.\w+)*\s*\)", re.I)
 _ENV_REF = re.compile(r"\$\{env:(\w+)\}|\$env:(\w+)|\$\{(\w+)\}|\$(\w+)|%(\w+)%", re.I)
 
@@ -486,28 +482,26 @@ def _in_message(command: str, at: int) -> bool:
     return _is_message_option(words, last)  # -m $(… or -m"$(…
 
 
-def _subcommand(words: list[str]) -> str:
-    """The subcommand of a git or gh command (its words, the verb first)."""
-    if _verb(words[0]) == "git":
-        return _git_subcommand(words)
-    return next((w.lower() for w in words[1:] if not w.startswith("-")), "")
+def _gh_runs_script(words: list[str]) -> bool:
+    """Whether a gh command (its words, ``gh`` first) runs a script: ``gh alias``, ``extension``."""
+    return next((w.lower() for w in words[1:] if not w.startswith("-")), "") in GH_RUN_SUBCOMMANDS
 
 
-def _handles_without_running(words: list[str], powershell: bool = False) -> bool:
-    """Whether a command only reads, moves or posts the files it names, never runs them:
+def _handles_without_running(words: list[str]) -> bool:
+    """Whether a Bash command only reads, moves or posts the files it names, never runs them:
     read-only, a file verb such as ``rm``, ``git`` (not ``apply`` or ``am``), or ``gh`` (not
     ``alias`` or ``extension``)."""
-    words = _strip_prefix(words, powershell)
+    words = _strip_prefix(words, False)
     if not words:
         return True
     verb = _verb(words[0])
     if verb == "git":  # not git bisect run, rebase -x, or an alias given with -c
-        return _subcommand(words) in GIT_FILE_SUBCOMMANDS and not any(
+        return _git_subcommand(words) in GIT_FILE_SUBCOMMANDS and not any(
             w.startswith(("-c", "--config-env")) for w in words[1:]
         )
     if verb == "gh":
-        return _subcommand(words) not in GH_RUN_SUBCOMMANDS
-    return verb in FILE_VERBS or _segment_is_read_only(words, powershell)
+        return not _gh_runs_script(words)
+    return verb in FILE_VERBS or _segment_is_read_only(words, False)
 
 
 def _base_name(path: str) -> str:
@@ -574,7 +568,7 @@ def _data_reader(text: str, first: bool) -> str:
     if verb == "git":
         ok = _git_subcommand(words) in GIT_MESSAGE_SUBCOMMANDS
     elif verb == "gh":
-        ok = _subcommand(words) not in GH_RUN_SUBCOMMANDS
+        ok = not _gh_runs_script(words)
     else:
         reader = verb in DATA_READERS or (first and verb == "tee")
         ok = reader and not _bash_args_write(verb, words[1:])
@@ -624,78 +618,6 @@ def _cut_heredocs(command: str) -> str:
             pos = doc.after
     out.append(command[pos:])
     return "".join(out)
-
-
-def _arithmetic_spans(command: str, protected) -> list[tuple[int, int, str]]:
-    """Each Bash ``$((…))`` that only computes, as (start, end, body): a body of numbers,
-    names, ``$name`` and operators alone (no ``$(``, backtick, quote, brace, ``;`` or newline)
-    that closes as Bash closes arithmetic, on a ``))`` where its own parentheses balance. Bash
-    reads ``$((a) | (b))`` as ``$(`` and two subshells, so that one is not. Nor is a body
-    holding the app id, a piece of a path."""
-    spans: list[tuple[int, int, str]] = []
-    pos = 0
-    for m in _ARITH_START.finditer(command):
-        if m.start() < pos:
-            continue
-        depth, i, end = 0, m.end(), None
-        while i < len(command):
-            if command[i] == "(":
-                depth += 1
-            elif command[i] == ")":
-                if depth == 0:
-                    end = i + 2 if command.startswith("))", i) else None
-                    break
-                depth -= 1
-            i += 1
-        body = command[m.end() : i]
-        if (
-            end is None
-            or not _ARITH_BODY.fullmatch(body)
-            or "$(" in body
-            or str(protected.STEAM_APP_ID) in body
-        ):
-            continue
-        spans.append((m.start(), end, body))
-        pos = end
-    return spans
-
-
-def _arithmetic_to_numbers(command: str, protected) -> str:
-    """Bash ``$((…))`` expansions that only compute (``xxd -s $((0x9360))``:
-    ``_arithmetic_spans``) as the word ``0``, padded to the same length, so they read as a
-    number and not as command substitution.
-
-    Bash reads a name in the body as an expression of its own, and that runs a substitution in
-    an array subscript: ``x='a[$(…)]'; echo $((x))``. So a body keeps its ``$((`` when the
-    command uses one of its names other than to set it to a number (``OFF=0x9360``) or in
-    other arithmetic: ``x='…'``, ``${x:=…}``, ``read x``, ``printf -v x``, ``$x``. A name the
-    command does not mention comes from before it, which the guard can't see anyway.
-    """
-    spans = _arithmetic_spans(command, protected)
-    outside = command
-    for start, end, _ in spans:
-        outside = outside[:start] + " " * (end - start) + outside[end:]
-    out: list[str] = []
-    pos = 0
-    for start, end, body in spans:
-        names = set(re.findall(r"(?<![\w])[A-Za-z_]\w*", body))
-        if any(_used_other_than_numbers(name, outside) for name in names):
-            continue
-        out.append(command[pos:start] + "0".ljust(end - start))
-        pos = end
-    out.append(command[pos:])
-    return "".join(out)
-
-
-def _used_other_than_numbers(name: str, outside: str) -> bool:
-    """Whether ``outside`` (a command, its arithmetic blanked) uses ``name`` anywhere but in
-    ``name=<number>`` at the start of a word."""
-    for m in re.finditer(rf"(?<![\w]){re.escape(name)}(?![\w])", outside):
-        before = outside[: m.start()]
-        assigned = re.match(r"=(?:0[xX][0-9a-fA-F]+|\d+)(?=$|[\s;&|)])", outside[m.end() :])
-        if not (assigned and re.search(r"(?:^|[\s;&|(])$", before)):
-            return True
-    return False
 
 
 def _here_strings_to_quotes(command: str) -> str:
@@ -1000,11 +922,10 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
     ``userdata/<account>/3392510``), split as ``_builds_from_pieces`` splits words.
 
     Web and Steam URLs are left out (``steam://rungameid/3392510``, ``https://…/app/3392510/``;
-    ``_URL``). So is the id
-    multiplied by a number inside one word, as code builds a location id (``python -c
-    "print(3392510 * 1000 + 154)"``), with no slash or quote right next to it, unless the
-    command, URLs left out, names ``steam``, ``userdata`` or ``compatdata``. Any other use
-    counts: ``str(3392510)``, ``d + 3392510``, ``rm -r 3392510 && …`` in a ``sh -c`` string.
+    ``_URL``). So is the id multiplied by a number inside one word, as code builds a location
+    id (``python -c "print(3392510 * 1000 + 154)"``), with no slash or quote right next to it,
+    unless the command, URLs left out, names ``steam``, ``userdata`` or ``compatdata``. Any
+    other use counts: ``str(3392510)``, ``d + 3392510``, ``rm -r 3392510 && …`` in ``sh -c``.
     """
     app_id = str(protected.STEAM_APP_ID)
     steam = re.search(r"steam|userdata|compatdata", protected.normalize(_URL.sub(" ", text)))
@@ -1164,13 +1085,6 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     folders = ([cwd] if cwd else []) + cds
     if not _may_reach_protected(text, words, targets, folders, protected):
         return None
-
-    # The checks above read Bash arithmetic as written, so the names in its body count. From
-    # here, one that only computes is a number (``_arithmetic_to_numbers``).
-    if not powershell:
-        code = _arithmetic_to_numbers(code, protected)
-        segments, targets = lex(code, powershell)
-        text_ids = _text_words(segments, powershell)
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
     if powershell:  # "$($_.Name)" only reads a member

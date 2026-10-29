@@ -87,12 +87,6 @@ STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 ITEM_FLAG, ITEM_LIST, ITEM_TIERS = 0x44, 0x45, 0x4D
 WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
 
-# A randomizer save's section (save_patch.SECTION, docs/re/save-format.md) is loaded to RVA
-# 0xCDD6D0; settings sit at these RVAs in it.
-RANDO_BLOB_RVA = 0xCDD6D0
-ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
-OPTIONS_RVA = 0xCDDF4B  # settings t0 to t73, one byte each (code 68 reads t0 to t63)
-
 
 @dataclass(frozen=True)
 class Cell:
@@ -103,13 +97,10 @@ class Cell:
 
 
 def settings_from_save(data: bytes) -> logic.Settings:
-    """The seed's settings, from a randomizer save's appended section."""
-
-    def at(rva: int) -> int:
-        return save_patch.SECTION + (rva - RANDO_BLOB_RVA)
-
-    start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
-    return logic.Settings.of(start + pool, data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 74])
+    """The seed's settings, from a randomizer save's appended section: the starting Energy and
+    the pool's (the first two amounts), and settings t0 to t73 (code 68 reads t0 to t63)."""
+    start, pool = struct.unpack_from("<hh", data, save_patch.AMOUNTS)
+    return logic.Settings.of(start + pool, data[save_patch.OPTIONS : save_patch.OPTIONS + 74])
 
 
 def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
@@ -187,9 +178,16 @@ def reachable_cells(
             return seen
 
 
-# With Guns First, a weapon and its upgrade are progressive (logic.WEAPON_UPGRADES;
-# docs/re/randocells.md); without it, each is its own item.
-collect = logic.collect
+def reached(grid, locations, have: Counter, settings: logic.Settings, start) -> tuple[set, list]:
+    """The cells ``have`` reaches from ``start`` (one cell or a list), and the indices of the
+    ``locations`` whose items it collects there."""
+    cells = reachable_cells(grid, have, settings, start)
+    found = [
+        i
+        for i, c in enumerate(locations)
+        if c in cells and collectible(grid, c, have, settings, cells)
+    ]
+    return cells, found
 
 
 def sweep(
@@ -211,16 +209,12 @@ def sweep(
         starts = list(start) if isinstance(start, list) else [start]
         if second is not None and logic.second_counts(have, second[1]):
             starts.append(second[0])
-        cells = reachable_cells(grid, have, settings, starts)
-        new = False
-        for i, cell in enumerate(locations):
-            if i in got or cell not in cells or not collectible(grid, cell, have, settings, cells):
-                continue
-            got.add(i)
-            collect(have, items[i], settings.guns_first)
-            new = True
+        new = [i for i in reached(grid, locations, have, settings, starts)[1] if i not in got]
         if not new:
             return got
+        for i in new:
+            got.add(i)
+            logic.collect(have, items[i], settings.guns_first)
 
 
 def seed_from_save(data: bytes) -> tuple[list[tuple[int, int]], list[int]]:
@@ -258,8 +252,6 @@ def start_from_save(data: bytes) -> tuple[int, int] | None:
 
 
 DOUBLE_TELEPORT = 33  # option index (docs/re/randocells.md, "Where each setting is stored")
-
-
 SECOND_FLAG = 6  # the second target's room flag, after its record (section +0x6D2)
 
 
@@ -312,9 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.start:
         shown_x, shown_y = (int(v) for v in args.start.split(","))
         start = (shown_y, shown_x)
-    elif args.fresh and starts_from_save(data):
-        start = starts_from_save(data)[0]
-        second = second_from_save(data)
+    elif args.fresh and (starts := starts_from_save(data)):
+        start, second = starts[0], second_from_save(data)
     else:
         print("give --start X,Y, or --fresh with a save made at the start of the seed")
         return 1
@@ -323,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     if second is not None:
         have = Counter(initial)
         for i in sorted(got):
-            collect(have, items[i], settings.guns_first)
+            logic.collect(have, items[i], settings.guns_first)
         cell, flagged = second
         counted = logic.second_counts(have, flagged)
         print(f"second teleport target {cell}, flagged {flagged}, counted in the end {counted}")

@@ -152,12 +152,10 @@ BASH_ALLOWED = [
     "du -sh E:/SteamLibrary/steamapps/common",
     "rm -rf native/build/* lab/ap/*",
     "rm -rf native/build lab/work/*",
-    # Arithmetic only computes: reading the markers at their offsets.
-    f'xxd -s $((0x9360)) -l 4 "{SAVES}/Save Game 4.sav"',
-    f'od -An -tx1 -j $((0x9402)) -N 2 "{SAVES}/Save Game 4.sav"',
-    f'hexdump -C -s $((0x9360)) -n 16 "{SAVES}/Save Game 4.sav"',
-    f'printf "%x\\n" $((0x9360 + 2)); xxd -s 0x9362 -l 2 "{SAVES}/Save Game 4.sav"',
-    f'OFF=0x9360; xxd -s "$(( (OFF + 2) * 1 ))" -l 2 "{SAVES}/Save Game 4.sav"',
+    # The markers at their offsets: xxd, od and hexdump take hex themselves.
+    f'xxd -s 0x9360 -l 4 "{SAVES}/Save Game 4.sav"',
+    f'od -An -tx1 -j 0x9402 -N 2 "{SAVES}/Save Game 4.sav"',
+    f'hexdump -C -s 0x9360 -n 16 "{SAVES}/Save Game 4.sav"',
     # The app id in a URL, or as a number in code.
     "start steam://rungameid/3392510",
     "curl -sL https://steamdb.info/app/3392510/patchnotes/ -o lab/patchnotes.html",
@@ -410,6 +408,12 @@ BASH_BLOCKED = [
     'cd "$APPDATA" && rm -r "Gallant Leaf"',
     'cp -r --target-directory="$APPDATA/Gallant Leaf" lab/Zexion',
     'git -C "$APPDATA/Gallant Leaf" clean -fdx',
+    # Arithmetic reads as substitution, even when it only computes.
+    f'xxd -s $((0x9360)) -l 4 "{SAVES}/Save Game 4.sav"',
+    f'od -An -tx1 -j $((0x9402)) -N 2 "{SAVES}/Save Game 4.sav"',
+    f'hexdump -C -s $((0x9360)) -n 16 "{SAVES}/Save Game 4.sav"',
+    f'printf "%x\\n" $((0x9360 + 2)); xxd -s 0x9362 -l 2 "{SAVES}/Save Game 4.sav"',
+    f'OFF=0x9360; xxd -s "$(( (OFF + 2) * 1 ))" -l 2 "{SAVES}/Save Game 4.sav"',
     # Substitution inside arithmetic, or what Bash reads as $( and a subshell.
     f'x=$(( $(rm -f "{SAVES}/x") ))',
     f'x=$(( `rm -f "{SAVES}/x"` ))',
