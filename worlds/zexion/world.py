@@ -19,7 +19,6 @@ from .items import (
     ASSIST_UNLOCK,
     DATA_DISC,
     DRAWN_AS,
-    ENERGY_SHIELD,
     FILLER_NAME,
     GAME,
     GAME_ITEMS,
@@ -77,7 +76,7 @@ NOT_HINTED = SUPPLIES
 # With the OS Install Disks goal, what each disk takes the place of, in this order: Scrap (the keys'
 # places become Scrap Metal first), then Area Maps, then Energy Shields. No rule reads any of
 # them (worlds/zexion/data.py).
-DISC_REPLACES = (*FILLER_ORDER, ENERGY_SHIELD)
+DISC_REPLACES = (*FILLER_ORDER, custom.ENERGY_SHIELD)
 
 
 def important_elsewhere(item: Item | None) -> bool:
@@ -281,7 +280,7 @@ class ZexionWorld(World):
         where that fails it offers PLAY ANYWAY, which Archipelago's fill cannot. So the world
         draws among the rooms with which the pair suits the seed as ``passes`` judges a start:
         with the start, the starting items collect a location, and with the core goal every
-        item reaches the core, the target counted as the logic counts it (reach.second_counts);
+        item reaches the core, the target counted as the logic counts it (logic.second_counts);
         a flagged room only when the logic counts it from the start (reach.second_starts)."""
         rooms = reach.second_starts(self.seed_reach, room, data.START_ROOMS)
         if self.reaches_the_door(room):
@@ -302,7 +301,7 @@ class ZexionWorld(World):
 
     def choose_starts(self) -> None:
         """The start room by the start_room option, and with Double Teleport the second
-        teleport target (docs/custom-mode.md, "Starts, as the game picks them")."""
+        teleport target (docs/re/locations.md, "Which start rooms the world offers")."""
         who = f"Zexion ({self.player_name})"
         choice = self.options.start_room.value
         start = None
@@ -350,7 +349,7 @@ class ZexionWorld(World):
             # With the disks, the pool's keys become Scrap Metal and Energy Shields give way too.
             spare = 0
             if self.disc_hunt:
-                spare = sum(1 for c in self.pool_codes if c in (*KEY_CODES, ENERGY_SHIELD))
+                spare = sum(1 for c in self.pool_codes if c in (*KEY_CODES, custom.ENERGY_SHIELD))
             needed = max(left_out, left_out + disks - spare)
             try:
                 codes = custom.compress(self.pool_codes, needed, FILLER_ORDER)
@@ -387,7 +386,7 @@ class ZexionWorld(World):
         menu.connect(by_index[cells[self.start["cell"]]], "Start")
         second = cells[self.second["cell"]] if self.second is not None else None
         if second in by_index:
-            # The logic counts a flagged room only from a useful-item score of 27 (reach.py,
+            # The logic counts a flagged room only from a useful-item score of 27 (logic.py,
             # second_counts); the pause menu's teleport itself is always there.
             rule = rules.second_target(self) if reach.flagged(self.second) else None
             menu.connect(by_index[second], "Second teleport target", rule)
@@ -399,11 +398,7 @@ class ZexionWorld(World):
                 continue
             for k, way in enumerate(ways):
                 name = f"{rules.region_name(a)} to {b}" + (f" #{k + 1}" if len(ways) > 1 else "")
-                rule = None if way is None else rules.requirement(self, *way)
-                entrance = by_index[a].connect(by_index[b], name, rule)
-                if way is not None:
-                    for r in rules.neighbor_regions(*way) & self.created_regions:
-                        self.multiworld.register_indirect_condition(by_index[r], entrance)
+                self.join(by_index, by_index[a], by_index[b], name, [] if way is None else [way])
 
         for i in sorted(self.kept_locations):
             cell = self.location_cells[i]
@@ -427,13 +422,9 @@ class ZexionWorld(World):
             return
         core = Region(CORE_REGION, self.player, self.multiworld)
         self.multiworld.regions.append(core)
-        ways = [rules.requirement(self, *way) for way in data.CORE["needs"]]
-        entrance = by_index[cells[data.CORE["door"]]].connect(
-            core, "Into the core", lambda state: all(way(state) for way in ways)
+        self.join(
+            by_index, by_index[cells[data.CORE["door"]]], core, "Into the core", data.CORE["needs"]
         )
-        for way in data.CORE["needs"]:
-            for r in rules.neighbor_regions(*way) & self.created_regions:
-                self.multiworld.register_indirect_condition(by_index[r], entrance)
         goal = ZexionLocation(self.player, "Zexion", None, core)
         goal.place_locked_item(
             ZexionItem("Victory", ItemClassification.progression, None, self.player)
@@ -450,17 +441,28 @@ class ZexionWorld(World):
             source = by_index.get(cells[cell])
             if source is None:
                 continue
-            rule = rules.gate_trigger(self, cell) if as_location else None
+            # A gate cell the game reads as "collectible": that location's own list, if any.
+            entries = data.LOCATION_RULES.get(reach.LOCATION_AT[cell]) if as_location else None
+            ways = [] if entries is None else [(entries, cell)]
             for target in targets:
-                if target is source:
-                    continue
-                entrance = source.connect(
-                    target, f"Gate from X{cell[1]} Y{cell[0]} to {target.name}", rule
-                )
-                if rule is not None:
-                    entries = data.LOCATION_RULES[reach.LOCATION_AT[cell]]
-                    for r in rules.neighbor_regions(entries, cell) & self.created_regions:
-                        self.multiworld.register_indirect_condition(by_index[r], entrance)
+                if target is not source:
+                    name = f"Gate from X{cell[1]} Y{cell[0]} to {target.name}"
+                    self.join(by_index, source, target, name, ways)
+
+    def join(
+        self, by_index: dict[int, Region], source: Region, target: Region, name: str, ways: list
+    ) -> None:
+        """Connect two regions through all of ``ways``, each a requirement list and the cell it
+        is checked at (none: always open), and have Archipelago recheck the entrance when a
+        region a list looks into (codes 64 to 67: rules.neighbor_regions) is reached."""
+        checks = [rules.requirement(self, *way) for way in ways]
+        rule = checks[0] if len(checks) == 1 else None
+        if len(checks) > 1:
+            rule = lambda state: all(check(state) for check in checks)  # noqa: E731
+        entrance = source.connect(target, name, rule)
+        for way in ways:
+            for r in rules.neighbor_regions(*way) & self.created_regions:
+                self.multiworld.register_indirect_condition(by_index[r], entrance)
 
     def create_items(self) -> None:
         for code, count in self.start_inventory.items():

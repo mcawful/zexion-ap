@@ -23,18 +23,18 @@ Reads (all copies in lab/, never the game folder):
 Cells joined by always-open passages are merged into one region (strongly connected components of
 the open passages); each conditional passage between two regions becomes an entrance carrying the
 requirement list of the cell it leaves from. The map is shared by all modes; a mode's settings only
-change how the rules evaluate. Only cells reachable with every item from some mode's valid start are
-kept, and those every item of a mode reaches from any start room with X Crystals and X Blocks on
-(``opened_cells``), and then with Secret Shuffle on too, whose regions are numbered after the others
-(``components_after``). A start is valid for a mode when, with every item of that mode, all 154
-locations are reachable from it, and with only that mode's starting inventory at least
-``MIN_SPHERE_ZERO`` are. Every start of a mode must reach the same regions and locations with every
-item, which the mode then holds once; the generator refuses data where they differ. The output is a
-Python module of plain data; worlds/zexion turns it into regions and rules with
-worlds/zexion/logic.py. The world works out each seed's reachable regions, locations and start rooms
-itself when the seed is generated (worlds/zexion/reach.py), over the map and the 34 start rooms
-(``START_ROOMS``) written here; each mode's lists here (``regions``, ``location_indices``,
-``starts``) are what its tests compare those results with.
+change how the rules evaluate. Only the cells every item of a mode reaches from some start room
+with X Crystals and X Blocks on are kept (``opened_cells``; those settings only open more, so these
+hold what the modes reach without them), and then those with Secret Shuffle on too, whose regions
+are numbered after the others (``components_after``). Every start room of a mode must reach the
+same regions and locations with every item, which the mode then holds once; the generator refuses
+data where they differ. With the mode's starting items alone, it lists the locations each start
+room reaches (``sphere0_indices``). The output is a Python module of plain data; worlds/zexion
+turns it into regions and rules with worlds/zexion/logic.py. The world works out each seed's
+reachable regions, locations and start rooms itself when the seed is generated
+(worlds/zexion/reach.py), over the map and the 34 start rooms (``START_ROOMS``) written here; each
+mode's lists here (``regions``, ``location_indices``, ``sphere0_indices``) are what its tests
+compare those results with.
 """
 
 from __future__ import annotations
@@ -56,7 +56,6 @@ from client import newgame, pe  # noqa: E402
 from client import save_patch as sp  # noqa: E402
 
 OUT = ROOT / "worlds" / "zexion" / "data.py"
-MIN_SPHERE_ZERO = 3
 BACKUP = ROOT / "lab" / "backups" / "20261020-212018"
 # Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes").
 DEFAULT_MODES = {
@@ -190,30 +189,21 @@ def reach(grid, locations, have, settings, start) -> tuple[set, list[int]]:
     return cells, found
 
 
-def mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double) -> list:
-    """A mode's starts, each with the cells and locations every item reaches from it alone, and
-    the locations its starting inventory reaches: the valid candidates, or for a mode with a
-    second teleport target (``double``) every candidate. The world picks the pair itself at
-    generation (worlds/zexion/reach.py, ``second_starts``); these lists are its tests'
-    oracle."""
+def mode_starts(grid, locations, pool, start_inv, settings, candidates, name) -> list:
+    """Each start room's reach in a mode: the cells and locations every item reaches from it
+    alone, and the locations its starting inventory reaches (the tests' oracle for
+    worlds/zexion/reach.py)."""
     full = full_inventory(start_inv, pool)
     starts = []
     for cand in candidates:
         start = tuple(cand["cell"])
-        reach_all, every = reach(grid, locations, full, settings, start)
+        cells, every = reach(grid, locations, full, settings, start)
         _, sphere0 = reach(grid, locations, start_inv, settings, start)
-        valid = len(every) == len(locations) and len(sphere0) >= MIN_SPHERE_ZERO
         print(
             f"{name}: start {cand['index']:2d} {start}: every item reaches {len(every)} "
             f"locations, the starting items {len(sphere0)}"
-            f"{'' if valid or double else '  -> left out'}"
         )
-        if valid or double:
-            starts.append(
-                {**cand, "cells": reach_all, "location_indices": every, "sphere0_indices": sphere0}
-            )
-    if not starts:
-        raise SystemExit(f"{name}: no start room is valid")
+        starts.append({"cells": cells, "location_indices": every, "sphere0_indices": sphere0})
     return starts
 
 
@@ -271,13 +261,11 @@ MAP_ITEM, ZEXION = 0x3E5701 + 0x3A, 31
 ABRIDGED_FINALE = (68, 32)  # the code-68 entry that passes only with Abridged Finale on
 
 
-def zexion_cells(map_data: bytes) -> list[tuple[int, int]]:
-    """The cells (a, b) whose item is Zexion, from MapData of build B1."""
+def item_cells(map_data: bytes, item: int) -> list[tuple[int, int]]:
+    """The cells (a, b) whose item byte is ``item``, from MapData of build B1."""
     check_b1("MapData", map_data, MAP_DATA_SHA256)
     return [
-        (i % 54, i // 54)
-        for i in range(54 * 54)
-        if map_data[MAP_ITEM + i * MAP_CELL_SIZE] == ZEXION
+        (i % 54, i // 54) for i in range(54 * 54) if map_data[MAP_ITEM + i * MAP_CELL_SIZE] == item
     ]
 
 
@@ -375,12 +363,7 @@ def components_after(base: set, extra: set, grid) -> dict:
 def secret_location(map_data: bytes, locations: list) -> tuple[int, int]:
     """The cell (a, b) whose item byte is ``SECRET_ITEM``: the location Secret Shuffle adds
     (docs/re/randocells.md, "The pool"), from MapData of build B1."""
-    check_b1("MapData", map_data, MAP_DATA_SHA256)
-    found = [
-        (i % 54, i // 54)
-        for i in range(54 * 54)
-        if map_data[MAP_ITEM + i * MAP_CELL_SIZE] == SECRET_ITEM
-    ]
+    found = item_cells(map_data, SECRET_ITEM)
     if len(found) != 1 or found[0] in locations:
         raise SystemExit(f"expected one cell of item {SECRET_ITEM} outside the list, got {found}")
     return found[0]
@@ -396,7 +379,7 @@ def build(
     grid = rc.parse(cells_path.read_bytes())
     exe = exe_path.read_bytes()
     candidates = json.loads(starts_path.read_text(encoding="utf-8"))
-    modes, locations, union = {}, None, set()
+    modes, locations = {}, None
     for name, save_path in mode_saves.items():
         data = save_path.read_bytes()
         check_fresh(data, save_path.name)
@@ -407,22 +390,16 @@ def build(
             raise SystemExit(f"{save_path.name}: its location list differs from the others")
         start_inv = rc.inventory_from_save(data)
         settings = rc.settings_from_save(data)
-        double = bool(data[sp.OPTIONS + rc.DOUBLE_TELEPORT])
-        starts = mode_starts(grid, locations, pool, start_inv, settings, candidates, name, double)
-        for st in starts:
-            union |= st["cells"]
         modes[name] = {
             "amounts": struct.unpack_from("<6h", data, sp.AMOUNTS),
-            "double_teleport": double,
             "settings": settings,
             "pool": pool,
             "start_inventory": dict(sorted(start_inv.items())),
-            "starts": starts,
+            "starts": mode_starts(grid, locations, pool, start_inv, settings, candidates, name),
             "menu": menu_preset(exe, cells_path.parent.name, name, data),
-            "second_target": None if double else struct.unpack_from("<3H", data, sp.SECOND_START),
         }
 
-    union |= opened_cells(grid, modes, candidates)
+    union = opened_cells(grid, modes, candidates)
     secret = secret_location(map_data, locations)
     extra = opened_cells(grid, modes, candidates, OPENING + (SECRET_SHUFFLE,)) - union
     if secret not in extra:
@@ -459,23 +436,12 @@ def build(
             location_rules[i] = tuple(grid[y][x].item_needs)
 
     for name, mode in modes.items():
-        starts = mode["starts"]
+        starts = mode.pop("starts")
         regions = [sorted({comp[c] for c in st["cells"]}) for st in starts]
         mode["regions"] = shared(regions, name, "regions")
         locations_of = [st["location_indices"] for st in starts]
         mode["location_indices"] = shared(locations_of, name, "locations")
-        mode["starts"] = [
-            {
-                "index": st["index"],
-                "cell": tuple(st["cell"]),
-                "column": st["column"],
-                "row": st["row"],
-                # A mode with a second teleport target: each start's own sphere 0, which
-                # the world's tests compare with reach.py's.
-                **({"sphere0_indices": st["sphere0_indices"]} if mode["double_teleport"] else {}),
-            }
-            for st in starts
-        ]
+        mode["sphere0_indices"] = [st["sphere0_indices"] for st in starts]
     return {
         "locations": locations,
         "secret_location": secret,
@@ -514,38 +480,23 @@ def render(d: dict, source: str) -> str:
         '# position 134 (docs/re/randocells.md, "The pool").',
         f"SECRET_LOCATION = {tuple(d['secret_location'])!r}",
         "",
-        "# The earlier rule for a start room, now the tests' oracle: every item reaches all 154",
-        "# locations from it and its mode's starting items at least this many.",
-        f"MIN_SPHERE_ZERO = {MIN_SPHERE_ZERO}",
-        "",
         "# Per mode, from its fresh save and the exe's preset ('menu'). 'regions' and",
-        "# 'location_indices': what every item reaches from each of the mode's starts, the same",
-        "# from all of them. A mode with a second teleport target lists every candidate, with",
-        "# its own 'sphere0_indices'. The world works these out itself when a seed is generated",
-        "# (reach.py); its tests compare the results with them.",
+        "# 'location_indices': what every item reaches from each start room, the same from all",
+        "# of them; 'sphere0_indices': what the starting items reach from each, in START_ROOMS'",
+        "# order. The world works these out itself when a seed is generated (reach.py); its",
+        "# tests compare the results with them.",
         "MODES = {",
     ]
     for name, m in d["modes"].items():
-        s = m["settings"]
         out += [
             f"    {name!r}: {{",
             f"        'amounts': {m['amounts']!r},",
-            f"        'double_teleport': {m['double_teleport']},",
-            f"        'energy_total': {s.energy_total},",
-            f"        'mode69': {s.mode69},",
-            f"        'options': bytes.fromhex({s.options.hex()!r}),",
             f"        'pool': {list(m['pool'])!r},",
             f"        'start_inventory': {m['start_inventory']!r},",
             f"        'regions': {m['regions']!r},",
             f"        'location_indices': {m['location_indices']!r},",
-            "        'starts': [",
-        ]
-        for st in m["starts"]:
-            out.append(f"            {st!r},")
-        out += [
-            "        ],",
+            f"        'sphere0_indices': {m['sphere0_indices']!r},",
             f"        'menu': {m['menu']!r},",
-            f"        'second_target': {m['second_target']!r},",
             "    },",
         ]
     out += [
@@ -617,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
     named.add(d["secret_location"])
     d["cell_areas"] = dict(sorted(cell_areas(map_data, text_path.read_bytes(), named).items()))
     grid = rc.parse(cells_path.read_bytes())
-    d["core"] = core_goal(grid, set(d["cell_region"]), zexion_cells(map_data))
+    d["core"] = core_goal(grid, set(d["cell_region"]), item_cells(map_data, ZEXION))
     saves = ", ".join(
         f"{name}: {path.name} (SHA-256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]})"
         for name, path in mode_saves.items()
@@ -629,10 +580,9 @@ def main(argv: list[str] | None = None) -> int:
     out = assert_writable(OUT)
     out.write_text(render(d, source), encoding="utf-8", newline="\n")
     n_ways = sum(len(w) for w in d["entrances"].values())
-    per_mode = ", ".join(f"{n}: {len(m['starts'])} starts" for n, m in d["modes"].items())
     print(
         f"{len(set(d['cell_region'].values()))} regions, {len(d['entrances'])} region links "
-        f"({n_ways} ways), {len(d['location_rules'])} gated locations; {per_mode}; "
+        f"({n_ways} ways), {len(d['location_rules'])} gated locations; "
         f"Zexion at {d['core']['cell']}, the core entered from {d['core']['door']} -> {out}"
     )
     return 0

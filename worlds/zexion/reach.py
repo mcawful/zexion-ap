@@ -14,13 +14,13 @@ cells: a region is cells joined by passages that are always open, so reaching on
 reaches all. A way between regions passes when its requirement list does, checked where it
 leaves from; a list with codes 64 to 67 looks at whether a neighboring cell is reached, so the
 flood repeats until nothing new is reached. Under Gates Open, once a gate cell is reached the
-flood goes on from the gate cells too, as the game's logic does (``gates_triggered``); a second
-teleport target counts as the logic counts it (``second_counts``). The two agree over the
-graph's cells, those every item reaches in some mode, or with X Crystals, X Blocks or Secret
-Shuffle on; a passage to a cell outside it is not followed, so where Abridged Finale leads into
-the core (docs/re/locations.md, "The region graph holds what the settings reach"), the result is
-less than the game's, never more. Results are cached by settings, inventory and starts, so a
-multiworld of many Zexion players with one mode works each out once.
+flood goes on from the gate cells too, as the game's logic does (``logic.gates_triggered``); a
+second teleport target counts as the logic counts it (``logic.second_counts``). The two agree
+over the graph's cells, those every item reaches in some mode, or with X Crystals, X Blocks or
+Secret Shuffle on; a passage to a cell outside it is not followed, so where Abridged Finale leads
+into the core (docs/re/locations.md, "The region graph holds what the settings reach"), the
+result is less than the game's, never more. Results are cached by settings, inventory and
+starts, so a multiworld of many Zexion players with one mode works each out once.
 
 Pure Python with no Archipelago imports.
 """
@@ -36,11 +36,6 @@ from . import data, logic
 Cell = tuple[int, int]
 Inventory = tuple[tuple[int, int], ...]  # (item code, count), sorted, no zero counts
 Way = tuple[tuple[logic.Entry, ...], Cell | None]
-
-# The earlier rule for a start room, still the tests' check on data.MODES (offered_starts): every
-# item reaches all the game's locations from it, and the starting items at least this many
-# (data.MIN_SPHERE_ZERO is the generator's, the same).
-MIN_SPHERE_ZERO = 3
 
 
 @dataclass(frozen=True)
@@ -134,22 +129,11 @@ RTALVA_GATE = (51, 34)
 GATE_TRIGGERS = tuple(t for t in logic.GATE_TRIGGERS if t[0] != RTALVA_GATE)
 
 
-def gates_triggered(
-    counts: Mapping[int, int], settings: logic.Settings, at: Callable[[Cell], bool]
-) -> bool:
-    """Under Gates Open, whether a gate cell counts as reached, as the game's logic reads it,
-    but for R'Talva's (GATE_TRIGGERS): then the flood goes on from logic.GATE_TARGETS too."""
-    return settings.gates_open and any(
-        at(cell) and (not as_location or collectible(LOCATION_AT[cell], counts, settings, at))
-        for cell, as_location in GATE_TRIGGERS
-    )
-
-
 @cache
 def reach(settings: logic.Settings, have: Inventory, starts: tuple[Cell, ...]) -> Reach:
     """What ``have`` reaches from the start cells ``starts`` (one, or a start and its second
     teleport target) under ``settings``; under Gates Open, from the gate cells too once one is
-    reached (``gates_triggered``)."""
+    reached (``logic.gates_triggered``, without R'Talva's gate: GATE_TRIGGERS)."""
     fixed, looking = _ways(settings, have)
     counts = dict(have)
     reached = {data.CELL_REGION[cell] for cell in starts}
@@ -157,6 +141,9 @@ def reach(settings: logic.Settings, have: Inventory, starts: tuple[Cell, ...]) -
 
     def at(cell: Cell) -> bool:
         return data.CELL_REGION.get(cell) in reached
+
+    def gate(cell: Cell) -> bool:
+        return collectible(LOCATION_AT[cell], counts, settings, at)
 
     while True:
         todo = list(reached)
@@ -172,7 +159,7 @@ def reach(settings: logic.Settings, have: Inventory, starts: tuple[Cell, ...]) -
             and b not in reached
             and logic.satisfied(entries, counts, settings, cell, at)
         ]
-        if gates_triggered(counts, settings, at):
+        if logic.gates_triggered(settings, at, gate, GATE_TRIGGERS):
             opened += [b for b in gates if b not in reached]
         if not opened:
             break
@@ -211,12 +198,12 @@ class Seed:
 
     def every_from(self, start: dict, second: dict | None = None) -> Reach:
         """What every item reaches from a start room and its second teleport target, the
-        target counted as the logic counts it (``second_counts``)."""
+        target counted as the logic counts it (``logic.second_counts``)."""
         return self.every(*_cells(self.every_item, start, second))
 
     def sphere0_from(self, start: dict, second: dict | None = None) -> Reach:
         """What the starting items alone reach from a start room and its second teleport
-        target, the target counted as the logic counts it (``second_counts``)."""
+        target, the target counted as the logic counts it (``logic.second_counts``)."""
         return self.sphere0(*_cells(self.start_items, start, second))
 
 
@@ -228,39 +215,16 @@ def flagged(room: dict) -> bool:
     return bool(data.START_TABLE[room["index"]][2])
 
 
-def second_counts(have: Inventory, room: dict) -> bool:
-    """Whether the logic floods from second teleport target ``room`` with ``have``: an
-    unflagged room at once, a flagged one once the useful-item score reaches
-    logic.SECOND_TARGET_SCORE (0xE6D20, 0xE8850)."""
-    return not flagged(room) or logic.useful_score(dict(have)) >= logic.SECOND_TARGET_SCORE
-
-
 def _cells(have: Inventory, start: dict, second: dict | None) -> tuple[Cell, ...]:
-    if second is None or not second_counts(have, second):
+    if second is None or not logic.second_counts(dict(have), flagged(second)):
         return (start["cell"],)
     return (start["cell"], second["cell"])
-
-
-def offered_starts(seed: Seed, double_teleport: bool) -> list[dict]:
-    """The start rooms (``data.START_ROOMS`` entries) the world offered before it followed the
-    game's rule, which ``tools/gen_world_data.py`` still computes into ``data.MODES``, so the
-    tests check this module against it: those from which every
-    item reaches all the game's locations and the starting items at least MIN_SPHERE_ZERO; with
-    a second teleport target, every room (the pair is the world's choice: ``second_starts``)."""
-    if double_teleport:
-        return list(data.START_ROOMS)
-    return [
-        room
-        for room in data.START_ROOMS
-        if len(seed.every(room["cell"]).locations) == len(seed_locations(seed.settings))
-        and len(seed.sphere0(room["cell"]).locations) >= MIN_SPHERE_ZERO
-    ]
 
 
 def second_starts(seed: Seed, start: dict, rooms: Iterable[dict]) -> list[dict]:
     """The rooms that can be the second teleport target for ``start``. The game draws from
     every room but the start, flagged ones too. The world takes a flagged room only when the
-    logic counts it from the start (``second_counts`` with the starting items: a useful-item
+    logic counts it from the start (``logic.second_counts`` with the starting items: a useful-item
     score of 27), since one the logic counts only later adds nothing to sphere 0, and
     Archipelago's fill then failed 28 times in 360 OHKO generations, against none in 680 with
     an unflagged room (decided, the owner, 2026-10-28; docs/re/locations.md, "OHKO: two starts,
@@ -272,6 +236,6 @@ def second_starts(seed: Seed, start: dict, rooms: Iterable[dict]) -> list[dict]:
         room
         for room in rooms
         if room["cell"] != start["cell"]
-        and second_counts(seed.start_items, room)
+        and logic.second_counts(dict(seed.start_items), flagged(room))
         and (alone or bool(seed.sphere0_from(start, room).locations))
     ]

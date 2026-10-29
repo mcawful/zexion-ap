@@ -2,9 +2,11 @@
 
 The randomizer's own settings are named as the game's menu labels them, described with the
 blurb the game shows for each, and their values named by the game's labels for them
-(docs/re/randocells.md, "The randomizer menu's settings"; docs/custom-mode.md, "The YAML").
-Every one of them but Starting Location (start_room) and Safety is Custom mode's: with a preset
-mode it must stay 'preset', as in the game, where changing one makes the mode Custom.
+(docs/re/randocells.md, "The randomizer menu's settings"). Every one of them but Starting
+Location (start_room) and Safety is Custom mode's: with a preset mode it must stay 'preset', as
+in the game, where changing one makes the mode Custom. Colorizer has no option: the game treats
+it as the player's own (the mode check and the mode buttons leave it), so it stays as the menu
+has it.
 """
 
 from __future__ import annotations
@@ -61,12 +63,12 @@ class CustomBase(Choice):
 
 
 class Amount(NamedRange):
-    """An amount of the menu's first screen; 'preset': the mode's (Custom: custom_base's)."""
+    """An amount of the menu's first screen, or Start Keys; 'preset': the mode's (Custom:
+    custom_base's)."""
 
     range_start = 0
     special_range_names = {"preset": -1}
     default = -1
-    amount: int  # custom.START_ENERGY and so on
 
     @classmethod
     def get_option_name(cls, value: int) -> str:
@@ -79,7 +81,6 @@ class StartingEnergyTanks(Amount):
 
     display_name = "Starting Energy Tanks"
     range_end = custom.MAX_ENERGY
-    amount = custom.START_ENERGY
 
 
 class PoolEnergyTanks(Amount):
@@ -88,7 +89,6 @@ class PoolEnergyTanks(Amount):
 
     display_name = "Item Pool Energy Tanks"
     range_end = custom.MAX_ENERGY
-    amount = custom.POOL_ENERGY
 
 
 class StartingMissiles(Amount):
@@ -98,7 +98,6 @@ class StartingMissiles(Amount):
 
     display_name = "Starting Missiles"
     range_end = custom.MAX_AMMO
-    amount = custom.START_MISSILES
 
 
 class PoolMissiles(Amount):
@@ -111,7 +110,6 @@ class PoolMissiles(Amount):
 
     display_name = "Item Pool Missiles"
     range_end = custom.MAX_AMMO
-    amount = custom.POOL_MISSILES
 
 
 class StartingMegaBombs(Amount):
@@ -121,7 +119,6 @@ class StartingMegaBombs(Amount):
 
     display_name = "Starting Mega Bombs"
     range_end = custom.MAX_AMMO
-    amount = custom.START_BOMBS
 
 
 class PoolMegaBombs(Amount):
@@ -134,13 +131,6 @@ class PoolMegaBombs(Amount):
 
     display_name = "Item Pool Mega Bombs"
     range_end = custom.MAX_AMMO
-    amount = custom.POOL_BOMBS
-
-
-AMOUNTS = (
-    "starting_energy_tanks", "pool_energy_tanks", "starting_missiles", "pool_missiles",
-    "starting_mega_bombs", "pool_mega_bombs",
-)  # fmt: skip
 
 
 class CustomItems(OptionDict):
@@ -355,7 +345,7 @@ class Safety(Choice):
 OHKO_SAFETY = (Safety.option_light, Safety.option_off)
 
 
-class StartKeys(NamedRange):
+class StartKeys(Amount):
     """Custom mode only; 'preset': the mode's. Keys in your start_inventory_from_pool add to these,
     which are the first ones from the Alpha Key (a start_inventory key the item pool holds is
     refused: take it from the pool).
@@ -366,15 +356,8 @@ class StartKeys(NamedRange):
     4: Start the game with all 4 keys."""
 
     display_name = "Start Keys"
-    range_start = 0
     range_end = 4
-    special_range_names = {"preset": -1}
-    default = -1
     bits = custom.START_KEYS
-
-    @classmethod
-    def get_option_name(cls, value: int) -> str:
-        return "Preset" if value == cls.default else str(value)
 
 
 # Starting Location's rooms, in the menu's order: value n is start-table room n - 1
@@ -497,14 +480,6 @@ class OSInstallDisksRequired(Range):
     default = 12
 
 
-# The settings of Edit Options, by option name: Custom only but for start_room and safety.
-SETTINGS = (
-    "random_gun", "guns_first", "bulk_missiles", "bulk_bombs", "box_compression", "hints",
-    "gates", "double_teleport", "start_keys", "x_crystals", "x_blocks", "abridged_finale",
-    "secret_shuffle", "obscure_majors", "obscure_minors", "obscure_class", "show_obtainable",
-)  # fmt: skip
-
-
 @dataclass
 class ZexionOptions(PerGameCommonOptions):
     mode: Mode
@@ -544,3 +519,12 @@ class ZexionOptions(PerGameCommonOptions):
     # Archipelago takes these out of the item pool after create_items, as the game's randomizer
     # takes a starting item out of its pool (worlds/zexion/starting.py).
     start_inventory_from_pool: StartInventoryPool
+
+
+_OPTIONS = ZexionOptions.type_hints.items()
+# The amounts by option name, in the menu's and the save's order (custom.START_ENERGY on).
+AMOUNTS = tuple(n for n, t in _OPTIONS if issubclass(t, Amount) and t is not StartKeys)
+# The settings of Edit Options, by option name: Custom only, unlike start_room and safety.
+SETTINGS = tuple(
+    n for n, t in _OPTIONS if t is not Safety and (hasattr(t, "setting") or hasattr(t, "bits"))
+)

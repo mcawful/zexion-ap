@@ -9,7 +9,6 @@ from BaseClasses import CollectionState
 
 from . import data, logic
 from .items import as_inventory, code_of
-from .reach import LOCATION_AT
 
 if TYPE_CHECKING:
     from .world import ZexionWorld
@@ -63,21 +62,11 @@ def neighbor_regions(entries: tuple, cell: tuple[int, int] | None) -> set[int]:
 
 def second_target(world: ZexionWorld) -> Callable[[CollectionState], bool]:
     """The rule on a flagged second teleport target: the logic counts it once the useful-item
-    score reaches logic.SECOND_TARGET_SCORE (reach.second_counts)."""
+    score reaches logic.SECOND_TARGET_SCORE (logic.second_counts)."""
     player = world.player
     guns_first = world.logic_settings.guns_first
 
     def rule(state: CollectionState) -> bool:
-        have = inventory(state, player, guns_first)
-        return logic.useful_score(have) >= logic.SECOND_TARGET_SCORE
+        return logic.second_counts(inventory(state, player, guns_first), flagged=True)
 
     return rule
-
-
-def gate_trigger(
-    world: ZexionWorld, cell: tuple[int, int]
-) -> Callable[[CollectionState], bool] | None:
-    """Gates Open's travel from a gate cell the game reads as "collectible": that location's
-    own list, if it has one (reach.gates_triggered)."""
-    entries = data.LOCATION_RULES.get(LOCATION_AT[cell])
-    return None if entries is None else requirement(world, entries, cell)

@@ -3,15 +3,11 @@
 start_inventory copy of an item the pool holds too, and the game holds once, is refused
 (worlds/zexion/starting.py, ``pool_duplicates``)."""
 
-import unittest
-
-from Options import OptionError
-
 from .. import data, starting
 from ..items import NAMES, code_of
 from ..options import Goal
 from .bases import ZexionStartTestBase
-from .test_world import fake_world, pool_names
+from .test_world import RefusalTestCase, fake_world, pool_names
 
 SLIDE_MOD, SNAKE = code_of["Slide Mod"], code_of["Progressive Snake"]
 
@@ -56,13 +52,7 @@ class TestDiscsFromPool(ZexionStartTestBase):
         self.assertEqual(self.world.fill_slot_data()["discs_start"], 2)
 
 
-class TestPoolDuplicatesRefused(unittest.TestCase):
-    def refused(self, start_inventory: dict[str, int], **options) -> str:
-        world = fake_world(start_inventory=start_inventory, **options)
-        with self.assertRaises(OptionError) as caught:
-            world.generate_early()
-        return str(caught.exception)
-
+class TestPoolDuplicatesRefused(RefusalTestCase):
     def test_an_item_held_once_that_the_pool_holds(self) -> None:
         for name in ("Slide Mod", "Navcore", "Alpha Key", "Power Core"):
             with self.subTest(name):
@@ -103,33 +93,20 @@ class TestPoolDuplicatesRefused(unittest.TestCase):
         self.assertIn("41 Energy Tanks", self.refused({"Energy Tank": 38}))
         self.assertIn("1003 missiles", self.refused({"Missile Box": 100}))
         self.assertIn("50003 missiles", self.refused({"Missile Box": 5000}))
-        world = fake_world(
-            start_inventory_from_pool={"Energy Tank": 17}, start_inventory={"Energy Tank": 21}
-        )
-        with self.assertRaises(OptionError):
-            world.generate_early()
+        self.refused({"Energy Tank": 21}, start_inventory_from_pool={"Energy Tank": 17})
 
     def test_from_pool_items_meet_the_new_games_limits(self) -> None:
-        world = fake_world(start_inventory_from_pool={"Scrap Metal": 1})
-        with self.assertRaises(OptionError) as caught:
-            world.generate_early()
-        self.assertIn("a new game cannot start with Scrap", str(caught.exception))
-        world = fake_world(start_inventory_from_pool={"Progressive Snake": 3})
-        with self.assertRaises(OptionError):
-            world.generate_early()
+        error = self.refused(start_inventory_from_pool={"Scrap Metal": 1})
+        self.assertIn("a new game cannot start with Scrap", error)
+        self.refused(start_inventory_from_pool={"Progressive Snake": 3})
 
     def test_from_pool_disks_past_the_placed_ones_count(self) -> None:
-        def world(required: int):
-            return fake_world(
-                goal=Goal.option_os_install_disks,
-                start_inventory_from_pool={"OS Install Disk": 12},
-                placed=10,
-                required=required,
-            )
-
-        world(12).generate_early()  # 10 from the pool, and 2 Archipelago starts with anyway
-        with self.assertRaises(OptionError):
-            world(13).generate_early()
+        disks = {"OS Install Disk": 12}
+        options = dict(
+            goal=Goal.option_os_install_disks, start_inventory_from_pool=disks, placed=10
+        )
+        fake_world(required=12, **options).generate_early()  # 2 more than the 10 placed count
+        self.refused(required=13, **options)
 
     def test_the_world_counts_what_the_client_counts(self) -> None:
         # client/reconcile.py's COUNTED, by the world's names (test_client_agrees checks codes).

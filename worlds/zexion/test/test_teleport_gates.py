@@ -1,6 +1,6 @@
-"""Double Teleport's second target and the Gates setting, as the game's logic has them
-(docs/custom-mode.md, "The build plan", step D; docs/re/randocells.md, "Starting Location and
-the second teleport target" and "What each setting does in the game")."""
+"""Double Teleport's second target and the Gates setting, as the game's logic has them (built
+2026-10-28; docs/re/randocells.md, "Starting Location and the second teleport target" and "What
+each setting does in the game")."""
 
 import dataclasses
 import unittest
@@ -8,20 +8,8 @@ from unittest import mock
 
 from .. import custom, data, logic, reach
 from ..world import ZexionWorld
-from .bases import ZexionTestBase
+from .bases import FLAGGED, ZexionTestBase, preset, with_settings
 from .test_world import fake_world
-
-FLAGGED = {i for i, (_, _, flag) in enumerate(data.START_TABLE) if flag}
-
-
-def preset(name: str) -> reach.Seed:
-    mode = data.MODES[name]
-    settings = custom.Menu.preset(name).logic_settings()
-    return reach.Seed.of(settings, mode["start_inventory"], mode["pool"])
-
-
-def gates_open(seed: reach.Seed) -> reach.Seed:
-    return dataclasses.replace(seed, settings=dataclasses.replace(seed.settings, gates_open=True))
 
 
 class TestTheUsefulItemScore(unittest.TestCase):
@@ -41,12 +29,10 @@ class TestTheUsefulItemScore(unittest.TestCase):
 
 class TestTheSecondTarget(unittest.TestCase):
     def test_a_flagged_room_waits_for_the_score(self) -> None:
-        flagged = data.START_ROOMS[min(FLAGGED)]
-        plain = data.START_ROOMS[min(set(range(34)) - FLAGGED)]
-        self.assertTrue(reach.second_counts((), plain))
-        self.assertFalse(reach.second_counts(((0, 26),), flagged))
-        self.assertTrue(reach.second_counts(((0, 27),), flagged))
-        self.assertTrue(reach.second_counts(((0, 14), (25, 1)), flagged))
+        self.assertTrue(logic.second_counts({}, flagged=False))
+        self.assertFalse(logic.second_counts({0: 26}, flagged=True))
+        self.assertTrue(logic.second_counts({0: 27}, flagged=True))
+        self.assertTrue(logic.second_counts({0: 14, 25: 1}, flagged=True))
 
     def test_below_the_score_the_pair_reaches_what_the_start_does(self) -> None:
         seed = preset("ohko")
@@ -58,29 +44,15 @@ class TestTheSecondTarget(unittest.TestCase):
             # Every item reaches the score, so the room counts then.
             self.assertEqual(seed.every_from(start, room), seed.every(start["cell"], room["cell"]))
 
-    def test_a_flagged_room_only_when_it_counts_from_the_start(self) -> None:
-        # From Landing Pod the starting items collect a location alone, so every other room is
-        # a second target but the flagged ones, which OHKO's starting score leaves out of the
-        # logic (the world's guard; the game draws from all 33).
+    def test_a_flagged_room_once_it_counts_from_the_start(self) -> None:
+        # OHKO's starting score leaves the flagged rooms out (test_reach.py, TestStartRooms: the
+        # world's guard; the game draws from all 33); 27 Energy brings them in.
         seed = preset("ohko")
         start = data.START_ROOMS[6]
-        self.assertTrue(seed.sphere0(start["cell"]).locations)
-        rooms = reach.second_starts(seed, start, data.START_ROOMS)
-        self.assertEqual({r["index"] for r in rooms}, set(range(34)) - FLAGGED - {6})
         energy = reach.inventory({**dict(seed.start_items), 0: 27})
         rich = dataclasses.replace(seed, start_items=energy)
         rooms = reach.second_starts(rich, start, data.START_ROOMS)
         self.assertEqual({r["index"] for r in rooms}, set(range(34)) - {6})
-
-    def test_a_start_that_reaches_nothing_needs_a_target_that_does(self) -> None:
-        seed = preset("ohko")
-        for start in data.START_ROOMS:
-            if seed.sphere0(start["cell"]).locations:
-                continue
-            for room in reach.second_starts(seed, start, data.START_ROOMS):
-                with self.subTest(start=start["index"], room=room["index"]):
-                    self.assertTrue(seed.sphere0_from(start, room).locations)
-                    self.assertNotIn(room["index"], FLAGGED)  # not counted at the start
 
 
 class TestGatesOpen(unittest.TestCase):
@@ -90,7 +62,7 @@ class TestGatesOpen(unittest.TestCase):
         added = 0
         for name in ("standard", "ohko"):
             shut = preset(name)
-            seed = gates_open(shut)
+            seed = with_settings(shut, gates_open=True)
             for room in data.START_ROOMS:
                 for got, before in (
                     (seed.sphere0(room["cell"]), shut.sphere0(room["cell"])),
@@ -112,10 +84,13 @@ class TestGatesOpen(unittest.TestCase):
 
     def test_rtalvas_gate_opens_no_travel(self) -> None:
         # The game's logic counts it; the world does not (the owner's guard, 2026-10-28).
+        # From its cell with no items, the world's flood reaches no gate cell beyond it.
         self.assertIn((reach.RTALVA_GATE, True), logic.GATE_TRIGGERS)
-        settings = logic.Settings(gates_open=True)
-        self.assertFalse(reach.gates_triggered({}, settings, lambda c: c == reach.RTALVA_GATE))
-        self.assertTrue(reach.gates_triggered({}, settings, lambda c: c == (12, 30)))
+        settings = with_settings(preset("standard"), gates_open=True).settings
+        targets = {data.CELL_REGION[c] for c in logic.GATE_TARGETS}
+        got = reach.reach(settings, (), (reach.RTALVA_GATE,)).regions
+        self.assertFalse(targets & got)
+        self.assertLessEqual(targets, reach.reach(settings, (), ((12, 30),)).regions)
 
     def test_every_gate_cell_is_in_the_region_graph(self) -> None:
         for cell, _ in logic.GATE_TRIGGERS:

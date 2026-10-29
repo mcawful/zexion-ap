@@ -23,13 +23,14 @@ from collections.abc import Iterable
 
 from BaseClasses import Item, ItemClassification
 
+from .custom import AREA_MAP, KEY_CODES, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL
 from .logic import WEAPON_UPGRADES
 
 GAME = "Zexion"
 ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
 
 ASSIST_UNLOCK = 100
-AREA_MAP, INTEL_CHIP = 49, 101
+INTEL_CHIP = 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 
@@ -37,8 +38,6 @@ GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 PROGRESSIVE = WEAPON_UPGRADES
 # The upgrades, items of their own only in a seed with Guns First off.
 UPGRADES = frozenset(WEAPON_UPGRADES.values())
-SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK = 46, 47, 48
-ENERGY_SHIELD = 50
 
 NAMES = {
     0: "Energy Tank",
@@ -100,7 +99,6 @@ SUPPLIES = {0, 1, 2, 36, 37}
 FILLER = {SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
-KEY_CODES = (27, 28, 29, 30)  # Alpha, Beta, Gamma, Omega
 KEYS = tuple(NAMES[code] for code in KEY_CODES)
 FILLER_NAME = NAMES[SCRAP_METAL]
 

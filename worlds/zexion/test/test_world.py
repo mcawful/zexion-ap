@@ -58,6 +58,14 @@ def fake_world(
     return world
 
 
+class RefusalTestCase(unittest.TestCase):
+    def refused(self, start_inventory: dict[str, int] | None = None, **options: Any) -> str:
+        """The error generate_early refuses these options with."""
+        with self.assertRaises(OptionError) as caught:
+            fake_world(start_inventory=start_inventory, **options).generate_early()
+        return str(caught.exception)
+
+
 def disks(mode: str = "standard", placed: int = 20, required: int = 15) -> dict[str, Any]:
     """Options for the OS Install Disks goal."""
     return {
@@ -214,13 +222,13 @@ class TestOtherStart(ZexionTestBase):
     options = {"start_room": "open_cave"}
 
     def test_start_follows_the_option(self) -> None:
-        self.assertEqual(self.world.start, data.MODES["standard"]["starts"][-1])
+        self.assertEqual(self.world.start, data.START_ROOMS[17])
         self.assertEqual(self.world.start["cell"], (23, 22))
 
 
 class TestStartRooms(unittest.TestCase):
-    """The game's rules for a start room (docs/custom-mode.md, "Starts, as the game picks
-    them")."""
+    """The game's rules for a start room (docs/re/locations.md, "Which start rooms the world
+    offers")."""
 
     def test_a_room_the_starting_items_reach_nothing_from_is_refused(self) -> None:
         world = fake_world()
@@ -231,15 +239,13 @@ class TestStartRooms(unittest.TestCase):
             fake_world(start_room=empty[0]["index"] + 1).generate_early()
 
     def test_any_room_the_starting_items_reach_from_is_taken(self) -> None:
-        # Not only the nine rooms of the earlier rule, from which every item reaches all 154
-        # locations and the starting items 3: one location is enough, as in the game.
+        # One location is enough, as in the game (every item reaches the core from each room).
         world = fake_world()
         world.generate_early()
         rooms = [r for r in data.START_ROOMS if world.passes(r)]
         self.assertEqual(len(rooms), 19)
-        self.assertLess(
-            {r["index"] for r in data.MODES["standard"]["starts"]}, {r["index"] for r in rooms}
-        )
+        sphere0 = data.MODES["standard"]["sphere0_indices"]
+        self.assertEqual([r["index"] for r in rooms], [i for i, s in enumerate(sphere0) if s])
         one = [r for r in rooms if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
         self.assertTrue(one)
         for room in rooms:
@@ -748,14 +754,8 @@ class TestDiscOptionsChecked(unittest.TestCase):
         self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
 
 
-class TestStartInventoryChecked(unittest.TestCase):
+class TestStartInventoryChecked(RefusalTestCase):
     """start_inventory the client could not give is refused in generation (starting.py)."""
-
-    def refused(self, start_inventory: dict[str, int], **options) -> str:
-        world = fake_world(start_inventory=start_inventory, **options)
-        with self.assertRaises(OptionError) as caught:
-            world.generate_early()
-        return str(caught.exception)
 
     def test_what_a_new_game_can_start_with_passes(self) -> None:
         fine = {

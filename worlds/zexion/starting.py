@@ -41,6 +41,8 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
+from .custom import MAX_AMMO as MAX_MISSILES
+from .custom import MAX_ENERGY
 from .items import (
     ASSIST_UNLOCK,
     DATA_DISC,
@@ -52,11 +54,9 @@ from .items import (
     SUPPLIES,
     UPGRADES,
 )
+from .logic import ENERGY_TANK, MISSILE_BOX, MISSILE_CONTAINER
 
-ENERGY_TANK, MISSILE_CONTAINER, MISSILE_BOX = 0, 1, 36
 MAX_CONTAINERS = 9
-# The randomizer menu's most starting Energy and missiles (custom.MAX_ENERGY, MAX_AMMO).
-MAX_ENERGY, MAX_MISSILES = 40, 999
 # The new game's start-with array (client/newgame.py, START_WITH_ORDER), less the upgrades,
 # which with Guns First this world hands out as a progressive weapon's second copy.
 START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
