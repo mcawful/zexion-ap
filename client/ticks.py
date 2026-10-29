@@ -521,10 +521,10 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             return  # armed again after a new game: said once per connection
         conn.newgame_said = offer
         if offer:
-            logger.info(
-                "To play, load this seed's save, or start a new game: pick an empty slot "
-                "and choose ARCHIPELAGO."
-            )
+            # With RANDOMIZER's route too, should ARCHIPELAGO not show (the seed's text alone
+            # on its own line, to copy).
+            for line in newgame.choice_message(plan):
+                logger.info(line)
         else:
             logger.info(
                 "To play, load this seed's save, or start a new game: "

@@ -232,3 +232,21 @@ def randomizer_message(plan: sp.SeedPlan) -> str:
         "settings don't matter: the seed's own are used), and START GAME (if the game offers "
         "to play a seed it couldn't make winnable, choose YES)"
     )
+
+
+def choice_message(plan: sp.SeedPlan) -> tuple[str, str]:
+    """How to start this seed with ARCHIPELAGO offered, and with RANDOMIZER where the panel
+    still shows it (the helper didn't put ARCHIPELAGO there): the seed text placed again as
+    the seed works for either plan (``identify``). Two lines: the second the seed text alone,
+    unspaced, so that clicking it in the client's window copies just the seed, which the
+    menu's Paste takes as its first 16 letters or digits (docs/re/randocells.md, "The
+    settings code"; by disassembly: the click and the Paste have not run in game)."""
+    return (
+        "To play, load this seed's save, or start a new game: pick an empty slot and choose "
+        "ARCHIPELAGO. If the game offers RANDOMIZER instead of ARCHIPELAGO, choose RANDOMIZER "
+        "and enter this seed's 16 characters, on the next line (click the line to copy it, "
+        "then use the menu's Paste, or type it in), then START GAME. The menu's other "
+        "settings don't matter: the seed's own are used. If the game offers to play a seed it "
+        "couldn't make winnable, choose YES.",
+        plan.menu.seed_text,
+    )
