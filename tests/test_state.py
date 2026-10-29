@@ -164,6 +164,12 @@ def test_the_mod_failing_is_said_plainly_unless_the_player_can_fix_it() -> None:
     assert state.helper_failed(native.GameExited("the game has exited")) is None
 
 
+def test_a_mod_that_doesnt_match_the_client_is_said_to_be_so() -> None:
+    line = state.helper_failed(native.ModMismatch("the mod is version 1, this client 2; copy"))
+    assert line.startswith("The Zexion mod and this client don't match: the mod is version 1")
+    assert "Until they do, new games" in line
+
+
 def test_leaving_this_seeds_save_says_items_wait() -> None:
     # The server still sends items: they are given once this seed's save is loaded again.
     for line in (state.SAVE_CLOSED, state.OTHER_SAVE):

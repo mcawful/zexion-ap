@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import sys
 import types
@@ -13,7 +14,7 @@ from unittest import mock
 
 from fakes import connection
 
-from client import game, state
+from client import game, native, state
 
 
 class CommonContext:
@@ -129,3 +130,55 @@ def test_the_game_closing_while_dropped_ends_the_load_kept() -> None:
     ctx = context(kept, Closed(), dropped=True)
     asyncio.run(zc.poll(ctx))
     assert ended(kept) and ctx.game_conn is None
+
+
+class Mismatched:
+    """A helper whose every request is one another build of the mod doesn't know."""
+
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        raise native.ModMismatch("both are version 0, but from different builds")
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def test_a_mod_of_another_build_is_said_once_and_left_until_zexion_restarts(caplog) -> None:
+    ctx = context(connection(), Closed())
+    ctx.helper = Mismatched()
+    with caplog.at_level(logging.WARNING, logger="Client"):
+        asyncio.run(
+            zc.side_tick(ctx, "new game", lambda: asyncio.to_thread(ctx.helper.request, "x"))
+        )
+        assert ctx.helper is None and ctx.helper_retry_at == math.inf, "not attached again"
+        ctx.helper = Mismatched()  # the same again (an attach meanwhile)
+        asyncio.run(
+            zc.side_tick(ctx, "new game", lambda: asyncio.to_thread(ctx.helper.request, "x"))
+        )
+    lines = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert len(lines) == 1 and lines[0].startswith("The Zexion mod and this client don't match")
+    assert zc.HELPER_LOST not in lines
+    zc.game_closed(ctx, ctx.conn)
+    assert ctx.helper_retry_at < math.inf, "a restarted Zexion is tried again"
+
+
+def test_a_mismatch_the_session_found_is_said_once_not_as_a_lost_helper(caplog) -> None:
+    ctx = context(connection(), Closed())
+    ctx.helper = Mismatched()
+    with caplog.at_level(logging.WARNING, logger="Client"):
+        for _ in range(2):
+            ctx.mismatched(native.ModMismatch("both are version 0, but from different builds"))
+    lines = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert len(lines) == 1 and "don't match" in lines[0] and ctx.helper_retry_at == math.inf
+
+
+def test_dropping_the_helper_forgets_a_mismatch_of_the_one_before() -> None:
+    # Else a matching helper of a restarted Zexion, failing for any other reason later, would
+    # be taken for one that doesn't match and left alone.
+    ctx = context(connection(), Closed())
+    ctx.helper = Mismatched()
+    ctx.conn.session.mismatch = native.ModMismatch("different builds")
+    zc.game_closed(ctx, ctx.conn)
+    assert ctx.conn.session.mismatch is None

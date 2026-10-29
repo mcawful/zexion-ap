@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import os
 import sys
 import time
@@ -84,6 +85,12 @@ class ZexionCommandProcessor(ClientCommandProcessor):
         """Reload the Zexion mod in the game, if it misbehaves (popups still waiting are lost;
         items are not)."""
         if self.ctx.helper is None:
+            if self.ctx.helper_retry_at == math.inf:  # ZexionContext.mismatched
+                self.output(
+                    "The Zexion mod in the game doesn't match this client: close Zexion, put "
+                    "the matching mod in its folder, and start it again."
+                )
+                return False
             self.output("The Zexion mod isn't loaded; the client loads it as soon as it can.")
             return False
         self.ctx.reload_mod_pending = True
@@ -233,6 +240,17 @@ class ZexionContext(CommonContext):
                 logger.warning(HELPER_LOST)
         self.drop_helper()
 
+    def mismatched(self, exc: native.ModMismatch) -> None:
+        """The helper turned out not to match the client after attaching (another build of
+        this version): said once, and dropped. Attached again it would only fail again, so it
+        is left alone until Zexion restarts (game_closed), as the line says to."""
+        line = state.helper_failed(exc)
+        if line is not None and self.said("mismatch", line):
+            logger.warning(line)
+        log.warning(f"The in-game helper doesn't match this client ({exc}); not used again.")
+        self.drop_helper()
+        self.helper_retry_at = math.inf
+
     def drop_helper(self) -> None:
         if self.helper is not None:
             self.helper.close()
@@ -245,6 +263,7 @@ class ZexionContext(CommonContext):
         if conn is not None:
             # Its popups not shown yet still show if it stays loaded, and are lost if it is gone.
             conn.session.helper = None
+            conn.session.mismatch = None  # said by now, or of a game that closed
             # A plan the lost helper held is armed again in the next one; a new game just made
             # waits until its save is in play (poll), and a seed that cannot make one
             # stays as it is.
@@ -298,6 +317,8 @@ async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[
     distinct one, and the poll goes on."""
     try:
         await tick()
+    except native.ModMismatch as exc:
+        ctx.mismatched(exc)
     except native.HelperError as exc:
         log.warning(f"The in-game helper failed ({exc}); trying it again later.")
         ctx.lose_helper()
@@ -339,7 +360,7 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
     ctx.drop_helper()
-    ctx.said.clear("read", "read detail")  # the next game's failures are news
+    ctx.said.clear("read", "read detail", "mismatch")  # the next game's failures are news
 
 
 async def away_tick(ctx: ZexionContext) -> None:
@@ -440,8 +461,12 @@ async def poll(ctx: ZexionContext) -> None:
         return
     ctx.said.clear("read", "read detail")
     if ctx.helper is not None and current.helper is None:
-        # The session gave up on it (try again later).
-        ctx.lose_helper()
+        # The session gave up on it: tried again later, unless it doesn't match the client.
+        mismatch, current.mismatch = current.mismatch, None
+        if mismatch is not None:
+            ctx.mismatched(mismatch)
+        else:
+            ctx.lose_helper()
     elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)

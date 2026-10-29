@@ -72,6 +72,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
     ctx.told = state.HelperState()
     if ctx.conn is not None:
         ctx.conn.session.helper = helper
+        ctx.conn.session.mismatch = None  # a new helper's own, if any
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.

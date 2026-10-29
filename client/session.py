@@ -140,6 +140,8 @@ class Session:
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
+        # Why the helper was given up on, when it doesn't match the client (the poll says so).
+        self.mismatch: native.ModMismatch | None = None
         # How many received items have been handed over, to the helper for their popup or
         # written directly; None until the server's count is read (client/storage.py,
         # announced_tick).
@@ -282,6 +284,8 @@ class Session:
                 return self.give_through_helper(snap, result.inventory, received, senders, notes)
             except native.HelperError as exc:
                 logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
+                if isinstance(exc, native.ModMismatch):
+                    self.mismatch = exc
                 self.helper.close()
                 self.helper = None
         if self.announced is not None:
