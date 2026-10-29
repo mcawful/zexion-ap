@@ -142,19 +142,19 @@ def test_the_amounts_and_key_bits_are_written(keys, bits) -> None:
     assert list(save[sp.OPTIONS + 34 : sp.OPTIONS + 37]) == bits
 
 
-def test_another_amount_alone_fails_the_expectations() -> None:
+@pytest.mark.parametrize(
+    "at, value, failed",
+    [
+        (sp.AMOUNTS + 2, struct.pack("<h", 35), 0x6C0),  # another pool of Energy
+        (sp.OPTIONS + 72, b"\x02", 0x87B + 72),  # another Gates
+    ],
+    ids=["amount", "setting"],
+)
+def test_another_amount_or_setting_alone_fails_the_expectations(at, value, failed) -> None:
     save = fresh()
-    struct.pack_into("<h", save, sp.AMOUNTS + 2, 35)  # another pool of Energy
+    save[at : at + len(value)] = value
     before = bytes(save)
-    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) == [hex(0x6C0)]
-    assert bytes(save) == before, "nothing written"
-
-
-def test_another_setting_alone_fails_the_expectations() -> None:
-    save = fresh()
-    save[sp.OPTIONS + 72] = 2  # another Gates
-    before = bytes(save)
-    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) == [hex(0x87B + 72)]
+    assert apply_text(ng.plan_text(plan(), offer_choice=False), save) == [hex(failed)]
     assert bytes(save) == before, "nothing written"
 
 

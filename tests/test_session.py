@@ -12,7 +12,7 @@ from client import session as ss
 
 def blob_for(p: sp.SeedPlan) -> bytes:
     out = sp.patch(bytes(fresh(cells=CELLS)), p)
-    return out[sp.SECTION : sp.SECTION + game.RANDO_BLOB_SIZE]
+    return out[sp.SECTION : sp.SECTION + game.SECTION_SIZE]
 
 
 class FakeGame:
@@ -81,7 +81,8 @@ class FakeGame:
 # The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
 # set as its first cutscene begins, and one the finale sets and the ending clears.
 ENDING, FINALE = 250, 211
-PLAN = plan()  # starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun
+# Starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun.
+PLAN = plan(cells=tuple(CELLS))
 
 
 def give(
@@ -106,14 +107,14 @@ def look_away(session: ss.Session, g: FakeGame) -> None:
 
 def reconnect(before: ss.Session) -> ss.Session:
     """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
-    after = ss.Session(PLAN, [list(c) for c in CELLS])
+    after = ss.Session(PLAN)
     after.keep_ending(before)
     return after
 
 
 @pytest.fixture
 def setup():
-    return ss.Session(PLAN, [list(c) for c in CELLS]), FakeGame(PLAN)
+    return ss.Session(PLAN), FakeGame(PLAN)
 
 
 def test_collected_cells_are_reported_as_checks(setup) -> None:
@@ -126,7 +127,7 @@ def test_collected_cells_are_reported_as_checks(setup) -> None:
 
 def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
     p = secret_plan()
-    session, g = ss.Session(p, [list(c) for c in SECRET_CELLS]), FakeGame(PLAN)
+    session, g = ss.Session(p), FakeGame(PLAN)
     g.blob = bytes(secret_section(p))
     x, y = SECRET_LIST[100]  # list position 100: location index 154
     g.grid[y * 54 + x] = 0x1B
@@ -135,7 +136,7 @@ def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
     step = session.step(g, [], gap=0)
     assert step.seed_matches and step.checked == {154, 100}
     # The same cells in another order are not this seed's list.
-    other = ss.Session(p, [list(c) for c in SECRET_CELLS])
+    other = ss.Session(p)
     other.listed = list(SECRET_CELLS)
     assert other.step(g, [], gap=0).left_seed
 
@@ -413,8 +414,8 @@ def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_hel
 
 
 def test_without_guns_first_each_item_pops_up_as_itself() -> None:
-    off = plan(options={10: 0, 42: 2, 72: 1})
-    session, g = ss.Session(off, [list(c) for c in CELLS]), FakeGame(off)
+    off = plan(options={10: 0, 42: 2, 72: 1}, cells=tuple(CELLS))
+    session, g = ss.Session(off), FakeGame(off)
     helper = FakeHelper(g)
     session.helper, session.announced = helper, 0
     # The Machine Gun is a starting item: a received Pulse Wave and Pentashot are themselves.

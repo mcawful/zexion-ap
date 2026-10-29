@@ -23,22 +23,10 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 
 from . import data, logic
-from .logic import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
+from .logic import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MENU_ITEMS, MISSILE_BOX, MISSILE_CONTAINER
 from .reach import flagged
 
-# The 27 items of the menu's first screen, in its order (the word table at .rdata 0x20DA68):
-# their names as the screen shows them and their item codes. Entry i is byte i of the
-# start-with and pool arrays.
-MENU_ITEMS = (
-    ("Slide Mod", 16), ("Wall Jump Boots", 19), ("Marine Jets", 21), ("Navcore", 32),
-    ("Machine Gun", 3), ("Force Blaster", 4), ("Snake", 5), ("Lance", 6), ("Arc Plasma", 7),
-    ("Rocket Slide", 11), ("Jump Booster", 22), ("Phaser", 20), ("S-Blade", 17),
-    ("Pulse Wave", 9), ("Pentashot", 14), ("Tunneler", 15), ("Focal Crystal", 10),
-    ("Plasma Burst", 12), ("G-Diffuser", 34), ("Gravity Harness", 24),
-    ("Zenith Thrusters", 26), ("Magnus Armor", 25), ("Power Cartridge", 13),
-    ("Power Chip", 33), ("Power Core", 8), ("Javelin Missiles", 23), ("X-Missile", 18),
-)  # fmt: skip
-ARRAY = len(MENU_ITEMS)
+ARRAY = len(MENU_ITEMS)  # the menu's items (logic.MENU_ITEMS): entry i is byte i of each array
 MENU_CODES = tuple(code for _, code in MENU_ITEMS)
 GUNS = range(4, 9)  # the entries of the five guns
 # Each gun upgrade's entry -> its gun's entry (Pulse Wave and the Machine Gun, ...).
@@ -253,10 +241,6 @@ def problems(menu: Menu) -> list[str]:
     return out
 
 
-def coin(rng: random.Random) -> bool:
-    return rng.random() < 0.5
-
-
 def resolve(menu: Menu, rng: random.Random) -> tuple[list[int], list[int]]:
     """The start-with and pool arrays after the game's steps 1 to 3 ("The pool"): a coin flip
     for each item set both ways, Random Gun's draw over the menu's guns, and Guns First's swap
@@ -264,7 +248,7 @@ def resolve(menu: Menu, rng: random.Random) -> tuple[list[int], list[int]]:
     start, pool = list(menu.start), list(menu.pool)
     for i in range(ARRAY):
         if start[i] and pool[i]:
-            if coin(rng):
+            if rng.random() < 0.5:  # a coin flip
                 pool[i] = 0
             else:
                 start[i] = 0

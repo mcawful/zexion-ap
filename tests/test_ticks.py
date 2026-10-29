@@ -7,7 +7,7 @@ import asyncio
 import types
 from typing import NamedTuple
 
-from fakes import SECRET_CELLS, SECRET_LIST, secret_plan, slot_data
+from fakes import SECRET_LIST, connection, secret_plan, slot_data
 
 from client import aplabels, discs, game, ids, offline, session, state, ticks
 
@@ -78,12 +78,6 @@ class Ctx:
             self.locations_info[loc] = Scouted(ids.ITEM_ID_BASE + 16, loc, 2, flags)
 
 
-def connect(**changes) -> state.Connection:
-    conn = state.Connection.from_slot_data(slot_data(**changes), 0, 1)
-    conn.items_listed, conn.awaiting_backlog = True, False
-    return conn
-
-
 def no_finds() -> types.SimpleNamespace:
     """A Poll: no items received, none of this world's locations found."""
     return types.SimpleNamespace(codes=[], found=set())
@@ -103,7 +97,7 @@ def in_play(goal: bool) -> session.Step:
 def test_a_save_past_its_ending_loaded_again_deals_received_deaths() -> None:
     # Flag 250 stays set and is saved: a later load of the ended save reads the goal, but its
     # ending is not running (Session.holding is False), and the player is in play.
-    ctx = Ctx(connect(death_link=True))
+    ctx = Ctx(connection(death_link=True))
     ctx.seed_state.deaths.receive()
     run(ticks.deathlink_tick(ctx, in_play(goal=True)))
     assert ctx.helper.requests == ["die"]
@@ -111,9 +105,10 @@ def test_a_save_past_its_ending_loaded_again_deals_received_deaths() -> None:
 
 
 def test_deaths_queued_when_the_ending_begins_in_this_load_are_dropped() -> None:
-    ctx = Ctx(connect(death_link=True))
+    ctx = Ctx(connection(death_link=True))
     ctx.conn.session.holding = True  # the goal read going true in this load (Session.step)
     ctx.seed_state.deaths.receive()
+    ctx.seed_state.deaths.receive()  # the whole queue
     run(ticks.deathlink_tick(ctx, in_play(goal=True)))
     assert ctx.helper.requests == []
     assert ctx.seed_state.deaths.owed == 0
@@ -125,7 +120,7 @@ def test_deaths_queued_when_the_ending_begins_in_this_load_are_dropped() -> None
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:
     # Before this seed's save is seen in a connection, conn.lock_assists is the slot data's:
     # the file follows Assist Unlock, received on an earlier connection, all the same.
-    ctx = Ctx(connect(allow_assists=False))
+    ctx = Ctx(connection(allow_assists=False))
     ctx.scout()
     assert "assists lock" in ticks.offline_seed(ctx, no_finds()).splitlines()
     ctx.unlocked = True
@@ -134,7 +129,7 @@ def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None
 
 
 def test_the_offline_file_leaves_assist_free_when_the_seed_allows_it() -> None:
-    ctx = Ctx(connect(allow_assists=True))
+    ctx = Ctx(connection(allow_assists=True))
     ctx.scout()
     assert "assists free" in ticks.offline_seed(ctx, no_finds()).splitlines()
 
@@ -142,9 +137,9 @@ def test_the_offline_file_leaves_assist_free_when_the_seed_allows_it() -> None:
 def secret_connection() -> state.Connection:
     """A Secret Shuffle seed's connection: 155 locations, the 155th (index 154) listed last by
     location index and at list position 100 in the game's order (fakes.SECRET_CELLS)."""
-    conn = connect()
+    conn = connection()
     p = secret_plan()
-    conn.plan, conn.session = p, session.Session(p, [list(c) for c in SECRET_CELLS])
+    conn.plan, conn.session = p, session.Session(p)
     conn.kept = frozenset(range(155))
     conn.foreign = [154]
     return conn
@@ -173,7 +168,7 @@ def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
 
 def dressed_save(**changes) -> Ctx:
     """This seed's save loaded, its labels and disk count sent to the helper."""
-    ctx = Ctx(connect(**changes))
+    ctx = Ctx(connection(**changes))
     ctx.scout()
     ctx.conn.dressed, ctx.conn.discs_told = True, True
     run(ticks.labels_tick(ctx))
@@ -209,7 +204,7 @@ def test_a_reconnect_to_the_same_seed_leaves_the_save_dressed() -> None:
 
 def test_labels_taken_while_the_connection_changed_are_taken_back() -> None:
     # The helper held none; labels were sent, and a Disconnect came before the reply.
-    ctx = Ctx(connect())
+    ctx = Ctx(connection())
     ctx.scout()
     ctx.conn.dressed = True
     ctx.told.labels_held = False

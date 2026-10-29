@@ -74,11 +74,19 @@ DEFAULT_SETTINGS = Settings()
 # teleport target"): the logic floods from it when its room is unflagged, or once the "useful
 # item" score is this or more (0xE6D20, 0xE8850).
 SECOND_TARGET_SCORE = 27
-# The randomizer menu's 27 items in its order (the table at RVA 0x20DA68, the same as
-# custom.MENU_ITEMS); the score counts each one owned but these two: the Navcore and the
-# Magnus Armor (0xE57F9 onward).
-MENU_ITEM_CODES = (16, 19, 21, 32, 3, 4, 5, 6, 7, 11, 22, 20, 17, 9, 14, 15, 10, 12, 34, 24)
-MENU_ITEM_CODES += (26, 25, 13, 33, 8, 23, 18)
+# The 27 items of the randomizer menu's first screen, in its order (the word table at .rdata
+# 0x20DA68): their names as the screen shows them and their item codes. Entry i is byte i of
+# the menu's start-with and pool arrays (custom.py). The score counts each one owned but these
+# two: the Navcore and the Magnus Armor (0xE57F9 onward).
+MENU_ITEMS = (
+    ("Slide Mod", 16), ("Wall Jump Boots", 19), ("Marine Jets", 21), ("Navcore", 32),
+    ("Machine Gun", 3), ("Force Blaster", 4), ("Snake", 5), ("Lance", 6), ("Arc Plasma", 7),
+    ("Rocket Slide", 11), ("Jump Booster", 22), ("Phaser", 20), ("S-Blade", 17),
+    ("Pulse Wave", 9), ("Pentashot", 14), ("Tunneler", 15), ("Focal Crystal", 10),
+    ("Plasma Burst", 12), ("G-Diffuser", 34), ("Gravity Harness", 24),
+    ("Zenith Thrusters", 26), ("Magnus Armor", 25), ("Power Cartridge", 13),
+    ("Power Chip", 33), ("Power Core", 8), ("Javelin Missiles", 23), ("X-Missile", 18),
+)  # fmt: skip
 NOT_SCORED = (32, 25)
 ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX, MAGNUS_ARMOR = 0, 1, 2, 36, 37, 25
 
@@ -91,7 +99,7 @@ def useful_score(have: Mapping[int, int]) -> int:
     energy = have.get(ENERGY_TANK, 0) * (2 if have.get(MAGNUS_ARMOR, 0) else 1)
     supplies = have.get(MISSILE_CONTAINER, 0) + have.get(MEGA_BOMB, 0)
     boxes = have.get(MISSILE_BOX, 0) + have.get(BOMB_BOX, 0)
-    owned = sum(1 for code in MENU_ITEM_CODES if code not in NOT_SCORED and have.get(code, 0))
+    owned = sum(1 for _, code in MENU_ITEMS if code not in NOT_SCORED and have.get(code, 0))
     return energy + supplies + 10 * boxes + owned
 
 

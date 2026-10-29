@@ -162,20 +162,16 @@ class Supplies:
     bombs_max: int
 
 
-def supplies_after(inventory: bytes, new: Mapping[int, int], before: Supplies) -> Supplies:
-    """The supplies after the grant, by the pickup routine's rules: max missiles is Missile
-    Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
-    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy,
-    max and current energy both become it."""
-
-    def count(item: int) -> int:
-        return new.get(item, inventory[item])
-
-    missiles_max = count(MISSILE_CONTAINER) + 10 * count(MISSILE_BOX)
-    bombs_max = count(MEGA_BOMB) + 10 * count(BOMB_BOX)
+def supplies_after(inventory: bytes, before: Supplies) -> Supplies:
+    """The supplies the inventory's counts give, by the pickup routine's rules: max missiles is
+    Missile Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
+    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy, max
+    and current energy both become it."""
+    missiles_max = inventory[MISSILE_CONTAINER] + 10 * inventory[MISSILE_BOX]
+    bombs_max = inventory[MEGA_BOMB] + 10 * inventory[BOMB_BOX]
     energy, energy_max = before.energy, before.energy_max
-    if count(ENERGY_TANK) * 16 > energy_max:
-        energy = energy_max = count(ENERGY_TANK) * 16
+    if inventory[ENERGY_TANK] * 16 > energy_max:
+        energy = energy_max = inventory[ENERGY_TANK] * 16
     return Supplies(
         energy=energy,
         energy_max=energy_max,

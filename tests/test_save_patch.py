@@ -133,7 +133,7 @@ def test_a_secret_shuffle_section_matches_its_seed_only() -> None:
     assert sp.section_matches(bytes(section), p)
     # The location-index order is not the game's.
     assert not sp.section_matches(bytes(section), secret_plan(cells=tuple(SECRET_LIST)))
-    section[sp.OPTIONS - sp.SECTION + sp.SECRET_SHUFFLE] = 0
+    section[sp.OPTIONS_AT + sp.SECRET_SHUFFLE] = 0
     assert not sp.section_matches(bytes(section), p)
 
 

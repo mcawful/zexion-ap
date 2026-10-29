@@ -48,9 +48,7 @@ def requirement(
 
 
 def neighbor_regions(entries: tuple, cell: tuple[int, int] | None) -> set[int]:
-    """Regions a rule looks into through codes 64-67."""
-    if cell is None:
-        return set()
+    """Regions a rule looks into through codes 64-67 (only lists checked at a cell hold them)."""
     out = set()
     for code, _ in entries:
         if 64 <= code <= 67:

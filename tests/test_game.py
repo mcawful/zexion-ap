@@ -106,10 +106,10 @@ def test_known_build_is_identified_and_others_refused() -> None:
 def blob(cells=None, items=None) -> bytearray:
     cells = cells or CELLS
     items = items or [46] * game.LOCATIONS
-    b = bytearray(game.RANDO_BLOB_SIZE)
+    b = bytearray(game.SECTION_SIZE)
     for i, (x, y) in enumerate(cells):
         struct.pack_into("<HH", b, 4 * i, x, y)
-    b[game.ITEM_TABLE_AT : game.ITEM_TABLE_AT + len(items)] = bytes(items)
+    b[game.TABLE_AT : game.TABLE_AT + len(items)] = bytes(items)
     return b
 
 
@@ -125,7 +125,7 @@ def test_a_well_formed_seed_parses() -> None:
         lambda b: struct.pack_into("<HH", b, 0, 60, 0),  # a cell off the map
         lambda b: struct.pack_into("<HH", b, 4, 0, 0),  # a duplicate cell
         lambda b: b.__setitem__(4 * game.LOCATIONS, 1),  # no zero gap
-        lambda b: b.__setitem__(game.ITEM_TABLE_AT, 51),  # an item ID out of range
+        lambda b: b.__setitem__(game.TABLE_AT, 51),  # an item ID out of range
     ],
 )
 def test_a_malformed_seed_is_refused(broken) -> None:
@@ -139,7 +139,7 @@ def test_secret_shuffles_155_locations_parse_only_with_its_byte() -> None:
     b = blob(SECRET_LIST, [46] * (game.LOCATIONS + 1))
     with pytest.raises(game.GameError):  # without Secret Shuffle: no zero gap
         game.parse_seed(bytes(b))
-    b[game.SETTINGS_AT + game.SECRET_SHUFFLE] = 1
+    b[game.OPTIONS_AT + game.SECRET_SHUFFLE] = 1
     seed = game.parse_seed(bytes(b))
     assert seed.locations == tuple(SECRET_LIST) and len(seed.items) == game.LOCATIONS + 1
 
@@ -147,11 +147,11 @@ def test_secret_shuffles_155_locations_parse_only_with_its_byte() -> None:
 # --- reads and writes through a fake process ------------------------------------------------
 
 
-def fake_game(**rva: int) -> FakeGame:
+def fake_game(size: int = 0x2000, **rva: int) -> FakeGame:
     """A fake with the inventory at 0x1100, room for the player state, which starts 0x108E
     before it, and ``rva`` for other targets."""
     rva = {"inventory": 0x1100, **rva}
-    return FakeGame(pm=FakeProcess(0x2000), base=0, rva=rva, pid=1, build=None)
+    return FakeGame(pm=FakeProcess(size), base=0, rva=rva, pid=1, build=None)
 
 
 def test_set_item_is_compare_and_set() -> None:
@@ -312,13 +312,7 @@ def test_shipped_patterns_are_well_formed(target: Target) -> None:
 
 def slots_game() -> FakeGame:
     """A fake with the current slot at 0x10 and the 30 save slots' blocks from 0x100."""
-    g = FakeGame(
-        pm=FakeProcess(0x100 + game.SLOTS * 0x9408),
-        base=0,
-        rva={"current_slot": 0x10, "slot_array": 0x100},
-        pid=1,
-        build=None,
-    )
+    g = fake_game(0x100 + game.SLOTS * 0x9408, current_slot=0x10, slot_array=0x100)
     for n in range(game.SLOTS):  # each block's stamp bytes tell its slot
         at = 0x100 + n * 0x9408 + 0x9354
         g.pm.memory[at : at + 10] = bytes([n]) * 10

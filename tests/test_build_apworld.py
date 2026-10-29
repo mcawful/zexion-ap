@@ -33,6 +33,13 @@ def dlls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     return stub_dlls(tmp_path, monkeypatch, bap.client_version())
 
 
+def refused(tmp_path: Path, why: str) -> None:
+    """The build stops, saying ``why``, before it writes the dist folder."""
+    with pytest.raises(SystemExit, match=why):
+        bap.build(tmp_path / "dist")
+    assert not (tmp_path / "dist").exists()
+
+
 def test_the_release_holds_the_apworld_the_dlls_and_the_guides(tmp_path: Path, dlls) -> None:
     out = tmp_path / "dist"
     apworld = bap.build(out)
@@ -71,18 +78,14 @@ def test_a_world_version_that_is_not_the_clients_is_refused(
 ) -> None:
     stub_dlls(tmp_path, monkeypatch, "9.9.9")
     monkeypatch.setattr(bap, "client_version", lambda: "9.9.9")
-    with pytest.raises(SystemExit, match="one number"):
-        bap.build(tmp_path / "dist")
-    assert not (tmp_path / "dist").exists()
+    refused(tmp_path, "one number")
 
 
 def test_a_helper_of_another_version_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub_dlls(tmp_path, monkeypatch, "0.0.1")
-    with pytest.raises(SystemExit, match="rebuild native"):
-        bap.build(tmp_path / "dist")
-    assert not (tmp_path / "dist").exists()
+    refused(tmp_path, "rebuild native")
 
 
 def test_a_version_inside_a_longer_one_does_not_count(tmp_path: Path) -> None:
@@ -105,8 +108,7 @@ def test_a_dll_older_than_cmakelists_is_stale(tmp_path: Path, monkeypatch, dlls)
     later = helper.stat().st_mtime + 60
     os.utime(cmake, (later, later))
     monkeypatch.setattr(bap, "HELPER_SOURCES", (src, cmake))
-    with pytest.raises(SystemExit, match="zexion_ap.dll is older than"):
-        bap.build(tmp_path / "dist")
+    refused(tmp_path, "zexion_ap.dll is older than")
 
 
 def test_an_out_folder_in_the_game_install_is_refused(tmp_path: Path, dlls) -> None:
@@ -120,9 +122,7 @@ def test_an_untracked_file_stops_the_build(tmp_path: Path, monkeypatch, dlls) ->
     real = bap.tracked
     left_out = (bap.WORLD / "data.py").resolve()
     monkeypatch.setattr(bap, "tracked", lambda *folders: real(*folders) - {left_out})
-    with pytest.raises(SystemExit, match=r"not tracked by git.*data\.py"):
-        bap.build(tmp_path / "dist")
-    assert not (tmp_path / "dist").exists()
+    refused(tmp_path, r"not tracked by git.*data\.py")
 
 
 def test_a_manifest_naming_another_game_is_refused(tmp_path: Path, monkeypatch, dlls) -> None:
@@ -131,9 +131,7 @@ def test_a_manifest_naming_another_game_is_refused(tmp_path: Path, monkeypatch, 
     info = json.loads((bap.WORLD / "archipelago.json").read_text(encoding="utf-8"))
     (world / "archipelago.json").write_text(json.dumps({**info, "game": "Other"}), "utf-8")
     monkeypatch.setattr(bap, "WORLD", world)
-    with pytest.raises(SystemExit, match="does not name the game Zexion"):
-        bap.build(tmp_path / "dist")
-    assert not (tmp_path / "dist").exists()
+    refused(tmp_path, "does not name the game Zexion")
 
 
 def test_two_files_of_one_name_are_refused(tmp_path: Path, monkeypatch, dlls) -> None:
@@ -142,6 +140,4 @@ def test_two_files_of_one_name_are_refused(tmp_path: Path, monkeypatch, dlls) ->
     monkeypatch.setattr(
         bap, "packed_files", lambda: [*real(), (bap.CLIENT / "ids.py", bap.MANIFEST)]
     )
-    with pytest.raises(SystemExit, match="share a name"):
-        bap.build(tmp_path / "dist")
-    assert not (tmp_path / "dist").exists()
+    refused(tmp_path, "share a name")

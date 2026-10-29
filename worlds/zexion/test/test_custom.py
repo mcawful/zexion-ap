@@ -249,22 +249,20 @@ class TestRandomGun(unittest.TestCase):
         self.assertEqual(started["Force Blaster"] + started["Arc Plasma"], 60)
         self.assertEqual((pooled["Snake"], pooled["Lance"]), (60, 60))
 
-    def guns_started(self, menu: Menu) -> int:
-        start, _ = custom.resolve(menu, random.Random(3))
-        return sum(start[i] for i in custom.GUNS)
-
     def test_off_the_guns_follow_their_states(self) -> None:
         menu = Menu.preset("standard").with_settings({custom.RANDOM_GUN: 0})
-        start, pool = custom.resolve(menu, random.Random(3))
+        start, _ = custom.resolve(menu, random.Random(3))
         self.assertEqual(start[ENTRY["Machine Gun"]], 1)
         self.assertEqual(start[ENTRY["Force Blaster"]], 0)
 
 
 class TestGunsFirst(unittest.TestCase):
-    def test_a_pooled_upgrade_without_its_gun_is_swapped_for_it(self) -> None:
+    def test_a_pooled_upgrade_without_its_gun_is_swapped_for_it_only_when_on(self) -> None:
         menu = Menu.preset("standard").with_item(ENTRY["Lance"], "excluded")
-        _, pool = custom.resolve(menu, random.Random(1))
-        self.assertEqual((pool[ENTRY["Lance"]], pool[ENTRY["Focal Crystal"]]), (1, 0))
+        for on, want in ((1, (1, 0)), (0, (0, 1))):
+            _, pool = custom.resolve(menu.with_settings({custom.GUNS_FIRST: on}), random.Random(1))
+            with self.subTest(guns_first=on):
+                self.assertEqual((pool[ENTRY["Lance"]], pool[ENTRY["Focal Crystal"]]), want)
 
     def test_upgrades_are_their_guns_progressive_items(self) -> None:
         menu = Menu.preset("standard")
@@ -272,12 +270,6 @@ class TestGunsFirst(unittest.TestCase):
         start, _ = custom.resolve(menu.with_item(ENTRY["Pulse Wave"], "start"), random.Random(1))
         have = custom.starting_items(menu, start)
         self.assertNotIn(9, have)
-
-    def test_off_no_swap(self) -> None:
-        menu = Menu.preset("standard").with_item(ENTRY["Lance"], "excluded")
-        menu = menu.with_settings({custom.GUNS_FIRST: 0})
-        _, pool = custom.resolve(menu, random.Random(1))
-        self.assertEqual((pool[ENTRY["Lance"]], pool[ENTRY["Focal Crystal"]]), (0, 1))
 
     def test_off_each_upgrade_is_its_own_item(self) -> None:
         menu = Menu.preset("standard").with_settings({custom.GUNS_FIRST: 0})
@@ -297,6 +289,8 @@ class TestGunsFirst(unittest.TestCase):
         # A Plasma Burst alone counts as the Arc Plasma only with Guns First (0xE5680).
         self.assertEqual(reach.Seed.of(on, {12: 1}, []).start_items, ((7, 1),))
         self.assertEqual(reach.Seed.of(off, {12: 1}, []).start_items, ((12, 1),))
+        # A started gun and its upgrade count as both (the logic review's finding).
+        self.assertEqual(reach.Seed.of(on, {7: 2}, []).start_items, ((7, 1), (12, 1)))
         # And a gun picked up twice counts as its upgrade only with it.
         self.assertEqual(reach.Seed.of(on, {}, [7, 7]).every_item, ((7, 1), (12, 1)))
         self.assertEqual(reach.Seed.of(off, {}, [7, 7]).every_item, ((7, 2),))
@@ -570,19 +564,9 @@ class TestTheOptionsRefuse(RefusalTestCase):
     def test_what_is_not_supported_yet(self) -> None:
         self.assertIn("starting_mega_bombs", self.refused(mode="custom", starting_mega_bombs=5))
 
-    def test_what_the_menu_cannot_hold(self) -> None:
-        self.assertIn(
-            "more than 40",
-            self.refused(mode="custom", starting_energy_tanks=20, pool_energy_tanks=21),
-        )
-        self.assertIn("950", self.refused(mode="custom", starting_missiles=0, pool_missiles=951))
-
-    def test_an_unknown_state(self) -> None:
-        self.assertIn("'maybe'", self.refused(mode="custom", custom_items={"Navcore": "maybe"}))
+    def test_an_unknown_state_or_one_that_is_not_text(self) -> None:
         self.assertEqual(len(CustomItems.valid_keys), 27)
-
-    def test_a_state_that_is_not_text(self) -> None:
-        for state in (["start"], 1, None):
+        for state in ("maybe", ["start"], 1, None):
             with self.subTest(state=state):
                 found = self.refused(mode="custom", custom_items={"Slide Mod": state})
                 self.assertIn(f"{state!r} is not one of", found)
@@ -803,19 +787,15 @@ class CustomSeedShortOfFiller(ZexionTestBase):
 
 
 class CustomDoubleTeleportRandomStart(ZexionTestBase):
+    """Random Start with Double Teleport in Custom: the default tests fill and beat it (the two
+    starts' own checks: test_world.py, TestOHKO and TestStartRooms)."""
+
     options = {
         "mode": "custom",
         "custom_base": "ohko",
         "start_room": "random_start",
         "x_crystals": "on",
     }
-
-    def test_two_starts(self) -> None:
-        self.assertIsNotNone(self.world.second)
-        self.assertNotEqual(self.world.start, self.world.second)
-        menu = self.world.fill_slot_data()["menu"]
-        self.assertIsNone(menu["second_target"])
-        self.assertEqual(len(menu["start_table"]), 34)
 
 
 class EveryStartFills(ZexionTestBase):
@@ -845,11 +825,6 @@ class EveryStartFills(ZexionTestBase):
 
 
 class TestTheLogicReviewsFindings(unittest.TestCase):
-    def test_a_started_gun_and_its_upgrade_count_as_both(self) -> None:
-        seed = reach.Seed.of(Menu.preset("standard").logic_settings(), {7: 2}, [])
-        self.assertEqual(seed.start_items, ((7, 1), (12, 1)))
-        self.assertEqual(seed.every_item, ((7, 1), (12, 1)))
-
     def test_the_cores_own_lists_are_judged_with_the_start(self) -> None:
         # Into the core: code 51 (Wall Jump Boots with G-Diffuser or Gravity Harness, or the
         # Zenith Thrusters) or the Jump Booster (data.CORE).

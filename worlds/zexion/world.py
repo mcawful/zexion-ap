@@ -50,13 +50,10 @@ from .options import (
     AMOUNTS,
     AUTOMATIC,
     AUTOMATIC_ROOM,
-    OHKO_SAFETY,
-    PRESETS,
     RANDOM_START,
     SETTINGS,
     Amount,
     Goal,
-    Safety,
     StartRoom,
     ZexionOptions,
 )
@@ -174,11 +171,9 @@ class ZexionWorld(World):
         state the game's menu cannot hold or would build a broken pool from (custom.problems)."""
         o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
         is_custom = name == "custom"
-        menu = custom.Menu.preset(PRESETS[o.custom_base.value] if is_custom else name)
-        toggles = [getattr(o, n) for n in SETTINGS if hasattr(getattr(o, n), "setting")]
-        changed = [n for n in AMOUNTS if getattr(o, n).value != Amount.default]
-        changed += [n for n in SETTINGS if getattr(o, n).value != getattr(o, n).default]
-        changed += ["custom_items"] if o.custom_items.value else []
+        menu = custom.Menu.preset(o.custom_base.current_key if is_custom else name)
+        custom_only = (*AMOUNTS, *SETTINGS, "custom_items")
+        changed = [n for n in custom_only if getattr(o, n).value != getattr(o, n).default]
         if changed and not is_custom:
             raise OptionError(
                 f"{who}: {', '.join(changed)} can be set with mode: custom only. Easy, Standard "
@@ -197,13 +192,10 @@ class ZexionWorld(World):
                     f"{', '.join(custom.STATES)}"
                 )
             menu = menu.with_item(entries[item], state)
-        for option in toggles:
-            if option.value != option.option_preset:
-                menu = menu.with_settings({option.setting: option.value})
-        for option in (o.hints, o.gates, o.safety, o.start_keys):
-            if option.value != option.default:
+        for option in (getattr(o, n) for n in (*SETTINGS, "safety")):
+            if option.value != option.default:  # each a bit or bits, lowest first
                 menu = menu.with_value(option.bits, option.value)
-        if name == "ohko" and o.safety.value not in (Safety.default, *OHKO_SAFETY):
+        if name == "ohko" and o.safety.current_key not in ("preset", "light", "off"):
             raise OptionError(f"{who}: OHKO mode takes Safety light or off only, as the game does")
         if self.disc_hunt and menu.setting(custom.ABRIDGED_FINALE):
             raise OptionError(
@@ -286,13 +278,10 @@ class ZexionWorld(World):
         )
 
     def partners(self, room: dict) -> list[dict]:
-        """With Double Teleport, the second teleport targets for this start. The game draws one
-        of the other 33 rooms, flagged ones too, and judges the pair by its winnability check;
-        where that fails it offers PLAY ANYWAY, which Archipelago's fill cannot. So the world
-        draws among the rooms with which the pair suits the seed as ``passes`` judges a start:
-        with the start, the starting items collect a location, and with the core goal every
-        item reaches the core, the target counted as the logic counts it (logic.second_counts);
-        a flagged room only when the logic counts it from the start (reach.second_starts)."""
+        """With Double Teleport, the second teleport targets for this start: the rooms with which
+        the pair suits the seed as ``passes`` judges a start (``reach.second_starts``), the
+        target counted as the logic counts it. The game draws from all 33 and offers PLAY
+        ANYWAY where its winnability check fails, which Archipelago's fill cannot."""
         rooms = reach.second_starts(self.seed_reach, room, data.START_ROOMS)
         if self.reaches_the_door(room):
             return rooms
@@ -301,11 +290,9 @@ class ZexionWorld(World):
     def passes(self, room: dict) -> bool:
         """Whether a start room suits the seed, as the game's START GAME judges one: its
         starting items collect a location from it, and with the core goal every item reaches
-        the core and Zexion, the world's part of the game's winnability check. From a room with
-        one such location Archipelago's fill can fail (up to one time in four, solo, in tests):
-        the owner chose the game's rule over a higher minimum, 2026-10-27 (docs/re/locations.md,
-        "Which start rooms the world offers"). With Double Teleport, the same for the start and
-        a second teleport target: ``partners``."""
+        the core and Zexion; with Double Teleport, the same for the start and a second teleport
+        target (``partners``). From a room with one such location the fill can fail, the
+        owner's choice (docs/re/locations.md, "Which start rooms the world offers")."""
         if self.double_teleport:
             return bool(self.partners(room))
         return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_door(room)
@@ -422,13 +409,10 @@ class ZexionWorld(World):
                 location.access_rule = rules.requirement(self, entries, cell)
             region.locations.append(location)
 
-        # The core goal is the grab of Zexion in the core, behind the four keys (RandoCells
-        # does not model the keys); the client sends the goal at the ending (docs/re/memory.md,
-        # "The ending: flag 250"), after the escape and final battle, which no rule covers.
-        # RandoCells opens the core only with Abridged Finale, so it has no region of its
-        # own: it is entered from the last cell the world keeps, with the requirement lists on
-        # the way to Zexion (data.CORE; docs/re/locations.md, "The core goal is Zexion's cell in
-        # the core"). The OS Install Disks goal has no event.
+        # The core goal: the grab of Zexion behind the four keys, in a region of its own entered
+        # from the core's door with the lists on the way in (data.CORE; docs/re/locations.md,
+        # "The core goal is Zexion's cell in the core"); the escape and final battle after it
+        # are no rule's. The OS Install Disks goal has no event.
         if self.disc_hunt:
             return
         core = Region(CORE_REGION, self.player, self.multiworld)

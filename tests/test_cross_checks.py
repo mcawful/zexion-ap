@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from client import discs, game, ids, native, offline, patterns, session
+from client import game, ids, native, offline, patterns, session
 from client import save_patch as sp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -258,9 +258,9 @@ def test_the_randomizer_section_is_laid_out_alike() -> None:
     # docs/re/save-format.md: the item table, the start record and the settings, from the
     # section's start; the helper's offsets are the same, as the loaded section is the file's.
     rando = layout("rando")
-    assert rando["kItemTable"] == sp.ITEM_TABLE - sp.SECTION == 0x26C
-    assert rando["kStart"] == discs.START_AT == sp.START_RECORD - sp.SECTION == 0x310
-    assert rando["kSettings"] == sp.OPTIONS - sp.SECTION == 0x87B
+    assert rando["kItemTable"] == sp.TABLE_AT == 0x26C
+    assert rando["kStart"] == sp.START_AT == 0x310
+    assert rando["kSettings"] == sp.OPTIONS_AT == 0x87B
     assert (rando["kLocations"], rando["kMaxLocations"]) == (ids.LOCATIONS, ids.MAX_LOCATIONS)
     assert rando["kSecretShuffle"] == ids.SECRET_SHUFFLE
 

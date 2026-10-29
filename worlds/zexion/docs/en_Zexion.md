@@ -98,8 +98,7 @@ only when your starting items score 27 or more, as the game's logic counts them:
 (doubled with the Magnus Armor), Missile Containers and Mega Bombs one each, 10 per box, and one
 per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or `random`) picks a
 room as the game's Random Start does. The spoiler log names the start room (and a second room to
-teleport to, with Double Teleport, as in OHKO). The earlier names, such as `kresezoa_16_13` (the
-area, then X and Y as the pause screen shows them), still work.
+teleport to, with Double Teleport, as in OHKO).
 
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,

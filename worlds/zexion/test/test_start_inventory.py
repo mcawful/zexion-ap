@@ -7,7 +7,7 @@ from .. import data, starting
 from ..items import NAMES, code_of
 from ..options import Goal
 from .bases import ZexionStartTestBase
-from .test_world import RefusalTestCase, fake_world, pool_names
+from .test_world import RefusalTestCase, disks, fake_world, pool_names
 
 SLIDE_MOD, SNAKE = code_of["Slide Mod"], code_of["Progressive Snake"]
 
@@ -54,31 +54,21 @@ class TestDiscsFromPool(ZexionStartTestBase):
 
 class TestPoolDuplicatesRefused(RefusalTestCase):
     def test_an_item_held_once_that_the_pool_holds(self) -> None:
-        for name in ("Slide Mod", "Navcore", "Alpha Key", "Power Core"):
+        # And a weapon past its weapon and upgrade: Standard's pool holds two Snakes, and it
+        # starts with a Force Blaster, its pool another; with Guns First off, a gun or upgrade.
+        off = {"mode": "custom", "guns_first": "off", "random_gun": "off"}
+        names = ("Slide Mod", "Navcore", "Alpha Key", "Power Core", "Progressive Snake")
+        cases = [(name, {}) for name in (*names, "Progressive Force Blaster")]
+        for name, options in [*cases, ("Progressive Lance", off), ("Tunneler", off)]:
             with self.subTest(name):
-                error = self.refused({name: 1})
+                error = self.refused({name: 1}, **options)
                 self.assertIn(f"{name}: the item pool holds it too", error)
                 self.assertIn("start_inventory_from_pool", error)
-            fake_world(start_inventory_from_pool={name: 1}).generate_early()
+                fake_world(start_inventory_from_pool={name: 1}, **options).generate_early()
 
-    def test_a_weapon_past_its_weapon_and_upgrade(self) -> None:
-        # Standard's pool holds two Snakes, and it starts with a Force Blaster, its pool another.
-        for name in ("Progressive Snake", "Progressive Force Blaster"):
-            with self.subTest(name):
-                self.assertIn(f"{name}: the item pool holds it too", self.refused({name: 1}))
-            fake_world(start_inventory_from_pool={name: 1}).generate_early()
-
-    def test_with_guns_first_off_a_gun_or_upgrade_the_pool_holds(self) -> None:
-        off = {"mode": "custom", "guns_first": "off", "random_gun": "off"}
-        for name in ("Progressive Lance", "Tunneler"):
-            with self.subTest(name):
-                self.assertIn(f"{name}: the item pool holds it too", self.refused({name: 1}, **off))
-            fake_world(start_inventory_from_pool={name: 1}, **off).generate_early()
-
-    def test_counted_items_and_items_the_pool_lacks_pass(self) -> None:
-        counted = {"Energy Tank": 2, "Missile Container": 2, "Missile Box": 1}
-        fake_world(start_inventory=counted).generate_early()
-        # With the OS Install Disks goal the pool has no keys, and the disks are counted.
+    def test_items_the_pool_lacks_pass(self) -> None:
+        # (Counted items: test_world.py, TestStartInventoryChecked.) With the OS Install Disks
+        # goal the pool has no keys, and the disks are counted.
         disc_hunt = {"goal": Goal.option_os_install_disks}
         start = {"Alpha Key": 1, "OS Install Disk": 2}
         fake_world(start_inventory=start, **disc_hunt).generate_early()
@@ -101,12 +91,12 @@ class TestPoolDuplicatesRefused(RefusalTestCase):
         self.refused(start_inventory_from_pool={"Progressive Snake": 3})
 
     def test_from_pool_disks_past_the_placed_ones_count(self) -> None:
-        disks = {"OS Install Disk": 12}
-        options = dict(
-            goal=Goal.option_os_install_disks, start_inventory_from_pool=disks, placed=10
-        )
-        fake_world(required=12, **options).generate_early()  # 2 more than the 10 placed count
-        self.refused(required=13, **options)
+        from_pool = {"OS Install Disk": 12}
+        # 2 more than the 10 placed count.
+        fake_world(
+            **disks(placed=10, required=12), start_inventory_from_pool=from_pool
+        ).generate_early()
+        self.refused(**disks(placed=10, required=13), start_inventory_from_pool=from_pool)
 
     def test_the_world_counts_what_the_client_counts(self) -> None:
         # client/reconcile.py's COUNTED, by the world's names (test_client_agrees checks codes).

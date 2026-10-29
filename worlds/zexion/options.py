@@ -27,7 +27,6 @@ from Options import (
 )
 
 from . import custom
-from .data import CELL_AREAS, START_ROOMS
 
 
 class Mode(Choice):
@@ -48,9 +47,6 @@ class Mode(Choice):
     option_ohko = 2
     option_custom = 3
     default = 1
-
-
-PRESETS = ("easy", "standard", "ohko")
 
 
 class CustomBase(Choice):
@@ -150,13 +146,13 @@ class CustomItems(OptionDict):
 
 
 class Setting(Choice):
-    """A setting of the menu's Edit Options screen (``setting``: its byte t)."""
+    """A setting of the menu's Edit Options screen (``bits``: its byte t)."""
 
     option_off = 0
     option_on = 1
     option_preset = 2
     default = 2
-    setting: int
+    bits: tuple[int]
 
 
 class RandomGun(Setting):
@@ -164,7 +160,7 @@ class RandomGun(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Random Gun"
-    setting = custom.RANDOM_GUN
+    bits = (custom.RANDOM_GUN,)
 
 
 class GunsFirst(Setting):
@@ -175,7 +171,7 @@ class GunsFirst(Setting):
     its gun."""
 
     display_name = "Guns First"
-    setting = custom.GUNS_FIRST
+    bits = (custom.GUNS_FIRST,)
 
 
 class BulkMissiles(Setting):
@@ -183,7 +179,7 @@ class BulkMissiles(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Bulk Missiles"
-    setting = custom.BULK_MISSILES
+    bits = (custom.BULK_MISSILES,)
 
 
 class BulkBombs(Setting):
@@ -191,7 +187,7 @@ class BulkBombs(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Bulk Bombs"
-    setting = custom.BULK_BOMBS
+    bits = (custom.BULK_BOMBS,)
 
 
 class BoxCompression(Setting):
@@ -199,7 +195,7 @@ class BoxCompression(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Box Compression"
-    setting = custom.BOX_COMPRESSION
+    bits = (custom.BOX_COMPRESSION,)
 
 
 class DoubleTeleport(Setting):
@@ -211,7 +207,7 @@ class DoubleTeleport(Setting):
     It draws among the rooms with which the starting items collect a location."""
 
     display_name = "Double Teleport"
-    setting = custom.DOUBLE_TELEPORT
+    bits = (custom.DOUBLE_TELEPORT,)
 
 
 class XCrystals(Setting):
@@ -219,7 +215,7 @@ class XCrystals(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "X Crystals"
-    setting = custom.X_CRYSTALS
+    bits = (custom.X_CRYSTALS,)
 
 
 class XBlocks(Setting):
@@ -227,7 +223,7 @@ class XBlocks(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "X Blocks"
-    setting = custom.X_BLOCKS
+    bits = (custom.X_BLOCKS,)
 
 
 class AbridgedFinale(Setting):
@@ -235,7 +231,7 @@ class AbridgedFinale(Setting):
     Custom mode only; 'preset': the mode's. Not with the OS Install Disks goal."""
 
     display_name = "Abridged Finale"
-    setting = custom.ABRIDGED_FINALE
+    bits = (custom.ABRIDGED_FINALE,)
 
 
 class SecretShuffle(Setting):
@@ -244,7 +240,7 @@ class SecretShuffle(Setting):
     ("??? 48,20")."""
 
     display_name = "Secret Shuffle"
-    setting = custom.SECRET_SHUFFLE
+    bits = (custom.SECRET_SHUFFLE,)
 
 
 class ObscureMajors(Setting):
@@ -252,7 +248,7 @@ class ObscureMajors(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Obscure Majors"
-    setting = 29
+    bits = (29,)
 
 
 class ObscureMinors(Setting):
@@ -260,7 +256,7 @@ class ObscureMinors(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Obscure Minors"
-    setting = 38
+    bits = (38,)
 
 
 class ObscureClass(Setting):
@@ -268,7 +264,7 @@ class ObscureClass(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Obscure Class"
-    setting = 41
+    bits = (41,)
 
 
 class ShowObtainable(Setting):
@@ -276,7 +272,7 @@ class ShowObtainable(Setting):
     Custom mode only; 'preset': the mode's."""
 
     display_name = "Show Obtainable"
-    setting = 11
+    bits = (11,)
 
 
 class Hints(Choice):
@@ -344,9 +340,6 @@ class Safety(Choice):
     bits = custom.SAFETY
 
 
-OHKO_SAFETY = (Safety.option_light, Safety.option_off)
-
-
 class StartKeys(Amount):
     """Custom mode only; 'preset': the mode's. Keys in your start_inventory_from_pool add to these,
     which are the first ones from the Alpha Key (a start_inventory key the item pool holds is
@@ -378,18 +371,9 @@ AUTOMATIC = len(ROOM_NAMES) + 1
 AUTOMATIC_ROOM = ROOM_NAMES.index("landing_pod")  # where one of the owner's seeds started
 
 
-def old_room_name(room: dict) -> str:
-    """The room's earlier name, kept as an alias: its area, then X and Y as the game displays
-    them (kresezoa_16_13)."""
-    a, b = room["cell"]
-    area = CELL_AREAS[(a, b)].lower().replace("'", "")
-    return f"{area}_{b}_{a}"
-
-
 def _make_start_room() -> type[Choice]:
     attrs: dict[str, Any] = {"option_random_start": RANDOM_START}
     attrs |= {f"option_{name}": i + 1 for i, name in enumerate(ROOM_NAMES)}
-    attrs |= {f"alias_{old_room_name(room)}": room["index"] + 1 for room in START_ROOMS}
     attrs["option_automatic"] = AUTOMATIC
     attrs["default"] = AUTOMATIC
     attrs["display_name"] = "Starting Location"
@@ -403,8 +387,7 @@ def _make_start_room() -> type[Choice]:
         "menu: a room from which your starting items reach no location, or every item does "
         "not reach Zexion's core with the core goal, is refused. From a room where they reach "
         "only one, generation can fail now and then: try again or pick another. automatic (the "
-        "default): landing_pod, or a random start where that room is refused. The earlier names "
-        "(kresezoa_16_13: the area, then X and Y as the pause screen shows them) still work."
+        "default): landing_pod, or a random start where that room is refused."
     )
 
     @classmethod
@@ -529,6 +512,4 @@ _OPTIONS = ZexionOptions.type_hints.items()
 # The amounts by option name, in the menu's and the save's order (custom.START_ENERGY on).
 AMOUNTS = tuple(n for n, t in _OPTIONS if issubclass(t, Amount) and t is not StartKeys)
 # The settings of Edit Options, by option name: Custom only, unlike start_room and safety.
-SETTINGS = tuple(
-    n for n, t in _OPTIONS if t is not Safety and (hasattr(t, "setting") or hasattr(t, "bits"))
-)
+SETTINGS = tuple(n for n, t in _OPTIONS if t is not Safety and hasattr(t, "bits"))
