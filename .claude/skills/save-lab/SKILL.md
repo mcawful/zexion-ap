@@ -81,13 +81,15 @@ overwritten, and that the backup keeps it.
 .venv/Scripts/python tools/save_lab.py install lab/work/a-patched.sav 30 --yes
 ```
 
-It fills either kind of empty slot. It refuses a slot that is in use, a slot number that doesn't
-exist, and a missing or stale backup. Over a deleted save it says that the old data is in the
-backup, and names the file there. It writes through a temporary file (removed if the write
-fails), reads the result back, and logs to `lab/installs.log`, with `was=template` or
-`was=deleted` for the kind of slot it filled. Install with the game closed: the game keeps the
-slots in memory, and one installed while it ran was written over by the game's own empty copy of
-that slot (2026-10-28, `docs/re/memory.md`, "Feats and achievements"). Then the user starts it.
+It fills either kind of empty slot. It refuses while Zexion is running (and when it can't read
+the process list): the game keeps the slots in memory, and one installed while it ran was
+written over by the game's own empty copy of that slot (2026-10-28, `docs/re/memory.md`, "Feats
+and achievements"). So ask the user to close the game first. It also refuses a slot that is in
+use, a slot number that doesn't exist, and a missing or stale backup. Over a deleted save it
+says that the old data is in the backup, and names the file there. It writes through a
+temporary file (removed if the write fails), reads the result back, and logs to
+`lab/installs.log`, with `was=template` or `was=deleted` for the kind of slot it filled. Then
+the user starts the game.
 
 ## 6. Put things back
 
@@ -96,9 +98,11 @@ that slot (2026-10-28, `docs/re/memory.md`, "Feats and achievements"). Then the 
 .venv/Scripts/python tools/save_lab.py restore lab/backups/<time> --yes        # everything
 ```
 
-Ask first. `restore` refuses a backup of another save folder (one taken with `--save-dir` or
-`ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
-manifest, then backs up the current state before overwriting, so a restore can itself be undone.
+Ask first, and have the user close the game: like `install`, `restore` refuses while Zexion is
+running, which would write its own copies of the slots back over the restored ones. It refuses
+a backup of another save folder (one taken with `--save-dir` or `ZEXION_SAVE_DIR` set; restore
+it with the same setting), checks the backup against its manifest, then backs up the current
+state before overwriting, so a restore can itself be undone.
 
 ## 7. Record what you learned
 
