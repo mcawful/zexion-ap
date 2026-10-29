@@ -41,7 +41,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.30.0";
+constexpr char kVersion[] = "1.0.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // SDL_GL_SwapWindow(SDL_Window*) returns nothing; passing through whatever the original left in
