@@ -42,8 +42,10 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     blocks, ``ForEach-Object``, expressions and ``&``: ``_ps_segment_is_read_only``.
   - Blocked outright, when the command may reach a protected folder: command substitution
     (``$(``, Bash arithmetic ``$((`` included, or a backtick in Bash; ``xxd -s 0x9360`` takes
-    the offset itself) but the message form above and PowerShell's ``"$($_.Name)"``, which
-    only reads a member; a PowerShell ``::`` call other than a known reader or a method call
+    the offset itself), in Bash also once its quoting is taken off (``_quotes_taken_off``: a
+    ``$(`` split by quotes in a value Bash later reads as arithmetic, through ``$[x]``,
+    ``${s:x}`` or ``${a[x]}``), but the message form above and PowerShell's ``"$($_.Name)"``,
+    which only reads a member; a PowerShell ``::`` call other than a known reader or a method call
     other than a few string and date ones (``_ps_calls_block``); output redirected to a path
     that still holds a variable after the hook's own environment is applied (the guard can't
     see where it leads); and in Bash an environment prefix or ``export`` of a variable that
@@ -74,6 +76,7 @@ import json
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 
 _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
@@ -202,6 +205,10 @@ _PS_HERE_STRING = re.compile(r"@(['\"])[ \t]*\r?\n(.*?)\r?\n\1@", re.DOTALL)
 # A heredoc operator and its delimiter word (quotes and backslashes not yet removed).
 _DELIM_WORD = r"(?:[^\s;&|<>()'\"\\]|\\.|'[^'\n]*'|\"[^\"\n]*\")+"
 _HEREDOC = re.compile(rf"<<(-?)[ \t]*({_DELIM_WORD})")
+# What a ``<<`` sits in when it is a shift or text, not a heredoc (``_heredocs``).
+_NO_HEREDOC = ("$((", "((", "$[", "${", "[")
+# A Bash ANSI-C string, $'…', whose escapes (\x24, \044, $) can spell ``$(``.
+_ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'")
 _CAT_HEREDOC = re.compile(rf"\$\(\s*cat\s*<<-?[ \t]*{_DELIM_WORD}[ \t]*\n\s*\)")
 # A ``>&`` that duplicates or closes a descriptor (2>&1, >&-) rather than naming a file.
 _FD_DUP = re.compile(r"\d*-?(?=$|[\s;&|()<>])")
@@ -348,9 +355,11 @@ class Heredoc:
 def _heredocs(command: str) -> list[Heredoc]:
     """The Bash heredocs in ``command``, found as Bash finds them.
 
-    A ``<<`` inside quotes or a comment is text, and ``<<`` inside ``$((…))`` is a shift. The
-    delimiter is the whole shell word after ``<<`` (``EOF.x``), quotes removed. A body runs from
-    the line after its operator to the delimiter line, or to the end of the command.
+    A ``<<`` inside quotes or a comment is text, and ``<<`` inside ``$((…))``, ``((…))``,
+    ``$[…]`` or ``${…}`` (an offset or a subscript, ``${s:0:1<<2}``, ``${a[1<<2]}``) is a shift
+    or text, never a heredoc. The delimiter is the whole shell word after ``<<`` (``EOF.x``),
+    quotes removed. A body runs from the line after its operator to the delimiter line, or to
+    the end of the command.
     """
     found: list[Heredoc] = []
     pending: list[tuple[re.Match, tuple | None]] = []
@@ -379,7 +388,7 @@ def _heredocs(command: str) -> list[Heredoc]:
                 stack.append(("`", i, i + 1))
             i += 1
             continue
-        arithmetic = any(k in ("$((", "((") for k, _, _ in stack)
+        arithmetic = any(k in _NO_HEREDOC for k, _, _ in stack)
         if c in "'\"":
             stack.append((c, i, i + 1))
         elif c == "`":
@@ -396,6 +405,14 @@ def _heredocs(command: str) -> list[Heredoc]:
             stack.pop()
             i += 2
             continue
+        elif command.startswith("$[", i) or command.startswith("${", i):
+            stack.append((command[i : i + 2], i, i + 2))
+            i += 2
+            continue
+        elif c == "[" and top in ("$[", "${", "["):  # a subscript inside one: a[1<<2]
+            stack.append(("[", i, i + 1))
+        elif (c == "]" and top in ("$[", "[")) or (c == "}" and top == "${"):
+            stack.pop()
         elif c == "(":
             kind = command[i - 1] + "(" if i and command[i - 1] in "$<>" else "("
             stack.append((kind, i - len(kind) + 1, i + 1))
@@ -1057,6 +1074,45 @@ def _ps_calls_block(code: str) -> str | None:
     return "::" if "::" in rest else None
 
 
+def _quotes_taken_off(code: str) -> str:
+    """``code`` with Bash's quoting taken off, as Bash reads it: '…' and "…" lose their quotes,
+    and $'…' (only outside other quotes) is decoded. A ``$(`` that quotes split
+    (``'a[$''(…)]'``, ``$'a[\\x24(…)]'``) shows in it: Bash runs one inside a value it later
+    reads as arithmetic (``$[x]``, ``${s:x}``, ``${a[x]}``, ``${!x}``), as it does in
+    ``$((x))``. A backslash and the character after it are kept as they are."""
+    out, i, n = [], 0, len(code)
+    while i < n:
+        c = code[i]
+        ansi_c = _ANSI_C.match(code, i)
+        if c == "\\":
+            out.append(code[i : i + 2])
+            i += 2
+        elif ansi_c:
+            try:
+                text = ansi_c.group(1).encode("latin-1", "backslashreplace")
+                with warnings.catch_warnings():  # \e and \cX are Bash's, not Python's
+                    warnings.simplefilter("ignore")
+                    out.append(text.decode("unicode_escape"))
+            except (UnicodeError, ValueError):
+                out.append(ansi_c.group(1))
+            i = ansi_c.end()
+        elif c == "'":
+            end = code.find("'", i + 1)
+            end = n if end < 0 else end
+            out.append(code[i + 1 : end])
+            i = end + 1
+        elif c == '"':
+            j = i + 1
+            while j < n and code[j] != '"':
+                j += 2 if code[j] == "\\" else 1
+            out.append(code[i + 1 : j])
+            i = j + 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") -> str | None:
     """Return a reason to block, or None to allow. ``protected`` is the tools/protected module.
 
@@ -1089,6 +1145,8 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     substitution = _CAT_HEREDOC.sub("heredoc", code)
     if powershell:  # "$($_.Name)" only reads a member
         substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
+    else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
+        substitution += "\n" + _quotes_taken_off(substitution)
     if "$(" in substitution or (not powershell and "`" in substitution):
         return f"{BLOCK_HINT}\nCommand substitution next to a protected path."
     if powershell and (call := _ps_calls_block(code)):
