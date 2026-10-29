@@ -2,8 +2,9 @@
 
 Each value has one home on either side and a copy on the other: the helper's version (the
 client refuses another), the game builds both identify, the addresses the client sends in
-``config``, and the proxy's off switch. These read the C++ as text, so they run without a
-native build. Also the world's ``world_version``, the same release number.
+``config``, the proxy's off switch, and the game's flags and layouts both read (the goal's and
+the scanner's flags, the randomizer section, the save slots). These read the C++ as text, so
+they run without a native build. Also the world's ``world_version``, the same release number.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from client import native, offline, patterns
+from client import discs, game, ids, native, offline, patterns, session
+from client import save_patch as sp
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "native" / "src"
@@ -230,3 +232,41 @@ def test_the_native_test_lists_the_client_only_keys() -> None:
     listed = re.findall(r'"(\w+)"', braced(test, "const char* const kClientOnly[] = {"))
     client_only = client_only_keys()
     assert listed == [key for key in config_keys() if key in client_only]
+
+
+def layout(name: str) -> dict[str, int]:
+    """The constants of ``namespace name`` in game_layout.h, by name."""
+    text = source("game_layout.h")
+    opening, closing = f"namespace {name} {{", f"}}  // namespace {name}"
+    assert text.count(opening) == 1, opening
+    block = text.split(opening, 1)[1].split(closing, 1)[0]
+    pairs = re.findall(r"\b(k\w+) = (0x[0-9A-Fa-f]+|\d+)\b", block)
+    return {key: int(value, 0) for key, value in pairs}
+
+
+def test_the_goal_and_scanner_flags_are_the_games_and_the_helpers() -> None:
+    # docs/re/memory.md, "The ending: flag 250" (with 211 clear) and "The scanner" (39). The
+    # client's tests set flags by these numbers; the helper reads 250 and 39 too.
+    assert (session.ENDING_FLAG, session.FINALE_FLAG, session.SCANNED_FLAG) == (250, 211, 39)
+    flags = layout("flag")
+    assert (flags["kEnding"], flags["kScannerTold"]) == (session.ENDING_FLAG, session.SCANNED_FLAG)
+    counts = re.findall(r"\bkFlagCount = (0x[0-9A-Fa-f]+);", source("game_layout.h"))
+    assert [int(n, 16) for n in counts] == [game.FLAGS]
+
+
+def test_the_randomizer_section_is_laid_out_alike() -> None:
+    # docs/re/save-format.md: the item table, the start record and the settings, from the
+    # section's start; the helper's offsets are the same, as the loaded section is the file's.
+    rando = layout("rando")
+    assert rando["kItemTable"] == sp.ITEM_TABLE - sp.SECTION == 0x26C
+    assert rando["kStart"] == discs.START_AT == sp.START_RECORD - sp.SECTION == 0x310
+    assert rando["kSettings"] == sp.OPTIONS - sp.SECTION == 0x87B
+    assert (rando["kLocations"], rando["kMaxLocations"]) == (ids.LOCATIONS, ids.MAX_LOCATIONS)
+    assert rando["kSecretShuffle"] == ids.SECRET_SHUFFLE
+
+
+def test_the_save_slots_are_laid_out_alike() -> None:
+    # docs/re/memory.md, "The file select": 30 blocks of 0x9408 (client/game.py, slot_markers).
+    slot = layout("slot")
+    assert (slot["kCount"], slot["kStride"]) == (game.SLOTS, game.SLOT_STRIDE) == (30, 0x9408)
+    assert (slot["kEmpty"], slot["kRandoMarker"]) == (0x935E, 0x9400)

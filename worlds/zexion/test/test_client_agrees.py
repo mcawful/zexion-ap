@@ -9,9 +9,11 @@ installed apworld), except where ZEXION_REQUIRE lists ``client`` (CI's world tes
 from __future__ import annotations
 
 import os
+import struct
 import sys
 import unittest
 
+from BaseClasses import ItemClassification
 from Fill import distribute_items_restrictive
 
 from .. import custom, data, items, locations, logic, reach, starting
@@ -87,6 +89,11 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(ids.KEYS, items.KEY_CODES)
         self.assertEqual(ids.SCRAP_METAL, items.SCRAP_METAL)
         self.assertEqual(ids.ENERGY_SHIELD, custom.ENERGY_SHIELD)
+        # The new game's start-with array and Start Keys bits are the menu's (client/newgame.py).
+        self.assertEqual(newgame.START_WITH_ORDER, custom.MENU_CODES)
+        self.assertEqual(newgame.START_KEY_OPTIONS, custom.START_KEYS)
+        # A scouted item's progression flag, which the client keeps without Archipelago.
+        self.assertEqual(aplabels.PROGRESSION, ItemClassification.progression)
         # The client writes every other item's byte as 1 at most.
         self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
         self.assertEqual(reconcile.COUNTED, starting.COUNTED)  # pool_duplicates counts the same
@@ -197,6 +204,9 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         # (setting 32) among them; the client's goal, the ending's flag with the finale's clear,
         # holds with it on or off (client/session.py, ENDING_FLAG).
         lines = newgame.plan_text(plan, offer_choice=False).splitlines()
+        # And the seed's amounts, the logic's Energy total among them.
+        amounts = struct.pack("<6h", *slot["amounts"]).hex()
+        self.assertIn(f"expect {newgame.section(save_patch.AMOUNTS):#x} {amounts}", lines)
         for t in (10, 30, 31, 32, 33, 37, 42, 43, 72, 73):
             value = slot["options"][str(t)]
             self.assertIn(f"expect {newgame.section(save_patch.OPTIONS + t):#x} {value:02x}", lines)

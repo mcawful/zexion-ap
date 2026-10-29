@@ -96,7 +96,7 @@ def stamp(time: int, column: int, row: int, slot: int = 3) -> bytes:
 
 def start_blob(column: int, row: int) -> bytes:
     blob = bytearray(0x908)
-    struct.pack_into("<hhh", blob, discs.START_AT, 6, column, row)
+    struct.pack_into("<hhh", blob, 0x310, 6, column, row)  # the start record (save-format.md)
     return bytes(blob)
 
 

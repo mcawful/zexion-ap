@@ -236,7 +236,9 @@ class Session:
             in_start_cell=snap.cell == discs.start_cell(snap.blob),
         )
         # The ending beginning in this load: what is received from now (as a release or collect
-        # on the goal) waits for the next load, not popping up over the ending's cutscenes.
+        # on the goal) waits for the next load, not popping up over the ending's cutscenes. A
+        # load first seen during its ending reads as an ended save loaded again, and is not held
+        # (docs/re/memory.md, "The ending: flag 250": nothing measured tells them apart yet).
         if self._goal_before is False and goal:
             self.holding = True
             self._due = None

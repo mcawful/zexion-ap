@@ -222,7 +222,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
 - `docs/re/`: the reverse-engineering record.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys), and the world's `world_version`.
+  must agree on (version, builds, `config` keys, the flags and layouts both read), and the
+  world's `world_version`.
   `test_build_apworld.py`, `test_gen_world_data.py` and `test_release_check.py` test the
   release builder, the data generator and the release gate.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not

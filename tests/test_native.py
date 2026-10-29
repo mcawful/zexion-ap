@@ -32,6 +32,22 @@ def test_pipe_name_and_default_dll(monkeypatch: pytest.MonkeyPatch) -> None:
     assert native.default_dll() == Path("elsewhere/x.dll")
 
 
+def test_an_apply_request_puts_each_popup_on_one_line() -> None:
+    # The helper reads a request line by line: a player's name with a newline or runs of
+    # spaces (any text the server sends) must not break a popup into another line.
+    cas = [(17, 0, 1), (0, 3, 4)]
+    popups = [(17, "FROM  Bob\nthe\tBold "), (0, ""), (49, " A  hint\n", True), (16, "", True)]
+    assert native.batch_text(cas, popups, refresh=True).splitlines() == [
+        "apply",
+        "cas 17 0 1",
+        "cas 0 3 4",
+        "refresh",
+        "popup 17 FROM Bob the Bold",
+        "popup 0",
+        "notice 49 A hint",
+    ]
+
+
 def test_load_refuses_a_missing_dll(tmp_path: Path) -> None:
     with pytest.raises(native.HelperError, match="build native"):
         native.load(0, 0, tmp_path / "missing.dll")

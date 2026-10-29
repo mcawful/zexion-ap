@@ -68,9 +68,11 @@ class Connection:
     hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
     # Whether this seed's save has had the scanner's message (the disks needed are known).
     discs_told: bool = False
-    # Whether the helper should hold the labels: only while this seed's save is loaded
-    # (aplabels.labels_wanted), so other saves keep Scrap Energy as the game's own.
-    labels_want: bool = False
+    # Whether the helper should dress this seed's save, the labels and the disk count: only
+    # while it is loaded, as the last poll that could tell found it (aplabels.labels_wanted), so
+    # other saves keep Scrap Energy and the scanner's message as the game's own. Unlike
+    # LoadState.seed_loaded, a reconnect to the same seed carries it over (carry_over).
+    dressed: bool = False
     goal_sent: bool = False
     choice_refused: bool = False  # the game's start table differed: no ARCHIPELAGO
     newgame: NewGame | None = None  # None: to arm
@@ -135,16 +137,26 @@ def left_connection(conn: Connection | None, left: Connection | None) -> Connect
     return conn if conn is not None else left
 
 
-def carry_over(conn: Connection, old: Connection | None, same_seed: bool) -> None:
+def carry_over(
+    conn: Connection, old: Connection | None, same_seed: bool, told: HelperState | None = None
+) -> None:
     """A new connection to the same seed and slot as ``old`` (one that dropped, or one a
     disconnect ended): the ending's hold carries over (Session.keep_ending), and ``old``'s
     session (``before``), for how many popups it handed over in case its last count never
     reached the server. Read at the first count (announced_tick), not now: a poll of ``old``
-    may still be handing some over."""
+    may still be handing some over.
+
+    So does what the helper (``told``) holds for the save: whether it is dressed, the labels
+    ``old`` sent (the same seed's and slot's) and whether the scanner's message was had, so a
+    dropped connection takes nothing away to send it again once reconnected. A disconnect has
+    taken them back already (``old.dressed`` False)."""
     if old is None or not same_seed:
         return
     conn.session.keep_ending(old.session)
     conn.before = old.session
+    conn.dressed, conn.discs_told = old.dressed, old.discs_told
+    if told is not None and told.labels_for is old:
+        told.labels_for = conn
 
 
 def end_kept_load(ended: session.Session, conn: Connection | None) -> None:
@@ -155,6 +167,18 @@ def end_kept_load(ended: session.Session, conn: Connection | None) -> None:
     ended.leave()
     if conn is not None and conn.session.carried_from is ended:
         conn.session.leave()
+
+
+def left_while_away(kept: Connection, conn: Connection | None) -> None:
+    """While no connection stepped (a dropped one, or one a disconnect ended), ``kept``'s save
+    was seen to leave (Session.look_away): its load ends (end_kept_load), and the save is
+    undressed, so the helper takes back the labels and the disk count from another save loaded
+    meanwhile; so is the current connection's, if it carried them over (carry_over)."""
+    carried = conn is not None and conn.session.carried_from is kept.session
+    end_kept_load(kept.session, conn)
+    kept.dressed = False
+    if carried:
+        conn.dressed = False
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:

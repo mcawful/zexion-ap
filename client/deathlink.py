@@ -70,6 +70,7 @@ class DeathLink:
         self.dealt_at = now
 
     def ending(self) -> None:
-        """The ending began: the deaths queued are dropped (the game's own damage never kills
-        the player in the ending, and what a death there does is not known)."""
+        """The ending began in this load (session.Session.holding): the deaths queued are
+        dropped (the game's own damage never kills the player in the ending, and what a death
+        there does is not known)."""
         self.owed = 0
