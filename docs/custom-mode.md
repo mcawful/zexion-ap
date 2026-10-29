@@ -4,7 +4,8 @@
 build plan", step B, for what the run covered). `mode:
 custom` and every option below are in the world (`worlds/zexion/options.py`, `custom.py`,
 `world.py`), with starting Mega Bombs refused until the client can give them; Guns First off is built
-and working in game (step E, 2026-10-28), and Secret Shuffle built (step E, not yet run in game).
+and working in game (step E, 2026-10-28), and Secret Shuffle built and partly run in game (step E, 2026-10-28: its 155th location's
+own pickup not yet).
 This page set out how the YAML offers every setting of the game's own randomizer, following
 the game's rules for them, and records what was built. The game's side
 of every statement below is recorded, with its evidence and status, in
@@ -504,7 +505,7 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    owned; a Force Blaster and a Plasma Burst sent from the server's console each set only
    its own byte, with popups naming them; after the reload the client gave back what the
    save lost and left the Pulse Wave, its location uncollected again, in its room (read
-   with `grant.py show`). **Secret Shuffle built, 2026-10-28; not run in game yet:** the
+   with `grant.py show`). **Secret Shuffle built, 2026-10-28; run in game in part (below):** the
    Bomb Box at X48 Y20, "??? 48,20", is location index 154 (`reach.ALL_LOCATIONS`,
    `seed_locations`; `data.SECRET_LOCATION`), so every location keeps its id; its six cells
    joined the region graph as regions 448 to 452 (`tools/gen_world_data.py`,
@@ -516,7 +517,15 @@ Decided (the owner, 2026-10-27), each step a session of its own, reviewed (CI, a
    (`re/randocells.md`, "The pool"). With it off nothing changed: the three presets and
    two Custom seeds generated on `develop` and on the branch, three seeds each, had equal
    multidata (placements, slot data, spheres), the data package aside, which gains the
-   155th's name.
+   155th's name. **In game** (B1, 2026-10-28, `lab/ap/live44` (seed, `server.log`, `iris.log`), helper 0.30.0 built from the branch, client from source): an ARCHIPELAGO new game
+   of a Custom seed with Secret Shuffle on, which RANDO SETTINGS showed on, was taken by
+   the client as the seed's (its 155-entry list in the game's order, table and Secret
+   Shuffle byte); the locations at list positions 133, 135 and 141 (Pulsava 48,14, 49,15
+   and 51,21, location indices 133, 134 and 140) gave the items placed there, S-Blade,
+   Navcore and Power Core, and were checked under their names. Not seen yet: the pickup at
+   the 155th itself (position 134), which the owner left for a later playthrough of the
+   seed (its room is behind a long gauntlet and needs Plasma Burst and 10 Missile
+   Containers).
 
 ## Open questions for the owner
 
