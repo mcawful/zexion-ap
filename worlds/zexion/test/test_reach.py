@@ -104,6 +104,26 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         options[30] = 1
         self.assert_reaches_more(seed, with_settings(seed, options=bytes(options)))
 
+    def test_a_neighbor_looked_at_leads_back_to_the_ways_source(self) -> None:
+        # A way that looks at a neighbor (codes 64 to 67) opens only from its own region
+        # (reach.reach: ``a in reached``). In B1 that test never decides: each neighbor's region
+        # leads back to the way's source with no items. If a build's data changes that, the
+        # test of ``a in reached`` needs a case of its own.
+        settings = preset("standard").settings
+        looking = 0
+        for (a, _), ways in data.ENTRANCES.items():
+            for way in ways:
+                if way is None or way[1] is None:
+                    continue
+                for code, _ in way[0]:
+                    other = logic.neighbor(code, way[1]) if 64 <= code <= 67 else None
+                    if other is None:
+                        continue
+                    looking += 1
+                    with self.subTest(source=a, looks_at=other):
+                        self.assertIn(a, reach.reach(settings, (), (other,)).regions)
+        self.assertEqual(looking, 4)  # B1: region 390's four ways
+
     def test_secret_shuffle_adds_its_location_only_when_on(self) -> None:
         # The 155th location, index 154 (data.SECRET_LOCATION), in six cells only code 68
         # with Secret Shuffle's tier opens (docs/re/locations.md, "The region graph holds what
