@@ -104,9 +104,11 @@ fault found later that day, the Feats screen's note missing when the assist menu
 - Custom mode (the runs and their seeds: [`docs/custom-mode.md`](custom-mode.md), "The build
   plan"; the game's side: [`docs/re/randocells.md`](re/randocells.md), "What each setting does
   in the game"):
-  - Every item started, Start Keys 4, X Crystals, X Blocks and Hints Revealed, as the seed set
-    them; Abridged Finale's ending at the grab of Zexion, with the goal sent by the client:
-    2026-10-27.
+  - A seed with every item started, Start Keys 4, X Crystals, X Blocks and Hints Revealed:
+    RANDO SETTINGS showing the seed's settings, the starting items and the four keys given and
+    the map revealed (X Crystals and X Blocks removing their blocks was seen only in seeds made
+    in the game's menu, with no client); Abridged Finale's ending at the grab of Zexion, with
+    the goal sent by the client: 2026-10-27.
   - The helper's map markers under Obscure Majors, Minors and Class (below): 2026-10-27.
   - Double Teleport's flagged second target, drawn with 27 starting Energy Tanks, offered and
     teleported to; Gates Open, three gates working without keys and R'Talva's appearing only

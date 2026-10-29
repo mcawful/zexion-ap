@@ -470,7 +470,8 @@ class OSInstallDisks(Range):
     """OS Install Disks goal only: how many disks are placed. They replace filler items. Above
     16 in Standard (26 in Easy) they also replace Area Maps, so there are fewer Intel Chips
     (or Area Maps), and above 25 in Standard, Energy Shields. In OHKO they replace filler
-    items only. Excluded locations can hold only filler items, of which Standard keeps 25
+    items only. In Custom they replace them in the same order, the numbers set by your pool.
+    Excluded locations can hold only filler items, of which Standard keeps 25
     minus the disks (Easy 30, OHKO 36): exclude more locations than that, and generation stops
     with an error saying so, unless the other players' filler makes up the difference. Where
     there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
