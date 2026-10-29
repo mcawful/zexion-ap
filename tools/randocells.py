@@ -159,9 +159,11 @@ def reachable_cells(
     reached (``logic.gates_triggered``)."""
     seen: set[tuple[int, int]] = set(start) if isinstance(start, list) else {start}
     while True:
-        if logic.gates_triggered(
-            settings, seen.__contains__, lambda c: collectible(grid, c, have, settings, seen)
-        ):
+
+        def gate(cell: tuple[int, int]) -> bool:
+            return collectible(grid, cell, have, settings, seen)
+
+        if logic.gates_triggered(settings, seen.__contains__, gate, logic.GATE_TRIGGERS):
             seen.update(logic.GATE_TARGETS)
         before = len(seen)
         todo = list(seen)

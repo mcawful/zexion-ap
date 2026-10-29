@@ -116,11 +116,11 @@ def gates_triggered(
     settings: Settings,
     reached: Callable[[Cell], bool],
     collectible: Callable[[Cell], bool],
-    triggers: Sequence[tuple[Cell, bool]] = GATE_TRIGGERS,
+    triggers: Sequence[tuple[Cell, bool]],
 ) -> bool:
-    """Under Gates Open, whether a gate cell of ``triggers`` counts as reached as the game's
-    logic reads it: reached, and for two of them collectible too (0xE6F5C). Then the flood goes
-    on from GATE_TARGETS."""
+    """Under Gates Open, whether a gate cell of ``triggers`` (the game's: GATE_TRIGGERS) counts
+    as reached as the game's logic reads it: reached, and for two of them collectible too
+    (0xE6F5C). Then the flood goes on from GATE_TARGETS."""
     return settings.gates_open and any(
         reached(cell) and (not as_location or collectible(cell)) for cell, as_location in triggers
     )

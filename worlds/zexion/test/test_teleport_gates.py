@@ -84,14 +84,13 @@ class TestGatesOpen(unittest.TestCase):
 
     def test_rtalvas_gate_opens_no_travel(self) -> None:
         # The game's logic counts it; the world does not (the owner's guard, 2026-10-28).
+        # From its cell with no items, the world's flood reaches no gate cell beyond it.
         self.assertIn((reach.RTALVA_GATE, True), logic.GATE_TRIGGERS)
-        settings = logic.Settings(gates_open=True)
-        for cell, opens in ((reach.RTALVA_GATE, False), ((12, 30), True)):
-            reached = cell.__eq__
-            self.assertTrue(logic.gates_triggered(settings, reached, reached))
-            self.assertEqual(
-                logic.gates_triggered(settings, reached, reached, reach.GATE_TRIGGERS), opens
-            )
+        settings = with_settings(preset("standard"), gates_open=True).settings
+        targets = {data.CELL_REGION[c] for c in logic.GATE_TARGETS}
+        got = reach.reach(settings, (), (reach.RTALVA_GATE,)).regions
+        self.assertFalse(targets & got)
+        self.assertLessEqual(targets, reach.reach(settings, (), ((12, 30),)).regions)
 
     def test_every_gate_cell_is_in_the_region_graph(self) -> None:
         for cell, _ in logic.GATE_TRIGGERS:

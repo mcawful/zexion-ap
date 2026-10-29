@@ -48,7 +48,7 @@ STATES = {"start": (1, 0), "random": (1, 1), "pool": (0, 1), "excluded": (0, 0)}
 
 # Settings bytes t (docs/re/randocells.md, "Where each setting is stored").
 FIRST_SETTING = 10  # the menu holds t10 to t73
-GUNS_FIRST, SAFETY, GATES = logic.GUNS_FIRST, logic.SAFETY, logic.GATES  # logic.Settings.of's
+GUNS_FIRST, SAFETY, GATES = logic.GUNS_FIRST, logic.SAFETY, logic.GATES  # logic.Settings.of reads
 COLORIZER, RANDOM_GUN = 12, 15
 BULK_MISSILES, BULK_BOMBS, BOX_COMPRESSION = 16, 17, 28
 X_CRYSTALS, X_BLOCKS, ABRIDGED_FINALE, DOUBLE_TELEPORT, SECRET_SHUFFLE = 30, 31, 32, 33, 37
