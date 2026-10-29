@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import struct
 
-from client import game, ids
+from client import game, ids, state
 from client import save_patch as sp
 
 # --- a fake process and the client's Game on it ---------------------------------------------
@@ -138,6 +138,13 @@ def slot_data(**changes) -> dict:
     return slot
 
 
+def connection(**changes) -> state.Connection:
+    """A connection to the seed of ``slot_data(**changes)`` as slot 1, its items listed."""
+    conn = state.Connection.from_slot_data(slot_data(**changes), team=0, slot=1)
+    conn.items_listed, conn.awaiting_backlog = True, False
+    return conn
+
+
 def menu_setup(**changes) -> sp.MenuSetup:
     """A menu setup of plan()'s mode: a mode with one start."""
     settings = bytearray(64)
@@ -194,10 +201,9 @@ def secret_section(p: sp.SeedPlan) -> bytearray:
     section = bytearray(ids.SECTION_SIZE)
     for i, (x, y) in enumerate(SECRET_LIST):
         struct.pack_into("<HH", section, 4 * i, x, y)
-    section[sp.OPTIONS - sp.SECTION + sp.SECRET_SHUFFLE] = 1
-    table = sp.ITEM_TABLE - sp.SECTION
-    section[table : table + len(p.table)] = p.table
-    struct.pack_into("<3H", section, sp.START_RECORD - sp.SECTION, *p.start)
+    section[sp.OPTIONS_AT + sp.SECRET_SHUFFLE] = 1
+    section[sp.TABLE_AT : sp.TABLE_AT + len(p.table)] = p.table
+    struct.pack_into("<3H", section, sp.START_AT, *p.start)
     return section
 
 

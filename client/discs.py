@@ -130,19 +130,17 @@ def scan_line(required: int) -> str:
 # save at the landing pod, the seed's start.
 POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
 
-# The randomizer section's start record (docs/re/save-format.md, "The continue point and the
-# seed's start"): the start-candidate index less 1, then the start's tile column and row.
-START_AT = save_patch.START_RECORD - save_patch.SECTION
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
 STAMP_ROW_AT = 4 + 6
 
 
 def _start(blob: bytes) -> tuple[int, int] | None:
-    """The start record's (column, row), or None if the blob is too short to hold it."""
-    if len(blob) < START_AT + 6:
+    """The start record's (column, row) (docs/re/save-format.md, "The continue point and the
+    seed's start"), or None if the blob is too short to hold it."""
+    if len(blob) < save_patch.START_AT + 6:
         return None
-    return struct.unpack_from("<2H", blob, START_AT + 2)
+    return struct.unpack_from("<2H", blob, save_patch.START_AT + 2)
 
 
 def start_cell(blob: bytes) -> tuple[int, int]:

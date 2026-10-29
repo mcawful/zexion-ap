@@ -6,9 +6,9 @@ times a second from a worker thread and does the networking.
 
 Safety, in order:
 
-- Nothing happens unless two reads of the game, ``SETTLE_SECONDS`` apart, agree on everything
-  the poll reads (``Snapshot``). That covers a load in progress and the moment a pickup is
-  being recorded.
+- Nothing happens unless two reads of the game, ``game.SETTLE_SECONDS`` apart, agree on
+  everything the poll reads (``Snapshot``). That covers a load in progress and the moment a
+  pickup is being recorded.
 - The loaded save must be a randomizer save (its marker reads 1: loading a normal save leaves
   the previous seed's section in memory) and hold this seed (the section's list size,
   item table and start, see ``save_patch.section_matches``); otherwise no check is sent and
@@ -38,7 +38,6 @@ from . import discs, game, ids, native, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
 
-SETTLE_SECONDS = game.SETTLE_SECONDS
 # The goal: flag 250 with flag 211 clear, the ending begun (docs/re/memory.md, "The ending: flag
 # 250"). The ending sets 250 and clears 185-212, at the ship after the final battle or, under
 # Abridged Finale, soon after the grab. The game's own SKIP ESCAPE AND FINAL BATTLE?, offered
@@ -103,7 +102,7 @@ def save_stamp(g: game.Game) -> bytes:
         return b""
 
 
-def read_settled(g: game.Game, gap: float = SETTLE_SECONDS) -> Snapshot | None:
+def read_settled(g: game.Game, gap: float = game.SETTLE_SECONDS) -> Snapshot | None:
     """A snapshot two reads agree on, or None while something is changing."""
     first = read_once(g)
     time.sleep(gap)
@@ -133,13 +132,11 @@ class Step:
 
 
 class Session:
-    def __init__(self, plan: save_patch.SeedPlan, cells: list):
-        if len(cells) != plan.list_size or plan.check_size():
+    def __init__(self, plan: save_patch.SeedPlan):
+        if not plan.cells or plan.check_size():
             raise ValueError(f"the slot data does not list {plan.list_size} locations")
         self.plan = plan
-        self.cells = [tuple(c) for c in cells]  # by location index
-        # As the game's list holds them (save_patch.game_order).
-        self.listed = [self.cells[i] for i in save_patch.game_order(self.cells)]
+        self.listed = [plan.cells[i] for i in plan.order]  # as the game's list holds them
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
         self.helper: native.Helper | None = None
@@ -164,7 +161,7 @@ class Session:
         self._goal_before, self.holding = before._goal_before, before.holding
         self.carried_from = before
 
-    def look_away(self, g: game.Game, gap: float = SETTLE_SECONDS) -> bool:
+    def look_away(self, g: game.Game, gap: float = game.SETTLE_SECONDS) -> bool:
         """While no step runs (the client disconnected, this session kept for the next
         connection's keep_ending): whether its load has ended, no save loaded (the title, the
         file select, MISSION COMPLETE onward) in two reads, as a step would see. Otherwise a
@@ -188,7 +185,7 @@ class Session:
         self,
         g: game.Game,
         received: list[int],
-        gap: float = SETTLE_SECONDS,
+        gap: float = game.SETTLE_SECONDS,
         senders: list[str] | None = None,
         notes: dict[int, str] | None = None,
     ) -> Step:
@@ -221,7 +218,7 @@ class Session:
             self._due = None
             self.leave()
             return Step(left_seed=True, other_seed=True, state=snap.state)
-        collected = reconcile.collected_locations(snap.grid, self.cells)
+        collected = reconcile.collected_locations(snap.grid, self.plan.cells)
         goal = snap.ended >= 1 and snap.finale == 0
         step = Step(
             collected,
@@ -298,7 +295,7 @@ class Session:
             # as the pickup routine does. Only ever raises them.
             inventory = g.inventory()
             before = reconcile.Supplies(*g.supplies())
-            after = reconcile.supplies_after(inventory, {}, before)
+            after = reconcile.supplies_after(inventory, before)
             if after != before:
                 g.set_supplies(astuple(before), astuple(after))
         except game.GameNotRunning:
@@ -345,7 +342,7 @@ class Session:
                 popups.append((item, f"FROM {sender}" if sender else ""))
         if not owed and not popups:
             before = reconcile.Supplies(*snap.supplies)
-            if reconcile.supplies_after(snap.inventory, {}, before) != before:
+            if reconcile.supplies_after(snap.inventory, before) != before:
                 self.helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]

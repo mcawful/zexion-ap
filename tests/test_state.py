@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from fakes import slot_data
+from fakes import connection, slot_data
 
 from client import discs, game, native, state
 
@@ -34,7 +34,7 @@ def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
 
 
 def test_the_options_off_set_none_of_them() -> None:
-    conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    conn = connection()
     assert conn.hint_targets == []
     assert not conn.lock_assists and not conn.intel_chip and not conn.death_link_on
     assert conn.hunt is None
@@ -174,38 +174,27 @@ def test_leaving_this_seeds_save_says_items_wait() -> None:
 
 
 def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_hold() -> None:
-    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    old = connection()
     old.session.announced, old.session.holding = 7, True
-    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    new = connection()
     state.carry_over(new, old, same_seed=True)
     assert new.before is old.session and new.session.holding
     old.session.announced = 9  # its last poll handed more over after Connected
     assert new.before.announced == 9, "read when the new count starts, not at Connected"
-    other_seed = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    other_seed = connection()
     state.carry_over(other_seed, old, same_seed=False)
     assert other_seed.before is None and not other_seed.session.holding
     state.carry_over(other_seed, None, same_seed=True)
     assert other_seed.before is None
 
 
-def test_a_reconnect_to_the_same_seed_keeps_what_the_helper_holds_for_the_save() -> None:
-    # A dropped connection while this seed's save is loaded: the labels and the disk count stay
-    # with the helper, so the next connection neither takes them back nor sends them again.
-    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    old.dressed, old.discs_told = True, True
-    told = state.HelperState(labels_for=old)
-    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    state.carry_over(new, old, same_seed=True, told=told)
-    assert new.dressed and new.discs_told and told.labels_for is new
-    # Another seed or slot starts undressed, its labels not the helper's.
-    told = state.HelperState(labels_for=old)
-    other_seed = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    state.carry_over(other_seed, old, same_seed=False, told=told)
-    assert not other_seed.dressed and not other_seed.discs_told and told.labels_for is old
-    # Labels the helper holds for another connection stay that connection's.
-    told = state.HelperState(labels_for=other_seed)
-    state.carry_over(new, old, same_seed=True, told=told)
-    assert told.labels_for is other_seed
+def test_a_reconnect_takes_over_only_the_labels_sent_for_the_dropped_connection() -> None:
+    # What else carries over for the helper (the save dressed, the disk count, the labels sent
+    # for the dropped connection) is test_ticks's reconnect tests.
+    other = connection()
+    told = state.HelperState(labels_for=other)
+    state.carry_over(connection(), connection(), same_seed=True, told=told)
+    assert told.labels_for is other
 
 
 def test_reload_mod_says_whether_the_mod_unloaded() -> None:
@@ -223,11 +212,11 @@ def test_reload_mod_says_whether_the_mod_unloaded() -> None:
 
 def test_connects_own_disconnect_keeps_the_connection_a_disconnect_left() -> None:
     # Disconnect, then Connect: Archipelago's connect disconnects first, with no connection.
-    conn = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    conn = connection()
     left = state.left_connection(conn, None)
     assert left is conn
     assert state.left_connection(None, left) is conn, "the one left is not forgotten"
-    newer = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+    newer = connection()
     assert state.left_connection(newer, left) is newer
 
 
@@ -281,39 +270,21 @@ def test_a_guard_still_off_in_play_is_said_once() -> None:
     assert state.FeatsCheck().seen("", True, 0.0, said) is None, "no field: as off"
 
 
-def test_a_save_left_during_a_drop_is_undressed() -> None:
-    # The connection dropped with this seed's save loaded; the player went back to the title
-    # (Session.look_away): the labels and the disk count go, even from a connection that
-    # carried them over meanwhile.
-    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    old.dressed, old.session._goal_before = True, False
-    state.left_while_away(old, old)  # still the dropped one: ctx.conn
-    assert not old.dressed and old.session._goal_before is None
-    old.dressed = True
-    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
+def test_a_load_ended_while_away_ends_and_undresses_for_both() -> None:
+    # The connection dropped with this seed's save loaded, and the player went back to the
+    # title (Session.look_away, in a thread): the ending's hold, the labels and the disk count
+    # go, from a connection that carried them over meanwhile (Connected) too.
+    old = connection()
+    old.dressed, old.session.holding, old.session._goal_before = True, True, True
+    new = connection()
     state.carry_over(new, old, same_seed=True)
-    state.left_while_away(old, new)
-    assert not old.dressed and not new.dressed
-    # A connection that did not carry it over keeps its own.
-    other = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    other.dressed = True
-    state.left_while_away(old, other)
-    assert other.dressed
-
-
-def test_a_load_ended_while_a_reconnect_carried_it_ends_for_both() -> None:
-    # Session.look_away ran in a thread while Connected carried the ending over.
-    old = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    old.session.holding, old.session._goal_before = True, True
-    new = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    state.carry_over(new, old, same_seed=True)
-    assert new.session.holding and new.session.carried_from is old.session
-    state.end_kept_load(old.session, new)
-    assert not old.session.holding and not new.session.holding
-    assert new.session._goal_before is None
-    # One carried from no other (or that has stepped since: step clears it) is its own.
-    other = state.Connection.from_slot_data(slot_data(), team=0, slot=1)
-    other.session.holding = True
-    state.end_kept_load(old.session, other)
-    assert other.session.holding
-    state.end_kept_load(old.session, None)
+    assert new.dressed and new.session.holding and new.session.carried_from is old.session
+    state.end_kept_load(old, new)
+    assert not old.dressed and not old.session.holding and old.session._goal_before is None
+    assert not new.dressed and not new.session.holding and new.session._goal_before is None
+    # One carried from no other (or that has stepped since: step clears it) keeps its own.
+    other = connection()
+    other.dressed, other.session.holding = True, True
+    state.end_kept_load(old, other)
+    assert other.dressed and other.session.holding
+    state.end_kept_load(old, None)

@@ -122,9 +122,9 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
     Sent when that changes, or to a new helper."""
     helper, told, conn = ctx.helper, ctx.told, ctx.conn
     hunt = conn.hunt if conn is not None else None
-    if hunt is not None and conn.dressed and not conn.items_listed:
-        return  # the items not listed yet, or a dropped connection: the count waits for them
     if hunt is not None and conn.dressed:
+        if not conn.items_listed:
+            return  # the items not listed yet, or a dropped connection: the count waits
         have = discs.owned(hunt, p.codes, p.found)
         want = discs.request(have, hunt.required, conn.discs_told)
     else:
@@ -194,7 +194,7 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
             text = aplabels.zexion_label(item, player, name)
         else:
             text = aplabels.label(bool(info.flags & aplabels.PROGRESSION), player)
-        labels[tuple(conn.session.cells[i])] = text
+        labels[conn.plan.cells[i]] = text
     return labels, own
 
 
@@ -237,7 +237,7 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
     disc_info = None
     if hunt is not None:
         have = discs.owned(hunt, p.codes, p.found)
-        unfound = offline.grid_cells(conn.session.cells, hunt.locations - set(p.found))
+        unfound = offline.grid_cells(conn.plan.cells, hunt.locations - set(p.found))
         disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
     return offline.seed_text(
         conn.plan.table,
@@ -449,11 +449,12 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
             log.warning(f"DeathLink: sending the death failed ({exc}).")
     conn = ctx.conn
     if deaths.owed and conn is not None and conn.session.holding:
-        # Only while the ending that began in this load runs (Session.holding): a save past
-        # its ending loaded again later deals them as any load does. A load first seen during
-        # its ending reads the same as that later load, so deaths are dealt there too (the
-        # known gap: docs/re/memory.md, "The ending: flag 250").
-        deaths.ending()
+        # The game's own damage never kills the player in the ending, and what a death there
+        # does is not known: dropped, only while the ending that began in this load runs
+        # (Session.holding). A save past its ending loaded again later deals them as any load
+        # does. A load first seen during its ending reads the same as that later load, so
+        # deaths are dealt there too (the known gap: docs/re/memory.md, "The ending: flag 250").
+        deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
     if not deaths.owed or helper is None or state_now != game.IN_PLAY or now < seed.death_retry_at:

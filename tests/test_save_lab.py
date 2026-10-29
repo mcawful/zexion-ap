@@ -80,10 +80,14 @@ def test_backup_copies_everything_with_hashes(saves: Path) -> None:
     assert (dest / "Save Game 1.sav").read_bytes() == (saves / "Save Game 1.sav").read_bytes()
 
 
-def test_install_requires_yes_backup_and_empty_slot(saves: Path, tmp_path: Path) -> None:
-    patched = tmp_path / "patched.sav"
-    patched.write_bytes(b"\xe8\x03" + b"\x2e" * (SIZE - 2))
+def _patched(tmp_path: Path) -> Path:
+    path = tmp_path / "patched.sav"
+    path.write_bytes(b"\xe8\x03" + b"\x2e" * (SIZE - 2))
+    return path
 
+
+def test_install_requires_yes_backup_and_empty_slot(saves: Path, tmp_path: Path) -> None:
+    patched = _patched(tmp_path)
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1  # no backup yet
     save_lab.backup()
     # With everything else in place, so only the missing --yes refuses it.
@@ -95,12 +99,6 @@ def test_install_requires_yes_backup_and_empty_slot(saves: Path, tmp_path: Path)
     assert (saves / "Save Game 3.sav").read_bytes() == patched.read_bytes()
     # Slot 3 now holds the installed save, so a second install there is refused as in use.
     assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
-
-
-def _patched(tmp_path: Path) -> Path:
-    path = tmp_path / "patched.sav"
-    path.write_bytes(b"\xe8\x03" + b"\x2e" * (SIZE - 2))
-    return path
 
 
 def _edit_manifest(backup: Path, change) -> None:

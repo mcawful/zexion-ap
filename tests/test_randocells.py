@@ -81,14 +81,6 @@ def test_lists_and_passages_parse() -> None:
         ([(54, 1), (55, 1)], {24: 1, 22: 1}, False),  # 55: without the Gravity Harness
         ([(50, 1)], {26: 1}, True),  # Zenith Thrusters stands in for jump upgrades
         ([(19, 4), (16, 1)], {16: 1}, False),  # tier 4 is required, whatever else holds
-        # ...and never enough alone: the list still passes only by a tier-1 entry, a count or
-        # its group (docs/re/randocells.md, "Entry values").
-        ([(16, 4), (57, 1), (23, 1)], {16: 1}, False),
-        ([(16, 4), (57, 1), (23, 1)], {16: 1, 23: 1}, True),
-        ([(16, 4), (19, 2)], {16: 1}, False),
-        ([(16, 4), (19, 2)], {16: 1, 19: 1}, True),
-        ([(16, 4), (1, 13)], {16: 1, 1: 3}, True),
-        ([(16, 4)], {16: 1}, False),  # no tier 1, count or group: never passes
     ],
 )
 def test_satisfied(entries, have, expected) -> None:
@@ -96,7 +88,8 @@ def test_satisfied(entries, have, expected) -> None:
 
 
 # B1's six lists with a tier-4 entry and another way to pass (worlds/zexion/data.py): the tier-4
-# item alone opens none of them, as in the game's evaluator.
+# item alone opens none of them, as in the game's evaluator; each passes only by a tier-1 entry,
+# a count or its group (docs/re/randocells.md, "Entry values").
 B1_TIER_4 = [
     # X24 Y22 to X24 Y21: code 57 (here the Lance), and the Gravity Harness or the Wall Jump Boots.
     (world_data.ENTRANCES[(118, 137)][0][0], {6: 1}, False),

@@ -93,7 +93,7 @@ class Connection:
                 slot=slot,
                 mode=str(slot_data["mode"]),
                 plan=plan,
-                session=session.Session(plan, slot_data["locations"]),
+                session=session.Session(plan),
                 kept=kept,
                 foreign=aplabels.foreign_locations(
                     slot_data["location_items"], kept, aplabels.stand_ins(slot_data)
@@ -159,26 +159,19 @@ def carry_over(
         told.labels_for = conn
 
 
-def end_kept_load(ended: session.Session, conn: Connection | None) -> None:
-    """``ended``'s load has ended (its save left, or the game closed), found by a read in a
-    thread (Session.look_away, or a step raising GameNotRunning). A reconnect may have carried
-    its ending over meanwhile (carry_over): the current connection's session too, then, if it
-    has not stepped since (polls run one at a time, so it cannot have yet)."""
-    ended.leave()
-    if conn is not None and conn.session.carried_from is ended:
-        conn.session.leave()
-
-
-def left_while_away(kept: Connection, conn: Connection | None) -> None:
-    """While no connection stepped (a dropped one, or one a disconnect ended), ``kept``'s save
-    was seen to leave (Session.look_away): its load ends (end_kept_load), and the save is
-    undressed, so the helper takes back the labels and the disk count from another save loaded
-    meanwhile; so is the current connection's, if it carried them over (carry_over)."""
-    carried = conn is not None and conn.session.carried_from is kept.session
-    end_kept_load(kept.session, conn)
-    kept.dressed = False
-    if carried:
-        conn.dressed = False
+def end_kept_load(kept: Connection, conn: Connection | None) -> None:
+    """``kept``'s load has ended (its save left, or the game closed), found by a read in a
+    thread (Session.look_away, or a step raising GameNotRunning): its session leaves the load,
+    and the save is undressed, so the helper takes back the labels and the disk count from any
+    save loaded next. A reconnect may have carried both over meanwhile (carry_over): the
+    current connection's too, then, if it has not stepped since (polls run one at a time, so
+    it cannot have yet)."""
+    ended = [kept]
+    if conn is not None and conn.session.carried_from is kept.session:
+        ended.append(conn)
+    for c in ended:
+        c.session.leave()
+        c.dressed = False
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:

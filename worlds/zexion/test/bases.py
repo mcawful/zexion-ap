@@ -17,6 +17,12 @@ def preset(name: str) -> reach.Seed:
     return reach.Seed.of(settings, mode["start_inventory"], mode["pool"])
 
 
+def every_list() -> list[tuple]:
+    """Every requirement list in the data: the ways', the locations' and the core's."""
+    lists = [way[0] for ways in data.ENTRANCES.values() for way in ways if way is not None]
+    return lists + list(data.LOCATION_RULES.values()) + [way[0] for way in data.CORE["needs"]]
+
+
 def with_settings(seed: reach.Seed, **changes) -> reach.Seed:
     return replace(seed, settings=replace(seed.settings, **changes))
 

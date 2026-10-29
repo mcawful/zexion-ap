@@ -43,7 +43,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-from . import aplabels, discs, game, ids, native, session, shields, state, ticks  # noqa: E402
+from . import aplabels, discs, game, ids, native, shields, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 from .storage import announced_tick, hint_notes, hints_tick, own_found, store_found  # noqa: E402
 from .ticks import (  # noqa: E402
@@ -327,15 +327,14 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.said.clear("loop")
 
 
-def game_closed(ctx: ZexionContext, current: session.Session) -> None:
+def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
     """The attached game has exited: nothing of this game's carries into the next one's,
-    ``current``'s load (the ending's hold) included."""
+    ``kept``'s load (the ending's hold, and the save dressed: the next game's helper is not to
+    dress a save at its title) included."""
     logger.info("Zexion has closed.")
     ctx.shields.left()
     ctx.load.leave()
-    if ctx.conn is not None:
-        ctx.conn.dressed = False  # the next game's helper is not to dress a save at its title
-    state.end_kept_load(current, ctx.conn)
+    state.end_kept_load(kept, ctx.conn)
     with contextlib.suppress(Exception):
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
@@ -347,15 +346,15 @@ async def away_tick(ctx: ZexionContext) -> None:
     """While no connection steps a session (disconnected, or dropped): the one kept for the
     next connection (connected, state.carry_over) still sees its save leave, so the ending's
     hold it carries is one of the load still loaded (Session.look_away), and the helper takes
-    back what it held for the save (state.left_while_away)."""
+    back what it held for the save (state.end_kept_load)."""
     kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
     if kept is None or ctx.game_conn is None:
         return
     try:
         if await asyncio.to_thread(kept.session.look_away, ctx.game_conn):
-            state.left_while_away(kept, ctx.conn)
+            state.end_kept_load(kept, ctx.conn)
     except game.GameNotRunning:
-        game_closed(ctx, kept.session)
+        game_closed(ctx, kept)
     except game.GameError as exc:  # looked at again on the next poll
         log.debug(f"Reading Zexion while disconnected failed: {exc}")
 
@@ -430,7 +429,7 @@ async def poll(ctx: ZexionContext) -> None:
             current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes
         )
     except game.GameNotRunning:
-        game_closed(ctx, current)
+        game_closed(ctx, conn)
         return
     except game.GameError as exc:
         if ctx.said("read", "failing"):  # said again only after a read that worked

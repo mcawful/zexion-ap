@@ -7,7 +7,7 @@ import unittest
 from dataclasses import replace
 
 from .. import data, logic, reach
-from .bases import preset, with_settings
+from .bases import every_list, preset, with_settings
 
 
 def sphere0_rooms(seed: reach.Seed) -> list[frozenset[int]]:
@@ -181,14 +181,7 @@ class TestBoxesInTheRules(unittest.TestCase):
         self.assertTrue(logic.satisfied([(18, 1)], {18: 1, 1: 5}))
 
     def test_no_list_has_a_box_entry(self) -> None:
-        lists = [
-            entries
-            for ways in data.ENTRANCES.values()
-            for way in ways
-            if way
-            for entries in way[:1]
-        ]
-        lists += list(data.LOCATION_RULES.values()) + [way[0] for way in data.CORE["needs"]]
+        lists = every_list()
         self.assertTrue(lists)
         boxes = [entries for entries in lists if {36, 37} & {code for code, _ in entries}]
         self.assertEqual(boxes, [])

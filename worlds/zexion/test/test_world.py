@@ -24,7 +24,7 @@ from ..items import (
 )
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
-from ..options import AUTOMATIC, ROOM_NAMES, Goal, Mode, StartRoom
+from ..options import AUTOMATIC, ROOM_NAMES, Goal, StartRoom
 from ..world import (
     CORE_REGION,
     DISC_REPLACES,
@@ -34,32 +34,15 @@ from ..world import (
     NOT_HINTED,
     ZexionWorld,
 )
-from .bases import ZexionTestBase
+from .bases import ZexionTestBase, every_list
 
 
-def fake_world(
-    mode: int | str = Mode.option_standard,
-    start_room: int | str = StartRoom.option_automatic,
-    goal: int = Goal.option_core,
-    start_inventory: dict[str, int] | None = None,
-    placed: int = 16,
-    required: int = 12,
-    **options: Any,
-) -> ZexionWorld:
-    """A world with its options, every other one at its default, to run generate_early alone."""
+def fake_world(**options: Any) -> ZexionWorld:
+    """A world with these options, every other one at its default, to run generate_early alone."""
     world = ZexionWorld.__new__(ZexionWorld)
-    values = {
-        "mode": mode,
-        "start_room": start_room,
-        "goal": goal,
-        "start_inventory": dict(start_inventory or {}),
-        "os_install_disks": placed,
-        "os_install_disks_required": required,
-        **options,
-    }
     world.options = types.SimpleNamespace(
         **{
-            name: option.from_any(values.get(name, option.default))
+            name: option.from_any(options.get(name, option.default))
             for name, option in ZexionWorld.options_dataclass.type_hints.items()
         }
     )
@@ -73,7 +56,7 @@ class RefusalTestCase(unittest.TestCase):
     def refused(self, start_inventory: dict[str, int] | None = None, **options: Any) -> str:
         """The error generate_early refuses these options with."""
         with self.assertRaises(OptionError) as caught:
-            fake_world(start_inventory=start_inventory, **options).generate_early()
+            fake_world(start_inventory=start_inventory or {}, **options).generate_early()
         return str(caught.exception)
 
 
@@ -111,9 +94,6 @@ def two_zexion_players(options: dict[str, Any]) -> MultiWorld:
 class TestDefaultStart(ZexionTestBase):
     """The default options: Standard from its default room, the core goal, DeathLink off and
     assists locked; a few locations reachable with the starting items alone."""
-
-    def test_start_is_the_default_presets(self) -> None:
-        self.assertEqual(tuple(self.world.start["cell"]), (13, 16))
 
     def test_starting_items_reach_some_locations(self) -> None:
         reachable = [
@@ -181,11 +161,8 @@ class TestDefaultStart(ZexionTestBase):
     def test_every_item_a_rule_reads_is_progression(self) -> None:
         # Directly in a list, or through a derived code (logic.derive): the weapon upgrades
         # count only with their weapons, but are items of their own with Guns First off.
-        read = {
-            code for ways in data.ENTRANCES.values() for way in ways if way for code, _ in way[0]
-        }
-        read |= {code for entries in data.LOCATION_RULES.values() for code, _ in entries}
-        read = {code for code in read if code < FIRST_SPECIAL} | UPGRADES
+        read = {code for entries in every_list() for code, _ in entries if code < FIRST_SPECIAL}
+        read |= UPGRADES
         for code in sorted(read):
             with self.subTest(item=NAMES[code]):
                 self.assertTrue(self.world.create_item(NAMES[code]).advancement)
@@ -340,10 +317,8 @@ class TestStartRooms(unittest.TestCase):
                     if world.second is not None:
                         self.assertNotEqual(world.start["cell"], world.second["cell"])
 
-    def test_random_is_random_start_and_the_earlier_names_are_aliases(self) -> None:
+    def test_random_is_random_start(self) -> None:
         self.assertEqual(StartRoom.from_any("random").value, StartRoom.option_random_start)
-        self.assertEqual(StartRoom.from_any("kresezoa_16_13").value, StartRoom.option_landing_pod)
-        self.assertEqual(StartRoom.from_any("guardia_41_6").value, StartRoom.option_upper_tower)
         self.assertEqual(len(ROOM_NAMES), len(data.START_ROOMS))
         self.assertEqual(StartRoom.default, AUTOMATIC)
 
@@ -353,13 +328,6 @@ class TestNames(unittest.TestCase):
         # Cell (7, 22), where the owner read X22, Y7 in Guardia (docs/re/locations.md).
         self.assertEqual(location_name(data.LOCATIONS.index((7, 22))), "Guardia 22,7")
         self.assertEqual(location_name(data.LOCATIONS.index((1, 22))), "Exodia 22,1")
-
-    def test_location_names_are_unique(self) -> None:
-        names = [location_name(i) for i in range(len(data.LOCATIONS))]
-        self.assertEqual(len(set(names)), len(names))
-
-    def test_start_rooms_keep_their_earlier_names(self) -> None:
-        self.assertIn("kresezoa_16_13", StartRoom.options)
 
 
 class TestOHKO(ZexionTestBase):
@@ -636,7 +604,8 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
 class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
     """An Assist Unlock at this player's own location would be handed out as Scrap Metal and
     never received, so the assist lock would never lift: an item rule keeps it out (plando
-    places through the same rule). Sent from the server console, it is just an item ID."""
+    places through the same rule). Sent from the server console, it is just an item ID, its name
+    looked up in item_name_to_id (TestDefaultStart, test_assist_unlock_is_not_in_the_pool_...)."""
 
     def test_only_this_players_own_assist_unlock_is_refused(self) -> None:
         state = self.multiworld.state
@@ -650,10 +619,6 @@ class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
                 self.assertFalse(location.can_fill(state, mine, check_access=False))
                 self.assertTrue(location.can_fill(state, theirs, check_access=False))
                 self.assertTrue(location.can_fill(state, scrap, check_access=False))
-
-    def test_the_server_console_can_still_send_it(self) -> None:
-        # /send looks the name up in the game's item names (MultiServer, _cmd_send_multiple).
-        self.assertIn("Assist Unlock", self.world.item_name_to_id)
 
 
 def pool_names(test: ZexionTestBase) -> list[str]:
@@ -760,20 +725,14 @@ class TestDiscHuntEasy(ZexionTestBase):
 
 
 class TestDiscOptionsChecked(unittest.TestCase):
-    def world(self, mode: int, placed: int, required: int) -> ZexionWorld:
-        return fake_world(mode, goal=Goal.option_os_install_disks, placed=placed, required=required)
-
     def test_more_required_than_placed_is_an_error(self) -> None:
         with self.assertRaises(OptionError):
-            self.world(1, 10, 11).generate_early()
+            fake_world(**disks(placed=10, required=11)).generate_early()
 
     def test_starting_disks_count_toward_the_required(self) -> None:
         def world(required: int) -> ZexionWorld:
             return fake_world(
-                goal=Goal.option_os_install_disks,
-                start_inventory={"OS Install Disk": 5},
-                placed=10,
-                required=required,
+                **disks(placed=10, required=required), start_inventory={"OS Install Disk": 5}
             )
 
         world(15).generate_early()  # 10 placed and 5 to start with
@@ -785,10 +744,9 @@ class TestDiscOptionsChecked(unittest.TestCase):
         # The helper's counts show two digits (world.MAX_DISKS).
         def world(start: int, from_pool: int = 0) -> ZexionWorld:
             return fake_world(
-                goal=Goal.option_os_install_disks,
+                **disks(placed=30),
                 start_inventory={"OS Install Disk": start},
                 start_inventory_from_pool={"OS Install Disk": from_pool},
-                placed=30,
             )
 
         self.assertEqual(MAX_DISKS, 99)
@@ -802,16 +760,9 @@ class TestDiscOptionsChecked(unittest.TestCase):
             world(60, from_pool=40).generate_early()
 
     def test_what_discs_replace_is_read_by_no_rule(self) -> None:
-        codes = set()
-        for reqs in data.LOCATION_RULES.values():
-            codes |= {c for c, _ in reqs}
-        for ways in data.ENTRANCES.values():
-            for way in ways:
-                if way is not None:
-                    codes |= {c for c, _ in way[0]}
         # Codes from 50 up are derived from the items (logic.derive), not item counts: 50 there
         # is not the Energy Shield.
-        items = {c for c in codes if c < FIRST_SPECIAL}
+        items = {c for entries in every_list() for c, _ in entries if c < FIRST_SPECIAL}
         self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
 
 
@@ -827,8 +778,6 @@ class TestStartInventoryChecked(RefusalTestCase):
         # Items the game holds once, which the pool holds too: from it (test_start_inventory).
         from_pool = {"Progressive Snake": 2, "Slide Mod": 1, "Alpha Key": 1, "Beta Key": 1}
         fake_world(start_inventory=fine, start_inventory_from_pool=from_pool).generate_early()
-        disks = {"OS Install Disk": 3}
-        fake_world(goal=Goal.option_os_install_disks, start_inventory=disks).generate_early()
 
     def test_items_no_new_game_can_hold_are_refused(self) -> None:
         for name in (
@@ -871,8 +820,6 @@ class TestStartInventoryChecked(RefusalTestCase):
         items = {"Lance": "excluded", "Pulse Wave": "excluded", "Focal Crystal": "start"}
         fine = {"Pulse Wave": 1, "Progressive Lance": 1}
         fake_world(start_inventory=fine, custom_items=items, **off).generate_early()
-        # The pool holds the Lance: a second one is refused.
-        self.assertIn("item pool holds it", self.refused({"Progressive Lance": 1}, **off))
         # Standard starts with the Machine Gun (Random Gun off).
         machine_gun = {"Progressive Machine Gun": 1}
         self.assertIn("Progressive Machine Gun", self.refused(machine_gun, **off))

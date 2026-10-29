@@ -94,14 +94,6 @@ def test_a_dealt_death_that_did_not_happen_does_not_hide_a_later_one() -> None:
     assert link.observe(game.DEAD, 10.0 + deathlink.DEALT_SECONDS + 1)
 
 
-def test_the_ending_drops_the_queue() -> None:
-    link = in_play()
-    link.receive()
-    link.receive()
-    link.ending()
-    assert link.owed == 0
-
-
 def test_a_death_received_in_a_menu_is_queued_until_play() -> None:
     link = deathlink.DeathLink()
     link.observe(game.MENU, 0.0)

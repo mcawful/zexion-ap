@@ -48,6 +48,8 @@ SECOND_START = 0x12EE0  # the same, for the second teleport target
 AMOUNTS = 0x12ED4  # starting and pool Energy, missiles, bombs (six 16-bit values)
 OPTIONS = 0x1308F  # setting t at OPTIONS + t
 GUNS_FIRST = 10  # setting t10: the item redirects (docs/re/randocells.md)
+# The same places from the section's start, as the game holds it loaded (game.Game.rando_blob).
+TABLE_AT, START_AT, OPTIONS_AT = ITEM_TABLE - SECTION, START_RECORD - SECTION, OPTIONS - SECTION
 
 SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
@@ -257,8 +259,8 @@ def patch(save: bytes, plan: SeedPlan) -> bytes:
 def section_matches(section: bytes, plan: SeedPlan) -> bool:
     """Whether a randomizer section (as loaded in memory, from SECTION) holds this seed: its
     list's size (Secret Shuffle's byte), item table and start."""
-    if bool(section[OPTIONS - SECTION + SECRET_SHUFFLE]) != (plan.list_size > LOCATIONS):
+    if bool(section[OPTIONS_AT + SECRET_SHUFFLE]) != (plan.list_size > LOCATIONS):
         return False
-    table = section[ITEM_TABLE - SECTION : ITEM_TABLE - SECTION + plan.list_size]
-    start = struct.unpack_from("<3H", section, START_RECORD - SECTION)
+    table = section[TABLE_AT : TABLE_AT + plan.list_size]
+    start = struct.unpack_from("<3H", section, START_AT)
     return bytes(table) == plan.table and tuple(start) == plan.start

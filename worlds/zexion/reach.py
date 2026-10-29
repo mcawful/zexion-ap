@@ -1,26 +1,12 @@
-"""What a seed's settings and items reach, worked out when the seed is generated.
-
-The world keeps the locations the game's logic reaches with every item from the seed's start
-(and its second teleport target), creates the regions that reach takes, and judges start rooms
-by what they reach (worlds/zexion/world.py, ``passes``; docs/re/locations.md, "Which start rooms
-the world offers"). All of it depends on the seed's settings (``logic.Settings``: the Energy
-total, Safety, code 68's settings and Gates Open), so it is worked out here, over the region
-graph ``data.py`` holds, rather than read from per-mode lists. ``data.MODES`` still lists each
-mode's results, computed cell by cell by ``tools/gen_world_data.py``; the world's tests compare
-these with them.
-
-The flood is the game's (``tools/randocells.py``, ``reachable_cells``) on regions instead of
-cells: a region is cells joined by passages that are always open, so reaching one cell of it
-reaches all. A way between regions passes when its requirement list does, checked where it
-leaves from; a list with codes 64 to 67 looks at whether a neighboring cell is reached, so the
-flood repeats until nothing new is reached. Under Gates Open, once a gate cell is reached the
-flood goes on from the gate cells too, as the game's logic does (``logic.gates_triggered``); a
-second teleport target counts as the logic counts it (``logic.second_counts``). The two agree
-over the graph's cells, those every item reaches in some mode, or with X Crystals, X Blocks or
-Secret Shuffle on; a passage to a cell outside it is not followed, so where Abridged Finale leads
-into the core (docs/re/locations.md, "The region graph holds what the settings reach"), the
-result is less than the game's, never more. Results are cached by settings, inventory and
-starts, so a multiworld of many Zexion players with one mode works each out once.
+"""What a seed's settings and items reach, worked out when the seed is generated: the locations
+the world keeps, the regions it creates and what its start rooms are judged by (worlds/zexion/
+world.py). The flood is the game's (``tools/randocells.py``, ``reachable_cells``) on the region
+graph ``data.py`` holds instead of on cells, under the seed's ``logic.Settings``; how it works,
+and where it stops short of the game's, never past it: docs/re/locations.md, "The world works
+out what a seed reaches when it is generated" and "The region graph holds what the settings
+reach". ``data.MODES`` keeps each mode's results computed cell by cell, for the tests. Results
+are cached by settings, inventory and starts, so many Zexion players with one mode work each
+out once.
 
 Pure Python with no Archipelago imports.
 """
@@ -60,21 +46,6 @@ def collected(start_inventory: Mapping[int, int], guns_first: bool = True) -> di
     return have
 
 
-def every_item(
-    start_inventory: Mapping[int, int], pool: Iterable[int], guns_first: bool = True
-) -> Inventory:
-    """The starting items and every item of the pool, counted as the game's generator counts
-    them (with Guns First, a weapon picked up twice as its upgrade: ``logic.collect``)."""
-    have = collected(start_inventory, guns_first)
-    for item in pool:
-        logic.collect(have, item, guns_first)
-    return inventory(have)
-
-
-def _neighbor_codes(entries: tuple[logic.Entry, ...]) -> bool:
-    return any(64 <= code <= 67 for code, _ in entries)
-
-
 @cache
 def _ways(settings: logic.Settings, have: Inventory) -> tuple[dict, list]:
     """The region graph's ways for one inventory: the regions each region opens onto whatever
@@ -89,7 +60,7 @@ def _ways(settings: logic.Settings, have: Inventory) -> tuple[dict, list]:
                 fixed.setdefault(a, set()).add(b)
                 continue
             entries, cell = way
-            if _neighbor_codes(entries):
+            if any(64 <= code <= 67 for code, _ in entries):
                 looking.append((a, b, way))
             elif logic.satisfied(entries, counts, settings, cell):
                 fixed.setdefault(a, set()).add(b)
@@ -120,11 +91,8 @@ def collectible(
 
 
 # R'Talva's gate: the game's logic lets reaching it open the gate travel (logic.GATE_TRIGGERS),
-# but its script does nothing until its visited flag 307 is set, which outside Unlocked waits
-# for flag 155 (by the menu's blurb, Aesos beaten; docs/re/randocells.md, "What each setting
-# does in the game"). The world leaves it out, stricter than the game's logic (decided, the
-# owner, 2026-10-28): in game the fourth gate appears only after a boss (2026-10-28), so a seed
-# that counted on it early could not be beaten.
+# but in game the gate appears only after a boss, so the world leaves it out (a guard, decided
+# 2026-10-28: docs/re/locations.md, "Where the world departs from the game").
 RTALVA_GATE = (51, 34)
 GATE_TRIGGERS = tuple(t for t in logic.GATE_TRIGGERS if t[0] != RTALVA_GATE)
 
@@ -184,9 +152,14 @@ class Seed:
     def of(
         cls, settings: logic.Settings, start_inventory: Mapping[int, int], pool: Iterable[int]
     ) -> Seed:
+        # Every item: the starting items, then the pool, as the game's generator counts them
+        # (with Guns First, a weapon picked up twice as its upgrade: ``logic.collect``).
         guns_first = settings.guns_first
-        start = inventory(collected(start_inventory, guns_first))
-        return cls(settings, start, every_item(start_inventory, pool, guns_first))
+        have = collected(start_inventory, guns_first)
+        start = inventory(have)
+        for item in pool:
+            logic.collect(have, item, guns_first)
+        return cls(settings, start, inventory(have))
 
     def every(self, *starts: Cell) -> Reach:
         """What every item reaches from these starts."""
@@ -222,15 +195,12 @@ def _cells(have: Inventory, start: dict, second: dict | None) -> tuple[Cell, ...
 
 
 def second_starts(seed: Seed, start: dict, rooms: Iterable[dict]) -> list[dict]:
-    """The rooms that can be the second teleport target for ``start``. The game draws from
-    every room but the start, flagged ones too. The world takes a flagged room only when the
-    logic counts it from the start (``logic.second_counts`` with the starting items: a useful-item
-    score of 27), since one the logic counts only later adds nothing to sphere 0, and
-    Archipelago's fill then failed 28 times in 360 OHKO generations, against none in 680 with
-    an unflagged room (decided, the owner, 2026-10-28; docs/re/locations.md, "OHKO: two starts,
-    and only the locations they reach"). Of those, it keeps the rooms with which the starting
-    items collect at least one location (``Seed.sphere0_from``), the game's one-location rule
-    for a start."""
+    """The rooms that can be the second teleport target for ``start``: every room but the start,
+    as the game draws, but a flagged room only when the logic counts it from the start
+    (``logic.second_counts`` with the starting items; a guard, decided 2026-10-28:
+    docs/re/locations.md, "OHKO: two starts, and only the locations they reach"), and of those
+    the rooms with which the starting items collect a location (``Seed.sphere0_from``), the
+    game's one-location rule for a start."""
     alone = bool(seed.sphere0(start["cell"]).locations)
     return [
         room

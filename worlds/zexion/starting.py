@@ -43,7 +43,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 
 from .custom import MAX_AMMO as MAX_MISSILES
-from .custom import MAX_ENERGY
+from .custom import MAX_ENERGY, MENU_CODES
 from .items import (
     ASSIST_UNLOCK,
     DATA_DISC,
@@ -58,10 +58,9 @@ from .items import (
 from .logic import ENERGY_TANK, MISSILE_BOX, MISSILE_CONTAINER
 
 MAX_CONTAINERS = 9
-# The new game's start-with array (client/newgame.py, START_WITH_ORDER), less the upgrades,
-# which with Guns First this world hands out as a progressive weapon's second copy.
-START_WITH = frozenset({3, 4, 5, 6, 7, 8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26})
-START_WITH |= {32, 33, 34}
+# The new game's start-with array (the menu's items; client/newgame.py, START_WITH_ORDER), less
+# the upgrades, which with Guns First this world hands out as a progressive weapon's second copy.
+START_WITH = frozenset(MENU_CODES) - UPGRADES
 # The items the game holds as a count (client/reconcile.py, COUNTED). Every other is held once,
 # its inventory byte 0 or 1; with Guns First a progressive weapon is held twice, as the weapon
 # and its upgrade, a byte each. The OS Install Disk is counted by the client, never held.

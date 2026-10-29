@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import types
 
-from fakes import slot_data
+from fakes import connection
 
 from client import state, storage
 
@@ -32,12 +32,6 @@ class FakeContext:
         if self.fail:
             raise ConnectionError("the connection is closing")
         self.sent.extend(msgs)
-
-
-def connection(**changes) -> state.Connection:
-    conn = state.Connection.from_slot_data(slot_data(**changes), team=0, slot=1)
-    conn.items_listed = True
-    return conn
 
 
 def stored(ctx: FakeContext) -> list[dict]:
@@ -107,3 +101,18 @@ def test_the_hints_given_are_created_again_once_a_connection() -> None:
     assert conn.hints_recreated
     asyncio.run(storage.hints_tick(ctx, p))
     assert len([m for m in ctx.sent if m["cmd"] == "CreateHints"]) == 1, "once a connection"
+
+
+def test_the_popup_count_waits_for_the_items_to_be_listed() -> None:
+    # Until the server lists the slot's items, the poll's codes are not all of them: a slot with
+    # no count stored would count too few, and pop up again the items it already held.
+    conn = connection()
+    conn.items_listed = False
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = None  # read: none stored
+    p = types.SimpleNamespace(codes=[16, 17], found=[])
+    asyncio.run(storage.announced_tick(ctx, conn, p))
+    assert conn.session.announced is None and ctx.sent == []
+    conn.items_listed = True
+    asyncio.run(storage.announced_tick(ctx, conn, p))
+    assert conn.session.announced == 2 and stored(ctx) == [2]

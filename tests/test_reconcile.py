@@ -184,19 +184,18 @@ BEFORE = rc.Supplies(energy=30, energy_max=48, missiles=2, missiles_max=3, bombs
 
 
 def test_supplies_follow_the_pickup_routine() -> None:
-    have = inv(i0=3, i1=3)
-    after = rc.supplies_after(have, {0: 4, 1: 4, 36: 1, 2: 1}, BEFORE)
+    after = rc.supplies_after(inv(i0=4, i1=4, i36=1, i2=1), BEFORE)
     assert (after.energy, after.energy_max) == (64, 64)
     assert (after.missiles, after.missiles_max) == (2 + 11, 14)
     assert (after.bombs, after.bombs_max) == (1, 1)
 
 
 def test_supplies_unchanged_by_other_items() -> None:
-    assert rc.supplies_after(inv(i0=3, i1=3), {17: 1}, BEFORE) == BEFORE
+    assert rc.supplies_after(inv(i0=3, i1=3, i17=1), BEFORE) == BEFORE
 
 
 def test_bomb_boxes_count_ten() -> None:
-    after = rc.supplies_after(inv(i0=3, i1=3), {37: 1}, BEFORE)
+    after = rc.supplies_after(inv(i0=3, i1=3, i37=1), BEFORE)
     assert (after.bombs, after.bombs_max) == (10, 10)
 
 

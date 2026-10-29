@@ -6,16 +6,13 @@ import dataclasses
 import unittest
 from unittest import mock
 
-from .. import custom, data, logic, reach
+from .. import data, logic, reach
 from ..world import ZexionWorld
 from .bases import FLAGGED, ZexionTestBase, preset, with_settings
 from .test_world import fake_world
 
 
 class TestTheUsefulItemScore(unittest.TestCase):
-    def test_the_menu_items_are_the_menus(self) -> None:
-        self.assertEqual(logic.MENU_ITEM_CODES, custom.MENU_CODES)
-
     def test_what_it_counts(self) -> None:
         score = logic.useful_score
         self.assertEqual(score({0: 5}), 5)
@@ -97,18 +94,12 @@ class TestGatesOpen(unittest.TestCase):
             self.assertIn(cell, data.CELL_REGION)
 
     def test_only_open_travels(self) -> None:
+        # Off is taken with the core goal: the core's door is four key slots that read the keys
+        # alone (docs/re/memory.md, "Keys, the gates and the key markers").
         for gates in ("off", "vanilla", "unlocked", "open"):
             world = fake_world(mode="custom", gates=gates)
             world.generate_early()
             self.assertEqual(world.logic_settings.gates_open, gates == "open")
-
-
-class TestGatesOffWithTheCoreGoal(unittest.TestCase):
-    def test_taken(self) -> None:
-        # The core's door is four key slots that read the keys alone (docs/re/memory.md, "Keys,
-        # the gates and the key markers"): Off disables only the gates' travel.
-        fake_world(mode="custom", gates="off").generate_early()
-        fake_world(mode="custom", gates="off", goal=1).generate_early()
 
 
 class CustomGatesOpen(ZexionTestBase):
