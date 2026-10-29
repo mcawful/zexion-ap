@@ -32,10 +32,10 @@ Where things are:
   only from byte patterns checked to match exactly once. Struct offsets, and per-build offsets
   into an exe copy read offline, are allowed when `docs/re/memory.md` records them for that
   build. `Target.rvas` in `client/patterns.py` is for checks only.
-- **The game install and the real save folder are read-only to us.** Hooks block direct writes.
-  Save experiments work on copies in `lab/` through `tools/save_lab.py`; only its `install`
-  (an empty slot, after a verified backup) and `restore` write the save folder. The client never
-  writes it.
+- **The game install and the real save folder are read-only to us.** Hooks block direct writes
+  (not through Monitor or the terminal tool: "Repo tooling"). Save experiments work on copies
+  in `lab/` through `tools/save_lab.py`; only its `install` (an empty slot, after a verified
+  backup) and `restore` write the save folder. The client never writes it.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
   the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
@@ -234,10 +234,12 @@ Committed under `.claude/`, so they apply to anyone working here:
 
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
   the save folder and Steam's cloud cache for the game (rules: its docstring; cases:
-  `tests/test_guard_hook.py`). `deny` rules for Edit and Write back it up; only the
-  game-install one has been seen to fire. `ruff_on_edit.py` formats and lints each edited
-  `.py`. An allowlist covers read-only git, ruff, pytest, `build_id.py` and `save_lab.py
-  slots`/`diff`.
+  `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
+  (`mcp__terminal__run_in_terminal`) commands, but `settings.json`'s matcher does not send those
+  two to it, so they pass unchecked: it runs for Write, Edit, MultiEdit, NotebookEdit, Bash and
+  PowerShell. `deny` rules for Edit and Write back it up; only the game-install one has been
+  seen to fire. `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist covers
+  read-only git, ruff, pytest, `build_id.py` and `save_lab.py slots`/`diff`.
 - Both hook commands run through `.claude/hooks/run_python.sh` (in `sh` on Linux and macOS,
   Git Bash on Windows, as Claude Code runs hook commands), not a bare `python`: that is missing
   on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,
