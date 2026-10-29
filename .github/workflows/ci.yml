@@ -6,7 +6,8 @@ name: CI
 #
 # ZEXION_REQUIRE lists what a job's tests need and must find: a missing one fails a test, where
 # the tests that use it would only skip (sh: tests/test_hook_runner.py; client: the world linked
-# into AP, worlds/zexion/test/test_client_agrees.py).
+# into AP, worlds/zexion/test/test_client_agrees.py; helper: the native build,
+# tests/test_native.py).
 on:
   push:
     branches: [develop, main]
@@ -54,7 +55,8 @@ jobs:
           cmake --build native/build --config Release
       - name: Native tests
         run: ctest --test-dir native/build -C Release --output-on-failure
-      # tests/test_native.py loads the build into a sleeping Python process (it skips without one).
+      # tests/test_native.py loads the build into a sleeping Python process (it would skip
+      # without one; ZEXION_REQUIRE=helper makes a missing build fail instead).
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
@@ -64,6 +66,8 @@ jobs:
         shell: bash
         run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
       - name: Load test
+        env:
+          ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native.py -v
 
   world:

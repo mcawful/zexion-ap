@@ -2,8 +2,10 @@
 
 The stand-in is a sleeping Python process: the helper finds no known build there, so it hooks
 nothing, but loading, the pipe and unloading are the same as in the game. Skipped where the
-helper has not been built (CI's Python jobs) or off Windows. native/tests/ cover the hook
-itself, including unloading under load.
+helper has not been built (CI's Python jobs) or off Windows, except where ZEXION_REQUIRE lists
+``helper`` (CI's native job): there a missing build fails
+test_the_helper_is_built_where_ci_requires_it. native/tests/ cover the hook itself, including
+unloading under load.
 """
 
 from __future__ import annotations
@@ -22,6 +24,14 @@ from client import native, process, state
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
+# ZEXION_REQUIRE's entries, as tests/test_hook_runner.py reads them.
+REQUIRED = {e.strip() for e in os.environ.get("ZEXION_REQUIRE", "").split(",")} - {""}
+
+
+@pytest.mark.skipif("helper" not in REQUIRED, reason="ZEXION_REQUIRE does not list helper")
+def test_the_helper_is_built_where_ci_requires_it() -> None:
+    assert WINDOWS, "the load test runs on Windows only"
+    assert BUILT.is_file(), f"no helper at {BUILT}, so the load test skipped"
 
 
 def test_pipe_name_and_default_dll(monkeypatch: pytest.MonkeyPatch) -> None:

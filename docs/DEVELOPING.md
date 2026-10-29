@@ -280,10 +280,11 @@ ctest --test-dir native/build -C Release --output-on-failure
 Nothing in `tests/` needs the game. What the native tests cover: `native/README.md`,
 "Building".
 
-Some tests skip without what they need: the hook runner's without `sh`, and
+Some tests skip without what they need: the hook runner's without `sh`,
 `worlds/zexion/test/test_client_agrees.py` without the repo's `client` beside the world (the
-link `ap_checkout.py` makes). CI sets `ZEXION_REQUIRE` (a comma-separated list: `sh`, `client`)
-in the jobs that have them, and there a missing one fails a test as well.
+link `ap_checkout.py` makes), and `tests/test_native.py`'s load test without a built helper. CI
+sets `ZEXION_REQUIRE` (a comma-separated list: `sh`, `client`, `helper`) in the jobs that have
+them, and there a missing one fails a test as well.
 
 ## Running the client from source
 

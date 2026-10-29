@@ -135,7 +135,7 @@ game or save folders.
 |---|---|---|
 | `build_id.py` | which build is installed | no |
 | `save_lab.py slots`, `backup`, `copy`, `diff`, `patch` | saves, on copies (`/save-lab`); `slots` lists a save deleted in the game as empty: it keeps its data, but the game marks it empty | no |
-| `save_lab.py install`, `restore` | write the save folder; `install` fills an empty slot, a deleted save's too | **yes: ask** |
+| `save_lab.py install`, `restore` | write the save folder, and refuse while the game runs; `install` fills an empty slot, a deleted save's too | **yes: ask** |
 | `memscan.py find`, `snap`, `cmp`, `read`, `classify`, `record` | search live memory (`/find-address`) | no |
 | `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |
@@ -236,8 +236,10 @@ Committed under `.claude/`, so they apply to anyone working here:
   the save folder and Steam's cloud cache for the game (rules: its docstring; cases:
   `tests/test_guard_hook.py`). `deny` rules for Edit and Write back it up; only the
   game-install one has been seen to fire. `ruff_on_edit.py` formats and lints each edited
-  `.py`. An allowlist covers read-only git, ruff, pytest, `build_id.py` and `save_lab.py
-  slots`/`diff`.
+  `.py`. An allowlist runs `git status`, `diff`, `log`, `show` and `branch`, `ruff check`,
+  `ruff format --check`, pytest, `build_id.py` and `save_lab.py slots`/`diff` without asking.
+  Its rules match by prefix, so they also pass forms that write: `git branch -D`, `git diff
+  --output=FILE`, `ruff check --fix`.
 - Both hook commands run through `.claude/hooks/run_python.sh` (in `sh` on Linux and macOS,
   Git Bash on Windows, as Claude Code runs hook commands), not a bare `python`: that is missing
   on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,
