@@ -26,7 +26,8 @@ with its limits:
   lock lifted), and a starting one is never received (the Enable Assist Options option lifts
   the lock);
 - an OS Install Disk only with the OS Install Disks goal, which counts it (slot data
-  "discs_start").
+  "discs_start"); with the placed ones, 99 at most, which world.py checks (``MAX_DISKS``: the
+  most the helper's disk counts show).
 
 And as the game's randomizer takes a starting item out of the pool (docs/re/randocells.md,
 "The randomizer menu's first screen" and "The pool", step 1), the world refuses a

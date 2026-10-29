@@ -85,6 +85,13 @@ class TestSettingsChangeTheResults(unittest.TestCase):
             with self.subTest(mode69=mode69):
                 self.assert_reaches_more(seed, with_settings(seed, mode69=mode69))
         self.assertEqual(sphere0_rooms(with_settings(seed, mode69=1)), sphere0_rooms(seed))
+        light, off = (sphere0_rooms(with_settings(seed, mode69=m)) for m in (0, 3))
+        self.assertEqual(sum(map(len, sphere0_rooms(seed))), 64)
+        self.assertEqual(sum(map(len, light)), 75)
+        self.assertEqual(sum(map(len, off)), 76)
+        # Off also counts as combat tier 4 (code 62): from Below Arena, location 60 too.
+        more = {r["index"]: b - a for r, a, b in zip(data.START_ROOMS, light, off, strict=True)}
+        self.assertEqual({i: d for i, d in more.items() if d}, {3: {60}})
 
     def test_a_lower_energy_total_counts_the_same_tanks_for_more(self) -> None:
         # Code 69 scales Energy up when the seed's total is under 20: 64 become 75.

@@ -210,13 +210,13 @@ where its subject is:
   holds each gun and its upgrade as one progressive item; the game starts it as itself
   (`custom.starting_items`). With it off each upgrade is its own item, as the game counts it.
 - **Refused at generation, not clamped** (`custom.problems`): a state the game's menu cannot
-  hold, a pool's fixed items (4 − Start Keys keys, the pooled items, the pool Energy Tanks)
-  above its places among them, which past 155 would stop the game when the helper runs its
-  placement (`randocells.md`, "The pool", step 4); one it allows whose pool can be longer than its places for some coin flip or box draw
+  hold; one it allows whose pool can be longer than its places for some coin flip or box draw
   (`custom.most_entries`), which the game would cut at random, keys and items among them
   (`randocells.md`, "The pool", step 7); Abridged Finale with the OS Install Disks goal
-  (decided by the owner, 2026-10-27); and starting Mega Bombs, until the client can give them
-  (`worlds/zexion/starting.py`).
+  (decided by the owner, 2026-10-27); starting Mega Bombs, until the client can give them
+  (`worlds/zexion/starting.py`); and more than 99 OS Install Disks, placed and starting, the
+  most the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys,
+  items and Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154).
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   does, in every mode; with no ten left the seed is refused ("The OS Install Disks goal: the

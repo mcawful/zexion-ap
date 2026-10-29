@@ -315,11 +315,13 @@ def satisfied(
         elif tier == 4 and c[code] == 0:
             return False
 
+    # Second pass: a held tier-1 entry, a count met, or the whole group passes. A tier-4 entry
+    # is a requirement only, never enough alone (0xE4606, 0xE4A62).
     group = []
     for code, tier in entries:
         if code >= 64:
             continue
-        if tier in (1, 4) and c[code] >= 1:
+        if tier == 1 and c[code] >= 1:
             return True
         if 11 <= tier <= 40 and c[code] >= tier - 10:
             return True
