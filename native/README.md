@@ -802,7 +802,8 @@ nothing the game doesn't already load.
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads
 the build into a sleeping Python process (no known build, so nothing is hooked) and checks the
-pipe and unloading. That test skips without a build.
+pipe and unloading. That test skips without a build, except in CI, where
+`ZEXION_REQUIRE=helper` makes a missing build fail it.
 
 Most ctest tests run against **the stand-in game**: the test program's own data and functions,
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
