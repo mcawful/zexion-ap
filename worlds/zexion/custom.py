@@ -1,6 +1,5 @@
 """The game's randomizer menu and the rules its generator applies to it: the pool, the starting
-items and Random Start (docs/re/randocells.md, from "The randomizer menu's settings" on; the
-design: docs/custom-mode.md).
+items and Random Start (docs/re/randocells.md, from "The randomizer menu's settings" on).
 
 A ``Menu`` is the randomizer menu's state: the 27 items' start and pool bytes, the six amounts
 and settings t10 to t73. A preset mode is one fixed state; Custom is any state the menu can
@@ -9,7 +8,8 @@ hold. The world builds the seed's pool and starting items from it as the game's 
 counts and odds are the game's, the exact draws are not, which nothing needs (the game's own
 placement is replaced by Archipelago's fill, and the client writes the world's starting items
 over the game's). ``problems`` refuses a state the menu cannot hold, and one the menu allows
-but whose pool the game would cut at random (``most_entries``).
+but whose pool the game would cut at random (``most_entries``). It refuses where the menu clamps:
+a YAML has no menu to show the player what a clamped value became.
 
 Pure Python with no Archipelago imports.
 """
@@ -23,6 +23,7 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 
 from . import data, logic
+from .logic import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
 from .reach import flagged
 
 # The 27 items of the menu's first screen, in its order (the word table at .rdata 0x20DA68):
@@ -46,16 +47,14 @@ UPGRADE_GUN = {13: 4, 14: 5, 15: 6, 16: 7, 17: 8}
 STATES = {"start": (1, 0), "random": (1, 1), "pool": (0, 1), "excluded": (0, 0)}
 
 # Settings bytes t (docs/re/randocells.md, "Where each setting is stored").
-FIRST_SETTING, SETTINGS = 10, 64  # the menu holds t10 to t73
-GUNS_FIRST, COLORIZER, RANDOM_GUN = 10, 12, 15
+FIRST_SETTING = 10  # the menu holds t10 to t73
+GUNS_FIRST, SAFETY, GATES = logic.GUNS_FIRST, logic.SAFETY, logic.GATES  # logic.Settings.of's
+COLORIZER, RANDOM_GUN = 12, 15
 BULK_MISSILES, BULK_BOMBS, BOX_COMPRESSION = 16, 17, 28
 X_CRYSTALS, X_BLOCKS, ABRIDGED_FINALE, DOUBLE_TELEPORT, SECRET_SHUFFLE = 30, 31, 32, 33, 37
 HINTS = (18, 19, 20, 21)
 START_LOCATION = (22, 23, 24, 25, 26, 27)
 START_KEYS = (34, 35, 36)
-SAFETY = (42, 43)
-GATES = (72, 73)
-GATES_OFF, GATES_OPEN = 0, 3  # Gates' first and last values (Vanilla 1, Unlocked 2)
 LIGHT = 0  # Safety's first value
 # The settings the logic reads, which a new game must have as the seed's (client/newgame.py,
 # the expect lines): Guns First's item redirects, code 68's settings, Double Teleport, Safety
@@ -68,7 +67,6 @@ START_ENERGY, POOL_ENERGY, START_MISSILES, POOL_MISSILES, START_BOMBS, POOL_BOMB
 MAX_ENERGY, MAX_AMMO = 40, 999
 LOCATIONS = len(data.LOCATIONS)  # 154; Secret Shuffle adds a 155th
 MENU_PLACES = LOCATIONS - 4  # the menu's count of places: the locations less the four keys
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
 KEY_CODES = (27, 28, 29, 30)  # Alpha, Beta, Gamma, Omega
 SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, ENERGY_SHIELD = 46, 47, 48, 49, 50
 # Filler, one draw per place: Scrap metal 8 in 16, Scrap energy and Scrap chunk 1 each, Area
@@ -135,14 +133,9 @@ class Menu:
         return LOCATIONS + self.setting(SECRET_SHUFFLE)
 
     def logic_settings(self) -> logic.Settings:
-        """What the logic reads: the Energy total, Safety (code 69's mode), the settings
-        code 68 reads (bytes t0 to t63; t0 to t9 are no settings), Gates Open and Guns First
-        (the item redirects)."""
-        options = bytes(FIRST_SETTING) + bytes(self.settings[: SETTINGS - FIRST_SETTING])
+        """What the logic reads (``logic.Settings.of``; t0 to t9 are no settings)."""
         energy = self.amounts[START_ENERGY] + self.amounts[POOL_ENERGY]
-        gates_open = self.value(GATES) == GATES_OPEN
-        guns_first = bool(self.setting(GUNS_FIRST))
-        return logic.Settings(energy, self.value(SAFETY), options, gates_open, guns_first)
+        return logic.Settings.of(energy, bytes(FIRST_SETTING) + bytes(self.settings))
 
     def checked(self) -> dict[int, int]:
         return {t: self.setting(t) for t in CHECKED}

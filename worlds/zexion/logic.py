@@ -44,6 +44,11 @@ def collect(have: MutableMapping[int, int], item: int, guns_first: bool = True) 
     have[item] = have.get(item, 0) + 1
 
 
+# Settings bytes t the logic reads besides code 68's t0 to t63 (docs/re/randocells.md, "Where
+# each setting is stored"): Guns First, then Safety's and Gates' bits, lowest first.
+GUNS_FIRST, SAFETY, GATES = 10, (42, 43), (72, 73)
+
+
 @dataclass(frozen=True)
 class Settings:
     """The seed's randomizer settings that the logic reads."""
@@ -53,6 +58,14 @@ class Settings:
     options: bytes = field(default=bytes(64))
     gates_open: bool = False  # Gates Open (t72 and t73 both set): the logic travels by gate
     guns_first: bool = True  # Guns First (t10): the item redirects (``collect``)
+
+    @classmethod
+    def of(cls, energy_total: int, t: Sequence[int]) -> Settings:
+        """From the Energy total and the settings bytes t0 to t73, as the menu or a save's
+        section holds them: code 68's t0 to t63, Safety, Gates Open and Guns First."""
+        mode69 = t[SAFETY[0]] + 2 * t[SAFETY[1]]
+        gates_open = all(t[i] for i in GATES)
+        return cls(energy_total, mode69, bytes(t[:64]), gates_open, bool(t[GUNS_FIRST]))
 
 
 DEFAULT_SETTINGS = Settings()
@@ -82,6 +95,13 @@ def useful_score(have: Mapping[int, int]) -> int:
     return energy + supplies + 10 * boxes + owned
 
 
+def second_counts(have: Mapping[int, int], flagged: bool) -> bool:
+    """Whether the logic floods from the second teleport target with ``have``: an unflagged
+    room at once, a flagged one once the useful-item score reaches SECOND_TARGET_SCORE (0xE6D20,
+    0xE8850)."""
+    return not flagged or useful_score(have) >= SECOND_TARGET_SCORE
+
+
 # Gates Open (docs/re/randocells.md, "What each setting does in the game"): once any of these
 # cells counts as reached, the logic floods from GATE_TARGETS too (0xE6F5C in 0xE6D20, and in
 # 0xE8850). The game reads (24, 44) and (51, 34) as "collectible" (their location's own list,
@@ -90,6 +110,20 @@ def useful_score(have: Mapping[int, int]) -> int:
 # (51, 34), opens the travel but is not flooded from.
 GATE_TRIGGERS = (((24, 44), True), ((12, 30), False), ((14, 2), False), ((51, 34), True))
 GATE_TARGETS = ((24, 44), (12, 30), (14, 2))
+
+
+def gates_triggered(
+    settings: Settings,
+    reached: Callable[[Cell], bool],
+    collectible: Callable[[Cell], bool],
+    triggers: Sequence[tuple[Cell, bool]] = GATE_TRIGGERS,
+) -> bool:
+    """Under Gates Open, whether a gate cell of ``triggers`` counts as reached as the game's
+    logic reads it: reached, and for two of them collectible too (0xE6F5C). Then the flood goes
+    on from GATE_TARGETS."""
+    return settings.gates_open and any(
+        reached(cell) and (not as_location or collectible(cell)) for cell, as_location in triggers
+    )
 
 
 def f32(v: float) -> float:

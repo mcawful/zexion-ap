@@ -1,10 +1,9 @@
 """Custom mode: the game's pool rule, Random Gun and Random Start, the menu's limits, the options'
-refusals, and whole Custom seeds (docs/custom-mode.md; docs/re/randocells.md, "The pool")."""
+refusals, and whole Custom seeds (docs/re/randocells.md, "The pool")."""
 
 import random
 import unittest
 from collections import Counter
-from typing import Any
 
 from Fill import distribute_items_restrictive
 from Options import OptionError
@@ -22,8 +21,8 @@ from ..custom import (
 from ..items import NAMES
 from ..locations import LOCATION_ID_BASE
 from ..options import CustomItems
-from .bases import ZexionTestBase
-from .test_world import fake_world, pool_names
+from .bases import FLAGGED, ZexionTestBase
+from .test_world import RefusalTestCase, fake_world, pool_names
 
 FILLER = {46, 47, 48, 49, 50}
 ENTRY = {name: i for i, (name, _) in enumerate(custom.MENU_ITEMS)}
@@ -34,6 +33,12 @@ def supplies(items: list[int]) -> tuple[int, int, int, int, int]:
     n = Counter(items)
     filler = sum(n[c] for c in FILLER)
     return n[MISSILE_BOX], n[BOMB_BOX], n[MEGA_BOMB], n[MISSILE_CONTAINER], filler
+
+
+def pool_of(menu: Menu, seed: int = 1) -> list[int]:
+    """The item pool from the menu, each step drawn with random.Random(seed)."""
+    _, pool = custom.resolve(menu, random.Random(seed))
+    return custom.pool_items(menu, pool, random.Random(seed))
 
 
 def resolved_as(menu: Menu, start_inventory: dict[int, int]) -> tuple[list[int], random.Random]:
@@ -52,13 +57,16 @@ class TestThePresetsPools(unittest.TestCase):
     for Easy and Standard; OHKO's save holds one later compression of ten containers."""
 
     def test_easy_and_standard(self) -> None:
-        for name in ("easy", "standard"):
+        # Easy: R = 91, 17 boxes, 29 containers, 18 Mega Bombs, 27 filler; Standard: R = 107,
+        # 6 boxes, 62 containers, 12 Mega Bombs (docs/re/randocells.md, "The pool").
+        for name, want in (("easy", (17, 0, 18, 29, 27)), ("standard", (6, 0, 12, 62, 27))):
             mode = data.MODES[name]
             menu = Menu.preset(name)
             pool, rng = resolved_as(menu, mode["start_inventory"])
             items = custom.pool_items(menu, pool, rng)
             with self.subTest(name):
                 self.assertEqual(len(items), 154)
+                self.assertEqual(supplies(items), want)
                 self.assertEqual(
                     Counter(c for c in items if c not in FILLER),
                     Counter(c for c in mode["pool"] if c not in FILLER),
@@ -71,15 +79,6 @@ class TestThePresetsPools(unittest.TestCase):
         self.assertEqual(supplies(items)[:4], (8, 0, 12, 72))
         save = data.MODES["ohko"]["pool"]
         self.assertEqual(supplies(save)[:4], (9, 0, 12, 62))
-
-    def test_the_counts(self) -> None:
-        # Easy: R = 91, 17 boxes, 29 containers, 18 Mega Bombs, 27 filler; Standard: R = 107,
-        # 6 boxes, 62 containers, 12 Mega Bombs (docs/re/randocells.md, "The pool").
-        for name, want in (("easy", (17, 0, 18, 29, 27)), ("standard", (6, 0, 12, 62, 27))):
-            menu = Menu.preset(name)
-            pool, rng = resolved_as(menu, data.MODES[name]["start_inventory"])
-            with self.subTest(name):
-                self.assertEqual(supplies(custom.pool_items(menu, pool, rng)), want)
 
 
 class TestTheGeneratedSeeds(unittest.TestCase):
@@ -105,16 +104,11 @@ class TestTheGeneratedSeeds(unittest.TestCase):
 
     def test_seed_b_box_compression_off(self) -> None:
         menu = Menu.preset("standard").with_settings({custom.BOX_COMPRESSION: 0})
-        _, pool = custom.resolve(menu, random.Random(1))
-        self.assertEqual(
-            supplies(custom.pool_items(menu, pool, random.Random(1))), (3, 0, 12, 92, 0)
-        )
+        self.assertEqual(supplies(pool_of(menu)), (3, 0, 12, 92, 0))
 
     def test_seed_c_bulk_missiles(self) -> None:
         menu = Menu.preset("standard").with_settings({custom.BULK_MISSILES: 1})
-        _, pool = custom.resolve(menu, random.Random(1))
-        items = custom.pool_items(menu, pool, random.Random(1))
-        self.assertEqual(supplies(items), (12, 0, 12, 2, 81))
+        self.assertEqual(supplies(pool_of(menu)), (12, 0, 12, 2, 81))
 
     def test_the_menus_counter_for_the_bulk_settings(self) -> None:
         # Read on screen in Standard's state: Bulk Bombs alone, one Bomb Box, 2 Mega Bombs and
@@ -122,11 +116,8 @@ class TestTheGeneratedSeeds(unittest.TestCase):
         bombs = Menu.preset("standard").with_settings({custom.BULK_BOMBS: 1})
         both = bombs.with_settings({custom.BULK_MISSILES: 1})
         for menu, want in ((bombs, (5, 1, 2)), (both, (12, 1, 2))):
-            _, pool = custom.resolve(menu, random.Random(1))
             with self.subTest(want=want):
-                self.assertEqual(
-                    supplies(custom.pool_items(menu, pool, random.Random(1)))[:3], want
-                )
+                self.assertEqual(supplies(pool_of(menu))[:3], want)
 
 
 def every_outcome(m: int, b: int, boxes: int) -> set[int]:
@@ -172,8 +163,7 @@ class TestMoreBoxesThanTens(unittest.TestCase):
             Counter({MISSILE_BOX: 2, BOMB_BOX: 91}),
         )
         for seed in range(20):
-            _, pool = custom.resolve(menu, random.Random(seed))
-            self.assertEqual(len(custom.pool_items(menu, pool, random.Random(seed))), 154)
+            self.assertEqual(len(pool_of(menu, seed)), 154)
 
     def test_bombs_first_is_the_longest_list(self) -> None:
         rng = random.Random(5)
@@ -224,10 +214,8 @@ class TestListsLongerThanThePlaces(unittest.TestCase):
             if custom.problems(menu):
                 continue
             for seed in range(3):
-                _, pool = custom.resolve(menu, random.Random(seed))
                 with self.subTest(trial=trial, seed=seed):
-                    items = custom.pool_items(menu, pool, random.Random(seed))
-                    self.assertEqual(len(items), menu.places)
+                    self.assertEqual(len(pool_of(menu, seed)), menu.places)
 
 
 class TestRandomGun(unittest.TestCase):
@@ -279,9 +267,7 @@ class TestGunsFirst(unittest.TestCase):
 
     def test_upgrades_are_their_guns_progressive_items(self) -> None:
         menu = Menu.preset("standard")
-        _, pool = custom.resolve(menu, random.Random(1))
-        items = custom.pool_items(menu, pool, random.Random(1))
-        self.assertFalse(set(items) & {9, 10, 12, 14, 15})
+        self.assertFalse(set(pool_of(menu)) & {9, 10, 12, 14, 15})
         start, _ = custom.resolve(menu.with_item(ENTRY["Pulse Wave"], "start"), random.Random(1))
         have = custom.starting_items(menu, start)
         self.assertNotIn(9, have)
@@ -294,8 +280,7 @@ class TestGunsFirst(unittest.TestCase):
 
     def test_off_each_upgrade_is_its_own_item(self) -> None:
         menu = Menu.preset("standard").with_settings({custom.GUNS_FIRST: 0})
-        _, pool = custom.resolve(menu, random.Random(1))
-        items = Counter(custom.pool_items(menu, pool, random.Random(1)))
+        items = Counter(pool_of(menu))
         # Standard pools all five upgrades: each is in the pool once, as itself.
         self.assertEqual([items[c] for c in (9, 10, 12, 14, 15)], [1] * 5)
         self.assertTrue(all(items[c] <= 1 for c in (3, 4, 5, 6, 7)))
@@ -385,9 +370,8 @@ class TestRandomStart(unittest.TestCase):
                 got.add(room["index"])
             return got
 
-        flagged = {i for i, (_, _, f) in enumerate(data.START_TABLE) if f}
-        self.assertEqual(flagged, {0, 2, 25, 27, 29, 30, 32, 33})
-        self.assertFalse(every(26) & flagged)
+        self.assertEqual(FLAGGED, {0, 2, 25, 27, 29, 30, 32, 33})
+        self.assertFalse(every(26) & FLAGGED)
         self.assertEqual(every(27), set(range(34)))
 
     def test_the_first_tower_room_is_kept_one_time_in_three(self) -> None:
@@ -414,12 +398,7 @@ class TestRandomStart(unittest.TestCase):
         self.assertEqual(custom.score({0: 3, 36: 2, 1: 4, 3: 2}), 3 + 24 + 2)
 
 
-class TestTheOptionsRefuse(unittest.TestCase):
-    def refused(self, **options: Any) -> str:
-        with self.assertRaises(OptionError) as caught:
-            fake_world(**options).generate_early()
-        return str(caught.exception)
-
+class TestTheOptionsRefuse(RefusalTestCase):
     def test_custom_settings_with_a_preset(self) -> None:
         for name, value in (
             ("x_blocks", "on"),

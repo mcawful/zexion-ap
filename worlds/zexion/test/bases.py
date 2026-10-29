@@ -1,8 +1,24 @@
 from collections import Counter
+from dataclasses import replace
 
 from test.bases import WorldTestBase
 
+from .. import custom, data, reach
 from ..world import ZexionWorld
+
+# The start table's flagged rooms, by index.
+FLAGGED = {i for i, (_, _, flag) in enumerate(data.START_TABLE) if flag}
+
+
+def preset(name: str) -> reach.Seed:
+    """A preset mode's seed: its menu's settings, and its fresh save's items (data.MODES)."""
+    mode = data.MODES[name]
+    settings = custom.Menu.preset(name).logic_settings()
+    return reach.Seed.of(settings, mode["start_inventory"], mode["pool"])
+
+
+def with_settings(seed: reach.Seed, **changes) -> reach.Seed:
+    return replace(seed, settings=replace(seed.settings, **changes))
 
 
 class ZexionTestBase(WorldTestBase):

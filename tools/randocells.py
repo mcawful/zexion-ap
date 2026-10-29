@@ -91,10 +91,7 @@ WALL, OPEN, CONDITIONAL = 0xFF, 0, 1
 # 0xCDD6D0; settings sit at these RVAs in it.
 RANDO_BLOB_RVA = 0xCDD6D0
 ENERGY_WORDS_RVA = 0xCDDD90  # starting Energy, Energy in the pool (16-bit each)
-OPTIONS_RVA = 0xCDDF4B  # one byte per option, indexed by a code-68 entry's tier byte
-GATES = (72, 73)  # Gates' two bits; both set is Open
-GUNS_FIRST = 10  # Guns First: the logic's item redirects apply only with it on (0xE5680)
-MODE_BITS_RVA = (0xCDDF76, 0xCDDF75)  # code 69's mode = first * 2 + second
+OPTIONS_RVA = 0xCDDF4B  # settings t0 to t73, one byte each (code 68 reads t0 to t63)
 
 
 @dataclass(frozen=True)
@@ -112,11 +109,7 @@ def settings_from_save(data: bytes) -> logic.Settings:
         return save_patch.SECTION + (rva - RANDO_BLOB_RVA)
 
     start, pool = struct.unpack_from("<hh", data, at(ENERGY_WORDS_RVA))
-    hi, lo = (data[at(r)] for r in MODE_BITS_RVA)
-    options = bytes(data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 64])
-    gates_open = all(data[at(OPTIONS_RVA) + t] for t in GATES)
-    guns_first = bool(options[GUNS_FIRST])
-    return logic.Settings(start + pool, hi * 2 + lo, options, gates_open, guns_first)
+    return logic.Settings.of(start + pool, data[at(OPTIONS_RVA) : at(OPTIONS_RVA) + 74])
 
 
 def _entries(rec: bytes, base: int, tiers: int) -> list[logic.Entry]:
@@ -163,10 +156,12 @@ def reachable_cells(
 ) -> set[tuple[int, int]]:
     """Flood fill from ``start`` (one cell, or a list of them), repeated until stable (codes
     64-67 look at reached cells); under Gates Open, from the gate cells too once one counts as
-    reached (``gates_triggered``)."""
+    reached (``logic.gates_triggered``)."""
     seen: set[tuple[int, int]] = set(start) if isinstance(start, list) else {start}
     while True:
-        if gates_triggered(grid, have, settings, seen):
+        if logic.gates_triggered(
+            settings, seen.__contains__, lambda c: collectible(grid, c, have, settings, seen)
+        ):
             seen.update(logic.GATE_TARGETS)
         before = len(seen)
         todo = list(seen)
@@ -190,15 +185,6 @@ def reachable_cells(
             return seen
 
 
-def gates_triggered(grid, have: Counter, settings: logic.Settings, seen: set) -> bool:
-    """Under Gates Open, whether a gate cell counts as reached as the game's logic reads it:
-    two of them reached, the other two collectible (logic.GATE_TRIGGERS; 0xE6F5C)."""
-    return settings.gates_open and any(
-        cell in seen and (not as_location or collectible(grid, cell, have, settings, seen))
-        for cell, as_location in logic.GATE_TRIGGERS
-    )
-
-
 # With Guns First, a weapon and its upgrade are progressive (logic.WEAPON_UPGRADES;
 # docs/re/randocells.md); without it, each is its own item.
 collect = logic.collect
@@ -215,12 +201,13 @@ def sweep(
 ) -> set[int]:
     """Collect everything reachable from ``start`` (one cell or a list), repeating until
     nothing new opens up. ``second`` is a second teleport target and whether its room is
-    flagged: a flagged one counts only from a useful-item score of 27 (``second_counts``)."""
+    flagged: a flagged one counts only from a useful-item score of 27
+    (``logic.second_counts``)."""
     have: Counter = Counter(initial or {})
     got: set[int] = set()
     while True:
         starts = list(start) if isinstance(start, list) else [start]
-        if second is not None and second_counts(have, second[1]):
+        if second is not None and logic.second_counts(have, second[1]):
             starts.append(second[0])
         cells = reachable_cells(grid, have, settings, starts)
         new = False
@@ -232,12 +219,6 @@ def sweep(
             new = True
         if not new:
             return got
-
-
-def second_counts(have: Counter, flagged: bool) -> bool:
-    """Whether the logic floods from the second teleport target: an unflagged room at once, a
-    flagged one once the useful-item score reaches logic.SECOND_TARGET_SCORE (0xE6D20)."""
-    return not flagged or logic.useful_score(have) >= logic.SECOND_TARGET_SCORE
 
 
 def seed_from_save(data: bytes) -> tuple[list[tuple[int, int]], list[int]]:
@@ -342,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         for i in sorted(got):
             collect(have, items[i], settings.guns_first)
         cell, flagged = second
-        counted = second_counts(have, flagged)
+        counted = logic.second_counts(have, flagged)
         print(f"second teleport target {cell}, flagged {flagged}, counted in the end {counted}")
     print(
         f"{len(got)}/{len(locations)} locations reachable from {start}; starting inventory "

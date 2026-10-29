@@ -47,12 +47,14 @@ def test_other_builds_files_are_refused() -> None:
         gwd.cell_areas(map_data, text, [(0, 0)])
 
 
+def cell(**open_to):
+    """A cell open toward the directions given, walled toward the rest."""
+    passage = {d: gwd.rc.OPEN if open_to.get(d) else gwd.rc.WALL for d in "NSWE"}
+    return types.SimpleNamespace(passage=passage)
+
+
 def test_components_number_each_strongly_connected_group_once() -> None:
     # A row of four cells: 0 <-> 1 open both ways, 1 -> 2 open one way, 2 <-> 3 open both ways.
-    def cell(**open_to):
-        passage = {d: gwd.rc.OPEN if open_to.get(d) else gwd.rc.WALL for d in "NSWE"}
-        return types.SimpleNamespace(passage=passage)
-
     row = [cell(E=True), cell(W=True, E=True), cell(E=True), cell(W=True)]
     comp = gwd.components({(x, 0) for x in range(4)}, [row])
     assert comp[(0, 0)] == comp[(1, 0)]
@@ -64,10 +66,6 @@ def test_components_number_each_strongly_connected_group_once() -> None:
 def test_extra_cells_regions_come_after_the_others_and_may_not_join_them() -> None:
     # Five cells in a row: 0 <-> 1, 2 -> 3 (one way), 3 <-> 4; 1 and 2 walled apart. The extra
     # cells 3 and 4 make one region, numbered after the base's; cell 2 joining 3 is refused.
-    def cell(**open_to):
-        passage = {d: gwd.rc.OPEN if open_to.get(d) else gwd.rc.WALL for d in "NSWE"}
-        return types.SimpleNamespace(passage=passage)
-
     row = [cell(E=True), cell(W=True), cell(E=True), cell(E=True), cell(W=True)]
     base, extra = {(0, 0), (1, 0), (2, 0)}, {(3, 0), (4, 0)}
     comp = gwd.components_after(base, extra, [row])

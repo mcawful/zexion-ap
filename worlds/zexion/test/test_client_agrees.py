@@ -86,7 +86,7 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(ids.DATA_DISC, 44)
         self.assertEqual(ids.KEYS, items.KEY_CODES)
         self.assertEqual(ids.SCRAP_METAL, items.SCRAP_METAL)
-        self.assertEqual(ids.ENERGY_SHIELD, items.ENERGY_SHIELD)
+        self.assertEqual(ids.ENERGY_SHIELD, custom.ENERGY_SHIELD)
         # The client writes every other item's byte as 1 at most.
         self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
         self.assertEqual(reconcile.COUNTED, starting.COUNTED)  # pool_duplicates counts the same
