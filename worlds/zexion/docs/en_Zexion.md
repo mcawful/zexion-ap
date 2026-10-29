@@ -189,5 +189,7 @@ for the whole game, as they would in any save.
 
 Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When
 another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
-received together come one at a time, after you respawn; any still waiting when your ending
-begins are dropped. A death takes you back to your last save.
+received together come one at a time, after you respawn. Any still waiting when your ending
+begins, or sent during it, are dropped, unless the client first saw your save after the ending
+began (opened or connected during it): then they can still reach you during the ending. A death
+takes you back to your last save.

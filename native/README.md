@@ -291,7 +291,7 @@ Working in game: 2026-10-23 ("Received Energy Shields").
   configured`, `not settled`, `halted`, `message showing`, `RETURN HOME WITH THE DISKS?
   opening`, `no frame`). The client queues received deaths and asks once a second, one at a time
   (`client/deathlink.py`); it drops the queue while an ending that began in this load runs
-  (`Session.holding`), not in a save that had already ended.
+  (`Session.holding`), not in a save that had already ended (stand-in tests only).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("DeathLink").
