@@ -571,7 +571,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (the file's, plus each own disk the map shows collected) and the scanner's line, with a
   notice that the client is not connected (or, for `other_save`, is for another seed; only for a
   save of a seed it has a file for, so a plain randomizer game gets no notice): once a load, and
-  again each time a client that configured during the load goes away (stand-in tests only).
+  again each time a client that configured during the load goes away (working in game
+  2026-10-29, helper b790be9, `lab/ap/live47`).
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
   save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
@@ -583,7 +584,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   save is loaded. It attaches again on connecting, before it gives any item; an attach that
   fails holds the items back for up to 30 s, then they are given as with no helper
   (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
-  `tests/test_zexion_client.py`; not run in game yet).
+  `tests/test_zexion_client.py`). Working in game 2026-10-29 (`lab/ap/live47`, the Launcher's
+  client): a save loaded during a drop and a Disconnect in play, each given this look and its
+  notice, then the client's again on connecting, with CLIENT CONNECTED and received items'
+  popups. Not seen in game: a failed attach on connecting, and an ending during a drop.
   The file select shows each such save's count, from its map in the game's copy of the slot,
   and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off

@@ -204,9 +204,15 @@ line says.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
-  with a client connected (no notice, no look): 2026-10-27. A save loaded while the client is
-  open but not connected, the client having let the helper go (`leave_helper_tick`): not run in
-  game yet.
+  with a client connected (no notice, no look): 2026-10-27. With the client open (the
+  Launcher's, 1.0.0, `lab/ap/live47`), 2026-10-29: a dropped connection with the save loaded
+  keeping the client's look, and a reconnect carrying it (no labels sent again), an item after it
+  popping up once; the save left during a drop taken back, and the save loaded again then given
+  the helper's look and NOT CONNECTED (the client letting the helper go: `leave_helper_tick`),
+  then the reconnect attaching it again, CLIENT CONNECTED and an item's popup; a Disconnect in
+  play the same, NOT CONNECTED and CLIENT CONNECTED at each Disconnect and Connect in one load,
+  and an item's popup after; Zexion closed with the client connected, and while dropped, the next
+  game's save dressed again (by the client, or by the helper until the client attached).
 
 ## Platforms
 
