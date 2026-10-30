@@ -1,5 +1,5 @@
-"""Build a release: the world and its client in ``zexion.apworld``, beside the two helper DLLs
-and the player guides.
+"""Build a release: the world and its client in ``zexion.apworld``, beside the two helper DLLs,
+the player guides and the sample YAMLs.
 
     .venv/Scripts/python tools/build_apworld.py [--out dist]
 
@@ -10,7 +10,9 @@ The apworld is the world package (``worlds/zexion``, without its tests) with the
 the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
 which only the player does: no tool here writes there. The player guides go beside them as
 plain files (GUIDES), so a player has them with the download: ``zexion-setup-guide.md`` and
-``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``.
+``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``. So
+do the sample YAMLs, one per mode, as they are in ``samples/`` (tools/gen_sample_yamls.py):
+``zexion-easy.yaml``, ``zexion-standard.yaml``, ``zexion-ohko.yaml`` and ``zexion-custom.yaml``.
 
 The DLLs are the CMake Release builds (``native/build``). The build refuses a missing DLL, a
 helper whose version is not the client's (``client/native.py``, ``VERSION``, which it also
@@ -18,13 +20,15 @@ refuses to be without), so the three always match, and a DLL older than its sour
 (``native/src`` or ``native/proxy``, and ``native/CMakeLists.txt``). It also refuses a
 manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion or whose
 ``world_version`` is not ``VERSION`` (a release has one number), and two files that would
-share a name in the apworld.
+share a name in the apworld, no sample YAML, and a sample that requires another version of the
+world than ``VERSION`` (made before the version was raised: run gen_sample_yamls.py again).
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
 builder adds (CONTAINER_KEYS): without them, AP 0.6.8 logs the manifest as invalid and ignores
 ``world_version`` and ``minimum_ap_version``. Reads this repo and writes only into ``--out``,
 which may not be inside the game's or the saves' folder (``tools/protected.py``). Only files
-git tracks are packed: an untracked file in ``worlds/zexion`` or ``client`` stops the build.
+git tracks are packed: an untracked file in ``worlds/zexion``, ``client`` or ``samples`` stops
+the build.
 """
 
 from __future__ import annotations
@@ -55,6 +59,7 @@ GUIDES = {
     WORLD / "docs" / "setup_en.md": "zexion-setup-guide.md",
     WORLD / "docs" / "en_Zexion.md": "zexion-game-page.md",
 }
+SAMPLES = ROOT / "samples"  # the sample YAMLs, copied beside the apworld as they are
 MANIFEST = "zexion/archipelago.json"
 # The keys APWorldContainer.get_manifest() gives in AP 0.6.8 (worlds/Files.py: container_version
 # 7, and an APWorldContainer's compatible_version 7) besides "game", which the world's has,
@@ -130,6 +135,22 @@ def packed_files() -> list[tuple[Path, str]]:
     return files
 
 
+def sample_files(version: str) -> list[Path]:
+    """The sample YAMLs: tracked, and each for this ``version`` of the world."""
+    files = sorted(SAMPLES.glob("*.yaml"))
+    if not files:
+        raise SystemExit(f"no sample YAMLs in {SAMPLES}: run tools/gen_sample_yamls.py")
+    known = tracked(SAMPLES)
+    for path in files:
+        if path.resolve() not in known:
+            raise SystemExit(f"not tracked by git, so not released: {path.relative_to(ROOT)}")
+        if f"Zexion: {version} " not in path.read_text(encoding="utf-8"):
+            raise SystemExit(
+                f"{path.name} does not require Zexion {version}: run tools/gen_sample_yamls.py"
+            )
+    return files
+
+
 def build(out: Path) -> Path:
     info = manifest()
     version = client_version()
@@ -148,6 +169,7 @@ def build(out: Path) -> Path:
     if not helper_has_version(HELPER, version):
         raise SystemExit(f"the built helper is not version {version}: rebuild native/")
     files = packed_files()  # the guides among them: tracked
+    samples = sample_files(version)
     names = [name for _, name in files] + [MANIFEST]
     if len(names) != len(set(names)):
         raise SystemExit("two files would share a name in the apworld")
@@ -162,6 +184,8 @@ def build(out: Path) -> Path:
         shutil.copy2(dll, out / dll.name)
     for guide, name in GUIDES.items():
         shutil.copyfile(guide, out / name)
+    for sample in samples:
+        shutil.copyfile(sample, out / sample.name)
     return apworld
 
 
@@ -170,7 +194,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "dist", help="output folder")
     args = parser.parse_args(argv)
     apworld = build(args.out)
-    print(f"{apworld} ({client_version()}), with zexion_ap.dll, version.dll and the player guides")
+    print(
+        f"{apworld} ({client_version()}), with zexion_ap.dll, version.dll, the player guides and "
+        "the sample YAMLs"
+    )
     return 0
 
 

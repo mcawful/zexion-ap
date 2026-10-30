@@ -360,8 +360,11 @@ To release:
    `main` again.
 
 `tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
-`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as
-`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`). It packs only
+`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, the player guides as
+`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`), and the sample
+YAMLs from `samples/` (`zexion-easy.yaml`, `zexion-standard.yaml`, `zexion-ohko.yaml`,
+`zexion-custom.yaml`). The samples name the world's version, so raising it means running
+`tools/gen_sample_yamls.py` again: the build refuses samples for another version. It packs only
 files git tracks and refuses a release that would not match (its docstring): run locally,
 rebuild `native/` first after a checkout that touched it.
 
