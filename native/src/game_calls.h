@@ -193,7 +193,7 @@ public:
     // starts in); the watch runs every frame, and drops a request not yet opened once the player
     // is in play outside home's cell; the helper's opener and YES call mission_open and
     // mission_yes; put_back_all puts back what it holds (before an unload). False, nothing
-    // asked, unless client_ready.
+    // asked, unless client_ready and home on the map.
     bool request_mission(int column, int row);
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
     // patch put back before it runs) or drop: YES pressed and the ending not started yet, or the

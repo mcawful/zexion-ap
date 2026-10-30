@@ -700,7 +700,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
             return
         home.reminded = True
         detail(
-            "Enough OS Install Disks: save at the Landing Pod (Kresezoa X16 Y13) to be offered "
+            "Enough OS Install Disks: save at the Landing Pod (Kresezoa 16,13) to be offered "
             "RETURN HOME WITH THE DISKS?."
         )
     if not home.offer:

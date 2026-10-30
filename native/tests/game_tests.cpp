@@ -1547,6 +1547,11 @@ void test_return_home_lapses_away_from_the_pod() {
     put<uint16_t>(g_section, 0x312, 333);
     put<uint16_t>(g_section, 0x314, 449);
 
+    // A home off the map: refused, nothing asked.
+    check(!game.request_mission(-1, kPodRow) && !game.request_mission(kPodColumn, 1080) &&
+              game.mission_status() == "not asked",
+          "a home off the map refused");
+
     // At the seed's start: not home, so the request lapses and nothing opens.
     player_cell(23, 22);
     message_showing(1);

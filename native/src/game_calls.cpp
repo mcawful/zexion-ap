@@ -984,9 +984,14 @@ void Game::restore_intel() {
 
 bool Game::request_mission(int column, int row) {
     if (!client_ready()) return false;
+    // A home off the map is refused, never queued: the request could then never lapse. The
+    // pipe's parser (parse_mission) refuses one first.
+    if (column < 0 || row < 0 || column >= kMapSide * kCellColumns || row >= kMapSide * kCellRows) {
+        return false;
+    }
     // Home's cell as the player state counts it: the row then the column of cells.
-    home_row_ = row >= 0 && column >= 0 ? row / kCellRows : -1;
-    home_column_ = row >= 0 && column >= 0 ? column / kCellColumns : -1;
+    home_row_ = row / kCellRows;
+    home_column_ = column / kCellColumns;
     mission_.request();
     return true;
 }

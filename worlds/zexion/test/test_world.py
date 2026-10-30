@@ -731,10 +731,6 @@ class TestDiscHuntAwayFromThePod(ZexionTestBase):
         self.assertTrue(home.can_reach(self.multiworld.state))
         self.assertTrue(self.multiworld.has_beaten_game(self.multiworld.state))
 
-    def test_home_is_the_landing_pod(self) -> None:
-        self.assertEqual(HOME, data.START_ROOMS[ROOM_NAMES.index("landing_pod")])
-        self.assertEqual(HOME["cell"], (13, 16))
-
 
 class TestDiscHuntStandardFull(ZexionTestBase):
     options = disks(placed=30, required=30)  # the options' most

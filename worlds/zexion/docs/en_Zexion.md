@@ -35,8 +35,8 @@ Set with the Goal option.
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
     back the next time you save there. The seed makes sure you can reach the Landing Pod. The
-    pause menu's teleport takes you to your start room (or second room, with Double Teleport),
-    which is the Landing Pod only if that room is.
+    pause menu's teleport goes to your start room (or second room, with Double Teleport), not
+    the Landing Pod, unless you started there.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
     Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
