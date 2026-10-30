@@ -221,7 +221,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
 - `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`:
   [`native/README.md`](native/README.md).
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
-  world's presets (`web_world.py`, `options_presets`), written by `tools/gen_sample_yamls.py`;
+  world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
+  Custom mode's own options, written by `tools/gen_sample_yamls.py`;
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
 - `tools/`: RE and save tooling, and the release builder. `tools/protected.py` defines the

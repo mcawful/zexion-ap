@@ -1,6 +1,8 @@
 """Write the release's sample YAMLs: one per mode, each the world's preset for that mode
 (worlds/zexion/web_world.py, ``options_presets``) as Archipelago's own template writes it, with
-every option, its description and its default, so a player can use it as it is.
+each option, its description and its default, so a player can use it as it is. Easy, Standard
+and OHKO leave out Custom mode's own options (the template's "Custom Mode Only" section), which
+must stay 'preset' with them: a line says where they are instead.
 
     .venv/Scripts/python tools/gen_sample_yamls.py
 
@@ -32,8 +34,31 @@ def sample_name(preset: str) -> str:
     return f"zexion-{preset.lower()}.yaml"
 
 
+# The template's section of Custom mode's own options (web_world.py's option group), and what a
+# preset mode's sample says in its place.
+CUSTOM_SECTION = "  # Custom Mode Only #"
+CUSTOM_ELSEWHERE = [
+    "  # Custom mode's own options are in zexion-custom.yaml: with this mode they stay its own.",
+    "",
+]
+
+
+def sample_text(preset: str, template: str) -> str:
+    """``preset``'s sample from Archipelago's template of it: LF line ends, and for a preset
+    mode, the Custom Mode Only section (its three header lines to the next section's) left out."""
+    lines = template.replace("\r\n", "\n").split("\n")
+    if preset == "Custom":
+        return "\n".join(lines)
+    try:
+        start = lines.index(CUSTOM_SECTION) - 1
+        end = next(i for i in range(start + 3, len(lines)) if lines[i].startswith("  ###"))
+    except (ValueError, StopIteration) as exc:
+        raise SystemExit(f"no Custom Mode Only section in {preset}'s template") from exc
+    return "\n".join(lines[:start] + CUSTOM_ELSEWHERE + lines[end:])
+
+
 def templates() -> dict[str, str]:
-    """Each Zexion preset's template as Archipelago writes it, by the sample's name."""
+    """Each Zexion preset's template as Archipelago writes it, by the preset's name."""
     if not (AP / "worlds" / "zexion").exists():
         raise SystemExit(f"no Archipelago with the world linked in at {AP}: run ap_checkout.py")
     sys.path.insert(0, str(AP))
@@ -47,16 +72,14 @@ def templates() -> dict[str, str]:
         Options.generate_yaml_templates(folder)
         made = Path(folder) / "Presets"
         return {
-            sample_name(name): (made / f"Zexion - {name}.yaml")
-            .read_text(encoding="utf-8-sig")
-            .replace("\r\n", "\n")
+            name: (made / f"Zexion - {name}.yaml").read_text(encoding="utf-8-sig")
             for name in presets
         }
 
 
 def main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args(argv)
-    written = templates()
+    written = {sample_name(n): sample_text(n, text) for n, text in templates().items()}
     SAMPLES.mkdir(exist_ok=True)
     for old in SAMPLES.glob("*.yaml"):
         if old.name not in written:

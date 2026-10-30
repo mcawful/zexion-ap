@@ -32,11 +32,12 @@ SEED until the client connects, and again once you close the client.
 ## Make your YAML
 
 1. Take the release's sample YAML for your mode: `zexion-easy.yaml`, `zexion-standard.yaml`,
-   `zexion-ohko.yaml` or `zexion-custom.yaml`. Each lists every option with what it does, set
-   to its default, so it works as it is (Custom's settings start as Standard's). The
-   Launcher's **Generate Template Options** writes the same files into
-   `Players/Templates/Presets` in your Archipelago folder (`Zexion - Easy.yaml` and so on), and
-   a plain `Zexion.yaml` into `Players/Templates`.
+   `zexion-ohko.yaml` or `zexion-custom.yaml`. Each lists the options its mode can change with
+   what they do, set to their defaults, so it works as it is. Easy, Standard and OHKO leave out
+   Custom mode's settings, which they can't change; Custom's start as Standard's. The
+   Launcher's **Generate Template Options** writes similar files, with Custom mode's settings
+   in each, into `Players/Templates/Presets` in your Archipelago folder (`Zexion - Easy.yaml`
+   and so on), and a plain `Zexion.yaml` into `Players/Templates`.
 2. Copy it into `Players`, then set your `name` (your player name) and any options you want to
    change (see the game page, `zexion-game-page.md`).
 
