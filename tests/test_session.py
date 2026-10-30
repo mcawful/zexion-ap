@@ -5,22 +5,16 @@ from __future__ import annotations
 import struct
 
 import pytest
-from test_save_patch import fresh, plan
+from fakes import CELLS, SECRET_CELLS, SECRET_LIST, fresh, plan, secret_plan, secret_section
 
-import game
-import native
-import save_patch as sp
-import session as ss
-
-CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by y then x
+from client import game, native
+from client import save_patch as sp
+from client import session as ss
 
 
 def blob_for(p: sp.SeedPlan) -> bytes:
-    save = fresh()
-    for i, (x, y) in enumerate(CELLS):
-        struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
-    out = sp.patch(bytes(save), p)
-    return out[sp.SECTION : sp.SECTION + game.RANDO_BLOB_SIZE]
+    out = sp.patch(bytes(fresh(cells=CELLS)), p)
+    return out[sp.SECTION : sp.SECTION + game.SECTION_SIZE]
 
 
 class FakeGame:
@@ -37,8 +31,9 @@ class FakeGame:
         self.marker = 1
         self.flags = bytearray(0x9C4)
         self.stamp = bytes(14)
+        self.cell = (0, 0)  # the player state's, the game's (X, Y)
 
-    def state(self) -> str:
+    def state(self, energy: int | None = None) -> str:
         self.reads += 1
         if self.flicker and self.reads % 2 == 0:
             return game.MENU
@@ -59,14 +54,14 @@ class FakeGame:
     def rando_marker(self) -> int:
         return self.marker
 
-    def flag(self, number: int) -> int:
-        return self.flags[number]
+    def flag_bytes(self, first: int, count: int) -> bytes:
+        return bytes(self.flags[first : first + count])
+
+    def player_state(self) -> game.PlayerState:
+        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], self.cell)
 
     def save_stamp(self) -> bytes:
         return self.stamp
-
-    def player_cell(self) -> tuple[int, int]:
-        return (0, 0)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -86,7 +81,11 @@ class FakeGame:
         self.inv[item] += 1
 
 
-PLAN = plan()  # starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun
+# The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
+# set as its first cutscene begins, and one the finale sets and the ending clears.
+ENDING, FINALE = 250, 211
+# Starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun.
+PLAN = plan(cells=tuple(CELLS))
 
 
 def give(
@@ -96,9 +95,29 @@ def give(
     return session.step(g, received, gap=0, senders=senders).granted
 
 
+def begin_ending(session: ss.Session, g: FakeGame) -> ss.Step:
+    """A poll before the ending, then the poll that sees it begin."""
+    session.step(g, [], gap=0)
+    g.flags[ENDING] = 1
+    return session.step(g, [], gap=0)
+
+
+def look_away(session: ss.Session, g: FakeGame) -> None:
+    """What the client does with Session.look_away while disconnected (state.end_kept_load)."""
+    if session.look_away(g, gap=0):
+        session.leave()
+
+
+def reconnect(before: ss.Session) -> ss.Session:
+    """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
+    after = ss.Session(PLAN)
+    after.keep_ending(before)
+    return after
+
+
 @pytest.fixture
 def setup():
-    return ss.Session(PLAN, [list(c) for c in CELLS]), FakeGame(PLAN)
+    return ss.Session(PLAN), FakeGame(PLAN)
 
 
 def test_collected_cells_are_reported_as_checks(setup) -> None:
@@ -107,6 +126,22 @@ def test_collected_cells_are_reported_as_checks(setup) -> None:
     g.collect(60)
     step = session.step(g, [], gap=0)
     assert step.checked == {5, 60} and step.seed_matches and not step.goal
+
+
+def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
+    p = secret_plan()
+    session, g = ss.Session(p), FakeGame(PLAN)
+    g.blob = bytes(secret_section(p))
+    x, y = SECRET_LIST[100]  # list position 100: location index 154
+    g.grid[y * 54 + x] = 0x1B
+    x, y = SECRET_LIST[101]  # list position 101: location index 100
+    g.grid[y * 54 + x] = 0x1B
+    step = session.step(g, [], gap=0)
+    assert step.seed_matches and step.checked == {154, 100}
+    # The same cells in another order are not this seed's list.
+    other = ss.Session(p)
+    other.listed = list(SECRET_CELLS)
+    assert other.step(g, [], gap=0).left_seed
 
 
 def test_a_received_item_is_given_once(setup) -> None:
@@ -128,10 +163,25 @@ def test_a_half_recorded_pickup_is_not_taken_for_an_item_owed(setup) -> None:
     assert g.inv[0] == 3
 
 
-def test_a_native_pickup_is_not_given_again(setup) -> None:
+def test_a_poll_out_of_play_starts_the_two_poll_wait_over(setup) -> None:
+    # What was owed before a menu (or a load) is not taken as agreed by the first poll after:
+    # the pause may have hidden a pickup half recorded, or a load changed the inventory.
     session, g = setup
-    g.collect(0)  # location 0 holds item 0, an Energy Tank
-    assert session.step(g, [], gap=0).granted == {}
+    assert session.step(g, [17], gap=0).granted == {}  # owed once
+    g.state_value = game.MENU
+    assert session.step(g, [17], gap=0).granted == {}
+    g.state_value = game.IN_PLAY
+    assert session.step(g, [17], gap=0).granted == {}, "owed once again, not twice"
+    assert session.step(g, [17], gap=0).granted == {17: 1}
+
+
+def test_a_received_copy_of_a_native_pickup_is_still_given(setup) -> None:
+    # The cells collected count toward what is owned (reconcile.should_own): the pickup at
+    # location 0 (an Energy Tank) and the one received are both owed, on top of the start's 2.
+    session, g = setup
+    g.collect(0)
+    give(session, g, [0])
+    assert g.inv[0] == 4
 
 
 def test_an_energy_tank_raises_max_and_current_energy(setup) -> None:
@@ -151,7 +201,7 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
     session, g = setup
     g.state_value = game.MENU
     g.collect(5)
-    g.flags[ss.ENDING_FLAG] = 1  # the ending's cutscenes read as menu
+    g.flags[ENDING] = 1  # the ending's cutscenes read as menu
     step = session.step(g, [17], gap=0)
     assert step.granted == {} and g.inv[17] == 0
     assert step.checked == {5} and step.goal
@@ -159,9 +209,8 @@ def test_nothing_is_given_outside_play_but_checks_and_goal_still_count(setup) ->
 
 def test_items_received_once_the_ending_begins_wait_for_the_next_load(setup) -> None:
     session, g = setup
-    assert not session.step(g, [], gap=0).goal
-    g.flags[ss.ENDING_FLAG] = 1  # the ending begins; some of its cutscenes read as play
-    assert session.step(g, [], gap=0).goal and session.holding
+    # The ending begins; some of its cutscenes read as play.
+    assert begin_ending(session, g).goal and session.holding
     for _ in range(3):  # a release or collect on the goal sends items now
         assert session.step(g, [17], gap=0).granted == {}
     assert g.inv[17] == 0
@@ -177,31 +226,23 @@ def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     session, g = setup
     g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead
     assert not session.step(g, [], gap=0).goal
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     assert session.step(g, [], gap=0).goal
 
 
-def test_the_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
+def test_the_games_escape_skip_is_not_the_goal_but_the_ending_after_it_is(setup) -> None:
     session, g = setup
-    g.flags[ss.ENDING_FLAG] = 1  # YES: flag 250 at once, flags 185 to 212 set
-    g.flags[ss.FINALE_FLAG] = 1
+    # The game's own SKIP ESCAPE AND FINAL BATTLE? (a game that has reached the ending before).
+    g.flags[ENDING] = 1  # YES: flag 250 at once, flags 185 to 212 set
+    g.flags[FINALE] = 1
     assert not session.step(g, [], gap=0).goal
-    g.flags[ss.FINALE_FLAG] = 0  # the ending clears them as its first cutscene starts
-    assert session.step(g, [], gap=0).goal
-
-
-def test_under_abridged_finale_the_grab_is_the_goal() -> None:
-    p = plan(options={**PLAN.options, 32: 1})
-    session = ss.Session(p, [list(c) for c in CELLS])
-    g = FakeGame(PLAN)  # the same item table and start; the game's own settings do not matter
-    assert not session.step(g, [], gap=0).goal
-    g.inv[31] = 1
+    g.flags[FINALE] = 0  # the ending clears them as its first cutscene starts
     assert session.step(g, [], gap=0).goal
 
 
 def test_the_ending_of_another_seed_is_not_the_goal(setup) -> None:
     session, g = setup
-    g.flags[ss.ENDING_FLAG] = 1
+    g.flags[ENDING] = 1
     g.marker = 0  # a normal save, its flags those of another game
     assert not session.step(g, [], gap=0).goal
 
@@ -239,6 +280,20 @@ def test_no_save_loaded_gets_nothing(setup) -> None:
     assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
 
 
+def test_home_is_the_landing_pods_save_point_not_the_seeds_start(setup) -> None:
+    # PLAN starts in the save room at (23, 22), tiles 326 and 449: a save there is not home.
+    session, g = setup
+    g.stamp = struct.pack("<iHHHHH", 3, 100, 0, 0, 449, 326)
+    g.cell = (22, 23)
+    step = session.step(g, [], gap=0)
+    assert step.seed_matches and not step.at_home and not step.in_home_cell
+    # A save at the Landing Pod's save point (191, 329), the player in its cell (X16 Y13).
+    g.stamp = struct.pack("<iHHHHH", 3, 200, 0, 0, 329, 191)
+    g.cell = (16, 13)
+    step = session.step(g, [], gap=0)
+    assert step.at_home and step.in_home_cell
+
+
 def test_a_grant_the_game_changed_first_is_left_for_the_next_poll(setup) -> None:
     session, g = setup
     real = g.set_item
@@ -273,6 +328,10 @@ class FakeHelper:
                     self.g.inv[item] = value
         return self.reply
 
+    def popups(self) -> list[str]:
+        """The popup lines of the last batch."""
+        return [line for line in self.requests[-1].splitlines() if line.startswith("popup")]
+
     def close(self) -> None:
         self.closed = True
 
@@ -282,7 +341,7 @@ def with_helper(setup):
     session, g = setup
     helper = FakeHelper(g)
     session.helper = helper
-    session.mark_announced(0)
+    session.announced = 0
     writes = []
     real = g.set_item
     g.set_item = lambda *a: (writes.append(a), real(*a))
@@ -310,21 +369,44 @@ def test_a_failed_helper_is_dropped_for_direct_writes(with_helper) -> None:
     helper.fail = True
     assert give(session, g, [17]) == {17: 1}
     assert writes == [(17, 0, 1)] and session.helper is None and helper.closed
+    assert session.mismatch is None, "a helper that failed is tried again later"
+
+
+def test_a_helper_that_doesnt_match_is_dropped_and_kept_for_the_poll_to_say(with_helper) -> None:
+    session, g, helper, writes = with_helper
+    mismatch = native.ModMismatch("both are version 0, but from different builds")
+
+    def apply(text: str) -> str:
+        raise mismatch
+
+    helper.apply = apply
+    assert give(session, g, [17]) == {17: 1}, "given directly"
+    assert session.helper is None and session.mismatch is mismatch
 
 
 def test_popups_announce_each_received_item_once(with_helper) -> None:
     session, g, helper, _ = with_helper
-    session.mark_announced(1)  # the first item came before this connection
+    session.announced = 1  # the first had its popup before this connection (received offline)
     give(session, g, [17, 36], senders=["Bob", "Alice"])
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 36 FROM Alice"]
+    assert helper.popups() == ["popup 36 FROM Alice"]
+    assert session.announced == 2
     session.step(g, [17, 36], gap=0, senders=["Bob", "Alice"])
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
 
 
+def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
+    # Zenith Thrusters (26) sent again from the console: its byte stays 1 (B1, 2026-10-28, a
+    # console copy left it at 2 before the cap).
+    session, g, helper, _ = with_helper
+    assert give(session, g, [26], senders=["Bob"]) == {26: 1}
+    assert give(session, g, [26, 26], senders=["Bob", "Bob"]) == {}
+    assert g.inv[26] == 1
+    assert helper.requests[-1].splitlines()[1:] == ["popup 26 FROM Bob"]
+    assert session.announced == 2
+
+
 def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     session, g, helper, _ = with_helper
-    session.mark_announced(0)
     received, senders = [17, 49], ["Bob", "Alice"]
     notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
     session.step(g, received, gap=0, senders=senders, notes=notes)
@@ -340,28 +422,36 @@ def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setu
     session.helper = helper
     assert give(session, g, [17], senders=["Alice"]) == {}
     assert helper.requests == [] and g.inv[17] == 0
-    session.mark_announced(0)  # the server's count: no popup shown yet
+    session.announced = 0  # the server's count: no popup shown yet
     give(session, g, [17], senders=["Alice"])
     assert g.inv[17] == 1 and "popup 17 FROM Alice" in helper.requests[-1]
-
-
-def test_items_received_while_offline_pop_up_and_shown_ones_do_not(setup) -> None:
-    session, g = setup
-    helper = FakeHelper(g)
-    session.helper = helper
-    session.mark_announced(1)  # the first had its popup in an earlier connection
-    give(session, g, [17, 36], senders=["Alice", "Bob"])
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 36 FROM Bob"]
-    assert session.announced == 2
 
 
 def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> None:
     session, g, helper, _ = with_helper
     # The Machine Gun is a starting item; the Force Blaster is not, until the first arrives.
     give(session, g, [3, 4, 4], senders=["Alice"] * 3)
-    popups = [line for line in helper.requests[-1].splitlines() if line.startswith("popup")]
-    assert popups == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert helper.popups() == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+
+
+def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    # A Pentashot sent from the server console is a Force Blaster's copy (reconcile): the first
+    # sets the gun's byte, so it and the Force Blaster after it pop up as written.
+    give(session, g, [14, 4], senders=["Alice"] * 2)
+    assert helper.popups() == ["popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert (g.inv[4], g.inv[14]) == (1, 1)
+
+
+def test_without_guns_first_each_item_pops_up_as_itself() -> None:
+    off = plan(options={10: 0, 42: 2, 72: 1}, cells=tuple(CELLS))
+    session, g = ss.Session(off), FakeGame(off)
+    helper = FakeHelper(g)
+    session.helper, session.announced = helper, 0
+    # The Machine Gun is a starting item: a received Pulse Wave and Pentashot are themselves.
+    give(session, g, [9, 14], senders=["Alice"] * 2)
+    assert helper.popups() == ["popup 9 FROM Alice", "popup 14 FROM Alice"]
+    assert (g.inv[3], g.inv[4], g.inv[9], g.inv[14]) == (1, 0, 1, 1)
 
 
 def test_lagging_supplies_are_refreshed_through_the_helper(with_helper) -> None:
@@ -377,3 +467,98 @@ def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
     session.step(g, [], gap=0)
     session.step(g, [], gap=0)
     assert helper.requests == []
+
+
+def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
+    session, g = setup
+    session.announced = 0
+    give(session, g, [17])
+    assert g.inv[17] == 1 and session.announced == 1
+
+
+def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
+    session, g = setup
+    assert begin_ending(session, g).goal and session.holding
+    after = reconnect(session)
+    for _ in range(3):
+        assert after.step(g, [17], gap=0).granted == {}
+    assert g.inv[17] == 0
+    g.flags[ENDING] = 0  # another save of the seed, before its ending, loaded meanwhile
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1, "the hold was the ending's load's alone"
+
+
+def test_the_endings_hold_carries_over_while_its_load_stays(setup) -> None:
+    session, g = setup
+    begin_ending(session, g)
+    # Disconnected: the ending's cutscenes go on, read as play.
+    look_away(session, g)
+    after = reconnect(session)
+    for _ in range(3):
+        assert after.step(g, [17], gap=0).granted == {}
+    assert after.holding and g.inv[17] == 0
+
+
+def test_the_ending_begun_while_disconnected_holds_after_the_reconnect(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)  # before the ending
+    look_away(session, g)
+    g.flags[ENDING] = 1  # it begins while disconnected, in the same load
+    after = reconnect(session)
+    assert after.carried_from is session
+    after.step(g, [17], gap=0)
+    assert after.carried_from is None, "stepped: no later end of the old load is its"
+    after.step(g, [17], gap=0)
+    assert after.holding and g.inv[17] == 0
+
+
+def test_an_ending_played_while_disconnected_holds_nothing_on_the_next_load(setup) -> None:
+    # Review 31, client finding 2, scenario A: no hold where no ending began.
+    session, g = setup
+    session.step(g, [], gap=0)  # this seed's save before its ending
+    # Disconnected: the ending, MISSION COMPLETE, the title, then the ended save loaded.
+    g.state_value = game.NO_SAVE
+    look_away(session, g)
+    g.state_value = game.IN_PLAY
+    g.flags[ENDING] = 1
+    look_away(session, g)
+    after = reconnect(session)
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1
+
+
+def test_a_hold_ends_with_its_load_while_disconnected(setup) -> None:
+    # Scenario B: the ending began (held), then the title and the ended save loaded again.
+    session, g = setup
+    assert begin_ending(session, g).goal and session.holding
+    g.state_value = game.NO_SAVE
+    look_away(session, g)
+    assert not session.holding
+    g.state_value = game.IN_PLAY
+    after = reconnect(session)
+    give(after, g, [17])
+    assert not after.holding and g.inv[17] == 1
+
+
+def test_looking_away_needs_two_reads_and_reads_nothing_with_nothing_carried(setup) -> None:
+    session, g = setup
+    look_away(session, g)
+    assert g.reads == 0, "a session that has not read a load carries nothing"
+    begin_ending(session, g)
+    reads = iter([game.NO_SAVE, game.IN_PLAY])
+    g.state = lambda energy=None: next(reads)
+    assert not session.look_away(g, gap=0), "a read the next does not agree with: not the title"
+    g.state = lambda energy=None: game.NO_SAVE
+    assert session.look_away(g, gap=0) and session.holding, "it ends nothing itself"
+
+
+def test_the_game_closing_while_disconnected_is_raised(setup) -> None:
+    session, g = setup
+    session.step(g, [], gap=0)
+
+    def closed(energy: int | None = None) -> str:
+        raise game.GameNotRunning("the game exited")
+
+    g.state = closed
+    with pytest.raises(game.GameNotRunning):
+        session.look_away(g, gap=0)  # the client then ends its load (game_closed)

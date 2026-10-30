@@ -8,62 +8,43 @@ data address or function to locate, relative to the image base (``Zexion.exe+0x3
 ``0x3E469D``); ``--size`` widens it to a range (a struct or array), so references to its fields
 count too.
 
-For each instruction that refers to the range, either relative to the instruction pointer
-(a memory operand, or a ``call``/``jmp`` with a 32-bit offset) or as an image-base offset baked
-into the instruction, it grows a window of whole instructions
-from there, wildcards every field that moves when code or data moves (that reference, calls,
-jumps, other instruction-pointer-relative offsets, other image-base offsets), and keeps the
-shortest window that matches exactly once in .text. It prints up to K such patterns, each with
-how to turn a match into the address (docs/re/memory.md and client/patterns.py use the same
-form). A call site resolves like an instruction-pointer-relative reference (kind "rip": its
-offset field leads to the function). When RVA starts a function, it also prints a pattern
-over the function's first instructions, kind "at" (the match itself is the address). The file
-is only read.
+For each instruction that refers to the range (RIP-relative, a call/jmp rel32, or an
+image-base offset), it grows a window of whole instructions, wildcards every field that moves
+when code or data moves, and keeps the shortest window that matches once in .text; up to K
+such patterns, each with how a match becomes the address (the form client/patterns.py uses).
+When RVA starts a function it also prints an "at" pattern over its first instructions. The
+file is only read.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import struct
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from capstone import CS_ARCH_X86, CS_MODE_64, CS_OP_MEM, Cs
 from capstone.x86 import X86_REG_RIP
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the client package
+from client import game, pe  # noqa: E402
+from client.patterns import Pattern  # noqa: E402  (kind "rva" too: printed, refused by the client)
+
 IMAGE_BASE_MIN_RVA = 0x10000  # an absolute displacement this large is taken as an RVA
-
-
-@dataclass(frozen=True)
-class Section:
-    name: str
-    va: int
-    vsize: int
-    raw: int
-    rsize: int
 
 
 class Image:
     def __init__(self, data: bytes):
         self.data = data
-        pe = struct.unpack_from("<I", data, 0x3C)[0]
-        nsec = struct.unpack_from("<H", data, pe + 6)[0]
-        optsz = struct.unpack_from("<H", data, pe + 20)[0]
-        self.sections = []
-        for i in range(nsec):
-            o = pe + 24 + optsz + 40 * i
-            name = data[o : o + 8].rstrip(b"\0").decode()
-            vsize, va, rsize, raw = struct.unpack_from("<IIII", data, o + 8)
-            self.sections.append(Section(name, va, vsize, raw, rsize))
-        self.text = next(s for s in self.sections if s.name == ".text")
+        header = pe.parse(data)
+        self.sections = header.sections
+        self.text = header.section(".text")
         self.text_bytes = data[self.text.raw : self.text.raw + self.text.rsize]
         self.md = Cs(CS_ARCH_X86, CS_MODE_64)
         self.md.detail = True
         # Function ranges from the unwind table: a linear pass over .text would stop at the
         # first byte capstone cannot decode.
-        pdata = next(s for s in self.sections if s.name == ".pdata")
+        pdata = header.section(".pdata")
         self.functions = []
         for o in range(pdata.raw, pdata.raw + pdata.vsize - 11, 12):
             begin, end, _ = struct.unpack_from("<III", data, o)
@@ -76,15 +57,6 @@ class Image:
 
     def instructions(self, rva: int, count: int):
         return list(self.md.disasm(self.code_at(rva, count * 15), rva))[:count]
-
-
-@dataclass(frozen=True)
-class Pattern:
-    text: str  # "48 8D 0D ?? ?? ?? ?? ..."
-    disp_at: int  # offset in the match of the 32-bit field that leads to the address
-    kind: str  # "rip": match + rip_end + disp; "rva": base + disp; "at": the match itself
-    rip_end: int  # offset of the end of the referring instruction (kind "rip")
-    addend: int  # added to what the field leads to, to reach the wanted address
 
 
 def _is_rip(ins) -> bool:
@@ -112,11 +84,6 @@ def _wildcards(ins) -> set[int]:
     if ins.imm_size == 4 and ins.imm_offset and ins.mnemonic.startswith(("call", "j")):
         out.update(range(ins.imm_offset, ins.imm_offset + 4))
     return out
-
-
-def _to_regex(raw: bytes, wild: set[int]) -> re.Pattern[bytes]:
-    parts = [b"." if i in wild else re.escape(raw[i : i + 1]) for i in range(len(raw))]
-    return re.compile(b"".join(parts), re.DOTALL)
 
 
 def _text(raw: bytes, wild: set[int]) -> str:
@@ -153,14 +120,11 @@ def fixed_bytes(p: Pattern) -> int:
     return len(p.text.split()) - p.text.split().count("??")
 
 
-def pattern_for(
-    img: Image, ref_rva: int, kind: str, want: int, max_bytes: int, min_fixed: int = 12
-) -> Pattern | None:
-    """The shortest unique window starting at the referring instruction."""
-    insns = img.instructions(ref_rva, 12)
-    if not insns:
-        return None
-    first = insns[0]
+def _unique_window(img: Image, rva: int, max_bytes: int, min_fixed: int):
+    """The shortest window of whole instructions from ``rva`` that matches once in .text, as
+    the client counts matches (overlapping ones too): (its first instruction, its pattern
+    text), or None."""
+    insns = img.instructions(rva, 12)
     raw, wild = b"", set()
     for ins in insns:
         start = len(raw)
@@ -170,39 +134,31 @@ def pattern_for(
             return None
         if len(raw) - len(wild) < min_fixed:
             continue  # too few fixed bytes to survive a patch, or to mean anything
-        if len(_to_regex(raw, wild).findall(img.text_bytes)) == 1:
-            call = _call_target(first)
-            if call is not None:
-                target, field = call, first.imm_offset
-            elif kind == "rip":
-                target, field = first.address + first.size + first.disp, first.disp_offset
-            else:
-                target, field = first.disp, first.disp_offset
-            return Pattern(
-                text=_text(raw, wild),
-                disp_at=field,
-                kind=kind,
-                rip_end=first.size,
-                addend=want - target,
-            )
+        text = _text(raw, wild)
+        if len(game.compile_pattern(text).findall(img.text_bytes)) == 1:
+            return insns[0], text
     return None
 
 
-def start_pattern(img: Image, rva: int, max_bytes: int, min_fixed: int = 12) -> Pattern | None:
-    """The shortest unique window of whole instructions from the start of a function."""
-    raw, wild = b"", set()
-    for ins in img.instructions(rva, 12):
-        start = len(raw)
-        raw += bytes(ins.bytes)
-        wild |= {start + w for w in _wildcards(ins)}
-        if len(raw) > max_bytes:
-            return None
-        if (
-            len(raw) - len(wild) >= min_fixed
-            and len(_to_regex(raw, wild).findall(img.text_bytes)) == 1
-        ):
-            return Pattern(text=_text(raw, wild), disp_at=0, kind="at", rip_end=0, addend=0)
-    return None
+def pattern_for(
+    img: Image, ref_rva: int, kind: str, want: int, max_bytes: int, min_fixed: int
+) -> Pattern | None:
+    """The shortest unique window starting at the referring instruction, or (``kind`` "at") at
+    the start of a function."""
+    window = _unique_window(img, ref_rva, max_bytes, min_fixed)
+    if window is None:
+        return None
+    first, text = window
+    if kind == "at":
+        return Pattern(text=text, disp_at=0, kind="at", rip_end=0, addend=0)
+    call = _call_target(first)
+    if call is not None:
+        target, field = call, first.imm_offset
+    elif kind == "rip":
+        target, field = first.address + first.size + first.disp, first.disp_offset
+    else:
+        target, field = first.disp, first.disp_offset
+    return Pattern(text=text, disp_at=field, kind=kind, rip_end=first.size, addend=want - target)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -234,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             f"rip_end={p.rip_end} addend={p.addend:#x}\n  {p.text}"
         )
     if any(begin == args.rva for begin, _ in img.functions):
-        p = start_pattern(img, args.rva, args.max_bytes, args.min_fixed)
+        p = pattern_for(img, args.rva, "at", args.rva, args.max_bytes, args.min_fixed)
         if p is not None:
             found.append((args.rva, p))
             print(f"function start (at, {fixed_bytes(p)} fixed bytes):\n  {p.text}")

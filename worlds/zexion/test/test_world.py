@@ -1,0 +1,969 @@
+import random
+import types
+import unittest
+from argparse import Namespace
+from collections import Counter
+from typing import Any
+from unittest import mock
+
+from BaseClasses import CollectionState, Item, ItemClassification, LocationProgressType, MultiWorld
+from Fill import distribute_items_restrictive
+from Options import OptionError
+from worlds.AutoWorld import call_all
+
+from .. import data, reach, rules
+from ..items import (
+    AREA_MAP,
+    DATA_DISC,
+    DRAWN_AS,
+    GAME,
+    INTEL_CHIP,
+    NAMES,
+    SCRAP_CHUNK,
+    SCRAP_ENERGY,
+    SCRAP_METAL,
+    UPGRADES,
+    ZexionItem,
+    code_of,
+)
+from ..locations import LOCATION_ID_BASE, location_name
+from ..logic import FIRST_SPECIAL
+from ..options import AUTOMATIC, AUTOMATIC_ROOM, ROOM_NAMES, Goal, StartRoom
+from ..world import (
+    CORE_REGION,
+    DISC_REPLACES,
+    FILLER_ORDER,
+    FOREIGN,
+    FOREIGN_PROGRESSION,
+    HOME,
+    MAX_DISKS,
+    NOT_HINTED,
+    ZexionWorld,
+)
+from .bases import ZexionTestBase, every_list
+
+
+def fake_world(**options: Any) -> ZexionWorld:
+    """A world with these options, every other one at its default, to run generate_early alone."""
+    world = ZexionWorld.__new__(ZexionWorld)
+    world.options = types.SimpleNamespace(
+        **{
+            name: option.from_any(options.get(name, option.default))
+            for name, option in ZexionWorld.options_dataclass.type_hints.items()
+        }
+    )
+    world.random = random.Random(1)
+    world.player = 1
+    world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
+    return world
+
+
+# Standard's Random Gun draws its starting gun among these four (the Machine Gun start-only and
+# the other three pool-only in its menu; the Arc Plasma, set both ways, always goes in the pool),
+# with the start rooms each gun's starting items take (docs/re/locations.md, "Which start rooms
+# the world offers").
+STANDARD_GUNS = {
+    "Progressive Machine Gun": 17,
+    "Progressive Force Blaster": 19,  # the fresh save's draw (data.MODES)
+    "Progressive Snake": 17,
+    "Progressive Lance": 20,
+}
+
+
+def drawn_gun(world: ZexionWorld) -> str:
+    """The gun a Standard world's starting items hold."""
+    (gun,) = [NAMES[c] for c in world.start_inventory if NAMES[c] in STANDARD_GUNS]
+    return gun
+
+
+def drawing(gun: str, **options: Any) -> ZexionWorld:
+    """A Standard fake_world with these options whose Random Gun drew ``gun``, generate_early
+    run. The seed is found with the default options: the draw comes before the start room is
+    chosen, so a start_room does not change it (asserted)."""
+    for seed in range(100):
+        probe = fake_world()
+        probe.random = random.Random(seed)
+        probe.generate_early()
+        if drawn_gun(probe) == gun:
+            break
+    else:
+        raise AssertionError(f"no seed drew the {gun}")
+    world = fake_world(**options)
+    world.random = random.Random(seed)
+    world.generate_early()
+    assert drawn_gun(world) == gun, (gun, options)
+    return world
+
+
+class RefusalTestCase(unittest.TestCase):
+    def refused(self, start_inventory: dict[str, int] | None = None, **options: Any) -> str:
+        """The error generate_early refuses these options with."""
+        with self.assertRaises(OptionError) as caught:
+            fake_world(start_inventory=start_inventory or {}, **options).generate_early()
+        return str(caught.exception)
+
+
+def disks(mode: str = "standard", placed: int = 20, required: int = 15) -> dict[str, Any]:
+    """Options for the OS Install Disks goal."""
+    return {
+        "mode": mode,
+        "goal": "os_install_disks",
+        "os_install_disks": placed,
+        "os_install_disks_required": required,
+    }
+
+
+def two_zexion_players(options: dict[str, Any]) -> MultiWorld:
+    """Two Zexion players, Alpha (1) and Beta (2), with the same options, set up as the
+    generator does through generate_basic: item_links in the options make real groups
+    (MultiWorld.set_item_links), and link_items is left to the test."""
+    multiworld = MultiWorld(2)
+    multiworld.game = {1: GAME, 2: GAME}
+    multiworld.player_name = {1: "Alpha", 2: "Beta"}
+    multiworld.set_seed(1)
+    args = Namespace()
+    for name, option in ZexionWorld.options_dataclass.type_hints.items():
+        value = options.get(name, option.default)
+        setattr(args, name, {player: option.from_any(value) for player in (1, 2)})
+    multiworld.set_options(args)
+    multiworld.set_item_links()
+    multiworld.state = CollectionState(multiworld)  # after the groups, which it counts
+    steps = ("generate_early", "create_regions", "create_items", "set_rules")
+    for step in (*steps, "connect_entrances", "generate_basic"):
+        call_all(multiworld, step)
+    return multiworld
+
+
+class TestDefaultStart(ZexionTestBase):
+    """The default options: Standard from its default room, the core goal, DeathLink off and
+    assists locked; a few locations reachable with the starting items alone."""
+
+    def test_starting_items_reach_some_locations(self) -> None:
+        reachable = [
+            loc
+            for loc in self.multiworld.get_locations(self.player)
+            if loc.can_reach(self.multiworld.state)
+        ]
+        self.assertGreaterEqual(len(reachable), 3)
+
+    def test_slot_data_names_the_start(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["start_column"], slot["start_row"]), (191, 329))
+        self.assertIsNone(slot["second_start"])
+        self.assertEqual(len(slot["locations"]), 154)
+
+    def test_goal_needs_all_four_keys(self) -> None:
+        self.collect_all_but(["Omega Key", "Victory"])
+        self.assertFalse(self.can_reach_location("Zexion"))
+        self.collect_by_name("Omega Key")
+        self.assertTrue(self.can_reach_location("Zexion"))
+
+    def test_goal_is_in_the_core_entered_from_the_door(self) -> None:
+        core = self.multiworld.get_location("Zexion", self.player).parent_region
+        self.assertEqual(core.name, CORE_REGION)
+        self.assertNotIn(data.CORE["cell"], data.CELL_REGION)  # RandoCells needs Abridged Finale
+        door = rules.region_name(data.CELL_REGION[data.CORE["door"]])
+        self.assertEqual([e.parent_region.name for e in core.entrances], [door])
+
+    def test_the_way_into_the_core_needs_its_lists(self) -> None:
+        # B1's core: (27, 42) to (28, 42) needs code 51 (Wall Jump Boots with G-Diffuser or
+        # Gravity Harness, or Zenith Thrusters) or the Jump Booster.
+        self.assertEqual(data.CORE["needs"], [(((51, 1), (22, 1)), None)])
+        entrance = self.multiworld.get_entrance("Into the core", self.player)
+        for names, expected in (
+            ((), False),
+            (("Wall Jump Boots",), False),
+            (("Jump Booster",), True),
+            (("Wall Jump Boots", "G-Diffuser"), True),
+            (("Zenith Thrusters",), True),
+        ):
+            state = CollectionState(self.multiworld)
+            for name in names:
+                state.collect(self.world.create_item(name), True)
+            with self.subTest(names=names):
+                self.assertEqual(entrance.access_rule(state), expected)
+
+    def test_ways_that_look_at_a_neighbor_are_rechecked_when_it_is_reached(self) -> None:
+        # Codes 64 to 67 pass once the neighboring cell is reached: Archipelago rechecks the way
+        # when that cell's region is reached (an indirect condition).
+        registered = 0
+        for (a, b), ways in data.ENTRANCES.items():
+            if not {a, b} <= self.world.created_regions:
+                continue
+            for k, way in enumerate(ways):
+                if way is None or not rules.neighbor_regions(*way):
+                    continue
+                name = f"{rules.region_name(a)} to {b}" + (f" #{k + 1}" if len(ways) > 1 else "")
+                entrance = self.multiworld.get_entrance(name, self.player)
+                for r in rules.neighbor_regions(*way) & self.world.created_regions:
+                    region = self.multiworld.get_region(rules.region_name(r), self.player)
+                    self.assertIn(entrance, self.multiworld.indirect_connections.get(region, ()))
+                    registered += 1
+        self.assertGreaterEqual(registered, 4)  # B1: region 390's four ways
+
+    def test_every_item_a_rule_reads_is_progression(self) -> None:
+        # Directly in a list, or through a derived code (logic.derive): the weapon upgrades
+        # count only with their weapons, but are items of their own with Guns First off.
+        read = {code for entries in every_list() for code, _ in entries if code < FIRST_SPECIAL}
+        read |= UPGRADES
+        for code in sorted(read):
+            with self.subTest(item=NAMES[code]):
+                self.assertTrue(self.world.create_item(NAMES[code]).advancement)
+
+    def test_slot_data_says_death_link_is_off_and_assists_are_locked(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["death_link"], slot["allow_assists"]), (False, False))
+
+    def test_assist_unlock_is_not_in_the_pool_but_can_be_made(self) -> None:
+        self.assertEqual(self.count("Assist Unlock"), 0)
+        item = self.world.create_item("Assist Unlock")
+        self.assertEqual(item.code, 3392510_000 + 100)
+        self.assertFalse(item.advancement)
+
+    def test_mode_and_items_are_standards(self) -> None:
+        self.assertEqual(self.world.mode_name, "standard")
+        self.assertEqual(self.world.logic_settings.energy_total, 20)
+        self.assertEqual(self.count("Energy Tank"), 3)  # the starting inventory
+        self.assertEqual(self.world.fill_slot_data()["mode"], "standard")
+
+    def test_slot_data_sets_up_the_menu_as_the_mode(self) -> None:
+        menu = self.world.fill_slot_data()["menu"]
+        self.assertEqual(len(menu["seed_text"]), 16)
+        self.assertLessEqual(set(menu["seed_text"]), set("0123456789ABCDEF"))
+        self.assertEqual((len(menu["start"]), len(menu["pool"])), (27, 27))
+        standard = data.MODES["standard"]["menu"]
+        self.assertEqual((menu["start"], menu["pool"]), (standard["start"], standard["pool"]))
+        # Starting Location names the start room, Landing Pod (value 7); nothing else changes.
+        location = [t - 10 for t in range(22, 28)]
+        self.assertEqual([menu["settings"][i] for i in location], [1, 1, 1, 0, 0, 0])
+        others = [i for i in range(64) if i not in location]
+        self.assertEqual(
+            [menu["settings"][i] for i in others], [standard["settings"][i] for i in others]
+        )
+        self.assertEqual(menu["second_target"], [0, 20, 509])
+
+    def test_no_discs_and_the_keys_in_the_pool(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("OS Install Disk", pool)
+        self.assertEqual(
+            sum(pool.count(k) for k in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key")), 4
+        )
+        slot = self.world.fill_slot_data()
+        self.assertEqual(
+            (slot["goal"], slot["discs_required"], slot["disc_locations"]), ("core", 0, [])
+        )
+
+    def test_location_groups_are_the_areas(self) -> None:
+        groups = self.world.location_name_groups
+        self.assertIn("Guardia 22,7", groups["Guardia"])
+        named = set().union(*(names for g, names in groups.items() if g != "Everywhere"))
+        # The game's 154 and Secret Shuffle's 155th, in its area "???".
+        self.assertEqual(len(named), len(data.LOCATIONS) + 1)
+        self.assertEqual(groups["???"], {"??? 48,20"})
+
+
+class TestDeathLinkAndAssistsOn(ZexionTestBase):
+    options = {"death_link": True, "allow_assists": True}
+
+    def test_slot_data_says_so(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["death_link"], slot["allow_assists"]), (True, True))
+
+
+class TestEasy(ZexionTestBase):
+    options = {"mode": "easy"}
+
+    def test_easy_has_its_own_pool_items_and_settings(self) -> None:
+        self.assertEqual(self.world.logic_settings.energy_total, 40)
+        self.assertEqual(self.count("Energy Tank"), 5)
+        self.assertEqual(pool_names(self).count("Energy Tank"), 35)
+
+
+class TestOtherStart(ZexionTestBase):
+    options = {"start_room": "open_cave"}
+
+    def test_start_follows_the_option(self) -> None:
+        self.assertEqual(self.world.start, data.START_ROOMS[17])
+        self.assertEqual(self.world.start["cell"], (23, 22))
+
+
+class TestStartRooms(unittest.TestCase):
+    """The game's rules for a start room (docs/re/locations.md, "Which start rooms the world
+    offers")."""
+
+    def test_a_room_the_starting_items_reach_nothing_from_is_refused(self) -> None:
+        world = fake_world()
+        world.generate_early()
+        empty = [r for r in data.START_ROOMS if not world.seed_reach.sphere0(r["cell"]).locations]
+        self.assertTrue(empty)
+        with self.assertRaisesRegex(OptionError, "reach no location"):
+            fake_world(start_room=empty[0]["index"] + 1).generate_early()
+
+    def test_any_room_the_starting_items_reach_from_is_taken(self) -> None:
+        # One location is enough, as in the game (every item reaches the core from each room).
+        # Which rooms those are follows the gun Standard drew.
+        for gun, count in STANDARD_GUNS.items():
+            world = drawing(gun)
+            rooms = [r for r in data.START_ROOMS if world.passes(r)]
+            with self.subTest(gun):
+                self.assertEqual(len(rooms), count)
+                one = [r for r in rooms if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
+                self.assertTrue(one)
+                self.assertIn(data.START_ROOMS[AUTOMATIC_ROOM], rooms, "Landing Pod")
+            if gun == "Progressive Force Blaster":  # the fresh save's draw, which data.MODES holds
+                sphere0 = data.MODES["standard"]["sphere0_indices"]
+                indices = [i for i, s in enumerate(sphere0) if s]
+                self.assertEqual([r["index"] for r in rooms], indices)
+            for room in rooms:
+                chosen = drawing(gun, start_room=room["index"] + 1)
+                self.assertEqual(chosen.start, room)
+                every = chosen.seed_reach.every(room["cell"])
+                self.assertEqual(chosen.kept_locations, set(every.locations))
+
+    def test_settings_that_do_not_reach_the_cores_door_are_refused(self) -> None:
+        door = data.CELL_REGION[data.CORE["door"]]
+        real = reach.Seed.every
+
+        def without_door(seed: reach.Seed, *starts: tuple[int, int]) -> reach.Reach:
+            got = real(seed, *starts)
+            return reach.Reach(got.regions - {door}, got.locations)
+
+        with mock.patch.object(reach.Seed, "every", without_door):
+            with self.assertRaisesRegex(OptionError, "does not suit"):
+                fake_world(start_room="landing_pod").generate_early()
+            with self.assertRaisesRegex(OptionError, "no start room"):
+                fake_world(start_room="random_start").generate_early()
+            # The disk goal does not enter the core.
+            fake_world(start_room="landing_pod", goal=Goal.option_os_install_disks).generate_early()
+
+    def test_disk_settings_that_do_not_reach_the_landing_pod_are_refused(self) -> None:
+        pod = data.CELL_REGION[HOME["cell"]]
+        real = reach.Seed.every
+
+        def without_pod(seed: reach.Seed, *starts: tuple[int, int]) -> reach.Reach:
+            got = real(seed, *starts)
+            return reach.Reach(got.regions - {pod}, got.locations)
+
+        goal = Goal.option_os_install_disks
+        with mock.patch.object(reach.Seed, "every", without_pod):
+            with self.assertRaisesRegex(OptionError, "does not reach the Landing Pod"):
+                fake_world(start_room="open_cave", goal=goal).generate_early()
+            with self.assertRaisesRegex(OptionError, "no start room"):
+                fake_world(start_room="random_start", goal=goal).generate_early()
+            # The core goal does not go home.
+            fake_world(start_room="open_cave").generate_early()
+            # The check after the pool is fitted, whatever passed the start.
+            with mock.patch.object(ZexionWorld, "passes", lambda w, room: True):
+                world = fake_world(start_room="open_cave", goal=goal)
+                with self.assertRaisesRegex(
+                    OptionError, r"do not reach the Landing Pod.* from start room Kresezoa 22,23"
+                ):
+                    world.generate_early()
+
+    def test_automatic_is_landing_pod_or_else_a_random_start(self) -> None:
+        world = fake_world()
+        world.generate_early()
+        self.assertEqual(world.start["cell"], (13, 16))
+        landing = data.START_ROOMS[6]
+        real = ZexionWorld.passes
+
+        def not_landing(w: ZexionWorld, room: dict) -> bool:
+            return room is not landing and real(w, room)
+
+        with mock.patch.object(ZexionWorld, "passes", not_landing):
+            world = fake_world()
+            with self.assertLogs(level="WARNING"):
+                world.generate_early()
+        self.assertNotEqual(world.start, landing)
+
+    def test_random_start_never_picks_a_flagged_room_below_the_score(self) -> None:
+        for mode in ("easy", "standard", "ohko"):
+            for seed in range(10):
+                world = fake_world(mode=mode, start_room="random_start")
+                world.random = random.Random(seed)
+                world.generate_early()
+                with self.subTest(mode=mode, seed=seed):
+                    self.assertFalse(data.START_TABLE[world.start["index"]][2])
+                    self.assertTrue(world.passes(world.start))
+                    if world.second is not None:
+                        self.assertNotEqual(world.start["cell"], world.second["cell"])
+
+    def test_random_is_random_start(self) -> None:
+        self.assertEqual(StartRoom.from_any("random").value, StartRoom.option_random_start)
+        self.assertEqual(len(ROOM_NAMES), len(data.START_ROOMS))
+        self.assertEqual(StartRoom.default, AUTOMATIC)
+
+
+class TestNames(unittest.TestCase):
+    def test_location_names_give_the_area_and_the_games_x_then_y(self) -> None:
+        # Cell (7, 22), where the owner read X22, Y7 in Guardia (docs/re/locations.md).
+        self.assertEqual(location_name(data.LOCATIONS.index((7, 22))), "Guardia 22,7")
+        self.assertEqual(location_name(data.LOCATIONS.index((1, 22))), "Exodia 22,1")
+
+
+class TestOHKO(ZexionTestBase):
+    options = {"mode": "ohko"}
+
+    def test_ohko_has_two_starts_and_leaves_unreachable_locations_out(self) -> None:
+        self.assertIsNotNone(self.world.second)
+        self.assertNotEqual(self.world.start["cell"], self.world.second["cell"])
+        created = [loc for loc in self.multiworld.get_locations(self.player) if loc.address]
+        self.assertEqual(len(created), len(self.world.kept_locations))
+        self.assertLess(len(created), len(data.LOCATIONS))
+        pool = [i for i in self.multiworld.itempool if i.player == self.player]
+        self.assertEqual(len(pool), len(created))
+        self.assertNotIn("Energy Tank", [i.name for i in pool])
+        self.assertEqual(self.count("Energy Tank"), 0)
+
+    def test_the_two_starts_reach_enough_with_the_starting_items(self) -> None:
+        start, second, seed = self.world.start, self.world.second, self.world.seed_reach
+        both = seed.sphere0(start["cell"]).locations | seed.sphere0(second["cell"]).locations
+        self.assertGreaterEqual(len(both), 3)
+
+    def test_slot_data_names_the_second_target(self) -> None:
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["mode"], "ohko")
+        second = self.world.second
+        self.assertEqual(
+            slot["second_start"],
+            {"index": second["index"], "column": second["column"], "row": second["row"]},
+        )
+        menu = slot["menu"]
+        self.assertIsNone(menu["second_target"], "the seed's second start is written instead")
+        self.assertEqual(len(menu["start_table"]), 34)
+        self.assertEqual(menu["table_build"], data.DATA_BUILD)
+        index = slot["second_start"]["index"]
+        self.assertEqual(tuple(menu["start_table"][index][:2]), tuple(second["cell"]))
+        self.assertEqual(len(slot["kept_locations"]), len(self.world.kept_locations))
+
+    def test_left_out_locations_hold_scrap_metal(self) -> None:
+        items = self.world.fill_slot_data()["location_items"]
+        left_out = set(range(len(data.LOCATIONS))) - self.world.kept_locations
+        self.assertTrue(left_out)
+        self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
+
+
+class TestSlotDataForTheClient(ZexionTestBase):
+    """The slot data the client builds its plan and new game from."""
+
+    def test_location_items_are_this_worlds_items_as_game_ids(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(len(items), len(data.LOCATIONS))
+        for i, code in enumerate(items):
+            placed = self.multiworld.get_location(location_name(i), self.player).item
+            own = DRAWN_AS.get(code_of[placed.name], code_of[placed.name])  # Intel Chip: 49
+            self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
+        self.assertNotIn(FOREIGN, items, "47 only for another player's item")
+        self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
+
+    def test_another_worlds_item_is_scrap_energy_or_for_progression_scrap_chunk(self) -> None:
+        kinds = [
+            ItemClassification.progression,
+            ItemClassification.useful,
+            ItemClassification.filler,
+            ItemClassification.trap,
+            ItemClassification.progression | ItemClassification.useful,
+        ]
+        for i, kind in enumerate(kinds):
+            location = self.multiworld.get_location(location_name(i), self.player)
+            location.item = Item("Something", kind, 1, self.player + 1)
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(
+            items[: len(kinds)],
+            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN, FOREIGN_PROGRESSION],
+        )
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["stand_in"], slot["stand_in_progression"]), (47, 48))
+
+    def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
+        # Progression for the rules' counts, but the game marks supplies minor on the map.
+        other = self.player + 1
+        ids = self.world.item_name_to_id
+        skip_balancing = ItemClassification.progression_skip_balancing
+        placed = [
+            ZexionItem("Missile Container", skip_balancing, ids["Missile Container"], other),
+            ZexionItem("Energy Tank", skip_balancing, ids["Energy Tank"], other),
+            ZexionItem("Navcore", ItemClassification.progression, ids["Navcore"], other),
+            # Another game's item that happens to share a supply's name: not a Zexion supply.
+            Item("Energy Tank", ItemClassification.progression, 1, other),
+        ]
+        for i, item in enumerate(placed):
+            self.multiworld.get_location(location_name(i), self.player).item = item
+        items = self.world.fill_slot_data()["location_items"]
+        self.assertEqual(items[:4], [FOREIGN, FOREIGN, FOREIGN_PROGRESSION, FOREIGN_PROGRESSION])
+
+    def test_start_items_amounts_and_options_are_the_modes(self) -> None:
+        slot = self.world.fill_slot_data()
+        start = {int(k): v for k, v in slot["start_items"].items()}
+        self.assertEqual(start, self.world.start_inventory)
+        gun = code_of[drawn_gun(self.world)]
+        self.assertEqual(start, {0: 3, 1: 3, gun: 1})  # Energy Tanks, Missile Containers, a gun
+        self.assertEqual(slot["amounts"], [3, 17, 3, 122, 0, 12])
+        options = {int(t): v for t, v in slot["options"].items()}
+        # Guns First, X Crystals, X Blocks, Abridged Finale, Double Teleport, Secret Shuffle,
+        # Safety Normal and Gates Unlocked.
+        want = {10: 1, 30: 0, 31: 0, 32: 0, 33: 0, 37: 0, 42: 0, 43: 1, 72: 0, 73: 1}
+        self.assertEqual(options, want)
+        self.assertIn(72, options)  # Gates
+        self.assertIn(10, options)  # Guns First
+
+    def test_the_energy_shield_can_go_to_any_world(self) -> None:
+        # Received, the client's helper runs its pickup event, which gives the shield.
+        self.assertNotIn("Energy Shield", self.world.options.local_items.value)
+
+    def test_a_second_progressive_copy_is_the_upgrade(self) -> None:
+        # As AP's Main does for start_inventory, which the test base does not run.
+        for name in ("Progressive Snake", "Progressive Snake", "Missile Box"):
+            self.multiworld.push_precollected(self.world.create_item(name))
+        start = {int(k): v for k, v in self.world.fill_slot_data()["start_items"].items()}
+        self.assertEqual((start.get(5), start.get(15), start.get(36)), (1, 1, 1))
+
+
+class TestAreaMapHints(ZexionTestBase):
+    """Area Maps are hints by default: Intel Chips, which the game holds as the Area Map, and
+    the slot data lists where this player's progression items are (client/hints.py)."""
+
+    def test_the_hint_list_holds_every_placed_progression_item_but_supplies_once(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        hints = self.world.fill_slot_data()["hints"]
+        placed = [
+            loc
+            for loc in self.multiworld.get_filled_locations()
+            if loc.item.player == self.player
+            and loc.item.advancement
+            and loc.address is not None
+            and code_of[loc.item.name] not in NOT_HINTED
+        ]
+        self.assertEqual(len(hints), len(placed))
+        self.assertEqual(len({(p, loc) for p, loc, _ in hints}), len(hints), "no location twice")
+        for player, address, code in hints:
+            location = self.multiworld.get_location(
+                self.multiworld.worlds[player].location_id_to_name[address], player
+            )
+            self.assertEqual(code_of[location.item.name], code)
+            self.assertTrue(location.item.advancement)
+        codes = {code for _, _, code in hints}
+        self.assertTrue({27, 28, 29, 30} <= codes, "the four keys are hinted")
+        self.assertFalse(codes & NOT_HINTED)
+
+    def test_an_item_links_items_are_hinted_to_its_members(self) -> None:
+        # The group's item goes to every member, so it is this player's to find.
+        mine, other = self.player + 1, self.player + 2
+        self.multiworld.groups[mine] = {"players": {self.player, other}}
+        self.multiworld.groups[other] = {"players": {other}}
+        ids = self.world.item_name_to_id
+        progression = ItemClassification.progression
+        placed = [
+            ZexionItem("Slide Mod", progression, ids["Slide Mod"], mine),
+            ZexionItem("Phaser", progression, ids["Phaser"], other),
+        ]
+        locations = [self.multiworld.get_location(location_name(i), self.player) for i in (0, 1)]
+        for location, item in zip(locations, placed, strict=True):
+            location.place_locked_item(item)
+        hints = self.world.fill_slot_data()["hints"]
+        self.assertIn([self.player, locations[0].address, code_of["Slide Mod"]], hints)
+        self.assertNotIn(locations[1].address, [address for _, address, _ in hints])
+
+    def test_area_maps_become_intel_chips(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("Area Map", pool)
+        self.assertEqual(pool.count("Intel Chip"), self.world.pool_codes.count(code_of["Area Map"]))
+        chip = self.world.create_item("Intel Chip")
+        self.assertEqual(chip.code, 3392510_000 + 101)
+        self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
+        self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
+
+    def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        slot = self.world.fill_slot_data()
+        own = own_locations(self, "Intel Chip")
+        self.assertTrue(own)
+        self.assertEqual({slot["location_items"][i] for i in own}, {49})
+        self.assertNotIn(101, slot["location_items"])
+
+
+class TestItemLinkHints(unittest.TestCase):
+    """A real item link between two Zexion players (item_links, then AP's link_items): the
+    group's items, wherever they land, are in both members' hints."""
+
+    def test_the_groups_items_are_hinted_to_both_members(self) -> None:
+        pool = ["Slide Mod", "Phaser", "Wall Jump Boots"]
+        link = {"name": "Linked", "item_pool": pool, "replacement_item": None}
+        multiworld = two_zexion_players({"item_links": [{**link, "link_replacement": True}]})
+        multiworld.link_items()
+        multiworld._all_state = None  # as the generator does after linking
+        distribute_items_restrictive(multiworld)
+        (group,) = multiworld.groups
+        linked = {
+            (loc.player, loc.address, code_of[loc.item.name])
+            for loc in multiworld.get_filled_locations()
+            if loc.item.player == group and loc.item.advancement and loc.address is not None
+        }
+        self.assertEqual({code for _, _, code in linked}, {code_of[name] for name in pool})
+        for player in (1, 2):
+            hints = {tuple(h) for h in multiworld.worlds[player].fill_slot_data()["hints"]}
+            self.assertLessEqual(linked, hints, multiworld.player_name[player])
+
+
+class TestAreaMapHintsOff(ZexionTestBase):
+    options = {"area_map_hints": False}
+
+    def test_no_hints_without_the_option(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        self.assertEqual(self.world.fill_slot_data()["hints"], [])
+
+    def test_area_maps_stay_area_maps(self) -> None:
+        pool = pool_names(self)
+        self.assertNotIn("Intel Chip", pool)
+        self.assertEqual(pool.count("Area Map"), self.world.pool_codes.count(code_of["Area Map"]))
+        self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
+
+
+def filler_left(world: ZexionWorld, placed: int) -> int:
+    """The filler items (Scrap, Area Maps as Intel Chips) a Standard world with this many disks
+    keeps: its pool's drawn Scrap and Area Maps and the keys' four places as Scrap Metal, less
+    one for each disk (DISC_REPLACES). Standard keeps all 154 locations."""
+    return max(0, sum(world.pool_codes.count(c) for c in FILLER_ORDER) + 4 - placed)
+
+
+class TestExcludedLocationsNeedFiller(ZexionTestBase):
+    """Standard with 16 disks keeps a few filler items (the pool's are drawn per seed): one more
+    excluded location than those would stop AP's fill, so the world refuses it first, naming the
+    options."""
+
+    options = disks(placed=16, required=12)
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.filler = filler_left(self.world, 16)
+
+    def exclude(self, n: int) -> list:
+        # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
+        kept = sorted(self.world.kept_locations)[:n]
+        out = [self.multiworld.get_location(location_name(i), self.player) for i in kept]
+        for location in out:
+            location.progress_type = LocationProgressType.EXCLUDED
+        return out
+
+    def test_as_many_excluded_as_filler_left_fill_with_it(self) -> None:
+        excluded = self.exclude(self.filler)
+        ZexionWorld.stage_pre_fill(self.multiworld)
+        distribute_items_restrictive(self.multiworld)
+        kinds = {location.item.classification for location in excluded}
+        self.assertEqual(kinds, {ItemClassification.filler})
+
+    def test_one_more_is_refused_with_the_options_named(self) -> None:
+        n = self.filler + 1
+        self.exclude(n)
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(self.multiworld)
+        message = str(caught.exception)
+        self.assertIn(f"{n} excluded locations, but only {self.filler} filler items", message)
+        self.assertIn("OS Install Disks (16", message)
+        self.assertIn("exclude_locations", message)
+
+    def test_another_players_filler_makes_up_the_difference(self) -> None:
+        self.exclude(self.filler + 1)
+        other = Item("Something", ItemClassification.filler, 1, self.player + 1)
+        self.multiworld.itempool.append(other)
+        ZexionWorld.stage_pre_fill(self.multiworld)
+
+
+class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
+    """Two Zexion players: Alpha excludes as many locations as their filler items, and Beta one
+    more than theirs. The multiworld is one short, and the error names Beta."""
+
+    def test_the_player_over_is_named_not_the_one_at_their_filler(self) -> None:
+        multiworld = two_zexion_players(disks(placed=16, required=12))
+        filler = {p: filler_left(multiworld.worlds[p], 16) for p in (1, 2)}
+        for player, n in ((1, filler[1]), (2, filler[2] + 1)):
+            kept = sorted(multiworld.worlds[player].kept_locations)[:n]
+            for i in kept:
+                location = multiworld.get_location(location_name(i), player)
+                location.progress_type = LocationProgressType.EXCLUDED
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(multiworld)
+        message = str(caught.exception)
+        want = f"Zexion (Beta): {filler[2] + 1} excluded locations, but only {filler[2]} filler"
+        self.assertIn(want, message)
+
+
+class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
+    """An Assist Unlock at this player's own location would be handed out as Scrap Metal and
+    never received, so the assist lock would never lift: an item rule keeps it out (plando
+    places through the same rule). Sent from the server console, it is just an item ID, its name
+    looked up in item_name_to_id (TestDefaultStart, test_assist_unlock_is_not_in_the_pool_...)."""
+
+    def test_only_this_players_own_assist_unlock_is_refused(self) -> None:
+        state = self.multiworld.state
+        mine = self.world.create_item("Assist Unlock")
+        theirs = ZexionItem(mine.name, mine.classification, mine.code, self.player + 1)
+        scrap = self.world.create_item("Scrap Metal")
+        for location in self.multiworld.get_locations(self.player):
+            if location.address is None:
+                continue
+            with self.subTest(location.name):
+                self.assertFalse(location.can_fill(state, mine, check_access=False))
+                self.assertTrue(location.can_fill(state, theirs, check_access=False))
+                self.assertTrue(location.can_fill(state, scrap, check_access=False))
+
+
+def pool_names(test: ZexionTestBase) -> list[str]:
+    return [i.name for i in test.multiworld.itempool if i.player == test.player]
+
+
+def own_locations(test: ZexionTestBase, name: str) -> list[int]:
+    """The location indices holding this player's item ``name`` (one player in these tests)."""
+    found = test.multiworld.find_item_locations(name, test.player)
+    return sorted(loc.address - LOCATION_ID_BASE for loc in found)
+
+
+def assert_disks_took_in_order(test: ZexionTestBase, placed: int) -> None:
+    """The disks took the places of DISC_REPLACES in its order from the seed's drawn pool, less
+    the locations left out, the keys' four places as Scrap Metal: each kind used up before the
+    next is touched. An Intel Chip counts as the Area Map it replaced."""
+    drawn = Counter(test.world.pool_codes)
+    # The locations left out take their filler first, before the keys' places become Scrap
+    # Metal (create_items).
+    for _ in range(len(test.world.location_cells) - len(test.world.kept_locations)):
+        drawn[next(c for c in FILLER_ORDER if drawn[c])] -= 1
+    drawn[SCRAP_METAL] += 4
+    pool = Counter(code_of[name] for name in pool_names(test))
+    pool[AREA_MAP] += pool.pop(INTEL_CHIP, 0)
+    taken = [drawn[c] - pool[c] for c in DISC_REPLACES]
+    test.assertEqual(pool[DATA_DISC], placed)
+    test.assertEqual(sum(taken), placed)
+    for i, n in enumerate(taken):
+        test.assertGreaterEqual(n, 0)
+        if n:
+            test.assertEqual([pool[c] for c in DISC_REPLACES[:i]], [0] * i, "earlier kinds first")
+
+
+class TestDiscHuntStandard(ZexionTestBase):
+    options = disks()
+
+    def test_the_keys_are_gone_and_the_discs_are_in(self) -> None:
+        pool = pool_names(self)
+        self.assertEqual(pool.count("OS Install Disk"), 20)
+        for key in ("Alpha Key", "Beta Key", "Gamma Key", "Omega Key"):
+            self.assertNotIn(key, pool)
+        self.assertEqual(len(pool), len(data.LOCATIONS))
+
+    def test_discs_take_scrap_then_area_maps(self) -> None:
+        assert_disks_took_in_order(self, 20)
+        self.assertEqual(pool_names(self).count("Missile Container"), 62, "supplies untouched")
+
+    def test_no_core_event_and_the_discs_win(self) -> None:
+        self.assertNotIn("Zexion", [loc.name for loc in self.multiworld.get_locations(self.player)])
+        regions = [r.name for r in self.multiworld.get_regions(self.player)]
+        self.assertNotIn(CORE_REGION, regions)
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state))
+        discs = self.get_items_by_name("OS Install Disk")
+        self.collect(discs[:14])
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state))
+        self.collect(discs[14])
+        self.assertTrue(self.multiworld.has_beaten_game(self.multiworld.state))
+
+    def test_discs_are_hinted_but_not_balanced(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        hints = self.world.fill_slot_data()["hints"]
+        self.assertEqual(sum(1 for _, _, code in hints if code == 44), 20, "every disk")
+        disc = self.world.create_item("OS Install Disk")
+        self.assertTrue(disc.advancement)
+        self.assertTrue(disc.skip_in_prog_balancing)
+
+    def test_own_discs_are_stand_ins_listed_for_the_client(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        slot = self.world.fill_slot_data()
+        own = own_locations(self, "OS Install Disk")
+        self.assertTrue(own)
+        self.assertEqual(slot["disc_locations"], own)
+        self.assertEqual({slot["location_items"][i] for i in own}, {FOREIGN_PROGRESSION})
+        self.assertNotIn(44, slot["location_items"], "the game never hands out a disc")
+        self.assertEqual(
+            (slot["goal"], slot["discs_required"], slot["discs_placed"]),
+            ("os_install_disks", 15, 20),
+        )
+        self.assertEqual(slot["discs_start"], 0)
+
+    def test_a_starting_disc_is_counted_not_written(self) -> None:
+        self.multiworld.push_precollected(self.world.create_item("OS Install Disk"))
+        slot = self.world.fill_slot_data()
+        self.assertEqual(slot["discs_start"], 1)
+        self.assertNotIn("44", slot["start_items"])
+
+
+class TestDiscHuntAwayFromThePod(ZexionTestBase):
+    # Open Cave (23, 22): its starting items do not reach the Landing Pod.
+    options = {**disks(), "start_room": "open_cave"}
+
+    def test_the_disks_win_only_with_the_landing_pod_reached(self) -> None:
+        self.assertEqual(self.world.start["cell"], (23, 22))
+        home = self.multiworld.get_region(
+            rules.region_name(data.CELL_REGION[HOME["cell"]]), self.player
+        )
+        self.collect(self.get_items_by_name("OS Install Disk"))
+        self.assertFalse(home.can_reach(self.multiworld.state))
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state), "not home yet")
+        self.collect_all_but(["OS Install Disk"])
+        self.assertTrue(home.can_reach(self.multiworld.state))
+        self.assertTrue(self.multiworld.has_beaten_game(self.multiworld.state))
+
+
+class TestDiscHuntStandardFull(ZexionTestBase):
+    options = disks(placed=30, required=30)  # the options' most
+
+    def test_all_but_one_of_the_scrap_maps_and_shields_give_way(self) -> None:
+        # 27 filler drawn and the keys' 4 places: 31 for 30 disks.
+        assert_disks_took_in_order(self, 30)
+        left = Counter(pool_names(self))
+        names = ("Scrap Metal", "Scrap Energy", "Scrap Chunk", "Intel Chip", "Energy Shield")
+        self.assertEqual(sum(left[name] for name in names), 1)
+
+
+class TestDiscHuntEasyFull(TestDiscHuntStandardFull):
+    options = disks("easy", 30, 30)
+
+
+class TestDiscHuntOHKO(ZexionTestBase):
+    options = disks("ohko", 30, 30)
+
+    def test_ohko_fits_30_after_its_left_out_locations(self) -> None:
+        assert_disks_took_in_order(self, 30)
+        self.assertEqual(len(pool_names(self)), len(self.world.kept_locations))
+
+
+class TestDiscHuntEasy(ZexionTestBase):
+    options = disks("easy", 10, 10)
+
+    def test_ten_discs_take_scrap_only(self) -> None:
+        assert_disks_took_in_order(self, 10)
+        pool = pool_names(self)
+        self.assertEqual(pool.count("Intel Chip"), self.world.pool_codes.count(AREA_MAP))
+
+
+class TestDiscOptionsChecked(unittest.TestCase):
+    def test_more_required_than_placed_is_an_error(self) -> None:
+        with self.assertRaises(OptionError):
+            fake_world(**disks(placed=10, required=11)).generate_early()
+
+    def test_starting_disks_count_toward_the_required(self) -> None:
+        def world(required: int) -> ZexionWorld:
+            return fake_world(
+                **disks(placed=10, required=required), start_inventory={"OS Install Disk": 5}
+            )
+
+        world(15).generate_early()  # 10 placed and 5 to start with
+        with self.assertRaises(OptionError) as caught:
+            world(16).generate_early()
+        self.assertIn("plus the 5 in start_inventory", str(caught.exception))
+
+    def test_99_disks_at_most_placed_and_starting(self) -> None:
+        # The helper's counts show two digits (world.MAX_DISKS).
+        def world(start: int, from_pool: int = 0) -> ZexionWorld:
+            return fake_world(
+                **disks(placed=30),
+                start_inventory={"OS Install Disk": start},
+                start_inventory_from_pool={"OS Install Disk": from_pool},
+            )
+
+        self.assertEqual(MAX_DISKS, 99)
+        world(69).generate_early()  # 30 placed and 69 to start with
+        with self.assertRaises(OptionError) as caught:
+            world(70).generate_early()
+        self.assertIn("come to 100, more than the 99", str(caught.exception))
+        # From the pool, only the disks past the placed ones are more.
+        world(59, from_pool=40).generate_early()
+        with self.assertRaises(OptionError):
+            world(60, from_pool=40).generate_early()
+
+    def test_what_discs_replace_is_read_by_no_rule(self) -> None:
+        # Codes from 50 up are derived from the items (logic.derive), not item counts: 50 there
+        # is not the Energy Shield.
+        items = {c for entries in every_list() for c, _ in entries if c < FIRST_SPECIAL}
+        self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
+
+
+class TestDrawsFitTheStartOptions(unittest.TestCase):
+    """A draw whose starting items do not fit the start options is drawn again (world.py,
+    draw_items; docs/re/locations.md, "Where the world departs from the game")."""
+
+    def test_standard_never_draws_a_third_snake(self) -> None:
+        # Two Progressive Snakes from the pool and Standard's own Snake would be three.
+        options = {"start_inventory_from_pool": {"Progressive Snake": 2}}
+        guns = set()
+        for seed in range(40):
+            world = fake_world(**options)
+            world.random = random.Random(seed)
+            world.generate_early()
+            guns.add(drawn_gun(world))
+        self.assertEqual(guns, set(STANDARD_GUNS) - {"Progressive Snake"})
+
+    def test_options_no_draw_fits_are_refused_with_the_first_draws_problems(self) -> None:
+        options = {"start_inventory_from_pool": {"Progressive Snake": 3}}
+        with self.assertRaisesRegex(OptionError, "Progressive Snake: a weapon and its upgrade"):
+            fake_world(**options).generate_early()
+
+
+class TestStartInventoryChecked(RefusalTestCase):
+    """start_inventory the client could not give is refused in generation (starting.py)."""
+
+    def test_what_a_new_game_can_start_with_passes(self) -> None:
+        fine = {
+            "Energy Tank": 4,
+            "Missile Container": 6,  # 9 with Standard's own 3
+            "Missile Box": 3,
+        }
+        # Items the game holds once, which the pool holds too: from it (test_start_inventory).
+        from_pool = {"Progressive Snake": 2, "Slide Mod": 1, "Alpha Key": 1, "Beta Key": 1}
+        fake_world(start_inventory=fine, start_inventory_from_pool=from_pool).generate_early()
+
+    def test_items_no_new_game_can_hold_are_refused(self) -> None:
+        for name in (
+            "Energy Shield",
+            "Scrap Metal",
+            "Scrap Energy",
+            "Scrap Chunk",
+            "Area Map",
+            "Intel Chip",
+            "Assist Unlock",
+            "Mega Bomb",
+            "Bomb Box",
+        ):
+            with self.subTest(name):
+                self.assertIn(name, self.refused({name: 1}))
+
+    def test_missile_containers_count_the_modes_own(self) -> None:
+        self.assertIn("10 Missile Containers", self.refused({"Missile Container": 7}))
+        # OHKO starts with 3 too; Easy's own are 3.
+        self.assertIn("Missile Containers", self.refused({"Missile Container": 7}, mode=2))
+
+    def test_keys_must_be_the_first_ones(self) -> None:
+        self.assertIn("keys", self.refused({"Beta Key": 1}))
+        self.assertIn("keys", self.refused({"Alpha Key": 1, "Gamma Key": 1}))
+        self.assertIn("Alpha Key", self.refused({"Alpha Key": 2}))
+
+    def test_one_of_an_upgrade_and_two_of_a_weapon(self) -> None:
+        self.assertIn("Slide Mod", self.refused({"Slide Mod": 2}))
+        # Easy starts with a Power Cartridge of its own.
+        self.assertIn("Power Cartridge", self.refused({"Power Cartridge": 1}, mode=0))
+        self.assertIn("Progressive Lance", self.refused({"Progressive Lance": 3}))
+
+    def test_an_upgrade_is_a_second_weapon_with_guns_first(self) -> None:
+        # Every preset has Guns First: its seeds hold no upgrade of its own.
+        self.assertIn("second Progressive Machine Gun", self.refused({"Pulse Wave": 1}))
+
+    def test_without_guns_first_one_of_each_weapon_and_upgrade(self) -> None:
+        off = {"mode": "custom", "guns_first": "off", "random_gun": "off"}
+        # None is in the pool: the Lance and the Pulse Wave excluded, the Focal Crystal started.
+        items = {"Lance": "excluded", "Pulse Wave": "excluded", "Focal Crystal": "start"}
+        fine = {"Pulse Wave": 1, "Progressive Lance": 1}
+        fake_world(start_inventory=fine, custom_items=items, **off).generate_early()
+        # Standard starts with the Machine Gun (Random Gun off).
+        machine_gun = {"Progressive Machine Gun": 1}
+        self.assertIn("Progressive Machine Gun", self.refused(machine_gun, **off))
+        self.assertIn("Tunneler", self.refused({"Tunneler": 2}, **off))
+
+    def test_a_disk_needs_the_disk_goal(self) -> None:
+        self.assertIn("OS Install Disk", self.refused({"OS Install Disk": 1}))

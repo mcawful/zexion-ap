@@ -9,24 +9,21 @@ counts them,
                 + the disks received from other worlds
                 + this world's own disk locations the player has found
 
-and shows the count in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scanner has said
-how many are needed). This world's own are stand-ins in the save's item table, listed by
-location in the slot data, so the game hands out none. "Found" is what the client has reported
-from the game's map, kept in the server's data storage so every save of the seed counts it
-(zexion_client.own_found), not what the server has as checked, which after a release is every
-location; the real disc the game gives for beating its secret boss does not count.
-
-Pure functions; the client does the networking and talks to the helper.
+Shown in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scanner has said how many).
+"Found" is what clients reported from the game's map (storage.own_found), not the server's
+checked set, which a release fills; the disc the game gives for its secret boss does not count.
+Pure functions; client/ticks.py talks to the helper.
 """
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-import save_patch
+from . import save_patch
+from .ids import DATA_DISC, SECTION_SIZE
 
-DATA_DISC = 44  # the game's item ID, its Data Disc (worlds/zexion/items.py)
 NAME = "OS INSTALL DISK"  # what the game's record calls DATA DISC is called here
 
 
@@ -38,16 +35,21 @@ class DiscHunt:
     locations: frozenset[int]  # this world's location indices holding its own discs
 
 
+GOALS = ("core", "os_install_disks")  # the Goal option's keys (worlds/zexion/options.py)
+
+
 def from_slot_data(slot: Mapping[str, object]) -> DiscHunt | None:
-    """The hunt a seed's slot data sets up, or None for the core goal (or a world from before
-    the option)."""
-    if slot.get("goal") != "os_install_disks":
+    """The hunt a seed's slot data sets up, or None for the core goal."""
+    goal = slot["goal"]
+    if goal not in GOALS:
+        raise ValueError(f"the goal {goal!r} is not one the client knows")
+    if goal != "os_install_disks":
         return None
     return DiscHunt(
         required=int(slot["discs_required"]),
         placed=int(slot["discs_placed"]),
-        start=int(slot.get("discs_start", 0)),
-        locations=frozenset(int(i) for i in slot.get("disc_locations", [])),
+        start=int(slot["discs_start"]),
+        locations=frozenset(int(i) for i in slot["disc_locations"]),
     )
 
 
@@ -89,7 +91,6 @@ def request(count: int, required: int, told: bool = True) -> str:
 
 OFF = "discs"  # the request taking it all back
 
-SLOT_COPY = 0x908  # a slot's copy of its randomizer section (client/game.py)
 SLOTS_OFF = "disk_slots"  # the file select's count taken back
 
 
@@ -101,11 +102,11 @@ def seed_slots(
     deleted or given a normal game, hence the marker."""
     out = []
     for n, (marker, used) in enumerate(markers, start=1):
-        copy = copies[(n - 1) * SLOT_COPY : n * SLOT_COPY]
+        copy = copies[(n - 1) * SECTION_SIZE : n * SECTION_SIZE]
         if (
             marker == 1
             and used
-            and len(copy) == SLOT_COPY
+            and len(copy) == SECTION_SIZE
             and save_patch.section_matches(copy, plan)
         ):
             out.append(n)
@@ -125,64 +126,62 @@ def scan_line(required: int) -> str:
     return f"COLLECT {required} OS INSTALL DISK{'' if required == 1 else 'S'}!"
 
 
-# What the player is told once they have enough disks: RETURN HOME WITH THE DISKS? is offered
-# only after a save at the landing pod, the seed's start (the owner's design, 2026-10-25).
-POD_NOTE = "ALL OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
+# Told once the player has enough disks: RETURN HOME WITH THE DISKS? is offered only after a
+# save at the Landing Pod's save point, whichever room the seed starts in.
+POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
 
-# The randomizer section's start record (docs/re/save-format.md, "The continue point and the
-# seed's start"): the start-candidate index less 1, then the start's tile column and row.
-START_AT = 0x310
+# Home: the Landing Pod's save point (start room landing_pod, Kresezoa X16 Y13), tile column
+# then row, as a save's continue point and the world's data.START_ROOMS hold it
+# (docs/re/save-format.md, "The continue point and the seed's start";
+# worlds/zexion/test/test_client_agrees.py checks the two agree).
+HOME = (191, 329)
+# Its cell as the player state counts cells (game.PLAYER_CELL): the game's (X, Y), which is
+# this repo's map cell (save_patch.cell_of) as (y, x) (docs/re/randocells.md, "Grid order").
+HOME_CELL = save_patch.cell_of(*HOME)[::-1]
+# The helper's request for RETURN HOME WITH THE DISKS?, given home: a request not yet opened
+# lapses while the player is in play outside its cell (native/README.md, "The OS Install Disks
+# goal").
+MISSION_REQUEST = f"mission_prompt {HOME[0]} {HOME[1]}"
+
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
-STAMP_ROW_AT, STAMP_COLUMN_AT = 4 + 6, 4 + 8
+STAMP_ROW_AT = 4 + 6
 
 
-def start_cell(blob: bytes) -> tuple[int, int]:
-    """The seed's start cell as the player state counts cells (game.Game.player_cell): the start
-    record's row (20 tiles a cell) along x, its column (14 a cell) along y. Derived from the
-    record's tile formula and the player update's (docs/re/save-format.md, memory.md)."""
-    if len(blob) < START_AT + 6:
-        return (-1, -1)
-    column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
-    row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
-    return (row // 20, column // 14)
-
-
-def saved_at_start(stamp: bytes, blob: bytes) -> bool:
-    """Whether the loaded save's continue point (its last save point) is the seed's start, the
-    landing pod."""
-    if len(stamp) < STAMP_COLUMN_AT + 2 or len(blob) < START_AT + 6:
+def saved_at_home(stamp: bytes) -> bool:
+    """Whether the loaded save's continue point (its last save point) is home, the Landing
+    Pod's save point."""
+    if len(stamp) < STAMP_ROW_AT + 4:
         return False
-    row = int.from_bytes(stamp[STAMP_ROW_AT : STAMP_ROW_AT + 2], "little")
-    column = int.from_bytes(stamp[STAMP_COLUMN_AT : STAMP_COLUMN_AT + 2], "little")
-    start_column = int.from_bytes(blob[START_AT + 2 : START_AT + 4], "little")
-    start_row = int.from_bytes(blob[START_AT + 4 : START_AT + 6], "little")
-    return (column, row) == (start_column, start_row)
+    row, column = struct.unpack_from("<2H", stamp, STAMP_ROW_AT)
+    return (column, row) == HOME
+
+
+def popups_handed(queued: int | None, received: int) -> bool:
+    """Whether every received item's popup has gone to the helper (``Session.announced``).
+    The helper shows its queue in order, so POD_NOTE queued after that comes after the disks'
+    own popups (a received item is handed over a poll after it arrives, once its grant is
+    confirmed)."""
+    return queued is not None and queued >= received
 
 
 @dataclass
 class ReturnHome:
-    """For one load of this seed's save, in play: the reminder (POD_NOTE), once the player has
-    enough disks, and RETURN HOME WITH THE DISKS? after each save at the landing pod while they
-    do. A save shows as a new stamp (the game rewrites the slot's block, play time and all, on
-    every save); the first stamp of a load, or of another slot, is not one. The save must leave
-    the pod as the continue point with the player in the start cell (the game also saves during
-    the escape, keeping the last continue point), and the offer lapses once the player leaves
-    that cell."""
+    """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,
+    and RETURN HOME WITH THE DISKS? after each save at the Landing Pod. A save shows as a new
+    stamp in the same slot; it counts only with the pod as continue point and the player in the
+    pod's cell (the escape saves too, keeping the old continue point), and the offer lapses when
+    the player leaves that cell."""
 
     reminded: bool = False
     stamp: bytes | None = None
     offer: bool = False  # a save at the pod, the prompt not yet queued
 
-    def see(self, stamp: bytes, at_start: bool, enough: bool, in_start_cell: bool) -> None:
+    def see(self, stamp: bytes, at_home: bool, enough: bool, in_home_cell: bool) -> None:
         same_slot = self.stamp is not None and stamp[:4] == self.stamp[:4]
         saved = same_slot and stamp != self.stamp
         self.stamp = stamp
         if saved:
-            self.offer = enough and at_start and in_start_cell
-        if not in_start_cell:
+            self.offer = enough and at_home and in_home_cell
+        if not in_home_cell:
             self.offer = False
-
-    def remind(self, enough: bool) -> bool:
-        """Whether to show the reminder now (then mark it shown with ``reminded = True``)."""
-        return enough and not self.reminded

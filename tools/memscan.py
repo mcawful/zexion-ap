@@ -14,16 +14,10 @@ Only the game process is touched; nothing here opens the install or the save fol
 are only good for one run of the game (ASLR); each output also gives the address relative to
 the start of its memory region, and to Zexion.exe's base when it lies inside the module.
 
-``classify`` and ``record`` work in RVAs (offsets from Zexion.exe's base), so they hold across
-restarts of the game. ``classify`` takes ``snap --module-only`` snapshots grouped by the state
-they were taken in, keeps the bytes that hold one value in every snapshot of each group, and of
-those the ones whose value in the target group (default: the first) differs from every other
-group's. It prints them, most distinct values first, and with ``--out`` saves them to
-``lab/mem/NAME.json`` for ``record``. ``record`` polls those bytes in the running game and logs
-the changes seen between polls to ``lab/mem/NAME.log`` (a change undone within one poll is not
-seen; the end line gives the number of polls and the longest gap); it reads only. Snapshots and
-candidate files record the game build (PE timestamp and image size), and both commands refuse to
-mix builds.
+``classify`` and ``record`` work in RVAs, so they hold across restarts: ``classify`` keeps the
+bytes whose value is stable within each group of ``snap --module-only`` snapshots and differs
+in the target group (``--out`` saves them to lab/mem/NAME.json); ``record`` polls them, read
+only, and logs changes to lab/mem/NAME.log. Both refuse to mix builds.
 """
 
 from __future__ import annotations
@@ -37,7 +31,10 @@ from pathlib import Path
 
 import numpy as np
 
-from protected import assert_writable, lab_dir
+from protected import ROOT, assert_writable, lab_dir
+
+sys.path.insert(0, str(ROOT))  # the client package
+from client import pe, process  # noqa: E402
 
 PROCESS = "Zexion.exe"
 MEM_COMMIT = 0x1000
@@ -59,23 +56,23 @@ class MBI(ctypes.Structure):
     ]
 
 
-def attach():
-    import pymem
-
-    pm = pymem.Pymem(PROCESS)
-    module = pymem.process.module_from_name(pm.process_handle, PROCESS)
-    return pm, module.lpBaseOfDll, module.SizeOfImage
+def attach() -> tuple[process.Process, int, int]:
+    """The running game (client/process.py), its module's base and its size."""
+    pm = process.Process(PROCESS)
+    module = pm.module()
+    if module is None or not module[0]:
+        pm.close_process()
+        raise RuntimeError(f"{PROCESS} is running but its module was not found")
+    return pm, module[0], module[1]
 
 
 def build_of(pm, mod_base: int) -> dict:
     """The running module's PE TimeDateStamp and SizeOfImage, which identify the build."""
-    header = pm.read_bytes(mod_base, 0x1000)
-    pe = int.from_bytes(header[0x3C:0x40], "little")
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise RuntimeError("Zexion.exe's header is not a PE header")
-    stamp = int.from_bytes(header[pe + 8 : pe + 12], "little")
-    size = int.from_bytes(header[pe + 24 + 56 : pe + 24 + 60], "little")
-    return {"timestamp": stamp, "size_of_image": size}
+    try:
+        header = pe.parse(pm.read_bytes(mod_base, 0x1000))
+    except pe.PEError as exc:
+        raise RuntimeError(f"Zexion.exe's header: {exc}") from exc
+    return {"timestamp": header.timestamp, "size_of_image": header.size_of_image}
 
 
 def regions(pm) -> list[tuple[int, int, str]]:
@@ -125,14 +122,17 @@ def cmd_find(args: argparse.Namespace) -> int:
     return 0
 
 
-def snap_dir(name: str) -> Path:
-    return lab_dir() / "mem" / name
+def mem_path(name: str) -> Path:
+    """lab/mem/NAME (a snapshot, candidates, a log), checked writable, lab/mem made."""
+    path = assert_writable(lab_dir() / "mem" / name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def cmd_snap(args: argparse.Namespace) -> int:
     pm, mod_base, mod_size = attach()
-    dest = assert_writable(snap_dir(args.name))
-    dest.mkdir(parents=True, exist_ok=False)
+    dest = mem_path(args.name)
+    dest.mkdir(exist_ok=False)
     index, offset = [], 0
     with (dest / "memory.bin").open("wb") as f:
         for base, size, kind in regions(pm):
@@ -157,7 +157,7 @@ def cmd_snap(args: argparse.Namespace) -> int:
 
 
 def _load(name: str) -> tuple[dict, np.memmap]:
-    folder = snap_dir(name)
+    folder = mem_path(name)
     meta = json.loads((folder / "index.json").read_text(encoding="utf-8"))
     return meta, np.memmap(folder / "memory.bin", dtype=np.uint8, mode="r")
 
@@ -205,7 +205,7 @@ def cmd_write(args: argparse.Namespace) -> int:
     pm, _, _ = attach()
     addr, new = int(args.addr, 0), bytes.fromhex(args.hex)
     old = pm.read_bytes(addr, len(new))
-    pm.write_bytes(addr, new, len(new))
+    pm.write_bytes(addr, new)
     back = pm.read_bytes(addr, len(new))
     print(f"0x{addr:012x}: {old.hex(' ')} -> {back.hex(' ')}")
     if back != new:
@@ -237,18 +237,12 @@ def classify(groups: dict[str, list[np.ndarray]], target: str) -> tuple[np.ndarr
     every other group's, with each group's value there."""
     if target not in groups:
         raise ValueError(f"target {target!r} is not one of the groups")
-    stable = None
-    first = {}
+    first = {label: arrays[0] for label, arrays in groups.items()}
+    mask = np.ones(len(first[target]), dtype=bool)
     for label, arrays in groups.items():
-        same = np.ones(len(arrays[0]), dtype=bool)
-        for a in arrays[1:]:
-            same &= a == arrays[0]
-        stable = same if stable is None else stable & same
-        first[label] = arrays[0]
-    mask = stable
-    for label, values in first.items():
+        mask &= (np.stack(arrays) == arrays[0]).all(axis=0)  # stable within the group
         if label != target:
-            mask &= first[target] != values
+            mask &= first[label] != first[target]
     idx = np.flatnonzero(mask)
     return idx, {label: np.asarray(v[idx]) for label, v in first.items()}
 
@@ -326,8 +320,7 @@ def cmd_classify(args: argparse.Namespace) -> int:
         shown = "  ".join(f"{label}={v}" for label, v in vals.items())
         print(f"  Zexion.exe+0x{rva:x}  {shown}")
     if args.out:
-        out = assert_writable(lab_dir() / "mem" / f"{args.out}.json")
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = mem_path(f"{args.out}.json")
         kept = [{"rva": rva, "values": vals} for rva, vals in found[: args.keep]]
         meta = {"target": target, "groups": groups_named, "build": build, "candidates": kept}
         out.write_text(json.dumps(meta, indent=1), encoding="utf-8")
@@ -335,15 +328,16 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return 0
 
 
-def spans(rvas: list[int], gap: int = 256) -> list[tuple[int, int]]:
-    """(start, length) ranges covering ``rvas``, merging neighbors closer than ``gap``."""
-    out: list[list[int]] = []
+def spans(rvas: list[int], gap: int = 256) -> list[tuple[int, int, list[int]]]:
+    """(start, length, the RVAs in it) ranges covering ``rvas``, merging neighbors less than
+    ``gap`` bytes apart."""
+    groups: list[list[int]] = []
     for rva in sorted(set(rvas)):
-        if out and rva - (out[-1][0] + out[-1][1]) < gap:
-            out[-1][1] = rva - out[-1][0] + 1
+        if groups and rva - groups[-1][-1] <= gap:
+            groups[-1].append(rva)
         else:
-            out.append([rva, 1])
-    return [(start, length) for start, length in out]
+            groups.append([rva])
+    return [(g[0], g[-1] - g[0] + 1, g) for g in groups]
 
 
 def changes_between(old: dict[int, int], new: dict[int, int]) -> list[tuple[int, int, int]]:
@@ -354,7 +348,7 @@ def changes_between(old: dict[int, int], new: dict[int, int]) -> list[tuple[int,
 def cmd_record(args: argparse.Namespace) -> int:
     expected_build = None
     if args.candidates:
-        meta = json.loads((lab_dir() / "mem" / f"{args.candidates}.json").read_text("utf-8"))
+        meta = json.loads(mem_path(f"{args.candidates}.json").read_text("utf-8"))
         rvas = [c["rva"] for c in meta["candidates"]]
         expected_build = meta.get("build")
     else:
@@ -367,11 +361,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     if expected_build is not None and build != expected_build:
         print(f"REFUSED: the running build {build} is not the candidates' {expected_build}")
         return 1
-    # Each range once, with the offsets of its RVAs inside it.
-    plan = []
-    for start, length in spans(rvas):
-        inside = [rva for rva in sorted(set(rvas)) if start <= rva < start + length]
-        plan.append((start, length, inside))
+    plan = spans(rvas)  # each range read once, with the RVAs inside it
 
     def sample() -> dict[int, int]:
         values = {}
@@ -381,8 +371,7 @@ def cmd_record(args: argparse.Namespace) -> int:
                 values[rva] = data[rva - start]
         return values
 
-    path = assert_writable(lab_dir() / "mem" / f"{args.name}.log")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = mem_path(f"{args.name}.log")
     t0 = time.monotonic()
     deadline = t0 + args.seconds if args.seconds else None
     reason, polls, longest, last = "deadline", 0, 0.0, None

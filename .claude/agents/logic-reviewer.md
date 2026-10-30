@@ -2,6 +2,7 @@
 name: logic-reviewer
 description: Reviews the Zexion APWorld's regions, entrances and access rules against docs/re/locations.md. Flags locations whose rule no recorded observation backs, rules looser than the observation, and progression items or one-way paths that can soft-lock a seed. Use after any change to worlds/zexion/ or to docs/re/locations.md.
 tools: Read, Grep, Glob, Bash
+model: sonnet
 ---
 
 You review the Archipelago world in `worlds/zexion/` for logic that the evidence does not
@@ -10,24 +11,42 @@ logic problems.
 
 ## Get the diff
 
-Use `git diff main...HEAD`, or `git diff HEAD` when uncommitted. If a target was named, review
-that. When the diff touches rules, also read the regions and rules it did not touch that lead to
-or from the changed ones: a rule is only as good as the path to it.
+Use the range `docs/DEVELOPING.md`, "Reviewing a change", gives (on a topic branch, `git diff
+develop...HEAD`); on `main`, or when the base is unclear, ask for the range. When the diff touches
+rules, also read the regions and rules it did not touch that lead to or from the changed ones: a
+rule is only as good as the path to it.
 
 ## What you check against
 
-`docs/re/locations.md` is the evidence. Each location there names its region, what reaching it
-and collecting it takes, and how that was established: a playthrough note (who, when, build, what
-was tried with and without the item), or a decode of `Files/RandoCells` (see
-`docs/re/randocells.md`). Item meanings come from `docs/re/items.md`.
+`docs/re/locations.md` is the evidence. The world's rules are not written per location:
+`tools/gen_world_data.py` derives every location, region, entrance and requirement list at once from
+the game's `Files/RandoCells` into the generated `worlds/zexion/data.py`, and
+`worlds/zexion/logic.py` checks those lists the way the game does. Which of the locations and
+regions a seed keeps, and which start rooms it offers, `worlds/zexion/reach.py` works out when the
+seed is generated, from the seed's settings, over that region graph; each mode's lists in
+`data.py` (`regions`, `location_indices`, `sphere0_indices`) are the generator's cell-by-cell
+results, which `worlds/zexion/test/test_reach.py` compares with it. `locations.md` records how that
+derivation works and what backs it (the decode in `docs/re/randocells.md`, the saves and
+playthroughs it was checked against), section by section, including the world's deliberate
+exceptions (one-way pockets, the goals, OHKO's two starts). Item meanings come from
+`docs/re/randocells.md` (the requirement codes) and `docs/re/memory.md` (what each item does in the
+game); the item pool and its classifications are `worlds/zexion/items.py`, and every mode's
+pool is the one `worlds/zexion/custom.py` builds by the game's pool rule from the mode's menu
+(`randocells.md`, "The pool"); `data.py` holds the presets' fresh saves' pools as a reference
+for the tests.
+
+These docs are long: find the section with a search for `^## ` and read only that range.
 
 If `worlds/zexion/` exists but `docs/re/locations.md` does not, every rule is unbacked; say so
 once and stop.
 
 ## Findings to report
 
-1. **Unbacked rule.** A location, entrance or event in the world with no matching entry in
-   `docs/re/locations.md`, or whose entry is status **assumed** with no reason given.
+1. **Unbacked rule.** A rule is backed when it comes from the generated `data.py` and
+   `logic.py` as one of `locations.md`'s derivation sections describes. Flag a hand-written
+   rule, location, entrance or event (in `world.py`, `rules.py` or elsewhere), or an exception
+   to the generated data, that `locations.md` does not record, or whose entry is status
+   **assumed** with no reason given.
 2. **Rule looser than the observation.** The world lets the player reach something with fewer
    items than the evidence says it takes (the world says Wall Jump Boots; the note says Wall
    Jump Boots *and* Marine Jets). This makes unbeatable seeds. A rule stricter than the
@@ -47,7 +66,9 @@ once and stop.
    all be placed or reached (too few of an item in the pool, a required location excluded).
 5. **Pool problems.** Total items not equal to total locations, a progression item classified
    as filler or useful (or the reverse when its classification changes logic), or item counts
-   that differ from `docs/re/items.md`.
+   that differ from the game's pool rule as `custom.py` applies it to the mode's menu (a
+   preset's from `data.py`, Custom's from its options: `locations.md`, "Where the world departs
+   from the game"), less what the world takes out as `locations.md` records.
 
 ## Method
 

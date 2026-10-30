@@ -1,9 +1,18 @@
 name: CI
 
+# Every push to develop or main, and every pull request into them. Each check must pass before
+# anything merges; branch protection requires all but the macOS job (docs/DEVELOPING.md,
+# "Branches and releases"). A pull request into main also runs release-gate.yml.
+#
+# ZEXION_REQUIRE lists what a job's tests need and must find: a missing one fails a test, where
+# the tests that use it would only skip (sh: tests/test_hook_runner.py; client: the world linked
+# into AP, worlds/zexion/test/test_client_agrees.py; helper: the native build,
+# tests/test_native.py).
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -14,11 +23,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # Everything but the game-facing code runs on all three (docs/DEVELOPING.md, "Platforms").
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      # Python 3.13: Archipelago 0.6.8 refuses 3.14. The venv is activated for later steps.
+      # 3.13, as the dev venv (Archipelago 0.6.8 refuses 3.14). The venv is activated for later steps.
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
@@ -30,6 +40,8 @@ jobs:
       - name: ruff check
         run: ruff check .
       - name: pytest
+        env:
+          ZEXION_REQUIRE: sh
         run: python -m pytest
 
   native:
@@ -43,12 +55,38 @@ jobs:
           cmake --build native/build --config Release
       - name: Native tests
         run: ctest --test-dir native/build -C Release --output-on-failure
-      # The helper loaded into a stand-in process: tests/test_native.py skips this without a build.
+      # tests/test_native.py loads the build into a sleeping Python process (it would skip
+      # without one; ZEXION_REQUIRE=helper makes a missing build fail instead).
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
           activate-environment: true
+      # That test needs only pytest (and the standard library), at requirements-dev.txt's pin.
       - name: Install
-        run: uv pip install -r requirements-dev.txt
+        shell: bash
+        run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
       - name: Load test
+        env:
+          ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native.py -v
+
+  world:
+    name: Archipelago world tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      # pip too: Archipelago's ModuleUpdate installs its requirements with it.
+      - name: Install
+        run: uv pip install -r requirements-dev.txt pip
+      - name: Archipelago at AP_VERSION, the world linked in
+        run: python tools/ap_checkout.py
+      - name: World tests
+        working-directory: .ap/Archipelago
+        env:
+          AP_TEST_WORLDS: zexion
+          ZEXION_REQUIRE: client
+        run: python -m pytest test/general worlds/zexion/test

@@ -1,28 +1,23 @@
-// AP saves without the client (offline): the look the client gives them, kept from a file.
-//
-// The client sends the helper, over its pipe (`offline_put`), one small file per seed it
-// connects to (client/offline.py) and the addresses it resolved by pattern for the game's
-// build, and the helper writes them into a per-user folder (%LOCALAPPDATA%\ZexionAP\seeds\
-// and \config-<build>.txt), never the game's. The helper writes them itself, from inside the
-// game: run from a packaged app (an MSIX package, the Claude desktop app in this repo's tests),
-// the client's own writes there were not found by the game (2026-10-25: error 3, path not
-// found), inferred to be the package's AppData redirect. The helper reads them when it starts and each time a client goes away. With no client, it
-// configures itself from the cache (only for the build it was made on), and while a save of
-// one of those seeds is loaded it gives the save the same look: the item labels (AP ITEM,
-// PROGRESSION ITEM, this player's own disks), the Intel Chip's name, the ASSIST lock, the
-// OS Install Disks goal's screens and the escape skip; and the file select shows those
-// saves' disk counts. What needs the server (received items, hints, the goal) waits for the
-// client. A seed file is matched to a save by the randomizer section's item table and start
-// record, as the client matches it (client/save_patch.py, section_matches).
+// AP saves without the client (offline). The client sends each seed's file and its resolved
+// addresses (`offline_put`); the helper writes them under %LOCALAPPDATA%\ZexionAP, never the
+// game's folder. The helper writes them, not the client: a client run from an MSIX package has
+// its AppData writes redirected where the game does not see them (inferred; docs/re/memory.md,
+// "AP saves without the client"). The helper reads them at start and each time a client goes
+// away. With no client (or one that sent `other_save`), a loaded save of one of those seeds gets
+// the client's look, from the cached addresses for the build they were made on. A seed file
+// matches a save by the section's location count, item table and start record
+// (client/save_patch.py, section_matches).
 //
 // A seed file, one line each, then the labels:
 //   zexion-ap offline 1
-//   table HEX          the item table, 154 bytes (the section's +0x26C)
+//   table HEX          the item table, 154 bytes, or 155 with Secret Shuffle (the section's
+//                      +0x26C)
 //   start HEX          the start record, 6 bytes (+0x310)
 //   intel 0|1          the Area Map named INTEL CHIP
 //   assists lock|free  the ASSIST lock
 //   discs COUNT REQUIRED HEX   (or "discs -") the disk count when the client last saw it,
-//                      the number needed, and the scanner's line in hex
+//                      the number needed, and the scanner's line in hex: read as the `discs`
+//                      request is (a TOLD after it is ignored)
 //   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks
 //                      not counted in COUNT: each one the map shows collected counts one more
 //   ap_labels          then "label X Y HEX" lines to the end, as the client's request
@@ -35,18 +30,17 @@
 #include <string>
 #include <vector>
 
+#include "game_layout.h"  // kMapCells, rando
+
 namespace zap {
 
-constexpr int kOfflineLocations = 154;
-constexpr int kOfflineStartSize = 6;
-constexpr ptrdiff_t kOfflineTableAt = 0x26C, kOfflineStartAt = 0x310;  // in the section
-constexpr int kMapCells = 54 * 54;
 constexpr uint8_t kCollectedCell = 0x1B;
 
 struct OfflineSeed {
     std::string name;  // the file's name, for `hello` and logs
-    uint8_t table[kOfflineLocations] = {};
-    uint8_t start[kOfflineStartSize] = {};
+    int locations = rando::kLocations;  // the table's length: 154, or 155 with Secret Shuffle
+    uint8_t table[rando::kMaxLocations] = {};  // past `locations`, 0
+    uint8_t start[rando::kStartSize] = {};
     bool intel = false;
     bool lock_assists = false;
     bool discs = false;
@@ -59,8 +53,12 @@ struct OfflineSeed {
 // "" or what is wrong.
 std::string parse_offline_seed(const std::string& text, OfflineSeed& out);
 
-// Whether `table` (154 bytes) and `start` (6 bytes) are this seed's.
-bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start);
+// Whether `other` (offline_seed_of a section, or another seed) is `seed`: the same location
+// count, item table and start.
+bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other);
+// A seed made of a randomizer section's location count, item table and start (nothing else
+// set), to match another section against.
+OfflineSeed offline_seed_of(const uint8_t* section);
 
 // The disk count with the map `grid` (54 * 54 cells) as it is.
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid);
@@ -75,18 +73,21 @@ struct OfflineFiles {
     std::string error;  // the last file that could not be read, and why
 };
 
-// The per-user folder (%LOCALAPPDATA%\ZexionAP), or `folder` if given (tests).
+// The per-user folder (%LOCALAPPDATA%\ZexionAP), or "" if LOCALAPPDATA is not an absolute
+// path. The functions below take the folder, so tests give their own.
 std::wstring offline_folder();
-// Reads the folder's config for `build` (the client's `config` request, parse_config, then
-// its check lines) and its seeds, the newest first; a file that does not parse is skipped.
+// Pipe thread (file I/O; never the frame call): reads the folder's config for `build` (the
+// client's `config` request, parse_config, then its check lines) and its seeds, the newest
+// first; a file that does not parse is skipped.
 OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
-// or not at all: "stored", "unchanged" or "error <why>". NAME as the client makes it: letters,
-// digits, dashes and underscores, ending in -TEAM-SLOT.
+// or not at all: "stored", "unchanged" or "error <why>". A seed kept ("stored" or "unchanged") is
+// also given in `seed`, named NAME, if not null (for the AP-save test and the offline look,
+// which know a client's seed as soon as it is put: Game::merge_offline).
 std::string put_offline_file(const std::wstring& folder, const char* build,
-                             const std::string& request);
+                             const std::string& request, OfflineSeed* seed = nullptr);
 
 // "" if the cached addresses fit the game in `image`: at least kOfflineMinChecks functions
 // checked, each one's bytes as the client read them, each at a key of the config.

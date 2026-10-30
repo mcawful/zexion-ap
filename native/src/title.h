@@ -1,5 +1,6 @@
 // The title screen's mod lines: ARCHIPELAGO MOD <version> and ©2026 MCAWFUL, centered in the
-// black band at the bottom, while the helper is loaded (the owner's mock-up, 2026-10-25).
+// black band at the bottom, while the helper is loaded, and above them, while no client is
+// connected, START THE AP CLIENT TO PLAY A SEED.
 //
 // The game's title routine (0x93680, from disassembly; docs/re/memory.md, "The title screen")
 // makes the copyright line once the title animation ends: a text object from 0x92300
@@ -9,7 +10,7 @@
 // (+0x120) and given the title's palette and style, glyph 0 the © frame (0xA9). Leaving the
 // title clears the list, which frees them.
 //
-// Each few frames, the helper looks through the draw list for that line (© then
+// Every 9th frame call, the helper looks through the draw list for that line (© then
 // "GALLANT LEAF"); when it is there and the helper's lines are not, it makes them the same way,
 // in the same list, with the line's own palette, style and tag. Nothing is kept between looks:
 // both are found again in the list each time, so the game freeing them is never a problem.
@@ -21,37 +22,27 @@
 #include <cstdint>
 #include <string>
 
+#include "addresses.h"
+
 namespace zap {
 
-struct TitleAddresses {
-    BYTE* draw_layer = nullptr;      // holds the draw list new screen objects join
-    void* text_new_fn = nullptr;     // (characters, length, 32): a text object and its glyphs
-    void* text_place_fn = nullptr;   // (text, x, y)
-    void* text_link_fn = nullptr;    // (text): its glyphs into its list
-};
-
-// The two lines (the credit's first character becomes the © glyph, as the game's own line's).
-std::string title_mod_line(const std::string& version);
+// After ARCHIPELAGO MOD and the version, the credit (its first character becomes the © glyph,
+// as the game's own line's), and, while no client is connected, what to do to play.
 extern const char kTitleCredit[];
-// And, while no client is connected, what to do to play (the owner's pick, 2026-10-25).
 extern const char kTitleHint[];
-// Where they go: centered on the 320-pixel screen, 8 pixels a character, in the band below the
-// planet, 12 pixels apart (the owner's mock-ups): the hint, then the version, then the credit.
-constexpr int kTitleHintY = 190, kTitleModY = 202, kTitleCreditY = 214;
-int title_line_x(size_t length);
 
 class TitleLines {
 public:
     // The helper's version, for the first line (until set, no lines are made).
-    void set_version(const std::string& version) { mod_line_ = title_mod_line(version); }
+    void set_version(const std::string& version) { mod_line_ = "ARCHIPELAGO MOD " + version; }
 
-    // Game thread, each frame: adds the lines when the copyright line is up without them, and
-    // shows them as the game shows its line's ©.
-    // Returns "" or why it could not (only when it tried).
-    // `client`: a client is connected (the hint is hidden).
-    std::string watch(const TitleAddresses& a, bool client);
+    // Game thread, every frame call (looks every 9th): adds the lines when the copyright line
+    // is up without them, and shows them as the game shows its line's ©. Returns "" or why the
+    // lines could not be made on this title. `client`: a client is connected (the hint is
+    // hidden).
+    std::string watch(const GameAddresses& a, bool client);
     // Game thread: the lines hidden, if up (before an unload).
-    void hide(const TitleAddresses& a);
+    void hide(const GameAddresses& a);
     // Whether the lines were in the list at the last look (for `hello`).
     bool shown() const { return shown_; }
 

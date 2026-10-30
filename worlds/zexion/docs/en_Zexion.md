@@ -1,0 +1,218 @@
+# Zexion
+
+## What does randomization do to this game?
+
+Zexion has its own randomizer. This world uses its map and its rules for what each item opens
+up, but lets Archipelago decide what is at each of the game's 154 item locations. In OHKO there
+are 150, and in Custom the ones your settings and start room can reach, plus a 155th with
+Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's own randomizer.
+Items found in Zexion can belong to other players, and their games can send items to
+you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
+Chips): exclude more locations than you have filler, and generation stops with an error that
+says so, unless the other players' filler makes up the difference.
+
+You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
+(`zexion-setup-guide.md` in the release).
+
+## What is the goal?
+
+Set with the Goal option.
+
+- **Core** (default): find the Alpha, Beta, Gamma and Omega Keys, open the core and grab
+  Zexion, then escape, win the final battle and board the ship: reaching the ending is your
+  goal. The seed only makes sure you can reach the keys and Zexion, not that you have the
+  items the escape needs (such as the Zenith Thrusters): the escape and final battle are yours
+  to finish. With Abridged Finale (Custom), there is no escape: the ending begins when you
+  grab Zexion.
+- **OS Install Disks**: find enough OS Install Disks (the options set how many are placed and
+  how many you need). The four keys are not in the seed.
+  - Your count shows on each disk's popup, on the pause screen and on the file select.
+  - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
+    you how many you need. Until you have been there, the pause screen shows "OF ?". With
+    Hints Revealed (Custom), the game counts you as told from the start, so the number shows
+    at once (by the game's code; not yet checked in game).
+  - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
+    `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
+    THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
+    back the next time you save there. The seed makes sure you can reach the Landing Pod. The
+    pause menu's teleport goes to your start room (or second room, with Double Teleport), not
+    the Landing Pod, unless you started there.
+  - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
+    Energy Shields (how many of each a seed has is drawn per seed; in Custom, set by your pool).
+    Excluded locations can hold only filler, so with many disks, excluding many locations can
+    stop generation, as above (the OS Install Disks option gives the numbers). Where filler
+    runs short, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, in any
+    mode ("Which modes are there?").
+
+## Which modes are there?
+
+The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
+starting items and settings, or Custom. Each seed draws its items as the game does for a new
+game: Standard starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance,
+with the other three in the item pool), and every mode draws its filler (Scrap, Area Maps,
+Energy Shields). OHKO has no Energy Tanks and gives you a second room to teleport to; the 4
+locations it can't reach are left out.
+
+With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
+names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
+as `start`, `random`, `pool` or `excluded` (`custom_items`: start with it, a coin flip
+between starting with it and finding it, find it, or neither), and the settings of Edit Options
+(Random Gun, Box Compression, Hints, Gates, Start Keys, X Crystals, X Blocks, Abridged Finale
+and the rest). Each starts as `preset`: the value of `custom_base`, the mode Custom starts
+from. The seed is built from them as the game builds its own: the coin flips, Random Gun's
+draw, the boxes and the filler. Settings the game's menu cannot hold (more than 40 Energy
+Tanks, more missiles than the pool has room for, and so on) stop generation with an error that
+names them, and so do a few the menu allows: missiles and Mega Bombs (with Bulk Missiles, Bulk
+Bombs or Box Compression) that would make more items than the pool has places, which the game
+would cut at random, keys included. Where the filler runs short, in any mode, for the locations
+your start leaves out and the disks, ten Missile Containers or Mega Bombs become a box and nine
+Scrap Metal, as the game makes filler; with none to spare, generation stops. Not yet: starting
+Mega Bombs. Secret Shuffle adds a 155th location, the Bomb Box at X48 Y20, named ??? from the
+game's area table ("??? 48,20").
+With Guns First on (every preset), each gun and its upgrade are one item, Progressive
+Machine Gun and the like: the first is the gun, the second its upgrade. With it off,
+the five upgrades (Pulse Wave, Pentashot, Tunneler, Focal Crystal and Plasma Burst) are
+items of their own, and the seed's logic counts each only once you have its gun, as the
+game's own logic does. With it off, the guns keep their Progressive names (Progressive
+Machine Gun and the like), but there is one of each and it is the gun alone.
+With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
+R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off works with the
+core goal: the core's door needs only the four keys.
+Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
+goal.
+
+With Easy, Standard or OHKO, only Starting Location (`start_room`) and Safety can be changed,
+as in the game (OHKO takes Safety `light` or `off`).
+
+## Where does the game start?
+
+In one of the game's 34 start rooms, chosen with the Starting Location option (`start_room`), by
+its name in the game's menu, as in `landing_pod`. The default, `automatic`, is Landing Pod, or
+where your settings rule Landing Pod out, a random start (as `random_start` below; the
+generator's log warns that it did so). Any room works from which your starting items reach at
+least one location (and from which you can reach Zexion's core with the core goal, or the
+Landing Pod with the OS Install Disks goal); another stops generation with an error. With
+either goal, Easy's items take 17 of the rooms, and OHKO's, with a second room to teleport to,
+all 34. Standard's take 17 to 20, by the weapon the seed draws. These 17 suit all four
+weapons, and Easy's are the same 17: `exodia`, `upper_tower`, `below_arena`, `tower_gauntlet`,
+`landing_pod`, `guardia_lab`, `ocean_cliff`, `vallahar`, `jungle_entry`, `guardia_tower`,
+`lower_tower`, `ktarel_sub`, `open_cave`, `lower_machinus`, `below_machinus`, `fijedar_entry`
+and `vulknor_entry`. The Force Blaster adds `below_junkyard` and `phobyss_entry`, and the Lance
+`crysmoon_entry`, `white_crysmoon` and `phobyss_entry`; a seed that draws another weapon stops
+with an error in those (generate again, or pick one of the 17). From a room where your starting
+items reach only a few locations, generation sometimes fails: generate again, or pick another
+room. With Double
+Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
+Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
+only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks
+(doubled with the Magnus Armor), Missile Containers and Mega Bombs one each, 10 per box, and one
+per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or `random`) picks a
+room as the game's Random Start does. The spoiler log names the start room (and a second room to
+teleport to, with Double Teleport, as in OHKO) and the starting items, Standard's weapon among
+them.
+
+Locations are named by their area and their X and Y as the pause screen shows them, as in
+"Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
+Machinus, and so on) is also a group of its locations, for options such as
+`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies and Scrap.
+
+## Can I add starting items?
+
+Yes, as long as a new game can start with them (counted together with the mode's own starting
+items). As in the game's own randomizer, where a starting item is no longer in the item pool,
+take an item the pool holds with `start_inventory_from_pool`: you start with it, and a Scrap
+Metal takes its place in the pool. `start_inventory` adds items on top of the pool, so use it
+only for the items the game holds a number of (Energy Tanks, Missile Containers, Missile Boxes)
+and for those your seed's pool doesn't hold. A `start_inventory` copy of any other item the
+pool holds stops generation with an error: the game holds such an item once, so the pool's copy
+would be a location that gives nothing. Where the seed draws its own starting items (Standard's
+weapon, Custom's coin flips), it draws again until they fit with yours (and stops with an error
+if none does): with two Progressive Snakes from the pool, a Standard seed never starts with the
+Snake, which would make three.
+
+What a new game can start with:
+
+- one of each item such as the Slide Mod or the Power Core;
+- with Guns First on (every preset), at most two of each Progressive weapon (the second is its
+  upgrade), and none of the five upgrades as items of their own; with it off, one of each
+  gun and one of each of the five upgrades;
+- up to 40 Energy Tanks, and missiles up to 999 in all, ten per Missile Box, with up to 9
+  Missile Containers (Custom's starting missiles come as Missile Boxes of ten and the rest as
+  containers, and count toward these): the most the game's randomizer menu starts a game
+  with;
+- keys, in order from the Alpha Key;
+- OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
+
+Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
+or Assist Unlock, stops generation with an error that names it.
+
+## What do other players' items look like?
+
+- A location holding another player's item shows the Archipelago logo, with a flashing up arrow
+  if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM, and whom it is for
+  (FOR ALICE).
+- Another Zexion player's item looks like the item itself.
+- On the map, other players' important items and your OS Install Disks are marked as important
+  items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
+  Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
+  what it is (PROGRESSION ITEM, AP ITEM, or a Zexion item's name). Before that, an important
+  one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
+  ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
+  on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
+  when you pick it up.
+- Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
+  around you.
+
+## What do Area Maps and Intel Chips do?
+
+With the Area Map Hints option (on by default), Area Maps become **Intel Chips**. Each Intel
+Chip you get, found or sent to you, hints where one of your upgrades, keys or OS Install Disks
+is that you don't have yet, in any world. A popup shows the hint, such as HINT: SLIDE MOD IS AT
+GUARDIA 22,7, and it goes into your hint list. When nothing is left to hint, it says HINT: NO
+HINTS LEFT. Intel Chips don't reveal the map.
+
+With the option off, Area Maps work as in the normal game.
+
+## Can I use the assist menu?
+
+Not by default. ASSIST (pause, OPTIONS) is locked in your seed's saves. Turn on the Enable Assist
+Options option (`allow_assists: true`) to allow it.
+
+If a seed turns out to need the assists, the host can unlock them for good by sending you the
+Assist Unlock item from the server console, with your player name:
+`/send YOURNAME Assist Unlock`. On archipelago.gg, the console is the command box on the room
+page, which only whoever created the room sees.
+
+## How do I tell Archipelago saves apart?
+
+On the file select, COPY FILE and DELETE FILE, each Archipelago save shows the Archipelago
+logo to the right of its file number. Normal saves and plain randomizer saves don't. The mod
+knows a save once you have connected to its seed at least once, and the logo shows with the
+client closed too.
+
+## Do Archipelago saves earn Feats and Steam achievements?
+
+No Feats: the mod keeps Zexion's Feats for the game as it ships, so an Archipelago save's
+ending earns none. The Feats of Natu screen may still come after it, showing your Feats so far
+and ARCHIPELAGO SAVE: NO FEATS EARNED. If you have never seen the game's expanded ending, the
+game puts a hint where the screen's title goes; the mod shows FEATS OF NATU! and that line there
+instead. Your normal saves earn them as usual.
+
+The mod also stops Steam achievements in Archipelago saves (for items, the map and the
+ending). The ending's has been checked in game; the others so far only in the mod's own tests.
+While `/reload_mod` reloads the mod, for a few seconds, they are not stopped.
+
+This needs the mod in the game's folder. It holds with the client closed too, once you have
+connected to that seed at least once: endings of Archipelago saves played with no client have
+been checked in game. Plain randomizer saves are left alone: checked in game with the client
+connected, not yet with it closed. Lore entries you unlock in the database stay unlocked
+for the whole game, as they would in any save.
+
+## Does Zexion support DeathLink?
+
+Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When
+another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
+received together come one at a time, after you respawn. Any still waiting when your ending
+begins, or sent during it, are dropped, unless the client first saw your save after the ending
+began (opened or connected during it): then they can still reach you during the ending. A death
+takes you back to your last save.

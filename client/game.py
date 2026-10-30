@@ -1,34 +1,16 @@
 """Find and access Zexion's game state in the running process, by byte pattern.
 
-Nothing here uses a fixed address. On attach, the game's build is identified from its PE
-header and refused unless it is in ``patterns.KNOWN_BUILDS``; then every target in
-``patterns.TARGETS`` is located by scanning the code section of Zexion.exe as loaded. Each
-pattern must match exactly once (overlapping matches count) and all of a target's patterns
-must lead to the same address, or ``PatternError`` is raised and nothing is read or written.
+``attach`` refuses a build not in ``patterns.KNOWN_BUILDS`` and locates each target
+(``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) by scanning
+.text; every pattern must match exactly once and a target's patterns must agree, else
+``PatternError`` and nothing is touched. Every read and write first checks the process is
+alive (``GameNotRunning`` only once it has exited).
 
-Every read and write first checks that the attached process is still running. A failure is
-``GameNotRunning`` only when the process has exited; any other failure is a ``GameError``
-naming the address, because it means something is wrong with what was located.
-
-Item writes are compare-and-set (``set_item``, and ``set_supplies`` for the energy, missile
-and bomb numbers): the caller says what it expects to be there, the module re-reads it just
-before writing and refuses if it differs, and reads the write back (``ReadBackMismatch`` if the
-game changed it straight away). That cannot see a
-later reload of the inventory: a grant lasts only once the game has saved it, and a death
-returns to the last save (measured; docs/re/memory.md, "Granting each kind of item"), so the
-delivery layer (client/session.py) gives again whatever a reload took away.
-
-``state()`` says whether the game is in play: a save is loaded, no menu is open, and the
-player is alive (docs/re/memory.md, "Telling play from menus, the title screen and death").
-It reads three values one after another, so the state can change between them and right after.
-Worse, loading a save (which is also how the game respawns after a death) sets two of them
-before it copies the inventory back from the save, so one ``state()`` can read IN_PLAY in the
-middle of a load, and a write made then reads back fine and is overwritten a moment later.
-``settled_state()`` reads the state twice, ``SETTLE_SECONDS`` apart, and only agrees on
-IN_PLAY when both do; a caller writes only then, and afterwards waits as long again and checks
-that the state is still IN_PLAY and the byte still holds what it wrote. Even that only says
-the write was not undone at once: the save is the final word. Room transitions and saving kept
-the in-play values in a recording of the bytes; cutscenes and endings are untested.
+Item writes are compare-and-set and read back. A grant lasts only once the game saves it
+(docs/re/memory.md, "Granting each kind of item"); client/session.py gives again what a reload
+took. ``state()`` can read IN_PLAY mid-load (the load sets two of its three values before
+restoring the inventory), so writers use ``settled_state()`` and re-check after writing
+(docs/re/memory.md, "Telling play from menus, the title screen and death").
 """
 
 from __future__ import annotations
@@ -39,30 +21,20 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-import process
-from patterns import KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from . import ids, pe, process
+from .ids import LOCATIONS, MAP_SIZE, SECRET_SHUFFLE, SECTION_SIZE, WRITABLE_ITEMS
+from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from .save_patch import OPTIONS_AT, TABLE_AT
 
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
-SLOT_COPY = 0x908  # a slot's copy of its randomizer section
-# The loaded slot's block from +0x9354 (file 0x9356): a 16-bit value that changed with each
-# save (play time, assumed), then the continue point's row (+0x935A) and column (+0x935C). The
-# game rewrites the block on every save (measured, docs/re/save-format.md).
+# The loaded slot's block from +0x9354: a stamp that changes with each save (play time,
+# assumed), then the continue point's row and column (docs/re/save-format.md).
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
-PLAYER_CELL = 0x107A  # in the player state: the cell along x, then along y
+PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo's y, then x)
 
 PROCESS = "Zexion.exe"
-MAP_SIZE = 54
-COLLECTED = 0x1B  # map cell value once its item is collected
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
-ITEM_IDS = range(0, 51)  # ItemNames.txt: 0 Energy Tank .. 50 Energy Shield
-# A collected Energy Shield (item 50) left its byte at 0 in a live game: its pickup counts as
-# Scrap Metal (docs/re/memory.md, "Other players' items"), so the module never writes byte 50.
-WRITABLE_ITEMS = range(0, 50)
-LOCATIONS = 154
-# The loaded save's randomizer section, as from file offset 0x12814 (docs/re/save-format.md).
-RANDO_BLOB_SIZE = 0x908
-ITEM_TABLE_AT = 0x26C  # file 0x12A80 - 0x12814
 # Player state fields, by offset from the player state, which starts 0x108E before the
 # inventory (docs/re/memory.md).
 INVENTORY_IN_PLAYER_STATE = 0x108E
@@ -70,12 +42,13 @@ ENERGY_NOW = 0xCEA  # signed 16-bit; -1 from death until the respawn
 # Player-state offsets of the energy, missile and bomb numbers (signed 16-bit), in the order
 # supplies() returns them: energy, max energy, missiles, max missiles, bombs, max bombs.
 SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
-SUPPLY_SPAN = (0xCBC, 0xCEE)  # one read covering all six
+# One read covering the supplies (from the first, 0xCBC), the player's cell and the inventory
+# (player_state).
+PLAYER_SPAN = (min(SUPPLY_FIELDS), INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
-# The player's link to their Energy Shield (docs/re/memory.md, "Received Energy Shields"): a
-# pointer to the shield object, then that object's handle (a 32-bit serial number, then its
-# pool's type, 2). The pointer is 0 while no shield is up. The object holds the same handle
-# at +0x1D8, with serial 0 once its slot is free, and its own address at +0x3C8.
+# The player's link to their Energy Shield: pointer, then handle (serial, pool type 2). The
+# object repeats the handle at +0x1D8 and its own address at +0x3C8 (docs/re/memory.md,
+# "Received Energy Shields").
 SHIELD_LINK = 0xFE8
 SHIELD_POOL_TYPE = 2
 OBJECT_HANDLE = 0x1D8
@@ -98,6 +71,11 @@ class GameNotRunning(GameError):
     """The attached process has exited (or was never found)."""
 
 
+class AccessDenied(GameError):
+    """Windows refused to open the game (error 5): Zexion runs as administrator and the client
+    does not."""
+
+
 class PatternError(GameError):
     """A pattern matched zero or several times, or a target's patterns disagreed."""
 
@@ -118,6 +96,18 @@ class ReadBackMismatch(GameError):
     def __init__(self, message: str, read_back: bytes):
         super().__init__(message)
         self.read_back = read_back
+
+
+@dataclass(frozen=True)
+class PlayerState:
+    """The player state's fields a poll uses, from one read (Game.player_state)."""
+
+    inventory: bytes  # one byte per item ID 0-50
+    supplies: tuple[int, ...]  # as Game.supplies returns them
+    energy: int  # current energy, as Game.energy
+    # The player's map cell as the player update keeps it (docs/re/memory.md, "Other players'
+    # items"): +0x107A, floor(x / 320), and +0x107B, floor((y - 8) / 224).
+    cell: tuple[int, int]
 
 
 # --- pure helpers (tested without the game) ----------------------------------------------
@@ -164,18 +154,30 @@ def locate_all(code: bytes, code_rva: int, targets: Iterable[Target] = TARGETS) 
     return out
 
 
-def pe_header_fields(header: bytes) -> tuple[int, int]:
-    """(TimeDateStamp, SizeOfImage) from the start of a PE image."""
-    pe = struct.unpack_from("<I", header, 0x3C)[0]
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise GameError("not a PE image")
-    stamp = struct.unpack_from("<I", header, pe + 8)[0]
-    size_of_image = struct.unpack_from("<I", header, pe + 24 + 56)[0]
-    return stamp, size_of_image
+def parse_player_state(span: bytes) -> PlayerState:
+    """The fields of a read of the player state over PLAYER_SPAN."""
+    start = PLAYER_SPAN[0]
+
+    def i16(field: int) -> int:
+        return struct.unpack_from("<h", span, field - start)[0]
+
+    inv = INVENTORY_IN_PLAYER_STATE - start
+    cell = PLAYER_CELL - start
+    return PlayerState(
+        inventory=bytes(span[inv : inv + len(ids.GAME_ITEMS)]),
+        supplies=tuple(i16(f) for f in SUPPLY_FIELDS),
+        energy=i16(ENERGY_NOW),
+        cell=(span[cell], span[cell + 1]),
+    )
 
 
 def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Build:
-    stamp, size = pe_header_fields(header)
+    """The known build with the PE image's TimeDateStamp and SizeOfImage."""
+    try:
+        h = pe.parse(header)
+    except pe.PEError as exc:
+        raise GameError(str(exc)) from exc
+    stamp, size = h.timestamp, h.size_of_image
     for build in known:
         if build.timestamp == stamp and build.size_of_image == size:
             return build
@@ -187,19 +189,11 @@ def identify_build(header: bytes, known: Iterable[Build] = KNOWN_BUILDS) -> Buil
 
 def code_section(header: bytes) -> tuple[int, int]:
     """(RVA, size) of .text, from the first 4 KiB of a PE image."""
-    pe = struct.unpack_from("<I", header, 0x3C)[0]
-    if header[pe : pe + 4] != b"PE\0\0":
-        raise GameError("not a PE image")
-    nsec = struct.unpack_from("<H", header, pe + 6)[0]
-    optsz = struct.unpack_from("<H", header, pe + 20)[0]
-    for i in range(nsec):
-        o = pe + 24 + optsz + 40 * i
-        if o + 40 > len(header):
-            break
-        if header[o : o + 8].rstrip(b"\0") == b".text":
-            vsize, va = struct.unpack_from("<II", header, o + 8)
-            return va, vsize
-    raise GameError("no .text section")
+    try:
+        text = pe.parse(header).section(".text")
+    except pe.PEError as exc:
+        raise GameError(str(exc)) from exc
+    return text.va, text.vsize
 
 
 @dataclass(frozen=True)
@@ -214,20 +208,22 @@ def parse_seed(blob: bytes) -> Seed:
     """Check the randomizer section looks right before anything uses it.
 
     154 distinct (x, y) cells on the map, sorted by y then x, then 4 zero bytes, then 154 item
-    IDs from 0 to 50. Anything else means the section is not where it was located, or no
-    randomizer save is loaded.
+    IDs from 0 to 50; with Secret Shuffle (setting t37 set) 155 cells, filling those 4 bytes,
+    and 155 item IDs (docs/re/randocells.md, "The pool"). Anything else means the section is not
+    where it was located, or no randomizer save is loaded.
     """
-    if len(blob) != RANDO_BLOB_SIZE:
-        raise GameError(f"randomizer section is {len(blob)} bytes, expected {RANDO_BLOB_SIZE}")
-    cells = tuple(struct.unpack_from("<HH", blob, 4 * i) for i in range(LOCATIONS))
+    if len(blob) != SECTION_SIZE:
+        raise GameError(f"randomizer section is {len(blob)} bytes, expected {SECTION_SIZE}")
+    n = LOCATIONS + bool(blob[OPTIONS_AT + SECRET_SHUFFLE])
+    cells = tuple(struct.unpack_from("<HH", blob, 4 * i) for i in range(n))
     if any(not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE) for x, y in cells):
         raise GameError("randomizer section: a location cell is off the map")
-    if len(set(cells)) != LOCATIONS or list(cells) != sorted(cells, key=lambda c: (c[1], c[0])):
+    if len(set(cells)) != n or list(cells) != sorted(cells, key=lambda c: (c[1], c[0])):
         raise GameError("randomizer section: location cells are not distinct and sorted")
-    if any(blob[4 * LOCATIONS : ITEM_TABLE_AT]):
+    if any(blob[4 * n : TABLE_AT]):
         raise GameError("randomizer section: no zero gap after the location list")
-    items = bytes(blob[ITEM_TABLE_AT : ITEM_TABLE_AT + LOCATIONS])
-    if any(i not in ITEM_IDS for i in items):
+    items = bytes(blob[TABLE_AT : TABLE_AT + n])
+    if any(i not in ids.GAME_ITEMS for i in items):
         raise GameError("randomizer section: an item ID is out of range")
     return Seed(cells, items)
 
@@ -235,17 +231,10 @@ def parse_seed(blob: bytes) -> Seed:
 # --- the running game ---------------------------------------------------------------------
 
 
-def game_running() -> bool:
-    """Whether a Zexion process is running (without attaching to it)."""
-    try:
-        return process.find_pid(PROCESS) is not None
-    except process.ProcessError as exc:
-        raise GameError(str(exc)) from exc
-
-
 @dataclass
 class Game:
-    """An attached Zexion process with every target located."""
+    """An attached Zexion process with the targets it was attached with located (the
+    client's, patterns.CLIENT_TARGETS, by default)."""
 
     pm: object
     base: int
@@ -254,11 +243,14 @@ class Game:
     build: Build
 
     @classmethod
-    def attach(cls) -> Game:
+    def attach(cls, targets: Iterable[Target] = CLIENT_TARGETS) -> Game:
+        """Attach to the running game and locate ``targets`` (the client's by default)."""
         try:
             pm = process.Process(PROCESS)
         except process.ProcessNotFound as exc:
             raise GameNotRunning(f"{PROCESS} is not running") from exc
+        except process.ProcessAccessDenied as exc:
+            raise AccessDenied(f"opening {PROCESS} failed: {exc}") from exc
         except process.ProcessError as exc:
             raise GameError(f"opening {PROCESS} failed: {exc}") from exc
         try:
@@ -270,7 +262,7 @@ class Game:
             build = identify_build(header)
             text_rva, text_size = code_section(header)
             code = pm.read_bytes(base + text_rva, text_size)
-            rva = locate_all(code, text_rva)
+            rva = locate_all(code, text_rva, targets)
             return cls(pm, base, rva, pm.process_id, build)
         except GameError:
             pm.close_process()
@@ -280,12 +272,7 @@ class Game:
             raise GameError(f"attaching to {PROCESS} failed: {exc}") from exc
 
     def _alive(self) -> bool:
-        import ctypes
-
-        still_active = 259
-        code = ctypes.c_ulong()
-        ok = ctypes.windll.kernel32.GetExitCodeProcess(self.pm.process_handle, ctypes.byref(code))
-        return bool(ok) and code.value == still_active
+        return self.pm.alive()
 
     def _check_alive(self) -> None:
         if not self._alive():
@@ -308,7 +295,7 @@ class Game:
                 out[key] = self._read_pointer(self.base + rva, size)
         return out
 
-    # Every access goes through these two, so the liveness check cannot be skipped.
+    # Every access goes through _read_pointer or _write, which check liveness first.
     def _read(self, target: str, offset: int, size: int) -> bytes:
         return self._read_pointer(self.base + self.rva[target] + offset, size)
 
@@ -327,7 +314,7 @@ class Game:
         self._check_alive()
         address = self.base + self.rva[target] + offset
         try:
-            self.pm.write_bytes(address, data, len(data))
+            self.pm.write_bytes(address, data)
         except Exception as exc:
             raise WriteStateUnknown(f"write at {address:#x} failed part-way: {exc}") from exc
         try:
@@ -343,24 +330,21 @@ class Game:
 
     # --- state ------------------------------------------------------------------------
 
-    def map_cell(self, x: int, y: int) -> int:
-        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
-            raise ValueError(f"cell ({x}, {y}) is off the map")
-        return self._read("map_grid", y * MAP_SIZE + x, 1)[0]
-
     def map_grid(self) -> bytes:
         return self._read("map_grid", 0, MAP_SIZE * MAP_SIZE)
 
     def inventory(self) -> bytes:
         """One byte per item ID 0-50."""
-        return self._read("inventory", 0, len(ITEM_IDS))
+        return self._read("inventory", 0, len(ids.GAME_ITEMS))
 
-    def flag(self, number: int) -> int:
-        """One of the loaded game's flags (0 to 0x9C3; docs/re/memory.md, "Keys, the gates and
-        the key markers" and "The ending")."""
-        if not 0 <= number < FLAGS:
-            raise ValueError(f"flag {number} is outside the 0x{FLAGS:X} flags")
-        return self._read("flags", number, 1)[0]
+    def flag_bytes(self, first: int, count: int) -> bytes:
+        """``count`` of the loaded game's flags from ``first``, in one read (0 to 0x9C3;
+        docs/re/memory.md, "Keys, the gates and the key markers" and "The ending")."""
+        if first < 0 or count <= 0 or first + count > FLAGS:
+            raise ValueError(
+                f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X} flags"
+            )
+        return self._read("flags", first, count)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         """Compare-and-set an item's inventory byte, then read it back.
@@ -385,9 +369,7 @@ class Game:
 
     def supplies(self) -> tuple[int, ...]:
         """Energy, max energy, missiles, max missiles, bombs, max bombs, read at once."""
-        start, end = SUPPLY_SPAN
-        span = self._read("inventory", start - INVENTORY_IN_PLAYER_STATE, end - start)
-        return tuple(struct.unpack_from("<h", span, f - start)[0] for f in SUPPLY_FIELDS)
+        return self.player_state().supplies
 
     def set_supplies(self, expected: Sequence[int], new: Sequence[int]) -> None:
         """Compare-and-set the six numbers ``supplies()`` returns, writing only those that
@@ -408,8 +390,7 @@ class Game:
     def energy(self) -> int:
         """Current energy (signed); -1 from the moment of death until the respawn (measured),
         so 0 or below counts as dead (0 itself is an assumption)."""
-        offset = ENERGY_NOW - INVENTORY_IN_PLAYER_STATE
-        return struct.unpack("<h", self._read("inventory", offset, 2))[0]
+        return self.player_state().energy
 
     def shield_up(self) -> bool:
         """Whether the player has an Energy Shield up: the player's link to it is set, and the
@@ -424,15 +405,23 @@ class Game:
         own = struct.unpack("<Q", self._read_pointer(pointer + OBJECT_SELF, 8))[0]
         return handle == link[8:16] and own == pointer
 
-    def state(self) -> str:
-        """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in."""
+    def state(self, energy: int | None = None) -> str:
+        """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in.
+        ``energy`` is the current energy if the caller has just read it (player_state)."""
         if self._read("save_loaded", 0, 1)[0] == NO_SAVE_LOADED:
             return NO_SAVE
         if self._read("menu_state", 0, 1)[0] != 0:
             return MENU
-        if self.energy() <= 0:
+        if (self.energy() if energy is None else energy) <= 0:
             return DEAD
         return IN_PLAY
+
+    def player_state(self) -> PlayerState:
+        """The inventory, supplies, energy and the player's cell, read at once."""
+        start, end = PLAYER_SPAN
+        return parse_player_state(
+            self._read("inventory", start - INVENTORY_IN_PLAYER_STATE, end - start)
+        )
 
     def settled_state(self, gap: float = SETTLE_SECONDS) -> str:
         """``state()`` read twice, ``gap`` seconds apart; CHANGING if the two differ."""
@@ -442,7 +431,8 @@ class Game:
         return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45.
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Only the RE tools
+        locate it (``patterns.TOOL_TARGETS``).
 
         Not a per-location signal; the map grid is (docs/re/memory.md).
         """
@@ -473,20 +463,14 @@ class Game:
             raise GameError(f"the current slot reads {slot}")
         return raw + self._read("slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, SAVE_STAMP_SIZE)
 
-    def player_cell(self) -> tuple[int, int]:
-        """The player's map cell as the player update keeps it (docs/re/memory.md, "Other
-        players' items"): +0x107A, floor(x / 320), and +0x107B, floor((y - 8) / 224)."""
-        raw = self._read("inventory", PLAYER_CELL - INVENTORY_IN_PLAYER_STATE, 2)
-        return raw[0], raw[1]
-
     def rando_slot_copies(self) -> bytes:
-        """The game's copy of each slot's randomizer section (30 of SLOT_COPY bytes, in the
-        loaded section's layout; docs/re/memory.md, "The file select")."""
-        return self._read("rando_slots", 0, SLOTS * SLOT_COPY)
+        """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in
+        the loaded section's layout; docs/re/memory.md, "The file select")."""
+        return self._read("rando_slots", 0, SLOTS * SECTION_SIZE)
 
     def rando_blob(self) -> bytes:
         """The loaded save's randomizer section, as from file offset 0x12814."""
-        return self._read("rando_blob", 0, RANDO_BLOB_SIZE)
+        return self._read("rando_blob", 0, SECTION_SIZE)
 
     def seed(self) -> Seed:
         """The loaded seed's locations and items, checked (``parse_seed``)."""

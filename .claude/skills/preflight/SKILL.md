@@ -1,12 +1,12 @@
 ---
 name: preflight
-description: Run the checks CI runs (ruff format, ruff check, pytest) and, once worlds/zexion exists, Archipelago's own world tests against the pinned checkout in .ap/. Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
+description: Run the checks CI runs (ruff format, ruff check, pytest, and Archipelago's own world tests against the pinned checkout in .ap/). Reports the first failure with enough context to act on it. Use before handing work back, before committing, or whenever asked whether a change will pass CI.
 ---
 
 # Pre-flight
 
-Run these in order and stop at the first failure. A format failure makes the lint output noise,
-and a lint failure often means the tests are importing the same broken code.
+Run these in order and stop at the first failure. On Linux and macOS the venv's programs are
+in `.venv/bin/`, not `.venv/Scripts/`, here and below.
 
 ```sh
 .venv/Scripts/ruff format --check .
@@ -14,11 +14,15 @@ and a lint failure often means the tests are importing the same broken code.
 .venv/Scripts/python -m pytest
 ```
 
-`.github/workflows/ci.yml` runs these three on Windows and Ubuntu, plus a Windows `native` job
-(the CMake build of `native/`, its ctest tests, and `tests/test_native.py` against the built DLL)
-that preflight does not run. Locally, `tests/test_native.py` skips its load test unless
-`native/build/Release/zexion_ap.dll` exists; build it as `CLAUDE.md` shows when `native/` or
-`client/native.py` changed.
+`.github/workflows/ci.yml` runs these three on Windows, Ubuntu and macOS, a `world` job with
+Archipelago's world tests (below, on Ubuntu), and a Windows `native` job (the CMake build of `native/`, its ctest tests, and
+`tests/test_native.py` against the built DLL) that preflight does not run. Locally,
+`tests/test_native.py` skips its load test unless `native/build/Release/zexion_ap.dll` exists (or
+`ZEXION_DLL` names a build); build it as `CLAUDE.md` ("Checks") shows when `native/` or
+`client/native.py` changed. Without `sh` the hook runner's tests skip, and without the world
+linked into `.ap/` so do `test_client_agrees.py`'s; CI fails on any of these, the load
+test's missing build included (`ZEXION_REQUIRE`, `docs/DEVELOPING.md`, "Checks"), so name any
+such skip in the report.
 
 ## Before you start
 
@@ -29,20 +33,18 @@ something to paper over.
 
 ## Archipelago's world tests
 
-Only once `worlds/zexion/` exists. Until then, say they were not run because there is no world.
-
 1. `.ap/Archipelago` must exist at the tag in `AP_VERSION`. If not, run
    `.venv/Scripts/python tools/ap_checkout.py`, which also links `worlds/zexion/` into it.
    Check the link: `ls .ap/Archipelago/worlds/zexion` lists this repo's world.
 2. From `.ap/Archipelago`:
 
    ```sh
-   ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
+   AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
    ```
 
-   `test/general` generates seeds for every world, ours included: fill, accessibility,
-   item and location name groups, and that the world loads at all. AP prints a `_speedups not
-   available` warning on this machine; it is harmless.
+   `AP_TEST_WORLDS=zexion` limits `test/general` to this world; it generates seeds: fill,
+   accessibility, item and location name groups, and that the world loads at all. AP may print
+   a `_speedups not available` warning; it is harmless.
 
 If the AP checkout can't be created (no network, say), report the world as untested against AP.
 

@@ -1,13 +1,7 @@
-// The scanner's message, reworded for the OS Install Disks goal.
-//
-// The first time the player enters Vallahar X6 Y8 in a game without all four keys, an object
-// there shows SCANNING..., copies the key markers to the map, and 180 frames later shows Text
-// entry 12, ENERGY KEYS DETECTED! (docs/re/memory.md, "The scanner"). In a seed with the OS
-// Install Disks goal there are no keys, so no markers either; the helper rewrites that entry,
-// in the loaded Text table only (nothing is saved), to say how many disks win (the client's
-// line, "COLLECT 15 OS INSTALL DISKS!"). The entry is checked first, and put back on request,
-// or before an unload, if it still reads as written. The game may load the table again; the
-// watch then writes the new one.
+// The scanner's message (Text entry 12, ENERGY KEYS DETECTED!) rewritten as the client's OS
+// Install Disks line, in the loaded Text table only (docs/re/memory.md, "The scanner"). Written
+// only over the game's text or the helper's own; put back, if it still reads as written, when
+// off and before an unload; a reloaded table is written again by the watch.
 #pragma once
 
 #include <windows.h>
@@ -24,8 +18,8 @@ constexpr char kScanTextOriginal[] = "ENERGY KEYS DETECTED!";
 class ScanText {
 public:
     // Game thread. `table_holder` holds the pointer to the loaded Text table. Writes `line`
-    // (at most 31 characters) over entry 12 if it reads as the game's own or as a line this
-    // helper wrote; returns whether it reads `line` now.
+    // (must pass scan_line_ok) over entry 12 if it reads as the game's or the helper's last
+    // line; returns whether it reads `line` now.
     bool apply(BYTE* table_holder, const std::string& line);
 
     // Game thread. Puts the game's text back if the table is the one written and the entry

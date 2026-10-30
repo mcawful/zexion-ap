@@ -10,30 +10,10 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "title.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-template <typename T>
-T get(const BYTE* b, ptrdiff_t o) {
-    T v;
-    std::memcpy(&v, b + o, sizeof(v));
-    return v;
-}
-
-template <typename T>
-void set(BYTE* b, ptrdiff_t o, T v) {
-    std::memcpy(b + o, &v, sizeof(v));
-}
 
 constexpr int kFrames = 256;
 std::vector<std::unique_ptr<BYTE[]>> g_blocks;
@@ -51,33 +31,33 @@ BYTE* block(size_t size) {
 }
 
 void frame(BYTE* g, int32_t f) {
-    set<int32_t>(g, 0x1C4, f);
-    set<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
+    put<int32_t>(g, 0x1C4, f);
+    put<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
 }
 
 BYTE* text_new(const char* chars, int length, int columns) {
     ++g_made;
     BYTE* t = block(0x268);
-    set<int32_t>(t, 0x1D8, length);
-    set<int32_t>(t, 0x1DC, columns);
-    set<int32_t>(t, 0x1EC, length);
+    put<int32_t>(t, 0x1D8, length);
+    put<int32_t>(t, 0x1DC, columns);
+    put<int32_t>(t, 0x1EC, length);
     auto** glyphs = reinterpret_cast<BYTE**>(block(sizeof(BYTE*) * length));
     for (int i = 0; i < length; ++i) {
         BYTE* g = block(0x1D8);
-        set<BYTE*>(g, 0x1A8, g_frames);
-        set<int32_t>(g, 0x1BC, kFrames);
-        set<int32_t>(g, 0x1D0, 0x15);
+        put<BYTE*>(g, 0x1A8, g_frames);
+        put<int32_t>(g, 0x1BC, kFrames);
+        put<int32_t>(g, 0x1D0, 0x15);
         frame(g, static_cast<uint8_t>(chars[i]));
         glyphs[i] = g;
     }
-    set<BYTE**>(t, 0x228, glyphs);
+    put<BYTE**>(t, 0x228, glyphs);
     return t;
 }
 
 void text_place(void* text, int x, int y) {
     auto* t = static_cast<BYTE*>(text);
-    set<double>(t, 0x40, x);
-    set<double>(t, 0x48, y);
+    put<double>(t, 0x40, x);
+    put<double>(t, 0x48, y);
 }
 
 // As 0xA8620: each glyph not in a list right after the text.
@@ -89,63 +69,66 @@ void text_link(void* text) {
         BYTE* g = glyphs[i];
         if (get<BYTE*>(g, 0) != nullptr) continue;
         BYTE* next = get<BYTE*>(t, 0x10);
-        if (next != nullptr) set<BYTE*>(next, 0x18, g);
-        set<BYTE*>(g, 0x10, next);
-        set<BYTE*>(t, 0x10, g);
-        set<BYTE*>(g, 0x18, t);
-        if (next == nullptr) set<BYTE*>(list, 0x20, g);
-        set<BYTE*>(g, 0, list);
+        if (next != nullptr) put<BYTE*>(next, 0x18, g);
+        put<BYTE*>(g, 0x10, next);
+        put<BYTE*>(t, 0x10, g);
+        put<BYTE*>(g, 0x18, t);
+        if (next == nullptr) put<BYTE*>(list, 0x20, g);
+        put<BYTE*>(g, 0, list);
     }
 }
 
 void append(BYTE* t) {
     BYTE* tail = get<BYTE*>(g_list, 0x20);
     if (tail != nullptr) {
-        set<BYTE*>(tail, 0x10, t);
+        put<BYTE*>(tail, 0x10, t);
     } else {
-        set<BYTE*>(g_list, 0x18, t);
+        put<BYTE*>(g_list, 0x18, t);
     }
-    set<BYTE*>(t, 0x18, tail);
-    set<BYTE*>(t, 0x10, nullptr);
-    set<BYTE*>(g_list, 0x20, t);
-    set<BYTE*>(t, 0, g_list);
+    put<BYTE*>(t, 0x18, tail);
+    put<BYTE*>(t, 0x10, nullptr);
+    put<BYTE*>(g_list, 0x20, t);
+    put<BYTE*>(t, 0, g_list);
 }
 
 BYTE* glyph(BYTE* t, int i) { return get<BYTE**>(t, 0x228)[i]; }
 
-// The title as the game's routine leaves it: the copyright line, after something else.
-BYTE* reset_title() {
+// The title as the game's routine leaves it: the copyright line (returned), after something
+// else; without `copyright`, only that something else (null returned).
+BYTE* reset_title(bool copyright = true) {
     std::memset(g_list, 0, sizeof(g_list));
     g_made = 0;
     BYTE* other = text_new("PUSH ANY KEY", 12, 32);
     append(other);
     text_link(other);
+    g_made = 0;
+    if (!copyright) return nullptr;
     BYTE* line = text_new("C2025 GALLANT LEAF", 18, 32);
     append(line);
     text_link(line);
     for (int i = 0; i < 18; ++i) {
         BYTE* g = glyph(line, i);
         g[0x120] = 1;
-        set<BYTE*>(g, 0x198, g_palette);
-        set<int16_t>(g, 0x1A0, 0x1A);
+        put<BYTE*>(g, 0x198, g_palette);
+        put<int16_t>(g, 0x1A0, 0x1A);
     }
     frame(glyph(line, 0), 0xA9);
-    set<BYTE*>(line, 0x178, g_tag);
-    set<int16_t>(line, 0x180, 0x79);
+    put<BYTE*>(line, 0x178, g_tag);
+    put<int16_t>(line, 0x180, 0x79);
     g_made = 0;
     return line;
 }
 
-zap::TitleAddresses addresses() {
-    zap::TitleAddresses a;
+zap::GameAddresses addresses() {
+    zap::GameAddresses a;
     a.draw_layer = reinterpret_cast<BYTE*>(&g_layer);
-    a.text_new_fn = reinterpret_cast<void*>(&text_new);
-    a.text_place_fn = reinterpret_cast<void*>(&text_place);
-    a.text_link_fn = reinterpret_cast<void*>(&text_link);
+    a.text_new_fn = reinterpret_cast<BYTE*>(&text_new);
+    a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
+    a.text_link_fn = reinterpret_cast<BYTE*>(&text_link);
     return a;
 }
 
-// Runs the watch past its frame count, so it looks once.
+// Nine frame calls: one look (title.cpp looks every 9th).
 std::string look(zap::TitleLines& lines) {
     std::string why;
     for (int i = 0; i < 9; ++i) {
@@ -232,11 +215,7 @@ void test_lines_are_made_under_the_copyright() {
 }
 
 void test_nothing_without_the_copyright_line() {
-    std::memset(g_list, 0, sizeof(g_list));
-    g_made = 0;
-    BYTE* other = text_new("PUSH ANY KEY", 12, 32);
-    append(other);
-    g_made = 0;
+    reset_title(false);
     zap::TitleLines lines;
     lines.set_version("0.22.0");
     look(lines);
@@ -279,8 +258,6 @@ void test_a_new_title_gets_new_lines() {
     check(g_made == 3 && find("ARCHIPELAGO MOD 0.22.0", false) != nullptr, "made for the new title");
 }
 
-}  // namespace
-
 void test_the_hint_only_without_a_client() {
     reset_title();
     zap::TitleLines lines;
@@ -296,12 +273,13 @@ void test_the_hint_only_without_a_client() {
     check(hint != nullptr && all_visible(hint, true), "the client gone: the hint shown");
 }
 
+}  // namespace
+
 int main() {
     test_the_hint_only_without_a_client();
     test_lines_are_made_under_the_copyright();
     test_nothing_without_the_copyright_line();
     test_hidden_and_shown_with_the_copyright();
     test_a_new_title_gets_new_lines();
-    if (g_failures == 0) std::printf("title tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("title tests");
 }

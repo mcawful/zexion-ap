@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import aplabels as al
+import pytest
+
+from client import aplabels as al
 
 
 def lines(text: str) -> list[str]:
@@ -62,9 +64,10 @@ def test_foreign_locations_are_the_kept_stand_ins() -> None:
 
 def test_the_stand_ins_come_from_slot_data() -> None:
     assert al.stand_ins({"stand_in": 47, "stand_in_progression": 48}) == {47, 48}
-    assert al.stand_ins({"stand_in": 47}) == {47}
-    assert al.stand_ins({}) == set()
-    assert al.stand_ins({"stand_in_progression": 48}) == set()
+    with pytest.raises(KeyError):
+        al.stand_ins({"stand_in": 47})
+    with pytest.raises(ValueError, match="not the client's"):
+        al.stand_ins({"stand_in": 46, "stand_in_progression": 48})
 
 
 def test_the_request_lists_each_cell_with_its_label_in_hex() -> None:

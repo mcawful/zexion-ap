@@ -2,44 +2,26 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <sstream>
 
-#include "game_calls.h"  // parse_config
-#include "menu.h"        // safe_read
+#include "game_mem.h"
+#include "requests.h"  // parse_config, parse_discs, parse_hex
 
 namespace zap {
 
 namespace {
 
-// A seed file is some 20 KB at most; the pipe drops a message over 64 KB, so the client sends
-// none larger than this (client/offline.py, MAX_FILE).
+// Under the pipe's 64 KB message limit; the client's MAX_FILE (client/offline.py).
 constexpr size_t kMaxFile = 48 * 1024;
 constexpr size_t kMaxSeeds = 256;  // the newest kept
 constexpr size_t kCheckBytes = 16;
 
+// Exactly `size` bytes, as hex (parse_hex).
 bool hex_bytes(const std::string& hex, uint8_t* out, size_t size) {
-    if (hex.size() != size * 2) return false;
-    for (size_t i = 0; i < size; ++i) {
-        unsigned v = 0;
-        for (int k = 0; k < 2; ++k) {
-            char c = hex[i * 2 + k];
-            unsigned d = c >= '0' && c <= '9'   ? static_cast<unsigned>(c - '0')
-                         : c >= 'a' && c <= 'f' ? static_cast<unsigned>(c - 'a' + 10)
-                         : c >= 'A' && c <= 'F' ? static_cast<unsigned>(c - 'A' + 10)
-                                                : 16u;
-            if (d > 15) return false;
-            v = v * 16 + d;
-        }
-        out[i] = static_cast<uint8_t>(v);
-    }
-    return true;
-}
-
-bool hex_text(const std::string& hex, std::string& out) {
-    if (hex.size() % 2 != 0 || hex.size() > 62) return false;  // one line of the game's text
-    std::vector<uint8_t> raw(hex.size() / 2);
-    if (!hex_bytes(hex, raw.data(), raw.size())) return false;
-    out.assign(raw.begin(), raw.end());
+    std::vector<uint8_t> raw;
+    if (hex.size() != size * 2 || !parse_hex(hex, raw)) return false;
+    std::memcpy(out, raw.data(), size);
     return true;
 }
 
@@ -68,6 +50,21 @@ std::string narrow(const std::wstring& w) {
     return out;
 }
 
+// ASCII text (a build's name, a seed file's: good_seed_name) as a path's characters.
+std::wstring widen(const std::string& text) { return std::wstring(text.begin(), text.end()); }
+
+// The next line of `lines`, its \r dropped; false at the end.
+bool next_line(std::istream& lines, std::string& line) {
+    if (!std::getline(lines, line)) return false;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return true;
+}
+
+// The cached config's file for `build` in `folder`.
+std::wstring config_path(const std::wstring& folder, const char* build) {
+    return folder + L"\\config-" + widen(build) + L".txt";
+}
+
 // The cached config: the `config` request, then "check KEY HEX" lines, at least
 // kOfflineMinChecks, each on a key of the config. "" or what is wrong.
 std::string parse_offline_config(const std::string& text, std::map<std::string, uint64_t>& rvas,
@@ -76,12 +73,10 @@ std::string parse_offline_config(const std::string& text, std::map<std::string, 
     checks.clear();
     std::istringstream lines(text);
     std::string first, line;
-    std::getline(lines, first);
-    if (!first.empty() && first.back() == '\r') first.pop_back();
+    next_line(lines, first);
     std::string why = parse_config(first, rvas);
     if (!why.empty()) return why;
-    while (std::getline(lines, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+    while (next_line(lines, line)) {
         std::istringstream words(line);
         std::string op, key, hex, extra;
         if (!(words >> op)) continue;
@@ -122,29 +117,29 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     out = OfflineSeed{};
     std::istringstream lines(text);
     std::string line;
-    auto next = [&]() {
-        if (!std::getline(lines, line)) return false;
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        return true;
-    };
-    if (!next() || line != "zexion-ap offline 1") return "not a seed file";
+    if (!next_line(lines, line) || line != "zexion-ap offline 1") return "not a seed file";
     bool table = false, start = false;
-    while (next()) {
+    while (next_line(lines, line)) {
         if (line == "ap_labels") {
-            std::string labels = "ap_labels";
-            while (next()) {
-                if (line.empty()) continue;
-                labels += "\n" + line;
+            out.labels = line;
+            while (next_line(lines, line)) {
+                if (!line.empty()) out.labels += "\n" + line;
             }
-            out.labels = labels;
             break;
         }
         std::istringstream words(line);
-        std::string key, a, b, c;
+        std::string key, a;
         words >> key;
         if (key.empty()) continue;
         if (key == "table") {
-            if (!(words >> a) || !hex_bytes(a, out.table, sizeof(out.table))) return "bad table";
+            // Only one: a second, shorter one would leave the first's 155th entry past
+            // `locations`, which must be 0 (offline_matches compares the whole table).
+            if (table || !(words >> a)) return "bad table";
+            out.locations = static_cast<int>(a.size() / 2);
+            if (out.locations != rando::kLocations && out.locations != rando::kMaxLocations) {
+                return "bad table";
+            }
+            if (!hex_bytes(a, out.table, static_cast<size_t>(out.locations))) return "bad table";
             table = true;
         } else if (key == "start") {
             if (!(words >> a) || !hex_bytes(a, out.start, sizeof(out.start))) return "bad start";
@@ -156,44 +151,38 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             if (!(words >> a) || (a != "lock" && a != "free")) return "bad assists";
             out.lock_assists = a == "lock";
         } else if (key == "discs") {
-            if (!(words >> a)) return "bad discs";
-            if (a == "-") continue;
-            if (!(words >> b >> c)) return "bad discs";
-            try {
-                out.count = std::stoi(a);
-                out.required = std::stoi(b);
-            } catch (...) {
-                return "bad discs";
-            }
-            if (out.count < 0 || out.count > 255 || out.required < 1 || out.required > 255 ||
-                !hex_text(c, out.scan_line) || out.scan_line.empty()) {
+            // "discs -", or as the `discs` request (its TOLD left out).
+            if (words >> a && a == "-") continue;
+            bool told = false;
+            if (!parse_discs(line, out.count, out.required, out.scan_line, told).empty() ||
+                out.scan_line.empty()) {
                 return "bad discs";
             }
             out.discs = true;
         } else if (key == "unfound") {
             if (!(words >> a)) return "bad unfound";
-            if (a == "-") continue;
-            std::istringstream items(a);
-            std::string item;
-            while (std::getline(items, item, ',')) {
-                if (item.empty() || item.size() > 4 ||
-                    item.find_first_not_of("0123456789") != std::string::npos) {
-                    return "bad unfound";
-                }
-                int cell = std::stoi(item);
-                if (cell >= kMapCells) return "bad unfound";
-                out.unfound.push_back(cell);
+            if (a != "-" && !parse_number_list(a, 4, 0, kMapCells - 1, out.unfound)) {
+                return "bad unfound";
             }
         }
-        // Other keys: from a later client, ignored.
+        // Unknown keys are ignored (a newer client).
     }
     if (!table || !start) return "no table or start";
     return "";
 }
 
-bool offline_matches(const OfflineSeed& seed, const uint8_t* table, const uint8_t* start) {
-    return std::memcmp(seed.table, table, sizeof(seed.table)) == 0 &&
-           std::memcmp(seed.start, start, sizeof(seed.start)) == 0;
+bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other) {
+    return seed.locations == other.locations &&
+           std::memcmp(seed.table, other.table, sizeof(seed.table)) == 0 &&
+           std::memcmp(seed.start, other.start, sizeof(seed.start)) == 0;
+}
+
+OfflineSeed offline_seed_of(const uint8_t* section) {
+    OfflineSeed seed;
+    seed.locations = rando::locations(section);
+    std::memcpy(seed.table, section + rando::kItemTable, static_cast<size_t>(seed.locations));
+    std::memcpy(seed.start, section + rando::kStart, sizeof(seed.start));
+    return seed;
 }
 
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid) {
@@ -230,7 +219,7 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
 }  // namespace
 
 std::string put_offline_file(const std::wstring& folder, const char* build,
-                             const std::string& request) {
+                             const std::string& request, OfflineSeed* seed_out) {
     if (folder.empty()) return "error no LOCALAPPDATA";
     size_t eol = request.find('\n');
     if (eol == std::string::npos) return "error no file";
@@ -238,19 +227,17 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     if (body.size() > kMaxFile) return "error too large";
     std::istringstream words(head);
     std::string op, kind, name, extra;
+    std::optional<OfflineSeed> parsed;  // a seed's file, once checked
     words >> op >> kind;
     std::wstring path;
     if (op != "offline_put") return "error not an offline_put request";
     if (kind == "config") {
         if (build == nullptr) return "error an unknown build";
-        // Checked as the reader will: the config, then its check lines.
         std::map<std::string, uint64_t> rvas;
         std::map<std::string, std::string> checks;
         std::string why = parse_offline_config(body, rvas, checks);
         if (!why.empty()) return "error " + why;
-        path = folder + L"\\config-";
-        for (const char* c = build; *c != '\0'; ++c) path += static_cast<wchar_t>(*c);
-        path += L".txt";
+        path = config_path(folder, build);
     } else if (kind == "seed") {
         if (!(words >> name) || (words >> extra) || !good_seed_name(name)) {
             return "error bad name";
@@ -258,18 +245,18 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
         OfflineSeed seed;
         std::string why = parse_offline_seed(body, seed);
         if (!why.empty()) return "error " + why;
-        CreateDirectoryW(folder.c_str(), nullptr);
-        CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
-        path = folder + L"\\seeds\\";
-        for (char c : name) path += static_cast<wchar_t>(c);
-        path += L".txt";
+        seed.name = name;
+        parsed = std::move(seed);
+        path = folder + L"\\seeds\\" + widen(name) + L".txt";
     } else {
         return "error not config or seed";
     }
     CreateDirectoryW(folder.c_str(), nullptr);
+    if (parsed) CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
     bool changed = false;
     std::string why = write_whole(path, body, changed);
     if (!why.empty()) return "error " + why;
+    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     return changed ? "stored" : "unchanged";
 }
 
@@ -308,10 +295,7 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build) {
     }
     std::string text;
     if (build != nullptr) {
-        std::wstring name = folder + L"\\config-";
-        for (const char* c = build; *c != '\0'; ++c) name += static_cast<wchar_t>(*c);
-        name += L".txt";
-        if (read_file(name, text)) {
+        if (read_file(config_path(folder, build), text)) {
             std::map<std::string, uint64_t> rvas;
             std::string why = parse_offline_config(text, rvas, files.checks);
             if (why.empty()) {

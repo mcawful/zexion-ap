@@ -1,21 +1,18 @@
-// RETURN HOME WITH THE DISKS?: the game's ending, offered once the player has enough OS Install
-// Disks.
-//
-// In the OS Install Disks goal the disks are found in play, and the goal is the game's ending
-// reached with enough of them; once the player has enough, the client asks the helper to offer
-// the ending with a YES/NO prompt (docs/re/memory.md, "The mission prompt"). The game builds such a prompt for the escape skip: routine 15 of its
-// transition-routine table (0x1668A0), run when the transition timer ends, as area event 3666
-// sets it. The helper sets the same two fields, but to its own opener, which calls the game's
-// builder and, before the prompt's first frame, relabels the question (the game's text routine)
-// and points YES at the helper. YES then closes the prompt as NO does (the game's own NO
-// callback) and asks for the ending: once the game is idle again, the helper sets routine 4
-// (0x94A30), as the ship's ending event 2567 does, with no menu open (0x94A30 skips recording
-// the ending while one is). NO is the game's own: the prompt closes and play goes on.
-//
-// The helper only sets the transition while the game is idle in play: no transition pending
-// (timer 0), the routine the idle one (table entry 2, the pause), no menu, a save loaded and the
-// player alive. On unload, an opener not yet run is replaced by the idle routine, and a YES still
-// wrapped is pointed at NO (never back at the escape skip's YES, which would end the escape).
+// RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
+// Disks (docs/re/memory.md, "The mission prompt"). The prompt is the game's own SKIP ESCAPE AND
+// FINAL BATTLE? (built by routine 15, 0x1668A0), relabeled. When idle in play (timer 0, routine
+// table entry 2 the pause opener, no menu; the game's last message far enough in,
+// kFadeMessageLeft), the helper opens it as the game's event 3666 does: that event sets the
+// transition routine (the helper's opener here, routine 15 there) with timer 60, and runs event
+// 3667, the game's fade to black, through the area-event handlers.
+// If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
+// builder, relabels the question and points YES at the helper; YES runs the game's NO (which
+// fades the screen back in) and then, once idle, starts routine 4 (0x94A30, which records the
+// ending only with no menu open). An opener the helper takes back before it runs (cancel,
+// unload) becomes the idle routine, and its fade is turned back to the normal level; one another
+// transition took the place of (a save sets the pause opener back) has its fade turned back only
+// while the game's fade is still event 3667's (fade_state); on unload a wrapped YES points at NO
+// (never the game's own YES, which skips the escape and final battle).
 #pragma once
 
 #include <windows.h>
@@ -23,35 +20,57 @@
 #include <cstdint>
 #include <string>
 
+#include "addresses.h"
+
 namespace zap {
 
-struct MissionAddresses {
-    BYTE* current_menu = nullptr;      // holds the top menu
-    BYTE* transition_fn = nullptr;     // the routine the game runs when its timer ends
-    BYTE* transition_timer = nullptr;  // 32-bit frames left
-    BYTE* routine_table = nullptr;     // the transition routines (0x3CF5F0)
-    void* widget_handler = nullptr;    // the generic widget handler, the prompt's
-    void* text_set_fn = nullptr;       // (text, string, first glyph, glyphs)
-    void* open_hook = nullptr;         // the helper's opener (no arguments)
-    void* yes_hook = nullptr;          // the helper's stand-in for YES's callback
-};
-
 constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;
+// Event 3667, the fade (type 1), and event 3666's delay: the fade takes 40 frames of the 60.
+constexpr int kFadeEvent = 3667;
+constexpr int32_t kFadeDelay = 60;
+// The fade starts with this many frames of the game's last message (GAME SAVED, 180 frames,
+// 0x1FC876) left: 30 frames (half a second) after it appears, the owner's pick in game
+// (2026-10-27). Before that it was 70 left, as far in as Zexion's popup is when the game's own
+// prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
+// after a save.
+constexpr int32_t kFadeMessageLeft = 150;
 extern const char kMissionQuestion[];
+
+// The game's fade of the global level, at `fade` (docs/re/memory.md, "The mission prompt"):
+// the level it moves toward, the frames between two steps (0: off) and the frames to the next
+// step, signed bytes; the level itself is the byte at `fade_level`.
+namespace fade_state {
+constexpr ptrdiff_t kTarget = 0x93, kStep = 0x9F, kCountdown = 0xAB;
+constexpr uint64_t kSize = 0xAC;  // through the countdown
+}  // namespace fade_state
 
 class MissionPrompt {
 public:
-    // Any thread holding the game's frame (the mailbox): offer the prompt when next idle.
+    // Game thread, at configure: the game's image, which the fade's handler must be code of.
+    void set_image(HMODULE image) { image_ = image; }
+
+    // Game thread (the `mission_prompt` request): offer the prompt when next idle.
     void request();
 
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
-    // state, and no popup showing or queued. Sets the opener (or, after YES, the ending) once the
-    // game is idle, and gives up on an opener another transition took the place of (asked again).
-    void watch(const MissionAddresses& addresses, bool idle_in_play);
+    // state, no popup of the helper's to show, and the game's last message down to its last
+    // kFadeMessageLeft frames (game_calls.cpp; for the ending, ended). `away`: the player in
+    // play outside home's cell (the Landing Pod's, given with the request). Sets the opener (or,
+    // after YES, the ending) once the game is idle, and gives up on an opener another transition
+    // took the place of (asked again; taken_over). A request not yet opened lapses while `away`
+    // (popups held it until the player had left the Landing Pod): the client asks again after
+    // the next save there.
+    void watch(const GameAddresses& addresses, bool idle_in_play, bool away = false);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
-    // and wraps YES. Returns "" or what was not as traced (YES then points at NO).
-    std::string open(const MissionAddresses& addresses);
+    // and wraps YES. Returns "" or what was not as traced; once the three children are read,
+    // YES points at NO (if NO's callback reads) whatever else fails.
+    std::string open(const GameAddresses& addresses);
+
+    // Game thread, from the opener when not in play (a death during the fade): the opener
+    // taken off, the fade turned back if it is still the opener's (fade_still_ours), and the
+    // prompt asked for again.
+    void put_off(const GameAddresses& addresses);
 
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
     // ending asked for.
@@ -59,19 +78,52 @@ public:
 
     // Game thread: puts back what the helper holds (before an unload). An opener it could not
     // take off stays held (the helper then refuses to unload).
-    void restore(const MissionAddresses& addresses);
+    void restore(const GameAddresses& addresses);
 
     // Game thread: drops a prompt asked for or the ending after YES, and an opener not yet run
-    // (the save changed, or the disk count is off), so neither comes in another save.
-    void cancel(const MissionAddresses& addresses);
+    // (a save loaded or closed, or `discs` turned off), so neither comes in another save; an
+    // opener another transition took the place of as in watch (taken_over).
+    void cancel(const GameAddresses& addresses);
 
     // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.
     bool holds_hook() const { return armed_ || yes_child_ != nullptr; }
+    // The opener set and not run yet (the fade, then the prompt): popups wait.
+    bool opening() const { return armed_; }
+    // For a refused unload: a prompt on its way (asked for, opening or shown), the ending after
+    // YES; `resume` asks for them again after restore.
+    bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
+    bool ending() const { return ending_; }
+    // Whether the ending routine is the game's transition now (set and not run yet); false
+    // without the routine table.
+    bool ending_queued(const GameAddresses& addresses) const;
+    void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 
 private:
+    // Runs event 3667 (`out`), or a copy of it aimed back at the normal level, through the
+    // type 1 handler: "" or what was not as traced (nothing run).
+    std::string fade(const GameAddresses& addresses, bool out);
+    // Turns the fade back to the normal level, if it ran for the opener: whether it did.
+    bool fade_back(const GameAddresses& addresses);
+    // Whether the game's fade is still the one the opener ran: on event 3667's way (fade_frames)
+    // and no further back than when last seen with the opener in place, nor the transition timer
+    // higher (a save leaves it counting). The same values from another transition's fade
+    // (0x1D93DE: the level back to 4, then 3667's, and a timer of 70) start it over.
+    bool fade_still_ours(const GameAddresses& addresses) const;
+    // Gives up the opener another transition took the place of, and turns the fade back if it
+    // is still the opener's (a save sets the pause opener back and brings no fade of its own):
+    // whether it did.
+    bool taken_over(const GameAddresses& addresses);
+    // Takes the opener off before it runs, if its fields can be written: the idle routine,
+    // timer 0. The fade is turned back either way.
+    void take_back(const GameAddresses& addresses);
+
+    HMODULE image_ = nullptr;
     bool requested_ = false;  // to offer when idle
     bool armed_ = false;      // the opener is the game's routine, its timer running
+    bool faded_ = false;      // and the fade to black was run with it
+    int fade_seen_ = -1;      // its frames (fade_frames) when last seen with the opener in place
+    int32_t timer_seen_ = 0;  // and the transition timer then
     bool ending_ = false;     // YES: the ending, when idle
     BYTE* menu_ = nullptr;
     BYTE* yes_child_ = nullptr;  // YES, wrapped

@@ -1,14 +1,13 @@
 #include "files.h"
 
 #include <cstring>
-#include <sstream>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
 
 namespace zap {
 
 // A 3-wide D and I, then the game's own S and 4-wide K (as its KEYS draws them, 0x81 and
-// 0x82), each letter one blank column from the next (the owner's pick, 2026-10-25).
+// 0x82), each letter one blank column from the next.
 const char kDiskHeaderRows[2][8][9] = {
     {"........", "........", "##..###.", "#.#..#..", "#.#..#..", "#.#..#..", "##..###.",
      "........"},
@@ -18,129 +17,126 @@ const char kDiskHeaderRows[2][8][9] = {
 
 namespace {
 
-constexpr ptrdiff_t kMenuBelow = 0x78;
-constexpr int kMaxMenus = 8;
-constexpr ptrdiff_t kPanelChildren = 0x1E0, kPanelCapacity = 0x1E8, kPanelHandler = 0x2F8;
-constexpr ptrdiff_t kReleased = 0x1C8, kChildLabel = 0x1F0, kChildBlock = 0x1F8;
-constexpr ptrdiff_t kChildHandler = 0x2C8, kChildSlot = 0x230;
-constexpr ptrdiff_t kLabelCapacity = 0x1D8, kLabelColumns = 0x1DC, kLabelGlyphs = 0x228;
+// An entry's save block (its slot's first block, laid out as slot::) and its slot
+// (docs/re/memory.md, "The file select").
+constexpr ptrdiff_t kChildBlock = 0x1F8, kChildSlot = 0x230;
 // The entry (read live on B1, 2026-10-24): 145 glyphs, 5 rows of 29.
-constexpr int32_t kEntryGlyphs = 145, kEntryColumns = 29, kEntries = 3, kSlots = 30;
+constexpr int32_t kEntryGlyphs = 145, kEntryColumns = 29, kEntries = 3;
 constexpr int kRow2 = 2 * kEntryColumns;
 // The keys' block, columns 27 and 28 of rows 2 to 4: the header, then the circles.
 constexpr int kKeysHeader[2] = {kRow2 + 27, kRow2 + 28};
 constexpr int kKeyCircles[4] = {114, 115, 143, 144};
-constexpr int kBlock[6] = {kKeysHeader[0], kKeysHeader[1], 114, 115, 143, 144};
+constexpr int kBlock[6] = {kKeysHeader[0], kKeysHeader[1], kKeyCircles[0],
+                           kKeyCircles[1], kKeyCircles[2], kKeyCircles[3]};
 constexpr int32_t kHeaderK = 0x81, kHeaderS = 0x82, kHollow = 0x83, kFilled = 0x84;
-constexpr int32_t kBlank = 0;
-// The save block an entry shows (the slot's first block, file offset - 2).
-constexpr ptrdiff_t kBlockEmpty = 0x935E;
-constexpr uint8_t kEmptySlot = 0xFF;
-// Glyph fields.
-constexpr ptrdiff_t kTint = 0x68, kTintSize = 0x20;
-constexpr ptrdiff_t kPalettePtr = 0x198, kPaletteNumber = 0x1A0, kStyle = 0x1D0;
-constexpr ptrdiff_t kFrameBase = 0x1A8, kFrameShown = 0x1B0, kFrameCount = 0x1BC;
-constexpr ptrdiff_t kFrameIndex = 0x1C4, kFrameSize = 0x38;
-// A glyph's place: its y, and the top and bottom of its box, set by the label's layout
-// (0xA79E0: each glyph at the label's place plus 8 a column and 8 a row).
-constexpr ptrdiff_t kGlyphY = 0x48, kBoxTop = 0x130, kBoxBottom = 0x140;
+constexpr int32_t kBlank = 0, kSpace = 0x20;
+// A glyph's place: its y (sprite::kY), and the top and bottom of its box, set by the label's
+// layout (0xA79E0: each glyph at the label's place plus 8 a column and 8 a row).
+constexpr ptrdiff_t kBoxTop = 0x130, kBoxBottom = 0x140;
 constexpr double kRowHeight = 8.0;
-// The count's two glyphs, moved down from their row to center on the items bracket beside
-// them (the owner's ask): the bracket (0xD9 over 0xDA, rows 3 and 4) is opaque over all 16
-// pixel rows, center 7.5 below row 3's top; a digit's 7 pixel rows (0 to 6), center 3, so 4.5:
-// 5, a pixel lower than 4, as the owner chose in game.
-constexpr int kCountGlyphs[2] = {114, 115};
+// The count's glyphs drop 5 px to center on the items bracket beside them (0xD9 over 0xDA, rows
+// 3 and 4: center 7.5 below row 3's top; a digit's 3, so 4.5; 5 chosen in game).
+constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
-constexpr size_t kGlyphSize = 0x1D8;
 constexpr intptr_t kFill = 0xF;
+// The logo's cells: right of FILE NN (columns 8 to 14 of row 0), columns 16 and 17 of rows 0
+// and 1, blank in every entry read live (B1, 2026-10-26); glyphs 15 and 44, beside them in rows
+// 0 and 1, which the helper never moves, give the rows. The logo is raised 4 px, so that its 16
+// rows center on FILE NN's 8 and stay 4 px clear of the row below.
+constexpr int kLogoCells[4] = {16, 17, kEntryColumns + 16, kEntryColumns + 17};
+constexpr int kLogoRowGlyphs[2] = {15, kEntryColumns + 15};
+constexpr double kLogoRaise = 4.0;
+// A glyph shows its own colors in palette 26 (0x368A0: the fixed pipeline, the texture times
+// the one color its style picks) at style 0x15 (white); the shader palettes (2, as the keys')
+// would not keep them (docs/re/memory.md, "The file select").
+constexpr int16_t kOwnColorsPalette = 26;
+constexpr int32_t kWhiteStyle = 0x15;
 
-template <typename T>
-bool read(const BYTE* base, ptrdiff_t offset, T& out) {
-    return base != nullptr && safe_read(base + offset, &out, sizeof(T));
-}
-
-template <typename T>
-void put(BYTE* base, ptrdiff_t offset, T value) {
-    std::memcpy(base + offset, &value, sizeof(value));
-}
-
-bool is_open(BYTE* current_menu, const BYTE* wanted) {
-    BYTE* menu = nullptr;
-    if (!read(current_menu, 0, menu)) return false;
-    for (int i = 0; i < 64 && menu != nullptr; ++i) {
-        if (menu == wanted) return true;
-        if (!read(menu, kMenuBelow, menu)) return false;
-    }
-    return false;
-}
-
-int32_t frame_of(BYTE* g) {
-    int32_t f = -1;
-    read(g, kFrameIndex, f);
-    return f;
-}
-
-bool set_frame(BYTE* g, int32_t frame) {
-    int32_t frames = 0;
-    BYTE* base = nullptr;
-    if (!read(g, kFrameCount, frames) || frame < 0 || frame >= frames ||
-        !read(g, kFrameBase, base) || base == nullptr) {
-        return false;
-    }
-    put<int32_t>(g, kFrameIndex, frame);
-    put(g, kFrameShown, base + frame * kFrameSize);
-    return true;
-}
-
-bool is_entry_fn(const FileAddresses& a, void* fn) {
-    for (void* f : a.entry_fns) {
-        if (f != nullptr && fn == f) return true;
-    }
-    return false;
+// One of the entry handlers: the file select's, COPY FILE's or DELETE FILE's.
+bool is_entry_fn(const GameAddresses& a, void* fn) {
+    return fn != nullptr &&
+           (fn == a.file_entry_fn || fn == a.copy_entry_fn || fn == a.delete_entry_fn);
 }
 
 // The entry's label glyphs, if it is an entry as traced.
 bool entry_glyphs(BYTE* entry, BYTE* (&glyphs)[kEntryGlyphs]) {
-    int32_t released = 1, count = 0, columns = 0;
-    BYTE* label = nullptr;
-    BYTE** list = nullptr;
-    if (!read(entry, kReleased, released) || released != 0 || !read(entry, kChildLabel, label) ||
-        !read(label, kLabelCapacity, count) || count != kEntryGlyphs ||
-        !read(label, kLabelColumns, columns) || columns != kEntryColumns ||
-        !read(label, kLabelGlyphs, list) || !safe_read(list, glyphs, sizeof(glyphs))) {
-        return false;
-    }
-    return true;
-}
-
-bool shows_disk(BYTE* (&g)[kEntryGlyphs]) {
-    return frame_of(g[kKeysHeader[0]]) == kDiskHeaderGlyphs[0] &&
-           frame_of(g[kKeysHeader[1]]) == kDiskHeaderGlyphs[1];
+    int32_t released = 1, columns = 0;
+    BYTE* label = pointer_at(entry, widget::kLabel);
+    return read(entry, sprite::kReleased, released) && released == 0 &&
+           read(label, label::kColumns, columns) && columns == kEntryColumns &&
+           label_glyphs(label, kEntryGlyphs, glyphs);
 }
 
 int32_t block_frame(BYTE* (&g)[kEntryGlyphs], int k) { return frame_of(g[kBlock[k]]); }
 
-// Moves the count's glyphs between their row (where the game's layout puts them) and kCountDrop
-// below it: down while `dropped`, else back up. Their row is found from the glyphs above and
-// below them (85 and 143), which the helper never moves; a glyph at neither place is left alone.
+// Whether `cells` show `frames` (what the helper wrote, with no fill since).
+template <size_t N, typename Frame>
+bool shows(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const Frame (&frames)[N]) {
+    for (size_t k = 0; k < N; ++k) {
+        if (frame_of(g[cells[k]]) != frames[k]) return false;
+    }
+    return true;
+}
+
+// `frames` written into `cells`, if every one is writable.
+template <size_t N, typename Frame>
+bool put_frames(BYTE* (&g)[kEntryGlyphs], const int (&cells)[N], const Frame (&frames)[N]) {
+    for (int i : cells) {
+        if (!writable(g[i], sprite::kSize)) return false;
+    }
+    for (size_t k = 0; k < N; ++k) set_frame(g[cells[k]], frames[k]);
+    return true;
+}
+
+// Moves a glyph between `row` (where the game's layout puts it) and `shift` from it: there while
+// `moved`, else back. A glyph at neither place is left alone.
+void shift_glyph(BYTE* glyph, double row, double shift, bool moved) {
+    double from = moved ? row : row + shift, to = moved ? row + shift : row;
+    double y = 0, top = 0, bottom = 0;
+    if (!read(glyph, sprite::kY, y) || y != from || !read(glyph, kBoxTop, top) ||
+        !read(glyph, kBoxBottom, bottom) || !writable(glyph, sprite::kSize)) {
+        return;
+    }
+    put(glyph, sprite::kY, to);
+    put(glyph, kBoxTop, top + (to - from));
+    put(glyph, kBoxBottom, bottom + (to - from));
+}
+
+// Moves the count's glyphs between their row and kCountDrop below it: down while `dropped`, else
+// back up. Their row is found from the glyphs above and below them (85 and 143), which the helper
+// never moves.
 void place_count(BYTE* (&g)[kEntryGlyphs], bool dropped) {
     double above = 0, below = 0;
-    if (!read(g[kKeysHeader[0]], kGlyphY, above) || !read(g[kKeyCircles[2]], kGlyphY, below) ||
+    if (!read(g[kKeysHeader[0]], sprite::kY, above) ||
+        !read(g[kKeyCircles[2]], sprite::kY, below) ||
         below - above != 2 * kRowHeight) {
         return;
     }
-    double row = above + kRowHeight;
-    double from = dropped ? row : row + kCountDrop, to = dropped ? row + kCountDrop : row;
-    for (int i : kCountGlyphs) {
-        double y = 0, top = 0, bottom = 0;
-        if (!read(g[i], kGlyphY, y) || y != from || !read(g[i], kBoxTop, top) ||
-            !read(g[i], kBoxBottom, bottom) || !writable(g[i], kGlyphSize)) {
-            continue;
-        }
-        put(g[i], kGlyphY, to);
-        put(g[i], kBoxTop, top + (to - from));
-        put(g[i], kBoxBottom, bottom + (to - from));
+    for (int i : kCountGlyphs) shift_glyph(g[i], above + kRowHeight, kCountDrop, dropped);
+}
+
+// Moves the logo's glyphs between their rows and kLogoRaise above them: up while `raised`, else
+// back down.
+void place_logo(BYTE* (&g)[kEntryGlyphs], bool raised) {
+    double row0 = 0, row1 = 0;
+    if (!read(g[kLogoRowGlyphs[0]], sprite::kY, row0) ||
+        !read(g[kLogoRowGlyphs[1]], sprite::kY, row1) || row1 - row0 != kRowHeight) {
+        return;
     }
+    for (int k = 0; k < 4; ++k) {
+        shift_glyph(g[kLogoCells[k]], k < 2 ? row0 : row1, -kLogoRaise, raised);
+    }
+}
+
+// Whether the entry shows a save (its slot's first block not empty), and with `randomizer` a
+// randomizer one (+0x9400 = 1, read as the game holds it now: a copy over the slot shows at once).
+bool in_use(BYTE* entry, bool randomizer = false) {
+    BYTE* block = nullptr;
+    uint8_t empty = slot::kEmptyMark;
+    uint16_t marker = 0;
+    return read(entry, kChildBlock, block) && read(block, slot::kEmpty, empty) &&
+           empty != slot::kEmptyMark &&
+           (!randomizer || (read(block, slot::kRandoMarker, marker) && marker == 1));
 }
 
 }  // namespace
@@ -152,25 +148,19 @@ std::string file_disk_digits(int value) {
            static_cast<char>('0' + value % 10);
 }
 
-void FileDisks::set(int count, int required, std::set<int> slots) {
-    (void)required;  // the number needed is not shown (the owner's layout)
-    counts_.clear();
-    for (int slot : slots) counts_[slot] = count;
-}
-
-void* FileDisks::original(void* widget) const {
+void* FileEntries::original(void* widget) const {
     auto it = wrapped_.find(static_cast<BYTE*>(widget));
     return it == wrapped_.end() ? nullptr : it->second.original;
 }
 
-void FileDisks::on_event(const FileAddresses&, void* widget, intptr_t event) {
+void FileEntries::on_event(const GameAddresses&, void* widget, intptr_t event) {
     // The game's handlers take the event as 32 bits (cmp edx at 0xE1F3F).
     if (static_cast<int32_t>(event) != kFill || !on()) return;
     auto it = wrapped_.find(static_cast<BYTE*>(widget));
     if (it != wrapped_.end()) update(it->first, it->second);
 }
 
-void FileDisks::watch(const FileAddresses& a) {
+void FileEntries::watch(const GameAddresses& a) {
     // Entries whose menu has closed went with it.
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         it = is_open(a.current_menu, it->second.menu) ? std::next(it) : wrapped_.erase(it);
@@ -179,69 +169,91 @@ void FileDisks::watch(const FileAddresses& a) {
         restore(a);
         return;
     }
-    BYTE* menu = nullptr;
-    if (!read(a.current_menu, 0, menu)) return;
+    BYTE* menu = pointer_at(a.current_menu);
     for (int m = 0; m < kMaxMenus && menu != nullptr; ++m) {
-        BYTE** panels = nullptr;
-        BYTE* panel = nullptr;
-        void* handler = nullptr;
-        int32_t capacity = 0;
-        BYTE** children = nullptr;
+        BYTE* panel = panel_at(menu, 0);
         BYTE* entries[kEntries] = {};
-        if (read(menu, 0, panels) && read(reinterpret_cast<BYTE*>(panels), 0, panel) &&
-            read(panel, kPanelHandler, handler) && handler == a.file_panel_fn &&
-            read(panel, kPanelCapacity, capacity) && capacity >= kEntries &&
-            read(panel, kPanelChildren, children) && safe_read(children, entries, sizeof(entries))) {
+        if (pointer_at(panel, panel::kHandler) == a.file_panel_fn &&
+            children_of(panel, entries, kEntries) >= kEntries) {
             for (BYTE* entry : entries) {
                 BYTE* glyphs[kEntryGlyphs] = {};
                 void* h = nullptr;
                 int32_t slot = 0;
-                if (!entry_glyphs(entry, glyphs) || !read(entry, kChildHandler, h) ||
-                    !read(entry, kChildSlot, slot) || slot < 1 || slot > kSlots) {
+                if (!entry_glyphs(entry, glyphs) || !read(entry, widget::kHandler, h) ||
+                    !read(entry, kChildSlot, slot) || slot < 1 || slot > slot::kCount) {
                     continue;
                 }
-                if (h != a.hook && is_entry_fn(a, h) && a.hook != nullptr &&
-                    writable(entry + kChildHandler, sizeof(void*))) {
-                    wrapped_[entry] = Wrapped{menu, h};
-                    put(entry, kChildHandler, a.hook);
-                    h = a.hook;
+                if (h != a.hooks.file_entry && is_entry_fn(a, h) && a.hooks.file_entry != nullptr) {
+                    // Listed before the swap (the map may throw), so no entry holds the hook
+                    // unlisted, which an unload would not wait for.
+                    const bool listed = wrapped_.count(entry) != 0;
+                    Wrapped& w = wrapped_[entry];
+                    if (swap_pointer(entry, widget::kHandler, h, a.hooks.file_entry)) {
+                        w = Wrapped{menu, h};
+                        h = a.hooks.file_entry;
+                    } else if (!listed) {
+                        wrapped_.erase(entry);
+                    }
                 }
                 // Only the entries it has wrapped, whose state it keeps.
                 auto it = wrapped_.find(entry);
-                if (h == a.hook && it != wrapped_.end()) update(entry, it->second);
+                if (h == a.hooks.file_entry && it != wrapped_.end()) update(entry, it->second);
             }
         }
-        if (!read(menu, kMenuBelow, menu)) break;
+        if (!read(menu, menu::kBelow, menu)) break;
     }
 }
 
-void FileDisks::update(BYTE* entry, Wrapped& w) {
+void FileEntries::update(BYTE* entry, Wrapped& w) {
     BYTE* g[kEntryGlyphs] = {};
+    int32_t slot = 0;  // 0, no slot, if it cannot be read
     if (!entry_glyphs(entry, g)) return;
-    // A fill since the helper wrote the entry: the game's frames again.
-    if (w.written) {
-        for (int k = 0; k < 6; ++k) {
-            if (block_frame(g, k) != w.shown[k]) w.written = false;
+    read(entry, kChildSlot, slot);
+    forget_fills(g, w);
+    // Each part where it is not one to show: the game's frames.
+    if (!rewrite(entry, slot, g, w)) put_back(g, w);
+    place_count(g, w.keys_written && shows(g, kKeysHeader, kDiskHeaderGlyphs));
+    if (!mark(entry, slot, g, w)) unmark(g, w);
+    place_logo(g, w.marked);
+}
+
+void FileEntries::forget_fills(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
+    // A fill since the helper wrote a part: the game's frames there again.
+    w.keys_written = w.keys_written && shows(g, kBlock, w.keys_shown);
+    w.marked = w.marked && shows(g, kLogoCells, kApLogoGlyphs);
+}
+
+bool FileEntries::mark(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
+    if (ap_slots_.count(slot) == 0 || !in_use(entry, true)) return false;
+    if (w.marked) return true;
+    // Only over blank cells that keep the logo's colors, each of which set_frame can set (so
+    // no entry is left half marked).
+    for (int i : kLogoCells) {
+        int32_t frame = frame_of(g[i]), style = 0;
+        int16_t palette = 0;
+        if ((frame != kBlank && frame != kSpace) || frame_list(g[i], kApLogoGlyphs[3]) == nullptr ||
+            !read(g[i], sprite::kPaletteNumber, palette) || palette != kOwnColorsPalette ||
+            !read(g[i], sprite::kStyle, style) || style != kWhiteStyle ||
+            !writable(g[i], sprite::kSize)) {
+            return false;
         }
     }
-    if (!rewrite(entry, g, w)) put_back(g, w);  // not one to show: the game's frames
-    place_count(g, w.written && shows_disk(g));
+    for (int k = 0; k < 4; ++k) w.logo_game[k] = frame_of(g[kLogoCells[k]]);
+    w.marked = put_frames(g, kLogoCells, kApLogoGlyphs);
+    return w.marked;
 }
 
-bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
-    int32_t slot = 0;
-    if (!read(entry, kChildSlot, slot)) return false;
+// The game's frames back in the logo's cells, while they still show the logo.
+void FileEntries::unmark(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
+    if (w.marked && put_frames(g, kLogoCells, w.logo_game)) w.marked = false;
+}
+
+bool FileEntries::rewrite(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     auto listed = counts_.find(slot);
-    if (listed == counts_.end()) return false;
+    if (listed == counts_.end() || !in_use(entry)) return false;
     const int shown = listed->second;
-    BYTE* block = nullptr;
-    uint8_t empty = kEmptySlot;
-    if (!read(entry, kChildBlock, block) || !read(block, kBlockEmpty, empty) ||
-        empty == kEmptySlot) {
-        return false;
-    }
     // What the block should read: DISK, then the count, then nothing; with no disk, nothing at
-    // all, as a save with no key (the owner's ask).
+    // all, as a save with no key.
     std::string count = file_disk_digits(shown);
     int32_t want[6] = {kDiskHeaderGlyphs[0],
                        kDiskHeaderGlyphs[1],
@@ -252,8 +264,8 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     if (shown <= 0) {
         for (int32_t& f : want) f = kBlank;
     }
-    if (w.written) {
-        if (std::memcmp(w.shown, want, sizeof(want)) == 0) return true;  // as it should be
+    if (w.keys_written) {
+        if (std::memcmp(w.keys_shown, want, sizeof(want)) == 0) return true;  // as it should be
     } else {
         // Only over the game's frames: the KEYS header or none, the circles or none.
         int32_t k = block_frame(g, 0), s = block_frame(g, 1);
@@ -264,46 +276,30 @@ bool FileDisks::rewrite(BYTE* entry, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
         }
     }
     for (int i : kBlock) {
-        if (!writable(g[i], kGlyphSize)) return false;
+        if (!writable(g[i], sprite::kSize)) return false;
     }
-    // Drawn as the game draws the KEYS header (glyph 85): its palette, style and tint.
-    BYTE* like = g[kKeysHeader[0]];
-    BYTE look[kTintSize];
-    void* palette = nullptr;
-    int16_t number = 0;
-    int32_t style = 0;
-    if (!read(like, kPalettePtr, palette) || !read(like, kPaletteNumber, number) ||
-        !read(like, kStyle, style) || !safe_read(like + kTint, look, sizeof(look))) {
-        return false;
+    if (!w.keys_written) {
+        for (int k = 0; k < 6; ++k) w.keys_game[k] = block_frame(g, k);
     }
-    if (!w.written) {
-        for (int k = 0; k < 6; ++k) w.game[k] = block_frame(g, k);
-    }
+    // Drawn as the game draws the KEYS header (glyph 85, one of the block, checked writable).
+    const BYTE* like = g[kKeysHeader[0]];
     for (int k = 0; k < 6; ++k) {
         BYTE* cell = g[kBlock[k]];
         set_frame(cell, want[k]);
-        put(cell, kPalettePtr, palette);
-        put(cell, kPaletteNumber, number);
-        put(cell, kStyle, style);
-        std::memcpy(cell + kTint, look, sizeof(look));
-        w.shown[k] = block_frame(g, k);
+        look_like(cell, like);
+        w.keys_shown[k] = block_frame(g, k);
     }
-    w.written = true;
+    w.keys_written = true;
     return true;
 }
 
 // The game's frames back over the helper's, while the entry still shows the helper's (the
 // game's six glyphs all share glyph 85's palette, style and tint, which the helper copied).
-void FileDisks::put_back(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
-    if (!w.written) return;
-    for (int i : kBlock) {
-        if (!writable(g[i], kGlyphSize)) return;
-    }
-    for (int k = 0; k < 6; ++k) set_frame(g[kBlock[k]], w.game[k]);
-    w.written = false;
+void FileEntries::put_back(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
+    if (w.keys_written && put_frames(g, kBlock, w.keys_game)) w.keys_written = false;
 }
 
-void FileDisks::restore(const FileAddresses& a) {
+void FileEntries::restore(const GameAddresses& a) {
     for (auto it = wrapped_.begin(); it != wrapped_.end();) {
         BYTE* entry = it->first;
         Wrapped& w = it->second;
@@ -311,59 +307,22 @@ void FileDisks::restore(const FileAddresses& a) {
             it = wrapped_.erase(it);  // freed with its menu
             continue;
         }
-        // The keys' block and the count's glyphs as the game left them.
+        // The keys' block, the logo's cells and their glyphs' rows as the game left them.
         BYTE* g[kEntryGlyphs] = {};
         if (entry_glyphs(entry, g)) {
-            if (w.written) {
-                for (int k = 0; k < 6; ++k) {
-                    if (block_frame(g, k) != w.shown[k]) w.written = false;
-                }
-            }
+            forget_fills(g, w);
             put_back(g, w);
             place_count(g, false);
+            unmark(g, w);
+            place_logo(g, false);
         }
-        void* h = nullptr;
-        if (read(entry, kChildHandler, h) && h == a.hook) {
-            if (!writable(entry + kChildHandler, sizeof(void*))) {
-                ++it;  // still the helper's: kept, so an unload refuses
-                continue;
-            }
-            put(entry, kChildHandler, w.original);
+        if (pointer_at(entry, widget::kHandler) == a.hooks.file_entry &&
+            !swap_pointer(entry, widget::kHandler, a.hooks.file_entry, w.original)) {
+            ++it;  // still the helper's: kept, so an unload refuses
+            continue;
         }
         it = wrapped_.erase(it);
     }
-}
-
-std::string parse_disk_slots(const std::string& request, int& count, int& required,
-                             std::set<int>& slots) {
-    count = required = 0;
-    slots.clear();
-    if (request == "disk_slots") return "";
-    if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
-    std::istringstream words(request.substr(11));
-    std::string list, extra;
-    if (!(words >> count >> required >> list) || (words >> extra) || count < 0 || count > 255 ||
-        required < 1 || required > 255) {
-        count = required = 0;
-        return "bad disk_slots request";
-    }
-    if (list == "-") return "";
-    std::istringstream items(list);
-    std::string item;
-    while (std::getline(items, item, ',')) {
-        if (item.empty() || item.size() > 2 ||
-            item.find_first_not_of("0123456789") != std::string::npos) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        int n = std::stoi(item);
-        if (n < 1 || n > kSlots) {
-            slots.clear();
-            return "bad disk_slots request";
-        }
-        slots.insert(n);
-    }
-    return "";
 }
 
 }  // namespace zap

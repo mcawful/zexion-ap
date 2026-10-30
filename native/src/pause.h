@@ -1,21 +1,22 @@
-// The pause screen's disk row (the OS Install Disks goal), in place of KEYS.
+// The pause screen's disk row (the OS Install Disks goal), in place of KEYS. The pause screen
+// (built by 0x168BD0 each time it opens) has a KEYS panel under its entries: a 4-glyph KEYS label
+// at (144, 208) and nine sprites (key slots 0-3, key icons 4-7 at frames 384-387, Zexion's icon
+// 8). The game builds it only once flag 39 is set or a key is owned (the `jne` at 0x168C7D)
+// (docs/re/memory.md, "The pause screen's KEYS row").
 //
-// The pause screen (built by 0x168BD0 each time it opens) has a second panel under its entries:
-// a KEYS label (4 glyphs at x 144 to 168, y 208) and nine sprites: four key slots (0 to 3), the
-// four key icons (4 to 7, the small icons' frames 384 to 387) in a diamond round (160, 188), and
-// Zexion's icon (8, shown once Zexion is held). The game builds that panel only once the
-// scanner's flag 39 is set or a key is owned (the `jne` at 0x168C7D), so in a game without keys
-// there is none before the scanner (docs/re/memory.md, "The pause screen's KEYS row").
+// While a count is set, that `jne` becomes `jmp` and, on a pause screen whose shape checks out,
+// the row shows a disc and the count ("2 OF ?", or "2 OF 15" once told) across the label's 4
+// glyphs and the 4 key slots; the other sprites are hidden. The disc is the helper's own 24 x 24
+// image (kDiscRows, painted at (kDiscX, kDiscY) in the sprite texture while the row is on) when
+// it is painted, else the game's small Data Disc (frame 829). A row already turned is left alone.
+// The branch is put back when off and before an unload, only where it still reads `jmp`.
 //
-// While the disk count is shown, the helper makes that `jne` a `jmp` (the panel always built),
-// and once the pause screen is on top, turns the row into the disks: the small Data Disc icon
-// (frame 829, the one the game's own pause screen shows for a held disc) in the middle, the key
-// slots and icons hidden, and the count ("2 OF ?", or "2 OF 15" once the scanner has said how
-// many) on the label's line: the label's 4 glyphs carry the middle four characters and the four
-// key slots, given the font, two on each side. Everything is written only after the screen's
-// shape is checked; the branch is put back when the count is off and before an unload, and only
-// where it still reads as written. The pause screen is built afresh each time it opens, so a row
-// already turned (its icon reading 829) is left as it is.
+// The helper's disc is one frame-list entry the helper owns: a copy of frame 829's (0x38 bytes)
+// with the image's texture rectangle, in a page allocated once and never freed. The pause
+// sprites keep their template (+0x30), so the game never frees their list (0x745C0), and a
+// sprite still pointing at the entry after an unload points at live memory. Whenever the image is
+// not painted (the row off, before an unload, a texture it could not paint into), the entry shows
+// frame 829's rectangle instead, so an open pause screen shows the game's disc, enlarged.
 #pragma once
 
 #include <windows.h>
@@ -23,19 +24,17 @@
 #include <cstdint>
 #include <string>
 
+#include "addresses.h"
+
 namespace zap {
 
-struct PauseAddresses {
-    BYTE* current_menu = nullptr;      // holds the top menu
-    void* equipment_fn = nullptr;      // EQUIPMENT's callback (the pause screen's entry)
-    void* equipment_hook = nullptr;    // or the helper's, while it shows the disk on that screen
-    void* widget_handler = nullptr;    // the generic widget handler
-    BYTE* sprite_templates = nullptr;  // holds the pointer to the sprite definitions' templates
-    void* sprite_sheet_fn = nullptr;   // (object, template): gives it a sprite definition's frames
-    BYTE* keys_branch = nullptr;       // the `jne` (75 2E) that skips the KEYS panel
-};
-
 constexpr int kRowCells = 8;  // the characters the row can show: "41 OF 41"
+
+// The helper's disc: 24 x 24, white, at (kDiscX, kDiscY) in the 2048 x 2048 sprite texture, a
+// place transparent in the game's art that no sprite definition uses (docs/re/memory.md, "The
+// pause screen's KEYS row").
+constexpr int kDiscX = 128, kDiscY = 1008, kDiscSize = 24;
+extern const char kDiscRows[kDiscSize][kDiscSize + 1];
 
 // The row's text, centered on its 8 cells: "2 OF ?" before the player has been told how many
 // disks are needed (`required` 0), "2 OF 15" after.
@@ -46,21 +45,37 @@ public:
     // Game thread: the text to show ("" turns it off, the branch then put back).
     void set(std::string text) { text_ = std::move(text); }
 
-    // Game thread, each frame: the branch while on (or put back while off), and the row turned
-    // on a pause screen that has not been.
-    void watch(const PauseAddresses& addresses);
+    // Game thread: a save of a disk seed is loaded and `text` is its count from the seed's file
+    // ("" for none): shown until `set` gives the client's, so a pause screen opened at once has
+    // the row with no flash of the game's KEYS.
+    void prepare(std::string text) { prepared_ = std::move(text); }
 
-    // Game thread: the branch put back (before an unload).
-    void restore(const PauseAddresses& addresses);
+    // Whether the row is on (a text set or prepared): the helper's disc is then painted.
+    bool on() const { return !text_.empty() || !prepared_.empty(); }
+
+    // Game thread, each frame: the branch while on (or put back while off), and the row turned
+    // on a pause screen that has not been. `disc`: the helper's disc is painted now.
+    void watch(const GameAddresses& addresses, bool disc);
+
+    // Game thread: the branch put back, and the disc's entry showing frame 829 (before an unload,
+    // before the image is cleared).
+    void restore(const GameAddresses& addresses);
 
     bool patched() const { return patched_; }
+    const BYTE* disc_entry() const { return entry_; }  // tests
 
 private:
-    bool patch(const PauseAddresses& addresses, uint8_t from, uint8_t to);
-    void turn(const PauseAddresses& addresses, BYTE* menu);
+    void turn(const GameAddresses& addresses, BYTE* menu, const std::string& text, bool disc);
+    // Sprite `s` pointed at the helper's disc entry (made from its frame 829 the first time).
+    bool show_disc(BYTE* s);
+    // The entry's texture rectangle: the helper's image, or frame 829's.
+    void entry_shows(bool disc);
 
     std::string text_;
+    std::string prepared_;
     bool patched_ = false;
+    BYTE* entry_ = nullptr;  // in a page never freed (above)
+    float game_rect_[4] = {};  // frame 829's texture rectangle, as copied
 };
 
 }  // namespace zap

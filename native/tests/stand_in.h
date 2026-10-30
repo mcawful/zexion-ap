@@ -9,6 +9,10 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
+
+#include "check.h"
+#include "game_calls.h"
 
 namespace stand_in {
 
@@ -45,6 +49,38 @@ inline void spawn_handler(char row, char column, BYTE* event) {
     g_spawn_column = column;
     g_spawn_event = event;
 }
+// The game's fade (mission.h, fade_state) and the global level it moves.
+inline BYTE g_fade[zap::fade_state::kSize] = {};
+inline int8_t g_fade_level = 4;
+// Sets the fade as 0x1F6C40 does for layer 0: the level, unless 0xFE (left as it is), then the
+// step, the countdown (the step) and the target.
+inline void set_fade(int8_t target, int8_t level, int8_t step) {
+    if (level != static_cast<int8_t>(0xFE)) g_fade_level = level;
+    at<int8_t>(g_fade, zap::fade_state::kStep) = step;
+    at<int8_t>(g_fade, zap::fade_state::kCountdown) = step;
+    at<int8_t>(g_fade, zap::fade_state::kTarget) = target;
+}
+// Type 1's (the fade, mission.h): counts its calls, keeps each record it was given as it was
+// then (the last one's address too), and sets the fade from it (target, level, step words).
+inline int g_fade_calls = 0;
+inline BYTE* g_fade_event = nullptr;
+inline std::vector<std::vector<BYTE>> g_fades;
+inline void fade_handler(char, char, BYTE* event) {
+    ++g_fade_calls;
+    g_fade_event = event;
+    g_fades.emplace_back(event, event + 0x28);
+    set_fade(static_cast<int8_t>(event[4]), static_cast<int8_t>(event[6]),
+             static_cast<int8_t>(event[8]));
+}
+// The fade done at the normal level, nothing run through type 1 yet.
+inline void reset_fade() {
+    std::memset(g_fade, 0, sizeof(g_fade));
+    g_fade[zap::fade_state::kTarget] = 4;
+    g_fade_level = 4;
+    g_fade_calls = 0;
+    g_fade_event = nullptr;
+    g_fades.clear();
+}
 inline void* g_event_handlers[32];
 struct LastMessage {
     BYTE* last;
@@ -66,21 +102,23 @@ inline void newgame_fn() { ++g_newgames; }
 // The game-mode panel's surroundings: the most recent menu, the randomizer menu's state, the
 // menu functions, and START GAME's steps, which log their order and queue a new game as the
 // game's do (unless the slot is "taken").
-// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3665 as
-// the game loads it (flag test: flag 250, then 3668, else none).
+// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3667 as
+// the game loads it (the fade to black, type 1: layers 0 to 0, to -1 from 4, a step every 8
+// frames, no sound, no next event).
 constexpr int kStandInEvents = 3700;
 inline BYTE g_events[kStandInEvents * 0x28];
 inline BYTE* g_event_table = g_events;
 inline int16_t g_event_count = kStandInEvents;
-inline BYTE* event_3665() { return g_events + 3665 * 0x28; }
+inline BYTE* event_3667() { return g_events + 3667 * 0x28; }
 inline void reset_events() {
     std::memset(g_events, 0, sizeof(g_events));
-    BYTE* r = event_3665();
-    const int16_t words[] = {250, 3668, -1, -1};
-    r[0] = 14;
-    std::memcpy(r + 2, words, sizeof(words));
-    const int16_t self = 3665;
-    std::memcpy(r + 0x24, &self, sizeof(self));
+    BYTE* fade = event_3667();
+    const int16_t fade_words[] = {0, -1, 4, 8};
+    fade[0] = 1;
+    std::memcpy(fade + 2, fade_words, sizeof(fade_words));
+    put<int16_t>(fade, 0x1A, -1);  // no sound
+    put<int16_t>(fade, 0x20, -1);  // no next event
+    put<int16_t>(fade, 0x24, 3667);
     g_event_table = g_events;
     g_event_count = kStandInEvents;
 }
@@ -92,11 +130,6 @@ inline void reset_texts() {
     std::memset(g_texts, 0, sizeof(g_texts));
     std::memcpy(text_12(), "ENERGY KEYS DETECTED!", 21);
     g_text_table = g_texts;
-}
-inline int16_t event_else() {
-    int16_t v;
-    std::memcpy(&v, event_3665() + 6, sizeof(v));
-    return v;
 }
 
 // The randomizer menu's start table: a count, the rooms' cells, their flags.
@@ -145,6 +178,9 @@ inline void* g_malloc_slot = nullptr;
 inline void* g_routine_table[16] = {};  // the transition routines (mission.h)
 // The pause screen's `jne` past its KEYS panel (pause.h), in code as the game's.
 __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 0x2E, 0x90, 0xC3};
+// The item update's write of an on-screen item's square (mapmarks.h), as on B1.
+constexpr unsigned char kSeenMarkerGame[50] = ZAP_SEEN_MARKER_GAME;
+__declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = ZAP_SEEN_MARKER_GAME;
 inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
@@ -170,12 +206,17 @@ T& field(ptrdiff_t offset) {
     return *reinterpret_cast<T*>(g_player + offset);
 }
 
+// Item `item`'s name in its record, as the game shows it.
+inline std::string record_name(int item) {
+    return std::string(reinterpret_cast<const char*>(g_records + item * 100 + 0x0A));
+}
+
 inline std::string g_text;
 inline int g_message_args[5];
 inline bool g_message_fails = false;
 inline int g_messages = 0;
 inline void* message_fn(const char* text, int per_line, int x, int y, int, int, int frames) {
-    // As the game's (0x182670): the box's centre at y - 1, its half-height 4 per line past the
+    // As the game's (0x182670): the box's center at y - 1, its half-height 4 per line past the
     // first plus 7.
     const int len = static_cast<int>(std::strlen(text));
     const int extra = per_line > 0 && len > 0 ? (len - 1) / per_line : 0;
@@ -206,11 +247,10 @@ inline void sound_fn(void* system, short id, float x, float y, float volume, flo
 }
 
 inline std::string g_calls;
-inline double g_hud_values[2];
+inline double g_hud_value = 0;
 inline int g_hud_numbers = 0;
 inline void hud_number_fn(void* object, double value) {
-    if (object == g_player + 0xB30) g_hud_values[0] = value;
-    if (object == g_player + 0xBB8) g_hud_values[1] = value;
+    if (object == g_player + 0xB30) g_hud_value = value;  // the missile number
     ++g_hud_numbers;
     g_calls += "number ";
 }
@@ -250,6 +290,85 @@ inline BYTE g_map_grid[54 * 54] = {};
 inline BYTE g_flags[0x9C4] = {};
 inline BYTE g_slot_array[30 * 0x9408] = {};
 inline BYTE g_rando_slots[30 * 0x908] = {};
+// Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
+inline BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
+inline BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
+// Every slot empty.
+inline void clear_slots() {
+    std::memset(g_slot_array, 0, sizeof(g_slot_array));
+    std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
+    for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
+}
+
+// Feats and achievements (feats.h). Two Steamworks accessor contexts ({init, counter,
+// interface}), each init a `lea rdx, [rip+name]` then `ret` in code: the user stats' and
+// another; the import slot SteamInternal_ContextInit is called through (a plain variable here:
+// the feats tests use their own import's); and a small ending run as the game's runs (laid out
+// by build_ending), whose call through the slot sets one achievement.
+inline const char g_stats_name[] = "STEAMUSERSTATS_INTERFACE_VERSION013";
+inline const char g_utils_name[] = "SteamUtils010";
+__declspec(allocate(".zapcode")) inline unsigned char g_stats_init[8] = {0x48, 0x8D, 0x15, 0, 0,
+                                                                         0,    0,    0xC3};
+__declspec(allocate(".zapcode")) inline unsigned char g_utils_init[8] = {0x48, 0x8D, 0x15, 0, 0,
+                                                                         0,    0,    0xC3};
+inline void* g_stats_context[3] = {g_stats_init, nullptr, nullptr};
+inline void* g_utils_context[3] = {g_utils_init, nullptr, nullptr};
+inline void* g_context_init_slot = nullptr;
+inline const char* g_victory = "14Victory";
+// The ending (cf. 0x94A30 on B1), at these offsets: the call through the slot, the join, flag
+// 250's store 0x11 past it.
+constexpr ptrdiff_t kEndingCall = 0x0B, kEndingJoin = 0x28, kEndingSize = 0x45;
+__declspec(allocate(".zapcode")) inline unsigned char g_ending[0x50] = {};
+
+// The init functions' names, and the ending, calling through `slot`:
+//   00 sub rsp, 0x28              04 lea rcx, [stats context]
+//   0B call [slot]                11 mov rdx, [g_victory]
+//   18 mov rcx, [rax]             1B mov rax, [rcx]         1E call [rax+0x30] (SetAchievement)
+//   21 mov byte [flag 251], 1     28 movsxd rdx, [flags]    2F lea r8, [flags]
+//   36 xorps xmm0, xmm0           39 mov byte [flag 250], 1
+//   40 add rsp, 0x28              44 ret
+inline void build_ending(void** slot) {
+    auto init = [](unsigned char* code, const char* name) {
+        unsigned char b[8] = {0x48, 0x8D, 0x15, 0, 0, 0, 0, 0xC3};
+        auto r = static_cast<int32_t>(reinterpret_cast<const BYTE*>(name) - (code + 7));
+        std::memcpy(b + 3, &r, sizeof(r));
+        write_code(code, b, sizeof(b));
+    };
+    init(g_stats_init, g_stats_name);
+    init(g_utils_init, g_utils_name);
+    unsigned char e[kEndingSize] = {
+        0x48, 0x83, 0xEC, 0x28,                    // 00
+        0x48, 0x8D, 0x0D, 0, 0, 0, 0,              // 04
+        0xFF, 0x15, 0, 0, 0, 0,                    // 0B
+        0x48, 0x8B, 0x15, 0, 0, 0, 0,              // 11
+        0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01,        // 18, 1B
+        0xFF, 0x50, 0x30,                          // 1E
+        0xC6, 0x05, 0, 0, 0, 0, 0x01,              // 21
+        0x48, 0x63, 0x15, 0, 0, 0, 0,              // 28
+        0x4C, 0x8D, 0x05, 0, 0, 0, 0,              // 2F
+        0x0F, 0x57, 0xC0,                          // 36
+        0xC6, 0x05, 0, 0, 0, 0, 0x01,              // 39
+        0x48, 0x83, 0xC4, 0x28, 0xC3,              // 40, 44
+    };
+    // Each field relative to where it will be, in g_ending.
+    auto rel = [&](size_t field, size_t next, const void* target) {
+        auto r = static_cast<int32_t>(static_cast<const BYTE*>(target) - (g_ending + next));
+        std::memcpy(e + field, &r, sizeof(r));
+    };
+    rel(0x07, 0x0B, g_stats_context);
+    rel(0x0D, 0x11, slot);
+    rel(0x14, 0x18, &g_victory);
+    rel(0x23, 0x28, g_flags + 251);
+    rel(0x2B, 0x2F, g_flags);
+    rel(0x32, 0x36, g_flags);
+    rel(0x3B, 0x40, g_flags + 250);
+    write_code(g_ending, e, sizeof(e));
+}
+
+// Runs the stand-in ending, as the game's transition runs the real one.
+inline void run_ending() {
+    reinterpret_cast<void (*)()>(static_cast<void*>(g_ending))();
+}
 
 inline std::map<std::string, uint64_t> stand_in_config() {
     return {
@@ -295,6 +414,8 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"malloc_slot", rva(&g_malloc_slot)},
         {"free_slot", rva(&g_free_slot)},
         {"routine_table", rva(g_routine_table)},
+        {"fade", rva(g_fade)},
+        {"fade_level", rva(&g_fade_level)},
         {"keys_branch", rva(g_keys_branch)},
         {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
@@ -308,6 +429,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"text_link_fn", rva(reinterpret_cast<void*>(&text_link_fn))},
         {"draw_layer", rva(&g_draw_layer)},
         {"map_handler", rva(&g_map_handler)},
+        {"seen_marker_code", rva(g_seen_marker_code)},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},
@@ -321,14 +443,26 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"event_handlers", rva(g_event_handlers)},
         {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
         {"halt_flag", rva(&g_halt_flag)},
+        {"ending_unlocks", rva(g_ending + kEndingCall)},
+        {"ending_join", rva(g_ending + kEndingJoin)},
+        {"stats_context", rva(g_stats_context)},
+        {"context_init_slot", rva(&g_context_init_slot)},
     };
+}
+
+// The stand-in game's configuration given to `game` (`active`: a client's, not the offline
+// cache's): "" or why not.
+inline std::string configure(zap::Game& game, bool active = true) {
+    return game.configure(GetModuleHandleW(nullptr), stand_in_config(), active);
 }
 
 inline void reset_game() {
     std::memset(g_item_pool, 0, sizeof(g_item_pool));
     std::memset(g_object_pool, 0, sizeof(g_object_pool));
     std::memset(g_event_handlers, 0, sizeof(g_event_handlers));
+    g_event_handlers[1] = reinterpret_cast<void*>(&fade_handler);
     g_event_handlers[11] = reinterpret_cast<void*>(&spawn_handler);
+    reset_fade();
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;
@@ -339,8 +473,7 @@ inline void reset_game() {
     for (int i = 0; i < 64; ++i) g_palette_table[i] = g_palette_objects[i];
     g_frame_clock = 1000;
     g_template_list[34] = g_item_template;
-    BYTE* frames = g_frames;
-    std::memcpy(g_item_template + 0x1A8, &frames, sizeof(frames));
+    put<BYTE*>(g_item_template, 0x1A8, g_frames);
     std::memset(g_player, 0, sizeof(g_player));
     g_save_loaded = 3;
     g_menu = 0;

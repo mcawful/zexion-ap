@@ -1,9 +1,20 @@
-# The native helper the AP client loads into the running game (see native/README.md).
+# The native helper the AP client loads into the running game, or the proxy version.dll (also
+# built here) loads as the game starts (see native/README.md).
 cmake_minimum_required(VERSION 3.20)
 project(zexion_ap LANGUAGES CXX)
 
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "zexion_ap builds for 64-bit Windows only, like the game")
+endif()
+# The flags below are MSVC's, and the client, the release builder and the tests look for the
+# DLLs under native/build/Release, where only a multi-config generator puts them.
+if(NOT MSVC)
+  message(FATAL_ERROR "zexion_ap needs Visual Studio's C++ compiler (MSVC)")
+endif()
+get_property(ZAP_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT ZAP_MULTI_CONFIG)
+  message(FATAL_ERROR "zexion_ap needs a multi-config generator: Visual Studio, CMake's default "
+                      "on Windows with Visual Studio installed")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -13,9 +24,12 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
-add_library(zap_core STATIC src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp
-            src/game_calls.cpp src/menu.cpp src/skip.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp
-            src/apitem.cpp src/looks.cpp)
+add_library(zap_core STATIC
+            src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
+            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp
+            src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
+            src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp
+            src/apitem.cpp src/looks.cpp src/feats.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 
@@ -32,72 +46,48 @@ set_target_properties(version_proxy PROPERTIES OUTPUT_NAME version
                       LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy
                       ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/proxy)
 
-# The same helper hooking the loading program's GetTickCount, for the unload test.
+# The helper built to hook the host's own GetTickCount (never a known game build), for the tests
+# that load the whole helper (below).
 add_library(zexion_ap_hooktest SHARED src/dllmain.cpp)
 target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
 target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
 
 enable_testing()
-add_executable(zap_tests tests/tests.cpp)
-target_link_libraries(zap_tests PRIVATE zap_core)
-add_test(NAME parts COMMAND zap_tests)
+# Single-program tests on zap_core: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
+set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
+    offline)
+foreach(name IN LISTS ZAP_TESTS)
+  add_executable(zap_${name}_tests tests/${name}_tests.cpp)
+  target_link_libraries(zap_${name}_tests PRIVATE zap_core)
+  add_test(NAME ${name} COMMAND zap_${name}_tests)
+endforeach()
 
-add_executable(zap_game_tests tests/game_tests.cpp)
-target_link_libraries(zap_game_tests PRIVATE zap_core)
-add_test(NAME game COMMAND zap_game_tests)
+# Feats and achievements (src/feats.h): the tests import SteamInternal_ContextInit by name from
+# a stand-in steam_api64.dll, as the game does. Both are built into a folder of their own, so no
+# program of ours picks the stand-in up in place of Steam's.
+add_library(zap_steam_stub SHARED tests/steam_stub.cpp)
+set_target_properties(zap_steam_stub PROPERTIES OUTPUT_NAME steam_api64)
+add_executable(zap_feats_tests tests/feats_tests.cpp)
+target_link_libraries(zap_feats_tests PRIVATE zap_core zap_steam_stub)
+foreach(target IN ITEMS zap_steam_stub zap_feats_tests)
+  set_target_properties(${target} PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
+                        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats)
+endforeach()
+add_test(NAME feats COMMAND zap_feats_tests)
 
-add_executable(zap_unload_test tests/unload_test.cpp)
-target_link_libraries(zap_unload_test PRIVATE zap_core)
-add_dependencies(zap_unload_test zexion_ap_hooktest)
+# The whole helper loaded and unloaded under load, and grants and a seed file put through the
+# pipe applied in its frame calls.
+foreach(name IN ITEMS unload apply)
+  add_executable(zap_${name}_test tests/${name}_test.cpp)
+  target_link_libraries(zap_${name}_test PRIVATE zap_core)
+  add_dependencies(zap_${name}_test zexion_ap_hooktest)
+endforeach()
 add_test(NAME unload_under_load COMMAND zap_unload_test $<TARGET_FILE:zexion_ap_hooktest> 300)
-
-add_executable(zap_apply_test tests/apply_test.cpp)
-target_link_libraries(zap_apply_test PRIVATE zap_core)
-add_dependencies(zap_apply_test zexion_ap_hooktest)
 add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hooktest>)
-
-add_executable(zap_menu_tests tests/menu_tests.cpp)
-target_link_libraries(zap_menu_tests PRIVATE zap_core)
-add_test(NAME menu COMMAND zap_menu_tests)
-
-add_executable(zap_apitem_tests tests/apitem_tests.cpp)
-target_link_libraries(zap_apitem_tests PRIVATE zap_core)
-add_test(NAME apitem COMMAND zap_apitem_tests)
-
-add_executable(zap_equip_tests tests/equip_tests.cpp)
-target_link_libraries(zap_equip_tests PRIVATE zap_core)
-add_test(NAME equip COMMAND zap_equip_tests)
-
-add_executable(zap_mission_tests tests/mission_tests.cpp)
-target_link_libraries(zap_mission_tests PRIVATE zap_core)
-add_test(NAME mission COMMAND zap_mission_tests)
-
-add_executable(zap_pause_tests tests/pause_tests.cpp)
-target_link_libraries(zap_pause_tests PRIVATE zap_core)
-add_test(NAME pause COMMAND zap_pause_tests)
-
-add_executable(zap_files_tests tests/files_tests.cpp)
-target_link_libraries(zap_files_tests PRIVATE zap_core)
-add_test(NAME files COMMAND zap_files_tests)
-
-add_executable(zap_intel_tests tests/intel_tests.cpp)
-target_link_libraries(zap_intel_tests PRIVATE zap_core)
-add_test(NAME intel COMMAND zap_intel_tests)
-
-add_executable(zap_title_tests tests/title_tests.cpp)
-target_link_libraries(zap_title_tests PRIVATE zap_core)
-add_test(NAME title COMMAND zap_title_tests)
-
-add_executable(zap_mapmarks_tests tests/mapmarks_tests.cpp)
-target_link_libraries(zap_mapmarks_tests PRIVATE zap_core)
-add_test(NAME mapmarks COMMAND zap_mapmarks_tests)
 
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
-
-add_executable(zap_offline_tests tests/offline_tests.cpp)
-target_link_libraries(zap_offline_tests PRIVATE zap_core)
-add_test(NAME offline COMMAND zap_offline_tests)

@@ -5,9 +5,10 @@ from __future__ import annotations
 import struct
 
 import pytest
+from fakes import CELLS, SECRET_LIST, FakeGame, FakeProcess, pe_image
 
-import game
-from patterns import TARGETS, Build, Pattern, Target
+from client import game
+from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
 
 # lea rax, [rip + disp32] ; add rax, rdx ; ret  -- a stand-in for a referring instruction
 LEA = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 C3", disp_at=3, kind="rip", rip_end=7, addend=0)
@@ -66,54 +67,49 @@ def test_patterns_that_disagree_are_refused() -> None:
     other = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 CC", 3, "rip", 7, 0)
     code = code_with(lea(0x100), b"\x48\x8d\x05" + struct.pack("<i", 0x900) + b"\x48\x01\xd0\xcc")
     with pytest.raises(game.PatternError, match="disagree"):
-        game.locate_all(code, 0, [Target("t", "test", 0, (LEA, other))])
+        game.locate_all(code, 0, [Target("t", "test", {}, (LEA, other))])
     agree = Pattern(other.text, 3, "rip", 7, 0x100 - 0x900 - 11)
-    assert game.locate_all(code, 0, [Target("t", "test", 0, (LEA, agree))])["t"] == 0x40 + 7 + 0x100
+    found = game.locate_all(code, 0, [Target("t", "test", {}, (LEA, agree))])
+    assert found["t"] == 0x40 + 7 + 0x100
+
+
+def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
+    # A pattern of the pickup counter breaking with an update cannot stop the client attaching.
+    assert {"pickup_counter"} == TOOL_TARGETS
+    assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
+    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)
 
 
 # --- PE header and build identity ----------------------------------------------------------
 
 
-def pe_header(stamp: int = 0x6A3F82DE, size_of_image: int = 0x1204000) -> bytes:
-    header = bytearray(0x1000)
-    header[0x3C:0x40] = struct.pack("<I", 0x80)
-    header[0x80:0x84] = b"PE\0\0"
-    header[0x86:0x88] = struct.pack("<H", 2)  # two sections
-    header[0x88:0x8C] = struct.pack("<I", stamp)
-    header[0x94:0x96] = struct.pack("<H", 0xF0)  # optional header size
-    header[0x80 + 24 + 56 : 0x80 + 24 + 60] = struct.pack("<I", size_of_image)
-    first = 0x80 + 24 + 0xF0
-    header[first : first + 8] = b".rdata\0\0"
-    header[first + 40 : first + 48] = b".text\0\0\0"
-    header[first + 48 : first + 56] = struct.pack("<II", 0x2000, 0x1000)  # vsize, va
-    return bytes(header)
-
-
 def test_code_section_reads_the_pe_header() -> None:
-    assert game.code_section(pe_header()) == (0x1000, 0x2000)
+    assert game.code_section(pe_image()) == (0x1000, 0x2000)
     with pytest.raises(game.GameError):
         game.code_section(bytes(0x1000))
 
 
 def test_known_build_is_identified_and_others_refused() -> None:
     b1 = Build("B1", "0" * 64, 0x6A3F82DE, 0x1204000)
-    assert game.identify_build(pe_header(), [b1]) is b1
+    assert game.identify_build(pe_image(), [b1]) is b1
     with pytest.raises(game.UnknownBuild):
-        game.identify_build(pe_header(stamp=0x6A400000), [b1])
+        game.identify_build(pe_image(stamp=0x6A400000), [b1])
     with pytest.raises(game.UnknownBuild):
-        game.identify_build(pe_header(size_of_image=0x1205000), [b1])
+        game.identify_build(pe_image(size_of_image=0x1205000), [b1])
+    with pytest.raises(game.GameError):
+        game.identify_build(bytes(0x1000), [b1])
 
 
 # --- the seed's randomizer section ---------------------------------------------------------
 
 
 def blob(cells=None, items=None) -> bytearray:
-    cells = cells or [(x, y) for y in range(3) for x in range(54)][: game.LOCATIONS]
+    cells = cells or CELLS
     items = items or [46] * game.LOCATIONS
-    b = bytearray(game.RANDO_BLOB_SIZE)
+    b = bytearray(game.SECTION_SIZE)
     for i, (x, y) in enumerate(cells):
         struct.pack_into("<HH", b, 4 * i, x, y)
-    b[game.ITEM_TABLE_AT : game.ITEM_TABLE_AT + len(items)] = bytes(items)
+    b[game.TABLE_AT : game.TABLE_AT + len(items)] = bytes(items)
     return b
 
 
@@ -129,7 +125,7 @@ def test_a_well_formed_seed_parses() -> None:
         lambda b: struct.pack_into("<HH", b, 0, 60, 0),  # a cell off the map
         lambda b: struct.pack_into("<HH", b, 4, 0, 0),  # a duplicate cell
         lambda b: b.__setitem__(4 * game.LOCATIONS, 1),  # no zero gap
-        lambda b: b.__setitem__(game.ITEM_TABLE_AT, 51),  # an item ID out of range
+        lambda b: b.__setitem__(game.TABLE_AT, 51),  # an item ID out of range
     ],
 )
 def test_a_malformed_seed_is_refused(broken) -> None:
@@ -139,32 +135,23 @@ def test_a_malformed_seed_is_refused(broken) -> None:
         game.parse_seed(bytes(b))
 
 
+def test_secret_shuffles_155_locations_parse_only_with_its_byte() -> None:
+    b = blob(SECRET_LIST, [46] * (game.LOCATIONS + 1))
+    with pytest.raises(game.GameError):  # without Secret Shuffle: no zero gap
+        game.parse_seed(bytes(b))
+    b[game.OPTIONS_AT + game.SECRET_SHUFFLE] = 1
+    seed = game.parse_seed(bytes(b))
+    assert seed.locations == tuple(SECRET_LIST) and len(seed.items) == game.LOCATIONS + 1
+
+
 # --- reads and writes through a fake process ------------------------------------------------
 
 
-class FakeProcess:
-    def __init__(self, size: int = 0x100):
-        self.memory = bytearray(size)
-        self.fail_write = False
-
-    def read_bytes(self, address: int, size: int) -> bytes:
-        return bytes(self.memory[address : address + size])
-
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
-        if self.fail_write:
-            raise OSError("access denied")
-        self.memory[address : address + size] = data
-
-
-class FakeGame(game.Game):
-    alive = True
-
-    def _alive(self) -> bool:
-        return self.alive
-
-
-def fake_game() -> FakeGame:
-    return FakeGame(pm=FakeProcess(), base=0, rva={"inventory": 0x10}, pid=1, build=None)
+def fake_game(size: int = 0x2000, **rva: int) -> FakeGame:
+    """A fake with the inventory at 0x1100, room for the player state, which starts 0x108E
+    before it, and ``rva`` for other targets."""
+    rva = {"inventory": 0x1100, **rva}
+    return FakeGame(pm=FakeProcess(size), base=0, rva=rva, pid=1, build=None)
 
 
 def test_set_item_is_compare_and_set() -> None:
@@ -183,13 +170,16 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(3, 0, 256)
 
 
-def test_a_flag_is_one_byte_of_the_flags_array() -> None:
-    g = FakeGame(pm=FakeProcess(0x1000), base=0, rva={"flags": 0x10}, pid=1, build=None)
-    g.pm.memory[0x10 + 250] = 1
-    assert g.flag(250) == 1 and g.flag(249) == 0
-    for outside in (-1, game.FLAGS):
+def test_a_run_of_flags_is_read_at_once() -> None:
+    g = fake_game(flags=0x10)
+    g.pm.memory[0x10 + 39] = 1
+    g.pm.memory[0x10 + 250] = 2
+    run = g.flag_bytes(39, 212)
+    assert len(run) == 212 and run[0] == 1 and run[-1] == 2 and run[1:-1] == bytes(210)
+    assert g.flag_bytes(250, 1) == b"\x02"
+    for first, count in ((-1, 2), (game.FLAGS - 1, 2), (0, 0)):
         with pytest.raises(ValueError, match="outside"):
-            g.flag(outside)
+            g.flag_bytes(first, count)
 
 
 def test_a_failed_write_says_its_state_is_unknown() -> None:
@@ -201,22 +191,10 @@ def test_a_failed_write_says_its_state_is_unknown() -> None:
 
 def test_a_read_back_that_differs_is_its_own_error() -> None:
     g = fake_game()
-    write = g.pm.write_bytes
-
-    def game_puts_it_back(address: int, data: bytes, size: int) -> None:
-        write(address, data, size)
-        g.pm.memory[address] = 7
-
-    g.pm.write_bytes = game_puts_it_back
+    g.pm.overwrite_with = 7  # the game puts the byte back straight after
     with pytest.raises(game.ReadBackMismatch) as info:
         g.set_item(17, expected=0, value=1)
     assert info.value.read_back == bytes([7])
-
-
-def player_game() -> FakeGame:
-    """A fake with room for the player state, which starts 0x108E before the inventory."""
-    pm = FakeProcess(0x2000)
-    return FakeGame(pm=pm, base=0, rva={"inventory": 0x1100}, pid=1, build=None)
 
 
 def put_supplies(g: FakeGame, values: tuple[int, ...]) -> None:
@@ -225,33 +203,33 @@ def put_supplies(g: FakeGame, values: tuple[int, ...]) -> None:
         g.pm.memory[at : at + 2] = struct.pack("<h", v)
 
 
-def test_supplies_reads_the_six_numbers_in_order() -> None:
-    g = player_game()
-    put_supplies(g, (30, 48, 2, 3, 0, 0))
-    assert g.supplies() == (30, 48, 2, 3, 0, 0)
+def test_the_player_state_read_at_once_agrees_with_each_read() -> None:
+    g = fake_game()
+    put_supplies(g, (30, 48, 2, 3, 1, 4))
+    g.pm.memory[0x1100 + 17] = 1
+    g.pm.memory[0x1100 + 50] = 2
+    at = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + game.PLAYER_CELL
+    g.pm.memory[at : at + 2] = bytes([12, 34])
+    player = g.player_state()
+    assert player.inventory == g.inventory()
+    assert player.supplies == g.supplies()
+    assert player.energy == g.energy() == 30
+    assert player.cell == (12, 34)
 
 
 def test_set_supplies_is_compare_and_set_and_writes_only_changes() -> None:
-    g = player_game()
-    put_supplies(g, (30, 48, 2, 3, 0, 0))
-    writes = []
-    write = g.pm.write_bytes
-
-    def counted(address: int, data: bytes, size: int) -> None:
-        writes.append(address)
-        write(address, data, size)
-
-    g.pm.write_bytes = counted
+    g = fake_game()
+    put_supplies(g, (30, 48, 2, 3, 0, 0))  # in memory directly: no writes counted
     g.set_supplies((30, 48, 2, 3, 0, 0), (64, 64, 2, 3, 0, 0))
     assert g.supplies() == (64, 64, 2, 3, 0, 0)
-    assert len(writes) == 2
+    assert g.pm.writes == 2
     with pytest.raises(game.GameError, match="not the expected"):
         g.set_supplies((30, 48, 2, 3, 0, 0), (80, 80, 2, 3, 0, 0))
     assert g.supplies() == (64, 64, 2, 3, 0, 0)
 
 
 def test_set_supplies_refuses_values_that_do_not_fit() -> None:
-    g = player_game()
+    g = fake_game()
     with pytest.raises(ValueError, match="16 bits"):
         g.set_supplies((0,) * 6, (0x8000, 0, 0, 0, 0, 0))
 
@@ -274,7 +252,7 @@ def put_shield(
 
 
 def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
-    g = player_game()
+    g = fake_game()
     assert not g.shield_up()  # no link
     put_shield(g)
     assert g.shield_up()
@@ -283,7 +261,7 @@ def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
 
 
 def test_a_link_to_an_object_that_does_not_match_is_no_shield() -> None:
-    g = player_game()
+    g = fake_game()
     put_shield(g, live=False)  # the object's slot was freed
     assert not g.shield_up()
     put_shield(g)
@@ -299,7 +277,7 @@ def test_a_link_to_an_object_that_does_not_match_is_no_shield() -> None:
 
 
 def test_a_link_pointing_outside_the_game_is_an_error() -> None:
-    g = player_game()
+    g = fake_game()
     put_shield(g, pointer=0x10_0000)  # past the fake's memory: a short read
     with pytest.raises(game.GameError, match="short read"):
         g.shield_up()
@@ -330,3 +308,40 @@ def test_shipped_patterns_are_well_formed(target: Target) -> None:
             assert toks[p.disp_at : p.disp_at + 4] == ["??"] * 4, "the address field must be wild"
             assert p.disp_at + 4 <= p.rip_end <= len(toks)
         game.compile_pattern(p.text)
+
+
+def slots_game() -> FakeGame:
+    """A fake with the current slot at 0x10 and the 30 save slots' blocks from 0x100."""
+    g = fake_game(0x100 + game.SLOTS * 0x9408, current_slot=0x10, slot_array=0x100)
+    for n in range(game.SLOTS):  # each block's stamp bytes tell its slot
+        at = 0x100 + n * 0x9408 + 0x9354
+        g.pm.memory[at : at + 10] = bytes([n]) * 10
+    return g
+
+
+@pytest.mark.parametrize("slot", [0, 4, 29])
+def test_the_save_stamp_is_the_loaded_slots_own(slot) -> None:
+    # The slot (current_slot, from 0), then its block's 10 bytes from +0x9354 (memory.md, "The
+    # file select"; discs.saved_at_home reads the continue point there).
+    g = slots_game()
+    g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
+    assert g.save_stamp() == struct.pack("<i", slot) + bytes([slot]) * 10
+
+
+@pytest.mark.parametrize("slot", [-1, 30])
+def test_a_current_slot_out_of_range_has_no_stamp(slot) -> None:
+    g = slots_game()
+    g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
+    with pytest.raises(game.GameError, match="current slot"):
+        g.save_stamp()
+
+
+def test_each_slots_marker_and_use_are_read_from_its_own_block() -> None:
+    # A block's randomizer marker at +0x9400 (16-bit) and its empty mark, 0xFF at +0x935E (the
+    # file's 0x9360): docs/re/memory.md, "The file select".
+    g = slots_game()
+    for n in range(game.SLOTS):
+        block = 0x100 + n * 0x9408
+        g.pm.memory[block + 0x935E] = 0xFF if n % 3 == 0 else 0
+        struct.pack_into("<H", g.pm.memory, block + 0x9400, n + 0x100)
+    assert g.slot_markers() == [(n + 0x100, n % 3 != 0) for n in range(game.SLOTS)]

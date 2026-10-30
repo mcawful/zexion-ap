@@ -1,5 +1,5 @@
-// Loads and unloads the helper many times while another thread calls the hooked function
-// nonstop, as the game calls SDL_GL_SwapWindow. The hook-test build of the helper
+// Loads and unloads the helper many times while two threads call the hooked function nonstop,
+// as the game calls SDL_GL_SwapWindow. The hook-test build of the helper
 // (zexion_ap_hooktest.dll, argv[1]) hooks this program's own import of GetTickCount. If an
 // unload could free code a thread was still running, this crashes.
 
@@ -19,13 +19,7 @@ namespace {
 std::atomic<bool> g_stop{false};
 std::atomic<uint64_t> g_calls{0};
 
-void busy() {
-    while (!g_stop.load()) {
-        volatile DWORD t = GetTickCount();  // through this program's import table
-        (void)t;
-        g_calls.fetch_add(1);
-    }
-}
+void busy() { zap_test::busy(g_stop, &g_calls); }
 
 bool fail(const char* what, int round) {
     std::printf("FAIL in round %d: %s\n", round, what);
@@ -48,8 +42,7 @@ bool one_round(const wchar_t* dll, const wchar_t* dll_name, int round) {
     if (pong == "pong frames=0") return fail("the hook never ran", round);
     if (zap_test::ask(pipe, "unload") != "bye") return fail("unload", round);
     CloseHandle(pipe);
-    for (int i = 0; i < 2000 && GetModuleHandleW(dll_name) != nullptr; ++i) Sleep(1);
-    if (GetModuleHandleW(dll_name) != nullptr) return fail("still loaded", round);
+    if (!zap_test::unloaded(dll_name)) return fail("still loaded", round);
     return true;
 }
 

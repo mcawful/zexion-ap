@@ -8,15 +8,30 @@ with what the live inventory holds, and gives only the difference:
                + the items received from other worlds
 
 The collected locations come from the live map grid (a cell reading COLLECTED), and the game
-hands out what the patched item table holds there (client/save_patch.py). Both the map and the
+hands out what the seed's item table holds there (client/newgame.py). Both the map and the
 inventory go back to the last save when the player dies or reloads, so the difference stays
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
-A weapon and its upgrade are one progressive item, counted as one for each byte that is set.
-The game turns a second copy of a weapon into its upgrade, in the generator and in play
-(docs/re/randocells.md; seen for the Machine Gun only). Should another weapon not, its byte would
-read 2 and the upgrade would still be owed, so the client would give it.
+Only the supplies and Scrap Metal are counts (``COUNTED``: Energy Tanks, Missile Containers,
+Mega Bombs, Missile Boxes, Bomb Boxes and Scrap Metal, docs/re/save-format.md, "Inventory: one
+byte per item ID at 0x92F3"). Every other item is held once: its byte is 0 or 1, and the game's
+pools hold one of each at most (docs/re/randocells.md, "The pool": one entry per item set in the
+pool array, one per key). So no other byte is written above 1 (with Guns First, a weapon and its
+upgrade are a byte each): a second copy, which only a plando or a server console's ``/send``
+can make (the world refuses a start_inventory copy of an item the pool holds:
+worlds/zexion/starting.py, ``pool_duplicates``), is not written. The pickup routine itself only
+increments the byte (docs/re/memory.md, "Granting each kind of item, and what keeps it"), and
+what the game does with a 2 in such a byte is not measured: the cap keeps the bytes as the
+game's own seeds leave them.
+
+With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
+item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works
+on a table of 64 counts": on the item's update by the save's Guns First, at pickup by the
+randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is still owed and
+given. With it off the game redirects nothing in the seed's own items, and each upgrade is an
+item, and a byte, of its own (the same section): every item is counted as itself, a gun and its
+upgrade each at most 1 like any other item held once.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
@@ -27,35 +42,30 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-MAP_W = 54
-COLLECTED = 0x1B  # a location cell whose item was collected (docs/re/memory.md)
-ITEMS = 51  # inventory bytes 0 to 50
+from . import ids
+from .ids import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER, PROGRESSIVE
 
-# Progressive weapon -> its upgrade (worlds/zexion/items.py).
-PROGRESSIVE = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 UPGRADE_OF = {u: w for w, u in PROGRESSIVE.items()}
 
-ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX = 0, 1, 2, 36, 37
+# The items the game holds as a count (the module's docstring); every other byte is 0 or 1.
+COUNTED = frozenset(
+    {ENERGY_TANK, MISSILE_CONTAINER, MEGA_BOMB, MISSILE_BOX, BOMB_BOX, ids.SCRAP_METAL}
+)
+
 # Items whose byte cannot be written: Zexion (the goal).
-NOT_GRANTABLE = {31}
+NOT_GRANTABLE = {ids.ZEXION}
 # Items never put in the inventory: the Data Disc, which the client counts instead
 # (client/discs.py), as holding one changes the game's endings.
-NOT_IN_INVENTORY = {44}
-# Items the game counts in Scrap Metal's byte: every record from 46 to 50 names inventory byte
-# 46 as the one its pickup increments (docs/re/memory.md, "Other players' items"), and a
-# collected Scrap Energy or Area Map left its own byte at 0 while Scrap Metal's count rose
-# (docs/re/save-format.md, "Inventory"). So each counts as one Scrap Metal, collected (other
-# players' items are Scrap Energy in this world's locations) or received.
-SCRAP_METAL = 46
-COUNTED_AS_SCRAP = {47, 48, 49, 50}
-# The Energy Shield's effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
-# "Received Energy Shields"), which the helper does for a received one.
-ENERGY_SHIELD = 50
+NOT_IN_INVENTORY = {ids.DATA_DISC}
+# Records 46-50 all name Scrap Metal's byte as the one their pickup increments, so each of
+# these counts as one Scrap Metal, collected or received (docs/re/memory.md, "Other players'
+# items"; docs/re/save-format.md, "Inventory").
+COUNTED_AS_SCRAP = {ids.STAND_IN, ids.STAND_IN_PROGRESSION, ids.AREA_MAP, ids.ENERGY_SHIELD}
 
 
 def collected_locations(grid: bytes, cells: Sequence[tuple[int, int]]) -> set[int]:
     """Indices of the locations whose map cell reads collected."""
-    return {i for i, (x, y) in enumerate(cells) if grid[y * MAP_W + x] == COLLECTED}
+    return {i for i, (x, y) in enumerate(cells) if grid[y * ids.MAP_SIZE + x] == ids.COLLECTED}
 
 
 def should_own(
@@ -63,15 +73,18 @@ def should_own(
     location_items: Sequence[int],
     collected: Iterable[int],
     received: Iterable[int],
+    guns_first: bool = True,
 ) -> Counter[int]:
-    """How many of each item the player should own, progressive weapons under the weapon."""
+    """How many of each item the player should own; with Guns First, progressive weapons under
+    the weapon."""
     total: Counter[int] = Counter()
+    merged = UPGRADE_OF if guns_first else {}
 
     def count(item: int, n: int = 1) -> None:
         if item in NOT_IN_INVENTORY:
             return
-        item = SCRAP_METAL if item in COUNTED_AS_SCRAP else item
-        total[UPGRADE_OF.get(item, item)] += n
+        item = ids.SCRAP_METAL if item in COUNTED_AS_SCRAP else item
+        total[merged.get(item, item)] += n
 
     for item, n in start_items.items():
         count(item, n)
@@ -82,43 +95,20 @@ def should_own(
     return total
 
 
-# What a look at the game says about a shield the helper spawned (shield_outcome).
-COUNT, WAIT, AGAIN = "count", "wait", "again"
-
-
-def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> str:
-    """Whether a spawned Energy Shield counts as given (COUNT), needs another look (WAIT), or
-    must be spawned again (AGAIN), from one look at the game: ``in_play``, the settled state
-    reads in play; ``up``, the player has a shield up; ``left_play``, the player died or the
-    save was unloaded since the spawn, which takes back what the last save did not hold;
-    ``overdue``, the time to see it has run out.
-
-    The link to the shield is set from the frame it appears (docs/re/memory.md, "Received
-    Energy Shields"), so a shield up in play counts at once: the check confirms that it
-    appeared, not that it lasts, or a player under fire would be given shield after shield. A
-    shield already up is refreshed by the new one and looks the same, so it counts too."""
-    if left_play:
-        return AGAIN
-    if not in_play:
-        return WAIT  # paused or loading: look again once in play
-    if up:
-        return COUNT
-    return AGAIN if overdue else WAIT
-
-
 def shields_owed(received: Iterable[int], spawned: int) -> int:
     """How many received Energy Shields have not been given yet (``spawned``: those counted
-    as given)."""
-    return max(0, sum(1 for item in received if item == ENERGY_SHIELD) - max(0, spawned))
+    as given). Its effect is not a byte: its pickup spawns the shield (docs/re/memory.md,
+    "Received Energy Shields"), which the helper does for a received one."""
+    return max(0, sum(1 for item in received if item == ids.ENERGY_SHIELD) - max(0, spawned))
 
 
-def owned(inventory: bytes) -> Counter[int]:
-    """What the inventory holds, progressive weapons under the weapon."""
+def owned(inventory: bytes, guns_first: bool = True) -> Counter[int]:
+    """What the inventory holds; with Guns First, progressive weapons under the weapon."""
     have: Counter[int] = Counter()
-    for item in range(min(len(inventory), ITEMS)):
+    for item in range(min(len(inventory), len(ids.GAME_ITEMS))):
         if not inventory[item]:
             continue
-        if item in PROGRESSIVE or item in UPGRADE_OF:
+        if guns_first and (item in PROGRESSIVE or item in UPGRADE_OF):
             have[UPGRADE_OF.get(item, item)] += 1
         else:
             have[item] += inventory[item]
@@ -131,18 +121,21 @@ class Grants:
     not_grantable: dict[int, int]  # item -> how many are owed but cannot be written
 
 
-def grants(inventory: bytes, target: Counter[int]) -> Grants:
-    """The inventory bytes to raise so the player owns `target`."""
-    have = owned(inventory)
+def grants(inventory: bytes, target: Counter[int], guns_first: bool = True) -> Grants:
+    """The inventory bytes to raise so the player owns `target` (from ``should_own`` with the
+    same ``guns_first``)."""
+    have = owned(inventory, guns_first)
     new: dict[int, int] = {}
     stuck: dict[int, int] = {}
     for item, want in sorted(target.items()):
+        if item not in COUNTED and not (guns_first and item in PROGRESSIVE):
+            want = min(want, 1)  # held once: a byte of 1 (the module's docstring)
         missing = want - have[item]
         if missing <= 0:
             continue
         if item in NOT_GRANTABLE:
             stuck[item] = missing
-        elif item in PROGRESSIVE:
+        elif item in PROGRESSIVE and guns_first:
             upgrade = PROGRESSIVE[item]
             for byte in (item, upgrade):
                 if missing and inventory[byte] == 0:
@@ -169,20 +162,16 @@ class Supplies:
     bombs_max: int
 
 
-def supplies_after(inventory: bytes, new: Mapping[int, int], before: Supplies) -> Supplies:
-    """The supplies after the grant, by the pickup routine's rules: max missiles is Missile
-    Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
-    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy,
-    max and current energy both become it."""
-
-    def count(item: int) -> int:
-        return new.get(item, inventory[item])
-
-    missiles_max = count(MISSILE_CONTAINER) + 10 * count(MISSILE_BOX)
-    bombs_max = count(MEGA_BOMB) + 10 * count(BOMB_BOX)
+def supplies_after(inventory: bytes, before: Supplies) -> Supplies:
+    """The supplies the inventory's counts give, by the pickup routine's rules: max missiles is
+    Missile Containers + 10 x Missile Boxes and current missiles rise by the same amount; bombs
+    likewise from Mega Bombs and Bomb Boxes; and if Energy Tanks x 16 is above max energy, max
+    and current energy both become it."""
+    missiles_max = inventory[MISSILE_CONTAINER] + 10 * inventory[MISSILE_BOX]
+    bombs_max = inventory[MEGA_BOMB] + 10 * inventory[BOMB_BOX]
     energy, energy_max = before.energy, before.energy_max
-    if count(ENERGY_TANK) * 16 > energy_max:
-        energy = energy_max = count(ENERGY_TANK) * 16
+    if inventory[ENERGY_TANK] * 16 > energy_max:
+        energy = energy_max = inventory[ENERGY_TANK] * 16
     return Supplies(
         energy=energy,
         energy_max=energy_max,

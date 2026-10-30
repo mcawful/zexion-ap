@@ -1,26 +1,17 @@
-// The disk count on the file select (the OS Install Disks goal), in place of the keys.
-//
-// The file select (and COPY FILE and DELETE FILE) is a menu whose first panel (handler
-// 0xB6920) holds the three save entries: each a widget whose label is 145 glyphs, 5 rows of 29,
-// its slot at +0x230 (1 to 30) and the save block it shows at +0x1F8 (docs/re/memory.md, "The
-// file select"). The game fills an entry (0xDF840) through its handler on event 0xF (opening
-// the screen, paging), and directly after a copy or delete. Six glyphs show the keys: 85 and 86
-// (row 2, columns 27 and 28) a squashed KEYS, and 114, 115, 143, 144 the keys as circles; all
-// blank with no key and the save's flag 39 clear.
-//
-// For the slots the client lists (those holding the seed), the helper fills the keys' block
-// with the disks (the owner's layout): a squashed DISK in place of KEYS, in the game's style
-// (two font glyphs the helper paints, kDiskHeaderGlyphs), the count in two digits on the row
-// below ("03", moved 5 pixels down to center on the items bracket, and put back for any other
-// entry and when off), and the last row blank, drawn as the keys are. With no disk the block
-// is blank, as with no key.
-// While on, each entry's handler is the helper's, which calls the game's and rewrites the entry
-// after event 0xF, so a filled entry never shows a frame of keys; a frame-call watch catches
-// the fills that bypass the handler. Every value is checked before a write; an entry whose key
-// glyphs are not the game's (or the helper's) is left alone, and so is an entry whose handler
-// it does not hold. When off and before an unload, in menus still open, it puts back the frames
-// the game last filled each entry's keys' block with (while the entry still shows the
-// helper's), the count's glyphs in their row, and the handlers.
+// The save entries of the file select, COPY FILE and DELETE FILE (docs/re/memory.md, "The file
+// select"), rewritten in two ways:
+// - The disk count in place of the keys. For each listed slot, the keys' six glyphs show a
+//   squashed DISK and the count in two digits (5 px lower, on the items bracket), then a blank
+//   row; with no disk, all blank.
+// - The AP logo on AP saves: a 16 x 16 image over four font glyphs (kApLogoGlyphs) in the blank
+//   cells right of FILE NN (rows 0 and 1, columns 16 and 17), raised 4 px to center on that line.
+//   Only over blank cells drawn in palette 26 at style 0x15 (white), under which a glyph shows
+//   its own colors.
+// While either is on, each entry's handler is the helper's wrapper: it calls the game's, then
+// rewrites the entry after the fill (event 0xF), so no frame shows the game's; a frame-call
+// watch catches fills that bypass the handler. Written only over the game's glyphs or the
+// helper's own; when off and before an unload, the game's frames, the moved glyphs' rows and the
+// handlers go back, in menus still open.
 #pragma once
 
 #include <windows.h>
@@ -30,14 +21,10 @@
 #include <set>
 #include <string>
 
-namespace zap {
+#include "addresses.h"
+#include "apitem.h"
 
-struct FileAddresses {
-    BYTE* current_menu = nullptr;  // holds the top menu
-    void* file_panel_fn = nullptr;  // the entries' panel handler
-    void* entry_fns[3] = {};        // the file select's, COPY FILE's and DELETE FILE's entry handlers
-    void* hook = nullptr;           // the helper's stand-in for an entry's handler
-};
+namespace zap {
 
 // The squashed DISK: "DI" and "SK", drawn as the game's KEYS (0x81 "KE", 0x82 "YS"), into font
 // glyphs empty in the game's art (found by their alpha in Sprites.png, as 0xFB), painted while
@@ -45,55 +32,81 @@ struct FileAddresses {
 constexpr uint8_t kDiskHeaderGlyphs[2] = {0xFC, 0xFD};
 extern const char kDiskHeaderRows[2][8][9];
 
+// The AP logo: four font glyphs empty in the game's art, two by two in the font (0x8C and 0x8D
+// over 0x9C and 0x9D), so that one 16 x 16 image at kApLogoX, kApLogoY covers them; painted
+// while a listed slot is an AP save. The world's AP item logo (apitem.h kApLogoRows), in
+// glyph_rgb's colors, painted whiter through a new game's fade to white (Game::watch_files).
+constexpr uint8_t kApLogoGlyphs[4] = {0x8C, 0x8D, 0x9C, 0x9D};
+constexpr int kApLogoX = font_x(kApLogoGlyphs[0]), kApLogoY = font_y(kApLogoGlyphs[0]);
+static_assert(kApLogoGlyphs[1] == kApLogoGlyphs[0] + 1 &&
+                  kApLogoGlyphs[2] == kApLogoGlyphs[0] + 16 &&
+                  kApLogoGlyphs[3] == kApLogoGlyphs[0] + 17 && kApLogoGlyphs[0] % 16 < 15,
+              "the logo's glyphs two by two in the font");
+
+// A new game's transition (newgame_fn queued, a 40-frame timer counting down), during which the
+// screen fades to white: how far toward white the logo is painted (FontGlyph::set_white) with
+// `left` frames to go, 0 when no new game is queued.
+constexpr int32_t kNewGameFadeFrames = 40;
+constexpr int new_game_white(bool queued, int32_t left) {
+    return queued && left > 0 && left <= kNewGameFadeFrames
+               ? 255 * (kNewGameFadeFrames - left + 1) / kNewGameFadeFrames
+               : 0;
+}
+
 // The count under DISK: two digits ("03"), 0 to 99.
 std::string file_disk_digits(int value);
 
-class FileDisks {
+class FileEntries {
 public:
-    // Game thread: what to show (an empty slot set turns it off): one count for the slots the
-    // client lists, or each slot's own (offline, saves of several seeds: offline.h).
-    void set(int count, int required, std::set<int> slots);
+    // Game thread: what to show, a count by slot (none turns the count off): the client's for the
+    // slots holding its seed, and each known seed's save its own (offline.h).
     void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
-    bool on() const { return !counts_.empty(); }
+    // Game thread: the slots holding AP saves (a seed the helper knows), which get the logo.
+    void set_ap_slots(std::set<int> slots) { ap_slots_ = std::move(slots); }
+    bool on() const { return disks_on() || marks_on(); }
+    bool disks_on() const { return !counts_.empty(); }
+    bool marks_on() const { return !ap_slots_.empty(); }
 
     // Game thread, each frame: wraps the entries' handlers on the open file screens (while
-    // on, else puts them back), and rewrites entries still showing keys.
-    void watch(const FileAddresses& addresses);
+    // on, else puts them back), and rewrites entries still showing the game's glyphs.
+    void watch(const GameAddresses& addresses);
 
-    // Game thread, from the stand-in handler: the game's handler for `widget` (null if not one
-    // this wrapped), to call first.
+    // Game thread, from the helper's entry handler: the game's handler for `widget` (null if
+    // not one this wrapped), to call first.
     void* original(void* widget) const;
     // ...then, after event 0xF (the fill), the entry rewritten.
-    void on_event(const FileAddresses& addresses, void* widget, intptr_t event);
+    void on_event(const GameAddresses& addresses, void* widget, intptr_t event);
 
     // Game thread: every wrapped handler put back, in menus still open (before an unload).
-    void restore(const FileAddresses& addresses);
+    void restore(const GameAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
-    // For a refused unload, which turns it back on as it was.
-    // Each listed slot's count (a refused unload sets them again).
+    // Each listed slot's count, and the AP saves' slots.
     const std::map<int, int>& counts() const { return counts_; }
+    const std::set<int>& ap_slots() const { return ap_slots_; }
 
 private:
     struct Wrapped {
         BYTE* menu = nullptr;
         void* original = nullptr;
         // The keys' block as the game last filled it, and as the helper then wrote it (while
-        // `written`, until the game fills the entry again).
-        int32_t game[6] = {};
-        int32_t shown[6] = {};
-        bool written = false;
+        // `keys_written`, until the game fills the entry again).
+        int32_t keys_game[6] = {};
+        int32_t keys_shown[6] = {};
+        bool keys_written = false;
+        // The logo's cells as the game last filled them, while `marked` (the logo written).
+        int32_t logo_game[4] = {};
+        bool marked = false;
     };
     void update(BYTE* entry, Wrapped& w);
-    bool rewrite(BYTE* entry, BYTE* (&glyphs)[145], Wrapped& w);
+    void forget_fills(BYTE* (&glyphs)[145], Wrapped& w);
+    bool rewrite(BYTE* entry, int32_t slot, BYTE* (&glyphs)[145], Wrapped& w);
     void put_back(BYTE* (&glyphs)[145], Wrapped& w);
+    bool mark(BYTE* entry, int32_t slot, BYTE* (&glyphs)[145], Wrapped& w);
+    void unmark(BYTE* (&glyphs)[145], Wrapped& w);
     std::map<BYTE*, Wrapped> wrapped_;  // entry -> its menu and the game's handler
     std::map<int, int> counts_;  // slot -> the count it shows
+    std::set<int> ap_slots_;  // the slots that get the logo
 };
-
-// A `disk_slots` request: "disk_slots" (off) or "disk_slots COUNT REQUIRED SLOTS", the slots a
-// comma list or "-". Returns "" or what is wrong.
-std::string parse_disk_slots(const std::string& request, int& count, int& required,
-                             std::set<int>& slots);
 
 }  // namespace zap

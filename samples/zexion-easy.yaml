@@ -1,0 +1,262 @@
+# Q. What is this file?
+# A. This file contains options which allow you to configure your multiworld experience while allowing
+#    others to play how they want as well.
+#
+# Q. How do I use it?
+# A. The options in this file are weighted. This means the higher number you assign to a value, the
+#    more chances you have for that option to be chosen. For example, an option like this:
+#
+#    map_shuffle:
+#      on: 5
+#      off: 15
+#
+#    Means you have 5 chances for map shuffle to occur, and 15 chances for map shuffle to be turned
+#    off.
+#
+# Q. I've never seen a file like this before. What characters am I allowed to use?
+# A. This is a .yaml file. You are allowed to use most characters.
+#    To test if your yaml is valid or not, you can use this website:
+#        http://www.yamllint.com/
+#    You can also verify that your Archipelago options are valid at this site:
+#        https://archipelago.gg/check
+
+# Your name in-game, limited to 16 characters.
+#     {player} will be replaced with the player's slot number.
+#     {PLAYER} will be replaced with the player's slot number, if that slot number is greater than 1.
+#     {number} will be replaced with the counter value of the name.
+#     {NUMBER} will be replaced with the counter value of the name, if the counter value is greater than 1.
+name: Player{number}
+
+# Used to describe your yaml. Useful if you have multiple files.
+description: Easy Preset for Zexion
+
+game: Zexion
+requires:
+  version: 0.6.8 # Version of Archipelago required for this yaml to work as expected.
+  game:
+    Zexion: 1.0.0 # Version of the world required for this yaml to work as expected.
+
+Zexion:
+  ################
+  # Game Options #
+  ################
+  progression_balancing:
+    # A system that can move progression earlier, to try and prevent the player from getting stuck and bored early.
+    # 
+    # A lower setting means more getting stuck. A higher setting means less getting stuck.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 99
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-99: 0 # random value between 0 and 99
+    disabled: 0 # equivalent to 0
+    normal: 50 # equivalent to 50
+    extreme: 0 # equivalent to 99
+
+  accessibility:
+    # Set rules for reachability of your items/locations.
+    # 
+    # **Full:** ensure everything can be reached and acquired.
+    # 
+    # **Minimal:** ensure what is needed to reach your goal can be acquired.
+    full: 50
+    minimal: 0
+
+  mode:
+    # The game's own randomizer mode, with its items, starting items and settings.
+    # Easy: "An easier mode. Start with Navcore and Power Cartridge. More energy tanks and
+    # missiles to be found."
+    # Standard: "Standard difficulty. Start with a random weapon." Each seed draws it, as the
+    # game does: the Machine Gun, Force Blaster, Snake or Lance.
+    # OHKO: "No energy tanks at all. Can teleport to two locations."
+    # Custom: "Use custom rules.": every setting below, from custom_base's.
+    # Easy, Standard and OHKO are each the game's preset exactly, their items drawn for each seed
+    # as the game draws them for a new game (Standard's weapon and every mode's filler): only
+    # Starting Location (start_room) and Safety can be changed with them, as in the game.
+    easy: 50
+    standard: 0
+    ohko: 0
+    custom: 0
+
+  start_room:
+    # Any mode. random_start: Start in a random location: the game's own rule, a room from
+    # which your starting items reach locations, and no room the game flags unless you
+    # start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together
+    # ('random' is random_start too). Or one of the game's 34 rooms, by its name in the
+    # menu: a room from which your starting items reach no location, or every item does
+    # not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is
+    # refused. From a room where they reach only one, generation can fail now and then: try
+    # again or pick another. automatic (the default): landing_pod, or a random start where
+    # that room is refused.
+    random_start: 0
+    exodia: 0
+    upper_tower: 0
+    below_junkyard: 0
+    below_arena: 0
+    tower_gauntlet: 0
+    top_of_pulsava: 0
+    landing_pod: 0
+    guardia_lab: 0
+    ocean_cliff: 0
+    vallahar: 0
+    jungle_entry: 0
+    guardia_tower: 0
+    kresezoa_cave: 0
+    tarazors_nest: 0
+    lower_tower: 0
+    ktarel_sub: 0
+    spider_caves: 0
+    open_cave: 0
+    machinus_entry: 0
+    upper_machinus: 0
+    near_colossus: 0
+    near_orballus: 0
+    crysmoon_entry: 0
+    lower_machinus: 0
+    white_crysmoon: 0
+    below_machinus: 0
+    fijedar_lab: 0
+    fijedar_entry: 0
+    deep_crysmoon: 0
+    rtalva: 0
+    phobyss_entry: 0
+    magma_chamber: 0
+    vulknor_entry: 0
+    waste_zone: 0
+    automatic: 50
+
+  safety:
+    # Any mode; 'preset': the mode's. OHKO takes Light or Off only.
+    # Light: Energy Tanks and items are taken into account for some combat encounters.
+    # Early: More Energy Tanks and Equipment are required for certain tough early game
+    # situations.
+    # Normal: More Energy Tanks and Equipment are required for certain tough situations.
+    # Off: Energy Tanks and Equipment are not taken into account for tough combat encounters.
+    light: 0
+    early: 0
+    normal: 0
+    'off': 0
+    preset: 50
+
+  death_link:
+    # When you die, everyone who enabled death link dies. Of course, the reverse is true too.
+    'false': 50
+    'true': 0
+
+  allow_assists:
+    # Allow the game's assist menu (pause, OPTIONS, ASSIST: save states, less damage and the
+    # like). Off: ASSIST is locked in this seed's saves. The host can unlock it during the game
+    # from the server console, with your player name: /send YOURNAME Assist Unlock (on
+    # archipelago.gg, the command box on the room page, which only whoever created the room
+    # sees).
+    'false': 50
+    'true': 0
+
+  area_map_hints:
+    # Area Maps become Intel Chips: each one you get, found or sent to you, hints where one of
+    # your upgrades, keys or OS Install Disks is. Intel Chips don't reveal the map. Off: Area
+    # Maps work as in the normal game.
+    'false': 0
+    'true': 50
+
+  goal:
+    # What wins the game.
+    # Core: find the four keys, grab Zexion in the core and reach the ending. The seed only makes
+    # sure you can reach the four keys and Zexion: the escape and final battle after the grab are
+    # yours to finish, and may need items it doesn't make sure of (such as the Zenith Thrusters).
+    # The game's Abridged Finale, a Custom-mode setting, ends the game at the grab instead.
+    # OS Install Disks: find enough OS Install Disks (the next two options), then save at the
+    # Landing Pod's save point (Kresezoa 16,13, whichever room you started in) and answer YES to
+    # RETURN HOME WITH THE DISKS?. The seed makes sure you can reach the Landing Pod. The keys are
+    # not placed. The scanner room at Vallahar 6,8, which shows where the keys are in the normal
+    # game, tells you how many disks you need.
+    core: 50
+    os_install_disks: 0
+
+  os_install_disks:
+    # OS Install Disks goal only: how many disks are placed. They replace filler items: the
+    # Scrap first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips
+    # (or Area Maps), then Energy Shields. Each seed draws its filler as the game does, so the
+    # numbers vary: Easy and Standard draw 27 filler items, on average about 17 Scrap, 5 Area
+    # Maps and 5 Energy Shields; OHKO draws 32, 4 of them for the locations it leaves out. With
+    # the keys' places the 30 disks always fit. In Custom the numbers are set by your pool.
+    # Excluded locations can hold only filler items (Scrap and Area Maps), of which a seed keeps
+    # its drawn ones and the keys' four places, less the disks: 26 on average but drawn per seed,
+    # as few as 18, so many excluded locations can stop one seed and not another. Exclude more
+    # than the seed keeps, and generation stops with an error saying so, unless the other
+    # players' filler makes up the difference. Where
+    # there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
+    # and nine Scrap Metal, as the game makes filler when it runs short. The disks placed and any
+    # in start_inventory can be 99 at most, the most the pause screen and the file select show.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 30
+    16: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-30: 0 # random value between 1 and 30
+
+  os_install_disks_required:
+    # OS Install Disks goal only: how many disks you need to win (no more than OS Install
+    # Disks plus any disks in start_inventory).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 30
+    12: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-30: 0 # random value between 1 and 30
+
+  # Custom mode's own options are in zexion-custom.yaml: with this mode they stay its own.
+
+  ###########################
+  # Item & Location Options #
+  ###########################
+  local_items:
+    # Forces these items to be in their native world.
+    []
+
+  non_local_items:
+    # Forces these items to be outside their native world.
+    []
+
+  start_inventory:
+    # Start with the specified amount of these items. Example: {Bomb: 1, Arrow: 3}
+    {}
+
+  start_inventory_from_pool:
+    # Start with the specified amount of these items and don't place them in the world. Example: {Bomb: 1, Arrow: 3}
+    # 
+    # The game decides what the replacement items will be.
+    {}
+
+  start_hints:
+    # Start with these item's locations prefilled into the ``!hint`` command.
+    []
+
+  start_location_hints:
+    # Start with these locations and their item prefilled into the ``!hint`` command.
+    []
+
+  exclude_locations:
+    # Prevent these locations from having an important item.
+    []
+
+  priority_locations:
+    # Prevent these locations from having an unimportant item.
+    []
+
+  item_links:
+    # Share part of your item pool with other players.
+    []
+
+  plando_items:
+    # Generic items plando.
+    []
