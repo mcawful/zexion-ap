@@ -173,13 +173,14 @@ with one atomic exchange, and only one thread at a time does the work.
 
 ### A client going away
 
-When the pipe's client disconnects (the client exited or crashed, or `tools/helper.py` was
-done), the next frame call, before it serves any request, puts back everything the parts below
-set (`Game::put_back_all` in `src/game_calls.cpp`). A change held by a menu no longer open is
-gone with it. It goes inactive until a client sends `config` again (the client resends every
-request after it attaches). The client's popups not shown yet stay queued and still show
-("Popups"): their items are already given. The offline look then applies
-again (AP saves without the client). The helper stays loaded and hooked.
+When the pipe's client disconnects (the client exited or crashed, let the helper go while it
+had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
+any request, puts back everything the parts below set (`Game::put_back_all` in
+`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. It goes inactive
+until a client sends `config` again (the client resends every request after it attaches). The
+client's popups not shown yet stay queued and still show ("Popups"): their items are already
+given. The offline look then applies again (AP saves without the client). The helper stays
+loaded and hooked.
 
 The client's popups staying queued, and showing: working in game 2026-10-26 (0.30.0).
 
@@ -567,12 +568,27 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
   received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
-  (the file's, plus each own disk the map shows collected) and the scanner's line, with one
-  notice a load that the client is not connected (or, for `other_save`, is for another seed;
-  only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
+  (the file's, plus each own disk the map shows collected) and the scanner's line, with a
+  notice that the client is not connected (or, for `other_save`, is for another seed; only for a
+  save of a seed it has a file for, so a plain randomizer game gets no notice): once a load, and
+  again each time a client that configured during the load goes away (working in game
+  2026-10-29, 1.0.0 (b790be9), `lab/ap/live47`).
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
   save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
+  A client with no server connection (the server down, say) lets the helper go, as if it had
+  closed, while a save it has not dressed is loaded: one loaded after a drop's save was left, or
+  the one in play when the player disconnects. Such a save then gets this look and its notice
+  too. The client keeps the helper for a save it dressed before a drop (its look stays), in the
+  ending (its hold), and at the title, where after a drop an armed new game stays armed until a
+  save is loaded. It attaches again on connecting, before it gives any item; an attach that
+  fails holds the items back for up to 30 s, then they are given as with no helper
+  (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
+  `tests/test_zexion_client.py`). Working in game 2026-10-29 (`lab/ap/live47`, the Launcher's
+  client): a save loaded during a drop and a Disconnect in play, each given this look and its
+  notice, then the client's again on connecting, with CLIENT CONNECTED and received items'
+  popups. Not seen in game: a failed attach on connecting, an ending during a drop or after a
+  Disconnect, and an armed new game kept at the title during a drop.
   The file select shows each such save's count, from its map in the game's copy of the slot,
   and the AP logo ("AP saves on the file select").
 - **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
@@ -863,9 +879,10 @@ unload.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots,
-  and the file select's logo through the frame call: painted, whitened through a new game's
-  fade, and cleared by `restore_files`).
+  undressed, a notice withdrawn with its save, the not-connected warning again after a client
+  came and went, a seed put with a client, the AP saves' slots, and the file select's logo
+  through the frame call: painted, whitened through a new game's fade, and cleared by
+  `restore_files`).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
