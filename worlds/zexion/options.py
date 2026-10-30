@@ -38,7 +38,7 @@ class Mode(Choice):
     OHKO: "No energy tanks at all. Can teleport to two locations."
     Custom: "Use custom rules.": every setting below, from custom_base's.
     Easy, Standard and OHKO are each the game's preset exactly, their items drawn for each seed
-    as the game draws them for a new game (Standard's weapon, the boxes and the filler): only
+    as the game draws them for a new game (Standard's weapon and every mode's filler): only
     Starting Location (start_room) and Safety can be changed with them, as in the game."""
 
     display_name = "Mode"

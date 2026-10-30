@@ -4,8 +4,9 @@ The client gives the starting items (slot data "start_items": the mode's own and
 start_inventory or start_inventory_from_pool) through a new game, ARCHIPELAGO or RANDOMIZER
 (``start_with`` in client/newgame.py); the server does not send it the start inventory (the
 client asks only for other worlds' items). The client refuses what it cannot write, but only at
-play time, so the world refuses those items in generation (``problems``, from generate_early),
-with its limits:
+play time, so the world refuses those items in generation (``problems``, from generate_early,
+once no draw of the mode's own starting items fits them: world.py, ``draw_items``), with its
+limits:
 
 - the Navcore or another item of the new game's start-with array: one at most (the array holds
   1 for "start with it"); with Guns First on, a progressive weapon twice at most (the weapon and

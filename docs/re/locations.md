@@ -44,7 +44,7 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 
 | Field | |
 |---|---|
-| Value | `worlds/zexion/reach.py` floods the region graph (`CELL_REGION`, `ENTRANCES`) from the seed's start, or its start and second teleport target together, with an inventory and the seed's `logic.Settings` (the Energy total, code 69's mode, the 64 option bytes code 68 reads, and Gates Open, under which the flood goes on from the gate cells once one counts as reached; a flagged second teleport target counts only from a useful-item score of 27, `logic.second_counts`, since 2026-10-28): a way passes when its list does (`logic.satisfied`, checked at the cell it leaves from); a list with codes 64 to 67 is checked as the flood goes, which repeats until nothing new is reached, as `tools/randocells.py`'s cell-by-cell flood does. A location counts when its region is reached and its own list, if any, passes. With every item (the starting items, then the pool collected as the game's generator counts it: `logic.collect`) this gives the regions the world creates and the locations it keeps; with the starting items alone, what the start rooms are judged by ("Which start rooms the world offers"). The starting items are every item the player starts with as Archipelago counts it: the mode's own and those of `start_inventory` and `start_inventory_from_pool`, the latter taken out of the pool, as Archipelago takes them out after `create_items` (`ZexionWorld.reach_of_items`, since 2026-10-28; before, the mode's own alone). Each result is cached by settings, inventory and starts. `data.MODES` keeps what `tools/gen_world_data.py` computed cell by cell for each mode, for the tests: its fresh save's items, one draw of each preset's (since 2026-10-30 a preset seed draws its own: "Where the world departs from the game"). |
+| Value | `worlds/zexion/reach.py` floods the region graph (`CELL_REGION`, `ENTRANCES`) from the seed's start, or its start and second teleport target together, with an inventory and the seed's `logic.Settings` (the Energy total, code 69's mode, the 64 option bytes code 68 reads, and Gates Open, under which the flood goes on from the gate cells once one counts as reached; a flagged second teleport target counts only from a useful-item score of 27, `logic.second_counts`, since 2026-10-28): a way passes when its list does (`logic.satisfied`, checked at the cell it leaves from); a list with codes 64 to 67 is checked as the flood goes, which repeats until nothing new is reached, as `tools/randocells.py`'s cell-by-cell flood does. A location counts when its region is reached and its own list, if any, passes. With every item (the starting items, then the pool collected as the game's generator counts it: `logic.collect`) this gives the regions the world creates and the locations it keeps; with the starting items alone, what the start rooms are judged by ("Which start rooms the world offers"). The starting items are every item the player starts with as Archipelago counts it: the mode's own and those of `start_inventory` and `start_inventory_from_pool`, the latter taken out of the pool, as Archipelago takes them out after `create_items` (`ZexionWorld.reach_of_items`, since 2026-10-28; before, the mode's own alone). Each result is cached by settings, inventory and starts, the every-item inventory without the filler no rule reads (`reach.UNREAD`, codes 46 to 50: "The OS Install Disks goal: the disks, then the ending"), so seeds that drew different filler share one (since 2026-10-30, `test_reach.py`, `TestTheCache`). `data.MODES` keeps what `tools/gen_world_data.py` computed cell by cell for each mode, for the tests: its fresh save's items, one draw of each preset's (since 2026-10-30 a preset seed draws its own: "Where the world departs from the game"). |
 | Status | measured (equal to the cell-by-cell results for every mode from each of the 34 rooms: the regions and locations every item reaches, and the locations the starting items reach, since 2026-10-29 (before, the rooms the earlier rule offered, and the starting items' locations in OHKO only); in OHKO, every item's regions and locations from each of the 1,122 ordered pairs of rooms); the starting items with `start_inventory` and `start_inventory_from_pool`: tested only, by unit tests of the world (2026-10-28); the presets' drawn items, 2026-10-30: equal to the cell-by-cell flood over `RandoCells` from each of the 34 rooms, the starting items of each of Standard's four guns and of Easy and OHKO, and every item of 30 drawn seeds per preset (3,060 rooms and 204 starting-item floods, no difference); not run in game |
 | Method | `worlds/zexion/test/test_reach.py` against `data.MODES`; for `start_inventory` and `start_inventory_from_pool`, `worlds/zexion/test/test_start_inventory.py` (`TestStartFromPool`), with Archipelago's precollecting and taking out of the pool done as its `Main.py` does (`test/bases.py`, `ZexionStartTestBase`) |
 | Build | B1 |
@@ -159,7 +159,8 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` or `start_inventory_from_pool` (with Guns First, a second copy of a
   progressive weapon as its upgrade; without it, each upgrade as itself). The world
-  refuses starting items the client does not give through a new game, and a `start_inventory`
+  refuses (once no draw of the mode's own fits them: "Where the world departs from the game")
+  starting items the client does not give through a new game, and a `start_inventory`
   copy of an item held once that the pool holds too (the limits and their reasons:
   `worlds/zexion/starting.py`). **`start_inventory_from_pool` working in game** (B1,
   2026-10-28, `lab/ap/live45/`: a Standard seed starting with a Slide Mod, a Progressive Snake
@@ -187,11 +188,16 @@ owner's principle, `../DEVELOPING.md`, "How it fits together"), but for these, e
 where its subject is:
 
 - **The presets** are built as Custom is, from the preset's menu (`custom.Menu.preset`), as the
-  game builds each new game's: the coin flips, Random Gun, the boxes and the filler drawn per
-  seed (`custom.resolve`, `custom.pool_items`; since 2026-10-30, the owner's choice of that over
+  game builds each new game's, by the same rule (`custom.resolve`, `custom.pool_items`; since
+  2026-10-30, the owner's choice of that over
   drawing only Standard's gun; before, each preset was one fresh save's pool and starting items,
-  so every Standard seed started with that save's Force Blaster). Standard draws its gun among
-  the Machine Gun, Force Blaster, Snake and Lance (`randocells.md`, "The pool", step 2), and its
+  so every Standard seed started with that save's Force Blaster). What the rule draws in a
+  preset is Standard's gun, among the Machine Gun, Force Blaster, Snake and Lance (`randocells.md`,
+  "The pool", step 2), and every preset's filler (step 6): no coin flip is left to draw, as
+  Standard's Arc Plasma, its only item set both ways, is settled by Random Gun and always pooled,
+  and Easy's and OHKO's menus set no item both ways (`data.MODES` menu arrays, read 2026-10-30);
+  and each preset's bombs are below 20, so
+  its boxes are all Missile Boxes in a fixed number (Easy 17, Standard 6, OHKO 8). Standard's
   start rooms follow the gun ("Which start rooms the world offers"). Where no draw applies the
   items are the fresh saves': Easy's and Standard's but filler exactly, OHKO's but its supplies,
   which the game's placement compresses once more where Archipelago's fill replaces it: 72
@@ -199,6 +205,14 @@ where its subject is:
   (`randocells.md`, "The pool", Checked; `worlds/zexion/test/test_custom.py`,
   `TestThePresetsDraw`; tested only, 2026-10-30; not run in game: a preset seed drawn this way,
   Standard with another gun than the Force Blaster).
+- **Draws that do not fit the start options are drawn again** (`ZexionWorld.draw_items`, since
+  2026-10-30; a guard the game does not need, its menu having no such options): in every mode,
+  a draw whose starting items, with `start_inventory`'s and `start_inventory_from_pool`'s, the
+  client could not give, such as Standard's Snake drawn for a YAML taking two Progressive Snakes
+  from the pool (three, where a new game holds two), is drawn again, up to 64 times
+  (`world.DRAWS`), and the seed is refused only when none fits. This weights the game's odds
+  toward the draws that fit; the counts are otherwise the game's (`test_world.py`,
+  `TestDrawsFitTheStartOptions`; tested only, 2026-10-30; not run in game).
 - **Start rooms:** a room from which the starting items reach no location, or from which every
   item does not reach the core (with the core goal) or the Landing Pod (with the OS Install Disks
   goal), is refused or not drawn, where the game would offer PLAY

@@ -83,6 +83,9 @@ DISC_REPLACES = (*FILLER_ORDER, custom.ENERGY_SHIELD)
 # two digits (native/src/files.cpp, file_disk_digits), hold no more. Not a game rule: the game has
 # no disk count.
 MAX_DISKS = 99
+# The most draws of the menu's items (``ZexionWorld.draw_items``) tried for starting items the
+# client can give with the start options'. Not a game rule: the game's menu has no such options.
+DRAWS = 64
 
 
 def important_elsewhere(item: Item | None) -> bool:
@@ -126,16 +129,7 @@ class ZexionWorld(World):
         self.menu = self.read_menu()
         self.logic_settings = self.menu.logic_settings()
         self.location_cells = reach.seed_locations(self.logic_settings)
-        # A preset's items are drawn from its menu as Custom's are, as the game draws them for
-        # each new game: Standard's starting gun (Random Gun), the coin flips, the boxes and the
-        # filler (docs/re/locations.md, "Where the world departs from the game").
-        start, pool = custom.resolve(self.menu, self.random)
-        self.start_inventory = custom.starting_items(self.menu, start)
-        try:
-            self.pool_codes = custom.pool_items(self.menu, pool, self.random)
-        except custom.PoolError as error:
-            raise OptionError(f"Zexion ({self.player_name}): {error}") from error
-        self.check_start_inventory()
+        self.draw_items()
         self.seed_reach = self.reach_of_items()
         self.choose_starts()
         self.fit_pool()
@@ -230,9 +224,37 @@ class ZexionWorld(World):
         value = getattr(self.options, option_name).value
         return Counter({code_of[name]: n for name, n in value.items() if n > 0})
 
-    def check_start_inventory(self) -> None:
-        """Refuse starting items the client could not give, and a start_inventory item that
-        the pool holds too and the game holds once (worlds/zexion/starting.py)."""
+    def draw_items(self) -> None:
+        """The seed's starting items and pool, drawn from its menu as the game draws them for a
+        new game (``custom.resolve``, ``custom.pool_items``), a preset's as Custom's: Standard's
+        starting gun by Random Gun, every mode's filler. A draw whose starting items, with
+        start_inventory's and start_inventory_from_pool's, the client could not give
+        (``start_problems``), such as a third copy of a gun the seed started with that the YAML
+        takes twice from the pool, is drawn again, up to DRAWS times; with none that fits, the
+        seed is refused with the first draw's problems (docs/re/locations.md, "Where the world
+        departs from the game")."""
+        first: list[str] = []
+        for _ in range(DRAWS):
+            start, pool = custom.resolve(self.menu, self.random)
+            self.start_inventory = custom.starting_items(self.menu, start)
+            try:
+                self.pool_codes = custom.pool_items(self.menu, pool, self.random)
+            except custom.PoolError as error:
+                raise OptionError(f"Zexion ({self.player_name}): {error}") from error
+            found = self.start_problems()
+            if not found:
+                return
+            first = first or found
+        raise OptionError(
+            f"Zexion ({self.player_name}): the client cannot start a seed with these starting "
+            f"items (the mode's own, start_inventory and start_inventory_from_pool): "
+            f"{'; '.join(first)}"
+        )
+
+    def start_problems(self) -> list[str]:
+        """Why the client could not give the drawn starting items with the start options' (one
+        line each, empty when it can), and a start_inventory item that the pool holds too and
+        the game holds once (worlds/zexion/starting.py)."""
         added = self.option_start("start_inventory")
         counts = (
             Counter(self.start_inventory) + added + self.option_start("start_inventory_from_pool")
@@ -243,12 +265,7 @@ class ZexionWorld(World):
         # Install Disks goal without the keys.
         pool = [c for c in self.pool_codes if not (self.disc_hunt and c in KEY_CODES)]
         found += starting.pool_duplicates(added, self.start_inventory, pool, guns_first)
-        if found:
-            raise OptionError(
-                f"Zexion ({self.player_name}): the client cannot start a seed with these "
-                f"starting items (the mode's own, start_inventory and "
-                f"start_inventory_from_pool): {'; '.join(found)}"
-            )
+        return found
 
     def reach_of_items(self) -> reach.Seed:
         """What the seed's items reach (reach.Seed), with every item the player starts with as

@@ -93,12 +93,15 @@ generator's log warns that it did so). Any room works from which your starting i
 least one location (and from which you can reach Zexion's core with the core goal, or the
 Landing Pod with the OS Install Disks goal); another stops generation with an error. With
 either goal, Easy's items take 17 of the rooms, and OHKO's, with a second room to teleport to,
-all 34. Standard's take 17 to 20, by the weapon the seed draws: 17 with the Machine Gun or the
-Snake, 19 with the Force Blaster (two more) and 20 with the Lance (three more), Landing Pod
-among them each time. A room only some of the weapons suit stops generation when the seed draws
-another: generate again, or pick one of the 17 that suit all four. From a room where your
-starting items reach only a few locations, generation sometimes fails: generate again, or pick
-another room. With Double
+all 34. Standard's take 17 to 20, by the weapon the seed draws. These 17 suit all four
+weapons, and Easy's are the same 17: `exodia`, `upper_tower`, `below_arena`, `tower_gauntlet`,
+`landing_pod`, `guardia_lab`, `ocean_cliff`, `vallahar`, `jungle_entry`, `guardia_tower`,
+`lower_tower`, `ktarel_sub`, `open_cave`, `lower_machinus`, `below_machinus`, `fijedar_entry`
+and `vulknor_entry`. The Force Blaster adds `below_junkyard` and `phobyss_entry`, and the Lance
+`crysmoon_entry`, `white_crysmoon` and `phobyss_entry`; a seed that draws another weapon stops
+with an error in those (generate again, or pick one of the 17). From a room where your starting
+items reach only a few locations, generation sometimes fails: generate again, or pick another
+room. With Double
 Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
 Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
 only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks
@@ -122,7 +125,10 @@ Metal takes its place in the pool. `start_inventory` adds items on top of the po
 only for the items the game holds a number of (Energy Tanks, Missile Containers, Missile Boxes)
 and for those your seed's pool doesn't hold. A `start_inventory` copy of any other item the
 pool holds stops generation with an error: the game holds such an item once, so the pool's copy
-would be a location that gives nothing.
+would be a location that gives nothing. Where the seed draws its own starting items (Standard's
+weapon, Custom's coin flips), it draws again until they fit with yours (and stops with an error
+if none does): with two Progressive Snakes from the pool, a Standard seed never starts with the
+Snake, which would make three.
 
 What a new game can start with:
 

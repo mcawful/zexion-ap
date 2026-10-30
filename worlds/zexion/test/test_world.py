@@ -77,18 +77,22 @@ def drawn_gun(world: ZexionWorld) -> str:
 
 
 def drawing(gun: str, **options: Any) -> ZexionWorld:
-    """A Standard fake_world whose Random Gun drew ``gun``, generate_early run (a draw whose
-    starting items do not suit a chosen start room is refused, and skipped here)."""
+    """A Standard fake_world with these options whose Random Gun drew ``gun``, generate_early
+    run. The seed is found with the default options: the draw comes before the start room is
+    chosen, so a start_room does not change it (asserted)."""
     for seed in range(100):
-        world = fake_world(**options)
-        world.random = random.Random(seed)
-        try:
-            world.generate_early()
-        except OptionError:
-            continue
-        if drawn_gun(world) == gun:
-            return world
-    raise AssertionError(f"no seed drew the {gun}")
+        probe = fake_world()
+        probe.random = random.Random(seed)
+        probe.generate_early()
+        if drawn_gun(probe) == gun:
+            break
+    else:
+        raise AssertionError(f"no seed drew the {gun}")
+    world = fake_world(**options)
+    world.random = random.Random(seed)
+    world.generate_early()
+    assert drawn_gun(world) == gun, (gun, options)
+    return world
 
 
 class RefusalTestCase(unittest.TestCase):
@@ -716,17 +720,20 @@ def own_locations(test: ZexionTestBase, name: str) -> list[int]:
 
 
 def assert_disks_took_in_order(test: ZexionTestBase, placed: int) -> None:
-    """The disks, and before them the locations left out, took the places of DISC_REPLACES in
-    its order from the seed's drawn pool, the keys' four places as Scrap Metal: each kind used
-    up before the next is touched. An Intel Chip counts as the Area Map it replaced."""
+    """The disks took the places of DISC_REPLACES in its order from the seed's drawn pool, less
+    the locations left out, the keys' four places as Scrap Metal: each kind used up before the
+    next is touched. An Intel Chip counts as the Area Map it replaced."""
     drawn = Counter(test.world.pool_codes)
+    # The locations left out take their filler first, before the keys' places become Scrap
+    # Metal (create_items).
+    for _ in range(len(test.world.location_cells) - len(test.world.kept_locations)):
+        drawn[next(c for c in FILLER_ORDER if drawn[c])] -= 1
     drawn[SCRAP_METAL] += 4
     pool = Counter(code_of[name] for name in pool_names(test))
     pool[AREA_MAP] += pool.pop(INTEL_CHIP, 0)
     taken = [drawn[c] - pool[c] for c in DISC_REPLACES]
-    left_out = len(test.world.location_cells) - len(test.world.kept_locations)
     test.assertEqual(pool[DATA_DISC], placed)
-    test.assertEqual(sum(taken), placed + left_out)
+    test.assertEqual(sum(taken), placed)
     for i, n in enumerate(taken):
         test.assertGreaterEqual(n, 0)
         if n:
@@ -876,6 +883,27 @@ class TestDiscOptionsChecked(unittest.TestCase):
         # is not the Energy Shield.
         items = {c for entries in every_list() for c, _ in entries if c < FIRST_SPECIAL}
         self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
+
+
+class TestDrawsFitTheStartOptions(unittest.TestCase):
+    """A draw whose starting items do not fit the start options is drawn again (world.py,
+    draw_items; docs/re/locations.md, "Where the world departs from the game")."""
+
+    def test_standard_never_draws_a_third_snake(self) -> None:
+        # Two Progressive Snakes from the pool and Standard's own Snake would be three.
+        options = {"start_inventory_from_pool": {"Progressive Snake": 2}}
+        guns = set()
+        for seed in range(40):
+            world = fake_world(**options)
+            world.random = random.Random(seed)
+            world.generate_early()
+            guns.add(drawn_gun(world))
+        self.assertEqual(guns, set(STANDARD_GUNS) - {"Progressive Snake"})
+
+    def test_options_no_draw_fits_are_refused_with_the_first_draws_problems(self) -> None:
+        options = {"start_inventory_from_pool": {"Progressive Snake": 3}}
+        with self.assertRaisesRegex(OptionError, "Progressive Snake: a weapon and its upgrade"):
+            fake_world(**options).generate_early()
 
 
 class TestStartInventoryChecked(RefusalTestCase):
