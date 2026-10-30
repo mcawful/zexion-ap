@@ -322,7 +322,7 @@ def slots_game() -> FakeGame:
 @pytest.mark.parametrize("slot", [0, 4, 29])
 def test_the_save_stamp_is_the_loaded_slots_own(slot) -> None:
     # The slot (current_slot, from 0), then its block's 10 bytes from +0x9354 (memory.md, "The
-    # file select"; discs.saved_at_start reads the continue point there).
+    # file select"; discs.saved_at_home reads the continue point there).
     g = slots_game()
     g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
     assert g.save_stamp() == struct.pack("<i", slot) + bytes([slot]) * 10

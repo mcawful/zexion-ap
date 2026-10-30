@@ -212,6 +212,21 @@ std::string parse_discs(const std::string& request, int& count, int& required, s
     return "";
 }
 
+std::string parse_mission(const std::string& request, int& column, int& row) {
+    column = row = -1;
+    if (request.rfind("mission_prompt ", 0) != 0) return "bad mission_prompt request";
+    std::istringstream words(request.substr(15));
+    std::string extra;
+    int c = -1, r = -1;
+    if (!(words >> c >> r) || (words >> extra) || c < 0 || c >= kMapSide * kCellColumns ||
+        r < 0 || r >= kMapSide * kCellRows) {
+        return "bad mission_prompt request";
+    }
+    column = c;
+    row = r;
+    return "";
+}
+
 std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts) {
     counts.clear();
     if (request == "disk_slots") return "";

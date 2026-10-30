@@ -423,6 +423,20 @@ std::string discs(const std::string& request) {
         true, error);
 }
 
+std::string mission_prompt(const std::string& request) {
+    // "mission_prompt COLUMN ROW": offer RETURN HOME WITH THE DISKS? when the game is next idle
+    // in play; home's save point in tiles, the request lapsing while the player is in play
+    // outside its cell (mission.h).
+    int column = -1, row = -1;
+    std::string error = zap::parse_mission(request, column, row);
+    return on_game(
+        [&] {
+            return std::string(g_game.request_mission(column, row) ? "queued"
+                                                                   : "refused not configured");
+        },
+        true, error);
+}
+
 std::string ap_labels(const std::string& request) {
     std::map<int, zap::Label> labels;
     std::string error = zap::parse_labels(request, labels);
@@ -480,8 +494,7 @@ const Request kRequests[] = {
     {"intel on", true, [] { g_game.set_intel(true); return std::string("intel on"); }},
     {"intel off", true, [] { g_game.set_intel(false); return std::string("intel off"); }},
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
-    {"mission_prompt", true,
-     [] { return std::string(g_game.request_mission() ? "queued" : "refused not configured"); }},
+    {"mission_prompt", true, nullptr, &mission_prompt},
     {"mission_status", true, [] { return g_game.mission_status(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},

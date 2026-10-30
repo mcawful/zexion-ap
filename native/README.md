@@ -115,7 +115,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt`, `mission_status` (frame) | `shown N` or `not shown…`; `queued` or `refused not configured`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -457,7 +457,9 @@ the helper:
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
-- on `mission_prompt` (sent after each save at the landing pod with enough disks), once idle in play
+- on `mission_prompt COLUMN ROW` (sent after each save at the Landing Pod with enough disks, with
+  home: the Landing Pod's save point in tiles, 191 329, whichever room the seed starts in; the
+  column below 54 × 14 and the row below 54 × 20, or `error bad mission_prompt request`), once idle in play
   with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
   its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
   until then 70, as far into it as the game's escape skip fade is into Zexion's popup:
@@ -469,24 +471,26 @@ the helper:
   through the game's NO and then starts the ending once no message shows; NO fades the screen back
   in, as the game's NO does there. If event 3667 or its handler is not as traced, the prompt opens
   at once with no fade, as before. A request not yet opened lapses (`lapsed: the player left the
-  landing pod`) once the player is in play outside the seed's start cell (the loaded section's start
-  record's row / 20 and column / 14 against the player state's cell, as the client tests a save at
-  the pod: `docs/re/memory.md`, "The mission prompt"; a cell off the map, as the raw cell reads
-  for a moment, counts as not known), as when popups held it while the player
-  walked on; the client offers it again after the next save there. Once its opener is set, it opens
+  landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
+  / 14 against the player state's cell, as the client tests a save at the pod: `docs/re/memory.md`,
+  "The mission prompt"; a cell off the map, as the raw cell reads for a moment, counts as not
+  known), as when popups held it while the player walked on; the client offers it again after the
+  next save there. Until 1.0.0 home was the seed's start cell, read from the loaded section's start
+  record; the in-game runs below all started at the Landing Pod, where the two are the same. Home
+  given by the request, from a seed started elsewhere: stand-in tests only, not run in game yet. Once its opener is set, it opens
   where the player is when its 60 frames are up. An opener the helper takes back before it runs (the
   save left, `discs` off, an unload) turns the fade back to the normal level; so does one the game
   runs with the player not in play (a death during the fade: asked again), but only while the fade
   is still event 3667's, as below, not a fade the death set. One another transition took the place
   of (a save at the save point again, which sets the pause opener back and brings no fade; a door; a
-  death) is asked again once idle (and lapses if the player is then outside the start cell), and its
+  death) is asked again once idle (and lapses if the player is then outside home's cell), and its
   fade is turned back only while the game's fade (the `fade` and `fade_level` targets) is still
   event 3667's: target −1, a step every 8 frames from level 4, or done at −1, and no further back
   than the helper last saw it with its opener in place, nor the transition timer higher (a save
   leaves it counting). Anything else, another transition's fade even with 3667's own values (it
   starts again from level 4, its timer at 70), is left alone. The same when `discs` turns off after
   such a save. Working in game: the fade turned back after saves at the pod during it, 2026-10-27
-  (the owner's report). A request lapsing outside the start cell, 2026-10-27 (0.30.0, the owner's
+  (the owner's report). A request lapsing outside the pod's cell (a seed started there), 2026-10-27 (0.30.0, the owner's
   report, `lab/ap/live34/client1.log`): saved at the pod with twelve received items' popups
   still to show, then walked a few rooms away during them, and left during GAME SAVED with no
   popup queued; no prompt either time, and offered again after the next save there. The ending
@@ -869,7 +873,8 @@ unload.
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
-  request lapsing outside the start cell, a death's own fade left alone, the ending after YES
+  request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
+  parser, a death's own fade left alone, the ending after YES
   waiting for the last message, and the ending's wait that an unload refuses for).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).

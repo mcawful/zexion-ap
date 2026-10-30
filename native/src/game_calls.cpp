@@ -248,17 +248,17 @@ bool Game::menu_open() const {
     return configured_ && *at_.save_loaded != kNoSaveLoaded && *at_.menu_state != 0;
 }
 
-bool Game::away_from_start() const {
-    if (!in_play() || !rando_save_loaded()) return false;
-    const auto column = at<uint16_t>(at_.rando_blob, rando::kStart + 2) / kCellColumns;
-    const auto row = at<uint16_t>(at_.rando_blob, rando::kStart + 4) / kCellRows;
-    if (column >= kMapSide || row >= kMapSide) return false;
+bool Game::away_from_home() const {
+    if (!in_play() || home_row_ < 0 || home_row_ >= kMapSide || home_column_ < 0 ||
+        home_column_ >= kMapSide) {
+        return false;
+    }
     // The raw cell can be -1 (off the map) for a moment: not known, so not away.
     BYTE* p = player();
     const uint8_t at_row = at<uint8_t>(p, kPlayerCellRow);
     const uint8_t at_column = at<uint8_t>(p, kPlayerCellColumn);
     if (at_row >= kMapSide || at_column >= kMapSide) return false;
-    return at_row != row || at_column != column;
+    return at_row != home_row_ || at_column != home_column_;
 }
 
 BYTE* Game::record(uint8_t item) const {
@@ -757,7 +757,7 @@ void Game::watch_mission() {
     int32_t left = whole ? 1 : kFadeMessageLeft;
     bool idle = in_play() && !waiting && popup_frames_left() <= left &&
                 frames_since_popup_ >= kPopupGapFrames;
-    mission_.watch(at_, idle, away_from_start());
+    mission_.watch(at_, idle, away_from_home());
 }
 
 void Game::watch_files() {
@@ -982,8 +982,11 @@ void Game::restore_intel() {
     intel_.restore(at_.item_records);
 }
 
-bool Game::request_mission() {
+bool Game::request_mission(int column, int row) {
     if (!client_ready()) return false;
+    // Home's cell as the player state counts it: the row then the column of cells.
+    home_row_ = row >= 0 && column >= 0 ? row / kCellRows : -1;
+    home_column_ = row >= 0 && column >= 0 ? column / kCellColumns : -1;
     mission_.request();
     return true;
 }
@@ -1229,6 +1232,8 @@ ClientState Game::snapshot() const {
     s.newgame_status = newgame_status_;
     s.mission_asked = mission_.asked();
     s.mission_ending = mission_.ending();
+    s.mission_home_row = home_row_;
+    s.mission_home_column = home_column_;
     if (offline_index_ >= 0) return s;  // the look is the offline one's, set again by its watch
     s.assists_locked = assists_locked_;
     s.intel = intel_.on();
@@ -1261,6 +1266,8 @@ void Game::rearm(ClientState s) {
         starting_ = s.starting;
         newgame_status_ = std::move(s.newgame_status);
     }
+    home_row_ = s.mission_home_row;
+    home_column_ = s.mission_home_column;
     if (client_ready()) mission_.resume(s.mission_asked, s.mission_ending);
 }
 

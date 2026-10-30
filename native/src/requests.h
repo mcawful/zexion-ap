@@ -119,4 +119,9 @@ std::string parse_discs(const std::string& request, int& count, int& required, s
 // alone (files.h).
 std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts);
 
+// A `mission_prompt` request: "mission_prompt COLUMN ROW", home's save point in tiles (the
+// Landing Pod's, as a save's continue point holds it: column first), on the 54 x 54 map (column
+// below 54 x 14, row below 54 x 20).
+std::string parse_mission(const std::string& request, int& column, int& row);
+
 }  // namespace zap

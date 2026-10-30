@@ -31,10 +31,12 @@ Set with the Goal option.
     you how many you need. Until you have been there, the pause screen shows "OF ?". With
     Hints Revealed (Custom), the game counts you as told from the start, so the number shows
     at once (by the game's code; not yet checked in game).
-  - Once you have enough, save at the save point in your start room (the reminder that
-    pops up once you have enough calls it the landing pod) and answer YES to RETURN HOME WITH
+  - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
+    `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
-    back the next time you save there.
+    back the next time you save there. The seed makes sure you can reach the Landing Pod. The
+    pause menu's teleport takes you to your start room (or second room, with Double Teleport),
+    which is the Landing Pod only if that room is.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
     Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
@@ -88,8 +90,9 @@ In one of the game's 34 start rooms, chosen with the Starting Location option (`
 its name in the game's menu, as in `landing_pod`. The default, `automatic`, is Landing Pod, or
 where your settings rule Landing Pod out, a random start (as `random_start` below; the
 generator's log warns that it did so). Any room works from which your starting items reach at
-least one location (and, with the core goal, from which you can reach Zexion's core); another
-stops generation with an error. With Easy's items that is 17 of the rooms, with Standard's 19;
+least one location (and from which you can reach Zexion's core with the core goal, or the
+Landing Pod with the OS Install Disks goal); another stops generation with an error. With
+Easy's items that is 17 of the rooms, with Standard's 19 (with either goal);
 with a second room to teleport to, all 34. From a room where your starting items reach only a
 few locations, generation sometimes fails: generate again, or pick another room. With Double
 Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
