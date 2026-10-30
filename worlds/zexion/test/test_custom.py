@@ -852,7 +852,9 @@ class EveryStartFills(ZexionTestBase):
     can be beaten, but those from which the starting items reach fewer than 3 locations (in
     OHKO, with the second teleport target drawn, counted as the logic counts it): Archipelago's
     fill can fail there, as the owner accepted (docs/re/locations.md, "Which start rooms the
-    world offers"), so a test of them would fail at random."""
+    world offers"), so a test of them would fail at random. Each generation's seed is fixed and
+    named in its subtest: the fill can fail, rarely, from a room that reaches more (the same
+    section), and a failure must be one that can be run again."""
 
     auto_construct = False
     run_default_tests = False
@@ -867,23 +869,31 @@ class EveryStartFills(ZexionTestBase):
                 return seed
         raise AssertionError(f"no seed drew the {gun}")
 
+    def reaches_three(self) -> bool:
+        w = self.world
+        return len(w.seed_reach.sphere0_from(w.start, w.second).locations) >= 3
+
     def test_every_room(self) -> None:
         cases = [("standard", gun) for gun in STANDARD_GUNS] + [("ohko", None)]
         for mode, gun in cases:
             probe = drawing(gun) if gun else fake_world(mode=mode)
             if not gun:
                 probe.generate_early()
-            seed = self.seed_drawing(gun) if gun else None
             rooms = [r for r in data.START_ROOMS if probe.passes(r)]
+            # OHKO's second target is drawn: the first of these seeds whose pair reaches 3
+            # locations or more.
+            seeds = [self.seed_drawing(gun)] if gun else range(1, 11)
             for room in rooms:
-                with self.subTest(mode=mode, gun=gun, room=room["index"]):
+                for seed in seeds:
                     self.options = {"mode": mode, "start_room": room["index"] + 1}
                     self.world_setup(seed)
-                    w = self.world
+                    if self.reaches_three():
+                        break
+                else:
+                    continue
+                with self.subTest(mode=mode, gun=gun, room=room["index"], seed=seed):
                     if gun:
-                        self.assertEqual(drawn_gun(w), gun)
-                    if len(w.seed_reach.sphere0_from(w.start, w.second).locations) < 3:
-                        continue
+                        self.assertEqual(drawn_gun(self.world), gun)
                     distribute_items_restrictive(self.multiworld)
                     self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
 
