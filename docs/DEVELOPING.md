@@ -340,7 +340,8 @@ refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
 
 To release:
 
-1. On a topic branch, raise the version in all three places; merge it into `develop`.
+1. On a topic branch, raise the version in all three places and run
+   `tools/gen_sample_yamls.py`; merge it into `develop`.
 2. Open a pull request from `develop` into `main`. Only the owner merges it, with **Create a
    merge commit** (a ruleset on `main` allows nothing else: a squash or rebase would put a
    commit on `main` that `develop` lacks, and the branches would drift apart). Claude never

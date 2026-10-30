@@ -1,8 +1,8 @@
 name: Release
 
 # A merge into main (only develop's pull requests, which release-gate.yml checked) publishes
-# the release: the helper and proxy built here, the apworld and the player guides, under the tag
-# v<VERSION>. A version already released from this same commit is skipped (a re-run); one
+# the release: the helper and proxy built here, the apworld, the player guides and the sample
+# YAMLs, under the tag v<VERSION>. A version already released from this same commit is skipped (a re-run); one
 # released from another commit, or left as a draft, fails the job instead. The job runs in the
 # "release" environment, which waits for the owner's approval in GitHub before anything is built
 # or published.

@@ -163,9 +163,9 @@ running game, so on Windows only; the rest run anywhere given those folders.
 with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player
 guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
 `worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names), and
-the sample YAMLs from `samples/`, one per mode. It
-packs only git-tracked files and refuses missing, stale or mismatched DLLs and a mismatched
-`world_version` (its docstring): rebuild `native/` first. The packaged client has no build of
+the sample YAMLs from `samples/`, one per mode. It packs only git-tracked files and refuses
+missing, stale or mismatched DLLs, a mismatched `world_version`, and samples that are missing,
+untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
 its own, so it uses the helper in the game's folder. On GitHub,
 `.github/workflows/release.yml` builds the release and publishes it once the owner approves
 (`docs/DEVELOPING.md`, "Branches and releases").

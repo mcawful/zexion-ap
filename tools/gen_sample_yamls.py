@@ -8,9 +8,9 @@ They go into samples/ as zexion-<preset>.yaml (zexion-easy.yaml, zexion-standard
 zexion-ohko.yaml, zexion-custom.yaml), which tools/build_apworld.py copies beside the apworld.
 It runs Archipelago's Options.generate_yaml_templates (what the Launcher's Generate Template
 Options runs) in .ap/Archipelago (tools/ap_checkout.py, with the world linked in), and keeps
-Zexion's preset files with LF line ends and no byte-order mark. Run it again after a change to
-the options, their descriptions, the presets or the version: worlds/zexion/test/test_samples.py
-fails while a sample differs from what this writes.
+Zexion's preset files with LF line ends and no byte-order mark, removing a sample whose preset
+is gone. Run it again after a change to the options, their descriptions, the presets or the
+version: worlds/zexion/test/test_samples.py fails while a sample differs from what this writes.
 """
 
 from __future__ import annotations
