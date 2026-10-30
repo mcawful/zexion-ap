@@ -205,7 +205,7 @@ line says.
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
   with a client connected (no notice, no look): 2026-10-27. With the client open (the
-  Launcher's, 1.0.0, `lab/ap/live47`), 2026-10-29: a dropped connection with the save loaded
+  Launcher's, 1.0.0, `lab/ap/live47` with its `ZexionClient_*.txt` logs), 2026-10-29: a dropped connection with the save loaded
   keeping the client's look, and a reconnect carrying it (no labels sent again), an item after it
   popping up once; the save left during a drop taken back, and the save loaded again then given
   the helper's look and NOT CONNECTED (the client letting the helper go: `leave_helper_tick`),

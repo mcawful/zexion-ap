@@ -142,8 +142,8 @@ void Game::watch_offline() {
         leave_offline_seed();
         offline_index_ = seed;
         if (seed >= 0) {  // the look itself: below
-            // Once a load: the player is told why received items and hints wait (with a
-            // client of another seed, its own notice said so: other_save).
+            // Once a load and after each client goes (configure): why received items and hints
+            // wait (with a client of another seed, its own notice said so: other_save).
             if (!offline_warned_ && !other) {
                 popups_.push_back(Popup{kAreaMapItem, kOfflineWarning, true});
                 offline_warned_ = true;
