@@ -66,6 +66,17 @@ class TestStartRooms(unittest.TestCase):
                 self.assertEqual(rooms, others)
 
 
+class TestTheCache(unittest.TestCase):
+    def test_seeds_that_drew_other_filler_share_their_inventory(self) -> None:
+        # No rule reads the filler (reach.UNREAD), so it is left out and the floods are shared.
+        mode, settings = data.MODES["standard"], preset("standard").settings
+        no_filler = [c for c in mode["pool"] if c not in reach.UNREAD]
+        a = reach.Seed.of(settings, mode["start_inventory"], no_filler + [46] * 27)
+        b = reach.Seed.of(settings, mode["start_inventory"], no_filler + [49, 50] * 13 + [47])
+        self.assertEqual(a, b)
+        self.assertFalse({code for code, _ in a.every_item} & reach.UNREAD)
+
+
 class TestSettingsChangeTheResults(unittest.TestCase):
     """Custom mode varies these settings (docs/re/randocells.md, "What each setting does in the
     game"); the results follow them."""

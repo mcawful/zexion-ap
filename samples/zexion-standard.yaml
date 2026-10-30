@@ -69,13 +69,13 @@ Zexion:
     # The game's own randomizer mode, with its items, starting items and settings.
     # Easy: "An easier mode. Start with Navcore and Power Cartridge. More energy tanks and
     # missiles to be found."
-    # Standard: "Standard difficulty. Start with a random weapon." Here it always starts with the
-    # Force Blaster, as the game's fresh Standard save did; Custom, whose Random Gun is on with
-    # Standard's base, draws one.
+    # Standard: "Standard difficulty. Start with a random weapon." Each seed draws it, as the
+    # game does: the Machine Gun, Force Blaster, Snake or Lance.
     # OHKO: "No energy tanks at all. Can teleport to two locations."
     # Custom: "Use custom rules.": every setting below, from custom_base's.
-    # Easy, Standard and OHKO are each the game's preset exactly, with one fresh save's items:
-    # only Starting Location (start_room) and Safety can be changed with them, as in the game.
+    # Easy, Standard and OHKO are each the game's preset exactly, their items drawn for each seed
+    # as the game draws them for a new game (Standard's weapon and every mode's filler): only
+    # Starting Location (start_room) and Safety can be changed with them, as in the game.
     easy: 0
     standard: 50
     ohko: 0
@@ -177,13 +177,17 @@ Zexion:
     os_install_disks: 0
 
   os_install_disks:
-    # OS Install Disks goal only: how many disks are placed. They replace filler items. Above
-    # 16 in Standard (26 in Easy) they also replace Area Maps, so there are fewer Intel Chips
-    # (or Area Maps), and above 25 in Standard, Energy Shields. In OHKO they replace filler
-    # items only. In Custom they replace them in the same order, the numbers set by your pool.
-    # Excluded locations can hold only filler items, of which Standard keeps 25
-    # minus the disks (Easy 30, OHKO 36): exclude more locations than that, and generation stops
-    # with an error saying so, unless the other players' filler makes up the difference. Where
+    # OS Install Disks goal only: how many disks are placed. They replace filler items: the
+    # Scrap first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips
+    # (or Area Maps), then Energy Shields. Each seed draws its filler as the game does, so the
+    # numbers vary: Easy and Standard draw 27 filler items, on average about 17 Scrap, 5 Area
+    # Maps and 5 Energy Shields; OHKO draws 32, 4 of them for the locations it leaves out. With
+    # the keys' places the 30 disks always fit. In Custom the numbers are set by your pool.
+    # Excluded locations can hold only filler items (Scrap and Area Maps), of which a seed keeps
+    # its drawn ones and the keys' four places, less the disks: 26 on average but drawn per seed,
+    # as few as 18, so many excluded locations can stop one seed and not another. Exclude more
+    # than the seed keeps, and generation stops with an error saying so, unless the other
+    # players' filler makes up the difference. Where
     # there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
     # and nine Scrap Metal, as the game makes filler when it runs short. The disks placed and any
     # in start_inventory can be 99 at most, the most the pause screen and the file select show.

@@ -3,7 +3,7 @@
 start_inventory copy of an item the pool holds too, and the game holds once, is refused
 (worlds/zexion/starting.py, ``pool_duplicates``)."""
 
-from .. import data, starting
+from .. import starting
 from ..items import NAMES, code_of
 from ..options import Goal
 from .bases import ZexionStartTestBase
@@ -26,8 +26,8 @@ class TestStartFromPool(ZexionStartTestBase):
     def test_the_clients_start_items_hold_them(self) -> None:
         start = {int(k): v for k, v in self.world.fill_slot_data()["start_items"].items()}
         self.assertEqual((start.get(SLIDE_MOD), start.get(SNAKE)), (1, 1))
-        # With the mode's own (Standard's Energy Tanks, Missile Containers and Force Blaster).
-        for code, n in data.MODES["standard"]["start_inventory"].items():
+        # With the mode's own (Standard's Energy Tanks, Missile Containers and drawn gun).
+        for code, n in self.world.start_inventory.items():
             self.assertEqual(start.get(code), n, NAMES[code])
 
     def test_the_reach_starts_with_them_and_counts_them_once(self) -> None:

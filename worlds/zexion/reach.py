@@ -5,8 +5,9 @@ graph ``data.py`` holds instead of on cells, under the seed's ``logic.Settings``
 and where it stops short of the game's, never past it: docs/re/locations.md, "The world works
 out what a seed reaches when it is generated" and "The region graph holds what the settings
 reach". ``data.MODES`` keeps each mode's results computed cell by cell, for the tests. Results
-are cached by settings, inventory and starts, so many Zexion players with one mode work each
-out once.
+are cached by settings, inventory and starts, the inventory without the filler no rule reads
+(``UNREAD``), so many Zexion players with one mode's settings work each out once, whatever
+filler each seed drew.
 
 Pure Python with no Archipelago imports.
 """
@@ -140,9 +141,16 @@ def reach(settings: logic.Settings, have: Inventory, starts: tuple[Cell, ...]) -
     return Reach(frozenset(reached), locations)
 
 
+# Item codes no rule reads (Scrap metal, energy and chunk, the Area Map, the Energy Shield: a
+# list's 50 is a derived code, not the shield; test_world.py, TestDiscOptionsChecked), left out
+# of a seed's inventories so seeds that drew different filler share the cache.
+UNREAD = frozenset({46, 47, 48, 49, 50})
+
+
 @dataclass(frozen=True)
 class Seed:
-    """A seed's settings, its starting items and every item it has."""
+    """A seed's settings, its starting items and every item it has, but the filler no rule
+    reads (``UNREAD``)."""
 
     settings: logic.Settings
     start_items: Inventory
@@ -158,7 +166,8 @@ class Seed:
         have = collected(start_inventory, guns_first)
         start = inventory(have)
         for item in pool:
-            logic.collect(have, item, guns_first)
+            if item not in UNREAD:
+                logic.collect(have, item, guns_first)
         return cls(settings, start, inventory(have))
 
     def every(self, *starts: Cell) -> Reach:
