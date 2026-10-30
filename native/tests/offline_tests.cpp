@@ -449,6 +449,28 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
+        // Warned and shown with no client; a client comes back, then goes again in the same load
+        // (a disconnect, say): warned again, as CLIENT CONNECTED. is each time one comes back.
+        g_messages = 0;
+        zap::Game game;
+        dress_offline(game, s);
+        frames(game, 200);
+        check(g_messages == 1 && g_text.find("NOT") != std::string::npos,
+              "the not-connected warning shown", g_text);
+        configure(game);
+        check(game.client_back(), "CLIENT CONNECTED queued");
+        frames(game, 200);
+        check(g_messages == 2 && g_text.find("NOT") == std::string::npos,
+              "CLIENT CONNECTED shown", g_text);
+        game.client_gone(nullptr);
+        frames(game, 200);
+        check(g_messages == 3 && g_text.find("NOT") != std::string::npos,
+              "warned again when it goes", g_text);
+        frames(game, 200);
+        check(g_messages == 3, "once for that loss");
+        game.put_back_all(nullptr);
+    }
+    {
         // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
         zap::Game game;
         dress_offline(game, s);

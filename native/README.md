@@ -568,9 +568,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
   client would: the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
   received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
-  (the file's, plus each own disk the map shows collected) and the scanner's line, with one
-  notice a load that the client is not connected (or, for `other_save`, is for another seed;
-  only for a save of a seed it has a file for, so a plain randomizer game gets no notice).
+  (the file's, plus each own disk the map shows collected) and the scanner's line, with a
+  notice that the client is not connected (or, for `other_save`, is for another seed; only for a
+  save of a seed it has a file for, so a plain randomizer game gets no notice): once a load, and
+  again each time a client that configured during the load goes away (stand-in tests only).
   While the save stays dressed, each look sets that look again where it was changed: a client of
   another seed, attaching with the save in play, takes its own look back, which is not this
   save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
@@ -873,9 +874,10 @@ unload.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, a notice withdrawn with its save, a seed put with a client, the AP saves' slots,
-  and the file select's logo through the frame call: painted, whitened through a new game's
-  fade, and cleared by `restore_files`).
+  undressed, a notice withdrawn with its save, the not-connected warning again after a client
+  came and went, a seed put with a client, the AP saves' slots, and the file select's logo
+  through the frame call: painted, whitened through a new game's fade, and cleared by
+  `restore_files`).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without

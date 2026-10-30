@@ -221,10 +221,13 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     mission_.set_image(image);
     // A client's config: the offline look put back first, with the addresses it was set with,
-    // and the last client's notices withdrawn (the new one says other_save again).
+    // and the last client's notices withdrawn (the new one says other_save again). The
+    // not-connected warning is given again if this client goes away during the load, as CLIENT
+    // CONNECTED. is each time one comes back.
     if (configured_ && active) {
         leave_offline();
         drop_client_notices();
+        offline_warned_ = false;
     }
     at_ = found;
     gl_ = load_gl();
