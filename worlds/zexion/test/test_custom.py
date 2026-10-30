@@ -23,7 +23,7 @@ from ..items import NAMES
 from ..locations import LOCATION_ID_BASE
 from ..options import CustomItems
 from .bases import FLAGGED, ZexionTestBase
-from .test_world import RefusalTestCase, fake_world, pool_names
+from .test_world import STANDARD_GUNS, RefusalTestCase, drawing, drawn_gun, fake_world, pool_names
 
 FILLER = {46, 47, 48, 49, 50}
 ENTRY = {name: i for i, (name, _) in enumerate(custom.MENU_ITEMS)}
@@ -80,6 +80,55 @@ class TestThePresetsPools(unittest.TestCase):
         self.assertEqual(supplies(items)[:4], (8, 0, 12, 72))
         save = data.MODES["ohko"]["pool"]
         self.assertEqual(supplies(save)[:4], (9, 0, 12, 62))
+
+
+class TestThePresetsDraw(unittest.TestCase):
+    """A preset seed's items are drawn from its menu as Custom's are (world.py, generate_early),
+    as the game draws them for each new game: Standard's starting gun by Random Gun, and every
+    mode's filler. Where nothing is drawn, the items are the fresh save's."""
+
+    def worlds(self, mode: str):
+        for seed in range(60):
+            world = fake_world(mode=mode)
+            world.random = random.Random(seed)
+            world.generate_early()
+            yield world
+
+    def test_standard_draws_each_of_its_four_guns_and_only_those(self) -> None:
+        # The Machine Gun start-only and the Force Blaster, Snake and Lance pool-only in
+        # Standard's menu: one of the four is started, the rest pooled. The Arc Plasma, set both
+        # ways, is no draw of Random Gun's and always pooled.
+        guns = {custom.MENU_CODES[i] for i in custom.GUNS}
+        mode = data.MODES["standard"]
+        save = Counter(mode["start_inventory"]) + Counter(
+            c for c in mode["pool"] if c not in FILLER
+        )
+        drawn = Counter()
+        for world in self.worlds("standard"):
+            start = world.start_inventory
+            (gun,) = guns & set(start)
+            drawn[gun] += 1
+            self.assertEqual(start, {ENERGY_TANK: 3, MISSILE_CONTAINER: 3, gun: 1})
+            pool = Counter(c for c in world.pool_codes if c not in FILLER)
+            self.assertEqual(Counter(start) + pool, save, "the fresh save's items but filler")
+        self.assertEqual({NAMES[c] for c in drawn}, set(STANDARD_GUNS))
+
+    def test_easy_and_ohko_start_with_their_fresh_saves_items(self) -> None:
+        # Nothing in their starting items is drawn. Easy's pool is its save's but filler; OHKO's
+        # holds the save's items but its supplies, which the save's placement compressed once
+        # (TestThePresetsPools).
+        for name in ("easy", "ohko"):
+            mode = data.MODES[name]
+            supply = {MISSILE_BOX, BOMB_BOX, MEGA_BOMB, MISSILE_CONTAINER}
+            skip = FILLER | (supply if name == "ohko" else set())
+            save = Counter(c for c in mode["pool"] if c not in skip)
+            fillers = set()
+            for world in self.worlds(name):
+                with self.subTest(name):
+                    self.assertEqual(world.start_inventory, mode["start_inventory"])
+                    self.assertEqual(Counter(c for c in world.pool_codes if c not in skip), save)
+                fillers.add(tuple(sorted(c for c in world.pool_codes if c in FILLER)))
+            self.assertGreater(len(fillers), 1, "the filler is drawn per seed")
 
 
 class TestTheGeneratedSeeds(unittest.TestCase):
@@ -512,7 +561,7 @@ class TestRandomStart(unittest.TestCase):
 
     def test_the_world_draws_with_its_safety_and_its_own_score(self) -> None:
         # The seed's Safety, and the score of the mode's own starting items (Standard: 3 Energy
-        # Tanks, 3 missiles and the Force Blaster), not start_inventory's.
+        # Tanks, 3 missiles and its drawn gun), not start_inventory's.
         world = fake_world(
             start_room="random_start", safety="early", start_inventory={"Energy Tank": 30}
         )
@@ -799,25 +848,40 @@ class CustomDoubleTeleportRandomStart(ZexionTestBase):
 
 
 class EveryStartFills(ZexionTestBase):
-    """Every room the world takes for Standard and OHKO fills and can be beaten, but those
-    from which the starting items reach fewer than 3 locations (in OHKO, with the second
-    teleport target drawn, counted as the logic counts it): Archipelago's fill can fail there,
-    as the owner accepted (docs/re/locations.md, "Which start rooms the world offers"), so a
-    test of them would fail at random."""
+    """Every room the world takes for Standard, with each gun it draws, and for OHKO fills and
+    can be beaten, but those from which the starting items reach fewer than 3 locations (in
+    OHKO, with the second teleport target drawn, counted as the logic counts it): Archipelago's
+    fill can fail there, as the owner accepted (docs/re/locations.md, "Which start rooms the
+    world offers"), so a test of them would fail at random."""
 
     auto_construct = False
     run_default_tests = False
 
+    def seed_drawing(self, gun: str) -> int:
+        """A generation seed whose Standard world draws ``gun``: the draw comes first in
+        generate_early, so the start room does not change it."""
+        for seed in range(1, 200):
+            self.options = {"mode": "standard"}
+            self.world_setup(seed)
+            if drawn_gun(self.world) == gun:
+                return seed
+        raise AssertionError(f"no seed drew the {gun}")
+
     def test_every_room(self) -> None:
-        for mode in ("standard", "ohko"):
-            probe = fake_world(mode=mode)
-            probe.generate_early()
+        cases = [("standard", gun) for gun in STANDARD_GUNS] + [("ohko", None)]
+        for mode, gun in cases:
+            probe = drawing(gun) if gun else fake_world(mode=mode)
+            if not gun:
+                probe.generate_early()
+            seed = self.seed_drawing(gun) if gun else None
             rooms = [r for r in data.START_ROOMS if probe.passes(r)]
             for room in rooms:
-                with self.subTest(mode=mode, room=room["index"]):
+                with self.subTest(mode=mode, gun=gun, room=room["index"]):
                     self.options = {"mode": mode, "start_room": room["index"] + 1}
-                    self.world_setup()
+                    self.world_setup(seed)
                     w = self.world
+                    if gun:
+                        self.assertEqual(drawn_gun(w), gun)
                     if len(w.seed_reach.sphere0_from(w.start, w.second).locations) < 3:
                         continue
                     distribute_items_restrictive(self.multiworld)

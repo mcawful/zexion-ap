@@ -2,6 +2,7 @@ import random
 import types
 import unittest
 from argparse import Namespace
+from collections import Counter
 from typing import Any
 from unittest import mock
 
@@ -12,8 +13,11 @@ from worlds.AutoWorld import call_all
 
 from .. import data, reach, rules
 from ..items import (
+    AREA_MAP,
+    DATA_DISC,
     DRAWN_AS,
     GAME,
+    INTEL_CHIP,
     NAMES,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
@@ -24,10 +28,11 @@ from ..items import (
 )
 from ..locations import LOCATION_ID_BASE, location_name
 from ..logic import FIRST_SPECIAL
-from ..options import AUTOMATIC, ROOM_NAMES, Goal, StartRoom
+from ..options import AUTOMATIC, AUTOMATIC_ROOM, ROOM_NAMES, Goal, StartRoom
 from ..world import (
     CORE_REGION,
     DISC_REPLACES,
+    FILLER_ORDER,
     FOREIGN,
     FOREIGN_PROGRESSION,
     HOME,
@@ -51,6 +56,39 @@ def fake_world(**options: Any) -> ZexionWorld:
     world.player = 1
     world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
     return world
+
+
+# Standard's Random Gun draws its starting gun among these four (the Machine Gun start-only and
+# the other three pool-only in its menu; the Arc Plasma, set both ways, always goes in the pool),
+# with the start rooms each gun's starting items take (docs/re/locations.md, "Which start rooms
+# the world offers").
+STANDARD_GUNS = {
+    "Progressive Machine Gun": 17,
+    "Progressive Force Blaster": 19,  # the fresh save's draw (data.MODES)
+    "Progressive Snake": 17,
+    "Progressive Lance": 20,
+}
+
+
+def drawn_gun(world: ZexionWorld) -> str:
+    """The gun a Standard world's starting items hold."""
+    (gun,) = [NAMES[c] for c in world.start_inventory if NAMES[c] in STANDARD_GUNS]
+    return gun
+
+
+def drawing(gun: str, **options: Any) -> ZexionWorld:
+    """A Standard fake_world whose Random Gun drew ``gun``, generate_early run (a draw whose
+    starting items do not suit a chosen start room is refused, and skipped here)."""
+    for seed in range(100):
+        world = fake_world(**options)
+        world.random = random.Random(seed)
+        try:
+            world.generate_early()
+        except OptionError:
+            continue
+        if drawn_gun(world) == gun:
+            return world
+    raise AssertionError(f"no seed drew the {gun}")
 
 
 class RefusalTestCase(unittest.TestCase):
@@ -259,20 +297,24 @@ class TestStartRooms(unittest.TestCase):
 
     def test_any_room_the_starting_items_reach_from_is_taken(self) -> None:
         # One location is enough, as in the game (every item reaches the core from each room).
-        world = fake_world()
-        world.generate_early()
-        rooms = [r for r in data.START_ROOMS if world.passes(r)]
-        self.assertEqual(len(rooms), 19)
-        sphere0 = data.MODES["standard"]["sphere0_indices"]
-        self.assertEqual([r["index"] for r in rooms], [i for i, s in enumerate(sphere0) if s])
-        one = [r for r in rooms if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
-        self.assertTrue(one)
-        for room in rooms:
-            chosen = fake_world(start_room=room["index"] + 1)
-            chosen.generate_early()
-            self.assertEqual(chosen.start, room)
-            every = chosen.seed_reach.every(room["cell"])
-            self.assertEqual(chosen.kept_locations, set(every.locations))
+        # Which rooms those are follows the gun Standard drew.
+        for gun, count in STANDARD_GUNS.items():
+            world = drawing(gun)
+            rooms = [r for r in data.START_ROOMS if world.passes(r)]
+            with self.subTest(gun):
+                self.assertEqual(len(rooms), count)
+                one = [r for r in rooms if len(world.seed_reach.sphere0(r["cell"]).locations) == 1]
+                self.assertTrue(one)
+                self.assertIn(data.START_ROOMS[AUTOMATIC_ROOM], rooms, "Landing Pod")
+            if gun == "Progressive Force Blaster":  # the fresh save's draw, which data.MODES holds
+                sphere0 = data.MODES["standard"]["sphere0_indices"]
+                indices = [i for i, s in enumerate(sphere0) if s]
+                self.assertEqual([r["index"] for r in rooms], indices)
+            for room in rooms:
+                chosen = drawing(gun, start_room=room["index"] + 1)
+                self.assertEqual(chosen.start, room)
+                every = chosen.seed_reach.every(room["cell"])
+                self.assertEqual(chosen.kept_locations, set(every.locations))
 
     def test_settings_that_do_not_reach_the_cores_door_are_refused(self) -> None:
         door = data.CELL_REGION[data.CORE["door"]]
@@ -450,7 +492,9 @@ class TestSlotDataForTheClient(ZexionTestBase):
     def test_start_items_amounts_and_options_are_the_modes(self) -> None:
         slot = self.world.fill_slot_data()
         start = {int(k): v for k, v in slot["start_items"].items()}
-        self.assertEqual(start, data.MODES["standard"]["start_inventory"])
+        self.assertEqual(start, self.world.start_inventory)
+        gun = code_of[drawn_gun(self.world)]
+        self.assertEqual(start, {0: 3, 1: 3, gun: 1})  # Energy Tanks, Missile Containers, a gun
         self.assertEqual(slot["amounts"], [3, 17, 3, 122, 0, 12])
         options = {int(t): v for t, v in slot["options"].items()}
         # Guns First, X Crystals, X Blocks, Abridged Finale, Double Teleport, Secret Shuffle,
@@ -520,7 +564,7 @@ class TestAreaMapHints(ZexionTestBase):
     def test_area_maps_become_intel_chips(self) -> None:
         pool = pool_names(self)
         self.assertNotIn("Area Map", pool)
-        self.assertEqual(pool.count("Intel Chip"), 9)
+        self.assertEqual(pool.count("Intel Chip"), self.world.pool_codes.count(code_of["Area Map"]))
         chip = self.world.create_item("Intel Chip")
         self.assertEqual(chip.code, 3392510_000 + 101)
         self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
@@ -568,15 +612,27 @@ class TestAreaMapHintsOff(ZexionTestBase):
     def test_area_maps_stay_area_maps(self) -> None:
         pool = pool_names(self)
         self.assertNotIn("Intel Chip", pool)
-        self.assertEqual(pool.count("Area Map"), 9)
+        self.assertEqual(pool.count("Area Map"), self.world.pool_codes.count(code_of["Area Map"]))
         self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
 
 
+def filler_left(world: ZexionWorld, placed: int) -> int:
+    """The filler items (Scrap, Area Maps as Intel Chips) a Standard world with this many disks
+    keeps: its pool's drawn Scrap and Area Maps and the keys' four places as Scrap Metal, less
+    one for each disk (DISC_REPLACES). Standard keeps all 154 locations."""
+    return max(0, sum(world.pool_codes.count(c) for c in FILLER_ORDER) + 4 - placed)
+
+
 class TestExcludedLocationsNeedFiller(ZexionTestBase):
-    """Standard with 16 disks keeps 9 filler items, the Intel Chips: a tenth excluded location
-    would stop AP's fill, so the world refuses it first, naming the options."""
+    """Standard with 16 disks keeps a few filler items (the pool's are drawn per seed): one more
+    excluded location than those would stop AP's fill, so the world refuses it first, naming the
+    options."""
 
     options = disks(placed=16, required=12)
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.filler = filler_left(self.world, 16)
 
     def exclude(self, n: int) -> list:
         # Excluded as the generator excludes one (worlds.generic.Rules.exclusion_rules).
@@ -587,35 +643,37 @@ class TestExcludedLocationsNeedFiller(ZexionTestBase):
         return out
 
     def test_as_many_excluded_as_filler_left_fill_with_it(self) -> None:
-        excluded = self.exclude(9)
+        excluded = self.exclude(self.filler)
         ZexionWorld.stage_pre_fill(self.multiworld)
         distribute_items_restrictive(self.multiworld)
         kinds = {location.item.classification for location in excluded}
         self.assertEqual(kinds, {ItemClassification.filler})
 
     def test_one_more_is_refused_with_the_options_named(self) -> None:
-        self.exclude(10)
+        n = self.filler + 1
+        self.exclude(n)
         with self.assertRaises(OptionError) as caught:
             ZexionWorld.stage_pre_fill(self.multiworld)
         message = str(caught.exception)
-        self.assertIn("10 excluded locations, but only 9 filler items", message)
+        self.assertIn(f"{n} excluded locations, but only {self.filler} filler items", message)
         self.assertIn("OS Install Disks (16", message)
         self.assertIn("exclude_locations", message)
 
     def test_another_players_filler_makes_up_the_difference(self) -> None:
-        self.exclude(10)
+        self.exclude(self.filler + 1)
         other = Item("Something", ItemClassification.filler, 1, self.player + 1)
         self.multiworld.itempool.append(other)
         ZexionWorld.stage_pre_fill(self.multiworld)
 
 
 class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
-    """Two Zexion players with 9 filler items each: Alpha excludes 9 locations, as many as
-    their filler, and Beta 10. The multiworld is one short, and the error names Beta."""
+    """Two Zexion players: Alpha excludes as many locations as their filler items, and Beta one
+    more than theirs. The multiworld is one short, and the error names Beta."""
 
     def test_the_player_over_is_named_not_the_one_at_their_filler(self) -> None:
         multiworld = two_zexion_players(disks(placed=16, required=12))
-        for player, n in ((1, 9), (2, 10)):
+        filler = {p: filler_left(multiworld.worlds[p], 16) for p in (1, 2)}
+        for player, n in ((1, filler[1]), (2, filler[2] + 1)):
             kept = sorted(multiworld.worlds[player].kept_locations)[:n]
             for i in kept:
                 location = multiworld.get_location(location_name(i), player)
@@ -623,7 +681,8 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
         with self.assertRaises(OptionError) as caught:
             ZexionWorld.stage_pre_fill(multiworld)
         message = str(caught.exception)
-        self.assertIn("Zexion (Beta): 10 excluded locations, but only 9 filler items", message)
+        want = f"Zexion (Beta): {filler[2] + 1} excluded locations, but only {filler[2]} filler"
+        self.assertIn(want, message)
 
 
 class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
@@ -656,6 +715,24 @@ def own_locations(test: ZexionTestBase, name: str) -> list[int]:
     return sorted(loc.address - LOCATION_ID_BASE for loc in found)
 
 
+def assert_disks_took_in_order(test: ZexionTestBase, placed: int) -> None:
+    """The disks, and before them the locations left out, took the places of DISC_REPLACES in
+    its order from the seed's drawn pool, the keys' four places as Scrap Metal: each kind used
+    up before the next is touched. An Intel Chip counts as the Area Map it replaced."""
+    drawn = Counter(test.world.pool_codes)
+    drawn[SCRAP_METAL] += 4
+    pool = Counter(code_of[name] for name in pool_names(test))
+    pool[AREA_MAP] += pool.pop(INTEL_CHIP, 0)
+    taken = [drawn[c] - pool[c] for c in DISC_REPLACES]
+    left_out = len(test.world.location_cells) - len(test.world.kept_locations)
+    test.assertEqual(pool[DATA_DISC], placed)
+    test.assertEqual(sum(taken), placed + left_out)
+    for i, n in enumerate(taken):
+        test.assertGreaterEqual(n, 0)
+        if n:
+            test.assertEqual([pool[c] for c in DISC_REPLACES[:i]], [0] * i, "earlier kinds first")
+
+
 class TestDiscHuntStandard(ZexionTestBase):
     options = disks()
 
@@ -667,13 +744,8 @@ class TestDiscHuntStandard(ZexionTestBase):
         self.assertEqual(len(pool), len(data.LOCATIONS))
 
     def test_discs_take_scrap_then_area_maps(self) -> None:
-        # Standard: 12 Scrap and the keys' 4 places, then 4 of its 9 Area Maps.
-        pool = pool_names(self)
-        for name in ("Scrap Metal", "Scrap Energy", "Scrap Chunk"):
-            self.assertNotIn(name, pool)
-        self.assertEqual(pool.count("Intel Chip"), 9 - 4, "Area Maps, as hints")
-        self.assertEqual(pool.count("Energy Shield"), 6)
-        self.assertEqual(pool.count("Missile Container"), 62, "supplies untouched")
+        assert_disks_took_in_order(self, 20)
+        self.assertEqual(pool_names(self).count("Missile Container"), 62, "supplies untouched")
 
     def test_no_core_event_and_the_discs_win(self) -> None:
         self.assertNotIn("Zexion", [loc.name for loc in self.multiworld.get_locations(self.player)])
@@ -735,11 +807,12 @@ class TestDiscHuntAwayFromThePod(ZexionTestBase):
 class TestDiscHuntStandardFull(ZexionTestBase):
     options = disks(placed=30, required=30)  # the options' most
 
-    def test_every_area_map_and_most_energy_shields_give_way(self) -> None:
-        pool = pool_names(self)
-        self.assertEqual(pool.count("OS Install Disk"), 30)
-        self.assertNotIn("Intel Chip", pool)
-        self.assertEqual(pool.count("Energy Shield"), 1)
+    def test_all_but_one_of_the_scrap_maps_and_shields_give_way(self) -> None:
+        # 27 filler drawn and the keys' 4 places: 31 for 30 disks.
+        assert_disks_took_in_order(self, 30)
+        left = Counter(pool_names(self))
+        names = ("Scrap Metal", "Scrap Energy", "Scrap Chunk", "Intel Chip", "Energy Shield")
+        self.assertEqual(sum(left[name] for name in names), 1)
 
 
 class TestDiscHuntEasyFull(TestDiscHuntStandardFull):
@@ -749,21 +822,18 @@ class TestDiscHuntEasyFull(TestDiscHuntStandardFull):
 class TestDiscHuntOHKO(ZexionTestBase):
     options = disks("ohko", 30, 30)
 
-    def test_ohko_fits_30_in_scrap_after_its_left_out_locations(self) -> None:
-        pool = pool_names(self)
-        self.assertEqual(pool.count("OS Install Disk"), 30)
-        self.assertEqual(pool.count("Intel Chip"), 5, "no hint given up")
-        self.assertEqual(len(pool), len(self.world.kept_locations))
+    def test_ohko_fits_30_after_its_left_out_locations(self) -> None:
+        assert_disks_took_in_order(self, 30)
+        self.assertEqual(len(pool_names(self)), len(self.world.kept_locations))
 
 
 class TestDiscHuntEasy(ZexionTestBase):
     options = disks("easy", 10, 10)
 
     def test_ten_discs_take_scrap_only(self) -> None:
+        assert_disks_took_in_order(self, 10)
         pool = pool_names(self)
-        self.assertEqual(pool.count("OS Install Disk"), 10)
-        self.assertEqual(pool.count("Intel Chip"), 4)
-        self.assertEqual(pool.count("Scrap Metal"), 20 + 4 - 10)
+        self.assertEqual(pool.count("Intel Chip"), self.world.pool_codes.count(AREA_MAP))
 
 
 class TestDiscOptionsChecked(unittest.TestCase):

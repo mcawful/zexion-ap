@@ -126,17 +126,15 @@ class ZexionWorld(World):
         self.menu = self.read_menu()
         self.logic_settings = self.menu.logic_settings()
         self.location_cells = reach.seed_locations(self.logic_settings)
-        if self.mode_name == "custom":
-            start, pool = custom.resolve(self.menu, self.random)
-            self.start_inventory = custom.starting_items(self.menu, start)
-            try:
-                self.pool_codes = custom.pool_items(self.menu, pool, self.random)
-            except custom.PoolError as error:
-                raise OptionError(f"Zexion ({self.player_name}): {error}") from error
-        else:
-            # A preset is one fresh save's items, as the game generated them.
-            self.start_inventory = dict(data.MODES[self.mode_name]["start_inventory"])
-            self.pool_codes = list(data.MODES[self.mode_name]["pool"])
+        # A preset's items are drawn from its menu as Custom's are, as the game draws them for
+        # each new game: Standard's starting gun (Random Gun), the coin flips, the boxes and the
+        # filler (docs/re/locations.md, "Where the world departs from the game").
+        start, pool = custom.resolve(self.menu, self.random)
+        self.start_inventory = custom.starting_items(self.menu, start)
+        try:
+            self.pool_codes = custom.pool_items(self.menu, pool, self.random)
+        except custom.PoolError as error:
+            raise OptionError(f"Zexion ({self.player_name}): {error}") from error
         self.check_start_inventory()
         self.seed_reach = self.reach_of_items()
         self.choose_starts()
@@ -558,8 +556,9 @@ class ZexionWorld(World):
         if self.mode_name == "custom":
             amounts = ", ".join(str(n) for n in self.menu.amounts)
             spoiler_handle.write(f"Amounts:                         {amounts}\n")
-            started = ", ".join(f"{NAMES[c]} x{n}" for c, n in self.start_inventory.items())
-            spoiler_handle.write(f"Starting items:                  {started}\n")
+        # Drawn per seed in every mode (Standard's starting gun among them).
+        started = ", ".join(f"{NAMES[c]} x{n}" for c, n in self.start_inventory.items())
+        spoiler_handle.write(f"Starting items:                  {started}\n")
         spoiler_handle.write(f"Start room:                      {cell_name(self.start['cell'])}\n")
         if self.second is not None:
             target = cell_name(self.second["cell"])

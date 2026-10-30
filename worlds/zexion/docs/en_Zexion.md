@@ -38,7 +38,7 @@ Set with the Goal option.
     pause menu's teleport goes to your start room (or second room, with Double Teleport), not
     the Landing Pod, unless you started there.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
-    Energy Shields (in Standard, past 25 disks; in Custom, where your pool holds them).
+    Energy Shields (how many of each a seed has is drawn per seed; in Custom, set by your pool).
     Excluded locations can hold only filler, so with many disks, excluding many locations can
     stop generation, as above (the OS Install Disks option gives the numbers). Where filler
     runs short, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, in any
@@ -47,11 +47,11 @@ Set with the Goal option.
 ## Which modes are there?
 
 The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings, or Custom. The three are the game's presets as one fresh save of
-each had them, so Standard always starts with the Force Blaster, where the game draws a random
-weapon. In Custom, Random Gun draws one as the game does (it is on when Custom starts from
-Standard, the default). OHKO has no Energy Tanks and gives you a second room to teleport to;
-the 4 locations it can't reach are left out.
+starting items and settings, or Custom. Each seed draws its items as the game does for a new
+game: Standard starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance,
+with the other three in the item pool), and every mode draws its filler (Scrap, Area Maps,
+Energy Shields). OHKO has no Energy Tanks and gives you a second room to teleport to; the 4
+locations it can't reach are left out.
 
 With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
 names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
@@ -92,16 +92,21 @@ where your settings rule Landing Pod out, a random start (as `random_start` belo
 generator's log warns that it did so). Any room works from which your starting items reach at
 least one location (and from which you can reach Zexion's core with the core goal, or the
 Landing Pod with the OS Install Disks goal); another stops generation with an error. With
-Easy's items that is 17 of the rooms, with Standard's 19 (with either goal);
-with a second room to teleport to, all 34. From a room where your starting items reach only a
-few locations, generation sometimes fails: generate again, or pick another room. With Double
+either goal, Easy's items take 17 of the rooms, and OHKO's, with a second room to teleport to,
+all 34. Standard's take 17 to 20, by the weapon the seed draws: 17 with the Machine Gun or the
+Snake, 19 with the Force Blaster (two more) and 20 with the Lance (three more), Landing Pod
+among them each time. A room only some of the weapons suit stops generation when the seed draws
+another: generate again, or pick one of the 17 that suit all four. From a room where your
+starting items reach only a few locations, generation sometimes fails: generate again, or pick
+another room. With Double
 Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
 Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
 only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks
 (doubled with the Magnus Armor), Missile Containers and Mega Bombs one each, 10 per box, and one
 per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or `random`) picks a
 room as the game's Random Start does. The spoiler log names the start room (and a second room to
-teleport to, with Double Teleport, as in OHKO).
+teleport to, with Double Teleport, as in OHKO) and the starting items, Standard's weapon among
+them.
 
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
