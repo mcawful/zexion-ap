@@ -379,15 +379,15 @@ def _make_start_room() -> type[Choice]:
     attrs["display_name"] = "Starting Location"
     attrs["__module__"] = __name__  # so the class pickles: it is found as options.StartRoom
     attrs["__qualname__"] = "StartRoom"
-    attrs["__doc__"] = (
-        "Any mode. random_start: Start in a random location: the game's own rule, a room from "
-        "which your starting items reach locations, and no room the game flags unless you "
-        "start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together ("
-        "'random' is random_start too). Or one of the game's 34 rooms, by its name in the "
-        "menu: a room from which your starting items reach no location, or every item does "
-        "not reach Zexion's core with the core goal, is refused. From a room where they reach "
-        "only one, generation can fail now and then: try again or pick another. automatic (the "
-        "default): landing_pod, or a random start where that room is refused."
+    attrs["__doc__"] = (  # one line each, as a docstring is (the YAML templates' comments)
+        "Any mode. random_start: Start in a random location: the game's own rule, a room from\n"
+        "which your starting items reach locations, and no room the game flags unless you\n"
+        "start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together\n"
+        "('random' is random_start too). Or one of the game's 34 rooms, by its name in the\n"
+        "menu: a room from which your starting items reach no location, or every item does\n"
+        "not reach Zexion's core with the core goal, is refused. From a room where they reach\n"
+        "only one, generation can fail now and then: try again or pick another. automatic\n"
+        "(the default): landing_pod, or a random start where that room is refused."
     )
 
     @classmethod

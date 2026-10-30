@@ -11,7 +11,8 @@ as a test.
 - The latest release of this world, from the
   [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld`,
   `zexion_ap.dll` and `version.dll`, all three from the same release. Each release also has
-  this guide (`zexion-setup-guide.md`) and the game page (`zexion-game-page.md`).
+  this guide (`zexion-setup-guide.md`), the game page (`zexion-game-page.md`) and a sample YAML
+  for each mode.
 
 The two files `zexion_ap.dll` and `version.dll` are **the mod**. It is required: without it,
 the game can't start a seed.
@@ -30,10 +31,15 @@ SEED until the client connects, and again once you close the client.
 
 ## Make your YAML
 
-1. In the Launcher, choose **Generate Template Options**. It writes `Zexion.yaml` into
-   `Players/Templates` in your Archipelago folder.
-2. Copy it into `Players`, then set your `name` (your player name) and the options (see the
-   game page, `zexion-game-page.md`).
+1. Take the release's sample YAML for your mode: `zexion-easy.yaml`, `zexion-standard.yaml`,
+   `zexion-ohko.yaml` or `zexion-custom.yaml`. Each lists the options its mode can change with
+   what they do, set to their defaults, so it works as it is. Easy, Standard and OHKO leave out
+   Custom mode's settings, which they can't change; Custom's start as Standard's. The
+   Launcher's **Generate Template Options** writes similar files, with Custom mode's settings
+   in each, into `Players/Templates/Presets` in your Archipelago folder (`Zexion - Easy.yaml`
+   and so on), and a plain `Zexion.yaml` into `Players/Templates`.
+2. Copy it into `Players`, then set your `name` (your player name) and any options you want to
+   change (see the game page, `zexion-game-page.md`).
 
 ## Generate and host
 

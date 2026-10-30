@@ -147,6 +147,7 @@ game or save folders.
 | `make_pattern.py EXE RVA` | candidate byte patterns | no |
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
+| `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
 | `build_apworld.py` | a release into `dist/` | no |
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
 
@@ -161,9 +162,10 @@ running game, so on Windows only; the rest run anywhere given those folders.
 `tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests,
 with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player
 guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
-`worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names). It
-packs only git-tracked files and refuses missing, stale or mismatched DLLs and a mismatched
-`world_version` (its docstring): rebuild `native/` first. The packaged client has no build of
+`worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names), and
+the sample YAMLs from `samples/`, one per mode. It packs only git-tracked files and refuses
+missing, stale or mismatched DLLs, a mismatched `world_version`, and samples that are missing,
+untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
 its own, so it uses the helper in the game's folder. On GitHub,
 `.github/workflows/release.yml` builds the release and publishes it once the owner approves
 (`docs/DEVELOPING.md`, "Branches and releases").
@@ -173,7 +175,8 @@ its own, so it uses the helper in the game's folder. On GitHub,
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
   `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
   (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last release and the version on `main`. The
-  helper shows it on the title screen.
+  helper shows it on the title screen. The sample YAMLs name it too: run
+  `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py` check).
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout
@@ -217,6 +220,11 @@ its own, so it uses the helper in the game's folder. On GitHub,
 
 - `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`:
   [`native/README.md`](native/README.md).
+- `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
+  world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
+  Custom mode's own options, written by `tools/gen_sample_yamls.py`;
+  `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
+  options, their descriptions or the version: run the tool again).
 - `tools/`: RE and save tooling, and the release builder. `tools/protected.py` defines the
   protected folders (for the tools and the write guard) and `append_log`.
 - `docs/re/`: the reverse-engineering record.

@@ -71,6 +71,30 @@ def test_the_release_holds_the_apworld_the_dlls_and_the_guides(tmp_path: Path, d
         assert (out / name).read_bytes() == (docs / source).read_bytes()
     # The setup guide sends the player to the game page by its shipped name.
     assert "zexion-game-page.md" in (docs / "setup_en.md").read_text(encoding="utf-8")
+    # And the sample YAMLs, one per mode, as they are.
+    modes = ("easy", "standard", "ohko", "custom")
+    assert sorted(p.name for p in out.glob("*.yaml")) == sorted(f"zexion-{m}.yaml" for m in modes)
+    for sample in bap.SAMPLES.glob("*.yaml"):
+        assert (out / sample.name).read_bytes() == sample.read_bytes()
+
+
+def test_a_sample_for_another_version_is_refused(tmp_path: Path, monkeypatch, dlls) -> None:
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    sample = samples / "zexion-easy.yaml"
+    sample.write_text("requires:\n  game:\n    Zexion: 0.9.0 # made before the raise\n")
+    monkeypatch.setattr(bap, "SAMPLES", samples)
+    real = bap.tracked  # outside the repo, the stand-in sample is taken as tracked
+    stub = lambda *folders: {sample.resolve()} if folders == (samples,) else real(*folders)  # noqa: E731
+    monkeypatch.setattr(bap, "tracked", stub)
+    refused(tmp_path, r"zexion-easy\.yaml does not require Zexion")
+
+
+def test_an_untracked_sample_stops_the_build(tmp_path: Path, monkeypatch, dlls) -> None:
+    real = bap.tracked
+    left_out = (bap.SAMPLES / "zexion-ohko.yaml").resolve()
+    monkeypatch.setattr(bap, "tracked", lambda *folders: real(*folders) - {left_out})
+    refused(tmp_path, r"not tracked by git, so not released: samples.zexion-ohko\.yaml")
 
 
 def test_a_world_version_that_is_not_the_clients_is_refused(

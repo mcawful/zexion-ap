@@ -352,7 +352,8 @@ refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
 
 To release:
 
-1. On a topic branch, raise the version in all three places; merge it into `develop`.
+1. On a topic branch, raise the version in all three places and run
+   `tools/gen_sample_yamls.py`; merge it into `develop`.
 2. Open a pull request from `develop` into `main`. Only the owner merges it, with **Create a
    merge commit** (a ruleset on `main` allows nothing else: a squash or rebase would put a
    commit on `main` that `develop` lacks, and the branches would drift apart). Claude never
@@ -372,8 +373,11 @@ To release:
    `main` again.
 
 `tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
-`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player guides as
-`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`). It packs only
+`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, the player guides as
+`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`), and the sample
+YAMLs from `samples/` (`zexion-easy.yaml`, `zexion-standard.yaml`, `zexion-ohko.yaml`,
+`zexion-custom.yaml`). The samples name the world's version, so raising it means running
+`tools/gen_sample_yamls.py` again: the build refuses samples for another version. It packs only
 files git tracks and refuses a release that would not match (its docstring): run locally,
 rebuild `native/` first after a checkout that touched it.
 

@@ -11,7 +11,8 @@ you need your own copy of Zexion. The code is under the [MIT license](LICENSE).
 ## Download
 
 Get the latest release from the [Releases page](https://github.com/mcawful/zexion-ap/releases).
-It has `zexion.apworld`, `zexion_ap.dll`, `version.dll` and the two player guides.
+It has `zexion.apworld`, `zexion_ap.dll`, `version.dll`, the two player guides and a sample
+YAML for each mode (Easy, Standard, OHKO and Custom).
 
 This is still in development: seeds have been played start to finish in testing. Each release
 works with certain versions of Zexion; if Steam updates the game, the client tells you when
@@ -38,7 +39,8 @@ your version isn't supported.
 2. In the Archipelago Launcher, choose Install APWorld and pick `zexion.apworld`.
 3. Install the mod: with Zexion closed, copy `zexion_ap.dll` and `version.dll` into Zexion's
    folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required.
-4. Make your YAML, then generate and host the game. To join someone else's game, send them
+4. Make your YAML (start from the release's sample for your mode), then generate and host the
+   game. To join someone else's game, send them
    your YAML: they need `zexion.apworld` from the same release to generate it.
 5. Start Zexion. In the Launcher, open **Zexion Client**, connect to the server and enter your
    player name.
