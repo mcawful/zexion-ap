@@ -757,7 +757,7 @@ void test_a_cache_without_the_client_only_keys() {
     check(game.apply(batch) == "refused not configured" && g_inventory[1] == 3, "no grant");
     check(game.kill(5000) == "refused not configured", "no DeathLink death");
     check(game.spawn_shield(5000) == "refused not configured", "no Energy Shield");
-    check(!game.request_mission(), "no RETURN HOME asked");
+    check(!game.request_mission(191, 329), "no RETURN HOME asked");
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
     check(game.mission_status() == "not asked" && g_fade_calls == 0, "none shown");
     {

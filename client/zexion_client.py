@@ -597,7 +597,7 @@ async def poll(ctx: ZexionContext) -> None:
     for name, tick in (
         ("client-back notice", lambda: client_back_tick(ctx, step)),  # CLIENT CONNECTED first
         ("follow-up popups", lambda: followups_tick(ctx, p, step)),
-        ("landing pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
+        ("Landing Pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
         ("Feats guard check", lambda: feats_tick(ctx, step)),
     ):
         if ctx.helper is None:

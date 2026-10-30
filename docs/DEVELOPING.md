@@ -152,8 +152,12 @@ line says.
   then started half a second after GAME SAVED appears (the owner's pick, 2026-10-27); the fade
   turned back after a save at the pod during it: 2026-10-27. A request held by popups lapsing
   once the player left the pod's room, and one left during GAME SAVED alone, then offered again
-  after the next save there: 2026-10-27. Not seen in game: the fade turned back when the helper
-  takes back a prompt it had not opened yet (stand-in tests only).
+  after the next save there: 2026-10-27. Each of these runs started at the Landing Pod. Not seen
+  in game: the fade turned back when the helper takes back a prompt it had not opened yet
+  (stand-in tests only); since 2026-10-30, home is the Landing Pod's save point whichever room
+  the seed starts in (before, the start room's), and a seed started elsewhere has not been run in
+  game yet (no prompt after a save in the start room, the prompt after a save at the pod, the
+  request lapsing on leaving the pod's cell).
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's

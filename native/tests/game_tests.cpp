@@ -34,6 +34,10 @@ void player_cell(int column, int row) {
     field<uint8_t>(0x107B) = static_cast<uint8_t>(column);
 }
 
+// Home for RETURN HOME, as the client sends it: the Landing Pod's save point in tiles, cell
+// row 16, column 13 (329 / 20, 191 / 14).
+constexpr int kPodColumn = 191, kPodRow = 329;
+
 // The game's last message still showing (its sequence the last one's), `frames` left.
 void message_showing(int32_t frames) {
     g_last_message = {g_message, 7};
@@ -1214,7 +1218,7 @@ void test_refused_unload_rearms() {
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
     game.set_disk_slots({{2, 3}, {5, 3}});
-    game.request_mission();
+    game.request_mission(kPodColumn, kPodRow);
 
     zap::ClientState saved = game.snapshot();
     game.put_back_all(&chosen);
@@ -1386,6 +1390,7 @@ struct MissionGame {
         ready(game);
         reset_events();
         std::memset(g_section, 0, sizeof(g_section));
+        player_cell(13, 16);  // at the pod
         hooks.mission_open = reinterpret_cast<void*>(&opener);
         game.set_hooks(hooks);
         g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
@@ -1426,7 +1431,7 @@ struct MissionGame {
 void test_popups_wait_for_the_mission_fade() {
     MissionGame m;
     zap::Game& game = m.game;
-    game.request_mission();
+    game.request_mission(kPodColumn, kPodRow);
     message_showing(zap::kFadeMessageLeft + 1);  // GAME SAVED, 180 frames: 29 in
     game.watch_all(&chosen);
     check(g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_fade_calls == 0,
@@ -1451,7 +1456,8 @@ void test_popups_wait_for_the_mission_fade() {
     // The helper's own popup the last message: never cut short, the fade waits for its end.
     m.again();
     reset_game();
-    game.request_mission();
+    player_cell(13, 16);  // the player state cleared: back at the pod
+    game.request_mission(kPodColumn, kPodRow);
     apply(game, "apply\npopup 36 FROM BOB");
     game.pump_popups();
     check(g_messages == 1, "the helper's popup shows");
@@ -1485,7 +1491,7 @@ void test_a_save_during_the_mission_fade() {
     for (bool door : {false, true}) {
         MissionGame m;
         zap::Game& game = m.game;
-        game.request_mission();
+        game.request_mission(kPodColumn, kPodRow);
         message_showing(zap::kFadeMessageLeft);
         game.watch_all(&chosen);
         check(g_fade_calls == 1 && g_transition_fn == reinterpret_cast<void*>(&opener),
@@ -1512,23 +1518,52 @@ void test_a_save_during_the_mission_fade() {
     }
 }
 
-// Asked for while the player is in the seed's start cell (the landing pod's), held by popups:
-// dropped once the player is in play outside that cell, before it opens; a death's own fade left
-// alone when the opener is put off; and after YES, the ending waits for the game's last message
-// to end, and an unload refuses until it has started.
+// The `mission_prompt` request: home's save point in tiles, column then row, on the map.
+void test_the_mission_request_gives_home() {
+    int column = 0, row = 0;
+    check(zap::parse_mission("mission_prompt 191 329", column, row).empty() && column == 191 &&
+              row == 329,
+          "the Landing Pod's save point");
+    check(zap::parse_mission("mission_prompt 755 1079", column, row).empty(), "the map's last");
+    for (const char* bad : {"mission_prompt", "mission_prompt 191", "mission_prompt 191 329 1",
+                            "mission_prompt 756 329", "mission_prompt 191 1080",
+                            "mission_prompt -1 329", "mission_prompt 191 x"}) {
+        check(!zap::parse_mission(bad, column, row).empty() && column == -1 && row == -1, bad);
+    }
+}
+
+// Asked for with home the Landing Pod's save point, in a seed that starts elsewhere: dropped at
+// the seed's start, which is not home; offered at the pod; held by popups, dropped once the
+// player is in play outside the pod's cell, before it opens; a death's own fade left alone when
+// the opener is put off; and after YES, the ending waits for the game's last message to end,
+// and an unload refuses until it has started.
 void test_return_home_lapses_away_from_the_pod() {
     MissionGame m;
     zap::Game& game = m.game;
     g_rando_marker = 1;
-    // The start record: candidate 6, tile column 191 and row 329, so cell row 16, column 13.
-    put<uint16_t>(g_section, 0x310, 6);
-    put<uint16_t>(g_section, 0x312, 191);
-    put<uint16_t>(g_section, 0x314, 329);
+    // The start record: candidate 17 (Open Cave), tile column 333 and row 449, so cell row 22,
+    // column 23. The helper does not read it: home is what the request gives.
+    put<uint16_t>(g_section, 0x310, 17);
+    put<uint16_t>(g_section, 0x312, 333);
+    put<uint16_t>(g_section, 0x314, 449);
+
+    // A home off the map: refused, nothing asked.
+    check(!game.request_mission(-1, kPodRow) && !game.request_mission(kPodColumn, 1080) &&
+              game.mission_status() == "not asked",
+          "a home off the map refused");
+
+    // At the seed's start: not home, so the request lapses and nothing opens.
+    player_cell(23, 22);
+    message_showing(1);
+    game.request_mission(kPodColumn, kPodRow);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 0 && game.mission_status() == "lapsed: the player left the landing pod",
+          "at the seed's start, not the pod: lapsed");
 
     // At the pod: offered.
     player_cell(13, 16);
     message_showing(1);
-    game.request_mission();
+    game.request_mission(kPodColumn, kPodRow);
     game.watch_all(&chosen);
     check(g_fade_calls == 1 && game.mission_status() == "opening after the fade",
           "in the start cell: offered");
@@ -1536,7 +1571,7 @@ void test_return_home_lapses_away_from_the_pod() {
     // Popups hold it; the player walks into the next cell meanwhile.
     m.again();
     const int fades = g_fade_calls;
-    game.request_mission();
+    game.request_mission(kPodColumn, kPodRow);
     apply(game, "apply\npopup 36 FROM ALICE\npopup 36 FROM BOB");
     game.pump_popups();
     game.watch_all(&chosen);
@@ -1561,7 +1596,7 @@ void test_return_home_lapses_away_from_the_pod() {
     check(g_fade_calls == fades, "back at the pod: not offered again until asked again");
 
     // Dead outside the cell: not in play, so not lapsed; respawned at the pod, offered.
-    game.request_mission();
+    game.request_mission(kPodColumn, kPodRow);
     player_cell(13, 17);
     field<int16_t>(0xCEA) = -1;
     game.watch_all(&chosen);
@@ -1610,6 +1645,7 @@ void test_return_home_lapses_away_from_the_pod() {
 int main() {
     test_popups_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
+    test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
     test_popups_wait_for_their_save();

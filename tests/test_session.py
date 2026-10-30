@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import struct
+
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, fresh, plan, secret_plan, secret_section
 
@@ -29,6 +31,7 @@ class FakeGame:
         self.marker = 1
         self.flags = bytearray(0x9C4)
         self.stamp = bytes(14)
+        self.cell = (0, 0)  # the player state's, the game's (X, Y)
 
     def state(self, energy: int | None = None) -> str:
         self.reads += 1
@@ -55,7 +58,7 @@ class FakeGame:
         return bytes(self.flags[first : first + count])
 
     def player_state(self) -> game.PlayerState:
-        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], (0, 0))
+        return game.PlayerState(bytes(self.inv), tuple(self.sup), self.sup[0], self.cell)
 
     def save_stamp(self) -> bytes:
         return self.stamp
@@ -275,6 +278,20 @@ def test_no_save_loaded_gets_nothing(setup) -> None:
     session, g = setup
     g.state_value = game.NO_SAVE
     assert session.step(g, [17], gap=0) == ss.Step(left_seed=True)
+
+
+def test_home_is_the_landing_pods_save_point_not_the_seeds_start(setup) -> None:
+    # PLAN starts in the save room at (23, 22), tiles 326 and 449: a save there is not home.
+    session, g = setup
+    g.stamp = struct.pack("<iHHHHH", 3, 100, 0, 0, 449, 326)
+    g.cell = (22, 23)
+    step = session.step(g, [], gap=0)
+    assert step.seed_matches and not step.at_home and not step.in_home_cell
+    # A save at the Landing Pod's save point (191, 329), the player in its cell (X16 Y13).
+    g.stamp = struct.pack("<iHHHHH", 3, 200, 0, 0, 329, 191)
+    g.cell = (16, 13)
+    step = session.step(g, [], gap=0)
+    assert step.at_home and step.in_home_cell
 
 
 def test_a_grant_the_game_changed_first_is_left_for_the_next_poll(setup) -> None:

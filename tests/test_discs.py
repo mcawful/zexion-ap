@@ -94,23 +94,28 @@ def stamp(time: int, column: int, row: int, slot: int = 3) -> bytes:
     return struct.pack("<iHHHHH", slot, time, 0, 0, row, column)
 
 
-def start_blob(column: int, row: int) -> bytes:
-    blob = bytearray(0x908)
-    struct.pack_into("<hhh", blob, 0x310, 6, column, row)  # the start record (save-format.md)
-    return bytes(blob)
+def test_saved_at_home_compares_the_continue_point_with_the_landing_pod() -> None:
+    # The live26 save, read 2026-10-25: a save at the pod (191, 329); one at (151, 464) elsewhere.
+    assert discs.saved_at_home(stamp(39567, 191, 329))
+    assert not discs.saved_at_home(stamp(36589, 151, 464))
+    assert not discs.saved_at_home(b"")
 
 
-def test_saved_at_start_compares_the_continue_point_with_the_start() -> None:
-    # The live26 save, read 2026-10-25: the start (191, 329); a save at (151, 464) elsewhere.
-    blob = start_blob(191, 329)
-    assert discs.saved_at_start(stamp(39567, 191, 329), blob)
-    assert not discs.saved_at_start(stamp(36589, 151, 464), blob)
-    assert not discs.saved_at_start(b"", blob)
+def test_home_is_the_landing_pod_whichever_room_the_seed_starts_in() -> None:
+    # A seed starting in the save room at (23, 22) (tiles 333, 449): a save there is not home;
+    # its start record is not read at all.
+    assert discs.HOME == (191, 329)
+    assert not discs.saved_at_home(stamp(100, 333, 449))
+    assert discs.saved_at_home(stamp(200, 191, 329))
 
 
-def test_the_start_cell_is_the_records_row_and_column_in_cells() -> None:
+def test_the_home_cell_is_the_pods_row_and_column_in_cells() -> None:
     # (191, 329): cell (13, 16) in this repo's (x, y), which the player state holds as 16, 13.
-    assert discs.start_cell(start_blob(191, 329)) == (16, 13)
+    assert discs.HOME_CELL == (16, 13)
+
+
+def test_the_mission_request_gives_the_helper_home() -> None:
+    assert discs.MISSION_REQUEST == "mission_prompt 191 329"
 
 
 def test_return_home_is_offered_after_a_save_at_the_pod_only() -> None:
@@ -132,7 +137,7 @@ def test_return_home_is_offered_after_a_save_at_the_pod_only() -> None:
     assert home.offer  # the next save there offers it again
 
 
-def test_a_save_away_from_the_start_cell_offers_nothing() -> None:
+def test_a_save_away_from_the_pods_cell_offers_nothing() -> None:
     home = discs.ReturnHome()
     home.see(stamp(100, 191, 329), True, True, False)
     # The game's own save in the escape keeps the pod as the continue point.

@@ -125,10 +125,10 @@ class Step:
     # A randomizer save of another seed is loaded (left_seed too), in play (state).
     other_seed: bool = False
     # This seed's save: its slot's save stamp (new after each save), and whether its last save
-    # point is the seed's start, the landing pod (discs.saved_at_start).
+    # point is home, the Landing Pod's (discs.saved_at_home), whichever room the seed starts in.
     save_stamp: bytes = b""
-    at_start: bool = False
-    in_start_cell: bool = False  # the player is in the seed's start cell now
+    at_home: bool = False
+    in_home_cell: bool = False  # the player is in the Landing Pod's cell now
 
 
 class Session:
@@ -231,8 +231,8 @@ class Session:
             scanned=snap.scanned != 0,
             ended=snap.ended != 0,
             save_stamp=snap.stamp,
-            at_start=discs.saved_at_start(snap.stamp, snap.blob),
-            in_start_cell=snap.cell == discs.start_cell(snap.blob),
+            at_home=discs.saved_at_home(snap.stamp),
+            in_home_cell=snap.cell == discs.HOME_CELL,
         )
         # The ending beginning in this load: what is received from now (as a release or collect
         # on the goal) waits for the next load, not popping up over the ending's cutscenes. A

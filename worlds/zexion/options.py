@@ -385,9 +385,10 @@ def _make_start_room() -> type[Choice]:
         "start with 27 or more of Energy Tanks, missiles, Mega Bombs and items together\n"
         "('random' is random_start too). Or one of the game's 34 rooms, by its name in the\n"
         "menu: a room from which your starting items reach no location, or every item does\n"
-        "not reach Zexion's core with the core goal, is refused. From a room where they reach\n"
-        "only one, generation can fail now and then: try again or pick another. automatic\n"
-        "(the default): landing_pod, or a random start where that room is refused."
+        "not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is\n"
+        "refused. From a room where they reach only one, generation can fail now and then: try\n"
+        "again or pick another. automatic (the default): landing_pod, or a random start where\n"
+        "that room is refused."
     )
 
     @classmethod
@@ -428,10 +429,10 @@ class Goal(Choice):
     yours to finish, and may need items it doesn't make sure of (such as the Zenith Thrusters).
     The game's Abridged Finale, a Custom-mode setting, ends the game at the grab instead.
     OS Install Disks: find enough OS Install Disks (the next two options), then save at the
-    save point in your start room (the reminder that pops up once you have enough calls it the
-    landing pod) and answer YES to RETURN HOME WITH THE DISKS?. The keys are not placed. The
-    scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
-    how many disks you need."""
+    Landing Pod's save point (Kresezoa 16,13, whichever room you started in) and answer YES to
+    RETURN HOME WITH THE DISKS?. The seed makes sure you can reach the Landing Pod. The keys are
+    not placed. The scanner room at Vallahar 6,8, which shows where the keys are in the normal
+    game, tells you how many disks you need."""
 
     display_name = "Goal"
     option_core = 0

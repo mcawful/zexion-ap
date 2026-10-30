@@ -51,6 +51,7 @@ from .options import (
     AUTOMATIC,
     AUTOMATIC_ROOM,
     RANDOM_START,
+    ROOM_NAMES,
     SETTINGS,
     Amount,
     Goal,
@@ -59,6 +60,9 @@ from .options import (
 )
 
 CORE_REGION = "The Core"  # where Zexion is grabbed: data.CORE
+# The OS Install Disks goal's home, the Landing Pod: RETURN HOME WITH THE DISKS? is offered after
+# a save at its save point, whichever room the seed starts in (client/discs.py, HOME).
+HOME = data.START_ROOMS[ROOM_NAMES.index("landing_pod")]
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
@@ -137,12 +141,19 @@ class ZexionWorld(World):
         self.seed_reach = self.reach_of_items()
         self.choose_starts()
         self.fit_pool()
-        door = data.CELL_REGION[data.CORE["door"]]
-        if not self.disc_hunt and door not in self.created_regions:
-            # The core is entered from there (create_regions).
+        # The core is entered from its door (create_regions); the disks' goal returns home from
+        # the Landing Pod (set_rules).
+        goal = HOME["cell"] if self.disc_hunt else data.CORE["door"]
+        if data.CELL_REGION[goal] not in self.created_regions:
+            where = "the core's door"
+            if self.disc_hunt:
+                where = "the Landing Pod, where the OS Install Disks goal returns home,"
+            starts = f"start room {cell_name(self.start['cell'])}"
+            if self.second is not None:
+                starts += f" and second teleport target {cell_name(self.second['cell'])}"
             raise OptionError(
                 f"Zexion ({self.player_name}): {self.mode_name} mode's settings do not reach "
-                f"the core's door from start room {cell_name(self.start['cell'])}"
+                f"{where} from {starts}"
             )
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
@@ -263,14 +274,15 @@ class ZexionWorld(World):
     def double_teleport(self) -> bool:
         return bool(self.menu.setting(custom.DOUBLE_TELEPORT))
 
-    def reaches_the_door(self, room: dict, second: dict | None = None) -> bool:
-        """With the core goal, whether every item reaches the core's door from this room (and
-        its second teleport target, as the logic counts it) and passes the core's own lists on
-        the way to Zexion (data.CORE)."""
-        if self.disc_hunt:
-            return True
-        door = data.CELL_REGION[data.CORE["door"]]
+    def reaches_the_goal(self, room: dict, second: dict | None = None) -> bool:
+        """Whether every item reaches the goal from this room (and its second teleport target,
+        as the logic counts it): with the core goal the core's door, passing the core's own
+        lists on the way to Zexion (data.CORE); with the OS Install Disks goal the Landing Pod,
+        where the player returns home (HOME)."""
         every = self.seed_reach.every_from(room, second)
+        if self.disc_hunt:
+            return data.CELL_REGION[HOME["cell"]] in every.regions
+        door = data.CELL_REGION[data.CORE["door"]]
         have = dict(self.seed_reach.every_item)
         return door in every.regions and all(
             logic.satisfied(entries, have, self.logic_settings, cell)
@@ -283,19 +295,20 @@ class ZexionWorld(World):
         target counted as the logic counts it. The game draws from all 33 and offers PLAY
         ANYWAY where its winnability check fails, which Archipelago's fill cannot."""
         rooms = reach.second_starts(self.seed_reach, room, data.START_ROOMS)
-        if self.reaches_the_door(room):
+        if self.reaches_the_goal(room):
             return rooms
-        return [other for other in rooms if self.reaches_the_door(room, other)]
+        return [other for other in rooms if self.reaches_the_goal(room, other)]
 
     def passes(self, room: dict) -> bool:
         """Whether a start room suits the seed, as the game's START GAME judges one: its
-        starting items collect a location from it, and with the core goal every item reaches
-        the core and Zexion; with Double Teleport, the same for the start and a second teleport
-        target (``partners``). From a room with one such location the fill can fail, the
-        owner's choice (docs/re/locations.md, "Which start rooms the world offers")."""
+        starting items collect a location from it, and every item reaches the goal (the core
+        and Zexion, or with the OS Install Disks goal the Landing Pod); with Double Teleport,
+        the same for the start and a second teleport target (``partners``). From a room with
+        one such location the fill can fail, the owner's choice (docs/re/locations.md, "Which
+        start rooms the world offers")."""
         if self.double_teleport:
             return bool(self.partners(room))
-        return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_door(room)
+        return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_goal(room)
 
     def choose_starts(self) -> None:
         """The start room by the start_room option, and with Double Teleport the second
@@ -306,10 +319,11 @@ class ZexionWorld(World):
         if choice not in (RANDOM_START, AUTOMATIC):
             room = data.START_ROOMS[choice - 1]
             if not self.passes(room):
+                goal = "the Landing Pod" if self.disc_hunt else "the core"
                 raise OptionError(
                     f"{who}: start room {StartRoom.name_lookup[choice]} does not suit "
                     f"{self.mode_name} mode's settings: from it the starting items reach no "
-                    f"location, or every item does not reach the core"
+                    f"location, or every item does not reach {goal}"
                 )
             start = room
         elif choice == AUTOMATIC:
@@ -493,9 +507,12 @@ class ZexionWorld(World):
                     location, lambda item: item.player != self.player or item.name != assist
                 )
         if self.disc_hunt:
+            # The disks, then home: RETURN HOME WITH THE DISKS? comes after a save at the Landing
+            # Pod (HOME), whose region generate_early made sure every item reaches.
             required = self.options.os_install_disks_required.value
-            self.multiworld.completion_condition[self.player] = lambda state: state.has(
-                NAMES[DATA_DISC], self.player, required
+            home = self.get_region(rules.region_name(data.CELL_REGION[HOME["cell"]]))
+            self.multiworld.completion_condition[self.player] = lambda state: (
+                state.has(NAMES[DATA_DISC], self.player, required) and home.can_reach(state)
             )
             return
         self.get_location("Zexion").access_rule = lambda state: state.has_all(KEYS, self.player)

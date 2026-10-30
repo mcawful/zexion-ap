@@ -127,41 +127,34 @@ def scan_line(required: int) -> str:
 
 
 # Told once the player has enough disks: RETURN HOME WITH THE DISKS? is offered only after a
-# save at the landing pod, the seed's start.
+# save at the Landing Pod's save point, whichever room the seed starts in.
 POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
+
+# Home: the Landing Pod's save point (start room landing_pod, Kresezoa X16 Y13), tile column
+# then row, as a save's continue point and the world's data.START_ROOMS hold it
+# (docs/re/save-format.md, "The continue point and the seed's start";
+# worlds/zexion/test/test_client_agrees.py checks the two agree).
+HOME = (191, 329)
+# Its cell as the player state counts cells (game.PLAYER_CELL): the game's (X, Y), which is
+# this repo's map cell (save_patch.cell_of) as (y, x) (docs/re/randocells.md, "Grid order").
+HOME_CELL = save_patch.cell_of(*HOME)[::-1]
+# The helper's request for RETURN HOME WITH THE DISKS?, given home: a request not yet opened
+# lapses while the player is in play outside its cell (native/README.md, "The OS Install Disks
+# goal").
+MISSION_REQUEST = f"mission_prompt {HOME[0]} {HOME[1]}"
 
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
 STAMP_ROW_AT = 4 + 6
 
 
-def _start(blob: bytes) -> tuple[int, int] | None:
-    """The start record's (column, row) (docs/re/save-format.md, "The continue point and the
-    seed's start"), or None if the blob is too short to hold it."""
-    if len(blob) < save_patch.START_AT + 6:
-        return None
-    return struct.unpack_from("<2H", blob, save_patch.START_AT + 2)
-
-
-def start_cell(blob: bytes) -> tuple[int, int]:
-    """The seed's start cell as the player state counts cells (game.PLAYER_CELL): the
-    game's (X, Y), which is this repo's map cell (save_patch.cell_of) as (y, x)
-    (docs/re/randocells.md, "Grid order"; save-format.md and memory.md for the formulas)."""
-    start = _start(blob)
-    if start is None:
-        return (-1, -1)
-    x, y = save_patch.cell_of(*start)
-    return (y, x)
-
-
-def saved_at_start(stamp: bytes, blob: bytes) -> bool:
-    """Whether the loaded save's continue point (its last save point) is the seed's start, the
-    landing pod."""
-    start = _start(blob)
-    if len(stamp) < STAMP_ROW_AT + 4 or start is None:
+def saved_at_home(stamp: bytes) -> bool:
+    """Whether the loaded save's continue point (its last save point) is home, the Landing
+    Pod's save point."""
+    if len(stamp) < STAMP_ROW_AT + 4:
         return False
     row, column = struct.unpack_from("<2H", stamp, STAMP_ROW_AT)
-    return (column, row) == start
+    return (column, row) == HOME
 
 
 def popups_handed(queued: int | None, received: int) -> bool:
@@ -175,20 +168,20 @@ def popups_handed(queued: int | None, received: int) -> bool:
 @dataclass
 class ReturnHome:
     """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,
-    and RETURN HOME WITH THE DISKS? after each save at the pod. A save shows as a new stamp in
-    the same slot; it counts only with the pod as continue point and the player in the start
-    cell (the escape saves too, keeping the old continue point), and the offer lapses when the
-    player leaves that cell."""
+    and RETURN HOME WITH THE DISKS? after each save at the Landing Pod. A save shows as a new
+    stamp in the same slot; it counts only with the pod as continue point and the player in the
+    pod's cell (the escape saves too, keeping the old continue point), and the offer lapses when
+    the player leaves that cell."""
 
     reminded: bool = False
     stamp: bytes | None = None
     offer: bool = False  # a save at the pod, the prompt not yet queued
 
-    def see(self, stamp: bytes, at_start: bool, enough: bool, in_start_cell: bool) -> None:
+    def see(self, stamp: bytes, at_home: bool, enough: bool, in_home_cell: bool) -> None:
         same_slot = self.stamp is not None and stamp[:4] == self.stamp[:4]
         saved = same_slot and stamp != self.stamp
         self.stamp = stamp
         if saved:
-            self.offer = enough and at_start and in_start_cell
-        if not in_start_cell:
+            self.offer = enough and at_home and in_home_cell
+        if not in_home_cell:
             self.offer = False

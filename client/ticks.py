@@ -666,10 +666,10 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
 
 async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     """With the OS Install Disks goal, once the player has enough disks: the reminder to save at
-    the landing pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
-    own popups; then, after each save at the landing pod (the seed's start), RETURN HOME WITH
-    THE DISKS? (native/src/mission.h), whose YES starts the game's ending. Never once that save
-    has reached the ending (flag 250)."""
+    the Landing Pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
+    own popups; then, after each save at the Landing Pod's save point (discs.HOME, whichever
+    room the seed starts in), RETURN HOME WITH THE DISKS? (native/src/mission.h), whose YES
+    starts the game's ending. Never once that save has reached the ending (flag 250)."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     home = ctx.load.return_home
     if (
@@ -684,7 +684,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
         return
     hunt = conn.hunt
     enough = discs.owned(hunt, p.codes, p.found) >= hunt.required
-    home.see(step.save_stamp, step.at_start, enough, step.in_start_cell)
+    home.see(step.save_stamp, step.at_home, enough, step.in_home_cell)
     if not enough or not told.client_back_sent:
         return
     # After the found disks' count popups (followups_tick), so the reminder comes last.
@@ -700,17 +700,17 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
             return
         home.reminded = True
         detail(
-            "Enough OS Install Disks: save at the landing pod (the seed's start) to be offered "
+            "Enough OS Install Disks: save at the Landing Pod (Kresezoa 16,13) to be offered "
             "RETURN HOME WITH THE DISKS?."
         )
     if not home.offer:
         return
-    reply = await asyncio.to_thread(helper.request, "mission_prompt")
+    reply = await asyncio.to_thread(helper.request, discs.MISSION_REQUEST)
     if reply != "queued":
         return
     home.offer = False
     detail(
-        "Saved at the landing pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "
+        "Saved at the Landing Pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "
         "offered. YES starts the game's ending, which sends the goal; NO plays on, and it is "
         "offered again after the next save there."
     )

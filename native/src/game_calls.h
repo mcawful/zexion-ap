@@ -56,6 +56,7 @@ struct ClientState {
     NewGamePlan newgame;
     std::string newgame_status;
     bool mission_asked = false;   // RETURN HOME WITH THE DISKS? on its way
+    int mission_home_row = -1, mission_home_column = -1;  // its home cell (request_mission)
     bool mission_ending = false;  // its YES pressed, the ending not started yet
 };
 
@@ -187,12 +188,13 @@ public:
     // calls the game's (equip_panel_fn), then equipment_event.
     void* equip_panel_fn() const { return at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
-    // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it; the
-    // watch runs every frame, and drops a request not yet opened once the player is in play
-    // outside the seed's start cell (the landing pod's); the helper's opener and YES call
-    // mission_open and mission_yes; put_back_all puts back what it holds (before an unload).
-    // False, nothing asked, unless client_ready.
-    bool request_mission();
+    // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it, with
+    // home's save point in tiles (`column`, `row`: the Landing Pod's, whichever room the seed
+    // starts in); the watch runs every frame, and drops a request not yet opened once the player
+    // is in play outside home's cell; the helper's opener and YES call mission_open and
+    // mission_yes; put_back_all puts back what it holds (before an unload). False, nothing
+    // asked, unless client_ready and home on the map.
+    bool request_mission(int column, int row);
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
     // patch put back before it runs) or drop: YES pressed and the ending not started yet, or the
     // ending routine set as the transition with the ending patched.
@@ -344,9 +346,9 @@ private:
     // A new game queued: the game's new-game routine set as the next transition.
     bool newgame_queued() const { return at<void*>(at_.transition_fn, 0) == at_.newgame_fn; }
     bool in_play() const;
-    // In play outside the loaded section's start cell (the seed's, the landing pod's); false
-    // when the start record or the player's cell is no cell of the map.
-    bool away_from_start() const;
+    // In play outside home's cell (request_mission's); false with no home given, or when the
+    // player's cell is no cell of the map.
+    bool away_from_home() const;
     BYTE* player() const;
     BYTE* record(uint8_t item) const;
     bool popup_busy() const;
@@ -441,6 +443,8 @@ private:
     bool discs_told_ = true;
     MissionPrompt mission_;
     int mission_save_ = -1;  // *save_loaded when last watched (0 or 0xFF; -1: not yet)
+    // Home's cell for RETURN HOME, the player state's row and column (request_mission); -1 none.
+    int home_row_ = -1, home_column_ = -1;
     std::string equip_status_ = "not shown yet";
     std::string scan_line_;
     int disc_count_ = 0, discs_required_ = 0;

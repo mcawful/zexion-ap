@@ -18,7 +18,7 @@ from Fill import distribute_items_restrictive
 
 from .. import custom, data, items, locations, logic, reach, starting
 from ..locations import location_name
-from ..world import FOREIGN, FOREIGN_PROGRESSION
+from ..world import FOREIGN, FOREIGN_PROGRESSION, HOME
 from .bases import ZexionTestBase
 
 _ROOT = os.path.normpath(
@@ -109,6 +109,14 @@ class TestClientCodes(unittest.TestCase):
         # The game's list order is grid order: the 154 already in it, the 155th at 134.
         self.assertEqual(save_patch.game_order(data.LOCATIONS), tuple(range(154)))
         self.assertEqual(save_patch.game_order(reach.ALL_LOCATIONS).index(154), 134)
+
+    def test_home_is_the_landing_pod_for_both(self) -> None:
+        # RETURN HOME WITH THE DISKS? follows a save at the Landing Pod's save point: the client
+        # tests the continue point against it (client/discs.py), and the world's completion
+        # rule asks for its region.
+        self.assertEqual(discs.HOME, (HOME["column"], HOME["row"]))
+        self.assertEqual(save_patch.cell_of(*discs.HOME), HOME["cell"])
+        self.assertEqual(discs.HOME_CELL, HOME["cell"][::-1])
 
     def test_the_starting_items_generation_accepts(self) -> None:
         # starting.py copies what the client's new game can start with: they must agree, or

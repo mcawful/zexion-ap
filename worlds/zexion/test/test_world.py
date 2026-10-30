@@ -30,6 +30,7 @@ from ..world import (
     DISC_REPLACES,
     FOREIGN,
     FOREIGN_PROGRESSION,
+    HOME,
     MAX_DISKS,
     NOT_HINTED,
     ZexionWorld,
@@ -288,6 +289,30 @@ class TestStartRooms(unittest.TestCase):
                 fake_world(start_room="random_start").generate_early()
             # The disk goal does not enter the core.
             fake_world(start_room="landing_pod", goal=Goal.option_os_install_disks).generate_early()
+
+    def test_disk_settings_that_do_not_reach_the_landing_pod_are_refused(self) -> None:
+        pod = data.CELL_REGION[HOME["cell"]]
+        real = reach.Seed.every
+
+        def without_pod(seed: reach.Seed, *starts: tuple[int, int]) -> reach.Reach:
+            got = real(seed, *starts)
+            return reach.Reach(got.regions - {pod}, got.locations)
+
+        goal = Goal.option_os_install_disks
+        with mock.patch.object(reach.Seed, "every", without_pod):
+            with self.assertRaisesRegex(OptionError, "does not reach the Landing Pod"):
+                fake_world(start_room="open_cave", goal=goal).generate_early()
+            with self.assertRaisesRegex(OptionError, "no start room"):
+                fake_world(start_room="random_start", goal=goal).generate_early()
+            # The core goal does not go home.
+            fake_world(start_room="open_cave").generate_early()
+            # The check after the pool is fitted, whatever passed the start.
+            with mock.patch.object(ZexionWorld, "passes", lambda w, room: True):
+                world = fake_world(start_room="open_cave", goal=goal)
+                with self.assertRaisesRegex(
+                    OptionError, r"do not reach the Landing Pod.* from start room Kresezoa 22,23"
+                ):
+                    world.generate_early()
 
     def test_automatic_is_landing_pod_or_else_a_random_start(self) -> None:
         world = fake_world()
@@ -688,6 +713,23 @@ class TestDiscHuntStandard(ZexionTestBase):
         slot = self.world.fill_slot_data()
         self.assertEqual(slot["discs_start"], 1)
         self.assertNotIn("44", slot["start_items"])
+
+
+class TestDiscHuntAwayFromThePod(ZexionTestBase):
+    # Open Cave (23, 22): its starting items do not reach the Landing Pod.
+    options = {**disks(), "start_room": "open_cave"}
+
+    def test_the_disks_win_only_with_the_landing_pod_reached(self) -> None:
+        self.assertEqual(self.world.start["cell"], (23, 22))
+        home = self.multiworld.get_region(
+            rules.region_name(data.CELL_REGION[HOME["cell"]]), self.player
+        )
+        self.collect(self.get_items_by_name("OS Install Disk"))
+        self.assertFalse(home.can_reach(self.multiworld.state))
+        self.assertFalse(self.multiworld.has_beaten_game(self.multiworld.state), "not home yet")
+        self.collect_all_but(["OS Install Disk"])
+        self.assertTrue(home.can_reach(self.multiworld.state))
+        self.assertTrue(self.multiworld.has_beaten_game(self.multiworld.state))
 
 
 class TestDiscHuntStandardFull(ZexionTestBase):
