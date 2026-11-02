@@ -1,15 +1,22 @@
 """Double Teleport's second target and the Gates setting, as the game's logic has them (built
 2026-10-28; docs/re/randocells.md, "Starting Location and the second teleport target" and "What
-each setting does in the game")."""
+each setting does in the game"), and Gates Vanilla made Unlocked for the OS Install Disks
+goal."""
 
 import dataclasses
+import io
+import logging
 import unittest
 from unittest import mock
 
-from .. import data, logic, reach
+from Fill import distribute_items_restrictive
+
+from .. import custom, data, logic, reach
+from ..custom import Menu
+from ..options import Gates
 from ..world import ZexionWorld
 from .bases import FLAGGED, ZexionTestBase, preset, with_settings
-from .test_world import fake_world
+from .test_world import disks, fake_world
 
 
 class TestTheUsefulItemScore(unittest.TestCase):
@@ -102,6 +109,86 @@ class TestGatesOpen(unittest.TestCase):
                 world.generate_early()
                 with self.subTest(goal=goal, gates=gates):
                     self.assertEqual(world.logic_settings.gates_open, gates == "open")
+
+
+VANILLA, UNLOCKED = Gates.option_vanilla, Gates.option_unlocked
+
+
+def generated(**options) -> ZexionWorld:
+    world = fake_world(**options)
+    world.generate_early()
+    return world
+
+
+class TestGatesWithTheDisksGoal(unittest.TestCase):
+    """The OS Install Disks goal places no keys, so Gates Vanilla, whose gates take all four,
+    becomes Unlocked (world.py, read_menu; docs/re/memory.md, "Keys, the gates and the key
+    markers")."""
+
+    def test_ohkos_vanilla_becomes_unlocked_at_info(self) -> None:
+        self.assertEqual(Menu.preset("ohko").value(custom.GATES), VANILLA)
+        for options in ({"mode": "ohko"}, {"mode": "custom", "custom_base": "ohko"}):
+            with self.subTest(**options):
+                with self.assertLogs(level="INFO") as logs:
+                    world = generated(**options, goal="os_install_disks")
+                self.assertEqual({r.levelno for r in logs.records}, {logging.INFO})
+                (line,) = [r.getMessage() for r in logs.records if "Gates" in r.getMessage()]
+                self.assertIn("Zexion (Z): ohko mode's Gates Vanilla", line)
+                self.assertTrue(world.gates_unlocked)
+                self.assertEqual(world.menu.value(custom.GATES), UNLOCKED)
+                self.assertFalse(world.logic_settings.gates_open)
+                # Nothing else in OHKO's menu changes.
+                self.assertEqual(world.menu.with_value(custom.GATES, VANILLA), Menu.preset("ohko"))
+
+    def test_the_yamls_vanilla_becomes_unlocked_with_a_warning(self) -> None:
+        with self.assertLogs(level="WARNING") as logs:
+            world = generated(mode="custom", gates="vanilla", goal="os_install_disks")
+        (line,) = [r.getMessage() for r in logs.records]
+        self.assertIn("Zexion (Z): gates: vanilla takes all four keys", line)
+        self.assertIn("Unlocked instead", line)
+        self.assertEqual(world.menu.value(custom.GATES), UNLOCKED)
+
+    def test_the_other_gates_stay_as_set(self) -> None:
+        for gates in ("off", "unlocked", "open"):
+            for base in ("standard", "ohko"):
+                with self.subTest(gates=gates, base=base):
+                    with self.assertNoLogs(level="INFO"):
+                        world = generated(
+                            mode="custom", custom_base=base, gates=gates, goal="os_install_disks"
+                        )
+                    self.assertFalse(world.gates_unlocked)
+                    self.assertEqual(world.menu.value(custom.GATES), Gates.options[gates])
+        # Standard's and Easy's own Unlocked, too.
+        for mode in ("easy", "standard"):
+            world = generated(mode=mode, goal="os_install_disks")
+            self.assertEqual(world.menu, Menu.preset(mode))
+
+    def test_the_core_goal_keeps_vanilla(self) -> None:
+        for options in ({"mode": "ohko"}, {"mode": "custom", "gates": "vanilla"}):
+            with self.subTest(**options):
+                with self.assertNoLogs(level="INFO"):
+                    world = generated(**options, goal="core")
+                self.assertFalse(world.gates_unlocked)
+                self.assertEqual(world.menu.value(custom.GATES), VANILLA)
+
+
+class OHKODisksGates(ZexionTestBase):
+    """A whole OHKO seed with the OS Install Disks goal: its slot data and spoiler carry the
+    Unlocked gates, and the default tests fill and beat it."""
+
+    options = disks("ohko", 16, 12)
+
+    def test_the_slot_data_and_the_spoiler(self) -> None:
+        distribute_items_restrictive(self.multiworld)
+        self.multiworld.seed_name = "1"
+        slot = self.world.fill_slot_data()
+        self.assertEqual((slot["options"]["72"], slot["options"]["73"]), (0, 1))
+        settings = slot["menu"]["settings"]
+        self.assertEqual((settings[72 - 10], settings[73 - 10]), (0, 1))
+        self.assertEqual(slot["mode"], "ohko")  # the YAML's mode, though the game reads Custom
+        spoiler = io.StringIO()
+        self.world.write_spoiler_header(spoiler)
+        self.assertIn("Gates:                           Unlocked", spoiler.getvalue())
 
 
 class CustomGatesOpen(ZexionTestBase):
