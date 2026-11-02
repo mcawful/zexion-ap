@@ -293,7 +293,7 @@ void test_a_language_change_mid_popup() {
     end_message(0);
     queue(game, "apply\npopup 36 FROM BOB");
     frames(game, 25);
-    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nfrom BOB" &&
+    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nFROM BOB" &&
               entry_text(g_small, g_hd_texts[1].entry) == g_hd_texts[1].text &&
               g_small->offsets[70] > g_small->offsets[66],
           "split again in the new table, the new translation's name");
@@ -692,6 +692,36 @@ void test_a_popup_laid_out_by_the_font() {
     reset_translation();
 }
 
+// The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
+// capitals in any other translation, as in the default English's pixel text.
+void test_the_suffix_case() {
+    zap::Game hd;
+    start(hd);
+    queue(hd, "apply\npopup 36 FROM Bob");
+    frames(hd, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nfrom Bob"),
+          "English(HD): the suffix in the case the client sent it");
+    hd.put_back_all(&no_callback);
+
+    zap::Game french;
+    start(french);
+    load_translation("French");
+    queue(french, "apply\npopup 36 FROM Bob");
+    frames(french, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nFROM BOB"),
+          "French: the suffix in capitals");
+    french.put_back_all(&no_callback);
+
+    zap::Game plain;
+    start(plain, false);
+    queue(plain, "apply\npopup 36 FROM Bob");
+    frames(plain, 1);
+    check(g_hd_texts.empty() && g_text.find("FROM BOB") != std::string::npos,
+          "the default English: the pixel text in capitals, as before");
+    plain.put_back_all(&no_callback);
+    reset_translation();
+}
+
 }  // namespace
 
 int main() {
@@ -699,6 +729,7 @@ int main() {
     test_the_popup_layout();
     test_the_icons_through_the_game();
     test_a_popup_laid_out_by_the_font();
+    test_the_suffix_case();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();

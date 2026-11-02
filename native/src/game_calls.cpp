@@ -41,6 +41,9 @@ constexpr int kScanEntry = 12;
 constexpr wchar_t kIntelHdName[] = L"Intel Chip";
 // The most characters of a translated item name read for a popup when its room is not known.
 constexpr int32_t kNameRoom = 64;
+// The translation whose popups show the client's suffix in its own case ("from Bob"), as
+// language_name names it.
+constexpr char kMixedCaseLanguage[] = "English(HD)";
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -465,8 +468,10 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
                                      : std::string(record_name(rec)));
     }
     std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
-    const std::wstring suffix =
-        popup.as_sent.empty() ? hd_text(popup.suffix) : hd_suffix(popup.as_sent);
+    // The suffix in its own case in English(HD) only, the owner's choice; every other translation
+    // keeps it in capitals, as the default English's pixel text has it.
+    const bool own_case = !popup.as_sent.empty() && language_name(at_) == kMixedCaseLanguage;
+    const std::wstring suffix = own_case ? hd_suffix(popup.as_sent) : hd_text(popup.suffix);
     return layout_popup(head, suffix, m, kCap, kCapCharacters);
 }
 

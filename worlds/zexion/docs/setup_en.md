@@ -83,8 +83,8 @@ The mod is made for the game's default English and for **English(HD)** (OPTION, 
 Language). In English(HD) its popups and its menu text (RETURN HOME WITH THE DISKS?, OS
 Install Disk, the names of other players' items) show in the game's HD font. In this version
 the locked ASSIST, the disk count on the pause screen and the note on the Feats screen should
-too, with HD versions of the mod's disk, padlock and Archipelago icons (not yet tried in the
-game).
+too, with HD versions of the mod's disk, padlock and Archipelago icons, and a received item's
+sender as "from Bob" (not yet tried in the game).
 Known problems in English(HD) in the release candidate, fixed in this version but not yet
 checked in the game: ARCHIPELAGO did not show on the game-mode panel (the blank space where it
 belongs, right of Normal, still started the seed, and the word could show in the file select's
@@ -97,7 +97,7 @@ it.
 In the other languages the mod does the same, but its text is in English, and some of it may
 not show (a font without Latin letters, say); the client says so when it sees one. Received
 items arrived in French and Japanese when they were tried, named in that language with FROM …
-in English (now from …) (checks there were not tried);
+in English (checks there were not tried);
 Simplified Chinese and the other European languages have not been tried.
 
 ## Playing without the client

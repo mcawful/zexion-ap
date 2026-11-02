@@ -946,8 +946,9 @@ lands, not only the place passed.
     whose area is taken waits a frame, at most 240. Its text: the item's icon as the
     private-use character the translations' fonts draw (as the pickup does), the translation's
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
-    on the next line, in the case the client sent it with its FROM as "from" ("from Bob"); a
-    notice's text as it is. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
+    on the next line: in English(HD) in the case the client sent it, its FROM as "from" ("from
+    Bob"), in any other translation in capitals as in the default English ("FROM BOB"; the
+    owner's choice, 2026-11-02); a notice's text as it is. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
     builder's advances, read from the font as loaded): no line wider than a pixel popup's 192
     pixels, words whole; a popup's lines centered on the widest with leading spaces (the game
     starts every line at the same x); a notice's left as they wrap; without the font's metrics,
