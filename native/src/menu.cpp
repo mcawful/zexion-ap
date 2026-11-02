@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -35,6 +36,10 @@ constexpr double kEdgeAsLaid = 80.1;  // the top-right piece's x past the label'
 constexpr double kBorderMove = 8.0;   // one character: as far past the label as on its left
 constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
+// In a translation the panel shows SmallText 354's text (0x18027B), which the helper builds
+// again as its own after the game's (translation.h, rebuild_label), and back from the entry.
+constexpr wchar_t kTranslatedLabel[] = L"Archipelago";
+constexpr int kRandomizerEntry = 354;
 constexpr int32_t kMaxPanels = 16, kMaxChildren = 64;
 constexpr ptrdiff_t kPanelSelected = 0x2DC;  // 32-bit: the selected child, -1 for none
 constexpr int16_t kLockedPalette = 0;  // as the controls screen's STYLE: AUTO
@@ -134,6 +139,12 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     // The callback goes back even if the label changed shape: the widget is alive and would
     // otherwise keep pointing into the helper.
     at<void*>(child_, widget::kCallback) = a.rando_menu_fn;
+    // In a translation, its text back to the entry's (the label the game built from it).
+    const std::optional<Loaded> now = loaded_translation(a);
+    std::wstring own;
+    if (now && now->on && read_entry(now->small, kRandomizerEntry, own)) {
+        rebuild_label(a, pointer_at(child_, widget::kLabel), own);
+    }
     return true;
 }
 
@@ -180,6 +191,10 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
         }
         set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
     }
+    // In a translation the label shows its translated text: built again as ARCHIPELAGO's. Its
+    // hover border is then sized from that text by the game itself (0xAE500), so fit_border,
+    // which looks for the pixel label's border, leaves it alone.
+    rebuild_label(a, pointer_at(child, widget::kLabel), kTranslatedLabel);
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).
@@ -284,8 +299,10 @@ bool AssistLock::still_locked(const GameAddresses& a) const {
 namespace {
 
 // The locked look: every glyph in the locked style under the locked palette (when the palette
-// table gives it), the padlock in the eighth.
-void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
+// table gives it), the padlock in the eighth; in a translation, the label's pixel glyphs shown
+// in place of its translated ones (translation.h), so the look shows.
+void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a, BYTE* label) {
+    if (translation_on(a) && !pixel_glyphs_shown(label)) show_pixel_glyphs(label);
     BYTE* palette = pointer_at(a.palette_table, kLockedPalette * 8);
     BYTE probe = 0;
     if (!read(palette, 0, probe)) palette = nullptr;  // none readable there: the menu's own kept
@@ -312,7 +329,9 @@ bool AssistLock::install(const GameAddresses& a) {
             // another palette after some screens (the map's 26), so the locked look is pinned
             // again whenever it is the menu up.
             BYTE* glyphs[kAssistLength] = {};
-            if (top == menu_ && glyphs_of(child_, glyphs)) draw_locked(glyphs, a);
+            if (top == menu_ && glyphs_of(child_, glyphs)) {
+                draw_locked(glyphs, a, pointer_at(child_, widget::kLabel));
+            }
             return false;
         }
         restore(a);
@@ -331,7 +350,7 @@ bool AssistLock::install(const GameAddresses& a) {
         palette_numbers_[i] = at<int16_t>(g, sprite::kPaletteNumber);
         for (int t = 0; t < 6; ++t) tints_[i][t] = at<float>(g, kGlyphTint[t]);
     }
-    draw_locked(glyphs, a);
+    draw_locked(glyphs, a, pointer_at(child, widget::kLabel));
     at<void*>(child, widget::kCallback) = nullptr;
     menu_ = top;
     child_ = child;
@@ -425,6 +444,9 @@ bool AssistLock::restore(const GameAddresses& a) {
         }
         at<void*>(child_, widget::kCallback) = a.assist_menu_fn;
         move_back();
+        // In a translation, its translated text again, as the game left it.
+        BYTE* label = pointer_at(child_, widget::kLabel);
+        if (translation_on(a) && pixel_glyphs_shown(label)) show_translated_glyphs(label);
     }
     child_ = nullptr;
     menu_ = nullptr;

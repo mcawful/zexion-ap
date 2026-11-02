@@ -192,6 +192,29 @@ void test_offered_when_idle_then_yes_ends() {
     check(g_fades.size() == 1, "no fade back: NO's own close fades in");
 }
 
+// In a translation the prompt shows SmallText 374's text, built when the prompt is: built again
+// as the helper's question, where the game built it; with the flag clear, nothing built.
+void test_the_question_in_a_translation() {
+    reset_translation();
+    load_translation();
+    Prompt prompt;
+    zap::MissionPrompt m = fading(addresses());
+    zap::GameAddresses a = addresses();
+    with_translation(a);
+    built(prompt.question, 48.0, 96.0);  // the game built its translated text
+    check(m.open(a).empty() && g_builds.size() == 1 &&
+              g_builds[0].text == L"Return home with the disks?" &&
+              g_builds[0].label == prompt.question && g_builds[0].x == 48.0f &&
+              g_builds[0].y == 96.0f,
+          "the question built again in the translation's font");
+    m.restore(a);
+    g_translation[0x91] = 0;
+    zap::MissionPrompt plain = fading(addresses());
+    check(plain.open(a).empty() && g_builds.size() == 1, "the default English: nothing built");
+    plain.restore(a);
+    reset_translation();
+}
+
 void test_another_transition_first_is_asked_again() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -421,6 +444,7 @@ void test_cancel_after_a_save_turns_the_fade_back() {
 }  // namespace
 
 int main() {
+    test_the_question_in_a_translation();
     test_cancel_drops_it_for_another_save();
     test_offered_when_idle_then_yes_ends();
     test_another_transition_first_is_asked_again();

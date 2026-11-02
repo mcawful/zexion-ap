@@ -294,3 +294,15 @@ def test_a_load_ended_while_away_ends_and_undresses_for_both() -> None:
     state.end_kept_load(old, other)
     assert other.dressed and other.session.holding
     state.end_kept_load(old, None)
+
+
+def test_the_language_is_said_outside_the_default_english_and_english_hd() -> None:
+    # hello's lang (native/README.md): "-" the default English, a translation's folder name.
+    assert state.language_line("-") is None
+    assert state.language_line("English(HD)") is None
+    assert state.language_line("?") is None, "not known (an offline cache without the keys)"
+    assert state.language_line("") is None, "a helper without the field"
+    line = state.language_line("Brazilian_Portuguese")
+    assert line is not None and line.startswith("Zexion is set to Brazilian Portuguese:")
+    assert "default English" in line and "English(HD)" in line
+    assert state.language_line("Japanese") is not None

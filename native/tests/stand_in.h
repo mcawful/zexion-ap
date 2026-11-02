@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -87,7 +88,14 @@ struct LastMessage {
     int32_t sequence;
 };
 inline LastMessage g_last_message = {nullptr, 0};
-inline BYTE g_message[0x200];
+// The four message slots (0x1628 bytes each); a message is slot 0 unless a test picks another.
+inline BYTE g_slots[4 * 0x1628];
+inline BYTE* const g_message = g_slots;
+inline int g_message_slot = 0;
+// With `g_slots_live`, the message routine also numbers its message as the game does: its slot
+// at +0x1E0, a new serial at +0x1D8 and its frames left at +0x1EC (translation_tests.cpp).
+inline bool g_slots_live = false;
+inline int32_t g_serial = 100;
 inline BYTE g_strip_gate = 0;
 inline BYTE g_sound_system[16];
 // The randomizer section, its marker, and the new-game routine the game queues with a timer.
@@ -220,15 +228,196 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
     // first plus 7.
     const int len = static_cast<int>(std::strlen(text));
     const int extra = per_line > 0 && len > 0 ? (len - 1) / per_line : 0;
-    *reinterpret_cast<double*>(g_message + 0x48) = y - 1;
-    *reinterpret_cast<int32_t*>(g_message + 0x1FC) = 4 * extra + 7;
+    BYTE* message = g_slots + 0x1628 * g_message_slot;
+    *reinterpret_cast<double*>(message + 0x48) = y - 1;
+    *reinterpret_cast<int32_t*>(message + 0x1FC) = 4 * extra + 7;
+    if (g_slots_live) {
+        *reinterpret_cast<int32_t*>(message + 0x1E0) = g_message_slot;
+        *reinterpret_cast<int32_t*>(message + 0x1D8) = ++g_serial;
+        *reinterpret_cast<int32_t*>(message + 0x1EC) = frames;
+    }
     g_text = text;
     g_message_args[0] = per_line;
     g_message_args[1] = x;
     g_message_args[2] = y;
     g_message_args[3] = frames;
     ++g_messages;
-    return g_message_fails ? nullptr : g_message;
+    return g_message_fails ? nullptr : message;
+}
+
+// The translation (translation.h): the object (the loaded folder's name at +0, the tables'
+// pointers at +0x30, +0x48, +0x58 and +0x78, the flag at +0x91, the font at +0xD0), the tables
+// as the game's parser leaves them (each entry's header line, its text and a 0, then the
+// separator), their counts, the HD message objects and the game's text functions, which keep
+// what they were given and do to the objects the helper reads what the game's do.
+inline BYTE g_translation[0xE0];
+inline int16_t g_small_count = 0, g_item_name_count = 0;
+inline BYTE g_hd_messages[4 * 0x238];
+struct LoadedTable {
+    std::vector<wchar_t> text;
+    std::vector<int32_t> offsets;
+};
+// Every table loaded, kept for the test program's life: a language change leaves the old ones
+// as they were last written, so a test can see the helper did not write into them.
+inline std::vector<std::unique_ptr<LoadedTable>> g_loaded;
+inline LoadedTable* g_small = nullptr;
+inline LoadedTable* g_items = nullptr;
+// A table of `count` entries, entry k's text `texts[k]` (none: offset -1).
+inline LoadedTable* make_table(int count, const std::map<int, std::wstring>& texts) {
+    auto t = std::make_unique<LoadedTable>();
+    for (int k = 0; k < count; ++k) {
+        std::wstring header = std::to_wstring(k) + L")ENTRY " + std::to_wstring(k) + L"\r\n";
+        t->text.insert(t->text.end(), header.begin(), header.end());
+        auto it = texts.find(k);
+        if (it == texts.end()) {
+            t->offsets.push_back(-1);
+            continue;
+        }
+        t->offsets.push_back(static_cast<int32_t>(t->text.size()));
+        t->text.insert(t->text.end(), it->second.begin(), it->second.end());
+        const std::wstring after = std::wstring(1, L'\0') + L"\n-----\r\n";
+        t->text.insert(t->text.end(), after.begin(), after.end());
+    }
+    t->text.push_back(L'\0');
+    t->text.push_back(L'\0');
+    g_loaded.push_back(std::move(t));
+    return g_loaded.back().get();
+}
+// The English(HD) the tests load: SmallText's entries the helper reads or writes (12, the run
+// 66 to 72 a lone carriage return each as the parser leaves an empty one, then 73, 137, 139,
+// 354, 374) and ItemNames' 44 to 50. `tag` makes another load's texts differ.
+inline std::map<int, std::wstring> hd_small_texts(const std::wstring& tag = L"") {
+    std::map<int, std::wstring> out = {
+        {12, L"Energy Keys detected!" + tag}, {65, L"Scanlines"}, {73, L"Off"},
+        {98, L"Game Saved"}, {137, L"Assist"}, {139, L"Keys"}, {354, L"Randomizer" + tag},
+        {374, L"Skip Escape and Final Battle?"}, {375, L"Yes"}};
+    for (int k = 66; k <= 72; ++k) out[k] = L"\r";
+    return out;
+}
+inline std::map<int, std::wstring> hd_item_texts(const std::wstring& tag = L"") {
+    return {{0, L"Energy Tank"}, {36, L"Missile Box" + tag}, {44, L"Data Disc"},
+            {46, L"Scrap Metal"}, {47, L"Scrap Energy" + tag}, {48, L"Scrap Chunk" + tag},
+            {49, L"Area Map" + tag}, {50, L"Energy Shield"}};
+}
+// The translation named `name` loaded (its tables new) and on (`on`), as a pick in the menu
+// does.
+inline void load_translation(const char* name = "English(HD)", bool on = true,
+                             const std::wstring& tag = L"") {
+    g_small = make_table(448, hd_small_texts(tag));
+    g_items = make_table(51, hd_item_texts(tag));
+    std::memset(g_translation, 0, sizeof(g_translation));
+    std::memcpy(g_translation, name, std::strlen(name));
+    put<wchar_t*>(g_translation, 0x30, g_small->text.data());
+    put<int32_t*>(g_translation, 0x58, g_small->offsets.data());
+    put<wchar_t*>(g_translation, 0x48, g_items->text.data());
+    put<int32_t*>(g_translation, 0x78, g_items->offsets.data());
+    g_translation[0x90] = 1;
+    g_translation[0x91] = on ? 1 : 0;
+    g_small_count = 448;
+    g_item_name_count = 51;
+}
+// Entry k's text as the table holds it now, up to its 0.
+inline std::wstring entry_text(const LoadedTable* t, int k) {
+    if (t == nullptr || k < 0 || static_cast<size_t>(k) >= t->offsets.size()) return L"";
+    const int32_t at = t->offsets[k];
+    return at < 0 ? std::wstring() : std::wstring(t->text.data() + at);
+}
+
+struct HdTextCall {
+    std::wstring text;
+    int entry, kind;
+    void* message;
+    std::wstring entry_then;  // the entry's text as SmallText held it at the call
+};
+inline std::vector<HdTextCall> g_hd_texts;
+// As 0x1870A0: binds the message's HD object to it, its entry and kind, and marks it.
+inline void hd_text_fn(const wchar_t* text, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t,
+                       intptr_t, intptr_t entry, intptr_t kind, void* message) {
+    auto* m = static_cast<BYTE*>(message);
+    const int32_t slot = *reinterpret_cast<int32_t*>(m + 0x1E0);
+    BYTE* o = g_hd_messages + 0x238 * slot;
+    put<void*>(o, 0x220, m);
+    put<int32_t>(o, 0x228, *reinterpret_cast<int32_t*>(m + 0x1D8));
+    put<int32_t>(o, 0x20C, static_cast<int16_t>(entry));
+    put<int32_t>(o, 0x210, static_cast<int16_t>(kind));
+    o[0x22C] = text != nullptr && text[0] != 0 ? 1 : 0;
+    g_hd_texts.push_back({text, static_cast<int>(entry), static_cast<int>(kind), message,
+                          entry_text(g_small, static_cast<int>(entry))});
+}
+// The game's std::wstring, in the stand-in: a pointer to one of the test's own.
+inline void* wstring_new_fn(void* text, const wchar_t* characters, size_t length) {
+    auto* s = new std::wstring(characters, length);
+    std::memcpy(text, &s, sizeof(s));
+    return text;
+}
+struct BuildCall {
+    float x, y;
+    std::wstring text;
+    void* font;
+    BYTE* label;
+    char flag;
+};
+inline std::vector<BuildCall> g_builds;
+// As 0x88480: frees the string, keeps the place in the label, marks it built.
+inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, char flag) {
+    std::wstring* s = nullptr;
+    std::memcpy(&s, text, sizeof(s));
+    g_builds.push_back({x, y, *s, font, label, flag});
+    delete s;
+    put<double>(label, 0x258, x);
+    put<double>(label, 0x260, y);
+    label[0x230] = 1;
+}
+// The translation's keys in `a`, as configure sets them from stand_in_config, for a part's own
+// addresses (a stand-in menu's).
+inline void with_translation(zap::GameAddresses& a) {
+    a.translation = g_translation;
+    a.tr_flag = g_translation + 0x91;
+    a.small_text = g_translation + 0x30;
+    a.small_offsets = g_translation + 0x58;
+    a.item_names = g_translation + 0x48;
+    a.item_name_offsets = g_translation + 0x78;
+    a.small_count = reinterpret_cast<BYTE*>(&g_small_count);
+    a.item_name_count = reinterpret_cast<BYTE*>(&g_item_name_count);
+    a.hd_messages = g_hd_messages;
+    a.message_slots = g_slots;
+    a.hd_text_fn = reinterpret_cast<BYTE*>(&hd_text_fn);
+    a.hd_build_fn = reinterpret_cast<BYTE*>(&hd_build_fn);
+    a.wstring_new_fn = reinterpret_cast<BYTE*>(&wstring_new_fn);
+}
+// A label as the game builds it with the flag set (0x8AC30, 0x88480): its translated text
+// built at (x, y), three translated glyphs shown, its pixel glyphs hidden. `glyphs` stay the
+// test's for its life.
+inline void built(BYTE* label, double x = 0, double y = 0) {
+    label[0x230] = 1;
+    put<double>(label, 0x258, x);
+    put<double>(label, 0x260, y);
+}
+struct TranslatedText {
+    BYTE glyphs[3][0x1D8] = {};
+    BYTE* list[3] = {glyphs[0], glyphs[1], glyphs[2]};
+    explicit TranslatedText(BYTE* label) {
+        built(label);
+        put<BYTE**>(label, 0x238, list);
+        put<int32_t>(label, 0x248, 3);
+        put<int32_t>(label, 0x244, 3);
+        put<int32_t>(label, 0x1EC, 0);
+        for (BYTE* g : list) g[0x120] = 1;
+        BYTE** pixel = get<BYTE**>(label, 0x228);
+        for (int32_t i = 0; i < get<int32_t>(label, 0x1D8); ++i) pixel[i][0x120] = 0;
+    }
+};
+
+// No translation: the flag clear, nothing loaded, no call made.
+inline void reset_translation() {
+    std::memset(g_translation, 0, sizeof(g_translation));
+    std::memset(g_hd_messages, 0, sizeof(g_hd_messages));
+    g_small = g_items = nullptr;
+    g_small_count = g_item_name_count = 0;
+    g_hd_texts.clear();
+    g_builds.clear();
+    g_slots_live = false;
+    g_message_slot = 0;
 }
 
 inline void* g_sound_system_seen = nullptr;
@@ -447,6 +636,19 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"ending_join", rva(g_ending + kEndingJoin)},
         {"stats_context", rva(g_stats_context)},
         {"context_init_slot", rva(&g_context_init_slot)},
+        {"translation", rva(g_translation)},
+        {"tr_flag", rva(g_translation + 0x91)},
+        {"small_text", rva(g_translation + 0x30)},
+        {"small_offsets", rva(g_translation + 0x58)},
+        {"item_names", rva(g_translation + 0x48)},
+        {"item_name_offsets", rva(g_translation + 0x78)},
+        {"small_count", rva(&g_small_count)},
+        {"item_name_count", rva(&g_item_name_count)},
+        {"hd_messages", rva(g_hd_messages)},
+        {"message_slots", rva(g_slots)},
+        {"hd_text_fn", rva(reinterpret_cast<void*>(&hd_text_fn))},
+        {"hd_build_fn", rva(reinterpret_cast<void*>(&hd_build_fn))},
+        {"wstring_new_fn", rva(reinterpret_cast<void*>(&wstring_new_fn))},
     };
 }
 

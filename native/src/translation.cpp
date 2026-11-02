@@ -1,0 +1,511 @@
+#include "translation.h"
+
+#include <algorithm>
+#include <cstring>
+#include <vector>
+
+#include "game_layout.h"
+#include "game_mem.h"
+
+namespace zap {
+
+namespace {
+
+// The most entries a table is taken to have (SmallText has 448, ItemNames 51: "Translation live
+// reads"); a count past it is not a table as traced.
+constexpr int kMaxEntries = 4096;
+// The most glyphs a label is taken to have, either kind.
+constexpr int32_t kMaxGlyphs = 4096;
+// The game's builder and its std::wstring (docs/re/memory.md, "Translated menus and the prompt"):
+// 0x88480(x, y, &text, &font, label, 0) takes the string by value and frees it; 0x17BD0(&text,
+// characters, length) assigns it, from the 32 zero bytes the game's callers start it as.
+using BuildFn = void (*)(float x, float y, void* text, void* font, BYTE* label, char flag);
+using WstringFn = void* (*)(void* text, const wchar_t* characters, size_t length);
+constexpr size_t kWstringSize = 32;
+// 0x1870A0(text, _, _, _, _, _, _, entry, kind, message): the 8th to 10th on the stack, as the
+// pickup and GAME SAVED call it (docs/re/memory.md, "Translated messages").
+using HdTextFn = void (*)(const wchar_t* text, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t,
+                          intptr_t, intptr_t entry, intptr_t kind, void* message);
+constexpr intptr_t kSmallKind = 0;
+
+// The table's pointers and count as read now through `text`, `offsets` and `count` (the keys:
+// each holds a pointer, the count is 16-bit).
+bool read_table(const BYTE* text, const BYTE* offsets, const BYTE* count, TextTable& out) {
+    int16_t n = 0;
+    if (!read(text, 0, out.text) || !read(offsets, 0, out.offsets) || !read(count, 0, n)) {
+        return false;
+    }
+    out.count = n;
+    return out.text != nullptr && out.offsets != nullptr && n > 0 && n <= kMaxEntries;
+}
+
+// Every offset of the table, copied: empty if it cannot be read.
+std::vector<int32_t> offsets_of(const TextTable& t) {
+    std::vector<int32_t> out(static_cast<size_t>(t.count));
+    if (t.count <= 0 || !safe_read(t.offsets, out.data(), out.size() * sizeof(int32_t))) {
+        out.clear();
+    }
+    return out;
+}
+
+// Whether an entry reads as the parser leaves an empty one: nothing but line breaks, then its 0.
+bool reads_empty(const TextTable& t, int32_t offset) {
+    wchar_t c[4] = {};
+    if (offset < 0 || !safe_read(t.text + offset, c, sizeof(c))) return false;
+    for (wchar_t ch : c) {
+        if (ch == 0) return true;
+        if (ch != L'\r' && ch != L'\n') return false;
+    }
+    return false;
+}
+
+bool reads(const TextTable& t, int32_t offset, std::wstring_view text) {
+    std::wstring now;
+    return read_text(t, offset, static_cast<int32_t>(text.size()) + 1, now) && now == text;
+}
+
+}  // namespace
+
+bool translation_keys(const GameAddresses& a) {
+    BYTE* const* keys[] = {&a.translation,  &a.tr_flag,     &a.small_text,    &a.small_offsets,
+                           &a.item_names,   &a.item_name_offsets, &a.small_count,
+                           &a.item_name_count, &a.hd_messages, &a.message_slots,
+                           &a.hd_text_fn,   &a.hd_build_fn, &a.wstring_new_fn};
+    for (BYTE* const* key : keys) {
+        if (*key == nullptr) return false;
+    }
+    // The fields the other keys name are where the object has them: a layout that differs
+    // leaves the translation parts out, as a pattern that differs would.
+    BYTE* t = a.translation;
+    return a.tr_flag == t + tr::kOn && a.small_text == t + tr::kSmallText &&
+           a.small_offsets == t + tr::kSmallOffsets && a.item_names == t + tr::kItemNames &&
+           a.item_name_offsets == t + tr::kItemNameOffsets;
+}
+
+std::optional<Loaded> loaded_translation(const GameAddresses& a) {
+    if (!translation_keys(a)) return std::nullopt;
+    uint8_t flag = 0;
+    Loaded out;
+    if (!read(a.tr_flag, 0, flag) ||
+        !read_table(a.small_text, a.small_offsets, a.small_count, out.small) ||
+        !read_table(a.item_names, a.item_name_offsets, a.item_name_count, out.items)) {
+        return std::nullopt;
+    }
+    out.on = flag != 0;
+    return out;
+}
+
+bool translation_on(const GameAddresses& a) {
+    uint8_t flag = 0;
+    return translation_keys(a) && read(a.tr_flag, 0, flag) && flag != 0;
+}
+
+std::string language_name(const GameAddresses& a) {
+    if (!translation_keys(a)) return "?";
+    uint8_t flag = 0;
+    char name[tr::kNameSize] = {};
+    if (!read(a.tr_flag, 0, flag)) return "?";
+    if (flag == 0) return "-";
+    if (!safe_read(a.translation + tr::kName, name, sizeof(name))) return "?";
+    std::string out;
+    for (char c : std::string_view(name, strnlen(name, sizeof(name)))) {
+        // One word of `hello`: anything but letters, digits and the folders' parentheses as an
+        // underscore.
+        const bool keep = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                          (c >= '0' && c <= '9') || c == '(' || c == ')' || c == '-';
+        out += keep ? c : '_';
+    }
+    return out.empty() ? "?" : out;
+}
+
+int32_t entry_offset(const TextTable& t, int k) {
+    int32_t offset = -1;
+    if (k < 0 || k >= t.count || !safe_read(t.offsets + k, &offset, sizeof(offset))) return -1;
+    return offset;
+}
+
+int32_t entry_room(const TextTable& t, int k) {
+    const std::vector<int32_t> all = offsets_of(t);
+    if (k < 0 || static_cast<size_t>(k) >= all.size() || all[static_cast<size_t>(k)] < 0) return 0;
+    const int32_t own = all[static_cast<size_t>(k)];
+    int32_t next = -1;
+    for (int32_t o : all) {
+        if (o > own && (next < 0 || o < next)) next = o;
+    }
+    return next < 0 ? 0 : next - own - 1;
+}
+
+bool read_text(const TextTable& t, int32_t offset, int32_t room, std::wstring& out) {
+    out.clear();
+    if (offset < 0 || room <= 0) return false;
+    std::vector<wchar_t> chars(static_cast<size_t>(room));
+    if (!safe_read(t.text + offset, chars.data(), chars.size() * sizeof(wchar_t))) return false;
+    auto end = std::find(chars.begin(), chars.end(), L'\0');
+    if (end == chars.end()) return false;
+    out.assign(chars.begin(), end);
+    return true;
+}
+
+bool read_entry(const TextTable& t, int k, std::wstring& out, int32_t last_room) {
+    const int32_t room = entry_room(t, k);
+    return read_text(t, entry_offset(t, k), room > 0 ? room : last_room, out);
+}
+
+bool write_text(const TextTable& t, int32_t offset, int32_t room, std::wstring_view text) {
+    const size_t n = text.size() + 1;
+    if (offset < 0 || room <= 0 || n > static_cast<size_t>(room)) return false;
+    wchar_t* at = t.text + offset;
+    if (!writable(at, n * sizeof(wchar_t))) return false;
+    std::copy(text.begin(), text.end(), at);
+    at[text.size()] = L'\0';
+    return true;
+}
+
+std::wstring hd_text(std::string_view font_text) {
+    std::wstring out;
+    for (unsigned char c : font_text) {
+        if (c == '{') c = '(';
+        if (c == '}') c = ')';
+        if (c >= 0x20 && c < 0x7F) out += static_cast<wchar_t>(c);
+    }
+    return out;
+}
+
+std::wstring hd_icon(uint8_t icon) {
+    if (icon >= 0xC0 && icon <= 0xEA) return std::wstring(1, static_cast<wchar_t>(icon + 0xDF64));
+    if (icon == 0x6E) return L"\xE04F";
+    if (icon == 0x77) return L"\xE050";
+    return L"";
+}
+
+std::wstring hd_label(const std::string& name, int width, bool first_line) {
+    const size_t w = width > 0 ? static_cast<size_t>(width) : name.size();
+    std::wstring out;
+    for (size_t at = 0, line = 0; at < name.size() && w > 0; at += w, ++line) {
+        std::string part = name.substr(at, w);
+        const size_t start = part.find_first_not_of(' ');
+        if (start == std::string::npos) continue;
+        part.erase(0, start);
+        part.erase(part.find_last_not_of(' ') + 1);
+        std::wstring text;
+        // The first line's first character is the item's glyph (resolve_item_labels, apitem.h).
+        const auto glyph = static_cast<uint8_t>(part[0]);
+        if (line == 0 && (glyph >= 0x80 || glyph == 0x6E || glyph == 0x77)) {
+            text = hd_icon(glyph);
+            part.erase(0, 1);
+            const size_t rest = part.find_first_not_of(' ');
+            part.erase(0, rest == std::string::npos ? part.size() : rest);
+        }
+        text += hd_text(part);
+        if (text.empty()) continue;
+        if (!out.empty()) out += L'\n';
+        out += text;
+        if (first_line) break;
+    }
+    return out;
+}
+
+bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text) {
+    if (!translation_on(a)) return false;
+    uint8_t built = 0;
+    double x = 0, y = 0;
+    if (!read(label, hdlabel::kBuilt, built) || built == 0 || !read(label, hdlabel::kX, x) ||
+        !read(label, hdlabel::kY, y) || !writable(label, hdlabel::kSize)) {
+        return false;
+    }
+    // As the game's callers start it (0x8AC65 to 0x8ACA0): 32 zero bytes, then the assign.
+    alignas(16) BYTE wide[kWstringSize] = {};
+    reinterpret_cast<WstringFn>(a.wstring_new_fn)(wide, text.data(), text.size());
+    reinterpret_cast<BuildFn>(a.hd_build_fn)(static_cast<float>(x), static_cast<float>(y), wide,
+                                             a.translation + tr::kFont, label, 0);
+    return true;
+}
+
+namespace {
+
+// A label's glyph lists: its translated glyphs (count, and the list) and its pixel ones.
+struct LabelGlyphs {
+    int32_t translated = 0, pixel = 0;
+    BYTE** translated_list = nullptr;
+    BYTE** pixel_list = nullptr;
+};
+
+bool glyph_lists(const BYTE* label, LabelGlyphs& out) {
+    uint8_t built = 0;
+    if (!read(label, hdlabel::kBuilt, built) || built == 0 ||
+        !read(label, hdlabel::kCount, out.translated) ||
+        !read(label, hdlabel::kGlyphs, out.translated_list) ||
+        !read(label, label::kLength, out.pixel) || !read(label, label::kGlyphs, out.pixel_list) ||
+        out.translated < 0 || out.translated > kMaxGlyphs || out.pixel < 0 ||
+        out.pixel > kMaxGlyphs || !writable(label, hdlabel::kSize)) {
+        return false;
+    }
+    return true;
+}
+
+// Each of a list's first `n` glyphs shown or hidden, those that can be written.
+void show_each(BYTE** list, int32_t n, bool shown) {
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        if (g != nullptr && writable(g + sprite::kVisible, 1)) g[sprite::kVisible] = shown ? 1 : 0;
+    }
+}
+
+// The label's pixel glyphs shown and its translated ones hidden (`pixel`), or the other way.
+bool show_glyphs(BYTE* label, bool pixel) {
+    LabelGlyphs g;
+    if (!glyph_lists(label, g)) return false;
+    at<int32_t>(label, hdlabel::kShown) = pixel ? 0 : g.translated;
+    show_each(g.translated_list, g.translated, !pixel);
+    at<int32_t>(label, hdlabel::kPixelShown) = pixel ? g.pixel : 0;
+    show_each(g.pixel_list, g.pixel, pixel);
+    return true;
+}
+
+}  // namespace
+
+bool show_pixel_glyphs(BYTE* label) { return show_glyphs(label, true); }
+bool show_translated_glyphs(BYTE* label) { return show_glyphs(label, false); }
+
+bool pixel_glyphs_shown(const BYTE* label) {
+    int32_t shown = -1, pixel = -1, length = -1;
+    return read(label, hdlabel::kShown, shown) && read(label, hdlabel::kPixelShown, pixel) &&
+           read(label, label::kLength, length) && shown == 0 && pixel == length;
+}
+
+void EntryWriter::put_back(const std::optional<Loaded>& now, const EntryKey& key, const Held& h) {
+    if (!now || now->table(key.first) != h.at || entry_offset(h.at, key.second) != h.offset) {
+        return;  // another table: the one written was freed with its translation
+    }
+    if (reads(h.at, h.offset, h.written)) write_text(h.at, h.offset, h.room, h.original);
+}
+
+void EntryWriter::watch(const std::optional<Loaded>& now,
+                        const std::map<EntryKey, std::wstring>& want) {
+    for (auto it = held_.begin(); it != held_.end();) {
+        const EntryKey& key = it->first;
+        const Held& h = it->second;
+        if (!now || now->table(key.first) != h.at || entry_offset(h.at, key.second) != h.offset) {
+            it = held_.erase(it);  // its table was freed (or replaced): nothing to put back
+            continue;
+        }
+        auto wanted = want.find(key);
+        std::wstring text = wanted != want.end() ? wanted->second : std::wstring();
+        if (text.size() + 1 > static_cast<size_t>(h.room)) text.resize(h.room - 1);
+        if (!now->on || wanted == want.end() || text != h.written) {
+            put_back(now, key, h);
+            it = held_.erase(it);
+            continue;
+        }
+        if (!reads(h.at, h.offset, h.written)) {
+            it = held_.erase(it);  // changed by the game since (a reload in place): its own now
+            continue;
+        }
+        ++it;
+    }
+    if (!now || !now->on) return;
+    for (const auto& [key, wanted] : want) {
+        if (held_.count(key) != 0) continue;
+        const TextTable& t = now->table(key.first);
+        Held h;
+        h.at = t;
+        h.offset = entry_offset(t, key.second);
+        h.room = entry_room(t, key.second);
+        if (h.offset < 0 || h.room < 2 || !read_text(t, h.offset, h.room, h.original)) continue;
+        h.written = wanted;
+        if (h.written.size() + 1 > static_cast<size_t>(h.room)) h.written.resize(h.room - 1);
+        if (h.written == h.original) continue;  // reads so already: nothing of the helper's
+        if (write_text(t, h.offset, h.room, h.written)) held_[key] = std::move(h);
+    }
+}
+
+void EntryWriter::restore(const std::optional<Loaded>& now) {
+    for (const auto& [key, h] : held_) put_back(now, key, h);
+    held_.clear();
+}
+
+std::optional<std::wstring> EntryWriter::original(EntryKey key) const {
+    auto it = held_.find(key);
+    if (it == held_.end()) return std::nullopt;
+    return it->second.original;
+}
+
+BYTE* hd_object(const GameAddresses& a, BYTE* message) {
+    int32_t slot = -1;
+    if (a.hd_messages == nullptr || a.message_slots == nullptr ||
+        !read(message, message::kSlot, slot) || slot < 0 || slot >= hd::kSlots ||
+        message != a.message_slots + static_cast<ptrdiff_t>(message::kSize) * slot) {
+        return nullptr;
+    }
+    BYTE* object = a.hd_messages + static_cast<ptrdiff_t>(hd::kSize) * slot;
+    return writable(object, hd::kSize) ? object : nullptr;
+}
+
+void clear_mark(const GameAddresses& a, BYTE* message) {
+    if (!translation_on(a)) return;
+    BYTE* object = hd_object(a, message);
+    // Only an object not bound to this message: the mark is the last translated message's in
+    // that slot. A slot's messages are the slot itself, so its object's message (+0x220) is the
+    // same pointer whatever it was bound for; what tells them apart is the serial it was bound
+    // with (+0x228, the slot's +0x1D8 then), and the message routine gives each message a new
+    // one and binds none (docs/re/memory.md, "Translated messages").
+    int32_t bound = 0, serial = 0;
+    if (object != nullptr && read(object, hd::kSerial, bound) &&
+        read(message, message::kSerial, serial) && bound != serial) {
+        object[hd::kHasText] = 0;
+    }
+}
+
+void PopupAreas::forget() {
+    at_ = {};
+    run_ = -1;
+    run_room_ = 0;
+    moved_from_ = -1;
+    for (Area& area : areas_) area = Area{};
+    waited_ = 0;
+}
+
+bool PopupAreas::prepare(const Loaded& now) {
+    if (run_ >= 0 && now.small == at_ &&
+        entry_offset(at_, kFirst) == run_ && entry_offset(at_, kMoved) == areas_[1].offset) {
+        return true;
+    }
+    // A table loaded since (or the split undone there): what was ours went with the old one.
+    forget();
+    const std::vector<int32_t> all = offsets_of(now.small);
+    if (all.size() <= static_cast<size_t>(kNext)) return false;
+    // The run as the parser leaves it: its entries in order, each empty, the next one after.
+    for (int k = kFirst; k < kNext; ++k) {
+        if (all[k] < 0 || all[k + 1] <= all[k] || !reads_empty(now.small, all[k])) return false;
+    }
+    const int32_t start = all[kFirst];
+    const int32_t room = all[kNext] - start - 1;
+    if (room < 32) return false;
+    int32_t* moved = now.small.offsets + kMoved;
+    if (!writable(now.small.text + start, static_cast<size_t>(room) * sizeof(wchar_t)) ||
+        !writable(moved, sizeof(int32_t))) {
+        return false;
+    }
+    at_ = now.small;
+    run_ = start;
+    run_room_ = room;
+    moved_from_ = all[kMoved];
+    const int32_t half = room / 2;
+    areas_[0].entry = kFirst;
+    areas_[0].offset = start;
+    areas_[0].room = half;
+    areas_[1].entry = kMoved;
+    areas_[1].offset = start + half;
+    areas_[1].room = room - half;
+    *moved = areas_[1].offset;
+    return true;
+}
+
+int PopupAreas::reserve(const Loaded& now, size_t chars) {
+    if (!now.on || !prepare(now)) return kNone;
+    const size_t need = chars + 1;
+    if (need > static_cast<size_t>(run_room_)) return kNone;
+    const bool free[2] = {areas_[0].message == nullptr, areas_[1].message == nullptr};
+    for (int k = 0; k < 2; ++k) {
+        const int i = (next_ + k) % 2;
+        if (free[i] && need <= static_cast<size_t>(areas_[i].room)) {
+            waited_ = 0;
+            return i;
+        }
+    }
+    if (free[0] && free[1]) {
+        waited_ = 0;
+        return kWhole;
+    }
+    // Taken: freed within a frame or two once its message ends (the helper's popups come one at
+    // a time; the one before may still be closing).
+    if (++waited_ > kMaxWait) {
+        waited_ = 0;
+        return kNone;
+    }
+    return kWait;
+}
+
+bool PopupAreas::show(const GameAddresses& a, const Loaded& now, int where, BYTE* message,
+                      const std::wstring& text) {
+    if (where != 0 && where != 1 && where != kWhole) return false;
+    if (!now.on || !prepare(now)) return false;
+    BYTE* object = hd_object(a, message);
+    int32_t serial = 0;
+    if (object == nullptr || !read(message, message::kSerial, serial)) return false;
+    Area& area = areas_[where == kWhole ? 0 : where];
+    const int32_t room = where == kWhole ? run_room_ : area.room;
+    if (area.message != nullptr || (where == kWhole && areas_[1].message != nullptr) ||
+        !write_text(now.small, area.offset, room, text)) {
+        return false;
+    }
+    area.message = message;
+    area.serial = serial;
+    area.object = object;
+    area.written = text;
+    if (where == kWhole) {
+        // Area 1's offset lies inside: taken too, by the same message, with no text of its own,
+        // so it frees in the same watch as area 0.
+        areas_[1].message = message;
+        areas_[1].serial = serial;
+        areas_[1].object = object;
+    }
+    next_ = (where == 0) ? 1 : 0;
+    reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), 0, 0, 0, 0, 0, 0, area.entry,
+                                             kSmallKind, message);
+    return true;
+}
+
+bool PopupAreas::area_free(const Area& area) {
+    if (area.message == nullptr) return true;
+    int32_t serial = 0, entry = -1, kind = -1, bound_serial = 0;
+    BYTE* bound = nullptr;
+    // Its message gone (its serial cleared at 0 frames left, or the slot reused), or its HD object
+    // given another's (a translated message of the game's in that slot).
+    if (!read(area.message, message::kSerial, serial) || serial != area.serial) return true;
+    if (!read(area.object, hd::kMessage, bound) || !read(area.object, hd::kSerial, bound_serial) ||
+        !read(area.object, hd::kEntry, entry) || !read(area.object, hd::kKind, kind)) {
+        return true;
+    }
+    return bound != area.message || bound_serial != area.serial || kind != kSmallKind ||
+           (entry != kFirst && entry != kMoved);
+}
+
+void PopupAreas::empty(const Loaded& now, Area& area) {
+    // Zeros over what it wrote, where it still reads so: the run back to empty entries, so a
+    // save-state load that binds a message to it again (0x2007D0) finds none and shows its pixel
+    // text (docs/re/memory.md, "Borrowed entries for popups").
+    if (!area.written.empty() && now.small == at_ && reads(at_, area.offset, area.written)) {
+        wchar_t* p = at_.text + area.offset;
+        if (writable(p, (area.written.size() + 1) * sizeof(wchar_t))) {
+            std::fill(p, p + area.written.size() + 1, L'\0');
+        }
+    }
+    area.message = nullptr;
+    area.object = nullptr;
+    area.serial = 0;
+    area.written.clear();
+}
+
+void PopupAreas::watch(const std::optional<Loaded>& now) {
+    if (run_ < 0) return;
+    if (!now || now->small != at_) {
+        forget();  // another table: the old one, and what was in it, freed
+        return;
+    }
+    for (Area& area : areas_) {
+        if (area.message != nullptr && area_free(area)) empty(*now, area);
+    }
+}
+
+void PopupAreas::restore(const std::optional<Loaded>& now) {
+    watch(now);
+    if (run_ < 0 || in_use()) return;
+    if (now && now->small == at_ && entry_offset(at_, kMoved) == areas_[1].offset &&
+        writable(at_.offsets + kMoved, sizeof(int32_t))) {
+        at_.offsets[kMoved] = moved_from_;
+    }
+    forget();
+}
+
+}  // namespace zap

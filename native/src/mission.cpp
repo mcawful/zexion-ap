@@ -3,11 +3,14 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
 // Centered in the 30-glyph line the prompt's builder gives the question (0x166D9F).
 const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
+// In a translation the question shows SmallText 374's text (0x166EEE), built again as this.
+const wchar_t kMissionQuestionHd[] = L"Return home with the disks?";
 
 namespace {
 
@@ -245,6 +248,7 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     }
     reinterpret_cast<void (*)(void*, const char*, int, int)>(a.text_set_fn)(
         question, kMissionQuestion, 0, glyphs);
+    rebuild_label(a, question, kMissionQuestionHd);  // in a translation (translation.h)
     if (a.hooks.mission_yes != nullptr) put(child[0], widget::kCallback, a.hooks.mission_yes);
     no_fn_ = no;
     yes_child_ = child[0];

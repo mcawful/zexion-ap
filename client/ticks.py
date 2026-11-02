@@ -1,7 +1,8 @@
 """The game loop's side tasks with the in-game helper: attaching it, and telling it what this
 seed's save needs (the labels, the ASSIST lock, INTEL CHIP, the OS Install Disks and their
 popups, the new game, received Energy Shields and DeathLinks, the offline files, and the
-notices for another seed's save, the client coming back, or the Feats guard not in place).
+notices for another seed's save, the client coming back, the Feats guard not in place, or a
+language the mod's text is not made for).
 
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
@@ -608,6 +609,22 @@ async def feats_tick(ctx: ZexionContext, step: session.Step) -> None:
         line, detail = said
         logger.warning(line)
         log.warning(f"The mod's Feats and achievements guard: {detail}")
+
+
+async def language_tick(ctx: ZexionContext) -> None:
+    """Every few seconds while a helper is attached: which language the game shows (its hello's
+    ``lang``). In a translation other than English(HD) the player is told once per game run that
+    the mod's text is made for the default English and English(HD) (state.language_line)."""
+    helper, told = ctx.helper, ctx.told
+    now = time.monotonic()
+    if now < told.language_at:
+        return
+    told.language_at = now + state.LANGUAGE_ASK_SECONDS
+    lang = (await asyncio.to_thread(helper.hello)).get("lang", "")
+    line = state.language_line(lang)
+    if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
+        logger.warning(line)
+        log.info(f"The game's language: {lang}")
 
 
 async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:

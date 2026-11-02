@@ -627,10 +627,176 @@ TARGETS = (
         # the clear-Feats menu's (RVA 0xf5a0d on B1)
         rip("FF 15 ?? ?? ?? ?? 4C 8D 0D ?? ?? ?? ?? 48 8B 08 8D 43 FE 99 2B C2 D1 F8 4C 8B 01 48 63 D0 49 8B 94 D1 80 00 00 00 41 FF 50 38", 2, 6),
     )),
+    # English(HD) and the other translations (docs/re/memory.md, "Translation tables",
+    # "Translated messages", "Translated menus and the prompt" and "Translation patterns").
+    Target("translation", "the translation object (buffers, offset tables, flags)", {"B1": 0xC9CF10}, (
+        # from the instruction at RVA 0x785c2 on B1
+        rip("48 8D 15 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 66 0F 6F 05 ?? ?? ?? ?? 4C 8D 45 AF", 3, 7),
+        # from the instruction at RVA 0xcb9ac on B1
+        rip("48 8D 15 ?? ?? ?? ?? 48 8D 8D 58 01 00 00 E8 ?? ?? ?? ?? 44 0F B6 F0", 3, 7),
+    )),
+    Target("tr_flag", "1 while a translation is on", {"B1": 0xC9CFA1}, (
+        # from the instruction at RVA 0x1f857 on B1
+        rip("44 38 3D ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 48 0F BF 96 E8 01 00 00", 3, 7),
+        # from the instruction at RVA 0x1820ae on B1
+        rip("40 38 3D ?? ?? ?? ?? 74 49 48 63 83 E0 01 00 00", 3, 7),
+        # from the instruction at RVA 0x1870e3 on B1
+        rip("80 3D ?? ?? ?? ?? 00 4E 8D 34 3E 74 1A F2 0F 10 05 ?? ?? ?? ??", 2, 7),
+    )),
+    Target("small_text", "SmallText.txt's wide buffer", {"B1": 0xC9CF40}, (
+        # from the instruction at RVA 0x8ac5b on B1
+        rip("48 8B 05 ?? ?? ?? ?? 0F 57 C0 49 89 5B 08 0F 11 44 24 38", 3, 7),
+        # from the instruction at RVA 0x187c0b on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 8D 4C 24 60 41 B8 00 03 00 00 48 8D 14 50 E8 ?? ?? ?? ?? 8B 86 10 02 00 00", 3, 7),
+        # from the instruction at RVA 0x1fc403 on B1
+        rip("48 8B 0D ?? ?? ?? ?? 48 8D 0C 41 EB 07 48 8D 0D ?? ?? ?? ??", 3, 7),
+    )),
+    Target("small_offsets", "SmallText's int32 offsets", {"B1": 0xC9CF68}, (
+        # from the instruction at RVA 0x8ac38 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 8B F1 49 63 D0 0F 29 74 24 60", 3, 7),
+        # from the instruction at RVA 0x187bfb on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 63 14 88 83 FA FF 74 26", 3, 7),
+        # from the instruction at RVA 0x1fc3eb on B1
+        rip("48 8B 0D ?? ?? ?? ?? 4C 89 44 24 48 48 63 81 88 01 00 00", 3, 7),
+    )),
+    Target("large_text", "LargeText.txt's wide buffer", {"B1": 0xC9CF48}, (
+        # from the instruction at RVA 0x187c4f on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 8D 4C 24 60 41 B8 00 03 00 00 48 8D 14 50 E8 ?? ?? ?? ?? 0F B6 FB", 3, 7),
+        # from the instruction at RVA 0x8ae35 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 0F 57 C0 48 89 5C 24 78 48 89 BC 24 80 00 00 00", 3, 7),
+        # from the instruction at RVA 0x183394 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 41 B8 00 02 00 00 49 8B CE", 3, 7),
+    )),
+    Target("large_offsets", "LargeText's int32 offsets", {"B1": 0xC9CF70}, (
+        # from the instruction at RVA 0x187c3f on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 63 14 88 83 FA FF 74 28", 3, 7),
+        # from the instruction at RVA 0x8ae21 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 4A 63 14 90 83 FA FF 0F 84 ?? ?? ?? ??", 3, 7),
+        # from the instruction at RVA 0x18337c on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 63 14 98 83 FA FF 75 08", 3, 7),
+    )),
+    Target("item_names", "ItemNames.txt's wide buffer", {"B1": 0xC9CF58}, (
+        # from the instruction at RVA 0x1f8d6 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 8D 8C 24 92 00 00 00 4A 8D 14 40", 3, 7),
+        # from the instruction at RVA 0x1f942 on B1
+        rip("48 8B 0D ?? ?? ?? ?? 4A 8D 14 41 41 B8 6B 00 00 00", 3, 7),
+        # from the instruction at RVA 0x187ce8 on B1
+        rip("48 8B 05 ?? ?? ?? ?? 48 8D 14 48 48 8D 4C 24 62", 3, 7),
+    )),
+    Target("item_name_offsets", "ItemNames' int32 offsets", {"B1": 0xC9CF88}, (
+        # from the instruction at RVA 0x1f86c on B1
+        rip("48 8B 0D ?? ?? ?? ?? 4C 63 04 91 41 83 F8 FF 75 0E", 3, 7),
+        # from the instruction at RVA 0x1f931 on B1
+        rip("48 8B 0D ?? ?? ?? ?? 4C 63 04 91 41 83 F8 FF 74 1E", 3, 7),
+        # from the instruction at RVA 0x187cdd on B1
+        rip("48 8B 05 ?? ?? ?? ?? 4A 63 0C 88 48 8B 05 ?? ?? ?? ?? 48 8D 14 48 48 8D 4C 24 62", 3, 7),
+    )),
+    Target("small_count", "SmallText's entry count (16-bit)", {"B1": 0x347538}, (
+        # from the instruction at RVA 0x8ea60 on B1
+        rip("0F B7 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B 84 24 F8 00 00 00", 3, 7),
+        # from the instruction at RVA 0x16efa7 on B1
+        rip("66 3B 05 ?? ?? ?? ?? 7D 05 66 85 C0 79 0B 33 C0 66 43 89 84 14 ?? ?? ?? ?? 48 8B 87 E0 01 00 00 48 8B 4C F0 20", 3, 7),
+    )),
+    Target("large_count", "LargeText's entry count (16-bit)", {"B1": 0xEAEE24}, (
+        # from the instruction at RVA 0x8ea7f on B1
+        rip("0F B7 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B 84 24 00 01 00 00", 3, 7),
+        # from the instruction at RVA 0x1de35a on B1
+        rip("48 0F BF 0D ?? ?? ?? ?? BA 96 00 00 00 FF 15 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ??", 4, 8),
+    )),
+    Target("item_name_count", "ItemNames' entry count (16-bit)", {"B1": 0x346098}, (
+        # from the instruction at RVA 0x8ea9e on B1
+        rip("0F B7 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 84 24 E0 00 00 00", 3, 7),
+        # from the instruction at RVA 0x1de03c on B1
+        rip("48 8D 15 ?? ?? ?? ?? 41 B8 02 00 00 00 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 85 C0 75 1A 48 0F BF 0D ?? ?? ?? ?? BA 10 00 00 00", 3, 7),
+    )),
+    Target("database_count", "Database's entry count (16-bit; the Text records)", {"B1": 0x345F2C}, (
+        # from the instruction at RVA 0x1de2f8 on B1
+        rip("48 8D 15 ?? ?? ?? ?? 41 B8 02 00 00 00 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 85 C0 75 1A 48 0F BF 0D ?? ?? ?? ?? BA 20 00 00 00", 3, 7),
+        # from the instruction at RVA 0x1f122 on B1
+        rip("66 3B 05 ?? ?? ?? ?? 7D 65 48 8B 05 ?? ?? ?? ?? 48 69 C9 B0 00 00 00", 3, 7),
+    )),
+    Target("hd_messages", "the four HD message objects, 0x238 bytes each", {"B1": 0xEAEE40}, (
+        # from the instruction at RVA 0x1870ce on B1
+        rip("4C 8D 3D ?? ?? ?? ?? 48 63 87 E0 01 00 00 48 69 F0 38 02 00 00", 3, 7),
+        # from the instruction at RVA 0x1881e2 on B1
+        rip("4C 8D 25 ?? ?? ?? ?? 4C 8B 87 20 02 00 00 F2 0F 10 2D ?? ?? ?? ??", 3, 7),
+        # from the instruction at RVA 0x187d55 on B1
+        rip("48 8D 2D ?? ?? ?? ?? 48 69 F8 38 02 00 00 4C 89 B4 24 88 08 00 00", 3, 7),
+    )),
+    Target("message_slots", "the four message slots, 0x1628 bytes each", {"B1": 0xC961E8}, (
+        # from the instruction at RVA 0x203515 on B1
+        rip("8B 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 01 05 ?? ?? ?? ?? 8B 05 ?? ?? ?? ?? 89 05 ?? ?? ?? ?? E8 ?? ?? ?? ?? 44 38 2D ?? ?? ?? ?? 74 43", 2, 6, -0x1F0),
+        # from the instruction at RVA 0x150c4 on B1
+        rip("39 05 ?? ?? ?? ?? 7E 06 89 05 ?? ?? ?? ?? 0F BF 43 04 39 05 ?? ?? ?? ?? 7E 06 89 05 ?? ?? ?? ?? 0F BF 43 04 39 05 ?? ?? ?? ?? 7E 06", 2, 6, -0x1EC),
+    )),
+    Target("hd_text_fn", "puts a wide text on a message (pickup, GAME SAVED)", {"B1": 0x1870A0}, (
+        # from the call at RVA 0x1f985 on B1
+        rip("E8 ?? ?? ?? ?? 48 8B 15 ?? ?? ?? ?? BB 08 00 00 00 48 0F BF 86 E8 01 00 00", 1, 5),
+        # from the call at RVA 0x1fc425 on B1
+        rip("E8 ?? ?? ?? ?? 48 63 15 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 4C 8D 3D ?? ?? ?? ??", 1, 5),
+        # from the call at RVA 0x1fc8de on B1
+        rip("E8 ?? ?? ?? ?? 48 63 15 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 4C 8D 35 ?? ?? ?? ??", 1, 5),
+        # from the function's start on B1
+        at("48 8B C4 48 83 EC 78 0F 29 70 D8 48 89 68 10"),
+    )),
+    Target("hd_entry_fn", "puts a table entry (id, kind) on a message", {"B1": 0x1880F0}, (
+        # from the call at RVA 0x10f75 on B1
+        rip("E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 33 D2 E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 41 8D 40 FE 66 83 F8 01", 1, 5),
+        # from the call at RVA 0x10f81 on B1
+        rip("E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 41 8D 40 FE 66 83 F8 01 0F 86 ?? ?? ?? ??", 1, 5),
+        # from the function's start on B1
+        at("4C 8B DC 48 81 EC A8 06 00 00 41 0F 29 73 C8"),
+    )),
+    Target("text_attach_fn", "a widget's HD text from a SmallText entry", {"B1": 0x8AC30}, (
+        # from the call at RVA 0x169c49 on B1
+        rip("E8 ?? ?? ?? ?? 48 8B 83 E0 01 00 00 0F 57 C9 48 8B 08 48 8B 89 F0 01 00 00 E8 ?? ?? ?? ?? 48 8B CB", 1, 5),
+        # from the call at RVA 0x18027b on B1
+        rip("E8 ?? ?? ?? ?? 48 8D 45 67 66 89 5D 6B 48 89 44 24 40", 1, 5),
+        # from the function's start on B1
+        at("4C 8B DC 56 48 83 EC 70 48 8B 05 ?? ?? ?? ?? 48 8B F1"),
+    )),
+    Target("large_attach_fn", "a widget's HD text from a LargeText entry", {"B1": 0x8AD90}, (
+        # from the call at RVA 0xb3215 on B1
+        rip("E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 83 F8 03 75 60 48 8B 15 ?? ?? ?? ?? 41 B9 88 00 00 00", 1, 5),
+        # from the call at RVA 0xb327a on B1
+        rip("E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 83 F8 04 0F 85 ?? ?? ?? ?? 48 8B 44 24 40", 1, 5),
+        # from the function's start on B1
+        at("40 56 48 83 EC 60 4C 8B 89 F0 01 00 00"),
+    )),
+    Target("hd_build_fn", "builds a label's HD glyphs from a wide string (takes it by value)", {"B1": 0x88480}, (
+        # from the call at RVA 0x8acf1 on B1
+        rip("E8 ?? ?? ?? ?? 4C 8B 86 F0 01 00 00 8B 8C 24 A8 00 00 00", 1, 5),
+        # from the call at RVA 0x18756a on B1
+        rip("E8 ?? ?? ?? ?? 49 8B CE E8 ?? ?? ?? ?? 49 8B CE E8 ?? ?? ?? ?? 4C 8B 74 24 68", 1, 5),
+        # from the function's start on B1
+        at("48 8B C4 57 41 54 48 81 EC 58 01 00 00"),
+    )),
+    Target("wstring_new_fn", "the game's std::wstring assign (ptr, len)", {"B1": 0x17BD0}, (
+        # from the call at RVA 0x1165a on B1
+        rip("E8 ?? ?? ?? ?? 48 8B 86 28 02 00 00 4C 8D 0D ?? ?? ?? ?? 40 88 6C 24 28", 1, 5),
+        # from the call at RVA 0x8aca0 on B1
+        rip("E8 ?? ?? ?? ?? 48 8B 86 F0 01 00 00 4C 8D 0D ?? ?? ?? ?? F3 0F 10 84 24 A0 00 00 00", 1, 5),
+        # from the function's start on B1
+        at("40 53 55 56 41 57 48 83 EC 28 48 BD FE FF FF FF FF FF FF 7F"),
+    )),
 )
 # fmt: on
 
 # Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
-# locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
-TOOL_TARGETS = frozenset({"pickup_counter"})
+# locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching. The
+# translation's LargeText and Database tables and the game's other text-attach functions are
+# traced and checked here, but the helper reads none of them: it rebuilds a label's text itself
+# (hd_build_fn), and borrows only SmallText entries (native/README.md, "Translations").
+TOOL_TARGETS = frozenset(
+    {
+        "pickup_counter",
+        "large_text",
+        "large_offsets",
+        "large_count",
+        "database_count",
+        "hd_entry_fn",
+        "text_attach_fn",
+        "large_attach_fn",
+    }
+)
 CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)

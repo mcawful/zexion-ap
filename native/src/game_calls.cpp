@@ -34,6 +34,13 @@ constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' s
 constexpr int kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
 constexpr int kNoteFrames = 7;
+// The scanner's message, Text entry 12: in a translation, SmallText entry 12 (the files' entries
+// match the Text table's one for one), which the message event reads every frame (0x10F81).
+constexpr int kScanEntry = 12;
+// The Area Map's name while it is an Intel Chip, in a translation (intel.h's, as text reads).
+constexpr wchar_t kIntelHdName[] = L"Intel Chip";
+// The most characters of a translated item name read for a popup when its room is not known.
+constexpr int32_t kNameRoom = 64;
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -69,6 +76,7 @@ struct ConfigKey {
     uint64_t room;    // bytes from the address that must lie in its section, if not 0
     uint64_t before;  // and bytes before it
     bool client_only = false;  // read only by the client's parts: the cache may lack it
+    bool translated = false;  // read only by the translation parts: the cache may lack it
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, 0};
@@ -82,6 +90,13 @@ constexpr ConfigKey import_slot(const char* name, Member member) {
 // Read only by the client's parts: grants, new games, DeathLink, Energy Shields and RETURN HOME.
 constexpr ConfigKey client_only(ConfigKey key) {
     key.client_only = true;
+    return key;
+}
+// The translations' (translation.h): an offline cache from before them lacks these, and the
+// translation parts then stand down (translation_keys) while everything else runs; read only by
+// translation.cpp.
+constexpr ConfigKey translation_key(ConfigKey key) {
+    key.translated = true;
     return key;
 }
 // transition_fn is data: it holds the address of the routine the game runs next.
@@ -143,6 +158,21 @@ constexpr ConfigKey kConfigKeys[] = {
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
     import_slot("context_init_slot", &G::context_init_slot),
+    // The translations (translation.h): the object, the fields of it the other keys name, the
+    // entry counts, the HD message objects and slots, and the game's text functions.
+    translation_key(data("translation", &G::translation, tr::kSize)),
+    translation_key(data("tr_flag", &G::tr_flag)),
+    translation_key(data("small_text", &G::small_text)),
+    translation_key(data("small_offsets", &G::small_offsets)),
+    translation_key(data("item_names", &G::item_names)),
+    translation_key(data("item_name_offsets", &G::item_name_offsets)),
+    translation_key(data("small_count", &G::small_count)),
+    translation_key(data("item_name_count", &G::item_name_count)),
+    translation_key(data("hd_messages", &G::hd_messages, hd::kSlots * hd::kSize)),
+    translation_key(data("message_slots", &G::message_slots, hd::kSlots * message::kSize)),
+    translation_key(code("hd_text_fn", &G::hd_text_fn)),
+    translation_key(code("hd_build_fn", &G::hd_build_fn)),
+    translation_key(code("wstring_new_fn", &G::wstring_new_fn)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -195,15 +225,18 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
-    // The client-only keys an offline cache lacks, or has where they do not fit: left null.
+    // The client-only and translation keys an offline cache lacks, or has where they do not
+    // fit: left null.
     std::string left_out;
+    bool client_left_out = false;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
         if (!why.empty()) {
-            if (active || !key.client_only) return why;
+            if (active || !(key.client_only || key.translated)) return why;
             left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
+            client_left_out = client_left_out || key.client_only;
             continue;
         }
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
@@ -234,6 +267,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     configured_ = true;
     active_ = active;
     left_out_ = left_out;
+    client_keys_ = !client_left_out;
     return "";
 }
 
@@ -357,6 +391,18 @@ void Game::pump_popups() {
         popups_.erase(next);
         return;
     }
+    // With a translation on, the popup's text goes into a borrowed entry, which the translated
+    // message reads every frame (translation.h): one taken waits a frame or two to free. Not
+    // once an unload has put the entries back (hold_translated_popups).
+    const std::optional<Loaded> now = loaded_translation(at_);
+    const bool translated = translated_popups_ && now && now->on;
+    std::wstring hd;
+    int where = PopupAreas::kNone;
+    if (translated) {
+        hd = hd_popup_text(popup, rec, *now);
+        where = popup_areas_.reserve(*now, hd.size());
+        if (where == PopupAreas::kWait) return;
+    }
     int per_line = kGamePopupWidth;
     std::string text;
     if (popup.bare) {
@@ -378,6 +424,12 @@ void Game::pump_popups() {
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
+    // Its text in the translation's font; failing that, the pixel text, the mark the last
+    // translated message left in the slot cleared so it shows (translation.h; clear_mark checks
+    // the flag itself, so this holds too when the tables do not read, with the flag set).
+    if (!translated || !popup_areas_.show(at_, *now, where, static_cast<BYTE*>(message), hd)) {
+        clear_mark(at_, static_cast<BYTE*>(message));
+    }
     BYTE* p = player();
     auto sound = at<int16_t>(rec, record::kSound);
     if (popup.counted && sound >= 0) {  // the helper's own notices make no sound
@@ -387,6 +439,25 @@ void Game::pump_popups() {
     }
     popups_.erase(next);
     frames_since_popup_ = 0;
+}
+
+std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
+    if (popup.bare) return hd_text(popup.suffix);
+    const int stand_in = stand_in_index(popup.item);
+    std::wstring name;
+    std::optional<std::wstring> held = tr_entries_.original({Table::kItems, popup.item});
+    if (stand_in >= 0 && held) {
+        name = *held;  // its own name, under the label the helper wrote
+    } else {
+        read_entry(now.items, popup.item, name, kNameRoom);
+    }
+    if (name.empty()) {
+        name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
+                                     : std::string(record_name(rec)));
+    }
+    std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
+    const std::wstring suffix = hd_text(popup.suffix);
+    return suffix.empty() ? head : head + L'\n' + suffix;
 }
 
 void Game::note_play(uint64_t now_ms) {
@@ -552,6 +623,28 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_names();
     watch_ap_items();
     watch_map_marks();
+    watch_translation();
+}
+
+void Game::watch_translation() {
+    const std::optional<Loaded> now = loaded_translation(at_);
+    popup_areas_.watch(now);
+    std::map<EntryKey, std::wstring> want;
+    if (now && now->on) {
+        // The stand-ins' names while their records are (the pickup popup reads ItemNames by
+        // record every frame), INTEL CHIP while the Area Map's is, and the scanner's line while
+        // the Text table's entry is the helper's.
+        if (ap_items_.restyled()) {
+            for (int i = 0; i < kStandInCount; ++i) {
+                if (!stand_in_hd_[i].empty()) {
+                    want[{Table::kItems, kStandInRecords[i]}] = stand_in_hd_[i];
+                }
+            }
+        }
+        if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
+        if (scan_.written()) want[{Table::kSmall, kScanEntry}] = hd_text(scan_line_);
+    }
+    tr_entries_.watch(now, want);
 }
 
 void Game::show_glyph(FontGlyph& glyph, bool wanted) {
@@ -1129,8 +1222,18 @@ void Game::watch_ap_items() {
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
         if (touching >= 0) width_cell = cells[touching];
         ap_items_.watch(at_.item_records, cells);
+        // Each record's name as translated text, for the translation's table (watch_translation).
+        for (int i = 0; i < kStandInCount; ++i) {
+            auto label = ap_items_.labels().find(cells[i]);
+            auto width = label_widths_.find(cells[i]);
+            stand_in_hd_[i] =
+                label == ap_items_.labels().end()
+                    ? std::wstring(L"AP ITEM")
+                    : hd_label(label->second, width == label_widths_.end() ? 0 : width->second);
+        }
     } else {
         ap_items_.release(at_.item_records);
+        for (std::wstring& name : stand_in_hd_) name.clear();
     }
     ap_items_.paint(at_.sprite_texture, gl_, texture_check_, GetTickCount64(), world);
     // The pickup popup as wide as that label (width_cell's), if the stand-ins are ours; the
@@ -1197,6 +1300,7 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
 }
 
 void Game::restore_ap_items() {
+    for (std::wstring& name : stand_in_hd_) name.clear();
     if (!configured_) return;
     looks_.restore(at_);  // the objects first, while their records are still ours
     looks_.set_items({});
@@ -1227,6 +1331,13 @@ void Game::put_back_all(WidgetCallback callback) {
     }
     restore_files();
     leave_offline();
+    if (configured_) {
+        // The translation's entries back, and the popups' areas emptied once free (their split
+        // undone when none is in use: an unload waits for the one in use).
+        const std::optional<Loaded> now = loaded_translation(at_);
+        tr_entries_.restore(now);
+        popup_areas_.restore(now);
+    }
 }
 
 void Game::client_gone(WidgetCallback callback) {
@@ -1259,6 +1370,7 @@ ClientState Game::snapshot() const {
 }
 
 void Game::rearm(ClientState s) {
+    translated_popups_ = true;  // the unload refused: popups in the translation's font again
     if (!configured_) return;
     set_assists_locked(s.assists_locked);
     set_intel(s.intel);

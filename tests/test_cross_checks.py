@@ -226,6 +226,34 @@ def test_the_clients_parts_wait_for_every_key() -> None:
             assert re.search(r"^\s*" + form, bodies.get(gate, ""), re.M), f"{gate} is not gated"
 
 
+def translation_keys() -> set[str]:
+    """The keys kConfigKeys marks translation_key: an offline cache may lack them too."""
+    pattern = r'\btranslation_key\(\s*(?:code|data|import_slot)\(\s*"(\w+)"'
+    return set(re.findall(pattern, config_table()))
+
+
+def test_the_translation_keys_are_read_only_by_the_translation_parts() -> None:
+    # A key an offline cache from before them lacks is left null: only translation.cpp reads
+    # them, and each of its parts checks them first (translation_keys), so the default English
+    # runs without them (native/tests/offline_tests.cpp drives them null).
+    keys = translation_keys()
+    assert keys, "no translation keys parsed from game_calls.cpp"
+    assert keys <= set(config_keys()) and not keys & client_only_keys()
+    member = re.compile(r"(?:\.|->)(" + "|".join(sorted(keys)) + r")\b")
+    for path in sorted(SRC.iterdir()):
+        if path.suffix not in (".cpp", ".h") or path.name in ("addresses.h", "translation.cpp"):
+            continue
+        for function, number, code in code_lines(path.name):
+            assert not member.search(code), f"{path.name}:{number} ({function})"
+
+
+def test_the_native_test_lists_the_translation_keys() -> None:
+    test = (SRC.parent / "tests" / "offline_tests.cpp").read_text(encoding="utf-8")
+    listed = re.findall(r'"(\w+)"', braced(test, "const char* const kTranslationKeys[] = {"))
+    keys = translation_keys()
+    assert listed == [key for key in config_keys() if key in keys]
+
+
 def test_the_native_test_lists_the_client_only_keys() -> None:
     # native/tests/offline_tests.cpp configures from a cache without these, in the table's order.
     test = (SRC.parent / "tests" / "offline_tests.cpp").read_text(encoding="utf-8")

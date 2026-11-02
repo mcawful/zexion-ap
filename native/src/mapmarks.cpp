@@ -5,6 +5,7 @@
 
 #include "apitem.h"  // kStandInNames, kStandInProgression
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -267,6 +268,9 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     const std::string name = map_name(it->second, width == widths.end() ? 0 : width->second);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
+    // In a translation the cursor shows the text the game just built from ItemNames 47 or 48,
+    // built again as the label's first line (translation.h).
+    rebuild_label(a, text, hd_label(it->second, width == widths.end() ? 0 : width->second, true));
 }
 
 void MapCursorNames::restore(const GameAddresses& a) {

@@ -217,6 +217,14 @@ line says.
   play the same, NOT CONNECTED and CLIENT CONNECTED at each Disconnect and Connect in one load,
   and an item's popup after; Zexion closed with the client connected, and while dropped, the next
   game's save dressed again (by the client, or by the helper until the client attached).
+- The game's translations (English(HD) above all): the mod's popups, notices, ARCHIPELAGO,
+  RETURN HOME WITH THE DISKS?, the equipment screen's disk, the stand-ins' names and the
+  scanner's line in the translation's font, ASSIST and the pause row's count in the pixel font
+  ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
+  translation but English(HD) (`ticks.language_tick`): not run in game yet (stand-in
+  tests: `native/README.md`, "Translations"). Before them, 1.0.0's release candidate in
+  English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
+  not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
 
 ## Platforms
 
@@ -330,6 +338,9 @@ Running it may load the helper into the game: the one already there if it is thi
   `hello`), or it is still off after 10 seconds with the save in play (the mod does not take
   it for an Archipelago save), the client warns once that achievements may be earned in this
   save (the reason goes to the log).
+- Every few seconds while the helper is attached, the client reads the game's language from
+  its `hello` (`lang`); in any translation but English(HD) it says once per game run that the
+  mod's text is made for the default English and English(HD) (`state.language_line`).
 - `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
 ## Branches and releases

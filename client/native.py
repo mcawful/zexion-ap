@@ -331,8 +331,9 @@ class Helper:
 
     def hello(self) -> dict[str, str]:
         """The helper's hello as fields: version, build, hooked, configured, feats, folder,
-        offline, active, title, reads, cache_missing when configured from a cache that lacks
-        client-only keys, and read_error after a failed read (native/README.md). One this
+        offline, active, title, lang, reads, cache_missing when configured from a cache that
+        lacks client-only or translation keys, and read_error after a failed read
+        (native/README.md). One this
         client can't read: UnreadableHello."""
         try:
             words = self.request("hello").split()
@@ -534,6 +535,15 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                         f"{VERSION}: the client's build is used instead (update the game "
                         "folder's copy)."
                     )
+            elif "lang" not in hello and own_build:
+                # This version's release candidate (no lang: before the translations), the
+                # game folder's copy most likely: the client's build takes its place, as for
+                # another version; with no build it is refused below.
+                if not _unloaded(old, handle):
+                    raise _other_build(
+                        "the mod doesn't report the game's language, so it is an earlier one, "
+                        "and it didn't unload to make way for the client's build"
+                    )
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
@@ -577,6 +587,13 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     "the mod doesn't know this version of Zexion, which the client does"
                 )
             raise HelperError(f"the helper did not hook the game: {hello}")
+        if "lang" not in hello:
+            # A build of this version from before its translation support (the release
+            # candidate's): it would take the config and ignore the translation keys, so in a
+            # translation its popups would hide again with nothing said.
+            raise _other_build(
+                "the mod doesn't report the game's language, so it is an earlier one"
+            )
         helper.configure(dict(g.rva))
     except BaseException:
         helper.close()

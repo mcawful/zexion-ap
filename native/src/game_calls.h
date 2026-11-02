@@ -31,6 +31,7 @@
 #include "mapmarks.h"
 #include "title.h"
 #include "text.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -74,8 +75,8 @@ public:
     // all). The client's parts (grants, new games, DeathLink, Energy Shields, RETURN HOME) are
     // taken only then: apply, kill, spawn_shield, arm_newgame, request_mission and rearm refuse
     // otherwise, and the rest of those parts run only on what these set.
-    bool client_ready() const { return configured_ && left_out_.empty(); }
-    // The client-only keys the offline cache lacked ("" if none), for `hello`.
+    bool client_ready() const { return configured_ && client_keys_; }
+    // The client-only and translation keys the offline cache lacked ("" if none), for `hello`.
     const std::string& left_out() const { return left_out_; }
     // Game thread: a save loaded with a menu open (the pause, map or equipment screen, the quit
     // menu). Unload refuses then (dllmain.cpp, undo_for_unload).
@@ -321,8 +322,24 @@ public:
         if (keys_branch_patched()) return "the pause screen's branch is still the helper's";
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
+        if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
+        // Entry 70 still pointing into the run: put back by the unload's frame (put_back_all),
+        // so only an unload no frame came for is refused, which would leave it for the next
+        // helper to take for the game's.
+        if (popup_areas_.split()) return "a translated popup's entry is still the helper's";
+        if (tr_entries_.held() > 0) return "a translated name is still the helper's";
         return nullptr;
     }
+
+    // The translation (translation.h): `hello`'s `lang` (language_name); what the helper holds
+    // of its tables (tests).
+    std::string language() const { return configured_ ? language_name(at_) : "?"; }
+    // Game thread, in an unload's frame once everything is put back: popups that still show
+    // before the helper is gone (pump_popups runs while it unloads) take no borrowed entry, so
+    // none is left the helper's; rearm (the unload refused) takes them back.
+    void hold_translated_popups() { translated_popups_ = false; }
+    const EntryWriter& tr_entries() const { return tr_entries_; }
+    const PopupAreas& popup_areas() const { return popup_areas_; }
 
 private:
     // The watches only watch_all calls (it checks the configuration): the equipment screen and
@@ -336,6 +353,13 @@ private:
     void watch_title();
     void watch_map_names();
     void watch_map_marks();
+    // With a translation on: the names and the scanner's line the helper writes into its tables
+    // (EntryWriter), and the popup areas emptied once their messages have gone (translation.h).
+    void watch_translation();
+    // A received item's popup, or a notice, as the translation's font shows it: the item's icon
+    // and the translation's name for it (a stand-in's own, not the label written over it), then
+    // the client's suffix on the next line; a notice's text as it is.
+    std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
     // A font glyph painted while wanted, cleared once not (if it was painted).
     void show_glyph(FontGlyph& glyph, bool wanted);
     // The look a save gets from a client or the offline look put back: the stand-ins, INTEL
@@ -360,7 +384,8 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
-    std::string left_out_;  // the client-only keys configure left null (client_ready)
+    std::string left_out_;  // the client-only and translation keys configure left null
+    bool client_keys_ = false;  // every client-only key set (client_ready)
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
@@ -458,6 +483,12 @@ private:
     std::map<int, int> label_widths_;
     std::map<int, Label> item_labels_;  // labels still to be made from an item's record
     ItemLooks looks_;  // other Zexion players' items shown as themselves
+    // The translation's (translation.h): its entries the helper writes, the popups' areas, and
+    // each stand-in's name as the record was last named, as translated text ("" for none).
+    EntryWriter tr_entries_;
+    PopupAreas popup_areas_;
+    bool translated_popups_ = true;  // hold_translated_popups
+    std::wstring stand_in_hd_[kStandInCount];
     // The item pool copied into pool_copy_, once a frame; null if it could not be read.
     const BYTE* read_item_pool();
     std::vector<BYTE> pool_copy_;
