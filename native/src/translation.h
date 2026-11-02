@@ -16,8 +16,11 @@
 //   game's own builder (hd_build_fn) from a string made by the game's own std::wstring code
 //   (wstring_new_fn), where the game's own text is now, wrapped and centered as the game does
 //   for that label.
-// - Labels whose pixel glyphs the helper styles (ASSIST, the pause row's count, the Feats note):
-//   the game's own swap back to the pixel glyphs (show_pixel_glyphs, as 0x168AE9 does).
+// - The Feats screen's title where its translated text cannot be built (no large_count, or too
+//   little room): the game's own swap back to the pixel glyphs (show_pixel_glyphs, as 0x168AE9
+//   does), which hold the note.
+// - The helper's icons, painted into the translations' icon sheets (apitem.h IconSheets) and
+//   named by private-use characters (hd_icon).
 //
 // The tables are the translation's heap memory, freed and loaded again when the player picks
 // another translation (a pick of the default English only clears the flag). So each write is made

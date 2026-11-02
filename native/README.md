@@ -164,7 +164,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   objects and slots, and the game's text functions), may be missing from the cache too: the
   helper then configures with them unset, every other part as usual (the client's parts ready if
   the client-only keys are there), and the translation parts stand down ("Translations"), so a
-  cache written before them keeps the default English as it was (stand-in tests:
+  cache written before them keeps the default English as it was; but for `large_count`, added
+  after: without it only the Feats screen's title keeps its pixel look in a translation (stand-in tests:
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
   `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
@@ -1020,8 +1021,9 @@ lands, not only the place passed.
     5 and 8 (every one shown), and after a language change; notices (an
     Intel Chip's hint, long ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a
     stand-in's pickup popup and the map cursor on its square ("Other players' items"); the pause
-    row's count and the locked ASSIST in the pixel font; the equipment screen's name; the
-    question's text, NO and YES; the Feats of Natu screen's note; `/reload_mod` (the unload and
+    row's count and the locked ASSIST in the pixel font (in the translation's font since, not
+    run in game since); the equipment screen's name; the question's text, NO and YES; the Feats
+    of Natu screen's note (likewise); `/reload_mod` (the unload and
     the load again; its refusal while a popup shows was not tried).
   - A language change mid-play, with popups showing: English(HD) to French and back, then
     Japanese, then the default English, with no crash; the popups after each change shown, in
@@ -1038,8 +1040,9 @@ lands, not only the place passed.
     box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
     since, not run in game since: the panel's label and the question built where the game's
     attach would build them now, the question centered and the description wrapped as the game
-    does its own, and the padlock right after ASSIST (English(HD)'s options box measured; the
-    other translations' not looked at) (`docs/re/memory.md`, "Where a rebuilt label goes").
+    does its own, and the locked ASSIST built again in the translation's font with its padlock
+    only where it stays in the box ("The assist menu"; `docs/re/memory.md`, "Where a rebuilt
+    label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
@@ -1092,8 +1095,9 @@ unload.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
-  row's disc and the file select's logo in its colors painted through a fake OpenGL, the label
-  parser.
+  row's disc and the file select's logo in its colors painted through a fake OpenGL, the
+  translations' icon sheets painted and cleared (and left alone where not as traced), the
+  label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
