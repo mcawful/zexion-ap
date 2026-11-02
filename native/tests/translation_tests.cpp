@@ -426,10 +426,28 @@ void test_archipelago_built_again_and_back() {
           "its translated text built again where the game's attach would build it now");
     check(hd.x(0) == 159.0 && hd.y(0) == 99.0 && get<int32_t>(panel.label, 0x248) == 11,
           "on the panel, not in the window's corner");
+    // The panel placed elsewhere since (0xA79E0: its pixel glyphs placed, its translated glyphs
+    // moved by as much, the place the build was given left as it was).
+    for (BYTE* g : panel.glyph_list) put<double>(g, 0x40, 170.0), put<double>(g, 0x48, 120.0);
+    for (int i = 0; i < 11; ++i) {
+        put<double>(hd.glyphs[i], 0x40, hd.x(i) + 11.0);
+        put<double>(hd.glyphs[i], 0x48, hd.y(i) + 20.0);
+    }
     check(choice.restore(a, &archipelago), "restored");
-    check(g_builds.size() == 2 && g_builds[1].text == L"Randomizer" && g_builds[1].x == 159.0f &&
-              g_builds[1].y == 100.0f && hd.x(0) == 159.0,
-          "and back to entry 354's, in the same place");
+    check(g_builds.size() == 2 && g_builds[1].text == L"Randomizer" && g_builds[1].x == 169.0f &&
+              g_builds[1].y == 119.0f && hd.x(0) == 169.0,
+          "and back to entry 354's, where the panel is now");
+
+    // A hidden panel's label (the file select before an empty slot is picked): built hidden,
+    // its count kept for the game to show when the panel shows.
+    g_builds.clear();
+    for (int i = 0; i < 11; ++i) hd.glyphs[i][0x120] = 0;
+    panel.reset_label();
+    check(choice.install(a, &archipelago) && g_builds.size() == 1 &&
+              get<int32_t>(panel.label, 0x244) == 11 && hd.glyphs[0][0x120] == 0 &&
+              hd.glyphs[10][0x120] == 0,
+          "a hidden label built again hidden, its count kept");
+    check(choice.restore(a, &archipelago) && hd.glyphs[0][0x120] == 0, "and put back hidden");
 
     // A label whose pixel glyphs cannot be read is not built again.
     g_builds.clear();

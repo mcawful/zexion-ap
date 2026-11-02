@@ -955,7 +955,9 @@ lands, not only the place passed.
     then centered as the game centers its own; the equipment screen's OS Install Disk and its
     description (no icon) where the game built them for the selection, the description wrapped
     at the box's columns; and the map cursor on a labeled stand-in's square (the label's first
-    line). A text with more glyphs than the label holds is not built.
+    line). A text with more glyphs than the label holds is not built; one whose text was hidden
+    (a hidden widget's, as the game-mode panel's on the file select before an empty slot is picked)
+    is built hidden, its count kept for the game to show when the widget shows.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
     clear (`0x168AE9`), where the helper's text is a look of the pixel font's: ASSIST while
     locked, the pause row's count (each frame: OPTION MENU's return builds KEYS again), and the

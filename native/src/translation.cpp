@@ -270,6 +270,30 @@ bool extent(const GameAddresses& a, const BYTE* label, float& left, float& right
     return true;
 }
 
+// Whether a label's translated text is built and hidden: its first glyph's +0x120 0.
+bool translated_hidden(const BYTE* label) {
+    int32_t n = 0;
+    BYTE** list = nullptr;
+    uint8_t shown = 1;
+    return read(label, hdlabel::kCount, n) && n > 0 && read(label, hdlabel::kGlyphs, list) &&
+           read(pointer_at(reinterpret_cast<BYTE*>(list)), sprite::kVisible, shown) &&
+           shown == 0;
+}
+
+// Its translated glyphs hidden, their count (+0x244, the ones event 0xF shows) kept.
+void hide_translated(BYTE* label) {
+    int32_t n = 0;
+    BYTE** list = nullptr;
+    if (!read(label, hdlabel::kCount, n) || n < 0 || n > kMaxGlyphs ||
+        !read(label, hdlabel::kGlyphs, list)) {
+        return;
+    }
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        if (g != nullptr && writable(g + sprite::kVisible, 1)) g[sprite::kVisible] = 0;
+    }
+}
+
 }  // namespace
 
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
@@ -296,6 +320,11 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
     } else if (!read(label, hdlabel::kX, x) || !read(label, hdlabel::kY, y)) {
         return false;
     }
+    // Hidden as its text was, if it was: the builder shows every glyph it builds (0x89F51),
+    // while a hidden widget's are hidden with its count kept, for the widget handler to show
+    // that many on event 0xF (0xD0290 to 0xD02EA), as the game-mode panel's are on the file
+    // select before an empty slot is picked.
+    const bool hidden = translated_hidden(label);
     build(a, label, text, x, y, how.wrap);
     float left = 0, right = 0;
     if (how.center && extent(a, label, left, right)) {
@@ -307,6 +336,7 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
         }
         if (dx != 0) build(a, label, text, x + dx, y, how.wrap);
     }
+    if (hidden) hide_translated(label);
     return true;
 }
 
