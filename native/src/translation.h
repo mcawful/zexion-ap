@@ -169,6 +169,38 @@ struct Rebuild {
     bool center = false;
     float center_by = 0;
 };
+// How wide the game's builder lays a line out in the translation's font as loaded now (0x88760
+// on; docs/re/memory.md, "Laying out the helper's popups"): a space by the font's space advance,
+// an icon by its frame's advance in the icon sheet, any other character by its glyph's advance,
+// one with no glyph (-1 in the font's table) not at all. For the popups' layout (layout_popup).
+class FontMetrics {
+public:
+    // Game thread: reads the font's scale, space and glyph table; false if they do not read.
+    bool load(const GameAddresses& addresses);
+    // The width of `line` (no line breaks) in pixels, or -1 if a character's advance does not
+    // read.
+    double width(std::wstring_view line) const;
+    double space() const { return space_; }
+
+private:
+    double advance(wchar_t c) const;  // -1 if it does not read
+
+    const BYTE* font_ = nullptr;
+    const BYTE* glyphs_ = nullptr;  // the font's glyph entries
+    const BYTE* icon_frames_ = nullptr;  // the icon sheet's frame list
+    bool pixel_font_ = false;
+    double scale_ = 0, factor_ = 0, space_ = 0;
+};
+
+// A translated popup's text, laid out (a notice's when `head` is empty): `head` (the icon and the
+// name) over `suffix`, every line no wider than `cap` pixels (words whole where they fit), each
+// line of a popup centered with leading spaces on the widest; a notice's lines left as they
+// wrap. Without metrics (null), wrapped at `fallback` characters and not centered.
+std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
+                          const FontMetrics* metrics, double cap, size_t fallback);
+// A suffix in the translation's font, as the client sent it: "FROM Bob" as "from Bob".
+std::wstring hd_suffix(const std::string& as_sent);
+
 // Game thread, the flag set: builds `label`'s translated text again as `text`, with the game's
 // builder, as `how` says. False, nothing done, without the keys, with the flag clear, for a label
 // whose translated text was never built, or for a text with more glyphs than the label holds.

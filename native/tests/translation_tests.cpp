@@ -110,7 +110,7 @@ void test_popups_take_turns_and_empty() {
     queue(game, "apply\npopup 36 FROM ALICE");
     frames(game, 1);
     check(g_messages == 1 && g_hd_texts.size() == 1, "a popup, given its translated text");
-    const std::wstring first = L"\xE029Missile Box\nFROM ALICE";
+    const std::wstring first = L"\xE029Missile Box\nfrom ALICE";
     check(!g_hd_texts.empty() && g_hd_texts[0].entry == 66 && g_hd_texts[0].kind == 0 &&
               g_hd_texts[0].text == first && g_hd_texts[0].entry_then == first,
           "the icon and the translation's name, the suffix under it, in entry 66 before the call");
@@ -124,8 +124,8 @@ void test_popups_take_turns_and_empty() {
     queue(game, "apply\npopup 0 FROM BOB");
     frames(game, 25);
     check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 70 &&
-              g_hd_texts[1].text == L"Energy Tank\nFROM BOB" &&
-              entry_text(g_small, 70) == L"Energy Tank\nFROM BOB" &&
+              g_hd_texts[1].text == L"Energy Tank\nfrom BOB" &&
+              entry_text(g_small, 70) == L"Energy Tank\nfrom BOB" &&
               entry_text(g_small, 66) == first,
           "the second in entry 70, the first's kept");
     check(game.unload_blocker() != nullptr, "an unload waits while one is read");
@@ -243,7 +243,7 @@ void test_the_last_item_name() {
     start(game);
     queue(game, "apply\npopup 50 FROM ALICE");
     frames(game, 1);
-    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nFROM ALICE"),
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nfrom ALICE"),
           "the last entry's name, as the translation has it");
     game.put_back_all(&no_callback);
 }
@@ -291,7 +291,7 @@ void test_a_language_change_mid_popup() {
     end_message(0);
     queue(game, "apply\npopup 36 FROM BOB");
     frames(game, 25);
-    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nFROM BOB" &&
+    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nfrom BOB" &&
               entry_text(g_small, g_hd_texts[1].entry) == g_hd_texts[1].text &&
               g_small->offsets[70] > g_small->offsets[66],
           "split again in the new table, the new translation's name");
@@ -524,10 +524,55 @@ void test_assist_in_a_translation(bool on = true) {
     narrow.restore(a);
 }
 
+// The popups' layout in a translation's font: lines measured as the builder lays them out (a
+// stand-in pixel font, every character 6 wide, a space 3), wrapped at the cap, a popup's lines
+// centered with spaces, a notice's left as they wrap; without metrics, wrapped by characters.
+void test_the_popup_layout() {
+    reset_translation();
+    load_translation();
+    zap::GameAddresses a;
+    with_translation(a);
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);  // advance 6 at scale 1
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);  // a pixel font
+    zap::FontMetrics m;
+    check(m.load(a) && m.width(L"ab c") == 21.0 && m.space() == 3.0, "measured as laid out");
+    put<int32_t>(font, 0x30 + 'q' * 4, -1);  // no glyph: skipped
+    check(m.width(L"aqb") == 12.0, "a character with no glyph takes no room");
+    check(zap::layout_popup(L"Energy Tank", L"from Bob", &m, 192, 30) ==
+              L"Energy Tank\n   from Bob",
+          "a popup's shorter line centered with spaces");
+    check(zap::layout_popup(L"Tank", L"from Bob", &m, 192, 30) == L"    Tank\nfrom Bob",
+          "whichever line is shorter (half of 21 over 3, rounded)");
+    auto pad = [](size_t n, const wchar_t* line) { return std::wstring(n, L' ') + line; };
+    check(zap::layout_popup(L"Energy Tank", L"from a player with a long name", &m, 60, 30) ==
+              pad(4, L"Energy\n") + pad(6, L"Tank\n") + pad(5, L"from a\n") +
+                  pad(4, L"player\n") + L"with a long\n" + pad(6, L"name"),
+          "every line no wider than the cap, words whole, centered on the widest");
+    check(zap::layout_popup(L"", L"Hint: the item is here and there", &m, 60, 30) ==
+              L"Hint: the\nitem is\nhere and\nthere",
+          "a notice wrapped, left as it wraps");
+    check(zap::layout_popup(L"", L"line one\nline two", &m, 192, 30) == L"line one\nline two",
+          "a notice's own line breaks kept");
+    check(zap::layout_popup(L"Energy Tank", L"from Bob", nullptr, 0, 8) ==
+              L"Energy\nTank\nfrom Bob",
+          "no metrics: wrapped by characters, not centered");
+    check(zap::hd_suffix("FROM Bob") == L"from Bob" &&
+              zap::hd_suffix("FROM ALICE") == L"from ALICE" &&
+              zap::hd_suffix("FOR Bob") == L"FOR Bob",
+          "the client's FROM in the sentence's case, the name as sent");
+    reset_translation();
+}
+
 }  // namespace
 
 int main() {
     test_the_text_helpers();
+    test_the_popup_layout();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();

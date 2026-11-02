@@ -293,6 +293,169 @@ bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, f
     return extent(a, label, left, right);
 }
 
+namespace {
+
+// The builder's advances (0x88480; docs/re/memory.md, "Laying out the helper's popups"): the
+// font's glyph table by character (+0x30, 4 bytes each, -1 for none: the character is skipped),
+// its glyph entries (+0x08, 0x20 bytes each: advance from +0x08 to +0x10 in 1/64 pixel at the
+// font's size), its space advance (+0x40040, a float) and its scale (+0x40060, a double); the
+// HD font's size divisor (0x217B40) and the HD icons' (0x217690).
+constexpr ptrdiff_t kFontGlyphTable = 0x30, kFontGlyphs = 0x08, kFontSpace = 0x40040;
+constexpr ptrdiff_t kFontScale = 0x40060;
+constexpr ptrdiff_t kGlyphFrom = 0x08, kGlyphTo = 0x10;
+constexpr size_t kGlyphEntry = 0x20;
+constexpr float kHdFontDivisor = 4.8214f;
+constexpr double kHdIconDivisor = 4.8214;
+// The icon sheets (apitem.h IconSheets): the builder takes an icon's advance from its frame's
+// entry, +0x28 with a pixel font, +0x26 over kHdIconDivisor with an HD one (0x8911D); U+E024 to
+// U+E04E are frames 0x80 to 0xAA, U+E04F frame 0xBD, U+E050 frame 0xC6; definition 104's sheet
+// with a pixel font or icon style 1 (tr +0xA4), else 101's (0x885BF).
+constexpr ptrdiff_t kIconStyle = 0xA4;
+constexpr ptrdiff_t kHdIconSheet = 101 * 8, kPixelIconSheet = 104 * 8;
+constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
+
+int icon_frame(wchar_t c) {
+    if (c >= 0xE024 && c <= 0xE04E) return c - 0xDFA4;
+    if (c == 0xE04F) return 0xBD;
+    if (c == 0xE050) return 0xC6;
+    return -1;
+}
+
+}  // namespace
+
+bool FontMetrics::load(const GameAddresses& a) {
+    *this = FontMetrics();
+    if (!translation_keys(a)) return false;
+    int32_t style = 0, icons = 0;
+    float space = 0;
+    font_ = a.translation + tr::kFont;
+    if (!read(a.translation, tr::kFontStyle, style) || !read(a.translation, kIconStyle, icons) ||
+        !read(font_, kFontGlyphs, glyphs_) || glyphs_ == nullptr ||
+        !read(font_, kFontScale, factor_) || !read(font_, kFontSpace, space)) {
+        return false;
+    }
+    pixel_font_ = style == tr::kPixelFont;
+    scale_ = pixel_font_ ? 1.0f : kHdFontDivisor;
+    space_ = static_cast<float>(space / static_cast<float>(scale_));
+    const ptrdiff_t sheet = pixel_font_ || icons == 1 ? kPixelIconSheet : kHdIconSheet;
+    icon_frames_ = pointer_at(pointer_at(pointer_at(a.sprite_templates), sheet),
+                              sprite::kFrameList);
+    return true;
+}
+
+double FontMetrics::advance(wchar_t c) const {
+    if (c == L' ') return space_;
+    int32_t index = -1;
+    if (!read(font_, kFontGlyphTable + static_cast<ptrdiff_t>(c) * 4, index)) return -1;
+    if (index == -1) return 0;  // no glyph: the builder skips it
+    if (const int frame = icon_frame(c); frame >= 0) {
+        int16_t w = 0;
+        const BYTE* entry = icon_frames_ + frame * kFrameEntry;
+        if (icon_frames_ == nullptr ||
+            !read(entry, pixel_font_ ? kPixelAdvance : kHdAdvance, w)) {
+            return -1;
+        }
+        return pixel_font_ ? static_cast<float>(w) : static_cast<float>(w / kHdIconDivisor);
+    }
+    int32_t from = 0, to = 0;
+    const BYTE* glyph = glyphs_ + static_cast<size_t>(index) * kGlyphEntry;
+    if (index < 0 || !read(glyph, kGlyphFrom, from) || !read(glyph, kGlyphTo, to)) return -1;
+    const double unit = static_cast<double>(static_cast<float>(scale_)) * 64.0;
+    const auto width = static_cast<float>(static_cast<double>(static_cast<float>(to)) / unit -
+                                          static_cast<double>(static_cast<float>(from)) / unit);
+    return static_cast<float>(static_cast<double>(width) * factor_);
+}
+
+double FontMetrics::width(std::wstring_view line) const {
+    double w = 0;
+    for (wchar_t c : line) {
+        const double step = advance(c);
+        if (step < 0) return -1;
+        w += step;
+    }
+    return w;
+}
+
+namespace {
+
+// `text`'s words in lines no wider than `cap` (`fits` says whether a line fits), a word wider than
+// a line alone on its line.
+template <typename Fits>
+std::vector<std::wstring> wrap(const std::wstring& text, Fits&& fits) {
+    std::vector<std::wstring> lines;
+    std::wstring line;
+    size_t at = 0;
+    while (at < text.size()) {
+        const size_t start = text.find_first_not_of(L' ', at);
+        if (start == std::wstring::npos) break;
+        size_t end = text.find(L' ', start);
+        if (end == std::wstring::npos) end = text.size();
+        const std::wstring word = text.substr(start, end - start);
+        const std::wstring longer = line.empty() ? word : line + L' ' + word;
+        if (!line.empty() && !fits(longer)) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = longer;
+        }
+        at = end;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+}  // namespace
+
+std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
+                          const FontMetrics* metrics, double cap, size_t fallback) {
+    auto fits = [&](const std::wstring& line) {
+        if (metrics == nullptr) return line.size() <= fallback;
+        const double w = metrics->width(line);
+        return w >= 0 && w <= cap;
+    };
+    std::vector<std::wstring> lines;
+    for (const std::wstring* part : {&head, &suffix}) {
+        // Each part's own lines (a notice may hold line breaks) wrapped at the cap.
+        size_t at = 0;
+        while (at <= part->size() && !part->empty()) {
+            size_t end = part->find(L'\n', at);
+            if (end == std::wstring::npos) end = part->size();
+            for (std::wstring& line : wrap(part->substr(at, end - at), fits)) {
+                lines.push_back(std::move(line));
+            }
+            at = end + 1;
+        }
+    }
+    // A popup's lines centered on the widest, with leading spaces (the game starts every line
+    // at the same x); a notice's left as they wrap.
+    if (!head.empty() && metrics != nullptr && metrics->space() > 0) {
+        double widest = 0;
+        std::vector<double> widths;
+        for (const std::wstring& line : lines) {
+            widths.push_back(metrics->width(line));
+            widest = (std::max)(widest, widths.back());
+        }
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (widths[i] < 0) continue;
+            const auto pad = static_cast<size_t>((widest - widths[i]) / 2 / metrics->space() + 0.5);
+            lines[i].insert(0, pad, L' ');
+        }
+    }
+    std::wstring out;
+    for (const std::wstring& line : lines) {
+        if (!out.empty()) out += L'\n';
+        out += line;
+    }
+    return out;
+}
+
+std::wstring hd_suffix(const std::string& as_sent) {
+    std::wstring out = hd_text(as_sent);
+    // The client's "FROM <sender>" (client/session.py), its word in the sentence's case.
+    if (out.rfind(L"FROM ", 0) == 0) out.replace(0, 4, L"from");
+    return out;
+}
+
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
                    const Rebuild& how) {
     if (!translation_on(a)) return false;

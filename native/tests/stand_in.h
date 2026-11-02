@@ -250,7 +250,8 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
 // as the game's parser leaves them (each entry's header line, its text and a 0, then the
 // separator), their counts, the HD message objects and the game's text functions, which keep
 // what they were given and do to the objects the helper reads what the game's do.
-inline BYTE g_translation[0xE0];
+// Through the font object (+0xD0) and its metrics (+0x40040 to +0x40068 past it).
+inline BYTE g_translation[0xD0 + 0x40070];
 inline int16_t g_small_count = 0, g_item_name_count = 0;
 inline BYTE g_hd_messages[4 * 0x238];
 struct LoadedTable {

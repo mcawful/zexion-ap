@@ -442,7 +442,13 @@ void Game::pump_popups() {
 }
 
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
-    if (popup.bare) return hd_text(popup.suffix);
+    // Laid out as the font draws it: no line wider than a pixel popup's (kGamePopupWidth
+    // characters of 8 pixels), a popup's lines centered (translation.h layout_popup).
+    FontMetrics metrics;
+    const FontMetrics* m = metrics.load(at_) ? &metrics : nullptr;
+    constexpr double kCap = kGamePopupWidth * 8.0;
+    constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
+    if (popup.bare) return layout_popup(L"", hd_text(popup.suffix), m, kCap, kCapCharacters);
     const int stand_in = stand_in_index(popup.item);
     std::wstring name;
     std::optional<std::wstring> held = tr_entries_.original({Table::kItems, popup.item});
@@ -456,8 +462,9 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
                                      : std::string(record_name(rec)));
     }
     std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
-    const std::wstring suffix = hd_text(popup.suffix);
-    return suffix.empty() ? head : head + L'\n' + suffix;
+    const std::wstring suffix =
+        popup.as_sent.empty() ? hd_text(popup.suffix) : hd_suffix(popup.as_sent);
+    return layout_popup(head, suffix, m, kCap, kCapCharacters);
 }
 
 void Game::note_play(uint64_t now_ms) {

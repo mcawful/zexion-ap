@@ -33,6 +33,8 @@ void test_parsers() {
     check(batch.refresh, "refresh");
     check(batch.popups.size() == 1 && batch.popups[0].suffix == "FROM ALICE !",
           "the suffix is upper-cased and filtered to the font");
+    check(batch.popups[0].as_sent == "from Alice !",
+          "and kept in its own case for a translation's font, the same characters");
     zap::Batch bad;
     check(!zap::parse_batch("apply\ncas 50 0 1", bad).empty(), "item 50 is not writable");
     check(!zap::parse_batch("apply\ncas 3 0 256", bad).empty(), "values are bytes");
