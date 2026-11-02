@@ -1712,6 +1712,25 @@ void test_the_black_after_yes() {
               game.mission_status() == zap::kEndingStarted,
           "then the ending");
 
+    // Cancelled (`discs` off) with a menu on top but not the game's menu state: the black alone,
+    // the ending dropped, refuses an unload until the screen is back in.
+    m.again();
+    game.mission_yes();
+    set_fade(4, -1, 6);
+    game.mission_after_no();
+    BYTE pause[8] = {};
+    g_current_menu = pause;
+    game.set_discs(0, 3, "", false);
+    check(!game.mission_status().empty() && game.ending_pending() &&
+              game.unload_refusal() == zap::kEndingRefusal,
+          "the black alone: an unload refuses");
+    g_current_menu = nullptr;
+    game.watch_all(&chosen);
+    check(!game.ending_pending() && game.unload_refusal() == nullptr &&
+              at<int8_t>(g_fade, zap::fade_state::kTarget) == 4,
+          "the menu closed: back in, nothing pending");
+    game.set_discs(3, 3, "COLLECT 3 OS INSTALL DISKS!", true);
+
     // Black with nothing waiting: the ending at once, the screen black for it.
     m.again();
     game.mission_yes();

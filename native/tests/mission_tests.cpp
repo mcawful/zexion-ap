@@ -649,6 +649,56 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
     n.watch(a, false);
     check(n.started() && !n.ending() && !n.dark() && n.status() == zap::kEndingStarted,
           "the pause opener after the ending ran: not taken for a save");
+
+    // A door's or a death's transition in its place before it ran: asked again, the black kept
+    // while it is the helper's, else the other fade left alone.
+    struct Case {
+        const char* what;
+        void* fn;
+        int32_t timer;
+        void (*fade)();
+    };
+    const Case cases[] = {
+        {"a door, the fade left alone", reinterpret_cast<void*>(&door_routine), 70, [] {}},
+        {"a door with its own fade", reinterpret_cast<void*>(&door_routine), 70,
+         [] { set_fade(-1, 4, 8); }},
+        {"a death's, timer 30", reinterpret_cast<void*>(&door_routine), 30,
+         [] { set_fade(-1, static_cast<int8_t>(0xFE), 5); }},
+    };
+    for (const Case& c : cases) {
+        zap::MissionPrompt d = yes_pressed(a);
+        d.after_no(a);
+        d.watch(a, true);
+        g_fn = c.fn;
+        g_timer = c.timer;
+        c.fade();
+        bool ours = black_and_off();
+        d.watch(a, false);
+        check(!d.started() && d.ending() && d.dark() == ours &&
+                  d.status() == "yes: ending when idle (another transition came first)",
+              c.what);
+        g_fn = kIdle;
+        g_timer = 0;
+        d.watch(a, true);
+        check(g_fn == reinterpret_cast<void*>(&ending_routine) && d.started(),
+              (std::string(c.what) + ": the ending set again once idle").c_str());
+        d.left_save();
+    }
+}
+
+// Quit to the title from the pause while black: the fade back waits for the menu, and the save
+// leaving drops the black (the title owns the fade), so nothing holds an unload there.
+void test_leaving_the_save_drops_the_black() {
+    Prompt prompt;
+    zap::GameAddresses a = addresses();
+    zap::MissionPrompt m = yes_pressed(a);
+    m.after_no(a);
+    BYTE pause[8] = {};
+    g_current = pause;
+    m.cancel(a);
+    check(m.dark(), "a menu open: the fade back waits");
+    m.left_save();
+    check(!m.dark() && black_and_off(), "the save left: dropped, the fade not touched");
 }
 
 // Once the ending is started, not offered again in that load (its cutscenes read as play, its
@@ -685,6 +735,7 @@ int main() {
     test_the_black_after_yes_ends();
     test_not_offered_again_after_the_ending();
     test_an_ending_replaced_before_it_ran_is_asked_again();
+    test_leaving_the_save_drops_the_black();
     test_the_question_in_a_translation();
     test_cancel_drops_it_for_another_save();
     test_offered_when_idle_then_yes_ends();

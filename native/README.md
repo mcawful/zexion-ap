@@ -546,13 +546,17 @@ the helper:
   and puts it back, don't count), and the prompt cancelled (the save left, `discs` off, the client
   gone); asked for with a menu open, the fade back waits until it has closed and put its saved
   black back. Another fade since (a death's) is left alone, and an unload is refused while the
-  screen is kept black (below, "Unloading"). The black ends once the ending routine is seen to
-  have run: the next frame its transition is something else (it sets `0x948A0`, which clears
-  the transition); if that is the pause opener with timer 0 and the black still the helper's (a
-  save at the save point in its place, which leaves the fade alone, where the routine would have
-  set the level to 4), the ending is asked for again. From the frame the helper sets the ending routine
-  until another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or a save takes
-  its place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
+  screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
+  drops it. The black ends once the ending routine is seen to have run, on what it leaves: it
+  sets `0x948A0` with timer 1, which clears the transition, and it sets the level to 4. So the
+  next frame the transition is cleared, or on timer 1 (not the pause opener), or, with frames
+  missed, the pause opener with timer 0 and the level 4 (the black no longer the helper's).
+  Anything else took its place before it ran (a save at the save point, which sets the pause
+  opener back and leaves the fade alone; a door, timer 70; a death): the ending is asked for
+  again, the black kept while it is still the helper's (with its 180 frames), else the other
+  transition's fade left alone. From the frame the helper sets the ending routine until another
+  save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
+  place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
   ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
   `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
   next load), and popups already queued wait for the seed's next load. Stand-in tests only

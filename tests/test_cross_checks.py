@@ -123,7 +123,8 @@ def client_only_keys() -> set[str]:
 #   ending's check for an unload (MissionPrompt::ending_queued) tests the table for null first.
 #   The black after YES (fade_bytes, set_fade_bytes, MissionPrompt::after_no and ::end_dark),
 #   reached only once YES is pressed on a prompt asked for; set_fade_bytes writes only after
-#   fade_bytes has read the same bytes and they have been checked writable.
+#   fade_bytes has read the same bytes and they have been checked writable; at_normal_level,
+#   reached only once the helper has set the ending routine after that YES.
 # - feats.cpp: the Steam stub's test while an AP save loads, set only with current_slot
 #   non-null (native/src/feats.h; native/tests/feats_tests.cpp runs it without the key).
 CLIENT_READERS = {
@@ -143,6 +144,7 @@ CLIENT_READERS = {
         "fade_frames",
         "fade_bytes",
         "set_fade_bytes",
+        "at_normal_level",
         "MissionPrompt::after_no",
         "MissionPrompt::end_dark",
         "routine",

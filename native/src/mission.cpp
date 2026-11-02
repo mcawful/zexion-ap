@@ -67,6 +67,12 @@ bool fade_bytes(const GameAddresses& a, int8_t& target, int8_t& step, int8_t& co
            read(a.fade, fade_state::kCountdown, countdown) && read(a.fade_level, 0, level);
 }
 
+// Whether the global level reads as the normal one, as the ending routine leaves it (0x95230).
+bool at_normal_level(const GameAddresses& a) {
+    int8_t level = 0;
+    return read(a.fade_level, 0, level) && level == kNormalLevel;
+}
+
 void set_fade_bytes(const GameAddresses& a, int8_t target, int8_t step) {
     put<int8_t>(a.fade, fade_state::kStep, step);
     put<int8_t>(a.fade, fade_state::kCountdown, step);  // the countdown set to the step, as set
@@ -128,21 +134,32 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         status_ = "lapsed: the player left the landing pod";
     }
     if (queued_ && fn != routine(a, kEndingRoutine)) {
-        // The ending routine set last frame is no longer the transition. It sets 0x948A0 with
-        // timer 1 as it ends (0x952FE), which then closes with the pause opener and timer 0
-        // (0x92A60): run. The pause opener back with timer 0 and the black still the helper's is
-        // a save at the save point in its place (0x1FC8F1: it leaves the fade alone), since the
-        // routine sets the level to 4 itself (0x95230): asked again. Without the black, the pause
-        // opener alone tells, if the frame of 0x948A0 was not missed.
+        // The ending routine set last frame is no longer the transition. Run, only on what the
+        // routine leaves: it sets 0x948A0 with timer 1 as it ends (0x952FE), which closes the
+        // menus (0x92A60, the pause opener with timer 0) and then clears the transition
+        // (0x948EF); and it sets the level to 4 itself (0x95230). So: the transition cleared, or
+        // timer 1 on a routine other than the pause opener; or, with frames missed, the pause
+        // opener with timer 0 and the black no longer the helper's but the level 4. Anything else
+        // took its place before it ran (a save at the save point sets the pause opener back and
+        // leaves the fade alone, 0x1FC8F1; a door sets its own routine with timer 70, 0x1D93E3;
+        // a death): asked again, the black kept while it is still the helper's.
         queued_ = false;
-        bool black_kept = !dark_ || dark_still_ours(a);
-        if (fn == routine(a, kIdleRoutine) && timer == 0 && black_kept) {
-            started_ = false;
-            ending_ = true;
-            status_ = "yes: ending when idle (another transition came first)";
-        } else {
+        void* idle_fn = routine(a, kIdleRoutine);
+        bool ran = fn == nullptr || (timer == 1 && fn != idle_fn);
+        if (!ran && fn == idle_fn && timer == 0 && dark_) {
+            ran = !dark_still_ours(a) && at_normal_level(a);
+        }
+        if (ran) {
             dark_ = false;  // it set the level back to 4 itself (0x95230)
             undark_ = false;
+        } else {
+            started_ = false;
+            ending_ = true;
+            if (dark_ && !dark_still_ours(a)) {
+                dark_ = false;  // the other transition's fade: left alone
+                undark_ = false;
+            }
+            status_ = "yes: ending when idle (another transition came first)";
         }
     }
     // Black after YES until the ending starts. A menu (the pause) saves the fade as it opens and
@@ -362,6 +379,10 @@ void MissionPrompt::end_dark(const GameAddresses& a) {
 void MissionPrompt::left_save() {
     started_ = false;
     queued_ = false;
+    // The black is the save's: once it has left (the title, the file select, which keep menus
+    // open, own the fade), no longer held, nor an unload refused for it.
+    dark_ = false;
+    undark_ = false;
     if (status_ == kEndingStarted) status_ = "not asked";
 }
 
