@@ -1,9 +1,12 @@
 #include "apitem.h"
 
+#include <cmath>
 #include <cstring>
 #include <vector>
 
+#include "equip.h"  // kDiskRows
 #include "game_mem.h"
+#include "menu.h"  // kLockRows
 
 namespace zap {
 
@@ -215,7 +218,8 @@ void drain(const GlFunctions& gl) {
 // game's GL state back. False if the texture was not the sprites' as expected, or if pixels
 // would go through a buffer.
 template <typename Check, typename Work>
-bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& work) {
+bool on_texture(unsigned texture, const GlFunctions& gl, int want_width, int want_height,
+                Check&& check, Work&& work) {
     drain(gl);  // the game's own pending errors are not ours to read
     if (!gl.IsTexture(texture)) return false;
     int unpack_buffer = 0, pack_buffer = 0;
@@ -232,7 +236,7 @@ bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& w
     int width = 0, height = 0;
     gl.GetTexLevelParameteriv(kTexture2D, 0, kTextureWidth, &width);
     gl.GetTexLevelParameteriv(kTexture2D, 0, kTextureHeight, &height);
-    bool ok = width == kTextureSize && height == kTextureSize;
+    bool ok = width == want_width && height == want_height;
     if (ok) {
         for (int i = 0; i < 3; ++i) gl.PixelStorei(kUnpackRowLength + i, 0);
         for (int i = 0; i < 3; ++i) gl.PixelStorei(kPackRowLength + i, 0);
@@ -245,6 +249,12 @@ bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& w
     gl.BindTexture(kTexture2D, static_cast<unsigned>(bound));
     drain(gl);  // leave no error of ours for the game to find
     return ok;
+}
+
+// The sprite texture's: kTextureSize square.
+template <typename Check, typename Work>
+bool on_texture(unsigned texture, const GlFunctions& gl, Check&& check, Work&& work) {
+    return on_texture(texture, gl, kTextureSize, kTextureSize, check, work);
 }
 
 // The texture behind the sprite data's holder, or 0.
@@ -474,6 +484,173 @@ void ApItems::release(BYTE* records_holder) {
             at<int16_t>(r, record::kEvent) = s.own_event;
         }
         records_[i] = nullptr;
+    }
+}
+
+namespace {
+
+// The icon sheets (IconSheets): the frames the helper paints, a frame of the game's art that is
+// never blank (the first item icon's), and how many frames a sheet has (16 x 16, 0x1DF1C0).
+constexpr int kFirstIconFrame = 0x96, kKnownFrame = 0x80, kSheetFrames = 256;
+// A definition's template keeps its texture's GL name where a sprite keeps its style (0x1DF2D5 to
+// 0x1DF2DC: [the texture object] copied to +0x1D0).
+constexpr ptrdiff_t kTemplateTexture = sprite::kStyle;
+
+// The texture of definition `definition`'s sheet, or 0 (no template, or not a sheet of 256).
+unsigned sheet_texture(BYTE* holder, int definition) {
+    BYTE* t = pointer_at(pointer_at(holder), definition * static_cast<ptrdiff_t>(8));
+    int32_t frames = 0;
+    unsigned texture = 0;
+    if (t == nullptr || !read(t, sprite::kFrameCount, frames) || frames != kSheetFrames ||
+        !read(t, kTemplateTexture, texture)) {
+        return 0;
+    }
+    return texture;
+}
+
+bool in_circle(double x, double y, double cx, double cy, double r) {
+    return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+}
+
+// The HD icons' shapes in a 64 x 64 cell, a little inside it as the game's are.
+bool hd_shape(int k, double x, double y) {
+    switch (k) {
+        case 0: {  // a disc with its hole and a groove
+            const double d = std::hypot(x - 32, y - 32);
+            return d <= 26 && d >= 7 && !(d >= 14.5 && d <= 17);
+        }
+        case 1: {  // a padlock: its shackle, its body, the keyhole out of it
+            const double d = std::hypot(x - 32, y - 26);
+            if (y <= 30 && d >= 9 && d <= 15) return true;
+            const bool body = x >= 12 && x <= 52 && y >= 28 && y <= 58 &&
+                              !(x < 17 && y > 53 && !in_circle(x, y, 17, 53, 5)) &&
+                              !(x > 47 && y > 53 && !in_circle(x, y, 47, 53, 5));
+            const bool hole = in_circle(x, y, 32, 40, 5) ||
+                              (x >= 29.5 && x <= 34.5 && y >= 40 && y <= 50);
+            return body && !hole;
+        }
+        default: {  // the logo: six dots on a ring, as the pixel glyph's (kApItemRows)
+            for (int i = 0; i < 6; ++i) {
+                const double a = (90.0 + 60.0 * i) * 3.14159265358979 / 180.0;
+                if (in_circle(x, y, 32 + 21 * std::cos(a), 32 - 21 * std::sin(a), 8)) return true;
+            }
+            return false;
+        }
+    }
+}
+
+}  // namespace
+
+std::vector<uint8_t> IconSheets::art(int k, int w, int h) {
+    std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4, 0);
+    auto put_alpha = [&](int x, int y, int alpha) {
+        if (alpha <= 0) return;
+        uint8_t* p = &out[(static_cast<size_t>(y) * w + x) * 4];
+        p[0] = p[1] = p[2] = 0xFF;
+        p[3] = static_cast<uint8_t>(alpha > 255 ? 255 : alpha);
+    };
+    if (w >= 32) {
+        // HD: each pixel's coverage of the shape, scaled to the cell, from 4 x 4 samples.
+        constexpr int kSamples = 4;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                int inside = 0;
+                for (int j = 0; j < kSamples; ++j) {
+                    for (int i = 0; i < kSamples; ++i) {
+                        const double sx = (x + (i + 0.5) / kSamples) * 64.0 / w;
+                        const double sy = (y + (j + 0.5) / kSamples) * 64.0 / h;
+                        inside += hd_shape(k, sx, sy) ? 1 : 0;
+                    }
+                }
+                put_alpha(x, y, (inside * 255 + kSamples * kSamples / 2) / (kSamples * kSamples));
+            }
+        }
+        return out;
+    }
+    // Pixel icons: the 8 x 8 glyph's rows, centered across the cell, from its top.
+    const char (*rows)[9] = k == 0 ? kDiskRows : k == 1 ? kLockRows : kApItemRows;
+    const int ox = (w - 8) / 2;
+    for (int y = 0; y < 8 && y < h; ++y) {
+        for (int x = 0; x < 8 && ox + x < w; ++x) {
+            if (rows[y][x] == '#') put_alpha(ox + x, y, 255);
+        }
+    }
+    return out;
+}
+
+bool IconSheets::upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear) {
+    auto cell_x = [&](int frame) { return (frame % 16) * s.cell_w; };
+    auto cell_y = [&](int frame) { return (frame / 16) * s.cell_h; };
+    auto check = [&] {
+        if (s.checked == texture) return true;  // read once a texture: blank or ours since
+        std::vector<uint8_t> image(static_cast<size_t>(s.width) * s.height * 4);
+        gl.GetTexImage(kTexture2D, 0, kRgba, kUnsignedByte, image.data());
+        if (gl.GetError() != 0) return false;
+        auto alpha = [&](int x, int y) {
+            return image[(static_cast<size_t>(y) * s.width + x) * 4 + 3];
+        };
+        // The game's art where the PNG has it: the first item icon's cell is not blank.
+        bool art_there = false;
+        for (int y = 0; y < s.cell_h && !art_there; ++y) {
+            for (int x = 0; x < s.cell_w && !art_there; ++x) {
+                art_there = alpha(cell_x(kKnownFrame) + x, cell_y(kKnownFrame) + y) != 0;
+            }
+        }
+        if (!art_there) return false;
+        // Each icon's cell blank, or already the helper's icon.
+        for (int k = 0; k < kHdIconCount; ++k) {
+            const std::vector<uint8_t> ours = art(k, s.cell_w, s.cell_h);
+            for (int y = 0; y < s.cell_h; ++y) {
+                for (int x = 0; x < s.cell_w; ++x) {
+                    const uint8_t a = alpha(cell_x(kFirstIconFrame + k) + x,
+                                            cell_y(kFirstIconFrame + k) + y);
+                    if (a != 0 && a != ours[(static_cast<size_t>(y) * s.cell_w + x) * 4 + 3]) {
+                        return false;
+                    }
+                }
+            }
+        }
+        s.checked = texture;
+        return true;
+    };
+    auto work = [&] {
+        for (int k = 0; k < kHdIconCount; ++k) {
+            const std::vector<uint8_t> pixels =
+                clear ? std::vector<uint8_t>(static_cast<size_t>(s.cell_w) * s.cell_h * 4)
+                      : art(k, s.cell_w, s.cell_h);
+            gl.TexSubImage2D(kTexture2D, 0, cell_x(kFirstIconFrame + k),
+                             cell_y(kFirstIconFrame + k), s.cell_w, s.cell_h, kRgba,
+                             kUnsignedByte, pixels.data());
+        }
+    };
+    return on_texture(texture, gl, s.width, s.height, check, work);
+}
+
+void IconSheets::paint(BYTE* holder, const GlFunctions& gl) {
+    if (!gl.loaded()) return;
+    for (Sheet& s : sheets_) {
+        const unsigned texture = sheet_texture(holder, s.definition);
+        if (texture == 0) continue;
+        // Painted (or found not as expected) at most once every kRepaintFrames frames.
+        if ((texture == s.painted || texture == s.failed) && s.frames_to_paint-- > 0) continue;
+        s.frames_to_paint = kRepaintFrames;
+        if (upload(s, texture, gl, false)) {
+            s.painted = texture;
+            s.failed = 0;
+        } else {
+            if (texture != s.painted) s.painted = 0;
+            s.failed = texture;
+        }
+    }
+}
+
+void IconSheets::clear(BYTE* holder, const GlFunctions& gl) {
+    for (Sheet& s : sheets_) {
+        if (s.painted != 0 && gl.loaded() && sheet_texture(holder, s.definition) == s.painted) {
+            upload(s, s.painted, gl, true);
+        }
+        s.painted = s.failed = s.checked = 0;
+        s.frames_to_paint = 0;
     }
 }
 

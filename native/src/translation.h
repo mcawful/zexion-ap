@@ -143,7 +143,8 @@ bool write_text(const TextTable& t, int32_t offset, int32_t room, std::wstring_v
 std::wstring hd_text(std::string_view font_text);
 // A record's icon byte as the private-use character the translations' fonts draw it as, as the
 // pickup does (0x1F89B to 0x1F8CE: 0xC0 to 0xEA as U+E024 to U+E04E, 0x6E as U+E04F, 0x77 as
-// U+E050); "" for none or any other (the helper's own glyphs, the AP logo, the disk).
+// U+E050), and the helper's own glyphs (the disk, the padlock, the AP logo) as the characters it
+// paints them into the icon sheets as (apitem.h IconSheets); "" for none or any other.
 std::wstring hd_icon(uint8_t icon);
 // A stand-in's label as laid out (`width` characters a line, its first character the item's
 // glyph; text.h, Label) as translated text: each line trimmed, joined by line breaks, the glyph

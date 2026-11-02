@@ -59,13 +59,17 @@ void test_the_text_helpers() {
     check(zap::hd_icon(0xC0) == L"\xE024" && zap::hd_icon(0xEA) == L"\xE04E" &&
               zap::hd_icon(0x6E) == L"\xE04F" && zap::hd_icon(0x77) == L"\xE050",
           "the icons as the pickup maps them");
-    check(zap::hd_icon(0) == L"" && zap::hd_icon(0xEE) == L"" && zap::hd_icon(0xFB) == L"",
-          "none, the AP logo and the disk: none");
+    check(zap::hd_icon(0) == L"" && zap::hd_icon(0xEB) == L"" && zap::hd_icon(0x41) == L"",
+          "none, and no icon");
+    check(zap::hd_icon(0xFB) == L"\xE03A" && zap::hd_icon(0xEF) == L"\xE03B" &&
+              zap::hd_icon(0xEE) == L"\xE03C",
+          "the disk, the padlock and the AP logo as the helper paints them in the icon sheets");
     // As layout_label lays a label out: "\xEE" "MASTER SWORD" over FOR ALICE, 13 wide.
     const zap::Label label = zap::layout_label("\xEE" "MASTER SWORD", "FOR ALICE");
-    check(zap::hd_label(label.name, label.width) == L"MASTER SWORD\nFOR ALICE",
-          "a label's lines, the logo left out");
-    check(zap::hd_label(label.name, label.width, true) == L"MASTER SWORD", "its first line");
+    check(zap::hd_label(label.name, label.width) == L"\xE03C" L"MASTER SWORD\nFOR ALICE",
+          "a label's lines, the logo first");
+    check(zap::hd_label(label.name, label.width, true) == L"\xE03C" L"MASTER SWORD",
+          "its first line");
     const zap::Label own = zap::layout_label("\xC5" "MISSILE BOX", "FOR BOB");
     check(zap::hd_label(own.name, own.width) == L"\xE029MISSILE BOX\nFOR BOB",
           "another Zexion player's item with its icon");

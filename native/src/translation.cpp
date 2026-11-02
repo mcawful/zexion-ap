@@ -5,8 +5,11 @@
 #include <cstring>
 #include <vector>
 
+#include "apitem.h"  // the helper's icons
+#include "equip.h"   // kDiskGlyph
 #include "game_layout.h"
 #include "game_mem.h"
+#include "menu.h"  // kLockGlyph
 
 namespace zap {
 
@@ -176,6 +179,10 @@ std::wstring hd_icon(uint8_t icon) {
     if (icon >= 0xC0 && icon <= 0xEA) return std::wstring(1, static_cast<wchar_t>(icon + 0xDF64));
     if (icon == 0x6E) return L"\xE04F";
     if (icon == 0x77) return L"\xE050";
+    // The helper's own glyphs, as it paints them into the icon sheets (apitem.h IconSheets).
+    if (icon == kDiskGlyph) return std::wstring(1, kHdDiskIcon);
+    if (icon == kLockGlyph) return std::wstring(1, kHdLockIcon);
+    if (icon == kApItemGlyph) return std::wstring(1, kHdLogoIcon);
     return L"";
 }
 

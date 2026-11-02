@@ -629,6 +629,12 @@ void Game::watch_all(WidgetCallback callback) {
 void Game::watch_translation() {
     const std::optional<Loaded> now = loaded_translation(at_);
     popup_areas_.watch(now);
+    // The helper's icons in the translation's icon sheets while its text shows (apitem.h).
+    if (now && now->on) {
+        icon_sheets_.paint(at_.sprite_templates, gl_);
+    } else if (icon_sheets_.painted()) {
+        icon_sheets_.clear(at_.sprite_templates, gl_);
+    }
     std::map<EntryKey, std::wstring> want;
     if (now && now->on) {
         // The stand-ins' names while their records are (the pickup popup reads ItemNames by
@@ -1337,6 +1343,7 @@ void Game::put_back_all(WidgetCallback callback) {
         const std::optional<Loaded> now = loaded_translation(at_);
         tr_entries_.restore(now);
         popup_areas_.restore(now);
+        icon_sheets_.clear(at_.sprite_templates, gl_);
     }
 }
 
