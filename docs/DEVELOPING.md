@@ -232,8 +232,9 @@ line says.
   `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): popups, notices, the stand-ins' names, the
   equipment screen's disk, RETURN HOME's question and the pixel-font parts showed in
   English(HD), popups in French and Japanese, and the warning once, for French; ARCHIPELAGO's
-  label, the question's place and the equipment description's width are bugs, and the scanner's
-  line was not run (`native/README.md`, "Translations", "Run in game"). Before them, 1.0.0's release candidate in
+  label, the question's place, the equipment description's width and ASSIST's padlock are bugs
+  (fixed since, not run in game since), and the scanner's line was not run
+  (`native/README.md`, "Translations", "Run in game"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
   not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
 
