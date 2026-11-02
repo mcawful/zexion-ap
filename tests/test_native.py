@@ -466,6 +466,8 @@ def test_a_mod_of_this_version_without_the_language_is_an_earlier_build(
 ) -> None:
     # 1.0.0's release candidate, in the game folder: the same version, but no translation
     # support (its hello has no lang), so its config would ignore the translation keys.
+    (tmp_path / "zexion_ap.dll").write_bytes(b"")
+    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
     game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", lang=False)
     with pytest.raises(native.ModMismatch, match="different builds") as caught:
         native.attach(game, tmp_path / "no-build.dll")
