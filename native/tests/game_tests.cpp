@@ -971,6 +971,44 @@ void place(BYTE* o, double x, double y) {
     put(o, 0x48, y);
 }
 
+// A received Scrap Energy or Scrap Chunk (this player's own filler) pops up under the game's own
+// name, while the stand-ins' records are restyled as other players' items.
+void test_received_stand_in_popup() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    std::map<int, zap::Label> labels;
+    // (5, 2): "MAP WIDTH" for FINDER, the player's cell.
+    zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572", labels);
+    game.set_labels(labels);
+    player_cell(5, 2);
+    game.watch_ap_items();
+    check(record_name(47).find("FINDER") != std::string::npos &&
+              record_name(48).find("FINDER") != std::string::npos,
+          "both stand-ins are named for the label");
+    int width = 0;
+    const std::string energy = zap::popup_text("SCRAP ENERGY", "FROM BOB", 24, &width);
+    apply(game, "apply\npopup 47 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == energy && g_message_args[0] == width,
+          "a received Scrap Energy reads SCRAP ENERGY FROM BOB, laid out at the game's width");
+    check(g_text.find("FINDER") == std::string::npos && g_text.find('\xEE') == std::string::npos,
+          "not the restyled name, nor its logo glyph");
+    const std::string chunk = zap::popup_text("SCRAP CHUNK", "FROM BOB", 24, &width);
+    apply(game, "apply\npopup 48 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == chunk && g_message_args[0] == width, "and Scrap Chunk SCRAP CHUNK FROM BOB");
+    // Away from every label: the records read AP ITEM.
+    player_cell(9, 3);
+    game.watch_ap_items();
+    check(record_name(47).find("AP ITEM") != std::string::npos, "the record reads AP ITEM");
+    apply(game, "apply\npopup 47 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text.rfind("SCRAP ENERGY", 0) == 0 && g_text.find("AP ITEM") == std::string::npos,
+          "and the popup still SCRAP ENERGY");
+    game.restore_ap_items();
+}
+
 void test_stand_ins_named_by_their_own_cell() {
     zap::Game game;
     ready(game);
@@ -1661,6 +1699,7 @@ int main() {
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
     test_stand_ins_named_by_their_own_cell();
+    test_received_stand_in_popup();
     test_received_shield();
     test_received_death();
     test_assist_watch();
