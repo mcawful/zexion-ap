@@ -28,7 +28,8 @@ Set with the Goal option.
   how many you need). The four keys are not in the seed.
   - So the hyperspace gates can't take keys: where Gates is Vanilla (OHKO's, also as Custom's
     `custom_base`, or `gates: vanilla` in Custom), whose gates need all four, the seed has
-    Gates Unlocked instead, whatever Start Keys is, and the generator's log says so. The gates
+    Gates Unlocked instead, even if you start with keys (Start Keys, or keys in
+    `start_inventory` or `start_inventory_from_pool`), and the generator's log says so. The gates
     then need no keys: once you have visited two of them, they work (by the game's code; not
     yet checked in game). In the pause menu's RANDO SETTINGS, an OHKO seed then shows
     as Custom mode, with OHKO's items and amounts and Gates Unlocked (by the game's code; not

@@ -436,8 +436,9 @@ class Goal(Choice):
     Landing Pod's save point (Kresezoa 16,13, whichever room you started in) and answer YES to
     RETURN HOME WITH THE DISKS?. The seed makes sure you can reach the Landing Pod. The keys are
     not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
-    take all four keys, becomes Unlocked, whatever Start Keys is: by the game's code (not yet
-    checked in game) the gates then take no keys, only two of them visited. The
+    take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
+    start_inventory): by the game's code (not yet checked in game) the gates then take no keys,
+    only two of them visited. The
     scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
     how many disks you need."""
 
