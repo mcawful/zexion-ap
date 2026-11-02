@@ -908,9 +908,10 @@ disassembly only: "The helper's calls in a translation").
     private-use character the translations' fonts draw (as the pickup does), the translation's
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
     on the next line; a notice's text as it is. A popup that cannot go there (longer than the
-    run, the run not as traced, the tables unreadable with the flag set, or from an unload's
-    put-back on) shows the helper's pixel text, with the mark the game's last translated message
-    left in its slot cleared (told by the HD object's serial), so it shows, in its box.
+    run, its area still taken after the 240 frames, the run not as traced, the tables
+    unreadable with the flag set, or from an unload's put-back on) shows the helper's pixel
+    text, with the mark the game's last translated message left in its slot cleared (told by
+    the HD object's serial), so it shows, in its box.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines) while their
     records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area

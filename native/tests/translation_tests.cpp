@@ -86,6 +86,9 @@ void test_the_tables() {
     check(zap::entry_room(now->items, 50) == 0, "the last entry: none known");
     std::wstring text;
     check(zap::read_text(now->items, own, 64, text) && text == L"Scrap Energy", "read");
+    check(zap::read_entry(now->items, 50, text, 64) && text == L"Energy Shield" &&
+              !zap::read_entry(now->items, 50, text),
+          "the last entry read within the room given for it, and not without one");
     check(!zap::write_text(now->items, own, 5, L"TOO LONG"), "too long for its room: refused");
     load_translation("Brazilian Portuguese");
     check(game.language() == "Brazilian_Portuguese", "a name with a space, as one word");
@@ -213,9 +216,31 @@ void test_a_whole_notice() {
               g_hd_texts[0].text.size() > 80,
           "the whole run, by entry 66");
     check(game.popup_areas().in_use(), "both taken");
+    // A popup while the notice shows: it waits, the notice's text left whole.
+    const std::wstring shown = entry_text(g_small, 66);
+    g_message_slot = 1;
+    queue(game, "apply\npopup 36 FROM ALICE");
+    frames(game, 25);
+    check(g_messages == 1 && game.queued_popups() == 1 && entry_text(g_small, 66) == shown,
+          "a popup waits while the whole run is taken");
     end_message(0);
     frames(game, 1);
+    check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 66 && g_messages == 2,
+          "the popup once the notice has gone");
+    end_message(1);
+    frames(game, 1);
     check(!game.popup_areas().in_use() && entry_text(g_small, 66).empty(), "both free again");
+    game.put_back_all(&no_callback);
+}
+
+// ItemNames' last entry, whose room the offsets cannot give: the popup still has its name.
+void test_the_last_item_name() {
+    zap::Game game;
+    start(game);
+    queue(game, "apply\npopup 50 FROM ALICE");
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nFROM ALICE"),
+          "the last entry's name, as the translation has it");
     game.put_back_all(&no_callback);
 }
 
@@ -432,7 +457,8 @@ void test_assist_shows_its_pixel_glyphs(bool on = true) {
     check(!lock.install(a) && zap::pixel_glyphs_shown(options.label), "kept while locked");
     check(lock.restore(a), "unlocked");
     check(!zap::pixel_glyphs_shown(options.label) && get<int32_t>(options.label, 0x244) == 3 &&
-              translated[2][0x120] == 1 && options.glyph_list[0][0x120] == 0,
+              get<int32_t>(options.label, 0x1EC) == 0 && translated[2][0x120] == 1 &&
+              options.glyph_list[0][0x120] == 0,
           "its translated text again, as the game left it");
 }
 
@@ -445,6 +471,7 @@ int main() {
     test_a_notice_too_long_shows_its_pixel_text();
     test_the_pixel_text_when_the_tables_cannot_be_used();
     test_a_whole_notice();
+    test_the_last_item_name();
     test_a_language_change_mid_popup();
     test_a_reload_in_place();
     test_the_names_written_and_put_back();
