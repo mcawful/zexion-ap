@@ -49,7 +49,8 @@ namespace zap {
 namespace tr {
 constexpr ptrdiff_t kName = 0x00;
 constexpr size_t kNameSize = 32;
-constexpr ptrdiff_t kSmallText = 0x30, kItemNames = 0x48;
+constexpr ptrdiff_t kSmallText = 0x30, kLargeText = 0x38, kItemNames = 0x48;
+constexpr ptrdiff_t kLargeOffsets = 0x60;  // LargeText's (0x8AE21, 0x8AE35)
 constexpr ptrdiff_t kSmallOffsets = 0x58, kItemNameOffsets = 0x78;
 constexpr ptrdiff_t kOn = 0x91;
 // 32-bit: 1 for a translation whose font is drawn as pixels (Config.txt's "Font Style" 1; inferred
@@ -121,6 +122,10 @@ bool translation_on(const GameAddresses& a);
 // is on (spaces as underscores), or "?" (no translation keys, or nothing readable).
 std::string language_name(const GameAddresses& a);
 
+// LargeText entry k, as loaded now (the translation object's table, bounded by large_count):
+// false without that key, with the flag clear, or if it does not read.
+bool read_large_entry(const GameAddresses& addresses, int k, std::wstring& out);
+
 // Entry k's offset, or -1 (none, or unreadable).
 int32_t entry_offset(const TextTable& t, int k);
 // The characters entry k may hold in place, its ending 0 included: from its offset to the next
@@ -168,6 +173,9 @@ struct Rebuild {
     // (0x166EFA, -4).
     bool center = false;
     float center_by = 0;
+    // Its middle kept where the text it replaces has it, as 0x86660 centers a text on a y
+    // (the Feats screen's title, 0x179AC7).
+    bool keep_middle = false;
 };
 // How wide the game's builder lays a line out in the translation's font as loaded now (0x88760
 // on; docs/re/memory.md, "Laying out the helper's popups"): a space by the font's space advance,

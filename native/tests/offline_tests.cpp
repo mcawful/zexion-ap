@@ -676,7 +676,7 @@ const char* const kClientOnly[] = {
 const char* const kTranslationKeys[] = {
     "translation",       "tr_flag",     "small_text",      "small_offsets", "item_names",
     "item_name_offsets", "small_count", "item_name_count", "hd_messages",   "message_slots",
-    "hd_text_fn",        "hd_build_fn", "wstring_new_fn",
+    "hd_text_fn",        "hd_build_fn", "wstring_new_fn", "large_count",
 };
 
 bool is_translation_key(const std::string& key) {

@@ -252,7 +252,7 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
 // what they were given and do to the objects the helper reads what the game's do.
 // Through the font object (+0xD0) and its metrics (+0x40040 to +0x40068 past it).
 inline BYTE g_translation[0xD0 + 0x40070];
-inline int16_t g_small_count = 0, g_item_name_count = 0;
+inline int16_t g_small_count = 0, g_item_name_count = 0, g_large_count = 0;
 inline BYTE g_hd_messages[4 * 0x238];
 struct LoadedTable {
     std::vector<wchar_t> text;
@@ -263,6 +263,7 @@ struct LoadedTable {
 inline std::vector<std::unique_ptr<LoadedTable>> g_loaded;
 inline LoadedTable* g_small = nullptr;
 inline LoadedTable* g_items = nullptr;
+inline LoadedTable* g_large = nullptr;
 // A table of `count` entries, entry k's text `texts[k]` (none: offset -1).
 inline LoadedTable* make_table(int count, const std::map<int, std::wstring>& texts) {
     auto t = std::make_unique<LoadedTable>();
@@ -295,6 +296,11 @@ inline std::map<int, std::wstring> hd_small_texts(const std::wstring& tag = L"")
     for (int k = 66; k <= 72; ++k) out[k] = L"\r";
     return out;
 }
+// LargeText's: the Feats of Natu screen's title (220) and its hint (219), as English(HD)'s.
+inline std::map<int, std::wstring> hd_large_texts() {
+    return {{219, L" Complete any one of these \r\nto see the expanded ending!"},
+            {220, L"Feats of Natu!"}};
+}
 inline std::map<int, std::wstring> hd_item_texts(const std::wstring& tag = L"") {
     return {{0, L"Energy Tank"}, {36, L"Missile Box" + tag}, {44, L"Data Disc"},
             {46, L"Scrap Metal"}, {47, L"Scrap Energy" + tag}, {48, L"Scrap Chunk" + tag},
@@ -306,6 +312,7 @@ inline void load_translation(const char* name = "English(HD)", bool on = true,
                              const std::wstring& tag = L"") {
     g_small = make_table(448, hd_small_texts(tag));
     g_items = make_table(51, hd_item_texts(tag));
+    g_large = make_table(362, hd_large_texts());
     std::memset(g_translation, 0, sizeof(g_translation));
     std::memcpy(g_translation, name, std::strlen(name));
     put<wchar_t*>(g_translation, 0x30, g_small->text.data());
@@ -314,6 +321,9 @@ inline void load_translation(const char* name = "English(HD)", bool on = true,
     put<int32_t*>(g_translation, 0x78, g_items->offsets.data());
     g_translation[0x90] = 1;
     g_translation[0x91] = on ? 1 : 0;
+    put<wchar_t*>(g_translation, 0x38, g_large->text.data());
+    put<int32_t*>(g_translation, 0x60, g_large->offsets.data());
+    g_large_count = 362;
     g_small_count = 448;
     g_item_name_count = 51;
 }
@@ -442,6 +452,7 @@ inline void with_translation(zap::GameAddresses& a) {
     a.item_name_offsets = g_translation + 0x78;
     a.small_count = reinterpret_cast<BYTE*>(&g_small_count);
     a.item_name_count = reinterpret_cast<BYTE*>(&g_item_name_count);
+    a.large_count = reinterpret_cast<BYTE*>(&g_large_count);
     a.hd_messages = g_hd_messages;
     a.message_slots = g_slots;
     a.hd_text_fn = reinterpret_cast<BYTE*>(&hd_text_fn);
@@ -478,8 +489,8 @@ struct TranslatedText {
 inline void reset_translation() {
     std::memset(g_translation, 0, sizeof(g_translation));
     std::memset(g_hd_messages, 0, sizeof(g_hd_messages));
-    g_small = g_items = nullptr;
-    g_small_count = g_item_name_count = 0;
+    g_small = g_items = g_large = nullptr;
+    g_small_count = g_item_name_count = g_large_count = 0;
     g_hd_texts.clear();
     g_builds.clear();
     g_slots_live = false;
@@ -710,6 +721,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"item_name_offsets", rva(g_translation + 0x78)},
         {"small_count", rva(&g_small_count)},
         {"item_name_count", rva(&g_item_name_count)},
+        {"large_count", rva(&g_large_count)},
         {"hd_messages", rva(g_hd_messages)},
         {"message_slots", rva(g_slots)},
         {"hd_text_fn", rva(reinterpret_cast<void*>(&hd_text_fn))},

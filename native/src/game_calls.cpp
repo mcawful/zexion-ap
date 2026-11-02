@@ -173,6 +173,9 @@ constexpr ConfigKey kConfigKeys[] = {
     translation_key(code("hd_text_fn", &G::hd_text_fn)),
     translation_key(code("hd_build_fn", &G::hd_build_fn)),
     translation_key(code("wstring_new_fn", &G::wstring_new_fn)),
+    // LargeText's count, for the Feats screen's title (feats.h): without it (a cache from
+    // before it) that title alone stays in the pixel font.
+    translation_key(data("large_count", &G::large_count)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.

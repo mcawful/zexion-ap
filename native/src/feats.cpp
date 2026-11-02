@@ -145,12 +145,49 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
     for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], stand_in_frame(i, columns, first));
 }
 
-// In a translation the title's pixel glyphs, which hold the note (or the title the helper wrote
-// over the hint), are hidden under the translated title: shown in its place while the helper's
-// text is there, and the translated title shown again once it is not (translation.h). Only on
-// the label being looked at, which feats_screen_note has found live.
-BYTE* g_swapped = nullptr;
-void show_ours(const GameAddresses& a, BYTE* label, bool ours) {
+// In a translation the title shows its translated text (LargeText 220, Feats of Natu!, or 219,
+// the hint) over the pixel glyphs that hold the note (or the title the helper wrote over the
+// hint). While the helper's text is there, the translated title is built again as LargeText
+// 220's with the note under it, wrapped, centered and kept at its middle as the game lays out the
+// title (0x179A8E to 0x179AC7); once it is not, the game's own entry again, if it is still the
+// helper's text. Without LargeText (a cache lacking large_count), the pixel glyphs are shown in
+// its place instead, as before (translation.h). Only on the label being looked at, which
+// feats_screen_note has found live.
+constexpr int kTitleEntry = 220, kHintEntry = 219;
+constexpr wchar_t kFeatsNoteHd[] = L"Archipelago save: no Feats earned";
+constexpr Rebuild kTitleLayout = {.wrap = true, .center = true, .keep_middle = true};
+BYTE* g_swapped = nullptr;  // the label whose pixel glyphs the helper shows
+BYTE* g_hd_label = nullptr;  // the label whose translated text is the helper's
+BuiltMark g_hd_mark;
+int g_hd_entry = -1;  // the game's own entry for it, to put back
+void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
+    std::wstring title;
+    if (ours && translation_on(a) && read_large_entry(a, kTitleEntry, title)) {
+        bool hd = label == g_hd_label && built_mark(label) == g_hd_mark;
+        if (!hd) {
+            title.erase(0, title.find_first_not_of(L" \r\n"));
+            title.erase(title.find_last_not_of(L" \r\n") + 1);
+            g_hd_label = nullptr;
+            hd = rebuild_label(a, label, title + L"\n" + kFeatsNoteHd, kTitleLayout);
+            if (hd) {
+                g_hd_label = label;
+                g_hd_mark = built_mark(label);
+                g_hd_entry = game_entry;
+            }
+        }
+        if (hd) {  // the translated text shown, not the pixel glyphs (an earlier look's)
+            if (pixel_glyphs_shown(label)) show_translated_glyphs(label);
+            g_swapped = nullptr;
+            return;
+        }
+    }
+    if (g_hd_label == label) {
+        std::wstring own;
+        if (built_mark(label) == g_hd_mark && read_large_entry(a, g_hd_entry, own)) {
+            rebuild_label(a, label, own, kTitleLayout);
+        }
+        g_hd_label = nullptr;
+    }
     if (ours) {
         if (translation_on(a) && !pixel_glyphs_shown(label) && show_pixel_glyphs(label)) {
             g_swapped = label;
@@ -215,7 +252,7 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
                 for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], g_replaced.frames[i]);
                 g_replaced = {};
             }
-            show_ours(a, label, g_replaced.label == label);
+            show_ours(a, label, g_replaced.label == label, kHintEntry);
             return true;
         }
         g_replaced = {};  // the game's own text again: nothing to put back
@@ -224,7 +261,7 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         // Not FEATS OF NATU! on the middle line: the hint, or not this screen.
         if (text.find(kHintName) == std::string::npos) return false;
         replace_hint(top, label, glyphs, frames, columns, show);
-        show_ours(a, label, g_replaced.label == label);
+        show_ours(a, label, g_replaced.label == label, kHintEntry);
         return true;
     }
     // The last line: blank (frame 0), or the note centered with blank glyphs around it.
@@ -237,11 +274,11 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
     }
     // The game's own text there, or glyphs the whole note cannot be written into: left alone.
     if ((!blank && !noted) || show == noted || !takes_text(last, columns)) {
-        show_ours(a, label, noted);
+        show_ours(a, label, noted, kTitleEntry);
         return true;
     }
     for (int32_t i = 0; i < columns; ++i) set_frame(last[i], show ? note_frame(i, columns) : 0);
-    show_ours(a, label, show);
+    show_ours(a, label, show, kTitleEntry);
     return true;
 }
 

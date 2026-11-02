@@ -222,6 +222,10 @@ constexpr double kAttachOffset = -1.0;
 constexpr float kScreenMiddle = 160.0f;
 constexpr double kIconLeft = 2.0;
 constexpr ptrdiff_t kRightCorner = sprite::kCorners + 0x10;
+// The icon sheets' templates (apitem.h IconSheets), and where 0x86660 takes an icon to sit
+// when it is a text's first glyph (0x217680).
+constexpr ptrdiff_t kHdIconSheet = 101 * 8, kPixelIconSheet = 104 * 8;
+constexpr double kIconMiddle = 4.0;
 
 // The glyphs the builder makes for `text`: one per character but spaces, tabs and line breaks
 // (0x88781 to 0x88853).
@@ -277,6 +281,46 @@ bool extent(const GameAddresses& a, const BYTE* label, float& left, float& right
     return true;
 }
 
+// The top and bottom of a label's translated text as 0x86660 takes them: its first glyph (its
+// quad's top right and bottom right corners about its place, or its place plus 4 for an icon),
+// and every shown one after it from the font or an icon sheet, up to the first missing.
+bool vertical_extent(const GameAddresses& a, const BYTE* label, float& top, float& bottom) {
+    int32_t n = 0;
+    BYTE** list = nullptr;
+    void* font = nullptr;
+    if (!read(label, hdlabel::kCount, n) || n < 1 || n > kMaxGlyphs ||
+        !read(label, hdlabel::kGlyphs, list) || !read(a.translation, tr::kFont, font)) {
+        return false;
+    }
+    BYTE* templates = pointer_at(a.sprite_templates);
+    void* sheets[2] = {pointer_at(templates, kHdIconSheet), pointer_at(templates, kPixelIconSheet)};
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        if (g == nullptr) {
+            if (i == 0) return false;
+            break;
+        }
+        uint8_t shown = 0;
+        double y = 0, upper = 0, lower = 0;
+        void* made_from = nullptr;
+        if (!read(g, sprite::kVisible, shown) || !read(g, sprite::kY, y) ||
+            !read(g, sprite::kCorners + 0x08, upper) || !read(g, sprite::kCorners + 0x28, lower) ||
+            !read(g, sprite::kTemplate, made_from)) {
+            return false;
+        }
+        if (i == 0) {
+            const bool of_font = made_from == font;
+            top = static_cast<float>(y + (of_font ? upper : kIconMiddle));
+            bottom = static_cast<float>(y + (of_font ? lower : kIconMiddle));
+        } else if (shown != 0 &&
+                   (made_from == font || made_from == sheets[0] || made_from == sheets[1])) {
+            top = std::min(top, static_cast<float>(y + upper));
+            bottom = std::max(bottom, static_cast<float>(y + lower));
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 BuiltMark built_mark(const BYTE* label) {
@@ -311,7 +355,6 @@ constexpr double kHdIconDivisor = 4.8214;
 // U+E04E are frames 0x80 to 0xAA, U+E04F frame 0xBD, U+E050 frame 0xC6; definition 104's sheet
 // with a pixel font or icon style 1 (tr +0xA4), else 101's (0x885BF).
 constexpr ptrdiff_t kIconStyle = 0xA4;
-constexpr ptrdiff_t kHdIconSheet = 101 * 8, kPixelIconSheet = 104 * 8;
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
 
 int icon_frame(wchar_t c) {
@@ -480,18 +523,39 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
     } else if (!read(label, hdlabel::kX, x) || !read(label, hdlabel::kY, y)) {
         return false;
     }
+    // The middle of the text it replaces, before that is gone.
+    float top = 0, bottom = 0;
+    const bool middle_known = how.keep_middle && vertical_extent(a, label, top, bottom);
+    const float middle = (top + bottom) * 0.5f;
     build(a, label, text, x, y, how.wrap);
-    float left = 0, right = 0;
+    int32_t style = 0;
+    const bool pixel_font =
+        read(a.translation, tr::kFontStyle, style) && style == tr::kPixelFont;
+    // 0x85B00's and 0x86660's moves, made by building it there instead (its own place then kept
+    // with it); each rounded for a pixel font (0x85BCA to 0x85BFB, 0x86760 to 0x86785).
+    float dx = 0, dy = 0, left = 0, right = 0;
     if (how.center && extent(a, label, left, right)) {
-        // 0x85B00's move, made by building it there instead (its own place then kept with it).
-        float dx = kScreenMiddle - (right - left) * 0.5f - left + how.center_by;
-        int32_t style = 0;
-        if (read(a.translation, tr::kFontStyle, style) && style == tr::kPixelFont) {
-            dx = std::round(dx);  // roundf, for a pixel font (0x85BCA to 0x85BFB)
-        }
-        if (dx != 0) build(a, label, text, x + dx, y, how.wrap);
+        dx = kScreenMiddle - (right - left) * 0.5f - left + how.center_by;
+        if (pixel_font) dx = std::round(dx);
     }
+    if (middle_known && vertical_extent(a, label, top, bottom)) {
+        dy = middle - (bottom - top) * 0.5f - top;
+        if (pixel_font) dy = std::round(dy);
+    }
+    if (dx != 0 || dy != 0) build(a, label, text, x + dx, y + dy, how.wrap);
     return true;
+}
+
+// The most characters read for the last LargeText entry, whose room is not known.
+constexpr int32_t kLargeLastRoom = 256;
+
+bool read_large_entry(const GameAddresses& a, int k, std::wstring& out) {
+    out.clear();
+    if (a.large_count == nullptr || !translation_on(a)) return false;
+    TextTable large;
+    return read_table(a.translation + tr::kLargeText, a.translation + tr::kLargeOffsets,
+                      a.large_count, large) &&
+           read_entry(large, k, out, kLargeLastRoom);
 }
 
 namespace {

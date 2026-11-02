@@ -785,14 +785,14 @@ TARGETS = (
 # Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
 # locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching. The
 # translation's LargeText and Database tables and the game's other text-attach functions are
-# traced and checked here, but the helper reads none of them: it rebuilds a label's text itself
-# (hd_build_fn), and borrows only SmallText entries (native/README.md, "Translations").
+# traced and checked here, but the helper reads none of them but LargeText's count (it reads
+# LargeText through the translation object): it rebuilds a label's text itself (hd_build_fn),
+# and borrows only SmallText entries (native/README.md, "Translations").
 TOOL_TARGETS = frozenset(
     {
         "pickup_counter",
         "large_text",
         "large_offsets",
-        "large_count",
         "database_count",
         "hd_entry_fn",
         "text_attach_fn",
