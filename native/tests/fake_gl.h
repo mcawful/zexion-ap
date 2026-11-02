@@ -33,7 +33,17 @@ inline void WINAPI fake_get_integer(unsigned name, int* value) {
     if (name == 0x0CF2) *value = g_row_length;
     if (name == 0x0CF3 || name == 0x0CF4) *value = 0;
 }
-inline void WINAPI fake_level_parameter(unsigned, int, unsigned, int* value) { *value = g_width; }
+// The icon sheets' textures (apitem.h IconSheets): 11 the HD one, 12 the pixel one.
+constexpr unsigned kHdSheet = 11, kPixelSheet = 12;
+inline int sheet_width(unsigned t) { return t == kHdSheet ? 1024 : t == kPixelSheet ? 160 : 0; }
+inline int sheet_height(unsigned t) { return t == kHdSheet ? 1024 : t == kPixelSheet ? 144 : 0; }
+inline void WINAPI fake_level_parameter(unsigned, int, unsigned name, int* value) {
+    if (sheet_width(g_bound) != 0) {
+        *value = name == 0x1000 ? sheet_width(g_bound) : sheet_height(g_bound);
+        return;
+    }
+    *value = g_width;
+}
 inline void WINAPI fake_pixel_store(unsigned name, int value) {
     if (name == 0x0CF2) g_row_length = value;
 }
@@ -49,9 +59,19 @@ inline bool g_frame95_used = false;
 inline bool g_disc_place_used = false;  // a pixel of the pause disc's place, where its art is clear
 inline bool g_known_art = true;
 inline int g_readbacks = 0;
+// A sheet's cell for the helper's first icon used by the game's art (frame 0x96).
+inline bool g_icon_cell_used = false;
 inline void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) {
     ++g_readbacks;
     auto* p = static_cast<uint8_t*>(pixels);
+    if (const int w = sheet_width(g_bound); w != 0) {
+        const int h = sheet_height(g_bound), cw = w / 16, ch = h / 16;
+        std::memset(p, 0, static_cast<size_t>(w) * h * 4);
+        auto opaque = [&](int x, int y) { p[(static_cast<size_t>(y) * w + x) * 4 + 3] = 0xFF; };
+        if (g_known_art) opaque((0x80 % 16) * cw + 2, (0x80 / 16) * ch + 2);  // an item icon
+        if (g_icon_cell_used) opaque((0x96 % 16) * cw, (0x96 / 16) * ch);
+        return;
+    }
     std::memset(p, 0, static_cast<size_t>(2048) * 2048 * 4);
     if (!g_known_art) return;
     auto opaque = [&](int x, int y) { p[(static_cast<size_t>(y) * 2048 + x) * 4 + 3] = 0xFF; };
@@ -96,6 +116,7 @@ inline void reset_gl() {
     g_known_art = true;
     g_frame95_used = false;
     g_disc_place_used = false;
+    g_icon_cell_used = false;
     g_readbacks = 0;
 }
 

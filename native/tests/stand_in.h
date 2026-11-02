@@ -38,7 +38,7 @@ inline BYTE* g_palette_table[64];
 inline int64_t g_frame_clock = 1000;
 inline BYTE g_frames[152 * 0x38];
 inline BYTE g_item_template[0x1D8];
-inline BYTE* g_template_list[40];
+inline BYTE* g_template_list[105];  // through the icon sheets' (101 and 104)
 inline BYTE** g_sprite_templates = g_template_list;
 // The area-event handlers; type 11's records what it was called with.
 inline int g_spawn_calls = 0;
