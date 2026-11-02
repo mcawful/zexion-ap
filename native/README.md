@@ -118,7 +118,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle`, `ending started`, … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -230,8 +230,9 @@ popup still showing the text the helper wrote into a borrowed entry (until that 
 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when no
 frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
-THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
-game's transition with the ending's patch in place: an unload would drop the ending, or put
+THE DISKS?'s YES until the helper has started the ending (and while the screen is still kept
+black after it), and while the ending routine is the game's transition with the ending's patch
+in place: an unload would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
 a few frames, longer while received items' popups or a message hold the ending after YES.
 Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
@@ -279,7 +280,9 @@ Every part is put back when a client goes away and on unload, unless it says oth
 
 An `apply` (`src/game_calls.cpp`):
 
-1. Refuses unless the game is in play: a save loaded, no menu, energy above 0.
+1. Refuses unless the game is in play: a save loaded, no menu, energy above 0; and in an ending
+   RETURN HOME WITH THE DISKS? started, whose cutscenes read as play (`refused RETURN HOME WITH
+   THE DISKS? ending`, "The OS Install Disks goal").
 2. Checks every `cas`, and writes all of them or, if any byte differs, none.
 3. Sets max and current missiles and bombs from the counts, and on a new Energy Tank max and
    current energy, as the pickup routine does.
@@ -298,7 +301,9 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 
 - **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
   and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
-  on its way (its fade, before the game opens it). Each plays the item's own pickup sound.
+  on its way (its fade, before the game opens it), nor in the black after its YES (a popup
+  waiting ends the black) or the ending it started (until the save's next load). Each plays
+  the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown; the client counts a received item's popup as done once `apply` took it. The queue
@@ -336,8 +341,10 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
 
 - **What:** `shield` runs the Energy Shield's pickup event as its pickup does, from the player's
   cell (`spawn_shield`, which checks the record, the event and its handler first).
-- **When:** once the player has been in play in one cell for a second. The client asks once per
-  received shield not yet given, and counts it once it sees the shield up (`client/shields.py`).
+- **When:** once the player has been in play in one cell for a second, and not in an ending
+  RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
+  asks once per received shield not yet given, and counts it once it sees the shield up
+  (`client/shields.py`).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields").
@@ -348,11 +355,13 @@ Working in game: 2026-10-23 ("Received Energy Shields").
   game's death routine (`kill`), through an Energy Shield too.
 - **When:** once the player has been in play in one cell for a second, the game's halt byte is
   clear, no message is showing (the routine posts one without checking it was made) and
-  RETURN HOME WITH THE DISKS? is not between its fade and its prompt; otherwise `refused` (`not
-  configured`, `not settled`, `halted`, `message showing`, `RETURN HOME WITH THE DISKS?
-  opening`, `no frame`). The client queues received deaths and asks once a second, one at a time
+  RETURN HOME WITH THE DISKS? is not between its fade and its prompt, nor in the black after its
+  YES or the ending it started; otherwise `refused` (`not configured`, `not settled`, `halted`,
+  `message showing`, `RETURN HOME WITH THE DISKS? opening`, `RETURN HOME WITH THE DISKS?
+  ending`, `no frame`). The client queues received deaths and asks once a second, one at a time
   (`client/deathlink.py`); it drops the queue while an ending that began in this load runs
-  (`Session.holding`), not in a save that had already ended (stand-in tests only).
+  (`Session.holding`, also an ending played again through RETURN HOME); a save that had already
+  ended deals them as any save does until its ending is played again (stand-in tests only).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("DeathLink").
@@ -511,9 +520,9 @@ the helper:
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
-- on `mission_prompt COLUMN ROW` (sent after each save at the Landing Pod with enough disks, with
-  home: the Landing Pod's save point in tiles, 191 329, whichever room the seed starts in; the
-  column below 54 × 14 and the row below 54 × 20, or `error bad mission_prompt request`), once idle in play
+- on `mission_prompt COLUMN ROW` (sent after each save at the Landing Pod with enough disks,
+  in a save past its ending too, with home: the Landing Pod's save point in tiles, 191 329,
+  whichever room the seed starts in; the column below 54 × 14 and the row below 54 × 20, or `error bad mission_prompt request`), once idle in play
   with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
   its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
   until then 70, as far into it as the game's escape skip fade is into Zexion's popup:
@@ -523,9 +532,33 @@ the helper:
   3667, checked byte for byte, through the game's handler for its type) and sets its opener as the transition 60 frames away (the
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
   through the game's NO and then starts the ending once no message shows; NO fades the screen back
-  in, as the game's NO does there. If event 3667 or its handler is not as traced, the prompt opens
-  at once with no fade, as before. A request not yet opened lapses (`lapsed: the player left the
-  landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
+  in, as the game's NO does there. NO's close puts back, inside its call, the fade the prompt's
+  builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`, "The
+  mission prompt"), so right after it YES turns that fade off with the screen still black (the
+  fade's step, countdown and target set as event 3667's fade ends), and the ending routine sets
+  the level back to 4 itself as it starts: no fade back into play between YES and the ending.
+  Only a fade that reads as NO's close leaves it is turned off (`mission_status` then says `yes:
+  ending when idle, the screen kept black`); anything else fades back in as before. While it is
+  black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
+  of the helper's waiting brings the screen back in for it (as NO's close would have), and the
+  ending follows the popups as before; so does the ending not starting within 180 frames in play
+  (`kDarkFrames`, GAME SAVED's length; frames with a menu open, the pause, which saves the fade
+  and puts it back, don't count), and the prompt cancelled (the save left, `discs` off, the client
+  gone); asked for with a menu open, the fade back waits until it has closed and put its saved
+  black back. Another fade since (a death's) is left alone, and an unload is refused while the
+  screen is kept black (below, "Unloading"). The black ends once the ending routine is seen to
+  have run: the next frame its transition is something else (it sets `0x948A0`, which clears
+  the transition); if that is the pause opener with timer 0 and the black still the helper's (a
+  save at the save point in its place, which leaves the fade alone, where the routine would have
+  set the level to 4), the ending is asked for again. From the frame the helper sets the ending routine
+  until another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or a save takes
+  its place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
+  ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
+  `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
+  next load), and popups already queued wait for the seed's next load. Stand-in tests only
+  (`native/tests/mission_tests.cpp`, `game_tests.cpp`), not run in game. If event 3667 or its
+  handler is not as traced, the prompt opens at once with no fade, as before. A request not yet
+  opened lapses (`lapsed: the player left the landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
   / 14 against the player state's cell, as the client tests a save at the pod: `docs/re/memory.md`,
   "The mission prompt"; a cell off the map, as the raw cell reads for a moment, counts as not
   known), as when popups held it while the player walked on; the client offers it again after the
@@ -1045,7 +1078,11 @@ unload.
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the ending after YES
-  waiting for the last message, and the ending's wait that an unload refuses for).
+  waiting for the last message, and the ending's wait that an unload refuses for; the screen
+  kept black after YES, a popup waiting bringing it back in, received deaths refused (`RETURN
+  HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
+  until another save is loaded). `mission` covers the black after YES on its own: kept, not
+  kept for a fade not as NO leaves it, ended by 180 frames in play, another fade or cancel.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause

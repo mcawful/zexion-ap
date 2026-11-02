@@ -179,8 +179,8 @@ def goal_reached(ended: bool, required: int | None, have: int) -> bool:
     """Whether the loaded save of this seed holds the goal: its ending (``ended``: the
     session's goal), and with the OS Install Disks goal (``required``) only with enough disks
     (``have``). Whether or not the client saw that ending begin: one it missed (closed during
-    it, or the save played without it) would never come again, as a save past its ending is not
-    offered RETURN HOME again."""
+    it, or the save played without it) is the goal all the same, sent as such a save loads, not
+    only if the player plays the ending again (RETURN HOME is offered past the ending too)."""
     return ended and (required is None or have >= required)
 
 
@@ -363,6 +363,10 @@ class LoadState:
     save_collected: set[int] = field(default_factory=set)  # its collected locations
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)
+    # RETURN HOME queued on this save past its ending: its YES plays the ending again, which flag
+    # 250, set already, does not show (ticks.replay_tick asks the helper). Kept over a reconnect
+    # or a helper attached again, which start return_home afresh.
+    replay: bool = False
     # Whether the helper should lock ASSIST, and name the Area Map INTEL CHIP, now.
     assists_want: bool = False
     intel_want: bool = False

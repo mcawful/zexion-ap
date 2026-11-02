@@ -453,9 +453,10 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     if deaths.owed and conn is not None and conn.session.holding:
         # The game's own damage never kills the player in the ending, and what a death there
         # does is not known: dropped, only while the ending that began in this load runs
-        # (Session.holding). A save past its ending loaded again later deals them as any load
-        # does. A load first seen during its ending reads the same as that later load, so
-        # deaths are dealt there too (the known gap: docs/re/memory.md, "The ending: flag 250").
+        # (Session.holding, also for the ending played again on a save past it: replay_tick). A
+        # save past its ending loaded again later deals them as any load does. A load first
+        # seen during its ending reads the same as that later load, so deaths are dealt there
+        # too (the known gap: docs/re/memory.md, "The ending: flag 250").
         deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
@@ -681,12 +682,31 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     await store_popped(ctx, conn)
 
 
+async def replay_tick(ctx: ZexionContext) -> None:
+    """A save past its ending (flag 250) offered RETURN HOME WITH THE DISKS? in this load: once
+    the helper says its YES has started the ending (discs.ENDING_STARTED), what is received
+    waits for the next load as in a first ending (Session.hold_ending), which flag 250, set
+    already, does not show. Before the poll's step, so its step gives nothing then. Nothing is
+    sent: the goal went once already (this save's ending, with enough disks, is the goal)."""
+    conn, helper = ctx.conn, ctx.helper
+    if conn is None or helper is None or conn.session.holding or not ctx.load.replay:
+        return
+    reply = await asyncio.to_thread(helper.request, discs.MISSION_STATUS)
+    if reply != discs.ENDING_STARTED:
+        return
+    conn.session.hold_ending()
+    detail("The ending began again: what is received from now on waits for the next load.")
+
+
 async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     """With the OS Install Disks goal, once the player has enough disks: the reminder to save at
     the Landing Pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
     own popups; then, after each save at the Landing Pod's save point (discs.HOME, whichever
     room the seed starts in), RETURN HOME WITH THE DISKS? (native/src/mission.h), whose YES
-    starts the game's ending. Never once that save has reached the ending (flag 250)."""
+    starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
+    and its YES plays the ending again (replay_tick). Not while an ending runs in this load
+    (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
+    a save at the pod."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     home = ctx.load.return_home
     if (
@@ -694,7 +714,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
         or conn.hunt is None
         or not step.seed_matches
         or step.state != game.IN_PLAY
-        or step.ended
+        or conn.session.holding
         or not conn.items_listed
         or not step.save_stamp
     ):
@@ -726,6 +746,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     if reply != "queued":
         return
     home.offer = False
+    ctx.load.replay = ctx.load.replay or step.ended
     detail(
         "Saved at the Landing Pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "
         "offered. YES starts the game's ending, which sends the goal; NO plays on, and it is "

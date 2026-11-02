@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import struct
 import types
 from typing import NamedTuple
 
@@ -328,3 +329,96 @@ def test_the_default_english_and_english_hd_are_not_said(caplog, monkeypatch) ->
             asyncio.run(ticks.language_tick(ctx))
             clock[0] += state.LANGUAGE_ASK_SECONDS
     assert said(caplog) == []
+
+
+# --- RETURN HOME WITH THE DISKS? ---------------------------------------------------------------
+
+
+class Homing(Helper):
+    """A helper that shows popups, queues RETURN HOME and says how that prompt stands."""
+
+    def __init__(self, status: str = "not asked") -> None:
+        super().__init__()
+        self.status = status
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        reply = super().request(text, seconds)
+        if text == discs.MISSION_REQUEST:
+            return "queued"
+        if text == discs.MISSION_STATUS:
+            return self.status
+        return reply
+
+    def apply(self, text: str) -> str:
+        self.requests.append(text)
+        return "applied"
+
+
+def homing_ctx() -> Ctx:
+    """A disks seed's save loaded with the client back, its follow-up popups all shown."""
+    ctx = Ctx(connection(**HUNT))
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.conn.session.announced = 3  # the received disks' popups handed over
+    return ctx
+
+
+def enough_disks() -> types.SimpleNamespace:
+    """A Poll: the three disks needed received."""
+    return types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=set())
+
+
+def at_the_pod(time: int, ended: bool) -> session.Step:
+    """This seed's save in play in the pod's cell, last saved at the pod at ``time``."""
+    stamp = struct.pack("<iHHHHH", 3, time, 0, 0, discs.HOME[1], discs.HOME[0])
+    return session.Step(
+        goal=ended,
+        seed_matches=True,
+        state=game.IN_PLAY,
+        ended=ended,
+        save_stamp=stamp,
+        at_home=True,
+        in_home_cell=True,
+    )
+
+
+def prompts(ctx: Ctx) -> int:
+    return ctx.helper.requests.count(discs.MISSION_REQUEST)
+
+
+def test_a_save_past_its_ending_is_offered_return_home_after_a_save_at_the_pod() -> None:
+    for ended in (False, True):
+        ctx = homing_ctx()
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, ended)))
+        assert prompts(ctx) == 0  # loaded there: the reminder alone
+        assert ctx.load.return_home.reminded
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, ended)))
+        assert prompts(ctx) == 1  # saved there
+        assert ctx.load.replay == ended  # its YES plays the ending again
+
+
+def test_return_home_is_not_offered_while_an_ending_runs_in_this_load() -> None:
+    ctx = homing_ctx()
+    run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, True)))
+    ctx.conn.session.holding = True  # the ending began (flag 250, or replay_tick)
+    # The ending saves the slot as it begins, with the player still in the pod's cell.
+    run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, True)))
+    assert prompts(ctx) == 0
+
+
+def test_the_ending_played_again_holds_what_is_received() -> None:
+    ctx = homing_ctx()
+    run(ticks.replay_tick(ctx))
+    assert discs.MISSION_STATUS not in ctx.helper.requests  # no prompt on an ended save yet
+    ctx.load.replay = True  # queued on a save past its ending
+    for status in ("shown", "yes: ending when idle, the screen kept black"):
+        ctx.helper.status = status
+        run(ticks.replay_tick(ctx))
+        assert not ctx.conn.session.holding
+    ctx.helper.status = discs.ENDING_STARTED
+    run(ticks.replay_tick(ctx))
+    assert ctx.conn.session.holding
+    asked = ctx.helper.requests.count(discs.MISSION_STATUS)
+    run(ticks.replay_tick(ctx))
+    assert ctx.helper.requests.count(discs.MISSION_STATUS) == asked  # held: not asked again

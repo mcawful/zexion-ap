@@ -197,8 +197,9 @@ public:
     // asked, unless client_ready and home on the map.
     bool request_mission(int column, int row);
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
-    // patch put back before it runs) or drop: YES pressed and the ending not started yet, or the
-    // ending routine set as the transition with the ending patched.
+    // patch put back before it runs) or drop: YES pressed and the ending not started yet (or the
+    // screen still kept black after it), or the ending routine set as the transition with the
+    // ending patched.
     bool ending_pending() const;
     // Game thread, in the unload's frame call before anything is put back: why it refuses then,
     // or null. A menu open (an open screen keeps what it was built from, the pause row's disc or
@@ -283,6 +284,7 @@ public:
     void restore_intel();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
+    void mission_after_no();  // YES, once the game's NO has closed the prompt (mission.h)
     std::string mission_status() const { return mission_.status(); }
     std::string equipment_status() const { return equip_status_; }
 
@@ -303,7 +305,8 @@ public:
     // "refused <why>".
     std::string spawn_shield(uint64_t now_ms);
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for
-    // a second, not halted and no message showing: "died" or "refused <why>".
+    // a second, not halted, no message showing, and not between RETURN HOME's fade and its
+    // prompt nor in the black after its YES: "died" or "refused <why>".
     std::string kill(uint64_t now_ms);
 
     // An item record restyled (the stand-ins, the Area Map), an object dressed, or the pickup

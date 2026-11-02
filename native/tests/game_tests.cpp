@@ -1678,9 +1678,83 @@ void test_return_home_lapses_away_from_the_pod() {
     game.put_back_all(&chosen);
 }
 
+// YES through the Game (the wiring the YES hook and watch_mission give the prompt): kept black
+// after NO's close, a received death refused meanwhile, a popup received meanwhile held, then
+// the screen back in for it and the ending after it; once started, not offered again until
+// another save is loaded.
+void test_the_black_after_yes() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    game.mission_yes();
+    set_fade(4, -1, 6);  // NO's close: the builder's fade put back
+    game.mission_after_no();
+    check(g_fade_level == -1 && at<int8_t>(g_fade, zap::fade_state::kTarget) == -1 &&
+              g_fade[zap::fade_state::kStep] == 0 &&
+              game.mission_status() == "yes: ending when idle, the screen kept black",
+          "YES: black, the fade off");
+    message_showing(1);
+    game.note_play(1000);
+    check(game.kill(3000) == "refused RETURN HOME WITH THE DISKS? ending" && g_deaths == 0,
+          "no received death in the black");
+    apply(game, "apply\npopup 36 FROM ALICE");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 0 && game.queued_popups() == 1, "a popup waits in the black");
+    game.watch_all(&chosen);
+    check(at<int8_t>(g_fade, zap::fade_state::kTarget) == 4 &&
+              g_fade[zap::fade_state::kStep] == 6 &&
+              g_transition_fn == g_routine_table[zap::kIdleRoutine],
+          "then the screen back in for it, the ending waiting");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1, "shown");
+    message_showing(1);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
+              game.mission_status() == zap::kEndingStarted,
+          "then the ending");
+
+    // Black with nothing waiting: the ending at once, the screen black for it.
+    m.again();
+    game.mission_yes();
+    set_fade(4, -1, 6);
+    game.mission_after_no();
+    message_showing(1);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] && g_fade_level == -1 &&
+              g_fade[zap::fade_state::kStep] == 0,
+          "the ending, from black");
+    g_transition_fn = nullptr;  // the routine run: 0x948A0 set and run, the transition cleared
+    g_fade_level = 4;
+    game.watch_all(&chosen);
+    MissionGame::idle();  // idle-looking later in its cutscenes
+    game.request_mission(kPodColumn, kPodRow);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
+              game.mission_status() == zap::kEndingStarted,
+          "not offered during the ending");
+    const char* refused = "refused RETURN HOME WITH THE DISKS? ending";
+    game.note_play(1000);
+    check(apply(game, "apply\npopup 36 FROM BOB") == refused &&
+              apply(game, "apply\ncas 36 0 1") == refused && game.spawn_shield(5000) == refused &&
+              game.kill(5000) == refused && g_deaths == 0 && game.queued_popups() == 0,
+          "in the ending: grants, popups, shields and received deaths refused");
+    g_save_loaded = 0xFF;  // MISSION COMPLETE: no save loaded
+    game.watch_all(&chosen);
+    g_save_loaded = 3;  // loaded again
+    game.watch_all(&chosen);
+    check(game.mission_status() == "not asked", "another load");
+    check(apply(game, "apply\npopup 36 FROM BOB") == "applied", "given then");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    message_showing(1);
+    game.request_mission(kPodColumn, kPodRow);
+    game.watch_all(&chosen);
+    check(g_transition_fn == reinterpret_cast<void*>(&opener), "offered again");
+    game.put_back_all(&chosen);
+}
+
 }  // namespace
 
 int main() {
+    test_the_black_after_yes();
     test_popups_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();

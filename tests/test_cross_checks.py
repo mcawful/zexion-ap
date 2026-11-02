@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from client import game, ids, native, offline, patterns, session
+from client import discs, game, ids, native, offline, patterns, session
 from client import save_patch as sp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,6 +36,12 @@ def braced(text: str, opening: str) -> str:
 def test_the_helper_is_the_version_the_client_asks_for() -> None:
     versions = re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', source("dllmain.cpp"))
     assert versions == [native.VERSION]
+
+
+def test_the_client_reads_the_ending_started_as_the_helper_says_it() -> None:
+    said = re.findall(r'const char kEndingStarted\[\] = "([^"]+)";', source("mission.cpp"))
+    assert said == [discs.ENDING_STARTED]
+    assert f'{{"{discs.MISSION_STATUS}", ' in source("dllmain.cpp")
 
 
 @pytest.mark.skipif(not MANIFEST.is_file(), reason="worlds/zexion is missing")
@@ -115,6 +121,9 @@ def client_only_keys() -> set[str]:
 #   prompt is asked for, and the game's routines (routine), which MissionPrompt::watch reads every
 #   frame: a null table gives no routine, so nothing runs (offline_tests.cpp drives it null). The
 #   ending's check for an unload (MissionPrompt::ending_queued) tests the table for null first.
+#   The black after YES (fade_bytes, set_fade_bytes, MissionPrompt::after_no and ::end_dark),
+#   reached only once YES is pressed on a prompt asked for; set_fade_bytes writes only after
+#   fade_bytes has read the same bytes and they have been checked writable.
 # - feats.cpp: the Steam stub's test while an AP save loads, set only with current_slot
 #   non-null (native/src/feats.h; native/tests/feats_tests.cpp runs it without the key).
 CLIENT_READERS = {
@@ -132,6 +141,10 @@ CLIENT_READERS = {
     "menu.cpp": ("ArchipelagoChoice::",),
     "mission.cpp": (
         "fade_frames",
+        "fade_bytes",
+        "set_fade_bytes",
+        "MissionPrompt::after_no",
+        "MissionPrompt::end_dark",
         "routine",
         "MissionPrompt::fade",
         "MissionPrompt::ending_queued",

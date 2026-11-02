@@ -248,6 +248,13 @@ class Session:
             step.granted = self.give(g, snap, collected, received, gap, senders, notes)
         return step
 
+    def hold_ending(self) -> None:
+        """The ending began again in this load, on a save past it (RETURN HOME's YES: the
+        helper says so, ticks.replay_tick): held as an ending beginning is, which flag 250, set
+        already, does not show. A step keeps it, as the goal stays read, until the load ends."""
+        self.holding = True
+        self._due = None
+
     def leave(self) -> None:
         """No save of this seed loaded (or the game closed): the next load starts afresh."""
         self._goal_before = None

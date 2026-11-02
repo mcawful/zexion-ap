@@ -222,6 +222,22 @@ def test_items_received_once_the_ending_begins_wait_for_the_next_load(setup) -> 
     assert g.inv[17] == 1
 
 
+def test_an_ending_played_again_holds_until_the_load_ends(setup) -> None:
+    session, g = setup
+    g.flags[ENDING] = 1  # a save past its ending, loaded
+    give(session, g, [17])
+    assert not session.holding and g.inv[17] == 1  # flag 250 alone holds nothing
+    session.hold_ending()  # RETURN HOME's YES played the ending again (ticks.replay_tick)
+    for _ in range(3):
+        assert session.step(g, [17, 22], gap=0).granted == {}
+    assert session.holding and g.inv[22] == 0
+    g.state_value = game.NO_SAVE  # the ending ends at the title
+    session.step(g, [17, 22], gap=0)
+    assert not session.holding
+    g.state_value = game.IN_PLAY
+    assert give(session, g, [17, 22]) == {22: 1}
+
+
 def test_grabbing_zexion_is_not_the_goal(setup) -> None:
     session, g = setup
     g.inv[31] = 1  # Zexion grabbed: the escape and the final boss are still ahead

@@ -64,6 +64,7 @@ from .ticks import (  # noqa: E402
     newgame_tick,
     offline_tick,
     other_save_tick,
+    replay_tick,
     shields_tick,
     slots_tick,
     toggle_tick,
@@ -491,6 +492,8 @@ async def poll(ctx: ZexionContext) -> None:
         return  # a disconnect or another connection while the above waited
     current = conn.session
     p = Poll(ctx)  # again: the items may have come while the above waited
+    # A save past its ending playing it again: held before this poll's step gives anything.
+    await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
     try:
         notes: dict[int, str] = {}

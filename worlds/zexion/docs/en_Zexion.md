@@ -42,7 +42,10 @@ Set with the Goal option.
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
-    back the next time you save there. The seed makes sure you can reach the Landing Pod. The
+    back the next time you save there. Once a save has reached the ending, saving there again
+    offers it too, to watch the ending again; the goal has already been sent (not yet checked
+    in game). The seed makes
+    sure you can reach the Landing Pod. The
     pause menu's teleport goes to your start room (or second room, with Double Teleport), not
     the Landing Pod, unless you started there.
   - Each disk takes the place of another item: Scrap, then Area Maps or Intel Chips, then
