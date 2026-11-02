@@ -77,6 +77,19 @@ Archipelago logo beside the file number.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
 
+## Languages
+
+The mod is made for the game's default English and for **English(HD)** (OPTION, Video,
+Language). In English(HD) its popups and its menu text (ARCHIPELAGO, RETURN HOME WITH THE
+DISKS?, OS Install Disk, the names of other players' items) show in the game's HD font; the
+locked ASSIST and the disk count on the pause screen stay in the small pixel font, as in the
+default English. This has not been played in the game yet: if something shows wrong or not at
+all, switch to the default English and please report it.
+
+In the other languages the mod does the same, but its text is in English, and some of it may
+not show (a font without Latin letters, say); the client says so when it sees one. Items,
+checks and the goals work in every language.
+
 ## Playing without the client
 
 You can keep playing your seed's save with the client closed: what you find is sent the next

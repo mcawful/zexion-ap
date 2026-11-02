@@ -287,6 +287,7 @@ class HelperState:
     other_save_seen: bool = False  # the poll before saw it too (other_save_tick)
     offline_sent: dict[str, str] = field(default_factory=dict)  # what it last kept, by kind
     offline_at: float = 0.0
+    language_at: float = 0.0  # when to ask its hello's language next (ticks.language_tick)
 
 
 @dataclass
@@ -412,6 +413,25 @@ FEATS_OFF = (
     "achievements aren't turned off (details in the log): achievements may be earned in this "
     "save."
 )
+
+
+LANGUAGE_ASK_SECONDS = 5.0  # between asks which language the game shows
+# The languages the mod's text is made for (hello's ``lang``, native/README.md): "-" the game's
+# default English, and the English(HD) translation.
+SUPPORTED_LANGUAGES = frozenset({"-", "English(HD)"})
+
+
+def language_line(lang: str) -> str | None:
+    """The player's line for the language the game shows, from the helper's hello ``lang``
+    (its folder's name, spaces as underscores): None for a supported one, or one not known
+    ("?": no translation keys; "": a helper without the field)."""
+    if lang in SUPPORTED_LANGUAGES or lang in ("", "?"):
+        return None
+    return (
+        f"Zexion is set to {lang.replace('_', ' ')}: the mod's own text shows in English there, "
+        "and some of it may not show. The mod is made for the game's default English and for "
+        "English(HD) (OPTION, Video, Language)."
+    )
 
 
 def reload_reply(reply: str | None) -> tuple[bool, str]:

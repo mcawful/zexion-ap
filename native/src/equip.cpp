@@ -4,6 +4,7 @@
 
 #include "files.h"  // file_disk_digits
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -17,6 +18,12 @@ const char kDiskDescription[] =
     " THESE FEW DISKS HOLD AN OLD BUT  "
     "SECURE OS INSTALL THAT MY PLANET  "
     "NEEDS TO RUN ITS DEFENSE NETWORK.";
+// In a translation the box shows the translated texts the game built for the Data Disc's record
+// (ItemNames 44) and panel 3 (LargeText 87, the Energy Tank's), built again as these.
+const wchar_t kDiskNameHd[] = L"OS Install Disk";
+const wchar_t kDiskDescriptionHd[] =
+    L"These few disks hold an old but secure OS install that my planet needs to run its "
+    L"defense network.";
 
 namespace {
 
@@ -207,6 +214,14 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     auto set = reinterpret_cast<Set>(a.text_set_fn);
     set(description_label, kDiskDescription, 0, kDescriptionGlyphs);
     set(name_label, kDiskName, 1, kNameGlyphs);
+    // In a translation the pixel glyphs stay hidden, as the game left them: the translated texts
+    // are built again instead (translation.h), and the icon, a glyph of the pixel font, is left
+    // out.
+    if (translation_on(a)) {
+        rebuild_label(a, name_label, kDiskNameHd);
+        rebuild_label(a, description_label, kDiskDescriptionHd);
+        return;
+    }
     // Its icon before the name, as the game puts each record's own (the disk's record has none):
     // the glyph the helper paints (kDiskGlyph), set as the game's text code sets a character.
     BYTE* icon = pointer_at(pointer_at(name_label, label::kGlyphs));

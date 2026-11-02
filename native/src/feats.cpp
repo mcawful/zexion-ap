@@ -5,6 +5,7 @@
 #include "game_layout.h"
 #include "game_mem.h"
 #include "iat.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -144,6 +145,22 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
     for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], stand_in_frame(i, columns, first));
 }
 
+// In a translation the title's pixel glyphs, which hold the note (or the title the helper wrote
+// over the hint), are hidden under the translated title: shown in its place while the helper's
+// text is there, and the translated title shown again once it is not (translation.h). Only on
+// the label being looked at, which feats_screen_note has found live.
+BYTE* g_swapped = nullptr;
+void show_ours(const GameAddresses& a, BYTE* label, bool ours) {
+    if (ours) {
+        if (translation_on(a) && !pixel_glyphs_shown(label) && show_pixel_glyphs(label)) {
+            g_swapped = label;
+        }
+    } else if (g_swapped == label) {
+        if (pixel_glyphs_shown(label)) show_translated_glyphs(label);
+        g_swapped = nullptr;
+    }
+}
+
 }  // namespace
 
 bool feats_screen_note(const GameAddresses& a, bool show) {
@@ -198,6 +215,7 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
                 for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], g_replaced.frames[i]);
                 g_replaced = {};
             }
+            show_ours(a, label, g_replaced.label == label);
             return true;
         }
         g_replaced = {};  // the game's own text again: nothing to put back
@@ -206,6 +224,7 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         // Not FEATS OF NATU! on the middle line: the hint, or not this screen.
         if (text.find(kHintName) == std::string::npos) return false;
         replace_hint(top, label, glyphs, frames, columns, show);
+        show_ours(a, label, g_replaced.label == label);
         return true;
     }
     // The last line: blank (frame 0), or the note centered with blank glyphs around it.
@@ -217,8 +236,12 @@ bool feats_screen_note(const GameAddresses& a, bool show) {
         noted = noted && f == note_frame(i, columns);
     }
     // The game's own text there, or glyphs the whole note cannot be written into: left alone.
-    if ((!blank && !noted) || show == noted || !takes_text(last, columns)) return true;
+    if ((!blank && !noted) || show == noted || !takes_text(last, columns)) {
+        show_ours(a, label, noted);
+        return true;
+    }
     for (int32_t i = 0; i < columns; ++i) set_frame(last[i], show ? note_frame(i, columns) : 0);
+    show_ours(a, label, show);
     return true;
 }
 

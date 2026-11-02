@@ -108,6 +108,22 @@ struct GameAddresses {
     BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250
     BYTE* stats_context = nullptr;      // ISteamUserStats' accessor context
     BYTE* context_init_slot = nullptr;  // the import slot of SteamInternal_ContextInit
+    // The translations (translation.h): an offline cache may lack these (translation_key in
+    // kConfigKeys); only translation.cpp reads them, and every translation part stands down
+    // without them (translation_keys).
+    BYTE* translation = nullptr;        // the translation object: its name, tables and flag
+    BYTE* tr_flag = nullptr;            // 1 while a translation is on (translation + 0x91)
+    BYTE* small_text = nullptr;         // each holds a pointer: SmallText's text, its offsets,
+    BYTE* small_offsets = nullptr;      // ItemNames' text, its offsets (inside the object)
+    BYTE* item_names = nullptr;
+    BYTE* item_name_offsets = nullptr;
+    BYTE* small_count = nullptr;        // 16-bit entry counts
+    BYTE* item_name_count = nullptr;
+    BYTE* hd_messages = nullptr;        // the four HD message objects, 0x238 bytes each
+    BYTE* message_slots = nullptr;      // the four message slots, 0x1628 bytes each
+    BYTE* hd_text_fn = nullptr;         // gives a message translated text (0x1870A0)
+    BYTE* hd_build_fn = nullptr;        // builds a label's translated text (0x88480)
+    BYTE* wstring_new_fn = nullptr;     // the game's std::wstring assign (0x17BD0)
 
     // Not a key: set before configure (Game::set_hooks). A null hook leaves that part's game
     // function as the game's.

@@ -279,3 +279,52 @@ def test_arming_for_randomizer_only_keeps_its_one_line(caplog) -> None:
         "To play, load this seed's save, or start a new game: "
         f"{newgame.randomizer_message(ctx.conn.plan)}."
     ]
+
+
+# --- the game's language -----------------------------------------------------------------------
+
+
+class Speaking(Helper):
+    """A helper whose hello says the game shows ``lang``."""
+
+    def __init__(self, lang: str) -> None:
+        super().__init__()
+        self.lang, self.hellos = lang, 0
+
+    def hello(self) -> dict[str, str]:
+        self.hellos += 1
+        return {"version": "1.0.0", "lang": self.lang}
+
+
+def test_another_language_is_said_once_a_game_run(caplog, monkeypatch) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(ticks.time, "monotonic", lambda: clock[0])
+    ctx = Ctx(connection())
+    ctx.helper = helper = Speaking("French")
+    with caplog.at_level(logging.INFO, logger="Client"):
+        asyncio.run(ticks.language_tick(ctx))
+        lines = said(caplog)
+        assert len(lines) == 1 and lines[0].startswith("Zexion is set to French:")
+        asyncio.run(ticks.language_tick(ctx))
+        assert helper.hellos == 1, "asked again only after a few seconds"
+        clock[0] += state.LANGUAGE_ASK_SECONDS
+        helper.lang = "Japanese"
+        asyncio.run(ticks.language_tick(ctx))
+        assert helper.hellos == 2 and len(said(caplog)) == 1, "once a game run, whichever"
+        # The next game (game_closed clears it): told again.
+        ctx.said.clear("language")
+        clock[0] += state.LANGUAGE_ASK_SECONDS
+        asyncio.run(ticks.language_tick(ctx))
+        assert len(said(caplog)) == 2
+
+
+def test_the_default_english_and_english_hd_are_not_said(caplog, monkeypatch) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(ticks.time, "monotonic", lambda: clock[0])
+    ctx = Ctx(connection())
+    with caplog.at_level(logging.INFO, logger="Client"):
+        for lang in ("-", "English(HD)", "?"):
+            ctx.helper = Speaking(lang)
+            asyncio.run(ticks.language_tick(ctx))
+            clock[0] += state.LANGUAGE_ASK_SECONDS
+    assert said(caplog) == []

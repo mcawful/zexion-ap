@@ -58,6 +58,7 @@ from .ticks import (  # noqa: E402
     feats_tick,
     followups_tick,
     labels_tick,
+    language_tick,
     log,
     mission_tick,
     newgame_tick,
@@ -375,7 +376,8 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
     ctx.game_conn = None
     ctx.drop_helper()
     ctx.helper_left, ctx.helper_back_by = False, 0.0  # the next game's is attached with it
-    ctx.said.clear("read", "read detail", "mismatch")  # the next game's failures are news
+    # The next game's failures are news, and its language is told again.
+    ctx.said.clear("read", "read detail", "mismatch", "language")
 
 
 async def away_tick(ctx: ZexionContext) -> None:
@@ -444,6 +446,7 @@ async def poll(ctx: ZexionContext) -> None:
         ("Intel Chips", lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL)),
         ("disk count", lambda: discs_helper_tick(ctx, p)),
         ("file select's disk count", lambda: slots_tick(ctx, p)),
+        ("language", lambda: language_tick(ctx)),
     ):
         if ctx.helper is None:
             break  # none, or it failed in the tick before

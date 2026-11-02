@@ -29,7 +29,7 @@ struct ModePanel {
     BYTE panel[0x300] = {};
     BYTE* children[4] = {};
     BYTE child[0x2D0] = {};
-    BYTE label[0x230] = {};
+    BYTE label[0x268] = {};  // through its translated text's fields (translation.h)
     BYTE* glyph_list[zap::kLabelLength] = {};
     BYTE glyphs[zap::kLabelLength][0x1D0] = {};
     std::vector<BYTE> table = std::vector<BYTE>(kFrames * 0x38);
@@ -103,7 +103,7 @@ struct OptionsMenu {
     BYTE* children[8] = {};
     BYTE others[7][0x2D0] = {};
     BYTE child[0x2D0] = {};
-    BYTE label[0x230] = {};
+    BYTE label[0x268] = {};  // through its translated text's fields (translation.h)
     BYTE* glyph_list[zap::kAssistLength] = {};
     BYTE glyphs[zap::kAssistLength][0x1E0] = {};
     std::vector<BYTE> table = std::vector<BYTE>(kFrames * 0x38);

@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
@@ -156,12 +157,22 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         !safe_read(pointer_at(row, kPanelSprites), sprite, sizeof(sprite))) {
         return;
     }
+    // In a translation the game draws KEYS's translated text (SmallText 139) over the row, and
+    // builds it again when OPTION MENU returns (0x168AC6): the label's pixel glyphs shown in its
+    // place while the row is turned, as the game shows them with the flag clear (translation.h).
+    BYTE* keys_label = pointer_at(keys, widget::kLabel);
+    auto pixel_label = [&] {
+        if (translation_on(a) && !pixel_glyphs_shown(keys_label)) show_pixel_glyphs(keys_label);
+    };
     // Turned already (each frame, as the screen stays up): nothing more to check.
     int32_t icon = -1;
     BYTE* shown = nullptr;
     read(sprite[4], sprite::kFrameIndex, icon);
     read(sprite[4], sprite::kFrameShown, shown);
-    if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) return;
+    if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) {
+        pixel_label();
+        return;
+    }
     for (BYTE* s : sprite) {
         if (!writable(s, sprite::kSize)) return;
     }
@@ -202,6 +213,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         *(sprite[4] + sprite::kVisible) = 0;
     }
     for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + sprite::kVisible) = 0;
+    pixel_label();
 }
 
 }  // namespace zap

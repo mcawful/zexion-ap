@@ -29,7 +29,7 @@ add_library(zap_core STATIC
             src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp
-            src/apitem.cpp src/looks.cpp src/feats.cpp)
+            src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)
 
@@ -55,7 +55,7 @@ target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
 enable_testing()
 # Single-program tests on zap_core: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
 set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
-    offline)
+    offline translation)
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core)

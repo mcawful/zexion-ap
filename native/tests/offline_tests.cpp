@@ -672,6 +672,20 @@ const char* const kClientOnly[] = {
     "fade",              "fade_level",
 };
 
+// The translations' keys (game_calls.cpp, translation_key), in the table's order.
+const char* const kTranslationKeys[] = {
+    "translation",       "tr_flag",     "small_text",      "small_offsets", "item_names",
+    "item_name_offsets", "small_count", "item_name_count", "hd_messages",   "message_slots",
+    "hd_text_fn",        "hd_build_fn", "wstring_new_fn",
+};
+
+bool is_translation_key(const std::string& key) {
+    for (const char* k : kTranslationKeys) {
+        if (key == k) return true;
+    }
+    return false;
+}
+
 // The cache of a client from before a release that added client-only keys (here: all of them).
 // The helper configures from it, inactive, with those members null: every part the offline look
 // uses runs (a null one read would fault here), and the client's parts refuse until a client's
@@ -685,6 +699,7 @@ void test_a_cache_without_the_client_only_keys() {
         named += (named.empty() ? "" : ",") + std::string(key);
     }
     for (const auto& [key, rva] : partial) {
+        if (is_translation_key(key)) continue;  // left out too (below)
         auto older = partial;
         older.erase(key);
         zap::Game refused;
@@ -790,6 +805,49 @@ void test_a_cache_without_the_client_only_keys() {
     g_rando_marker = 0;
 }
 
+// The cache of a client from before the translations' keys (1.0.0's release candidate): the
+// helper configures from it with every client-only key, so its parts are ready, and the
+// translation parts stand down. In English(HD) its notices show in the pixel font, as before, and
+// nothing is written into the translation's tables.
+void test_a_cache_without_the_translation_keys() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto partial = stand_in_config();
+    std::string named;
+    for (const char* key : kTranslationKeys) {
+        check(partial.erase(key) == 1, "a translation key of the stand-in's config");
+        named += (named.empty() ? "" : ",") + std::string(key);
+    }
+    {
+        zap::Game client;
+        check(client.configure(self, partial) == "missing translation" && !client.configured(),
+              "a client's config needs them");
+    }
+    reset_game();
+    reset_translation();
+    load_translation();
+    zap::Game game;
+    check(game.configure(self, partial, false).empty() && game.configured() &&
+              game.client_ready() && game.left_out() == named,
+          "the cache without them configures, every client part ready, and says which it lacks");
+    check(game.language() == "?", "the language not known");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+    load_seed();
+    const std::vector<wchar_t> small = g_small->text, items = g_items->text;
+    for (int i = 0; i < 64; ++i) {
+        game.watch_all(&no_callback);
+        game.pump_popups();
+    }
+    check(g_messages == 1 && g_hd_texts.empty(), "the not-connected warning, in the pixel font");
+    check(g_small->text == small && g_items->text == items, "the tables as loaded");
+    check(game.tr_entries().held() == 0 && !game.popup_areas().split(), "nothing held");
+    game.put_back_all(&no_callback);
+    reset_translation();
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
 }  // namespace
 
 int main() {
@@ -803,5 +861,6 @@ int main() {
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();
     test_a_cache_without_the_client_only_keys();
+    test_a_cache_without_the_translation_keys();
     return report("offline tests");
 }
