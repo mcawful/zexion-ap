@@ -363,8 +363,15 @@ void Game::pump_popups() {
         text = notice_text(popup.suffix, kGamePopupWidth, &per_line);
     } else {
         std::string head;
-        if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
-        head += record_name(rec);
+        const int stand_in = stand_in_index(popup.item);
+        if (stand_in >= 0) {
+            // Received Scrap Energy or Scrap Chunk: the game's own name and icon (0), not the
+            // restyled record's, which names another player's item (apitem.h).
+            head = kStandInNames[stand_in];
+        } else {
+            if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
+            head += record_name(rec);
+        }
         text = popup_text(head, popup.suffix, kGamePopupWidth, &per_line);
     }
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(

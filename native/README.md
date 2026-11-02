@@ -281,9 +281,14 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
   they wait for their own save.
   Working in game 2026-10-26: popups waiting through a normal save, shown in their own save.
   A client of another seed leaving them queued: stand-in tests only (`tests/game_tests.cpp`).
-- **Text:** a `popup` is the item's icon and name, then the client's suffix (≤ 40 characters);
-  a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character width
-  (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls").
+- **Text:** a `popup` is the item's icon and name from its record, then the client's suffix (≤ 40
+  characters); a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character
+  width (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls"), whatever
+  width the helper has set for the game's own pickup popup ("Other players' items").
+- **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
+  in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
+  not from its record, which the helper may have restyled as another player's item ("Other
+  players' items"). Stand-in tests only (`tests/game_tests.cpp`).
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup.
 
