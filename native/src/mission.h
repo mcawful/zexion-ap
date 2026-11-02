@@ -7,8 +7,14 @@
 // 3667, the game's fade to black, through the area-event handlers.
 // If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
 // builder, relabels the question and points YES at the helper; YES runs the game's NO (which
-// fades the screen back in) and then, once idle, starts routine 4 (0x94A30, which records the
-// ending only with no menu open). An opener the helper takes back before it runs (cancel,
+// closes the prompt and puts back the fade the builder saved: black, then back in) and then,
+// once idle, starts routine 4 (0x94A30, which records the ending only with no menu open, and
+// sets the global level back to 4 itself, 0x95230). Right after NO, YES turns that fade off
+// with the screen still black (after_no), so play does not fade back in before the ending; it
+// fades back in as before when popups of the helper's wait (they would show on black), or after
+// kDarkFrames with no ending, or when cancelled. Once the ending is started, the prompt is not
+// offered again while that save stays loaded (its cutscenes read as play, and the ending's own
+// save reads as a save at the pod). An opener the helper takes back before it runs (cancel,
 // unload) becomes the idle routine, and its fade is turned back to the normal level; one another
 // transition took the place of (a save sets the pause opener back) has its fade turned back only
 // while the game's fade is still event 3667's (fade_state); on unload a wrapped YES points at NO
@@ -34,7 +40,13 @@ constexpr int32_t kFadeDelay = 60;
 // prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
 // after a save.
 constexpr int32_t kFadeMessageLeft = 150;
+// The most frames the screen stays black after YES with no ending started (after_no): GAME
+// SAVED's length (0x1FC876), the longest message the ending waits for. Then it fades back in.
+constexpr int kDarkFrames = 180;
 extern const char kMissionQuestion[];
+// The status from the frame the helper sets the ending routine until another save is loaded
+// (left_save); the client reads it (client/discs.py, ENDING_STARTED).
+extern const char kEndingStarted[];
 
 // The game's fade of the global level, at `fade` (docs/re/memory.md, "The mission prompt"):
 // the level it moves toward, the frames between two steps (0: off) and the frames to the next
@@ -75,6 +87,29 @@ public:
     // Game thread, from YES: the game's NO callback to call (it closes the prompt), and the
     // ending asked for.
     void* yes();
+
+    // Game thread, from YES once the game's NO has returned: if the fade reads as NO's close
+    // leaves it (the builder's: level -1, toward 4 a step every 6 frames, the countdown 6), the
+    // fade off there (target -1, step and countdown 0, as event 3667's fade ends), so the screen
+    // stays black until the ending routine sets the level itself. Else left to fade back in.
+    void after_no(const GameAddresses& addresses);
+
+    // Game thread: the screen kept black after YES, the ending not started yet: popups and
+    // received deaths wait (game_calls.cpp).
+    bool dark() const { return dark_; }
+    // The ending started by the helper in this save's load (until left_save; dropped again if a
+    // save took the ending routine's place before it ran): grants, popups, received shields and
+    // deaths wait too, as its cutscenes read as play (game_calls.cpp).
+    bool started() const { return started_; }
+
+    // Game thread: out of the black after YES (popups of the helper's wait to be shown): the fade
+    // back to the normal level, as NO's close would have; with a menu open (the pause, whose
+    // close puts the black back), once it has closed (watch). Nothing if not dark.
+    void end_dark(const GameAddresses& addresses);
+
+    // Game thread: another save loaded or none (save_loaded changed): the prompt can be offered
+    // again after an ending this helper started.
+    void left_save();
 
     // Game thread: puts back what the helper holds (before an unload). An opener it could not
     // take off stays held (the helper then refuses to unload).
@@ -117,6 +152,8 @@ private:
     // Takes the opener off before it runs, if its fields can be written: the idle routine,
     // timer 0. The fade is turned back either way.
     void take_back(const GameAddresses& addresses);
+    // Whether the fade still reads as after_no left it: black, off.
+    bool dark_still_ours(const GameAddresses& addresses) const;
 
     HMODULE image_ = nullptr;
     bool requested_ = false;  // to offer when idle
@@ -125,6 +162,11 @@ private:
     int fade_seen_ = -1;      // its frames (fade_frames) when last seen with the opener in place
     int32_t timer_seen_ = 0;  // and the transition timer then
     bool ending_ = false;     // YES: the ending, when idle
+    bool dark_ = false;       // and the screen kept black meanwhile (after_no)
+    int dark_frames_ = 0;     // frames in play kept black so far
+    bool undark_ = false;     // the fade back asked for with a menu open: once it closes
+    bool queued_ = false;     // the ending routine set, not yet seen to have run
+    bool started_ = false;    // the ending started in this save's load: not offered again
     BYTE* menu_ = nullptr;
     BYTE* yes_child_ = nullptr;  // YES, wrapped
     void* no_fn_ = nullptr;      // NO's callback, the game's

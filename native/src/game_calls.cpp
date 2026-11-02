@@ -315,6 +315,9 @@ void Game::refresh_hud() {
 std::string Game::apply(const Batch& batch) {
     if (!client_ready()) return "refused not configured";
     if (!in_play()) return "refused not in play";
+    // The ending RETURN HOME WITH THE DISKS? started: its cutscenes read as play. The client
+    // gives them in the save's next load.
+    if (mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
     BYTE* inv = at_.inventory;
     for (const Cas& c : batch.cas) {
         if (inv[c.item] != c.expected) {
@@ -380,7 +383,10 @@ void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
-    if (mission_.opening()) return;  // the fade, then RETURN HOME WITH THE DISKS?
+    // The fade, then RETURN HOME WITH THE DISKS?; the black after its YES, which a popup
+    // waiting ends (watch_mission); and the ending it started, whose cutscenes read as play:
+    // kept for this save's next load.
+    if (mission_.opening() || mission_.dark() || mission_.started()) return;
     // The first one for this save (or for any): a client's popups for another save wait for it.
     auto next = std::find_if(popups_.begin(), popups_.end(),
                              [this](const Popup& p) { return showable(p); });
@@ -480,6 +486,7 @@ std::string Game::spawn_shield(uint64_t now_ms) {
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
     }
+    if (mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
     std::string why = run_item_event(kEnergyShield);
     return why.empty() ? "spawned" : "refused " + why;
 }
@@ -497,6 +504,8 @@ std::string Game::kill(uint64_t now_ms) {
     if (popup_busy()) return "refused message showing";
     // Not between RETURN HOME's fade and its prompt: the prompt would open over the death.
     if (mission_.opening()) return "refused RETURN HOME WITH THE DISKS? opening";
+    // Nor in the black after its YES, nor in the ending it started.
+    if (mission_.dark() || mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
     BYTE* p = player();
     at<int16_t>(p, kEnergy) = 0;
     reinterpret_cast<DeathFn>(at_.death_fn)(p, 0);
@@ -844,7 +853,10 @@ void Game::watch_mission() {
     // A save loaded or closed (save_loaded flips between 0 and 0xFF): a prompt asked for drops.
     int save = *at_.save_loaded;
     if (save != mission_save_) {
-        if (mission_save_ != -1) mission_.cancel(at_);
+        if (mission_save_ != -1) {
+            mission_.cancel(at_);
+            mission_.left_save();  // offered again after an ending started in the last one
+        }
         mission_save_ = save;
     }
     // Idle: no popup to show here (one held for another save does not count), the helper's
@@ -853,6 +865,9 @@ void Game::watch_mission() {
     // nor any message by the ending after YES.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
+    // Kept black after YES: a popup waiting is shown first, so the screen fades back in for it
+    // (as before the black), and the ending follows the popups.
+    if (waiting && mission_.dark()) mission_.end_dark(at_);
     bool whole = frames_since_popup_ < kPopupFrames || mission_.ending();
     int32_t left = whole ? 1 : kFadeMessageLeft;
     bool idle = in_play() && !waiting && popup_frames_left() <= left &&
@@ -1098,7 +1113,14 @@ bool Game::request_mission(int column, int row) {
 
 bool Game::ending_pending() const {
     if (!configured_) return false;
-    return mission_.ending() || (feats_.ending_patched() && mission_.ending_queued(at_));
+    // The black after YES too (dark), until it has faded back in: one asked for with a menu open
+    // waits for the menu to close.
+    return mission_.ending() || mission_.dark() ||
+           (feats_.ending_patched() && mission_.ending_queued(at_));
+}
+
+void Game::mission_after_no() {
+    if (configured_) mission_.after_no(at_);
 }
 
 void Game::mission_open() {

@@ -174,7 +174,7 @@ void equipment_chosen(void* widget, int event) {
 
 // RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition
 // routine; it builds the game's prompt and relabels it. YES: the game's NO (closing the prompt),
-// then the ending once idle.
+// the screen kept black, then the ending once idle.
 void mission_open() {
     InCallback in;
     guarded([] { g_game.mission_open(); });
@@ -184,7 +184,9 @@ void mission_yes(void* widget, int event) {
     InCallback in;
     void* no = nullptr;
     guarded([&] { no = g_game.mission_yes(); });
-    if (no != nullptr) reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
+    if (no == nullptr) return;
+    reinterpret_cast<void (*)(void*, int)>(no)(widget, event);
+    guarded([] { g_game.mission_after_no(); });
 }
 
 // The helper's wrappers for the game's menus, given to Game once, before the hook.

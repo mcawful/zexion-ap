@@ -142,6 +142,10 @@ HOME_CELL = save_patch.cell_of(*HOME)[::-1]
 # lapses while the player is in play outside its cell (native/README.md, "The OS Install Disks
 # goal").
 MISSION_REQUEST = f"mission_prompt {HOME[0]} {HOME[1]}"
+# The helper's state of that prompt, and its reply once the helper has started the ending after
+# YES, until another save is loaded (native/src/mission.h, kEndingStarted).
+MISSION_STATUS = "mission_status"
+ENDING_STARTED = "ending started"
 
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8.
