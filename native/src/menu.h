@@ -74,14 +74,14 @@ private:
 // The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
 // the helper draws its label like STYLE: AUTO (style 5, palette 0, its gray tint; re-applied
 // while its menu is up, as the menu changes palette after some screens) and puts a padlock in
-// its eighth glyph. It clears the callback, which the generic widget handler then skips
+// its eighth glyph (its seventh in a translation, so it stays in the box). It clears the callback, which the generic widget handler then skips
 // (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
 // panel's selectable ones (+0x1EC), so the cursor skips it. Unlocking puts all of it back,
 // under the same rules as the ARCHIPELAGO choice (a 12-glyph label reading ASSIST and six
 // blanks, 0x16285A).
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
-// helper paints it, apitem.h FontGlyph), with a blank before it.
+// helper paints it, apitem.h FontGlyph), with a blank before it (none in a translation).
 constexpr uint8_t kLockGlyph = 0xEF;
 extern const char kLockRows[8][9];
 

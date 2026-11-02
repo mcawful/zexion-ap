@@ -1011,8 +1011,8 @@ lands, not only the place passed.
     box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
     since, not run in game since: the panel's label and the question built where the game's
     attach would build them now, the question centered and the description wrapped as the game
-    does its own, and the padlock right after ASSIST (`docs/re/memory.md`, "Where a rebuilt
-    label goes").
+    does its own, and the padlock right after ASSIST (English(HD)'s options box measured; the
+    other translations' not looked at) (`docs/re/memory.md`, "Where a rebuilt label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
