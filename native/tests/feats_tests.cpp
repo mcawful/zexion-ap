@@ -16,6 +16,7 @@
 #include "iat.h"
 #include "offline.h"
 #include "stand_in.h"
+#include "translation.h"
 
 using namespace stand_in;
 
@@ -456,7 +457,7 @@ struct FeatsScreen {
     BYTE panel[5][0x300] = {};
     BYTE* children[3] = {};  // the title; the name and description left out
     BYTE title[0x2D0] = {};
-    BYTE label[0x230] = {};
+    BYTE label[0x268] = {};  // through its translated text's fields (translation.h)
     BYTE* glyph_list[kLength] = {};
     BYTE glyphs[kLength][0x1D8] = {};
     std::vector<BYTE> table = std::vector<BYTE>(256 * 0x38);
@@ -540,6 +541,37 @@ std::string centered_line(const std::string& text) {
 }
 
 std::string noted_line() { return centered_line(zap::kFeatsNote); }
+
+// In a translation the game shows the title's translated text, its pixel glyphs (which hold
+// the note) hidden: shown in its place while the note is there, and the translated title back
+// once it is blanked.
+void test_the_screen_note_in_a_translation() {
+    reset_translation();
+    load_translation();
+    FeatsScreen screen;
+    BYTE* current = screen.menu;
+    zap::GameAddresses a;
+    a.current_menu = reinterpret_cast<BYTE*>(&current);
+    a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
+    with_translation(a);
+    BYTE translated[2][0x1D8] = {};
+    BYTE* list[2] = {translated[0], translated[1]};
+    screen.label[0x230] = 1;
+    put<BYTE**>(screen.label, 0x238, list);
+    put<int32_t>(screen.label, 0x248, 2);
+    put<int32_t>(screen.label, 0x244, 2);
+    put<int32_t>(screen.label, 0x1EC, 0);
+    for (BYTE* g : list) g[0x120] = 1;
+    check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line() &&
+              zap::pixel_glyphs_shown(screen.label) && screen.glyphs[0][0x120] == 1 &&
+              translated[0][0x120] == 0,
+          "the note, and the title's pixel glyphs shown in place of its translated text");
+    check(zap::feats_screen_note(a, false) && !zap::pixel_glyphs_shown(screen.label) &&
+              get<int32_t>(screen.label, 0x244) == 2 && translated[1][0x120] == 1 &&
+              screen.glyphs[0][0x120] == 0,
+          "blanked: its translated text again");
+    reset_translation();
+}
 
 void test_the_screen_note() {
     const std::string blank(FeatsScreen::kColumns, '.');
@@ -866,6 +898,7 @@ int main() {
     test_a_load_from_the_file_select();
     test_refusals();
     test_the_screen_note();
+    test_the_screen_note_in_a_translation();
     test_the_hint_replaced();
     test_the_note_after_an_ending();
     test_put_back();

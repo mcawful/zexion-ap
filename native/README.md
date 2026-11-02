@@ -174,8 +174,8 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 
 ### On the game's thread
 
-A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title` and
-`cache_missing`) goes to the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and
+A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title`,
+`lang` and `cache_missing`) goes to the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and
 runs at the next frame call. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
 afterwards.
@@ -262,8 +262,8 @@ Every part is put back when a client goes away and on unload, unless it says oth
 - **Limits:** "working in game" below is in the game's default English. With a translation on
   the game draws the translation's text, in its own font, in place of the pixel-font glyphs the
   helper rewrites; how each part's text shows there is under "Translations" (not run in game
-  yet: stand-in tests only). Seen in English(HD), French and Japanese with 1.0.0's release
-  candidate, before that: what a part changes in what an entry does worked, but what it changed
+  yet). Seen in English(HD), French and Japanese on 2026-11-01 (B1, helper 1.0.0, the release
+  candidate), before that: what a part changes in what an entry does worked, but what it changed
   in the text did not show (the ASSIST padlock, OS INSTALL DISK, the disk row's count,
   ARCHIPELAGO, RETURN HOME WITH THE DISKS?, a stand-in's name in its pickup popup), and many
   received items' popups showed nothing; the title lines, the file select's logo and disk count,
@@ -611,7 +611,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   is dressed), so another seed's save started earlier in the same client run is known as one
   (`other_save`). With no client yet, the cached addresses configure it if they are for its
   build and the game holds every checked function's bytes, even if the cache lacks the
-  client-only keys (a cache from before a release that added one: "The pipe"). So the offline
+  client-only or translation keys (a cache from before a release that added one: "The
+  pipe"). So the offline
   look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
@@ -774,7 +775,7 @@ closed, gone with it open.
     glyph of it is writable and has the font's frames. In a translation the title label's pixel
     glyphs are shown in place of its translated text while the note (or the title written over
     the hint) is there, so the whole title shows in the pixel font, in English; the translated
-    title comes back when the note goes (not seen in a translation, and no stand-in test).
+    title comes back when the note goes (stand-in tests only, not seen in a translation).
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -886,14 +887,18 @@ Not seen in game:
 ### Translations
 
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
-after it. Not run in game yet: stand-in tests only (`tests/translation_tests.cpp`, and the cache
-without the keys in `tests/offline_tests.cpp`).
+after it. Not run in game yet. Stand-in tests (`tests/translation_tests.cpp`; the cache without
+the keys in `tests/offline_tests.cpp`; RETURN HOME's question in `tests/mission_tests.cpp`; the
+Feats note in `tests/feats_tests.cpp`) cover the popups, the names, ARCHIPELAGO, ASSIST, the
+question and the Feats note; the equipment screen's disk, the pause row's count and the map
+cursor's name have none (by disassembly only, `docs/re/memory.md`, "The helper's calls in a
+translation").
 
 - **What:** while the game shows a translation (its flag, `tr_flag`), the helper's text shows in
   the translation's font, in four ways:
   - **Popups and notices.** Each received item's popup and each notice goes into SmallText 66
     to 72, entries empty in every translation that the game never reads, split in two by
-    pointing entry 70 at the run's middle (116 characters each in English(HD), 96 in Japanese),
+    pointing entry 70 at the run's middle (116 and 117 characters in English(HD), 96 and 97 in Japanese),
     and the message is given it as the game gives GAME SAVED its text (`hd_text_fn`), since the
     game reads the entry again every frame while the message shows. The two areas take turns
     (the popup before may still be closing); a notice longer than an area takes the whole run
@@ -1006,7 +1011,9 @@ unload.
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
   slot's mark cleared), a language change mid-popup and between a name's write and its put-back
   (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back, ASSIST's
-  pixel glyphs, and the default English (the flag clear, or nothing loaded) left as it was.
+  pixel glyphs, and the default English (the flag clear, or nothing loaded) left as it was
+  (`mission` and `feats` cover RETURN HOME WITH THE DISKS?'s question and the Feats note in
+  a translation).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
