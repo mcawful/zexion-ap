@@ -1,6 +1,7 @@
 #include "translation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -205,19 +206,107 @@ std::wstring hd_label(const std::string& name, int width, bool first_line) {
     return out;
 }
 
-bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text) {
-    if (!translation_on(a)) return false;
-    uint8_t built = 0;
-    double x = 0, y = 0;
-    if (!read(label, hdlabel::kBuilt, built) || built == 0 || !read(label, hdlabel::kX, x) ||
-        !read(label, hdlabel::kY, y) || !writable(label, hdlabel::kSize)) {
-        return false;
+namespace {
+
+// What the game-mode panel and the prompt pass the attach as its place, each way (0x217D98).
+constexpr double kAttachOffset = -1.0;
+// 0x85B00: the screen's middle (0x217CC0), and what a first glyph that is not of the font (an
+// icon) adds to the left (0x217630).
+constexpr float kScreenMiddle = 160.0f;
+constexpr double kIconLeft = 2.0;
+constexpr ptrdiff_t kRightCorner = sprite::kCorners + 0x10;
+
+// The glyphs the builder makes for `text`: one per character but spaces, tabs and line breaks
+// (0x88781 to 0x88853).
+int32_t glyphs_in(std::wstring_view text) {
+    int32_t n = 0;
+    for (wchar_t c : text) {
+        if (c != L' ' && c != L'\t' && c != L'\n' && c != L'\r') ++n;
     }
+    return n;
+}
+
+void build(const GameAddresses& a, BYTE* label, std::wstring_view text, double x, double y,
+           bool wrap) {
     // As the game's callers start it (0x8AC65 to 0x8ACA0): 32 zero bytes, then the assign.
     alignas(16) BYTE wide[kWstringSize] = {};
     reinterpret_cast<WstringFn>(a.wstring_new_fn)(wide, text.data(), text.size());
     reinterpret_cast<BuildFn>(a.hd_build_fn)(static_cast<float>(x), static_cast<float>(y), wide,
-                                             a.translation + tr::kFont, label, 0);
+                                             a.translation + tr::kFont, label, wrap ? 1 : 0);
+}
+
+// The left and right of a label's translated text as 0x85B00 takes them: its first glyph (shown
+// or not, two further right for an icon) and every shown one after it up to the first missing.
+bool extent(const GameAddresses& a, const BYTE* label, float& left, float& right) {
+    int32_t n = 0;
+    BYTE** list = nullptr;
+    void* font = nullptr;
+    if (!read(label, hdlabel::kCount, n) || n < 1 || n > kMaxGlyphs ||
+        !read(label, hdlabel::kGlyphs, list) || !read(a.translation, tr::kFont, font)) {
+        return false;
+    }
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        if (g == nullptr) {
+            if (i == 0) return false;
+            break;
+        }
+        uint8_t shown = 0;
+        double x = 0, l = 0, r = 0;
+        void* made_from = nullptr;
+        if (!read(g, sprite::kVisible, shown) || !read(g, sprite::kX, x) ||
+            !read(g, sprite::kCorners, l) || !read(g, kRightCorner, r) ||
+            !read(g, sprite::kTemplate, made_from)) {
+            return false;
+        }
+        if (i == 0) {
+            left = static_cast<float>(x + l + (made_from != font ? kIconLeft : 0.0));
+            right = static_cast<float>(x + r);
+        } else if (shown != 0) {
+            left = std::min(left, static_cast<float>(x + l));
+            right = std::max(right, static_cast<float>(x + r));
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
+                   const Rebuild& how) {
+    if (!translation_on(a)) return false;
+    uint8_t built = 0;
+    int32_t capacity = 0;
+    double x = 0, y = 0;
+    // More glyphs than it holds would be laid over its last one (0x88B14 to 0x88B28).
+    if (!read(label, hdlabel::kBuilt, built) || built == 0 ||
+        !read(label, hdlabel::kCapacity, capacity) || glyphs_in(text) > capacity ||
+        !writable(label, hdlabel::kSize)) {
+        return false;
+    }
+    if (how.attached) {
+        // As 0x8AC30 takes its place: the first pixel glyph's, which the label's layout (0xA79E0)
+        // keeps where the label is.
+        BYTE* first = pointer_at(pointer_at(label, label::kGlyphs));
+        if (first == nullptr || !read(first, sprite::kX, x) || !read(first, sprite::kY, y)) {
+            return false;
+        }
+        x += kAttachOffset;
+        y += kAttachOffset;
+    } else if (!read(label, hdlabel::kX, x) || !read(label, hdlabel::kY, y)) {
+        return false;
+    }
+    build(a, label, text, x, y, how.wrap);
+    float left = 0, right = 0;
+    if (how.center && extent(a, label, left, right)) {
+        // 0x85B00's move, made by building it there instead (its own place then kept with it).
+        float dx = kScreenMiddle - (right - left) * 0.5f - left + how.center_by;
+        int32_t style = 0;
+        if (read(a.translation, tr::kFontStyle, style) && style == tr::kPixelFont) {
+            dx = std::round(dx);  // roundf, for a pixel font (0x85BCA to 0x85BFB)
+        }
+        if (dx != 0) build(a, label, text, x + dx, y, how.wrap);
+    }
     return true;
 }
 

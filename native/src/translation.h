@@ -14,7 +14,8 @@
 //   12), written in place, within the room the entry has, and put back.
 // - Menu labels the helper rewrites (rebuild_label): their translated text built again with the
 //   game's own builder (hd_build_fn) from a string made by the game's own std::wstring code
-//   (wstring_new_fn), at the place the game's build left in the label.
+//   (wstring_new_fn), where the game's own text is now, wrapped and centered as the game does
+//   for that label.
 // - Labels whose pixel glyphs the helper styles (ASSIST, the pause row's count, the Feats note):
 //   the game's own swap back to the pixel glyphs (show_pixel_glyphs, as 0x168AE9 does).
 //
@@ -51,6 +52,12 @@ constexpr size_t kNameSize = 32;
 constexpr ptrdiff_t kSmallText = 0x30, kItemNames = 0x48;
 constexpr ptrdiff_t kSmallOffsets = 0x58, kItemNameOffsets = 0x78;
 constexpr ptrdiff_t kOn = 0x91;
+// 32-bit: 1 for a translation whose font is drawn as pixels (Config.txt's "Font Style" 1; inferred
+// from its uses: the builder's scale, 0x88498, and the rounding in 0x85BCA), else an HD font.
+constexpr ptrdiff_t kFontStyle = 0xA8;
+constexpr int32_t kPixelFont = 1;
+// The font the builder is given (its address; the template its glyphs are made from, the pointer
+// held there).
 constexpr ptrdiff_t kFont = 0xD0;
 constexpr uint64_t kSize = 0xD8;  // through the font's first field
 }  // namespace tr
@@ -71,12 +78,13 @@ constexpr ptrdiff_t kSerial = 0x1D8, kSlot = 0x1E0;  // 32-bit each
 
 // A label's translated glyphs, beside its pixel ones (label::, game_layout.h; docs/re/memory.md,
 // "Translated menus and the prompt"): the pixel glyphs shown, whether the translated text was
-// built, its glyphs, how many are shown and how many there are, and the place its last build was
-// given (doubles, 0x88480 at 0x8869F).
+// built, its glyphs, the most it can hold (three per pixel glyph, 0x92511), how many are shown and
+// how many there are, and the place its last build was given (doubles, 0x88480 at 0x8869F).
 namespace hdlabel {
 constexpr ptrdiff_t kPixelShown = 0x1EC;  // 32-bit
 constexpr ptrdiff_t kBuilt = 0x230;       // byte
 constexpr ptrdiff_t kGlyphs = 0x238;
+constexpr ptrdiff_t kCapacity = 0x240;               // 32-bit
 constexpr ptrdiff_t kShown = 0x244, kCount = 0x248;  // 32-bit each
 constexpr ptrdiff_t kX = 0x258, kY = 0x260;
 constexpr size_t kSize = 0x268;
@@ -142,11 +150,29 @@ std::wstring hd_icon(uint8_t icon);
 // as hd_icon; the first line alone with `first_line`, as the map cursor names it.
 std::wstring hd_label(const std::string& name, int width, bool first_line = false);
 
+// How rebuild_label places and lays out a label's text (docs/re/memory.md, "Translated menus and
+// the prompt").
+struct Rebuild {
+    // Where the game's attach (0x8AC30) builds a menu label's text, as of now: the label's first
+    // pixel glyph's place less 1.0 each way, what the game-mode panel and the prompt pass it
+    // (0x217D98). The game moves a label after that build by moving its translated glyphs, never
+    // the place the build was given (0xA79E0), and the panel's label is built before the panel is
+    // placed. Else at the place of the label's last build: for a label the game has just built
+    // where it stays (the equipment screen's, per selection).
+    bool attached = false;
+    // Wrapped at the label's columns, as the equipment screen asks of LargeText's attach
+    // (0xB3268); else at 320 pixels from its first pixel glyph (0x885EF to 0x8862B).
+    bool wrap = false;
+    // Centered on x 160 plus `center_by`, as the prompt has 0x85B00 center its question
+    // (0x166EFA, -4).
+    bool center = false;
+    float center_by = 0;
+};
 // Game thread, the flag set: builds `label`'s translated text again as `text`, with the game's
-// builder at the place its last build was given (the game built it this frame, or since the menu
-// opened). False, nothing done, without the keys, with the flag clear, or for a label whose
-// translated text was never built.
-bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text);
+// builder, as `how` says. False, nothing done, without the keys, with the flag clear, for a label
+// whose translated text was never built, or for a text with more glyphs than the label holds.
+bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
+                   const Rebuild& how = {});
 // Game thread: a label's pixel glyphs shown and its translated ones hidden, as the game does when
 // the flag is clear (0x168AE9); and the other way back, for a label the game built translated.
 // Whether the label read as expected.

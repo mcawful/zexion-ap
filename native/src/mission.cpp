@@ -9,8 +9,10 @@ namespace zap {
 
 // Centered in the 30-glyph line the prompt's builder gives the question (0x166D9F).
 const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
-// In a translation the question shows SmallText 374's text (0x166EEE), built again as this.
+// In a translation the question shows SmallText 374's text (0x166EEE), built again as this and
+// centered as the game centers 374's: on x 160 less 4 (0x166EFA, 0x85B00).
 const wchar_t kMissionQuestionHd[] = L"Return home with the disks?";
+constexpr float kQuestionCenterBy = -4.0f;
 
 namespace {
 
@@ -248,7 +250,9 @@ std::string MissionPrompt::open(const GameAddresses& a) {
     }
     reinterpret_cast<void (*)(void*, const char*, int, int)>(a.text_set_fn)(
         question, kMissionQuestion, 0, glyphs);
-    rebuild_label(a, question, kMissionQuestionHd);  // in a translation (translation.h)
+    // In a translation (translation.h): where the game built 374's, centered as it centers that.
+    rebuild_label(a, question, kMissionQuestionHd,
+                  {.attached = true, .center = true, .center_by = kQuestionCenterBy});
     if (a.hooks.mission_yes != nullptr) put(child[0], widget::kCallback, a.hooks.mission_yes);
     no_fn_ = no;
     yes_child_ = child[0];

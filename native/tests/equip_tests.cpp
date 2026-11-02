@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -13,6 +14,7 @@
 
 #include "check.h"
 #include "equip.h"
+#include "stand_in.h"
 
 namespace {
 
@@ -321,6 +323,48 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
     check(screen.add(a, 3) != "", "added once: the panel has two widgets now");
 }
 
+// In a translation the box shows the translated texts the game built for the selection: the
+// disk's built again, the description as the game's own, one line from a blank, wrapped by the
+// builder at the box's 34 columns (0xB3268); the name where the game built it.
+void test_the_disk_in_a_translation() {
+    namespace si = stand_in;
+    si::reset_translation();
+    si::load_translation();
+    Screen s;
+    zap::GameAddresses a = s.addresses();
+    si::with_translation(a);
+    s.current = s.equip;
+    g_widgets.clear();
+    zap::EquipmentScreen screen;
+    check(screen.add(a, 3).empty() && !g_widgets.empty(), "added");
+    BYTE* description = s.box_labels[0];
+    BYTE* name = s.box_labels[1];
+    si::HdGlyphs<128> text(description);
+    si::HdGlyphs<54> title(name);
+    at<int32_t>(description, 0x1DC) = 34;
+    si::built(description, 10.0, 150.0);  // the game's, for this selection
+    si::built(name, 20.0, 140.0);
+    screen.on_event(a, g_widgets[0], 0);
+    const std::wstring wanted = zap::kDiskDescriptionHd;
+    check(si::g_builds.size() == 2 && si::g_builds[0].text == zap::kDiskNameHd &&
+              si::g_builds[0].x == 20.0f && si::g_builds[0].y == 140.0f &&
+              si::g_builds[0].flag == 0,
+          "the name built again where the game built it");
+    check(si::g_builds.size() == 2 && si::g_builds[1].text == wanted && wanted[0] == L' ' &&
+              wanted.find(L'\n') == std::wstring::npos && si::g_builds[1].x == 10.0f &&
+              si::g_builds[1].y == 150.0f && si::g_builds[1].flag == 1,
+          "the description one line from a blank, for the builder to wrap at the columns");
+    const int32_t n = at<int32_t>(description, 0x248);
+    double right = 0;
+    for (int i = 0; i < n; ++i) right = std::max(right, text.x(i) + si::kHdWidth);
+    const auto letters =
+        std::count_if(wanted.begin(), wanted.end(), [](wchar_t c) { return c != L' '; });
+    check(n == letters && text.y(n - 1) > text.y(0) && right <= 34 * 8 - 8,
+          "on more than one line, none past the box");
+    screen.restore(a);
+    si::reset_translation();
+}
+
 void test_a_closed_screen_is_forgotten_unwritten() {
     Screen s;
     zap::GameAddresses a = s.addresses();
@@ -388,6 +432,7 @@ void test_the_count_text() {
 int main() {
     test_the_hook_follows_the_pause_menu();
     test_the_disk_is_a_second_widget_beside_the_energy_tank();
+    test_the_disk_in_a_translation();
     test_a_closed_screen_is_forgotten_unwritten();
     test_an_unexpected_screen_is_left_alone();
     test_the_count_text();

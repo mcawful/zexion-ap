@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <string>
@@ -193,7 +194,8 @@ void test_offered_when_idle_then_yes_ends() {
 }
 
 // In a translation the prompt shows SmallText 374's text, built when the prompt is: built again
-// as the helper's question, where the game built it; with the flag clear, nothing built.
+// as the helper's question, where the game built it, and centered as the game centers it; with
+// the flag clear, nothing built.
 void test_the_question_in_a_translation() {
     reset_translation();
     load_translation();
@@ -201,16 +203,39 @@ void test_the_question_in_a_translation() {
     zap::MissionPrompt m = fading(addresses());
     zap::GameAddresses a = addresses();
     with_translation(a);
-    built(prompt.question, 48.0, 96.0);  // the game built its translated text
-    check(m.open(a).empty() && g_builds.size() == 1 &&
+    // The game built its translated text at the question's first pixel glyph less 1 (0x8AC30),
+    // then centered it on x 156 (0x85B00), moving its glyphs and not the place it was given.
+    HdGlyphs<90> hd(prompt.question);
+    BYTE pixel[0x1D8] = {};
+    BYTE* pixels[1] = {pixel};
+    put<BYTE**>(prompt.question, 0x228, pixels);
+    put<double>(pixel, 0x40, 40.0);
+    put<double>(pixel, 0x48, 97.0);
+    built(prompt.question, 39.0, 96.0);
+    check(m.open(a).empty() && g_builds.size() == 2 &&
               g_builds[0].text == L"Return home with the disks?" &&
-              g_builds[0].label == prompt.question && g_builds[0].x == 48.0f &&
-              g_builds[0].y == 96.0f,
-          "the question built again in the translation's font");
+              g_builds[0].label == prompt.question && g_builds[0].x == 39.0f &&
+              g_builds[0].y == 96.0f && g_builds[1].text == g_builds[0].text &&
+              g_builds[1].y == 96.0f && g_builds[0].flag == 0 && g_builds[1].flag == 0,
+          "the question built again in the translation's font, then again centered");
+    const int32_t n = get<int32_t>(prompt.question, 0x248);
+    const double left = hd.x(0), right = hd.x(n - 1) + kHdWidth;
+    check(n == 23 && (left + right) / 2 == 156.0 && hd.y(0) == 95.0,
+          "centered as the game centers its own, on its line");
+    // In a translation drawn as pixels, the move is rounded, as 0x85B00 rounds it.
     m.restore(a);
+    g_builds.clear();
+    put<int32_t>(g_translation, 0xA8, 1);
+    zap::MissionPrompt pixel_font = fading(addresses());
+    check(pixel_font.open(a).empty() && g_builds.size() == 2 &&
+              g_builds[1].x == static_cast<float>(std::round(g_builds[1].x)),
+          "a pixel font's question moved a whole number of pixels");
+    pixel_font.restore(a);
+    put<int32_t>(g_translation, 0xA8, 0);
+    g_builds.clear();
     g_translation[0x91] = 0;
     zap::MissionPrompt plain = fading(addresses());
-    check(plain.open(a).empty() && g_builds.size() == 1, "the default English: nothing built");
+    check(plain.open(a).empty() && g_builds.empty(), "the default English: nothing built");
     plain.restore(a);
     reset_translation();
 }
