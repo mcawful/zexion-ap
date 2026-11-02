@@ -477,6 +477,12 @@ void test_the_icon_sheets() {
     gl_fake::g_uploads.clear();
     sheets.paint(holder, gl);
     check(gl_fake::g_uploads.empty(), "not every frame");
+    // Each sheet's icons made once (the HD ones take milliseconds): a repaint makes none.
+    const int made = zap::IconSheets::arts_made();
+    for (int frame = 0; frame < 301; ++frame) sheets.paint(holder, gl);
+    check(gl_fake::g_uploads.size() == 6 && zap::IconSheets::arts_made() == made,
+          "painted again after a while, its icons not made again");
+    gl_fake::g_uploads.clear();
     sheets.clear(holder, gl);
     check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads) &&
               !sheets.painted(),

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "check.h"
+#include "fake_gl.h"
 #include "game_calls.h"
 #include "menu.h"
 #include "stand_in.h"
@@ -590,11 +591,114 @@ void test_the_popup_layout() {
     reset_translation();
 }
 
+// The icon sheets through the game: painted while a translation shows, cleared when the default
+// English is picked and before an unload (put_back_all), and left as the game's where a cell is
+// its.
+void test_the_icons_through_the_game() {
+    zap::Game game;
+    start(game);
+    gl_fake::reset_gl();
+    game.set_gl(gl_fake::fake_gl());
+    BYTE hd[0x1D8] = {}, pixel[0x1D8] = {};
+    for (BYTE* t : {hd, pixel}) put<int32_t>(t, 0x1BC, 256);
+    put<int32_t>(hd, 0x1D0, static_cast<int32_t>(gl_fake::kHdSheet));
+    put<int32_t>(pixel, 0x1D0, static_cast<int32_t>(gl_fake::kPixelSheet));
+    g_template_list[101] = hd;
+    g_template_list[104] = pixel;
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6 && !gl_fake::all_blank(gl_fake::g_uploads),
+          "painted into both sheets while the translation shows");
+    gl_fake::g_uploads.clear();
+    g_translation[0x91] = 0;  // the default English picked
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
+          "cleared when the default English is picked");
+    gl_fake::g_uploads.clear();
+    frames(game, 1);
+    check(gl_fake::g_uploads.empty(), "and not again");
+    g_translation[0x91] = 1;
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6, "painted again with the translation back");
+    gl_fake::g_uploads.clear();
+    game.put_back_all(&no_callback);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
+          "cleared before an unload");
+
+    // A cell the game's art uses: left as it is.
+    zap::Game other;
+    start(other);
+    gl_fake::reset_gl();
+    gl_fake::g_icon_cell_used = true;
+    other.set_gl(gl_fake::fake_gl());
+    frames(other, 1);
+    check(gl_fake::g_uploads.empty(), "a sheet whose cell the game uses: left as the game's");
+    other.put_back_all(&no_callback);
+    check(gl_fake::g_uploads.empty(), "and nothing to clear");
+    g_template_list[101] = g_template_list[104] = nullptr;
+    gl_fake::reset_gl();
+    reset_translation();
+}
+
+// A popup measured as the font draws it, through the game: a pixel font (every character 6 wide,
+// a space 3) and its icon sheet (each icon 8 wide), the icon led name over the suffix, each
+// line centered on the widest; a long notice wrapped at 192 pixels.
+void test_a_popup_laid_out_by_the_font() {
+    zap::Game game;
+    start(game);
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);  // a pixel font: definition 104's icons
+    std::vector<BYTE> frames_list(256 * 0x38);
+    for (int f = 0; f < 256; ++f) put<int16_t>(frames_list.data() + f * 0x38, 0x28, 8);
+    BYTE sheet[0x1D8] = {};
+    put<int32_t>(sheet, 0x1BC, 256);
+    put<BYTE*>(sheet, 0x1A8, frames_list.data());
+    g_template_list[104] = sheet;
+    queue(game, "apply\npopup 36 FROM Bob");
+    frames(game, 1);
+    // "\xE029Missile Box" is 8 + 10 x 6 + 3 = 71 wide, "from Bob" 45: 13 more each side, 4 spaces.
+    check(g_hd_texts.size() == 1 &&
+              g_hd_texts[0].text == L"\xE029" L"Missile Box\n    from Bob",
+          "the icon led name over the suffix, centered with spaces, measured with the icon's "
+          "width");
+    // A notice longer than a line: wrapped, no line wider than 192.
+    end_message(0);
+    frames(game, 200);
+    g_hd_texts.clear();
+    g_message_slot = 1;
+    queue(game,
+          "apply\nnotice 49 HINT: PROGRESSIVE FORCE BLASTER IS AT DOUBLE JUMP FLOATING SHEEP IN "
+          "BOB'S WORLD");
+    frames(game, 1);
+    zap::FontMetrics m;
+    zap::GameAddresses a;
+    with_translation(a);
+    a.sprite_templates = reinterpret_cast<BYTE*>(&g_sprite_templates);
+    bool narrow = !g_hd_texts.empty() && m.load(a);
+    size_t lines = 0;
+    for (size_t at = 0; narrow && at <= g_hd_texts[0].text.size(); ++lines) {
+        size_t end = g_hd_texts[0].text.find(L'\n', at);
+        if (end == std::wstring::npos) end = g_hd_texts[0].text.size();
+        narrow = m.width(g_hd_texts[0].text.substr(at, end - at)) <= 192;
+        at = end + 1;
+    }
+    check(narrow && lines >= 3, "a long notice wrapped, no line wider than a pixel popup");
+    g_template_list[104] = nullptr;
+    game.put_back_all(&no_callback);
+    reset_translation();
+}
+
 }  // namespace
 
 int main() {
     test_the_text_helpers();
     test_the_popup_layout();
+    test_the_icons_through_the_game();
+    test_a_popup_laid_out_by_the_font();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();

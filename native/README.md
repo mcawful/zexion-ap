@@ -1099,8 +1099,8 @@ unload.
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
-  translations' icon sheets painted and cleared (and left alone where not as traced), the
-  label parser.
+  translations' icon sheets painted and cleared (and left alone where not as traced; each
+  sheet's icons made once), the label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
@@ -1115,8 +1115,11 @@ unload.
   change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
   panel (not where the game first built it), a label with no first pixel glyph or too little
   room left alone, the locked ASSIST's translated text with its padlock (left out at a narrow
-  box, built again over the game's, back when unlocked), the helper's icons as characters, the
-  popups' layout (measured widths, centering, the cap, the fallback, the suffix's case), and
+  box, built again over the game's, back when unlocked), the helper's icons as characters and
+  through the game (painted while a translation shows, cleared when the default English is
+  picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
+  widths, centering, the cap, the fallback, the suffix's case; a popup through the game measured
+  with its icon's width, a long notice wrapped), and
   the default English (the flag clear, or nothing loaded) left as it was (`mission`, `equip`,
   `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the equipment
   screen's disk, its description wrapped, the pause row's count and the Feats title with the

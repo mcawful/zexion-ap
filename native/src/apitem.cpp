@@ -542,6 +542,7 @@ bool hd_shape(int k, double x, double y) {
 }  // namespace
 
 std::vector<uint8_t> IconSheets::art(int k, int w, int h) {
+    ++arts_made_;
     std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4, 0);
     auto put_alpha = [&](int x, int y, int alpha) {
         if (alpha <= 0) return;
@@ -578,6 +579,11 @@ std::vector<uint8_t> IconSheets::art(int k, int w, int h) {
     return out;
 }
 
+const std::vector<uint8_t>& IconSheets::icon(Sheet& s, int k) {
+    if (s.icons[k].empty()) s.icons[k] = art(k, s.cell_w, s.cell_h);
+    return s.icons[k];
+}
+
 bool IconSheets::upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear) {
     auto cell_x = [&](int frame) { return (frame % 16) * s.cell_w; };
     auto cell_y = [&](int frame) { return (frame / 16) * s.cell_h; };
@@ -599,7 +605,7 @@ bool IconSheets::upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool 
         if (!art_there) return false;
         // Each icon's cell blank, or already the helper's icon.
         for (int k = 0; k < kHdIconCount; ++k) {
-            const std::vector<uint8_t> ours = art(k, s.cell_w, s.cell_h);
+            const std::vector<uint8_t>& ours = icon(s, k);
             for (int y = 0; y < s.cell_h; ++y) {
                 for (int x = 0; x < s.cell_w; ++x) {
                     const uint8_t a = alpha(cell_x(kFirstIconFrame + k) + x,
@@ -615,9 +621,9 @@ bool IconSheets::upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool 
     };
     auto work = [&] {
         for (int k = 0; k < kHdIconCount; ++k) {
-            const std::vector<uint8_t> pixels =
-                clear ? std::vector<uint8_t>(static_cast<size_t>(s.cell_w) * s.cell_h * 4)
-                      : art(k, s.cell_w, s.cell_h);
+            const size_t cell = static_cast<size_t>(s.cell_w) * s.cell_h * 4;
+            const std::vector<uint8_t> blank(clear ? cell : 0);
+            const std::vector<uint8_t>& pixels = clear ? blank : icon(s, k);
             gl.TexSubImage2D(kTexture2D, 0, cell_x(kFirstIconFrame + k),
                              cell_y(kFirstIconFrame + k), s.cell_w, s.cell_h, kRgba,
                              kUnsignedByte, pixels.data());

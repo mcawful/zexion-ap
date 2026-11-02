@@ -202,6 +202,8 @@ public:
     // The icon `k` (0 the disk, 1 the padlock, 2 the logo) as painted into a cell of w x h: white,
     // its alpha the shape's (exposed for the tests).
     static std::vector<uint8_t> art(int k, int w, int h);
+    // How many times art has run (the tests: each sheet makes its icons once).
+    static int arts_made() { return arts_made_; }
 
 private:
     struct Sheet {
@@ -209,9 +211,13 @@ private:
         unsigned painted = 0, failed = 0, checked = 0;
         int frames_to_paint = 0;
         int tries = 0;  // reads of `failed` that found it not as traced
+        std::vector<uint8_t> icons[kHdIconCount];  // art(k, cell_w, cell_h), made once
     };
     bool upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear);
+    // The sheet's icon k, made the first time it is wanted (the HD ones take milliseconds).
+    static const std::vector<uint8_t>& icon(Sheet& s, int k);
     Sheet sheets_[2] = {{101, 1024, 1024, 64, 64}, {104, 160, 144, 10, 9}};
+    inline static int arts_made_ = 0;
 };
 
 class ApItems {
