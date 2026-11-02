@@ -222,9 +222,9 @@ line says.
   scanner's line in the translation's font, ASSIST and the pause row's count in the pixel font
   ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
   translation but English(HD) (`ticks.language_tick`): not run in game yet (stand-in
-  tests: `native/README.md`, "Translations"). Before them, 1.0.0's release candidate in English(HD), French and Japanese: many
-  received items' popups hidden and the mod's menu text not shown, 2026-11-01
-  ([`docs/re/memory.md`](re/memory.md), "Translations").
+  tests: `native/README.md`, "Translations"). Before them, 1.0.0's release candidate in
+  English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
+  not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
 
 ## Platforms
 

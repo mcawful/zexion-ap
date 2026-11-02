@@ -221,7 +221,8 @@ helper's.
 That is an open menu's panel or entry, the open map or the game's transition routine holding one
 of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
 ending's patch or the map's on-screen marker write still the helper's; or, in a translation, a
-popup still showing the text the helper wrote into a borrowed entry (at most its 3 seconds), or
+popup still showing the text the helper wrote into a borrowed entry (until that message ends: 3
+seconds in play), or
 a translated name still the helper's when no frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
@@ -949,7 +950,11 @@ translation").
   save-state load that binds a message to it again finds it empty; entry 70's offset put back
   when a client goes away and before an unload, once no area is in use. An unload refuses while
   a popup still reads an area (`error a popup still shows the helper's translated text; not
-  unloading`, at most its 3 seconds), and, with no frame, while a name is still the helper's.
+  unloading`, until that message ends: 3 seconds in play; whether a message counts down off play,
+  at the title, was not traced), and, with no frame, while a name is still the helper's. From
+  the unload's put-back until the helper is gone, popups that still show take no entry (their
+  pixel text shows, the slot's mark cleared). With the flag set but the tables not readable, a
+  popup's pixel text shows the same way.
   Menu labels need nothing: the game frees them with their menu.
 
 ## Building
@@ -1009,8 +1014,8 @@ unload.
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
-  slot's mark cleared), a language change mid-popup and between a name's write and its put-back
-  (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back, ASSIST's
+  slot's mark cleared; the same with the tables unreadable and while unloading), a language
+  change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back, ASSIST's
   pixel glyphs, and the default English (the flag clear, or nothing loaded) left as it was
   (`mission` and `feats` cover RETURN HOME WITH THE DISKS?'s question and the Feats note in
   a translation).

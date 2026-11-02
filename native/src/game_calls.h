@@ -330,6 +330,10 @@ public:
     // The translation (translation.h): `hello`'s `lang` (language_name); what the helper holds
     // of its tables (tests).
     std::string language() const { return configured_ ? language_name(at_) : "?"; }
+    // Game thread, in an unload's frame once everything is put back: popups that still show
+    // before the helper is gone (pump_popups runs while it unloads) take no borrowed entry, so
+    // none is left the helper's; rearm (the unload refused) takes them back.
+    void hold_translated_popups() { translated_popups_ = false; }
     const EntryWriter& tr_entries() const { return tr_entries_; }
     const PopupAreas& popup_areas() const { return popup_areas_; }
 
@@ -479,6 +483,7 @@ private:
     // each stand-in's name as the record was last named, as translated text ("" for none).
     EntryWriter tr_entries_;
     PopupAreas popup_areas_;
+    bool translated_popups_ = true;  // hold_translated_popups
     std::wstring stand_in_hd_[kStandInCount];
     // The item pool copied into pool_copy_, once a frame; null if it could not be read.
     const BYTE* read_item_pool();

@@ -392,9 +392,10 @@ void Game::pump_popups() {
         return;
     }
     // With a translation on, the popup's text goes into a borrowed entry, which the translated
-    // message reads every frame (translation.h): one taken waits a frame or two to free.
+    // message reads every frame (translation.h): one taken waits a frame or two to free. Not
+    // once an unload has put the entries back (hold_translated_popups).
     const std::optional<Loaded> now = loaded_translation(at_);
-    const bool translated = now && now->on;
+    const bool translated = translated_popups_ && now && now->on;
     std::wstring hd;
     int where = PopupAreas::kNone;
     if (translated) {
@@ -424,8 +425,9 @@ void Game::pump_popups() {
     if (message == nullptr) return;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     // Its text in the translation's font; failing that, the pixel text, the mark the last
-    // translated message left in the slot cleared so it shows (translation.h).
-    if (translated && !popup_areas_.show(at_, *now, where, static_cast<BYTE*>(message), hd)) {
+    // translated message left in the slot cleared so it shows (translation.h; clear_mark checks
+    // the flag itself, so this holds too when the tables do not read, with the flag set).
+    if (!translated || !popup_areas_.show(at_, *now, where, static_cast<BYTE*>(message), hd)) {
         clear_mark(at_, static_cast<BYTE*>(message));
     }
     BYTE* p = player();
@@ -1370,6 +1372,7 @@ ClientState Game::snapshot() const {
 }
 
 void Game::rearm(ClientState s) {
+    translated_popups_ = true;  // the unload refused: popups in the translation's font again
     if (!configured_) return;
     set_assists_locked(s.assists_locked);
     set_intel(s.intel);

@@ -167,6 +167,35 @@ void test_a_notice_too_long_shows_its_pixel_text() {
     game.put_back_all(&no_callback);
 }
 
+// With the flag set but the tables not readable (here: no ItemNames loaded), and after an
+// unload's put-back: the pixel text, the slot's mark cleared, nothing borrowed.
+void test_the_pixel_text_when_the_tables_cannot_be_used() {
+    zap::Game game;
+    start(game);
+    put<wchar_t*>(g_translation, 0x48, nullptr);
+    put<void*>(hd_object(0), 0x220, slot(3));
+    hd_object(0)[0x22C] = 1;
+    queue(game, "apply\npopup 36 FROM ALICE");
+    frames(game, 1);
+    check(g_messages == 1 && g_hd_texts.empty() && hd_object(0)[0x22C] == 0,
+          "tables not readable: the pixel text, the mark cleared");
+    put<wchar_t*>(g_translation, 0x48, g_items->text.data());
+
+    game.put_back_all(&no_callback);
+    game.hold_translated_popups();
+    hd_object(0)[0x22C] = 1;
+    queue(game, "apply\npopup 36 FROM BOB");
+    frames(game, 25);
+    check(g_messages == 2 && g_hd_texts.empty() && hd_object(0)[0x22C] == 0 &&
+              !game.popup_areas().split() && game.unload_blocker() == nullptr,
+          "while unloading: the pixel text, no entry borrowed");
+    game.rearm(game.snapshot());  // the unload refused
+    queue(game, "apply\npopup 36 FROM CAROL");
+    frames(game, 25);
+    check(g_hd_texts.size() == 1, "refused: the translation's font again");
+    game.put_back_all(&no_callback);
+}
+
 void test_a_whole_notice() {
     zap::Game game;
     start(game);
@@ -389,6 +418,7 @@ int main() {
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();
+    test_the_pixel_text_when_the_tables_cannot_be_used();
     test_a_whole_notice();
     test_a_language_change_mid_popup();
     test_the_names_written_and_put_back();

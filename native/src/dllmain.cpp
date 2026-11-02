@@ -559,6 +559,7 @@ std::string undo_for_unload() {
                 state = g_game.snapshot();
                 saved = true;
                 g_game.put_back_all(&archipelago_chosen);
+                g_game.hold_translated_popups();  // rearm undoes it, should the unload refuse
                 g_game.restore_feats();  // a refused unload sets them again (its watch)
                 g_game.hide_title();  // a refused unload shows them again (its watch)
                 publish_blocker();
