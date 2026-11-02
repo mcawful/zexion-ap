@@ -69,6 +69,9 @@ std::string disk_count_text(int count);
 // The name and description shown for the disk (the description box: 34 characters a line).
 extern const char kDiskName[];
 extern const char kDiskDescription[];
+// In a translation, the name and the description in the translation's font (translation.h).
+extern const wchar_t kDiskNameHd[];
+extern const wchar_t kDiskDescriptionHd[];
 
 // The disk's popup icon, painted into font glyph 0xFB (empty in the game's art) while `discs`
 // is on (apitem.h FontGlyph): the Data Disc's record has no icon.

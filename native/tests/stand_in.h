@@ -358,16 +358,78 @@ struct BuildCall {
     char flag;
 };
 inline std::vector<BuildCall> g_builds;
-// As 0x88480: frees the string, keeps the place in the label, marks it built.
+// The stand-in font: each character 6 wide (its glyph's corners 0 to 5 about its place), a space
+// 3, a line 10 high.
+constexpr double kHdAdvance = 6, kHdWidth = 5, kHdSpace = 3, kHdLine = 10;
+// As 0x88480: frees the string, keeps the place in the label, marks it built; for a label with
+// translated glyphs to build (+0x238, +0x240), lays them out from (x, y) as the stand-in font
+// draws them, each glyph's place the pen's and the line's less 1 (0x88CCA to 0x88CFD), shown,
+// the rest hidden, and their count at +0x244 and +0x248. With `flag` it wraps at the label's
+// columns from its first pixel glyph, else 320 past it (0x885EF to 0x8862B).
 inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, char flag) {
     std::wstring* s = nullptr;
     std::memcpy(&s, text, sizeof(s));
     g_builds.push_back({x, y, *s, font, label, flag});
-    delete s;
     put<double>(label, 0x258, x);
     put<double>(label, 0x260, y);
     label[0x230] = 1;
+    auto** list = get<BYTE**>(label, 0x238);
+    const int32_t capacity = get<int32_t>(label, 0x240);
+    if (list != nullptr && capacity > 0) {
+        BYTE* first = get<BYTE**>(label, 0x228) ? get<BYTE**>(label, 0x228)[0] : nullptr;
+        const double from = first ? get<double>(first, 0x40) : 0;
+        const double limit =
+            flag ? from + get<int32_t>(label, 0x1DC) * 8 - 8 : from + 320;  // +0x60 taken as 0
+        for (int32_t i = 0; i < capacity; ++i) list[i][0x120] = 0;
+        double pen = x, line = y;
+        int32_t n = 0;
+        // Word by word, as the stand-in's wrap: a word that would end past the limit starts a line.
+        size_t at = 0;
+        while (at < s->size()) {
+            const wchar_t c = (*s)[at];
+            if (c == L'\n') {
+                pen = x, line += kHdLine, ++at;
+                continue;
+            }
+            if (c == L' ') {
+                pen += kHdSpace, ++at;
+                continue;
+            }
+            size_t end = s->find_first_of(L" \n", at);
+            if (end == std::wstring::npos) end = s->size();
+            const double width = (end - at) * kHdAdvance;
+            if (pen > x && pen + width > limit) pen = x, line += kHdLine;
+            for (; at < end && n < capacity; ++at, ++n, pen += kHdAdvance) {
+                BYTE* g = list[n];
+                put<double>(g, 0x40, pen);
+                put<double>(g, 0x48, line - 1);
+                put<double>(g, 0x98, 0);
+                put<double>(g, 0xA8, kHdWidth);
+                put<void*>(g, 0x30, *static_cast<void**>(font));
+                g[0x120] = 1;
+            }
+            at = end;
+        }
+        put<int32_t>(label, 0x244, n);
+        put<int32_t>(label, 0x248, n);
+    }
+    delete s;
 }
+// A label's translated glyphs for the stand-in builder to lay out: `n` of them, the label's
+// capacity (+0x238, +0x240). `glyphs` stay the test's for its life.
+template <int N>
+struct HdGlyphs {
+    BYTE glyphs[N][0x1D8] = {};
+    BYTE* list[N] = {};
+    explicit HdGlyphs(BYTE* label) {
+        for (int i = 0; i < N; ++i) list[i] = glyphs[i];
+        put<BYTE**>(label, 0x238, list);
+        put<int32_t>(label, 0x240, N);
+    }
+    // Glyph i's place.
+    double x(int i) const { return get<double>(glyphs[i], 0x40); }
+    double y(int i) const { return get<double>(glyphs[i], 0x48); }
+};
 // The translation's keys in `a`, as configure sets them from stand_in_config, for a part's own
 // addresses (a stand-in menu's).
 inline void with_translation(zap::GameAddresses& a) {
@@ -392,6 +454,8 @@ inline void built(BYTE* label, double x = 0, double y = 0) {
     label[0x230] = 1;
     put<double>(label, 0x258, x);
     put<double>(label, 0x260, y);
+    // Room for the helper's texts (three per pixel glyph, 0x92511), unless HdGlyphs gave it some.
+    if (get<int32_t>(label, 0x240) == 0) put<int32_t>(label, 0x240, 3 * get<int32_t>(label, 0x1D8));
 }
 struct TranslatedText {
     BYTE glyphs[3][0x1D8] = {};
@@ -399,6 +463,7 @@ struct TranslatedText {
     explicit TranslatedText(BYTE* label) {
         built(label);
         put<BYTE**>(label, 0x238, list);
+        put<int32_t>(label, 0x240, 3);
         put<int32_t>(label, 0x248, 3);
         put<int32_t>(label, 0x244, 3);
         put<int32_t>(label, 0x1EC, 0);

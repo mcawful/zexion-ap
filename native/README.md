@@ -370,9 +370,11 @@ Working in game: 2026-10-23 ("DeathLink").
   still open only, and the order only if the panel is as the helper left it. An unload no frame
   comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry shows its pixel glyphs (ASSIST, the padlock, the
-  locked look) in place of the translated Assist, and its translated text again when unlocked
-  ("Translations"; locked, seen in game 2026-11-02 in English(HD), its padlock drawn past the
-  menu's box; the unlock not run in game yet).
+  locked look) in place of the translated Assist, the padlock right after the letters (the box
+  a translation sizes from its own texts ends there in English(HD)), and its translated text
+  again when unlocked ("Translations"; locked, seen in game 2026-11-02 in English(HD), its
+  padlock then a blank further on and drawn past the menu's box, since moved, not run in game
+  since; the unlock not run in game yet).
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -399,9 +401,10 @@ While a plan is armed (`ap_newgame`), each frame call:
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
-  sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back
-  ("Translations"; run in game 2026-11-02 in English(HD): the label is not where it should be, a
-  bug listed there). Choosing it sets the menu's
+  sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back, where the
+  game's attach would build it now ("Translations"; run in game 2026-11-02 in English(HD): the
+  label built where the game first built it, at the window's corner, a bug listed there, since
+  fixed, not run in game since). Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
@@ -573,7 +576,9 @@ English(HD) (B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): the received d
 and the reminder in the HD font; the pause row's count in the pixel font with no Keys over it;
 the equipment screen's OS Install Disk and its description in the HD font, the description's
 first line running past the box's right edge (a bug); the question in the HD font, left of
-center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet.
+center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet. Since
+then the description is wrapped at the box's columns and the question centered, as the game
+does its own (not run in game since).
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -914,9 +919,11 @@ Not seen in game:
 
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
 after it. Run in game 2026-11-02, below ("Run in game"). Stand-in tests (`tests/translation_tests.cpp`, and the
-translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `feats_tests.cpp` and
-`pause_tests.cpp`) cover all but the equipment screen's disk and the map cursor's name (by
-disassembly only: "The helper's calls in a translation").
+translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `equip_tests.cpp`,
+`feats_tests.cpp` and `pause_tests.cpp`) cover all but the map cursor's name (by disassembly
+only: "The helper's calls in a translation"). Their builder lays out a stand-in font's glyphs
+from the place it is given, wrapping as the game's does, so they check where a rebuilt text
+lands, not only the place passed.
 
 - **What:** while the game shows a translation (its flag, `tr_flag`), the helper's text shows in
   the translation's font:
@@ -940,10 +947,17 @@ disassembly only: "The helper's calls in a translation").
     Map's record is INTEL CHIP; the scanner's line into SmallText 12 (its message event's entry)
     while the Text table's entry is the helper's.
   - **Menu labels built again** with the game's builder (`hd_build_fn`, the string from
-    `wstring_new_fn`) where the game's build of that label put it: ARCHIPELAGO (Archipelago;
-    SmallText 354's text again when RANDOMIZER goes back, not through the new game's fade),
-    Return home with the disks?, the equipment screen's OS Install Disk and its description (no
-    icon), and the map cursor on a labeled stand-in's square (the label's first line).
+    `wstring_new_fn`), laid out as the game lays out that label's own (`Rebuild`;
+    `docs/re/memory.md`, "Where a rebuilt label goes"): ARCHIPELAGO (Archipelago; SmallText
+    354's text again when RANDOMIZER goes back, not through the new game's fade) and Return home
+    with the disks? where the game's attach would build them now (the label's first pixel glyph
+    less 1: the game moves a label without updating the place its build was given), the question
+    then centered as the game centers its own; the equipment screen's OS Install Disk and its
+    description (no icon) where the game built them for the selection, the description wrapped
+    at the box's columns; and the map cursor on a labeled stand-in's square (the label's first
+    line). A text with more glyphs than the label holds is not built; one whose text was hidden
+    (a hidden widget's, as the game-mode panel's on the file select before an empty slot is picked)
+    is built hidden, its count kept for the game to show when the widget shows.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
     clear (`0x168AE9`), where the helper's text is a look of the pixel font's: ASSIST while
     locked, the pause row's count (each frame: OPTION MENU's return builds KEYS again), and the
@@ -996,7 +1010,11 @@ disassembly only: "The helper's calls in a translation").
     and on an empty slot's panel after that the game's own Randomizer entry showed at the
     panel's left edge, away from Normal, while the helper stayed loaded. The question sits left of center (about 90 pixels left of where the game's own line
     starts). The equipment screen's description is one line with no break and runs past the
-    box's right edge. ASSIST's padlock is drawn past the options box's right edge.
+    box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
+    since, not run in game since: the panel's label and the question built where the game's
+    attach would build them now, the question centered and the description wrapped as the game
+    does its own, and the padlock right after ASSIST (English(HD)'s options box measured; the
+    other translations' not looked at) (`docs/re/memory.md`, "Where a rebuilt label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
@@ -1062,10 +1080,12 @@ unload.
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
   slot's mark cleared; the same with the tables unreadable and while unloading), a language
-  change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back, ASSIST's
-  pixel glyphs, and the default English (the flag clear, or nothing loaded) left as it was
-  (`mission` and `feats` cover RETURN HOME WITH THE DISKS?'s question and the Feats note in
-  a translation).
+  change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
+  panel (not where the game first built it), a label with no first pixel glyph or too little
+  room left alone, ASSIST's pixel glyphs and its padlock's place (and back on a language
+  change), and the default English (the flag clear, or nothing loaded) left as it was
+  (`mission`, `equip` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the
+  equipment screen's disk, its description wrapped, and the Feats note in a translation).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without

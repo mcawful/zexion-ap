@@ -411,16 +411,59 @@ void test_archipelago_built_again_and_back() {
                     reinterpret_cast<void*>(&widget_handler), reinterpret_cast<void*>(&rando_menu));
     zap::GameAddresses a = panel.addresses();
     with_translation(a);
-    built(panel.label, 152.0, 101.0);
+    HdGlyphs<3 * zap::kLabelLength> hd(panel.label);
+    // The game attaches the panel's text before it places the panel: built at its first pixel
+    // glyph's place then, less 1 (0x8AC30), the window's corner; the panel then placed, its
+    // pixel glyphs at the label's place and its translated glyphs moved with them (0xA79E0).
+    built(panel.label, -1.0, -1.0);
+    for (BYTE* g : panel.glyph_list) put<double>(g, 0x40, 160.0), put<double>(g, 0x48, 101.0);
     zap::ArchipelagoChoice choice;
     check(choice.install(a, &archipelago) && panel.text() == "ARCHIPELAGO", "installed");
     check(g_builds.size() == 1 && g_builds[0].text == L"Archipelago" &&
-              g_builds[0].label == panel.label && g_builds[0].x == 152.0f &&
-              g_builds[0].y == 101.0f && g_builds[0].font == g_translation + 0xD0 &&
+              g_builds[0].label == panel.label && g_builds[0].x == 159.0f &&
+              g_builds[0].y == 100.0f && g_builds[0].font == g_translation + 0xD0 &&
               g_builds[0].flag == 0,
-          "its translated text built again, where the game built it");
+          "its translated text built again where the game's attach would build it now");
+    check(hd.x(0) == 159.0 && hd.y(0) == 99.0 && get<int32_t>(panel.label, 0x248) == 11,
+          "on the panel, not in the window's corner");
+    // The panel placed elsewhere since (0xA79E0: its pixel glyphs placed, its translated glyphs
+    // moved by as much, the place the build was given left as it was).
+    for (BYTE* g : panel.glyph_list) put<double>(g, 0x40, 170.0), put<double>(g, 0x48, 120.0);
+    for (int i = 0; i < 11; ++i) {
+        put<double>(hd.glyphs[i], 0x40, hd.x(i) + 11.0);
+        put<double>(hd.glyphs[i], 0x48, hd.y(i) + 20.0);
+    }
     check(choice.restore(a, &archipelago), "restored");
-    check(g_builds.size() == 2 && g_builds[1].text == L"Randomizer", "and back to entry 354's");
+    check(g_builds.size() == 2 && g_builds[1].text == L"Randomizer" && g_builds[1].x == 169.0f &&
+              g_builds[1].y == 119.0f && hd.x(0) == 169.0,
+          "and back to entry 354's, where the panel is now");
+
+    // A hidden panel's label (the file select before an empty slot is picked): built hidden,
+    // its count kept for the game to show when the panel shows.
+    g_builds.clear();
+    for (int i = 0; i < 11; ++i) hd.glyphs[i][0x120] = 0;
+    panel.reset_label();
+    check(choice.install(a, &archipelago) && g_builds.size() == 1 &&
+              get<int32_t>(panel.label, 0x244) == 11 && hd.glyphs[0][0x120] == 0 &&
+              hd.glyphs[10][0x120] == 0,
+          "a hidden label built again hidden, its count kept");
+    check(choice.restore(a, &archipelago) && hd.glyphs[0][0x120] == 0, "and put back hidden");
+
+    // A label whose pixel glyphs cannot be read is not built again.
+    g_builds.clear();
+    BYTE** list = get<BYTE**>(panel.label, 0x228);
+    put<BYTE**>(panel.label, 0x228, nullptr);
+    check(!zap::rebuild_label(a, panel.label, L"Archipelago", {.attached = true}) &&
+              g_builds.empty(),
+          "no first pixel glyph: nothing built");
+    put<BYTE**>(panel.label, 0x228, list);
+    // Nor one with more glyphs than its translated text holds (the builder would lay the rest
+    // over its last glyph).
+    check(!zap::rebuild_label(a, panel.label, std::wstring(34, L'A'), {.attached = true}) &&
+              zap::rebuild_label(a, panel.label, std::wstring(33, L'A') + L"   ",
+                                 {.attached = true}) &&
+              g_builds.size() == 1,
+          "a text past its capacity refused; spaces take no glyph");
 
     // The default English: nothing built.
     g_builds.clear();
@@ -441,16 +484,27 @@ void test_assist_shows_its_pixel_glyphs(bool on = true) {
     BYTE (&translated)[3][0x1D8] = text.glyphs;
     zap::AssistLock lock;
     check(lock.install(a), "locked");
+    auto frame = [&](int i) { return get<int32_t>(options.glyph_list[i], 0x1C4); };
     if (!on) {
         // The flag clear (the default English, a translated label built before): left alone.
         check(get<int32_t>(options.label, 0x244) == 3 && translated[0][0x120] == 1 &&
-                  lock.restore(a) && get<int32_t>(options.label, 0x244) == 3,
-              "the flag clear: its translated glyphs left as they are");
+                  frame(7) == zap::kLockGlyph && frame(6) == 0 && lock.restore(a) &&
+                  get<int32_t>(options.label, 0x244) == 3,
+              "the flag clear: its translated glyphs left as they are, the padlock eighth");
         return;
     }
-    check(zap::pixel_glyphs_shown(options.label) && options.glyph_list[7][0x120] == 1 &&
+    check(zap::pixel_glyphs_shown(options.label) && options.glyph_list[6][0x120] == 1 &&
               translated[0][0x120] == 0,
           "its pixel glyphs shown, the padlock with them, its translated ones hidden");
+    // The box a translation sizes from its own texts ends after ASSIST's seventh glyph in
+    // English(HD): the padlock right after the letters.
+    check(frame(6) == zap::kLockGlyph && frame(7) == 0, "the padlock seventh, no blank before it");
+    // The default English picked while locked: the padlock back in the eighth glyph.
+    g_translation[0x91] = 0;
+    check(!lock.install(a) && frame(7) == zap::kLockGlyph && frame(6) == 0,
+          "the flag cleared: the padlock eighth again, the seventh blank");
+    g_translation[0x91] = 1;
+    check(!lock.install(a) && frame(6) == zap::kLockGlyph && frame(7) == 0, "and back");
     // The game shows its translated glyphs again (event 0xF shows the first +0x244 of them,
     // none now): the watch shows the pixel ones again anyway.
     put<int32_t>(options.label, 0x244, 3);

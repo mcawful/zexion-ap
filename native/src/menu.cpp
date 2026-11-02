@@ -49,6 +49,11 @@ constexpr ptrdiff_t kGlyphTint[6] = {0x68, 0x6C, 0x70, 0x78, 0x7C, 0x80};
 constexpr float kLockedTint[6] = {0.412f, 0.439f, 0.494f, 0.412f, 0.439f, 0.494f};
 constexpr int32_t kLockedStyle = 5;  // as the controls screen's STYLE: AUTO
 constexpr int kLockAt = 7;  // ASSIST, a blank, the padlock
+// In a translation, the padlock right after ASSIST: the options box is sized from the translated
+// texts (0x1634AB to 0x163561), and in English(HD) it ends where the seventh glyph does (the
+// owner's screenshot, 2026-11-02).
+constexpr int kLockAtTranslated = 6;
+constexpr int32_t kBlank = 0;  // the frame of ASSIST's label past its six letters
 constexpr char kAssist[kAssistLength + 1] = "ASSIST\0\0\0\0\0";
 
 // Reads the glyph pointers of a live label of N glyphs, or returns false.
@@ -143,7 +148,7 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
     if (now && now->on && read_entry(now->small, kRandomizerEntry, own)) {
-        rebuild_label(a, pointer_at(child_, widget::kLabel), own);
+        rebuild_label(a, pointer_at(child_, widget::kLabel), own, {.attached = true});
     }
     return true;
 }
@@ -191,10 +196,11 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
         }
         set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
     }
-    // In a translation the label shows its translated text: built again as ARCHIPELAGO's. Its
-    // hover border is then sized from that text by the game itself (0xAE500), so fit_border,
-    // which looks for the pixel label's border, leaves it alone.
-    rebuild_label(a, pointer_at(child, widget::kLabel), kTranslatedLabel);
+    // In a translation the label shows its translated text: built again as ARCHIPELAGO's, where
+    // the game's attach would build it now (the panel's own was built before the panel was
+    // placed, at the window's corner). Its hover border is then sized from that text by the game
+    // itself (0xAE500), so fit_border, which looks for the pixel label's border, leaves it alone.
+    rebuild_label(a, pointer_at(child, widget::kLabel), kTranslatedLabel, {.attached = true});
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).
@@ -300,9 +306,11 @@ namespace {
 
 // The locked look: every glyph in the locked style under the locked palette (when the palette
 // table gives it), the padlock in the eighth; in a translation, the label's pixel glyphs shown
-// in place of its translated ones (translation.h), so the look shows.
+// in place of its translated ones (translation.h), so the look shows, and the padlock in the
+// seventh, so it stays in the box.
 void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a, BYTE* label) {
-    if (translation_on(a) && !pixel_glyphs_shown(label)) show_pixel_glyphs(label);
+    const bool translated = translation_on(a);
+    if (translated && !pixel_glyphs_shown(label)) show_pixel_glyphs(label);
     BYTE* palette = pointer_at(a.palette_table, kLockedPalette * 8);
     BYTE probe = 0;
     if (!read(palette, 0, probe)) palette = nullptr;  // none readable there: the menu's own kept
@@ -315,8 +323,10 @@ void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a, BYTE* l
         }
     }
     // The padlock only if the glyph has that many frames, as the game's own text routine
-    // checks a character against +0x1BC.
-    set_frame(glyphs[kLockAt], kLockGlyph);
+    // checks a character against +0x1BC; the other place blank (the language changed meanwhile).
+    const int lock_at = translated ? kLockAtTranslated : kLockAt;
+    set_frame(glyphs[translated ? kLockAt : kLockAtTranslated], kBlank);
+    set_frame(glyphs[lock_at], kLockGlyph);
 }
 
 }  // namespace

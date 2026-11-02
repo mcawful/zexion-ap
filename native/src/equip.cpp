@@ -19,10 +19,12 @@ const char kDiskDescription[] =
     "SECURE OS INSTALL THAT MY PLANET  "
     "NEEDS TO RUN ITS DEFENSE NETWORK.";
 // In a translation the box shows the translated texts the game built for the Data Disc's record
-// (ItemNames 44) and panel 3 (LargeText 87, the Energy Tank's), built again as these.
+// (ItemNames 44) and panel 3 (LargeText 87, the Energy Tank's), built again as these. The
+// description is one line with a blank first, as the game's own (English(HD)'s 342), and the
+// builder wraps it at the box's columns, as the game asks for its descriptions (0xB3268).
 const wchar_t kDiskNameHd[] = L"OS Install Disk";
 const wchar_t kDiskDescriptionHd[] =
-    L"These few disks hold an old but secure OS install that my planet needs to run its "
+    L" These few disks hold an old but secure OS install that my planet needs to run its "
     L"defense network.";
 
 namespace {
@@ -219,7 +221,7 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     // out.
     if (translation_on(a)) {
         rebuild_label(a, name_label, kDiskNameHd);
-        rebuild_label(a, description_label, kDiskDescriptionHd);
+        rebuild_label(a, description_label, kDiskDescriptionHd, {.wrap = true});
         return;
     }
     // Its icon before the name, as the game puts each record's own (the disk's record has none):
