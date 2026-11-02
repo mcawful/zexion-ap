@@ -54,6 +54,7 @@ from .options import (
     ROOM_NAMES,
     SETTINGS,
     Amount,
+    Gates,
     Goal,
     StartRoom,
     ZexionOptions,
@@ -118,6 +119,7 @@ class ZexionWorld(World):
     seed_reach: reach.Seed
     mode_name: str
     menu: custom.Menu  # the randomizer menu as this seed's settings
+    gates_unlocked: bool  # Gates Vanilla made Unlocked for the OS Install Disks goal (read_menu)
     # The mode's own starting items, by item code (start_inventory's and
     # start_inventory_from_pool's are on the options: reach_of_items counts all three).
     start_inventory: dict[int, int]
@@ -171,10 +173,16 @@ class ZexionWorld(World):
     def read_menu(self) -> custom.Menu:
         """The randomizer menu as this seed's settings: a preset's, with Starting Location and
         Safety the YAML's, or Custom's. Refuses a Custom-only option set with a preset, and a
-        state the game's menu cannot hold or would build a broken pool from (custom.problems)."""
+        state the game's menu cannot hold or would build a broken pool from (custom.problems).
+        With the OS Install Disks goal, Gates Vanilla (OHKO's, or the YAML's) becomes Unlocked:
+        Vanilla's gates take all four keys, which that goal does not place, and Unlocked's take
+        none, only two gates visited (docs/re/memory.md, "Keys, the gates and the key
+        markers"). The logic travels by gate only under Open, so this changes how the player can
+        travel, not what the seed reaches."""
         o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
         is_custom = name == "custom"
-        menu = custom.Menu.preset(o.custom_base.current_key if is_custom else name)
+        base = o.custom_base.current_key if is_custom else name
+        menu = custom.Menu.preset(base)
         custom_only = (*AMOUNTS, *SETTINGS, "custom_items")
         changed = [n for n in custom_only if getattr(o, n).value != getattr(o, n).default]
         if changed and not is_custom:
@@ -204,6 +212,18 @@ class ZexionWorld(World):
             raise OptionError(
                 f"{who}: abridged_finale ends the game when Zexion is grabbed, so it cannot go "
                 f"with the OS Install Disks goal"
+            )
+        self.gates_unlocked = self.disc_hunt and menu.value(custom.GATES) == Gates.option_vanilla
+        if self.gates_unlocked:
+            menu = menu.with_value(custom.GATES, Gates.option_unlocked)
+            # A warning where the YAML asked for Vanilla; a preset's own Vanilla (OHKO's) is no
+            # choice of the YAML's, and its change is the goal's documented behavior: info.
+            asked = o.gates.value == Gates.option_vanilla
+            log = logging.warning if asked else logging.info
+            source = "gates: vanilla" if asked else f"{base} mode's Gates Vanilla"
+            log(
+                f"{who}: {source} takes all four keys, which the OS Install Disks goal does not "
+                f"place; the gates are Unlocked instead (no keys, two gates visited)"
             )
         if not is_custom:
             return menu
@@ -573,6 +593,9 @@ class ZexionWorld(World):
         if self.mode_name == "custom":
             amounts = ", ".join(str(n) for n in self.menu.amounts)
             spoiler_handle.write(f"Amounts:                         {amounts}\n")
+        if self.gates_unlocked:
+            gates = "Unlocked (Vanilla takes the four keys, which this goal does not place)"
+            spoiler_handle.write(f"Gates:                           {gates}\n")
         # Drawn per seed in every mode (Standard's starting gun among them).
         started = ", ".join(f"{NAMES[c]} x{n}" for c, n in self.start_inventory.items())
         spoiler_handle.write(f"Starting items:                  {started}\n")
@@ -656,9 +679,11 @@ class ZexionWorld(World):
         (client/newgame.py): the seed's own menu state (a preset's, or Custom's, its coin-flip
         items and amounts as the menu holds them), with Starting Location the world's start
         room, so the pause menu's view of the settings names it (the game's mode check skips
-        Starting Location, so a preset still reads as itself), and a seed text of 16 hex digits
-        from this seed and player. With Double Teleport, whose placement reads the menu's start
-        table, the table instead of a second target (the seed's second start is written)."""
+        Starting Location, so a preset still reads as itself, except OHKO with the OS Install
+        Disks goal, whose Gates read_menu makes Unlocked: Custom), and a seed text of 16 hex
+        digits from this seed and player. With Double Teleport, whose placement reads the menu's
+        start table, the table instead of a second target (the seed's second start is
+        written)."""
         name = f"{self.multiworld.seed_name}:{self.player}".encode()
         menu = self.menu.with_value(custom.START_LOCATION, self.start["index"] + 1)
         double = self.double_teleport

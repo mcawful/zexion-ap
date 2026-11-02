@@ -26,6 +26,14 @@ Set with the Goal option.
   grab Zexion.
 - **OS Install Disks**: find enough OS Install Disks (the options set how many are placed and
   how many you need). The four keys are not in the seed.
+  - So the hyperspace gates can't take keys: where Gates is Vanilla (OHKO's, also as Custom's
+    `custom_base`, or `gates: vanilla` in Custom), whose gates need all four, the seed has
+    Gates Unlocked instead, even if you start with keys (Start Keys, or keys in
+    `start_inventory` or `start_inventory_from_pool`), and the generator's log says so. The gates
+    then need no keys: once you have visited two of them, they work (by the game's code; not
+    yet checked in game). In the pause menu's RANDO SETTINGS, an OHKO seed then shows
+    as Custom mode, with OHKO's items and amounts and Gates Unlocked (by the game's code; not
+    yet checked in game). The spoiler log's header names the change.
   - Your count shows on each disk's popup, on the pause screen and on the file select.
   - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
     you how many you need. Until you have been there, the pause screen shows "OF ?". With
@@ -47,7 +55,8 @@ Set with the Goal option.
 ## Which modes are there?
 
 The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings, or Custom. Each seed draws its items as the game does for a new
+starting items and settings (with the OS Install Disks goal, OHKO's Gates Vanilla becomes
+Unlocked: "What is the goal?"), or Custom. Each seed draws its items as the game does for a new
 game: Standard starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance,
 with the other three in the item pool), and every mode draws its filler (Scrap, Area Maps,
 Energy Shields). OHKO has no Energy Tanks and gives you a second room to teleport to; the 4
@@ -77,7 +86,8 @@ game's own logic does. With it off, the guns keep their Progressive names (Progr
 Machine Gun and the like), but there is one of each and it is the gun alone.
 With Gates Open the seed's logic travels by gate, as the game's logic does, but not from
 R'Talva's gate, which the game keeps hidden until a boss is beaten. Gates Off works with the
-core goal: the core's door needs only the four keys.
+core goal: the core's door needs only the four keys. With the OS Install Disks goal, Gates
+Vanilla becomes Unlocked ("What is the goal?").
 Abridged Finale ends the game when you grab Zexion, so it can't go with the OS Install Disks
 goal.
 

@@ -39,7 +39,9 @@ class Mode(Choice):
     Custom: "Use custom rules.": every setting below, from custom_base's.
     Easy, Standard and OHKO are each the game's preset exactly, their items drawn for each seed
     as the game draws them for a new game (Standard's weapon and every mode's filler): only
-    Starting Location (start_room) and Safety can be changed with them, as in the game."""
+    Starting Location (start_room) and Safety can be changed with them, as in the game. With
+    the OS Install Disks goal, OHKO's Gates Vanilla becomes Unlocked (see Goal), so the game
+    then shows an OHKO seed as Custom."""
 
     display_name = "Mode"
     option_easy = 0
@@ -310,7 +312,9 @@ class Gates(Choice):
     Open: Gates can be moved through freely. (The R'talva gate is locked before defeating
     Aesos) The seed's logic then travels by gate, as the game's logic does, but not from the
     R'talva gate.
-    The core's own door takes the four keys whatever this is."""
+    The core's own door takes the four keys whatever this is. With the OS Install Disks goal,
+    which places no keys, Vanilla (yours, or OHKO's in any mode) becomes Unlocked, and the
+    generator's log says so."""
 
     display_name = "Gates"
     option_off = 0
@@ -431,8 +435,12 @@ class Goal(Choice):
     OS Install Disks: find enough OS Install Disks (the next two options), then save at the
     Landing Pod's save point (Kresezoa 16,13, whichever room you started in) and answer YES to
     RETURN HOME WITH THE DISKS?. The seed makes sure you can reach the Landing Pod. The keys are
-    not placed. The scanner room at Vallahar 6,8, which shows where the keys are in the normal
-    game, tells you how many disks you need."""
+    not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
+    take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
+    start_inventory): by the game's code (not yet checked in game) the gates then take no keys,
+    only two of them visited. The
+    scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
+    how many disks you need."""
 
     display_name = "Goal"
     option_core = 0

@@ -219,6 +219,13 @@ class TestClientReadsTheSlotData(ZexionTestBase):
             value = slot["options"][str(t)]
             self.assertIn(f"expect {newgame.section(save_patch.OPTIONS + t):#x} {value:02x}", lines)
         self.assertEqual(slot["options"]["32"], int(slot["mode"] == "custom" and goal == "core"))
+        # The menu the helper sets up holds what the new game is then checked for, so both come
+        # from the one menu state: with the OS Install Disks goal, never Gates Vanilla (1, 0),
+        # whose gates take the keys that goal does not place (world.py, read_menu).
+        for t, value in slot["options"].items():
+            self.assertEqual(plan.menu.settings[int(t) - 10], value, t)
+        if goal != "core":
+            self.assertNotEqual((slot["options"]["72"], slot["options"]["73"]), (1, 0))
         # Starting Location in the menu names the start room.
         location = sum(plan.menu.settings[t - 10] << i for i, t in enumerate(range(22, 28)))
         self.assertEqual(location, slot["start_index"] + 1)
