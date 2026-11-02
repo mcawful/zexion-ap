@@ -154,10 +154,12 @@ line says.
   once the player left the pod's room, and one left during GAME SAVED alone, then offered again
   after the next save there: 2026-10-27. Each of these runs started at the Landing Pod. Not seen
   in game: the fade turned back when the helper takes back a prompt it had not opened yet
-  (stand-in tests only); since 2026-10-30, home is the Landing Pod's save point whichever room
-  the seed starts in (before, the start room's), and a seed started elsewhere has not been run in
-  game yet (no prompt after a save in the start room, the prompt after a save at the pod, the
-  request lapsing on leaving the pod's cell).
+  (stand-in tests only). Since 2026-10-30, home is the Landing Pod's save point whichever room
+  the seed starts in (before, the start room's): run in game from a seed started at Open Cave,
+  2026-11-02 (no
+  prompt after a save in the start room, the prompt after a save at the pod, NO, the request
+  lapsing on leaving the pod's room while popups held it, the offer again, YES to the goal;
+  B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`).
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's
@@ -221,8 +223,12 @@ line says.
   RETURN HOME WITH THE DISKS?, the equipment screen's disk, the stand-ins' names and the
   scanner's line in the translation's font, ASSIST and the pause row's count in the pixel font
   ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
-  translation but English(HD) (`ticks.language_tick`): not run in game yet (stand-in
-  tests: `native/README.md`, "Translations"). Before them, 1.0.0's release candidate in
+  translation but English(HD) (`ticks.language_tick`): run in game 2026-11-02 (B1,
+  `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): popups, notices, the stand-ins' names, the
+  equipment screen's disk, RETURN HOME's question and the pixel-font parts showed in
+  English(HD), popups in French and Japanese, and the warning once, for French; ARCHIPELAGO's
+  label, the question's place and the equipment description's width are bugs, and the scanner's
+  line was not run (`native/README.md`, "Translations", "Run in game"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
   not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
 
