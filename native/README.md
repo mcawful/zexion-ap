@@ -245,6 +245,19 @@ Each part: what it does, when it runs, how it is put back, and when it was worki
 Every part is put back when a client goes away and on unload, unless it says otherwise. "Every
 16th frame call" means a countdown reset to 15.
 
+- **Limits:** "working in game" below is in the game's default English. With a translation on
+  (English(HD), French and Japanese seen 2026-11-01; the other European ones, on French's font,
+  and Simplified Chinese assumed the same) the game draws the translation's text in place of
+  the pixel-font glyphs the helper rewrites, so what a part changes in what an entry does still
+  works but what it changes in the text does not show. In all three: the ASSIST padlock, the
+  equipment screen's OS INSTALL DISK, and the disk row's count (under the game's KEYS label).
+  In English(HD), the others not looked at: the ARCHIPELAGO label (the button keeps the game's,
+  but starts the seed), RETURN HOME WITH THE DISKS? (the game's own question shows), and a
+  stand-in's name in its pickup popup. In all three, many received items' popups show nothing,
+  while the helper's notices (a hint, the disk reminder) showed in English(HD). The title lines,
+  the file select's logo and disk count, and the stand-ins' logo work. Per part and language:
+  `docs/re/memory.md`, "Translations".
+
 ### Grants
 
 An `apply` (`src/game_calls.cpp`):
@@ -404,9 +417,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   pixels. Unload refuses (`error an item record is still restyled (no frame came)`) if no frame
   came to do it.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
-  one's name (not seen); with a translation active the popup shows the translation's text; and
-  Scrap Energy in another seed's save would look the same, so the client sends labels only while
-  this seed's save is loaded.
+  one's name (not seen); with a translation on the logo shows but the pickup popup shows the
+  translation's name of the stand-in, not the label (Scrap Chunk in English(HD), seen 2026-11-01;
+  Scrap Energy's by disassembly); and Scrap Energy in another seed's save would look the same, so the client sends
+  labels only while this seed's save is loaded.
 
 Working in game: 2026-10-23 ("Other players' items"); 2026-10-26, a three-game seed: no owner
 on the map cursor, other Zexion players' supplies minor ("Map markers").
