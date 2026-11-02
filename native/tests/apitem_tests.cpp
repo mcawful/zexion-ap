@@ -491,6 +491,9 @@ void test_the_icon_sheets() {
         other.paint(holder, gl);
         check(gl_fake::g_uploads.empty() && !other.painted(),
               k == 0 ? "a cell the game uses: not painted" : "not the game's art: not painted");
+        // Read again now and then, three times a texture at most (each read is the whole sheet).
+        for (int frame = 0; frame < 5 * 301; ++frame) other.paint(holder, gl);
+        check(gl_fake::g_readbacks == 2 * 3, "three reads of each sheet, then no more");
     }
     // No sheet (a template not of 256 frames): nothing.
     gl_fake::reset_gl();

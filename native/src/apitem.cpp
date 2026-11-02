@@ -631,14 +631,18 @@ void IconSheets::paint(BYTE* holder, const GlFunctions& gl) {
     for (Sheet& s : sheets_) {
         const unsigned texture = sheet_texture(holder, s.definition);
         if (texture == 0) continue;
-        // Painted (or found not as expected) at most once every kRepaintFrames frames.
+        // Painted (or found not as expected) at most once every kRepaintFrames frames; a
+        // texture not as traced read only kReadTries times (each read is the whole sheet).
+        if (texture == s.failed && s.tries >= kReadTries) continue;
         if ((texture == s.painted || texture == s.failed) && s.frames_to_paint-- > 0) continue;
         s.frames_to_paint = kRepaintFrames;
         if (upload(s, texture, gl, false)) {
             s.painted = texture;
             s.failed = 0;
+            s.tries = 0;
         } else {
             if (texture != s.painted) s.painted = 0;
+            s.tries = texture == s.failed ? s.tries + 1 : 1;
             s.failed = texture;
         }
     }
@@ -650,7 +654,7 @@ void IconSheets::clear(BYTE* holder, const GlFunctions& gl) {
             upload(s, s.painted, gl, true);
         }
         s.painted = s.failed = s.checked = 0;
-        s.frames_to_paint = 0;
+        s.frames_to_paint = s.tries = 0;
     }
 }
 

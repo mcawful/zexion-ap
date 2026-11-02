@@ -208,6 +208,7 @@ private:
         int definition, width, height, cell_w, cell_h;
         unsigned painted = 0, failed = 0, checked = 0;
         int frames_to_paint = 0;
+        int tries = 0;  // reads of `failed` that found it not as traced
     };
     bool upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear);
     Sheet sheets_[2] = {{101, 1024, 1024, 64, 64}, {104, 160, 144, 10, 9}};

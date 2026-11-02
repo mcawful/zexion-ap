@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -561,6 +562,9 @@ void test_the_popup_layout() {
     check(zap::layout_popup(L"Energy Tank", L"from Bob", nullptr, 0, 8) ==
               L"Energy\nTank\nfrom Bob",
           "no metrics: wrapped by characters, not centered");
+    put<double>(font, 0x40060, std::numeric_limits<double>::quiet_NaN());
+    check(!m.load(a), "a font whose values are not a loaded font's: not measured");
+    put<double>(font, 0x40060, 1.0);
     check(zap::hd_suffix("FROM Bob") == L"from Bob" &&
               zap::hd_suffix("FROM ALICE") == L"from ALICE" &&
               zap::hd_suffix("FOR Bob") == L"FOR Bob",

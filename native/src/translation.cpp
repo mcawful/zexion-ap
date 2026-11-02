@@ -356,6 +356,10 @@ constexpr double kHdIconDivisor = 4.8214;
 // with a pixel font or icon style 1 (tr +0xA4), else 101's (0x885BF).
 constexpr ptrdiff_t kIconStyle = 0xA4;
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
+constexpr int32_t kSheetFrames = 256;
+// Bounds on what a loaded font reads (the HD font's scale and space are near 1 and 15 to 20),
+// and on the spaces one line is padded with.
+constexpr double kMostFactor = 1000, kMostSpace = 1000, kMostPad = 64;
 
 int icon_frame(wchar_t c) {
     if (c >= 0xE024 && c <= 0xE04E) return c - 0xDFA4;
@@ -377,12 +381,21 @@ bool FontMetrics::load(const GameAddresses& a) {
         !read(font_, kFontScale, factor_) || !read(font_, kFontSpace, space)) {
         return false;
     }
+    // Values a loaded font has (a reload in progress could leave others): measured only then.
+    if (!std::isfinite(factor_) || factor_ <= 0 || factor_ > kMostFactor ||
+        !std::isfinite(space) || space < 0 || space > kMostSpace) {
+        return false;
+    }
     pixel_font_ = style == tr::kPixelFont;
     scale_ = pixel_font_ ? 1.0f : kHdFontDivisor;
     space_ = static_cast<float>(space / static_cast<float>(scale_));
     const ptrdiff_t sheet = pixel_font_ || icons == 1 ? kPixelIconSheet : kHdIconSheet;
-    icon_frames_ = pointer_at(pointer_at(pointer_at(a.sprite_templates), sheet),
-                              sprite::kFrameList);
+    // The sheet's frames, only if it has its 256 (icon_frame's last is 0xC6).
+    BYTE* sheet_template = pointer_at(pointer_at(a.sprite_templates), sheet);
+    int32_t frames = 0;
+    if (read(sheet_template, sprite::kFrameCount, frames) && frames == kSheetFrames) {
+        icon_frames_ = pointer_at(sheet_template, sprite::kFrameList);
+    }
     return true;
 }
 
@@ -480,7 +493,8 @@ std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
         }
         for (size_t i = 0; i < lines.size(); ++i) {
             if (widths[i] < 0) continue;
-            const auto pad = static_cast<size_t>((widest - widths[i]) / 2 / metrics->space() + 0.5);
+            const double spaces = (widest - widths[i]) / 2 / metrics->space() + 0.5;
+            const auto pad = static_cast<size_t>(std::clamp(spaces, 0.0, kMostPad));
             lines[i].insert(0, pad, L' ');
         }
     }

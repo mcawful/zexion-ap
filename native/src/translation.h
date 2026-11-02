@@ -63,7 +63,8 @@ constexpr int32_t kPixelFont = 1;
 // The font the builder is given (its address; the template its glyphs are made from, the pointer
 // held there).
 constexpr ptrdiff_t kFont = 0xD0;
-constexpr uint64_t kSize = 0xD8;  // through the font's first field
+// Through the font's metrics (its glyph table, space and scale: FontMetrics).
+constexpr uint64_t kSize = kFont + 0x40068;
 }  // namespace tr
 
 // The HD message objects (`hd_messages`, one per message slot) and the message slots

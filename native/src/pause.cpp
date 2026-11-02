@@ -191,7 +191,9 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
                 hd_mark_ = built_mark(keys_label);
             }
         }
-        if (pixel_glyphs_shown(keys_label) || glyph[0][sprite::kVisible] != 0) {
+        uint8_t pixel_shown = 0;
+        if (pixel_glyphs_shown(keys_label) ||
+            (read(glyph[0], sprite::kVisible, pixel_shown) && pixel_shown != 0)) {
             show_translated_glyphs(keys_label);
         }
     };

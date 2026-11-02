@@ -981,8 +981,9 @@ lands, not only the place passed.
     English(HD), PixelFontIcons.png's 10 x 9 for the rest) at frames 0x96 to 0x98, blank in
     both and reached by no record, which the builder draws for U+E03A to U+E03C like the game's
     item icons (`docs/re/memory.md`, "The translations' icons"); only where those cells read
-    blank (or already the helper's) and the game's art is where the PNG has it, now and then
-    while a translation shows, and cleared when none does or before an unload. White, as the
+    blank (or already the helper's) and the game's art is where the PNG has it (a sheet not so
+    read three times at most, each read being the whole sheet), now and then while a translation
+    shows, and cleared when none does or before an unload. White, as the
     game's icons are: the text's color tints them. `hd_icon` names the helper's glyphs (0xFB,
     0xEF, 0xEE) as these characters, so popups, names and labels carry them.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
