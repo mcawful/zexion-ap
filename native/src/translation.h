@@ -174,6 +174,19 @@ struct Rebuild {
 // whose translated text was never built, or for a text with more glyphs than the label holds.
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
                    const Rebuild& how = {});
+// What tells a label's translated text built by the helper from one the game built again since:
+// its glyph count and the place its build was given (both the builder's, 0x8869F, 0x8AA97).
+struct BuiltMark {
+    int32_t count = -1;
+    double x = 0, y = 0;
+    bool operator==(const BuiltMark&) const = default;
+};
+// The label's mark now (count -1 if it does not read).
+BuiltMark built_mark(const BYTE* label);
+// The left and right of a label's translated text, as the game's centering takes them (0x85B00):
+// false if it has none or it does not read.
+bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right);
+
 // Game thread: a label's pixel glyphs shown and its translated ones hidden, as the game does when
 // the flag is clear (0x168AE9); and the other way back, for a label the game built translated.
 // Whether the label read as expected.

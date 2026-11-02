@@ -459,47 +459,69 @@ void test_archipelago_built_again_and_back() {
     check(g_builds.empty(), "with the flag clear, no translated text built");
 }
 
-void test_assist_shows_its_pixel_glyphs(bool on = true) {
+// In a translation the locked ASSIST is its translated text with the padlock after it, in the
+// locked style, built where the game's attach builds it; the padlock left out where it would pass
+// the options box; built again when the game builds the label again; the entry's text back when
+// unlocked. With the flag clear, the pixel look, the padlock eighth.
+void test_assist_in_a_translation(bool on = true) {
     reset_translation();
     load_translation("English(HD)", on);
     OptionsMenu options(reinterpret_cast<void*>(&widget_handler),
                         reinterpret_cast<void*>(&assist_menu));
     zap::GameAddresses a = options.addresses();
     with_translation(a);
-    TranslatedText text(options.label);
-    BYTE (&translated)[3][0x1D8] = text.glyphs;
+    HdGlyphs<3 * zap::kAssistLength> hd(options.label);
+    for (int i = 0; i < zap::kAssistLength; ++i) {
+        put<double>(options.glyph_list[i], 0x40, 137.0 + 8 * i);
+        put<double>(options.glyph_list[i], 0x48, 172.0);
+        options.glyph_list[i][0x120] = 0;  // hidden, as the attach left them
+    }
+    built(options.label, 136.0, 171.0);
+    // The options box's border: its top right piece from x 193 (shot 13's box in English(HD)).
+    BYTE piece[0x80] = {};
+    put<BYTE*>(options.second, 0x228, piece);
+    put<double>(piece, 0x40, 193.0);
     zap::AssistLock lock;
-    check(lock.install(a), "locked");
     auto frame = [&](int i) { return get<int32_t>(options.glyph_list[i], 0x1C4); };
+    auto count = [&] { return get<int32_t>(options.label, 0x248); };
+    auto all_locked_style = [&] {
+        for (int i = 0; i < count(); ++i) {
+            if (get<int32_t>(hd.glyphs[i], 0x1D0) != 5) return false;
+        }
+        return count() > 0;
+    };
+    check(lock.install(a), "locked");
+    check(frame(7) == zap::kLockGlyph, "the pixel glyphs styled as ever, the padlock eighth");
     if (!on) {
-        // The flag clear (the default English, a translated label built before): left alone.
-        check(get<int32_t>(options.label, 0x244) == 3 && translated[0][0x120] == 1 &&
-                  frame(7) == zap::kLockGlyph && frame(6) == 0 && lock.restore(a) &&
-                  get<int32_t>(options.label, 0x244) == 3,
-              "the flag clear: its translated glyphs left as they are, the padlock eighth");
+        check(g_builds.empty() && lock.restore(a) && g_builds.empty(),
+              "the flag clear: nothing built");
         return;
     }
-    check(zap::pixel_glyphs_shown(options.label) && options.glyph_list[6][0x120] == 1 &&
-              translated[0][0x120] == 0,
-          "its pixel glyphs shown, the padlock with them, its translated ones hidden");
-    // The box a translation sizes from its own texts ends after ASSIST's seventh glyph in
-    // English(HD): the padlock right after the letters.
-    check(frame(6) == zap::kLockGlyph && frame(7) == 0, "the padlock seventh, no blank before it");
-    // The default English picked while locked: the padlock back in the eighth glyph.
-    g_translation[0x91] = 0;
-    check(!lock.install(a) && frame(7) == zap::kLockGlyph && frame(6) == 0,
-          "the flag cleared: the padlock eighth again, the seventh blank");
-    g_translation[0x91] = 1;
-    check(!lock.install(a) && frame(6) == zap::kLockGlyph && frame(7) == 0, "and back");
-    // The game shows its translated glyphs again (event 0xF shows the first +0x244 of them,
-    // none now): the watch shows the pixel ones again anyway.
-    put<int32_t>(options.label, 0x244, 3);
-    check(!lock.install(a) && zap::pixel_glyphs_shown(options.label), "kept while locked");
-    check(lock.restore(a), "unlocked");
-    check(!zap::pixel_glyphs_shown(options.label) && get<int32_t>(options.label, 0x244) == 3 &&
-              get<int32_t>(options.label, 0x1EC) == 0 && translated[2][0x120] == 1 &&
-              options.glyph_list[0][0x120] == 0,
-          "its translated text again, as the game left it");
+    check(!g_builds.empty() && g_builds.back().text == L"Assist \xE03B" &&
+              g_builds.back().x == 136.0f && g_builds.back().y == 171.0f && count() == 7 &&
+              all_locked_style() && !zap::pixel_glyphs_shown(options.label),
+          "its translated text with the padlock, in the locked style, its pixel glyphs hidden");
+    // Kept while locked; the game building the label again is noticed and built over.
+    const size_t builds = g_builds.size();
+    put<int32_t>(hd.glyphs[0], 0x1D0, 0x15);  // the menu restyles it
+    check(!lock.install(a) && g_builds.size() == builds && all_locked_style(),
+          "kept, its style pinned");
+    built(options.label, 136.0, 171.0);
+    put<int32_t>(options.label, 0x248, 6);  // the game's Assist again
+    check(!lock.install(a) && g_builds.size() == builds + 1 &&
+              g_builds.back().text == L"Assist \xE03B",
+          "built again over the game's");
+    check(lock.restore(a) && g_builds.back().text == L"Assist" && count() == 6,
+          "unlocked: the entry's text again");
+
+    // A box too narrow for the padlock: the text alone.
+    g_builds.clear();
+    put<double>(piece, 0x40, 176.0);
+    zap::AssistLock narrow;
+    check(narrow.install(a) && g_builds.size() == 2 && g_builds.back().text == L"Assist" &&
+              all_locked_style(),
+          "the padlock left out where it would pass the box");
+    narrow.restore(a);
 }
 
 }  // namespace
@@ -518,7 +540,7 @@ int main() {
     test_the_scanner_line();
     test_the_default_english_untouched();
     test_archipelago_built_again_and_back();
-    test_assist_shows_its_pixel_glyphs();
-    test_assist_shows_its_pixel_glyphs(false);
+    test_assist_in_a_translation();
+    test_assist_in_a_translation(false);
     return report("translation tests");
 }

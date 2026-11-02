@@ -279,6 +279,20 @@ bool extent(const GameAddresses& a, const BYTE* label, float& left, float& right
 
 }  // namespace
 
+BuiltMark built_mark(const BYTE* label) {
+    BuiltMark m;
+    int32_t count = -1;
+    if (read(label, hdlabel::kCount, count) && read(label, hdlabel::kX, m.x) &&
+        read(label, hdlabel::kY, m.y)) {
+        m.count = count;
+    }
+    return m;
+}
+
+bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right) {
+    return extent(a, label, left, right);
+}
+
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
                    const Rebuild& how) {
     if (!translation_on(a)) return false;

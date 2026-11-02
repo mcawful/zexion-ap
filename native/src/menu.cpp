@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "apitem.h"  // kHdLockIcon
 #include "translation.h"
 
 namespace zap {
@@ -49,11 +50,12 @@ constexpr ptrdiff_t kGlyphTint[6] = {0x68, 0x6C, 0x70, 0x78, 0x7C, 0x80};
 constexpr float kLockedTint[6] = {0.412f, 0.439f, 0.494f, 0.412f, 0.439f, 0.494f};
 constexpr int32_t kLockedStyle = 5;  // as the controls screen's STYLE: AUTO
 constexpr int kLockAt = 7;  // ASSIST, a blank, the padlock
-// In a translation, the padlock right after ASSIST: the options box is sized from the translated
-// texts (0x1634AB to 0x163561), and in English(HD) it ends where the seventh glyph does (the
-// owner's screenshot, 2026-11-02).
-constexpr int kLockAtTranslated = 6;
-constexpr int32_t kBlank = 0;  // the frame of ASSIST's label past its six letters
+// In a translation: ASSIST's entry, and the options box's border (laid out by 0xAB4D0 from the
+// panel's +0x200, its eight pieces from +0x218, the top right third): the box is sized from
+// the translated texts (0x1634AB to 0x163561), so the padlock goes only where it stays inside.
+constexpr int kAssistEntry = 137;
+constexpr ptrdiff_t kBoxTopRight = 0x228;
+constexpr int32_t kMaxTranslatedGlyphs = 3 * kAssistLength;  // the label's capacity
 constexpr char kAssist[kAssistLength + 1] = "ASSIST\0\0\0\0\0";
 
 // Reads the glyph pointers of a live label of N glyphs, or returns false.
@@ -305,12 +307,9 @@ bool AssistLock::still_locked(const GameAddresses& a) const {
 namespace {
 
 // The locked look: every glyph in the locked style under the locked palette (when the palette
-// table gives it), the padlock in the eighth; in a translation, the label's pixel glyphs shown
-// in place of its translated ones (translation.h), so the look shows, and the padlock in the
-// seventh, so it stays in the box.
-void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a, BYTE* label) {
-    const bool translated = translation_on(a);
-    if (translated && !pixel_glyphs_shown(label)) show_pixel_glyphs(label);
+// table gives it), the padlock in the eighth. (In a translation the pixel glyphs stay hidden:
+// the translated text carries the look, AssistLock::lock_translated.)
+void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
     BYTE* palette = pointer_at(a.palette_table, kLockedPalette * 8);
     BYTE probe = 0;
     if (!read(palette, 0, probe)) palette = nullptr;  // none readable there: the menu's own kept
@@ -323,10 +322,13 @@ void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a, BYTE* l
         }
     }
     // The padlock only if the glyph has that many frames, as the game's own text routine
-    // checks a character against +0x1BC; the other place blank (the language changed meanwhile).
-    const int lock_at = translated ? kLockAtTranslated : kLockAt;
-    set_frame(glyphs[translated ? kLockAt : kLockAtTranslated], kBlank);
-    set_frame(glyphs[lock_at], kLockGlyph);
+    // checks a character against +0x1BC.
+    set_frame(glyphs[kLockAt], kLockGlyph);
+}
+
+// The x where the options box's right edge starts (its top right piece's), if it reads.
+bool box_right(const BYTE* panel, double& x) {
+    return read(pointer_at(panel, kBoxTopRight), sprite::kX, x);
 }
 
 }  // namespace
@@ -340,7 +342,8 @@ bool AssistLock::install(const GameAddresses& a) {
             // again whenever it is the menu up.
             BYTE* glyphs[kAssistLength] = {};
             if (top == menu_ && glyphs_of(child_, glyphs)) {
-                draw_locked(glyphs, a, pointer_at(child_, widget::kLabel));
+                draw_locked(glyphs, a);
+                lock_translated(a, pointer_at(child_, widget::kLabel));
             }
             return false;
         }
@@ -360,12 +363,60 @@ bool AssistLock::install(const GameAddresses& a) {
         palette_numbers_[i] = at<int16_t>(g, sprite::kPaletteNumber);
         for (int t = 0; t < 6; ++t) tints_[i][t] = at<float>(g, kGlyphTint[t]);
     }
-    draw_locked(glyphs, a, pointer_at(child, widget::kLabel));
+    draw_locked(glyphs, a);
     at<void*>(child, widget::kCallback) = nullptr;
     menu_ = top;
     child_ = child;
     move_out(panel, index);
+    panel_ = panel;  // also when not moved: the box is its border's
+    lock_translated(a, pointer_at(child, widget::kLabel));
     return true;
+}
+
+void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
+    if (!translation_on(a)) return;
+    const std::optional<Loaded> now = loaded_translation(a);
+    std::wstring own;
+    if (!now || !now->on || !read_entry(now->small, kAssistEntry, own)) return;
+    if (pixel_glyphs_shown(label)) show_translated_glyphs(label);  // as an older helper left it
+    if (label != hd_label_ || built_mark(label) != hd_mark_) {
+        hd_label_ = nullptr;
+        // Built after the pixel glyphs took the locked style: the builder gives each glyph the
+        // first pixel glyph's (0x8AAB5), the padlock too (an icon past frame 0x70).
+        if (!rebuild_label(a, label, own + L" " + kHdLockIcon, {.attached = true})) return;
+        float left = 0, right = 0;
+        double edge = 0;
+        if (!box_right(panel_, edge) || !translated_extent(a, label, left, right) ||
+            right > edge) {
+            rebuild_label(a, label, own, {.attached = true});
+        }
+        hd_label_ = label;
+        hd_mark_ = built_mark(label);
+    }
+    // The style again each time (the menu may restyle its entries).
+    int32_t n = 0;
+    BYTE** list = nullptr;
+    if (!read(label, hdlabel::kCount, n) || !read(label, hdlabel::kGlyphs, list) || n < 0 ||
+        n > kMaxTranslatedGlyphs) {
+        return;
+    }
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        if (g != nullptr && writable(g + sprite::kStyle, sizeof(int32_t))) {
+            at<int32_t>(g, sprite::kStyle) = kLockedStyle;
+        }
+    }
+}
+
+void AssistLock::unlock_translated(const GameAddresses& a, BYTE* label) {
+    const bool ours = label == hd_label_ && built_mark(label) == hd_mark_;
+    hd_label_ = nullptr;
+    if (!ours || !translation_on(a)) return;
+    const std::optional<Loaded> now = loaded_translation(a);
+    std::wstring own;
+    if (now && now->on && read_entry(now->small, kAssistEntry, own)) {
+        rebuild_label(a, label, own, {.attached = true});  // after the pixel glyphs' style
+    }
 }
 
 void AssistLock::move_out(BYTE* panel, int32_t index) {
@@ -454,9 +505,8 @@ bool AssistLock::restore(const GameAddresses& a) {
         }
         at<void*>(child_, widget::kCallback) = a.assist_menu_fn;
         move_back();
-        // In a translation, its translated text again, as the game left it.
-        BYTE* label = pointer_at(child_, widget::kLabel);
-        if (translation_on(a) && pixel_glyphs_shown(label)) show_translated_glyphs(label);
+        // In a translation, its translated text the entry's again, in its own style.
+        unlock_translated(a, pointer_at(child_, widget::kLabel));
     }
     child_ = nullptr;
     menu_ = nullptr;
