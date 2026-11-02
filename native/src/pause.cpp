@@ -72,6 +72,15 @@ void place(BYTE* s, double x, double y, const double (&local)[4]) {
 
 }  // namespace
 
+std::wstring hd_row_text(const std::string& text) {
+    std::string t = text;
+    t.erase(0, t.find_first_not_of(' '));
+    t.erase(t.find_last_not_of(' ') + 1);
+    const size_t of = t.find(" OF ");
+    if (of != std::string::npos) t.replace(of, 4, " of ");
+    return hd_text(t);
+}
+
 std::string pause_row_text(int count, int required) {
     std::string text = std::to_string(count) + " OF " +
                        (required > 0 ? std::to_string(required) : std::string("?"));
@@ -158,11 +167,35 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         return;
     }
     // In a translation the game draws KEYS's translated text (SmallText 139) over the row, and
-    // builds it again when OPTION MENU returns (0x168AC6): the label's pixel glyphs shown in its
-    // place while the row is turned, as the game shows them with the flag clear (translation.h).
+    // builds it again when OPTION MENU returns (0x168AC6): while the row is turned the count is
+    // that text instead, in the translation's font, centered on the row as the game centers a
+    // prompt's line, built again whenever it is not the helper's; the key slots' characters
+    // hidden. With the flag clear the game shows the label's pixel glyphs itself (0x168AE9).
     BYTE* keys_label = pointer_at(keys, widget::kLabel);
-    auto pixel_label = [&] {
-        if (translation_on(a) && !pixel_glyphs_shown(keys_label)) show_pixel_glyphs(keys_label);
+    auto keep_row = [&] {
+        const bool hd = translation_on(a);
+        // The key slots hidden in a translation, and shown again only if the helper hid them
+        // (the default English's row left as its first turn set it).
+        if (hd || slots_hidden_) {
+            for (int k = 0; k < 4; ++k) {
+                if (writable(sprite[k], sprite::kSize)) *(sprite[k] + sprite::kVisible) = hd ? 0 : 1;
+            }
+            slots_hidden_ = hd;
+        }
+        if (!hd) return;
+        if (keys_label != hd_label_ || built_mark(keys_label) != hd_mark_) {
+            hd_label_ = nullptr;
+            if (rebuild_label(a, keys_label, hd_row_text(text),
+                              {.attached = true, .center = true})) {
+                hd_label_ = keys_label;
+                hd_mark_ = built_mark(keys_label);
+            }
+        }
+        uint8_t pixel_shown = 0;
+        if (pixel_glyphs_shown(keys_label) ||
+            (read(glyph[0], sprite::kVisible, pixel_shown) && pixel_shown != 0)) {
+            show_translated_glyphs(keys_label);
+        }
     };
     // Turned already (each frame, as the screen stays up): nothing more to check.
     int32_t icon = -1;
@@ -170,7 +203,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     read(sprite[4], sprite::kFrameIndex, icon);
     read(sprite[4], sprite::kFrameShown, shown);
     if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) {
-        pixel_label();
+        keep_row();
         return;
     }
     for (BYTE* s : sprite) {
@@ -213,7 +246,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         *(sprite[4] + sprite::kVisible) = 0;
     }
     for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + sprite::kVisible) = 0;
-    pixel_label();
+    keep_row();
 }
 
 }  // namespace zap

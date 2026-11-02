@@ -81,8 +81,10 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 
 The mod is made for the game's default English and for **English(HD)** (OPTION, Video,
 Language). In English(HD) its popups and its menu text (RETURN HOME WITH THE DISKS?, OS
-Install Disk, the names of other players' items) show in the game's HD font; the locked ASSIST
-and the disk count on the pause screen stay in the small pixel font, as in the default English.
+Install Disk, the names of other players' items) show in the game's HD font. In this version
+the locked ASSIST, the disk count on the pause screen and the note on the Feats screen should
+too, with HD versions of the mod's disk, padlock and Archipelago icons, and a received item's
+sender as "from Bob" (not yet tried in the game).
 Known problems in English(HD) in the release candidate, fixed in this version but not yet
 checked in the game: ARCHIPELAGO did not show on the game-mode panel (the blank space where it
 belongs, right of Normal, still started the seed, and the word could show in the file select's

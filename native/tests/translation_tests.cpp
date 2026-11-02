@@ -7,10 +7,12 @@
 #include <windows.h>
 
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "check.h"
+#include "fake_gl.h"
 #include "game_calls.h"
 #include "menu.h"
 #include "stand_in.h"
@@ -59,13 +61,17 @@ void test_the_text_helpers() {
     check(zap::hd_icon(0xC0) == L"\xE024" && zap::hd_icon(0xEA) == L"\xE04E" &&
               zap::hd_icon(0x6E) == L"\xE04F" && zap::hd_icon(0x77) == L"\xE050",
           "the icons as the pickup maps them");
-    check(zap::hd_icon(0) == L"" && zap::hd_icon(0xEE) == L"" && zap::hd_icon(0xFB) == L"",
-          "none, the AP logo and the disk: none");
+    check(zap::hd_icon(0) == L"" && zap::hd_icon(0xEB) == L"" && zap::hd_icon(0x41) == L"",
+          "none, and no icon");
+    check(zap::hd_icon(0xFB) == L"\xE03A" && zap::hd_icon(0xEF) == L"\xE03B" &&
+              zap::hd_icon(0xEE) == L"\xE03C",
+          "the disk, the padlock and the AP logo as the helper paints them in the icon sheets");
     // As layout_label lays a label out: "\xEE" "MASTER SWORD" over FOR ALICE, 13 wide.
     const zap::Label label = zap::layout_label("\xEE" "MASTER SWORD", "FOR ALICE");
-    check(zap::hd_label(label.name, label.width) == L"MASTER SWORD\nFOR ALICE",
-          "a label's lines, the logo left out");
-    check(zap::hd_label(label.name, label.width, true) == L"MASTER SWORD", "its first line");
+    check(zap::hd_label(label.name, label.width) == L"\xE03C" L"MASTER SWORD\nFOR ALICE",
+          "a label's lines, the logo first");
+    check(zap::hd_label(label.name, label.width, true) == L"\xE03C" L"MASTER SWORD",
+          "its first line");
     const zap::Label own = zap::layout_label("\xC5" "MISSILE BOX", "FOR BOB");
     check(zap::hd_label(own.name, own.width) == L"\xE029MISSILE BOX\nFOR BOB",
           "another Zexion player's item with its icon");
@@ -106,7 +112,7 @@ void test_popups_take_turns_and_empty() {
     queue(game, "apply\npopup 36 FROM ALICE");
     frames(game, 1);
     check(g_messages == 1 && g_hd_texts.size() == 1, "a popup, given its translated text");
-    const std::wstring first = L"\xE029Missile Box\nFROM ALICE";
+    const std::wstring first = L"\xE029Missile Box\nfrom ALICE";
     check(!g_hd_texts.empty() && g_hd_texts[0].entry == 66 && g_hd_texts[0].kind == 0 &&
               g_hd_texts[0].text == first && g_hd_texts[0].entry_then == first,
           "the icon and the translation's name, the suffix under it, in entry 66 before the call");
@@ -120,8 +126,8 @@ void test_popups_take_turns_and_empty() {
     queue(game, "apply\npopup 0 FROM BOB");
     frames(game, 25);
     check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 70 &&
-              g_hd_texts[1].text == L"Energy Tank\nFROM BOB" &&
-              entry_text(g_small, 70) == L"Energy Tank\nFROM BOB" &&
+              g_hd_texts[1].text == L"Energy Tank\nfrom BOB" &&
+              entry_text(g_small, 70) == L"Energy Tank\nfrom BOB" &&
               entry_text(g_small, 66) == first,
           "the second in entry 70, the first's kept");
     check(game.unload_blocker() != nullptr, "an unload waits while one is read");
@@ -239,7 +245,7 @@ void test_the_last_item_name() {
     start(game);
     queue(game, "apply\npopup 50 FROM ALICE");
     frames(game, 1);
-    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nFROM ALICE"),
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nfrom ALICE"),
           "the last entry's name, as the translation has it");
     game.put_back_all(&no_callback);
 }
@@ -473,53 +479,257 @@ void test_archipelago_built_again_and_back() {
     check(g_builds.empty(), "with the flag clear, no translated text built");
 }
 
-void test_assist_shows_its_pixel_glyphs(bool on = true) {
+// In a translation the locked ASSIST is its translated text with the padlock after it, in the
+// locked style, built where the game's attach builds it; the padlock left out where it would pass
+// the options box; built again when the game builds the label again; the entry's text back when
+// unlocked. With the flag clear, the pixel look, the padlock eighth.
+void test_assist_in_a_translation(bool on = true) {
     reset_translation();
     load_translation("English(HD)", on);
     OptionsMenu options(reinterpret_cast<void*>(&widget_handler),
                         reinterpret_cast<void*>(&assist_menu));
     zap::GameAddresses a = options.addresses();
     with_translation(a);
-    TranslatedText text(options.label);
-    BYTE (&translated)[3][0x1D8] = text.glyphs;
+    HdGlyphs<3 * zap::kAssistLength> hd(options.label);
+    for (int i = 0; i < zap::kAssistLength; ++i) {
+        put<double>(options.glyph_list[i], 0x40, 137.0 + 8 * i);
+        put<double>(options.glyph_list[i], 0x48, 172.0);
+        options.glyph_list[i][0x120] = 0;  // hidden, as the attach left them
+    }
+    built(options.label, 136.0, 171.0);
+    // The options box's border: its top right piece from x 193 (shot 13's box in English(HD)).
+    BYTE piece[0x80] = {};
+    put<BYTE*>(options.second, 0x228, piece);
+    put<double>(piece, 0x40, 193.0);
     zap::AssistLock lock;
-    check(lock.install(a), "locked");
     auto frame = [&](int i) { return get<int32_t>(options.glyph_list[i], 0x1C4); };
+    auto count = [&] { return get<int32_t>(options.label, 0x248); };
+    auto all_locked_style = [&] {
+        for (int i = 0; i < count(); ++i) {
+            if (get<int32_t>(hd.glyphs[i], 0x1D0) != 5) return false;
+        }
+        return count() > 0;
+    };
+    check(lock.install(a), "locked");
+    check(frame(7) == zap::kLockGlyph, "the pixel glyphs styled as ever, the padlock eighth");
     if (!on) {
-        // The flag clear (the default English, a translated label built before): left alone.
-        check(get<int32_t>(options.label, 0x244) == 3 && translated[0][0x120] == 1 &&
-                  frame(7) == zap::kLockGlyph && frame(6) == 0 && lock.restore(a) &&
-                  get<int32_t>(options.label, 0x244) == 3,
-              "the flag clear: its translated glyphs left as they are, the padlock eighth");
+        check(g_builds.empty() && lock.restore(a) && g_builds.empty(),
+              "the flag clear: nothing built");
         return;
     }
-    check(zap::pixel_glyphs_shown(options.label) && options.glyph_list[6][0x120] == 1 &&
-              translated[0][0x120] == 0,
-          "its pixel glyphs shown, the padlock with them, its translated ones hidden");
-    // The box a translation sizes from its own texts ends after ASSIST's seventh glyph in
-    // English(HD): the padlock right after the letters.
-    check(frame(6) == zap::kLockGlyph && frame(7) == 0, "the padlock seventh, no blank before it");
-    // The default English picked while locked: the padlock back in the eighth glyph.
-    g_translation[0x91] = 0;
-    check(!lock.install(a) && frame(7) == zap::kLockGlyph && frame(6) == 0,
-          "the flag cleared: the padlock eighth again, the seventh blank");
+    check(!g_builds.empty() && g_builds.back().text == L"Assist \xE03B" &&
+              g_builds.back().x == 136.0f && g_builds.back().y == 171.0f && count() == 7 &&
+              all_locked_style() && !zap::pixel_glyphs_shown(options.label),
+          "its translated text with the padlock, in the locked style, its pixel glyphs hidden");
+    // Kept while locked; the game building the label again is noticed and built over.
+    const size_t builds = g_builds.size();
+    put<int32_t>(hd.glyphs[0], 0x1D0, 0x15);  // the menu restyles it
+    check(!lock.install(a) && g_builds.size() == builds && all_locked_style(),
+          "kept, its style pinned");
+    built(options.label, 136.0, 171.0);
+    put<int32_t>(options.label, 0x248, 6);  // the game's Assist again
+    check(!lock.install(a) && g_builds.size() == builds + 1 &&
+              g_builds.back().text == L"Assist \xE03B",
+          "built again over the game's");
+    check(lock.restore(a) && g_builds.back().text == L"Assist" && count() == 6,
+          "unlocked: the entry's text again");
+
+    // A box too narrow for the padlock: the text alone.
+    g_builds.clear();
+    put<double>(piece, 0x40, 176.0);
+    zap::AssistLock narrow;
+    check(narrow.install(a) && g_builds.size() == 2 && g_builds.back().text == L"Assist" &&
+              all_locked_style(),
+          "the padlock left out where it would pass the box");
+    narrow.restore(a);
+}
+
+// The popups' layout in a translation's font: lines measured as the builder lays them out (a
+// stand-in pixel font, every character 6 wide, a space 3), wrapped at the cap, a popup's lines
+// centered with spaces, a notice's left as they wrap; without metrics, wrapped by characters.
+void test_the_popup_layout() {
+    reset_translation();
+    load_translation();
+    zap::GameAddresses a;
+    with_translation(a);
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);  // advance 6 at scale 1
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);  // a pixel font
+    zap::FontMetrics m;
+    check(m.load(a) && m.width(L"ab c") == 21.0 && m.space() == 3.0, "measured as laid out");
+    put<int32_t>(font, 0x30 + 'q' * 4, -1);  // no glyph: skipped
+    check(m.width(L"aqb") == 12.0, "a character with no glyph takes no room");
+    check(zap::layout_popup(L"Energy Tank", L"from Bob", &m, 192, 30) ==
+              L"Energy Tank\n   from Bob",
+          "a popup's shorter line centered with spaces");
+    check(zap::layout_popup(L"Tank", L"from Bob", &m, 192, 30) == L"    Tank\nfrom Bob",
+          "whichever line is shorter (half of 21 over 3, rounded)");
+    auto pad = [](size_t n, const wchar_t* line) { return std::wstring(n, L' ') + line; };
+    check(zap::layout_popup(L"Energy Tank", L"from a player with a long name", &m, 60, 30) ==
+              pad(4, L"Energy\n") + pad(6, L"Tank\n") + pad(5, L"from a\n") +
+                  pad(4, L"player\n") + L"with a long\n" + pad(6, L"name"),
+          "every line no wider than the cap, words whole, centered on the widest");
+    check(zap::layout_popup(L"", L"Hint: the item is here and there", &m, 60, 30) ==
+              L"Hint: the\nitem is\nhere and\nthere",
+          "a notice wrapped, left as it wraps");
+    check(zap::layout_popup(L"", L"line one\nline two", &m, 192, 30) == L"line one\nline two",
+          "a notice's own line breaks kept");
+    check(zap::layout_popup(L"Energy Tank", L"from Bob", nullptr, 0, 8) ==
+              L"Energy\nTank\nfrom Bob",
+          "no metrics: wrapped by characters, not centered");
+    put<double>(font, 0x40060, std::numeric_limits<double>::quiet_NaN());
+    check(!m.load(a), "a font whose values are not a loaded font's: not measured");
+    put<double>(font, 0x40060, 1.0);
+    check(zap::hd_suffix("FROM Bob") == L"from Bob" &&
+              zap::hd_suffix("FROM ALICE") == L"from ALICE" &&
+              zap::hd_suffix("FOR Bob") == L"FOR Bob",
+          "the client's FROM in the sentence's case, the name as sent");
+    reset_translation();
+}
+
+// The icon sheets through the game: painted while a translation shows, cleared when the default
+// English is picked and before an unload (put_back_all), and left as the game's where a cell is
+// its.
+void test_the_icons_through_the_game() {
+    zap::Game game;
+    start(game);
+    gl_fake::reset_gl();
+    game.set_gl(gl_fake::fake_gl());
+    BYTE hd[0x1D8] = {}, pixel[0x1D8] = {};
+    for (BYTE* t : {hd, pixel}) put<int32_t>(t, 0x1BC, 256);
+    put<int32_t>(hd, 0x1D0, static_cast<int32_t>(gl_fake::kHdSheet));
+    put<int32_t>(pixel, 0x1D0, static_cast<int32_t>(gl_fake::kPixelSheet));
+    g_template_list[101] = hd;
+    g_template_list[104] = pixel;
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6 && !gl_fake::all_blank(gl_fake::g_uploads),
+          "painted into both sheets while the translation shows");
+    gl_fake::g_uploads.clear();
+    g_translation[0x91] = 0;  // the default English picked
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
+          "cleared when the default English is picked");
+    gl_fake::g_uploads.clear();
+    frames(game, 1);
+    check(gl_fake::g_uploads.empty(), "and not again");
     g_translation[0x91] = 1;
-    check(!lock.install(a) && frame(6) == zap::kLockGlyph && frame(7) == 0, "and back");
-    // The game shows its translated glyphs again (event 0xF shows the first +0x244 of them,
-    // none now): the watch shows the pixel ones again anyway.
-    put<int32_t>(options.label, 0x244, 3);
-    check(!lock.install(a) && zap::pixel_glyphs_shown(options.label), "kept while locked");
-    check(lock.restore(a), "unlocked");
-    check(!zap::pixel_glyphs_shown(options.label) && get<int32_t>(options.label, 0x244) == 3 &&
-              get<int32_t>(options.label, 0x1EC) == 0 && translated[2][0x120] == 1 &&
-              options.glyph_list[0][0x120] == 0,
-          "its translated text again, as the game left it");
+    frames(game, 1);
+    check(gl_fake::g_uploads.size() == 6, "painted again with the translation back");
+    gl_fake::g_uploads.clear();
+    game.put_back_all(&no_callback);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
+          "cleared before an unload");
+
+    // A cell the game's art uses: left as it is.
+    zap::Game other;
+    start(other);
+    gl_fake::reset_gl();
+    gl_fake::g_icon_cell_used = true;
+    other.set_gl(gl_fake::fake_gl());
+    frames(other, 1);
+    check(gl_fake::g_uploads.empty(), "a sheet whose cell the game uses: left as the game's");
+    other.put_back_all(&no_callback);
+    check(gl_fake::g_uploads.empty(), "and nothing to clear");
+    g_template_list[101] = g_template_list[104] = nullptr;
+    gl_fake::reset_gl();
+    reset_translation();
+}
+
+// A popup measured as the font draws it, through the game: a pixel font (every character 6 wide,
+// a space 3) and its icon sheet (each icon 8 wide), the icon led name over the suffix, each
+// line centered on the widest; a long notice wrapped at 192 pixels.
+void test_a_popup_laid_out_by_the_font() {
+    zap::Game game;
+    start(game);
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);  // a pixel font: definition 104's icons
+    std::vector<BYTE> frames_list(256 * 0x38);
+    for (int f = 0; f < 256; ++f) put<int16_t>(frames_list.data() + f * 0x38, 0x28, 8);
+    BYTE sheet[0x1D8] = {};
+    put<int32_t>(sheet, 0x1BC, 256);
+    put<BYTE*>(sheet, 0x1A8, frames_list.data());
+    g_template_list[104] = sheet;
+    queue(game, "apply\npopup 36 FROM Bob");
+    frames(game, 1);
+    // "\xE029Missile Box" is 8 + 10 x 6 + 3 = 71 wide, "from Bob" 45: 13 more each side, 4 spaces.
+    check(g_hd_texts.size() == 1 &&
+              g_hd_texts[0].text == L"\xE029" L"Missile Box\n    from Bob",
+          "the icon led name over the suffix, centered with spaces, measured with the icon's "
+          "width");
+    // A notice longer than a line: wrapped, no line wider than 192.
+    end_message(0);
+    frames(game, 200);
+    g_hd_texts.clear();
+    g_message_slot = 1;
+    queue(game,
+          "apply\nnotice 49 HINT: PROGRESSIVE FORCE BLASTER IS AT DOUBLE JUMP FLOATING SHEEP IN "
+          "BOB'S WORLD");
+    frames(game, 1);
+    zap::FontMetrics m;
+    zap::GameAddresses a;
+    with_translation(a);
+    a.sprite_templates = reinterpret_cast<BYTE*>(&g_sprite_templates);
+    bool narrow = !g_hd_texts.empty() && m.load(a);
+    size_t lines = 0;
+    for (size_t at = 0; narrow && at <= g_hd_texts[0].text.size(); ++lines) {
+        size_t end = g_hd_texts[0].text.find(L'\n', at);
+        if (end == std::wstring::npos) end = g_hd_texts[0].text.size();
+        narrow = m.width(g_hd_texts[0].text.substr(at, end - at)) <= 192;
+        at = end + 1;
+    }
+    check(narrow && lines >= 3, "a long notice wrapped, no line wider than a pixel popup");
+    g_template_list[104] = nullptr;
+    game.put_back_all(&no_callback);
+    reset_translation();
+}
+
+// The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
+// capitals in any other translation, as in the default English's pixel text.
+void test_the_suffix_case() {
+    zap::Game hd;
+    start(hd);
+    queue(hd, "apply\npopup 36 FROM Bob");
+    frames(hd, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nfrom Bob"),
+          "English(HD): the suffix in the case the client sent it");
+    hd.put_back_all(&no_callback);
+
+    zap::Game french;
+    start(french);
+    load_translation("French");
+    queue(french, "apply\npopup 36 FROM Bob");
+    frames(french, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nFROM BOB"),
+          "French: the suffix in capitals");
+    french.put_back_all(&no_callback);
+
+    zap::Game plain;
+    start(plain, false);
+    queue(plain, "apply\npopup 36 FROM Bob");
+    frames(plain, 1);
+    check(g_hd_texts.empty() && g_text.find("FROM BOB") != std::string::npos,
+          "the default English: the pixel text in capitals, as before");
+    plain.put_back_all(&no_callback);
+    reset_translation();
 }
 
 }  // namespace
 
 int main() {
     test_the_text_helpers();
+    test_the_popup_layout();
+    test_the_icons_through_the_game();
+    test_a_popup_laid_out_by_the_font();
+    test_the_suffix_case();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();
@@ -532,7 +742,7 @@ int main() {
     test_the_scanner_line();
     test_the_default_english_untouched();
     test_archipelago_built_again_and_back();
-    test_assist_shows_its_pixel_glyphs();
-    test_assist_shows_its_pixel_glyphs(false);
+    test_assist_in_a_translation();
+    test_assist_in_a_translation(false);
     return report("translation tests");
 }

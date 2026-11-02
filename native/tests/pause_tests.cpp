@@ -242,9 +242,10 @@ void test_the_text() {
 
 }  // namespace
 
-// In a translation the KEYS label's translated text is drawn over the row: its pixel glyphs
-// shown in its place, again after the game builds it again (OPTION MENU's return). With the flag
-// clear (the default English, a translated label built before) the label is left as it is.
+// In a translation the count is the KEYS label's translated text, in the translation's font,
+// centered on the row (x 160), the key slots' characters hidden; built again after the game
+// builds KEYS again (OPTION MENU's return). With the flag clear (the default English, a
+// translated label built before) the label is left as it is and the key slots show.
 void test_the_row_in_a_translation() {
     for (bool on : {true, false}) {
         stand_in::reset_translation();
@@ -253,26 +254,46 @@ void test_the_row_in_a_translation() {
         zap::PauseDiskRow row;
         zap::GameAddresses a = p.addresses();
         stand_in::with_translation(a);
-        stand_in::TranslatedText text(p.label);
-        BYTE (&translated)[3][0x1D8] = text.glyphs;
+        stand_in::HdGlyphs<12> hd(p.label);
+        put<double>(p.glyph[0], 0x40, 144.0);
+        put<double>(p.glyph[0], 0x48, 208.0);
+        stand_in::built(p.label, 143.0, 207.0);
+        put<int32_t>(p.label, 0x248, 4);  // the game's Keys
         row.set(zap::pause_row_text(2, 15));
         row.watch(a, false);
+        auto slots_shown = [&] {
+            for (int k = 0; k < 4; ++k) {
+                if (p.sprite[k][0x120] == 0) return false;
+            }
+            return true;
+        };
         if (on) {
-            check(zap::pixel_glyphs_shown(p.label) && translated[0][0x120] == 0 &&
-                      p.glyph[0][0x120] == 1,
-                  "the count's pixel glyphs shown over the translated KEYS");
-            put<int32_t>(p.label, 0x244, 3);  // built again on OPTION MENU's return
-            put<int32_t>(p.label, 0x1EC, 0);
+            const int32_t n = get<int32_t>(p.label, 0x248);
+            const double middle = (hd.x(0) + hd.x(n - 1) + stand_in::kHdWidth) / 2;
+            check(!stand_in::g_builds.empty() && stand_in::g_builds.back().text == L"2 of 15" &&
+                      n == 5 && middle == 160.0 && !zap::pixel_glyphs_shown(p.label) &&
+                      p.glyph[0][0x120] == 0,
+                  "the count in the translation's font, centered on the row");
+            check(!slots_shown(), "the key slots' characters hidden");
+            const size_t builds = stand_in::g_builds.size();
             row.watch(a, false);
-            check(zap::pixel_glyphs_shown(p.label), "and again on the next look");
+            check(stand_in::g_builds.size() == builds, "kept while it is the helper's");
+            stand_in::built(p.label, 143.0, 207.0);  // built again on OPTION MENU's return
+            put<int32_t>(p.label, 0x248, 4);
+            row.watch(a, false);
+            check(stand_in::g_builds.size() == builds + 2 &&
+                      stand_in::g_builds.back().text == L"2 of 15",
+                  "and again after the game's");
         } else {
-            check(get<int32_t>(p.label, 0x244) == 3 && translated[1][0x120] == 1,
-                  "the flag clear: the label's translated glyphs left alone");
+            check(stand_in::g_builds.empty() && slots_shown(),
+                  "the flag clear: nothing built, the key slots shown");
         }
         row.set("");
         row.watch(a, false);
     }
     stand_in::reset_translation();
+    check(zap::hd_row_text(" 2 OF ? ") == L"2 of ?" && zap::hd_row_text("12 OF 15") == L"12 of 15",
+          "the row's text as a translation shows it");
 }
 
 int main() {

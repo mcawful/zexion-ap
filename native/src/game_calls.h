@@ -478,6 +478,7 @@ private:
     int disc_count_ = 0, discs_required_ = 0;
     int scan_frames_ = 0;  // frames until the next scanner check
     ApItems ap_items_;
+    IconSheets icon_sheets_;  // the helper's icons in the translations' fonts
     // Runs a received item's pickup event (the Energy Shield's): "" or why not.
     std::string run_item_event(uint8_t item);
     int play_cell_ = -1;

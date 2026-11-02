@@ -22,7 +22,7 @@ const char kDiskDescription[] =
 // (ItemNames 44) and panel 3 (LargeText 87, the Energy Tank's), built again as these. The
 // description is one line with a blank first, as the game's own (English(HD)'s 342), and the
 // builder wraps it at the box's columns, as the game asks for its descriptions (0xB3268).
-const wchar_t kDiskNameHd[] = L"OS Install Disk";
+const wchar_t kDiskNameHd[] = L"\xE03A" L"OS Install Disk";  // the disk icon first (IconSheets)
 const wchar_t kDiskDescriptionHd[] =
     L" These few disks hold an old but secure OS install that my planet needs to run its "
     L"defense network.";
@@ -217,8 +217,8 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     set(description_label, kDiskDescription, 0, kDescriptionGlyphs);
     set(name_label, kDiskName, 1, kNameGlyphs);
     // In a translation the pixel glyphs stay hidden, as the game left them: the translated texts
-    // are built again instead (translation.h), and the icon, a glyph of the pixel font, is left
-    // out.
+    // are built again instead (translation.h), the name after the disk icon in the translation's
+    // font (apitem.h IconSheets), as the game puts a record's icon before its name.
     if (translation_on(a)) {
         rebuild_label(a, name_label, kDiskNameHd);
         rebuild_label(a, description_label, kDiskDescriptionHd, {.wrap = true});

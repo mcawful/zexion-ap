@@ -567,6 +567,55 @@ void test_the_screen_note_in_a_translation() {
     reset_translation();
 }
 
+// In a translation with LargeText readable and room in the title's translated text: the title
+// built again as LargeText 220's with the note under it, in the translation's font, wrapped and
+// centered across and kept at the middle the game's title had; the game's own entry again once
+// the note goes, and 219's for a hint the helper replaced. Without LargeText's count, the pixel
+// glyphs as before.
+void test_the_title_in_a_translations_font() {
+    reset_translation();
+    load_translation();
+    FeatsScreen screen;
+    BYTE* current = screen.menu;
+    zap::GameAddresses a;
+    a.current_menu = reinterpret_cast<BYTE*>(&current);
+    a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
+    with_translation(a);
+    HdGlyphs<3 * FeatsScreen::kLength> hd(screen.label);
+    for (int i = 0; i < 3 * FeatsScreen::kLength; ++i) {
+        put<double>(hd.glyphs[i], 0xA0, -4.0);  // each glyph's quad 8 high about its place
+        put<double>(hd.glyphs[i], 0xC0, 4.0);
+    }
+    put<double>(screen.glyphs[0], 0x40, 8.0);
+    // The game's title, one line, its middle at y 33.
+    built(screen.label, 7.0, 30.0);
+    check(zap::rebuild_label(a, screen.label, L"Feats of Natu!", {.wrap = true}), "the game's");
+    const double middle = hd.y(0);
+    g_builds.clear();
+    check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(),
+          "the note in the pixel glyphs, as ever");
+    const int32_t n = get<int32_t>(screen.label, 0x248);
+    check(!g_builds.empty() &&
+              g_builds.back().text == L"Feats of Natu!\nArchipelago save: no Feats earned" &&
+              g_builds.back().flag == 1 && !zap::pixel_glyphs_shown(screen.label),
+          "the title and the note under it in the translation's font, wrapped as the game's");
+    check((hd.y(0) + hd.y(n - 1)) / 2 == middle,
+          "kept at the middle the game's title had (its lines about it)");
+    const size_t builds = g_builds.size();
+    check(zap::feats_screen_note(a, true) && g_builds.size() == builds, "kept while it shows");
+    check(zap::feats_screen_note(a, false) && g_builds.back().text == L"Feats of Natu!",
+          "blanked: LargeText 220's own text again");
+
+    // No LargeText count (a cache from before it): the pixel glyphs, as before.
+    g_builds.clear();
+    a.large_count = nullptr;
+    check(zap::feats_screen_note(a, true) && g_builds.empty() &&
+              zap::pixel_glyphs_shown(screen.label),
+          "without LargeText: the pixel glyphs shown");
+    zap::feats_screen_note(a, false);
+    reset_translation();
+}
+
 void test_the_screen_note() {
     const std::string blank(FeatsScreen::kColumns, '.');
     FeatsScreen screen;
@@ -893,6 +942,7 @@ int main() {
     test_refusals();
     test_the_screen_note();
     test_the_screen_note_in_a_translation();
+    test_the_title_in_a_translations_font();
     test_the_hint_replaced();
     test_the_note_after_an_ending();
     test_put_back();

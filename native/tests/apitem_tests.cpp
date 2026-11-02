@@ -438,7 +438,82 @@ void test_one_readback_for_every_painter() {
           "a slot not blank stops only what paints there");
 }
 
+// The helper's icons in the translations' icon sheets: painted into frames 0x96 to 0x98 of each
+// sheet the game loaded (definitions 101 and 104, their GL names at the templates' +0x1D0),
+// only where the cells are blank and the game's art is where the PNG has it; cleared after.
+void test_the_icon_sheets() {
+    gl_fake::reset_gl();
+    BYTE hd[0x1D8] = {}, pixel[0x1D8] = {};
+    put<int32_t>(hd, 0x1BC, 256);
+    put<int32_t>(hd, 0x1D0, static_cast<int32_t>(gl_fake::kHdSheet));
+    put<int32_t>(pixel, 0x1BC, 256);
+    put<int32_t>(pixel, 0x1D0, static_cast<int32_t>(gl_fake::kPixelSheet));
+    stand_in::g_template_list[101] = hd;
+    stand_in::g_template_list[104] = pixel;
+    BYTE* holder = reinterpret_cast<BYTE*>(&stand_in::g_sprite_templates);
+    const zap::GlFunctions gl = gl_fake::fake_gl();
+    zap::IconSheets sheets;
+    sheets.paint(holder, gl);
+    const auto& up = gl_fake::g_uploads;
+    check(up.size() == 6 && sheets.painted(), "three icons into each sheet");
+    check(up.size() == 6 && up[0].x == 6 * 64 && up[0].y == 9 * 64 && up[0].w == 64 &&
+              up[0].h == 64 && up[2].x == 8 * 64 && up[3].x == 6 * 10 && up[3].y == 9 * 9 &&
+              up[3].w == 10 && up[3].h == 9,
+          "frames 0x96 to 0x98: 64 x 64 cells in the HD sheet, 10 x 9 in the pixel one");
+    check(gl_fake::g_bound == 3 && gl_fake::g_row_length == 5, "the game's binding put back");
+    check(!gl_fake::all_blank(up), "painted, not blank");
+    // The HD disk: its hole clear, its ring white and opaque.
+    const std::vector<uint8_t> disk = zap::IconSheets::art(0, 64, 64);
+    auto alpha = [&](const std::vector<uint8_t>& a, int w, int x, int y) {
+        return a[(static_cast<size_t>(y) * w + x) * 4 + 3];
+    };
+    check(alpha(disk, 64, 32, 32) == 0 && alpha(disk, 64, 32, 10) == 255 &&
+              disk[(10 * 64 + 32) * 4] == 255,
+          "the HD disk: a hole in a white disc");
+    const std::vector<uint8_t> lock = zap::IconSheets::art(1, 10, 9);
+    check(alpha(lock, 10, 1 + 3, 0) == 255 && alpha(lock, 10, 0, 0) == 0,
+          "the pixel padlock: the 8 x 8 glyph a column in");
+    // Painted again only now and then.
+    gl_fake::g_uploads.clear();
+    sheets.paint(holder, gl);
+    check(gl_fake::g_uploads.empty(), "not every frame");
+    // Each sheet's icons made once (the HD ones take milliseconds): a repaint makes none.
+    const int made = zap::IconSheets::arts_made();
+    for (int frame = 0; frame < 301; ++frame) sheets.paint(holder, gl);
+    check(gl_fake::g_uploads.size() == 6 && zap::IconSheets::arts_made() == made,
+          "painted again after a while, its icons not made again");
+    gl_fake::g_uploads.clear();
+    sheets.clear(holder, gl);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads) &&
+              !sheets.painted(),
+          "cleared");
+
+    // The game's art in the cell, or not where the PNG has it: left alone.
+    for (int k = 0; k < 2; ++k) {
+        gl_fake::reset_gl();
+        if (k == 0) gl_fake::g_icon_cell_used = true;
+        if (k == 1) gl_fake::g_known_art = false;
+        zap::IconSheets other;
+        other.paint(holder, gl);
+        check(gl_fake::g_uploads.empty() && !other.painted(),
+              k == 0 ? "a cell the game uses: not painted" : "not the game's art: not painted");
+        // Read again now and then, three times a texture at most (each read is the whole sheet).
+        for (int frame = 0; frame < 5 * 301; ++frame) other.paint(holder, gl);
+        check(gl_fake::g_readbacks == 2 * 3, "three reads of each sheet, then no more");
+    }
+    // No sheet (a template not of 256 frames): nothing.
+    gl_fake::reset_gl();
+    put<int32_t>(hd, 0x1BC, 12);
+    stand_in::g_template_list[104] = nullptr;
+    zap::IconSheets none;
+    none.paint(holder, gl);
+    check(gl_fake::g_uploads.empty(), "no sheet as traced: nothing painted");
+    stand_in::g_template_list[101] = nullptr;
+    gl_fake::reset_gl();
+}
+
 int main() {
+    test_the_icon_sheets();
     test_font_glyph();
     test_an_image_of_its_own();
     test_an_image_in_colors();

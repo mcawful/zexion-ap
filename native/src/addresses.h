@@ -124,6 +124,7 @@ struct GameAddresses {
     BYTE* hd_text_fn = nullptr;         // gives a message translated text (0x1870A0)
     BYTE* hd_build_fn = nullptr;        // builds a label's translated text (0x88480)
     BYTE* wstring_new_fn = nullptr;     // the game's std::wstring assign (0x17BD0)
+    BYTE* large_count = nullptr;        // LargeText's entry count (16-bit); may be null
 
     // Not a key: set before configure (Game::set_hooks). A null hook leaves that part's game
     // function as the game's.

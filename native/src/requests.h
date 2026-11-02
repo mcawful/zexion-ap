@@ -30,6 +30,9 @@ struct Popup {
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
+    // The same characters in the case they were sent in, for a translation's font (a
+    // received item's "FROM Bob"); empty for the helper's own.
+    std::string as_sent;
 };
 
 struct Batch {

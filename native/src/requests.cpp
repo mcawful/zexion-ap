@@ -114,14 +114,19 @@ std::string parse_batch(const std::string& request, Batch& out) {
             if (!(words >> item) || item >= record::kCount) return "bad line " + line;
             std::string rest;
             std::getline(words >> std::ws, rest);
-            std::string suffix;
+            std::string suffix, as_sent;
             for (char c : rest) {
+                const size_t before = suffix.size();
                 keep_font_char(suffix, static_cast<unsigned char>(c), kept);
+                if (suffix.size() > before) as_sent += c;  // the same character, its case
                 if (suffix.size() >= most) break;
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
+            as_sent.resize(suffix.size());
             if (bare && suffix.empty()) return "bad line " + line;
-            out.popups.push_back(Popup{static_cast<uint8_t>(item), suffix, bare, true});
+            Popup p{static_cast<uint8_t>(item), suffix, bare, true};
+            p.as_sent = as_sent;
+            out.popups.push_back(std::move(p));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }

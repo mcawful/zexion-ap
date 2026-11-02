@@ -178,6 +178,48 @@ extern const char kApItemRows[8][9];
 // it (files.h).
 extern const char kApLogoRows[16][17];
 
+// The helper's icons in the translations' fonts (docs/re/memory.md, "The translations' icons").
+// A translation draws a record's icon from an icon sheet (definition 101, BigFontIcons.png, 16 x 16
+// cells of 64 x 64, for English(HD)'s HD icons; 104, PixelFontIcons.png, cells of 10 x 9, for the
+// rest), the characters U+E024 to U+E04E as its frames 0x80 to 0xAA (0x8911D). Frames 0x96 to 0x9F
+// are blank in both sheets and no record's icon reaches them, so the helper paints its disk,
+// padlock and AP logo into 0x96 to 0x98, and its text uses these characters for them.
+constexpr wchar_t kHdDiskIcon = 0xE03A, kHdLockIcon = 0xE03B, kHdLogoIcon = 0xE03C;
+constexpr int kHdIconCount = 3;
+
+class IconSheets {
+public:
+    // Game thread (the GL context current), each frame while wanted: paints the icons into each
+    // sheet the game loaded, now and then and whenever its texture changes, only where their
+    // cells are blank in the game's art or already the helper's, with the game's art where the
+    // PNG has it. `templates_holder` holds the pointer to the sprite definitions' templates.
+    void paint(BYTE* templates_holder, const GlFunctions& gl);
+    // Game thread: the icons cleared from each sheet painted (when no longer wanted, before an
+    // unload).
+    void clear(BYTE* templates_holder, const GlFunctions& gl);
+    bool painted() const { return sheets_[0].painted != 0 || sheets_[1].painted != 0; }
+
+    // The icon `k` (0 the disk, 1 the padlock, 2 the logo) as painted into a cell of w x h: white,
+    // its alpha the shape's (exposed for the tests).
+    static std::vector<uint8_t> art(int k, int w, int h);
+    // How many times art has run (the tests: each sheet makes its icons once).
+    static int arts_made() { return arts_made_; }
+
+private:
+    struct Sheet {
+        int definition, width, height, cell_w, cell_h;
+        unsigned painted = 0, failed = 0, checked = 0;
+        int frames_to_paint = 0;
+        int tries = 0;  // reads of `failed` that found it not as traced
+        std::vector<uint8_t> icons[kHdIconCount];  // art(k, cell_w, cell_h), made once
+    };
+    bool upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear);
+    // The sheet's icon k, made the first time it is wanted (the HD ones take milliseconds).
+    static const std::vector<uint8_t>& icon(Sheet& s, int k);
+    Sheet sheets_[2] = {{101, 1024, 1024, 64, 64}, {104, 160, 144, 10, 9}};
+    inline static int arts_made_ = 0;
+};
+
 class ApItems {
 public:
     // Game thread. The labels by map cell (index y * 54 + x), already filtered to the font.

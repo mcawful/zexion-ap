@@ -41,6 +41,9 @@ constexpr int kScanEntry = 12;
 constexpr wchar_t kIntelHdName[] = L"Intel Chip";
 // The most characters of a translated item name read for a popup when its room is not known.
 constexpr int32_t kNameRoom = 64;
+// The translation whose popups show the client's suffix in its own case ("from Bob"), as
+// language_name names it.
+constexpr char kMixedCaseLanguage[] = "English(HD)";
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -173,6 +176,9 @@ constexpr ConfigKey kConfigKeys[] = {
     translation_key(code("hd_text_fn", &G::hd_text_fn)),
     translation_key(code("hd_build_fn", &G::hd_build_fn)),
     translation_key(code("wstring_new_fn", &G::wstring_new_fn)),
+    // LargeText's count, for the Feats screen's title (feats.h): without it (a cache from
+    // before it) that title alone stays in the pixel font.
+    translation_key(data("large_count", &G::large_count)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -448,7 +454,13 @@ void Game::pump_popups() {
 }
 
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
-    if (popup.bare) return hd_text(popup.suffix);
+    // Laid out as the font draws it: no line wider than a pixel popup's (kGamePopupWidth
+    // characters of 8 pixels), a popup's lines centered (translation.h layout_popup).
+    FontMetrics metrics;
+    const FontMetrics* m = metrics.load(at_) ? &metrics : nullptr;
+    constexpr double kCap = kGamePopupWidth * 8.0;
+    constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
+    if (popup.bare) return layout_popup(L"", hd_text(popup.suffix), m, kCap, kCapCharacters);
     const int stand_in = stand_in_index(popup.item);
     std::wstring name;
     std::optional<std::wstring> held = tr_entries_.original({Table::kItems, popup.item});
@@ -462,8 +474,11 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
                                      : std::string(record_name(rec)));
     }
     std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
-    const std::wstring suffix = hd_text(popup.suffix);
-    return suffix.empty() ? head : head + L'\n' + suffix;
+    // The suffix in its own case in English(HD) only, the owner's choice; every other translation
+    // keeps it in capitals, as the default English's pixel text has it.
+    const bool own_case = !popup.as_sent.empty() && language_name(at_) == kMixedCaseLanguage;
+    const std::wstring suffix = own_case ? hd_suffix(popup.as_sent) : hd_text(popup.suffix);
+    return layout_popup(head, suffix, m, kCap, kCapCharacters);
 }
 
 void Game::note_play(uint64_t now_ms) {
@@ -638,6 +653,12 @@ void Game::watch_all(WidgetCallback callback) {
 void Game::watch_translation() {
     const std::optional<Loaded> now = loaded_translation(at_);
     popup_areas_.watch(now);
+    // The helper's icons in the translation's icon sheets while its text shows (apitem.h).
+    if (now && now->on) {
+        icon_sheets_.paint(at_.sprite_templates, gl_);
+    } else if (icon_sheets_.painted()) {
+        icon_sheets_.clear(at_.sprite_templates, gl_);
+    }
     std::map<EntryKey, std::wstring> want;
     if (now && now->on) {
         // The stand-ins' names while their records are (the pickup popup reads ItemNames by
@@ -1359,6 +1380,7 @@ void Game::put_back_all(WidgetCallback callback) {
         const std::optional<Loaded> now = loaded_translation(at_);
         tr_entries_.restore(now);
         popup_areas_.restore(now);
+        icon_sheets_.clear(at_.sprite_templates, gl_);
     }
 }
 

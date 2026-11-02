@@ -76,7 +76,8 @@ def test_patterns_that_disagree_are_refused() -> None:
 def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
     # A pattern of the pickup counter, or of the translation's tables and functions the helper
     # does not read, breaking with an update cannot stop the client attaching.
-    assert {"pickup_counter", "large_text", "large_offsets", "large_count"} < TOOL_TARGETS
+    assert {"pickup_counter", "large_text", "large_offsets"} < TOOL_TARGETS
+    assert "large_count" not in TOOL_TARGETS  # the helper bounds LargeText by it
     assert {"database_count", "hd_entry_fn", "text_attach_fn", "large_attach_fn"} < TOOL_TARGETS
     assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
     assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)

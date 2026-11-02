@@ -25,6 +25,7 @@
 #include <string>
 
 #include "addresses.h"
+#include "translation.h"  // BuiltMark
 
 namespace zap {
 
@@ -39,6 +40,8 @@ extern const char kDiscRows[kDiscSize][kDiscSize + 1];
 // The row's text, centered on its 8 cells: "2 OF ?" before the player has been told how many
 // disks are needed (`required` 0), "2 OF 15" after.
 std::string pause_row_text(int count, int required);
+// The row's text as a translation shows it: trimmed, "2 of 15".
+std::wstring hd_row_text(const std::string& text);
 
 class PauseDiskRow {
 public:
@@ -76,6 +79,10 @@ private:
     bool patched_ = false;
     BYTE* entry_ = nullptr;  // in a page never freed (above)
     float game_rect_[4] = {};  // frame 829's texture rectangle, as copied
+    // In a translation: the label whose translated text is the helper's count, and its mark.
+    BYTE* hd_label_ = nullptr;
+    BuiltMark hd_mark_;
+    bool slots_hidden_ = false;  // the key slots' characters hidden for a translation
 };
 
 }  // namespace zap

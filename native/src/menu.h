@@ -18,6 +18,7 @@
 #include <cstdint>
 
 #include "addresses.h"
+#include "translation.h"  // BuiltMark
 
 namespace zap {
 
@@ -74,14 +75,15 @@ private:
 // The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
 // the helper draws its label like STYLE: AUTO (style 5, palette 0, its gray tint; re-applied
 // while its menu is up, as the menu changes palette after some screens) and puts a padlock in
-// its eighth glyph (its seventh in a translation, so it stays in the box). It clears the callback, which the generic widget handler then skips
+// its eighth glyph; in a translation its translated text is built again with the padlock
+// after it (apitem.h IconSheets), in the same gray (translation.h). It clears the callback, which the generic widget handler then skips
 // (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
 // panel's selectable ones (+0x1EC), so the cursor skips it. Unlocking puts all of it back,
 // under the same rules as the ARCHIPELAGO choice (a 12-glyph label reading ASSIST and six
 // blanks, 0x16285A).
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
-// helper paints it, apitem.h FontGlyph), with a blank before it (none in a translation).
+// helper paints it, apitem.h FontGlyph), with a blank before it.
 constexpr uint8_t kLockGlyph = 0xEF;
 extern const char kLockRows[8][9];
 
@@ -107,6 +109,12 @@ private:
     // Whether the widget this locked is still a live child of a panel of its menu, its
     // callback clear: found by its pointer, so a label changed meanwhile does not hide it.
     bool still_locked(const GameAddresses& addresses) const;
+    // In a translation: the label's translated text the entry's (SmallText 137) with the
+    // padlock after it, built again whenever it is not the helper's, the padlock left out
+    // where it would pass the box's right edge; every glyph in the locked style.
+    void lock_translated(const GameAddresses& addresses, BYTE* label);
+    // Its translated text the entry's again, if it is still the helper's.
+    void unlock_translated(const GameAddresses& addresses, BYTE* label);
 
     BYTE* menu_ = nullptr;
     BYTE* child_ = nullptr;
@@ -118,6 +126,8 @@ private:
     void* palettes_[kAssistLength] = {};
     int16_t palette_numbers_[kAssistLength] = {};
     float tints_[kAssistLength][6] = {};
+    BuiltMark hd_mark_;  // the helper's translated text, while it is (translation.h)
+    BYTE* hd_label_ = nullptr;
 };
 
 }  // namespace zap

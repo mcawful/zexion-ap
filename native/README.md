@@ -164,7 +164,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   objects and slots, and the game's text functions), may be missing from the cache too: the
   helper then configures with them unset, every other part as usual (the client's parts ready if
   the client-only keys are there), and the translation parts stand down ("Translations"), so a
-  cache written before them keeps the default English as it was (stand-in tests:
+  cache written before them keeps the default English as it was; but for `large_count`, added
+  after: without it only the Feats screen's title keeps its pixel look in a translation (stand-in tests:
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
   `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
@@ -378,12 +379,13 @@ Working in game: 2026-10-23 ("DeathLink").
 - **Put back:** `assists free`, the menu closing, a client going away or an unload, into a menu
   still open only, and the order only if the panel is as the helper left it. An unload no frame
   comes for leaves it locked until the options menu closes, harmlessly.
-- **In a translation:** while locked, the entry shows its pixel glyphs (ASSIST, the padlock, the
-  locked look) in place of the translated Assist, the padlock right after the letters (the box
-  a translation sizes from its own texts ends there in English(HD)), and its translated text
-  again when unlocked ("Translations"; locked, seen in game 2026-11-02 in English(HD), its
-  padlock then a blank further on and drawn past the menu's box, since moved, not run in game
-  since; the unlock not run in game yet).
+- **In a translation:** while locked, the entry's translated text (SmallText 137) is built
+  again with the HD padlock after it ("Translations", the helper's icons), every glyph in
+  the locked style (a translated glyph's color is its style's); the padlock left out where it
+  would pass the options box's right edge (its border's top right piece), since a translation
+  sizes the box from its own texts; the entry's text again when unlocked. Built again whenever
+  the game builds the label again. (Seen in game 2026-11-02 in English(HD) as the pixel look
+  it replaced, its padlock past the box; this: stand-in tests only, not run in game yet.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -462,7 +464,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
 - **In a translation:** the pickup popup and the map cursor read the translation's names
   (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
   working in game 2026-11-02 in English(HD): the pickup popup AP ITEM over FOR BOB, with no logo
-  glyph, and the map cursor AP ITEM).
+  glyph, and the map cursor AP ITEM). The label's logo glyph is now the helper's HD logo
+  (U+E03C, "Translations"), so both show it (stand-in tests only, not run in game yet).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -607,15 +610,19 @@ Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unlo
 the scanner's text or the pause screen's branch is still the helper's.
 
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
-screen's disk and RETURN HOME WITH THE DISKS?'s question are built again in the translation's
-font; the pause row's count shows in the pixel font over KEYS. Run in game 2026-11-02 in
+screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
+built again in the translation's font; the pause row's count is KEYS's translated text built
+again ("2 of 15", centered on the row as the game centers a prompt's line, built again
+whenever the game builds KEYS again), the key slots' characters hidden; the disk count
+popups carry the HD disk icon. Run in game 2026-11-02 in
 English(HD) (B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): the received disks' count popups
 and the reminder in the HD font; the pause row's count in the pixel font with no Keys over it;
 the equipment screen's OS Install Disk and its description in the HD font, the description's
 first line running past the box's right edge (a bug); the question in the HD font, left of
 center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet. Since
 then the description is wrapped at the box's columns and the question centered, as the game
-does its own (not run in game since).
+does its own, and the pause row's count and the icons are in the translation's font (not run
+in game since).
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -838,12 +845,15 @@ closed, gone with it open.
     the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still blank, and
     the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It writes the
     whole line or nothing, only over a line that is blank or already its note, and only if every
-    glyph of it is writable and has the font's frames. In a translation the title label's pixel
-    glyphs are shown in place of its translated text while the note (or the title written over
-    the hint) is there, so the whole title shows in the pixel font, in English; the translated
-    title comes back when the note goes (seen in game 2026-11-02 in English(HD), `lab/ap/live50`:
-    FEATS OF NATU! and the note in the pixel font after an AP ending, then the game's own Feats
-    of Natu! in the HD font with no note while `/reload_mod` had the helper unloaded).
+    glyph of it is writable and has the font's frames. In a translation, while the note (or the
+    title written over the hint) is there, the title's translated text is built again as
+    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
+    it, wrapped, centered and kept at the title's middle as the game lays out its title
+    ("Translations"); the game's own entry (220, or 219 for the hint) again when the note goes.
+    Without LargeText's count (a cache from before the `large_count` key), or with too little
+    room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
+    font. (Seen in game 2026-11-02 in English(HD), `lab/ap/live50`, as that pixel title and
+    note; the HD title: stand-in tests only, not run in game yet.)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -957,8 +967,8 @@ Not seen in game:
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
 after it. Run in game 2026-11-02, below ("Run in game"). Stand-in tests (`tests/translation_tests.cpp`, and the
 translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `equip_tests.cpp`,
-`feats_tests.cpp` and `pause_tests.cpp`) cover all but the map cursor's name (by disassembly
-only: "The helper's calls in a translation"). Their builder lays out a stand-in font's glyphs
+`feats_tests.cpp`, `pause_tests.cpp` and `apitem_tests.cpp`) cover all but the map cursor's
+name (by disassembly only: "The helper's calls in a translation"). Their builder lays out a stand-in font's glyphs
 from the place it is given, wrapping as the game's does, so they check where a rebuilt text
 lands, not only the place passed.
 
@@ -973,7 +983,13 @@ lands, not only the place passed.
     whose area is taken waits a frame, at most 240. Its text: the item's icon as the
     private-use character the translations' fonts draw (as the pickup does), the translation's
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
-    on the next line; a notice's text as it is. A popup that cannot go there (longer than the
+    on the next line: in English(HD) in the case the client sent it, its FROM as "from" ("from
+    Bob"), in any other translation in capitals as in the default English ("FROM BOB"; the
+    owner's choice, 2026-11-02); a notice's text as it is. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
+    builder's advances, read from the font as loaded): no line wider than a pixel popup's 192
+    pixels, words whole; a popup's lines centered on the widest with leading spaces (the game
+    starts every line at the same x); a notice's left as they wrap; without the font's metrics,
+    wrapped at 30 characters. A popup that cannot go there (longer than the
     run, its area still taken after the 240 frames, the run not as traced, the tables
     unreadable with the flag set, or from an unload's put-back on) shows the helper's pixel
     text, with the mark the game's last translated message left in its slot cleared (told by
@@ -991,14 +1007,28 @@ lands, not only the place passed.
     less 1: the game moves a label without updating the place its build was given), the question
     then centered as the game centers its own; the equipment screen's OS Install Disk and its
     description (no icon) where the game built them for the selection, the description wrapped
-    at the box's columns; and the map cursor on a labeled stand-in's square (the label's first
-    line). A text with more glyphs than the label holds is not built; one whose text was hidden
-    (a hidden widget's, as the game-mode panel's on the file select before an empty slot is picked)
-    is built hidden, its count kept for the game to show when the widget shows.
+    at the box's columns; the map cursor on a labeled stand-in's square (the label's first
+    line); ASSIST while locked, with the padlock, in the locked style; the pause row's count,
+    centered on the row; and the Feats of Natu screen's title with the note under it (LargeText
+    220, read through the translation object and bounded by `large_count`), its middle kept as
+    the game keeps its title's. One built again whenever the game builds its label again (told
+    by the glyph count and the place the build was given). A text with more glyphs than the
+    label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
+    panel's on the file select before an empty slot is picked) is built hidden, its count kept
+    for the game to show when the widget shows.
+  - **The helper's icons** (`IconSheets`, `src/apitem.cpp`): its disk, padlock and AP logo,
+    painted into the translations' icon sheets (BigFontIcons.png's 64 x 64 cells for
+    English(HD), PixelFontIcons.png's 10 x 9 for the rest) at frames 0x96 to 0x98, blank in
+    both and reached by no record, which the builder draws for U+E03A to U+E03C like the game's
+    item icons (`docs/re/memory.md`, "The translations' icons"); only where those cells read
+    blank (or already the helper's) and the game's art is where the PNG has it (a sheet not so
+    read three times at most, each read being the whole sheet), now and then while a translation
+    shows, and cleared when none does or before an unload. White, as the
+    game's icons are: the text's color tints them. `hd_icon` names the helper's glyphs (0xFB,
+    0xEF, 0xEE) as these characters, so popups, names and labels carry them.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
-    clear (`0x168AE9`), where the helper's text is a look of the pixel font's: ASSIST while
-    locked, the pause row's count (each frame: OPTION MENU's return builds KEYS again), and the
-    Feats of Natu screen's note.
+    clear (`0x168AE9`), only for the Feats screen's title when its HD text cannot be built
+    (no `large_count`, or too little room).
 - **Which translation:** all the same way, the helper's text in English in that translation's
   font. Whether a font has the Latin letters and the icons is the translation's (Japanese's
   draws both, seen 2026-11-02; Simplified Chinese's not looked at). The client warns in any but
@@ -1032,8 +1062,9 @@ lands, not only the place passed.
     5 and 8 (every one shown), and after a language change; notices (an
     Intel Chip's hint, long ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a
     stand-in's pickup popup and the map cursor on its square ("Other players' items"); the pause
-    row's count and the locked ASSIST in the pixel font; the equipment screen's name; the
-    question's text, NO and YES; the Feats of Natu screen's note; `/reload_mod` (the unload and
+    row's count and the locked ASSIST in the pixel font (in the translation's font since, not
+    run in game since); the equipment screen's name; the question's text, NO and YES; the Feats
+    of Natu screen's note (likewise); `/reload_mod` (the unload and
     the load again; its refusal while a popup shows was not tried).
   - A language change mid-play, with popups showing: English(HD) to French and back, then
     Japanese, then the default English, with no crash; the popups after each change shown, in
@@ -1050,8 +1081,9 @@ lands, not only the place passed.
     box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
     since, not run in game since: the panel's label and the question built where the game's
     attach would build them now, the question centered and the description wrapped as the game
-    does its own, and the padlock right after ASSIST (English(HD)'s options box measured; the
-    other translations' not looked at) (`docs/re/memory.md`, "Where a rebuilt label goes").
+    does its own, and the locked ASSIST built again in the translation's font with its padlock
+    only where it stays in the box ("The assist menu"; `docs/re/memory.md`, "Where a rebuilt
+    label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
@@ -1108,8 +1140,9 @@ unload.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
-  row's disc and the file select's logo in its colors painted through a fake OpenGL, the label
-  parser.
+  row's disc and the file select's logo in its colors painted through a fake OpenGL, the
+  translations' icon sheets painted and cleared (and left alone where not as traced; each
+  sheet's icons made once), the label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
@@ -1123,10 +1156,16 @@ unload.
   slot's mark cleared; the same with the tables unreadable and while unloading), a language
   change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
   panel (not where the game first built it), a label with no first pixel glyph or too little
-  room left alone, ASSIST's pixel glyphs and its padlock's place (and back on a language
-  change), and the default English (the flag clear, or nothing loaded) left as it was
-  (`mission`, `equip` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the
-  equipment screen's disk, its description wrapped, and the Feats note in a translation).
+  room left alone, the locked ASSIST's translated text with its padlock (left out at a narrow
+  box, built again over the game's, back when unlocked), the helper's icons as characters and
+  through the game (painted while a translation shows, cleared when the default English is
+  picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
+  widths, centering, the cap, the fallback, the suffix's case; a popup through the game measured
+  with its icon's width, a long notice wrapped), and
+  the default English (the flag clear, or nothing loaded) left as it was (`mission`, `equip`,
+  `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the equipment
+  screen's disk, its description wrapped, the pause row's count and the Feats title with the
+  note in a translation; `apitem` the icon sheets' painting).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
