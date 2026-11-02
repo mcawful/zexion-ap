@@ -214,7 +214,7 @@ std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
 std::wstring hd_suffix(const std::string& as_sent);
 
 // Game thread, the flag set: builds `label`'s translated text again as `text`, with the game's
-// builder, as `how` says. False, nothing done, without the keys, with the flag clear, for a label
+// builder, as `how` says, hidden if the text it replaces was (a hidden widget's). False, nothing done, without the keys, with the flag clear, for a label
 // whose translated text was never built, or for a text with more glyphs than the label holds.
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
                    const Rebuild& how = {});

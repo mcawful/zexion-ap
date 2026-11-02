@@ -975,7 +975,9 @@ lands, not only the place passed.
     220, read through the translation object and bounded by `large_count`), its middle kept as
     the game keeps its title's. One built again whenever the game builds its label again (told
     by the glyph count and the place the build was given). A text with more glyphs than the
-    label holds is not built.
+    label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
+    panel's on the file select before an empty slot is picked) is built hidden, its count kept
+    for the game to show when the widget shows.
   - **The helper's icons** (`IconSheets`, `src/apitem.cpp`): its disk, padlock and AP logo,
     painted into the translations' icon sheets (BigFontIcons.png's 64 x 64 cells for
     English(HD), PixelFontIcons.png's 10 x 9 for the rest) at frames 0x96 to 0x98, blank in

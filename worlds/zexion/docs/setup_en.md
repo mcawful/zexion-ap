@@ -85,7 +85,14 @@ Install Disk, the names of other players' items) show in the game's HD font. In 
 the locked ASSIST, the disk count on the pause screen and the note on the Feats screen should
 too, with HD versions of the mod's disk, padlock and Archipelago icons (not yet tried in the
 game).
-If something shows wrong or not at all, switch to the default English and please report it.
+Known problems in English(HD) in the release candidate, fixed in this version but not yet
+checked in the game: ARCHIPELAGO did not show on the game-mode panel (the blank space where it
+belongs, right of Normal, still started the seed, and the word could show in the file select's
+top-left corner); after the client closed, Randomizer could show there too, out of its place
+on the panel, while the mod was loaded; RETURN HOME WITH THE DISKS? sat left of center; the OS
+Install Disk's description ran past its box; the locked ASSIST's padlock ran past the options
+box. If something shows wrong or not at all, switch to the default English and please report
+it.
 
 In the other languages the mod does the same, but its text is in English, and some of it may
 not show (a font without Latin letters, say); the client says so when it sees one. Received
