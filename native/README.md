@@ -164,8 +164,10 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   objects and slots, and the game's text functions), may be missing from the cache too: the
   helper then configures with them unset, every other part as usual (the client's parts ready if
   the client-only keys are there), and the translation parts stand down ("Translations"), so a
-  cache written before them keeps the default English as it was (stand-in tests only:
-  `tests/offline_tests.cpp`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
+  cache written before them keeps the default English as it was (stand-in tests:
+  `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
+  the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
+  `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -265,8 +267,8 @@ Every part is put back when a client goes away and on unload, unless it says oth
 
 - **Limits:** "working in game" below is in the game's default English. With a translation on
   the game draws the translation's text, in its own font, in place of the pixel-font glyphs the
-  helper rewrites; how each part's text shows there is under "Translations" (not run in game
-  yet). Seen in English(HD), French and Japanese on 2026-11-01 (B1, helper 1.0.0, the release
+  helper rewrites; how each part's text shows there is under "Translations" (the helper's fix,
+  run in game 2026-11-02 with the results and bugs listed there). Seen in English(HD), French and Japanese on 2026-11-01 (B1, helper 1.0.0, the release
   candidate), before that: what a part changes in what an entry does worked, but what it changed
   in the text did not show (the ASSIST padlock, OS INSTALL DISK, the disk row's count,
   ARCHIPELAGO, RETURN HOME WITH THE DISKS?, a stand-in's name in its pickup popup), and many
@@ -316,11 +318,16 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
-  players' items"). Stand-in tests only (`tests/game_tests.cpp`).
+  players' items"). Stand-in tests (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
+  `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`), each sent from the server's console: Scrap
+  Energy away from any stand-in and Scrap Chunk in a labeled stand-in's room, in English(HD),
+  read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
+  FROM ARCHIPELAGO.
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
-  table entry; one may wait a frame or two for it ("Translations"; not run in game yet).
+  table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
+  in English(HD), French and Japanese).
 
 Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
 2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
@@ -364,7 +371,8 @@ Working in game: 2026-10-23 ("DeathLink").
   comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry shows its pixel glyphs (ASSIST, the padlock, the
   locked look) in place of the translated Assist, and its translated text again when unlocked
-  ("Translations"; not run in game yet).
+  ("Translations"; locked, seen in game 2026-11-02 in English(HD), its padlock drawn past the
+  menu's box; the unlock not run in game yet).
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -392,7 +400,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
   sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back
-  ("Translations"; not run in game yet). Choosing it sets the menu's
+  ("Translations"; run in game 2026-11-02 in English(HD): the label is not where it should be, a
+  bug listed there). Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
@@ -440,7 +449,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   came to do it.
 - **In a translation:** the pickup popup and the map cursor read the translation's names
   (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
-  not run in game yet).
+  working in game 2026-11-02 in English(HD): the pickup popup AP ITEM over FOR BOB, with no logo
+  glyph, and the map cursor AP ITEM).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -520,8 +530,13 @@ the helper:
   "The mission prompt"; a cell off the map, as the raw cell reads for a moment, counts as not
   known), as when popups held it while the player walked on; the client offers it again after the
   next save there. Until 1.0.0 home was the seed's start cell, read from the loaded section's start
-  record; the in-game runs below all started at the Landing Pod, where the two are the same. Home
-  given by the request, from a seed started elsewhere: stand-in tests only, not run in game yet. Once its opener is set, it opens
+  record; the in-game runs from 2026-10-27 and earlier all started at the Landing Pod, where the
+  two are the same. Home
+  given by the request, from a seed started elsewhere: working in game 2026-11-02 (an OHKO seed
+  started at Open Cave, B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): no prompt after a save
+  in the start room; after a save at the pod, the prompt after the fade, NO, a request lapsing
+  while received items' popups held it and the player left the pod's room, the offer again after
+  the next save there, and YES to the goal. Once its opener is set, it opens
   where the player is when its 60 frames are up. An opener the helper takes back before it runs (the
   save left, `discs` off, an unload) turns the fade back to the normal level; so does one the game
   runs with the player not in play (a death during the fade: asked again), but only while the fade
@@ -551,9 +566,14 @@ for a save with no disk; the client's count wins for its seed's slots.
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's.
 
-In a translation ("Translations"; not run in game yet): the scanner's line goes into SmallText
-12 too; the equipment screen's disk and RETURN HOME WITH THE DISKS?'s question are built again
-in the translation's font; the pause row's count shows in the pixel font over KEYS.
+In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
+screen's disk and RETURN HOME WITH THE DISKS?'s question are built again in the translation's
+font; the pause row's count shows in the pixel font over KEYS. Run in game 2026-11-02 in
+English(HD) (B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): the received disks' count popups
+and the reminder in the HD font; the pause row's count in the pixel font with no Keys over it;
+the equipment screen's OS Install Disk and its description in the HD font, the description's
+first line running past the box's right edge (a bug); the question in the HD font, left of
+center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -683,7 +703,7 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
   or SCRAP CHUNK after the game writes the cursor's name, in the same frame; in a translation it
   builds the cursor's translated text again as the label's first line ("Translations";
-  not run in game yet).
+  working in game 2026-11-02 in English(HD): AP ITEM).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
@@ -779,7 +799,9 @@ closed, gone with it open.
     glyph of it is writable and has the font's frames. In a translation the title label's pixel
     glyphs are shown in place of its translated text while the note (or the title written over
     the hint) is there, so the whole title shows in the pixel font, in English; the translated
-    title comes back when the note goes (stand-in tests only, not seen in a translation).
+    title comes back when the note goes (seen in game 2026-11-02 in English(HD), `lab/ap/live50`:
+    FEATS OF NATU! and the note in the pixel font after an AP ending, then the game's own Feats
+    of Natu! in the HD font with no note while `/reload_mod` had the helper unloaded).
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -891,7 +913,7 @@ Not seen in game:
 ### Translations
 
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
-after it. Not run in game yet. Stand-in tests (`tests/translation_tests.cpp`, and the
+after it. Run in game 2026-11-02, below ("Run in game"). Stand-in tests (`tests/translation_tests.cpp`, and the
 translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `feats_tests.cpp` and
 `pause_tests.cpp`) cover all but the equipment screen's disk and the map cursor's name (by
 disassembly only: "The helper's calls in a translation").
@@ -927,8 +949,9 @@ disassembly only: "The helper's calls in a translation").
     locked, the pause row's count (each frame: OPTION MENU's return builds KEYS again), and the
     Feats of Natu screen's note.
 - **Which translation:** all the same way, the helper's text in English in that translation's
-  font. Whether a font has the Latin letters and the icons is the translation's (Japanese's and
-  Simplified Chinese's not looked at). The client warns in any but English(HD) (`lang`).
+  font. Whether a font has the Latin letters and the icons is the translation's (Japanese's
+  draws both, seen 2026-11-02; Simplified Chinese's not looked at). The client warns in any but
+  English(HD) (`lang`).
 - **When:** each frame call (the names, the areas' emptying: `Game::watch_translation`), each
   popup (`Game::pump_popups`) and each label built. None of it with the flag clear (the default
   English, even with a translation's tables still loaded), without the translation keys (an
@@ -950,6 +973,36 @@ disassembly only: "The helper's calls in a translation").
   that message ends: 3 seconds in play; whether a message counts down off play, at the title,
   was not traced), and, with no frame, while a name is still the helper's or entry 70 still
   moved. Menu labels need nothing: the game frees them with their menu.
+- **Run in game:** 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` and `version.dll` `1b4e35e9…`
+  (develop 2e3b94e) loaded by the proxy, the client from source, an OHKO seed with the disks goal
+  and a DLC Quest player (`lab/ap/live50`: logs and screenshots).
+  - Working in English(HD): the title lines; received popups in the HD font with their box, icon,
+    the HD name and the suffix on the next line, singly after a save's GAME SAVED, in batches of
+    5 and 8 (every one shown), and after a language change; notices (an
+    Intel Chip's hint, long ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a
+    stand-in's pickup popup and the map cursor on its square ("Other players' items"); the pause
+    row's count and the locked ASSIST in the pixel font; the equipment screen's name; the
+    question's text, NO and YES; the Feats of Natu screen's note; `/reload_mod` (the unload and
+    the load again; its refusal while a popup shows was not tried).
+  - A language change mid-play, with popups showing: English(HD) to French and back, then
+    Japanese, then the default English, with no crash; the popups after each change shown, in
+    French and Japanese with the translation's name and FROM … in English. The client's warning
+    once, for French, and none in English(HD) or the default English; `lang=-` in the default
+    English and `English(HD)` in English(HD) (`tools/helper.py status`).
+  - Bugs (English(HD)): ARCHIPELAGO's label does not show on the game-mode panel: the entry is
+    blank (choosing it starts the seed), its hover border is drawn further left, and the label
+    shows instead at the window's top-left corner on the file select until an empty slot is
+    picked; RANDOMIZER's label built again when the client went away showed at that corner too,
+    and on an empty slot's panel after that the game's own Randomizer entry showed at the
+    panel's left edge, away from Normal, while the helper stayed loaded. The question sits left of center (about 90 pixels left of where the game's own line
+    starts). The equipment screen's description is one line with no break and runs past the
+    box's right edge. ASSIST's padlock is drawn past the options box's right edge.
+  - The default English, the same run: received popups singly and in a batch of 5, NOT
+    CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
+    the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
+    stand-in's pickup popup (with its logo glyph), all as before.
+  - Not run in game: the scanner's line, an Intel Chip picked up in the world (ItemNames 49),
+    the unload's refusal while a popup shows, Assist Unlock in a translation, a save-state load.
 
 ## Building
 
