@@ -554,20 +554,14 @@ void test_the_screen_note_in_a_translation() {
     a.current_menu = reinterpret_cast<BYTE*>(&current);
     a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
     with_translation(a);
-    BYTE translated[2][0x1D8] = {};
-    BYTE* list[2] = {translated[0], translated[1]};
-    screen.label[0x230] = 1;
-    put<BYTE**>(screen.label, 0x238, list);
-    put<int32_t>(screen.label, 0x248, 2);
-    put<int32_t>(screen.label, 0x244, 2);
-    put<int32_t>(screen.label, 0x1EC, 0);
-    for (BYTE* g : list) g[0x120] = 1;
+    TranslatedText text(screen.label);
+    BYTE (&translated)[3][0x1D8] = text.glyphs;
     check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line() &&
               zap::pixel_glyphs_shown(screen.label) && screen.glyphs[0][0x120] == 1 &&
               translated[0][0x120] == 0,
           "the note, and the title's pixel glyphs shown in place of its translated text");
     check(zap::feats_screen_note(a, false) && !zap::pixel_glyphs_shown(screen.label) &&
-              get<int32_t>(screen.label, 0x244) == 2 && translated[1][0x120] == 1 &&
+              get<int32_t>(screen.label, 0x244) == 3 && translated[1][0x120] == 1 &&
               screen.glyphs[0][0x120] == 0,
           "blanked: its translated text again");
     reset_translation();

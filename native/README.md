@@ -178,8 +178,8 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 ### On the game's thread
 
 A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title`,
-`lang` and `cache_missing`) goes to the game's thread through a one-slot mailbox (`src/mailbox.cpp`) and
-runs at the next frame call. If no frame takes it within a second (the game paused in the
+`lang` and `cache_missing`) goes to the game's thread through a one-slot mailbox
+(`src/mailbox.cpp`) and runs at the next frame call. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
 afterwards.
 
@@ -320,7 +320,7 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
-  table entry ("Translations"); one may wait a frame or two for an entry to free (not run in game yet).
+  table entry; one may wait a frame or two for it ("Translations"; not run in game yet).
 
 Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
 2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
@@ -551,11 +551,9 @@ for a save with no disk; the client's count wins for its seed's slots.
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's.
 
-In a translation ("Translations"; not run in game yet): the scanner's line goes into SmallText 12 too, which the
-translated message reads; the equipment screen's name and description are built again in the
-translation's font as OS Install Disk and its description (no icon); the pause row shows its
-count in the pixel font in place of the translated KEYS label; RETURN HOME WITH THE DISKS?'s
-question is built again as Return home with the disks?.
+In a translation ("Translations"; not run in game yet): the scanner's line goes into SmallText
+12 too; the equipment screen's disk and RETURN HOME WITH THE DISKS?'s question are built again
+in the translation's font; the pause row's count shows in the pixel font over KEYS.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -893,75 +891,64 @@ Not seen in game:
 ### Translations
 
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
-after it. Not run in game yet. Stand-in tests (`tests/translation_tests.cpp`; the cache without
-the keys in `tests/offline_tests.cpp`; RETURN HOME's question in `tests/mission_tests.cpp`; the
-Feats note in `tests/feats_tests.cpp`) cover the popups, the names, ARCHIPELAGO, ASSIST, the
-question and the Feats note; the equipment screen's disk, the pause row's count and the map
-cursor's name have none (by disassembly only, `docs/re/memory.md`, "The helper's calls in a
-translation").
+after it. Not run in game yet. Stand-in tests (`tests/translation_tests.cpp`, and the
+translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `feats_tests.cpp` and
+`pause_tests.cpp`) cover all but the equipment screen's disk and the map cursor's name (by
+disassembly only: "The helper's calls in a translation").
 
 - **What:** while the game shows a translation (its flag, `tr_flag`), the helper's text shows in
-  the translation's font, in four ways:
-  - **Popups and notices.** Each received item's popup and each notice goes into SmallText 66
-    to 72, entries empty in every translation that the game never reads, split in two by
-    pointing entry 70 at the run's middle (116 and 117 characters in English(HD), 96 and 97 in Japanese),
-    and the message is given it as the game gives GAME SAVED its text (`hd_text_fn`), since the
-    game reads the entry again every frame while the message shows. The two areas take turns
-    (the popup before may still be closing); a notice longer than an area takes the whole run
-    while both are free (234 characters; 194). One that finds the area it needs taken waits a
-    frame (at most 240, then as below). Its text: the item's icon as the private-use character the translations' fonts
-    draw (as the game's pickup does), the translation's own name for the item (a stand-in's own,
-    not the label written over it), then the client's suffix on the next line; a notice's text
-    as it is. One that cannot go there (longer than the run, or the run not as traced) shows the
-    helper's pixel text, with the mark the game's last translated message left in its slot
-    cleared, so it shows, in its box.
-  - **Names the game reads while they show.** Written into the translation's tables in place,
-    cut to each entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines) while
-    their records are restyled, in play, for their pickup popup; Intel Chip into ItemNames 49
-    while the Area Map's record is INTEL CHIP; the scanner's line into SmallText 12 (the
-    scanner's message, a message event of kind 0) while the Text table's entry is the helper's.
-  - **Menu labels built again** with the game's own builder (`hd_build_fn`, from a string made by
-    `wstring_new_fn`) at the place the game's build of that label left in it: ARCHIPELAGO
-    (Archipelago, and SmallText 354's text again when RANDOMIZER goes back; through the new
-    game's fade it stays), RETURN HOME WITH THE DISKS? (Return home with the disks?), the
-    equipment screen's disk (OS Install Disk and its description, with no icon: the disk glyph
-    is the pixel font's), and the map cursor on a labeled stand-in's square (the label's first
-    line).
-  - **The pixel glyphs shown** in place of a label's translated ones, as the game does with the
-    flag clear (`0x168AE9`), where the helper's text is a look of the pixel font's: ASSIST while
-    locked (its padlock and style), the pause row's count (over the translated KEYS label, each
-    frame, since the game builds it again on return from OPTION MENU), and the Feats of Natu
-    screen's note.
-- **Which translation:** every translation the same way, the helper's text in English in that
-  translation's font (English text beats missing or wrong text). Whether a font has the Latin
-  letters and the icons is the translation's: not looked at for Japanese and Simplified
-  Chinese. The client warns in any translation but English(HD) (`hello`'s `lang`).
-- **When:** each frame call (the names, the areas' emptying; `Game::watch_translation`), and as
-  each popup shows (`Game::pump_popups`) or each label is built. Nothing of this runs with the
-  flag clear (the default English, even with a translation's tables still loaded), nor without
-  the translation keys (an offline cache from before them: "The pipe"), nor where the
-  translation object's fields are not where the other keys say (`translation_keys`).
-- **Safety:** the tables are the translation's heap memory, freed and loaded again when the
-  player picks another translation (`docs/re/memory.md`, "Translation tables"). Every write goes
-  into the tables as they are now and is checked against the pointers and entry count read when
-  its state was made: after a language change nothing is written into the old ones or put back
-  there, the areas are split again in the new SmallText at the next popup, and the names are
-  written into the new ItemNames. Each entry is written only within its room (from its offset
-  to the next entry's, less the line break before that), and put back only while it still
+  the translation's font:
+  - **Popups and notices** go into SmallText 66 to 72, entries empty in every translation that
+    the game never reads, split in two by pointing entry 70 at the run's middle (116 and 117
+    characters in English(HD), 96 and 97 in Japanese), and the message is given its text as the
+    game gives GAME SAVED its own (`hd_text_fn`): the game reads the entry again every frame
+    while the message shows. The areas take turns (the popup before may still be closing); a
+    notice longer than one takes the whole run while both are free (234 characters; 194); one
+    whose area is taken waits a frame, at most 240. Its text: the item's icon as the
+    private-use character the translations' fonts draw (as the pickup does), the translation's
+    own name for the item (a stand-in's own, not the label over it), then the client's suffix
+    on the next line; a notice's text as it is. A popup that cannot go there (longer than the
+    run, the run not as traced, the tables unreadable with the flag set, or from an unload's
+    put-back on) shows the helper's pixel text, with the mark the game's last translated message
+    left in its slot cleared (told by the HD object's serial), so it shows, in its box.
+  - **Names the game reads while they show,** written into the tables in place and cut to each
+    entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines) while their
+    records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
+    Map's record is INTEL CHIP; the scanner's line into SmallText 12 (its message event's entry)
+    while the Text table's entry is the helper's.
+  - **Menu labels built again** with the game's builder (`hd_build_fn`, the string from
+    `wstring_new_fn`) where the game's build of that label put it: ARCHIPELAGO (Archipelago;
+    SmallText 354's text again when RANDOMIZER goes back, not through the new game's fade),
+    Return home with the disks?, the equipment screen's OS Install Disk and its description (no
+    icon), and the map cursor on a labeled stand-in's square (the label's first line).
+  - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
+    clear (`0x168AE9`), where the helper's text is a look of the pixel font's: ASSIST while
+    locked, the pause row's count (each frame: OPTION MENU's return builds KEYS again), and the
+    Feats of Natu screen's note.
+- **Which translation:** all the same way, the helper's text in English in that translation's
+  font. Whether a font has the Latin letters and the icons is the translation's (Japanese's and
+  Simplified Chinese's not looked at). The client warns in any but English(HD) (`lang`).
+- **When:** each frame call (the names, the areas' emptying: `Game::watch_translation`), each
+  popup (`Game::pump_popups`) and each label built. None of it with the flag clear (the default
+  English, even with a translation's tables still loaded), without the translation keys (an
+  offline cache from before them: "The pipe"), or with the object's fields not where the other
+  keys say (`translation_keys`).
+- **Safety:** the tables are heap memory, freed and loaded again when the player picks another
+  translation (`docs/re/memory.md`, "Translation tables"). Each write goes into the tables as
+  they are now, checked against the pointers and count read when its state was made, so after a
+  language change nothing goes into the old ones, the split is made again in the new SmallText
+  at the next popup and the names go into the new ItemNames; each entry only within its room
+  (to the next entry's offset, less the line break before it), and put back only while it still
   reads as the helper wrote it.
 - **Put back:** a name when no longer wanted, with the flag clear, a client going away and
-  before an unload; an area emptied (zeros over what was written) once its message has gone
+  before an unload. An area is emptied (zeros over what was written) once its message has gone
   (its serial cleared, at most 180 frames, or its HD object taken by another message), so a
-  save-state load that binds a message to it again finds it empty; entry 70's offset put back
-  when a client goes away and before an unload, once no area is in use. An unload refuses while
-  a popup still reads an area (`error a popup still shows the helper's translated text; not
-  unloading`, until that message ends: 3 seconds in play; whether a message counts down off play,
-  at the title, was not traced), and, with no frame, while a name is still the helper's or
-  entry 70 still moved (a frame's put-back undoes it first). From
-  the unload's put-back until the helper is gone, popups that still show take no entry (their
-  pixel text shows, the slot's mark cleared). With the flag set but the tables not readable, a
-  popup's pixel text shows the same way.
-  Menu labels need nothing: the game frees them with their menu.
+  save-state load that binds a message to it finds it empty; entry 70 is put back when a client
+  goes away and before an unload, once no area is in use. An unload refuses while a popup still
+  reads an area (`error a popup still shows the helper's translated text; not unloading`, until
+  that message ends: 3 seconds in play; whether a message counts down off play, at the title,
+  was not traced), and, with no frame, while a name is still the helper's or entry 70 still
+  moved. Menu labels need nothing: the game frees them with their menu.
 
 ## Building
 

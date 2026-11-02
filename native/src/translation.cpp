@@ -85,15 +85,13 @@ bool translation_keys(const GameAddresses& a) {
 std::optional<Loaded> loaded_translation(const GameAddresses& a) {
     if (!translation_keys(a)) return std::nullopt;
     uint8_t flag = 0;
-    char name[tr::kNameSize] = {};
     Loaded out;
-    if (!read(a.tr_flag, 0, flag) || !safe_read(a.translation + tr::kName, name, sizeof(name)) ||
+    if (!read(a.tr_flag, 0, flag) ||
         !read_table(a.small_text, a.small_offsets, a.small_count, out.small) ||
         !read_table(a.item_names, a.item_name_offsets, a.item_name_count, out.items)) {
         return std::nullopt;
     }
     out.on = flag != 0;
-    out.name.assign(name, strnlen(name, sizeof(name)));
     return out;
 }
 
@@ -146,6 +144,11 @@ bool read_text(const TextTable& t, int32_t offset, int32_t room, std::wstring& o
     if (end == chars.end()) return false;
     out.assign(chars.begin(), end);
     return true;
+}
+
+bool read_entry(const TextTable& t, int k, std::wstring& out, int32_t last_room) {
+    const int32_t room = entry_room(t, k);
+    return read_text(t, entry_offset(t, k), room > 0 ? room : last_room, out);
 }
 
 bool write_text(const TextTable& t, int32_t offset, int32_t room, std::wstring_view text) {
@@ -248,27 +251,21 @@ void show_each(BYTE** list, int32_t n, bool shown) {
     }
 }
 
+// The label's pixel glyphs shown and its translated ones hidden (`pixel`), or the other way.
+bool show_glyphs(BYTE* label, bool pixel) {
+    LabelGlyphs g;
+    if (!glyph_lists(label, g)) return false;
+    at<int32_t>(label, hdlabel::kShown) = pixel ? 0 : g.translated;
+    show_each(g.translated_list, g.translated, !pixel);
+    at<int32_t>(label, hdlabel::kPixelShown) = pixel ? g.pixel : 0;
+    show_each(g.pixel_list, g.pixel, pixel);
+    return true;
+}
+
 }  // namespace
 
-bool show_pixel_glyphs(BYTE* label) {
-    LabelGlyphs g;
-    if (!glyph_lists(label, g)) return false;
-    at<int32_t>(label, hdlabel::kShown) = 0;
-    show_each(g.translated_list, g.translated, false);
-    at<int32_t>(label, hdlabel::kPixelShown) = g.pixel;
-    show_each(g.pixel_list, g.pixel, true);
-    return true;
-}
-
-bool show_translated_glyphs(BYTE* label) {
-    LabelGlyphs g;
-    if (!glyph_lists(label, g)) return false;
-    at<int32_t>(label, hdlabel::kShown) = g.translated;
-    show_each(g.translated_list, g.translated, true);
-    at<int32_t>(label, hdlabel::kPixelShown) = 0;
-    show_each(g.pixel_list, g.pixel, false);
-    return true;
-}
+bool show_pixel_glyphs(BYTE* label) { return show_glyphs(label, true); }
+bool show_translated_glyphs(BYTE* label) { return show_glyphs(label, false); }
 
 bool pixel_glyphs_shown(const BYTE* label) {
     int32_t shown = -1, pixel = -1, length = -1;
@@ -446,13 +443,12 @@ bool PopupAreas::show(const GameAddresses& a, const Loaded& now, int where, BYTE
     area.serial = serial;
     area.object = object;
     area.written = text;
-    area.whole = where == kWhole;
     if (where == kWhole) {
-        areas_[1].message = message;  // its offset lies inside: taken too, emptied with it
+        // Area 1's offset lies inside: taken too, by the same message, with no text of its own,
+        // so it frees in the same watch as area 0.
+        areas_[1].message = message;
         areas_[1].serial = serial;
         areas_[1].object = object;
-        areas_[1].written.clear();
-        areas_[1].whole = false;
     }
     next_ = (where == 0) ? 1 : 0;
     reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), 0, 0, 0, 0, 0, 0, area.entry,
@@ -460,7 +456,7 @@ bool PopupAreas::show(const GameAddresses& a, const Loaded& now, int where, BYTE
     return true;
 }
 
-bool PopupAreas::area_free(const GameAddresses&, const Area& area) const {
+bool PopupAreas::area_free(const Area& area) {
     if (area.message == nullptr) return true;
     int32_t serial = 0, entry = -1, kind = -1, bound_serial = 0;
     BYTE* bound = nullptr;
@@ -489,27 +485,21 @@ void PopupAreas::empty(const Loaded& now, Area& area) {
     area.object = nullptr;
     area.serial = 0;
     area.written.clear();
-    area.whole = false;
 }
 
-void PopupAreas::watch(const GameAddresses& a, const std::optional<Loaded>& now) {
+void PopupAreas::watch(const std::optional<Loaded>& now) {
     if (run_ < 0) return;
     if (!now || now->small != at_) {
         forget();  // another table: the old one, and what was in it, freed
         return;
     }
-    // The whole run's message frees both; area 1 holds no text of its own then.
-    for (int i = 0; i < 2; ++i) {
-        Area& area = areas_[i];
-        if (area.message == nullptr || !area_free(a, area)) continue;
-        const bool whole = area.whole;
-        empty(*now, area);
-        if (whole) areas_[1] = Area{areas_[1].entry, areas_[1].offset, areas_[1].room};
+    for (Area& area : areas_) {
+        if (area.message != nullptr && area_free(area)) empty(*now, area);
     }
 }
 
-void PopupAreas::restore(const GameAddresses& a, const std::optional<Loaded>& now) {
-    watch(a, now);
+void PopupAreas::restore(const std::optional<Loaded>& now) {
+    watch(now);
     if (run_ < 0 || in_use()) return;
     if (now && now->small == at_ && entry_offset(at_, kMoved) == areas_[1].offset &&
         writable(at_.offsets + kMoved, sizeof(int32_t))) {

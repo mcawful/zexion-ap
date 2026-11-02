@@ -253,26 +253,20 @@ void test_the_row_in_a_translation() {
         zap::PauseDiskRow row;
         zap::GameAddresses a = p.addresses();
         stand_in::with_translation(a);
-        BYTE translated[2][0x1D8] = {};
-        BYTE* list[2] = {translated[0], translated[1]};
-        p.label[0x230] = 1;  // built translated, as the game builds it with the flag set
-        put<BYTE**>(p.label, 0x238, list);
-        put<int32_t>(p.label, 0x248, 2);
-        put<int32_t>(p.label, 0x244, 2);
-        put<int32_t>(p.label, 0x1EC, 0);
-        for (BYTE* g : list) g[0x120] = 1;
+        stand_in::TranslatedText text(p.label);
+        BYTE (&translated)[3][0x1D8] = text.glyphs;
         row.set(zap::pause_row_text(2, 15));
         row.watch(a, false);
         if (on) {
             check(zap::pixel_glyphs_shown(p.label) && translated[0][0x120] == 0 &&
                       p.glyph[0][0x120] == 1,
                   "the count's pixel glyphs shown over the translated KEYS");
-            put<int32_t>(p.label, 0x244, 2);  // built again on OPTION MENU's return
+            put<int32_t>(p.label, 0x244, 3);  // built again on OPTION MENU's return
             put<int32_t>(p.label, 0x1EC, 0);
             row.watch(a, false);
             check(zap::pixel_glyphs_shown(p.label), "and again on the next look");
         } else {
-            check(get<int32_t>(p.label, 0x244) == 2 && translated[1][0x120] == 1,
+            check(get<int32_t>(p.label, 0x244) == 3 && translated[1][0x120] == 1,
                   "the flag clear: the label's translated glyphs left alone");
         }
         row.set("");

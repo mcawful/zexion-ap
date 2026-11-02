@@ -96,8 +96,7 @@ struct TextTable {
 
 // The translation as it is now.
 struct Loaded {
-    bool on = false;   // the flag: a translation's text shows
-    std::string name;  // the loaded folder's name, "English(HD)" and the like
+    bool on = false;  // the flag: a translation's text shows
     TextTable small, items;
     const TextTable& table(Table t) const { return t == Table::kSmall ? small : items; }
 };
@@ -124,6 +123,9 @@ int32_t entry_room(const TextTable& t, int k);
 // The text at `offset`, up to its 0 within `room` characters: false if unreadable or no 0 is
 // there.
 bool read_text(const TextTable& t, int32_t offset, int32_t room, std::wstring& out);
+// Entry k's text, read within its room (`last_room` for the last entry, whose room is not
+// known): false if it has none or it does not read.
+bool read_entry(const TextTable& t, int k, std::wstring& out, int32_t last_room = 0);
 // Writes `text` and a 0 at `offset`, if they fit `room` and the place can be written.
 bool write_text(const TextTable& t, int32_t offset, int32_t room, std::wstring_view text);
 
@@ -200,14 +202,13 @@ public:
     // Game thread, each frame: an area whose message has gone (its serial cleared, or its HD
     // object bound to another) is emptied, only in the table it was written in and only while it
     // reads as written; one in a table loaded since is forgotten.
-    void watch(const GameAddresses& a, const std::optional<Loaded>& now);
+    void watch(const std::optional<Loaded>& now);
     // Game thread (a client going away, before an unload): areas free are emptied, and entry
     // 70's offset put back once none is in use.
-    void restore(const GameAddresses& a, const std::optional<Loaded>& now);
+    void restore(const std::optional<Loaded>& now);
     // A message still showing reads an area: an unload waits for it.
     bool in_use() const { return areas_[0].message != nullptr || areas_[1].message != nullptr; }
-    bool split() const { return run_ >= 0; }  // tests
-    int32_t area_offset(int i) const { return areas_[i].offset; }
+    bool split() const { return run_ >= 0; }
 
     static constexpr int kMaxWait = 240;
 
@@ -221,10 +222,9 @@ private:
         BYTE* message = nullptr;  // the message reading it, null while free
         int32_t serial = 0;
         BYTE* object = nullptr;  // its HD object
-        std::wstring written;
-        bool whole = false;  // written over the whole run
+        std::wstring written;  // empty for area 1 while the whole run is area 0's
     };
-    bool area_free(const GameAddresses& a, const Area& area) const;
+    static bool area_free(const Area& area);
     void empty(const Loaded& now, Area& area);
     TextTable at_;          // the SmallText the split was made in
     int32_t run_ = -1;      // entry 66's offset, the run's start (-1: no split)

@@ -201,9 +201,7 @@ void test_the_question_in_a_translation() {
     zap::MissionPrompt m = fading(addresses());
     zap::GameAddresses a = addresses();
     with_translation(a);
-    prompt.question[0x230] = 1;  // the game built its translated text
-    put<double>(prompt.question, 0x258, 48.0);
-    put<double>(prompt.question, 0x260, 96.0);
+    built(prompt.question, 48.0, 96.0);  // the game built its translated text
     check(m.open(a).empty() && g_builds.size() == 1 &&
               g_builds[0].text == L"Return home with the disks?" &&
               g_builds[0].label == prompt.question && g_builds[0].x == 48.0f &&

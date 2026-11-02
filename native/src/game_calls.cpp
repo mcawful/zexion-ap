@@ -449,9 +449,7 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     if (stand_in >= 0 && held) {
         name = *held;  // its own name, under the label the helper wrote
     } else {
-        const int32_t room = entry_room(now.items, popup.item);
-        read_text(now.items, entry_offset(now.items, popup.item), room > 0 ? room : kNameRoom,
-                  name);
+        read_entry(now.items, popup.item, name, kNameRoom);
     }
     if (name.empty()) {
         name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
@@ -630,7 +628,7 @@ void Game::watch_all(WidgetCallback callback) {
 
 void Game::watch_translation() {
     const std::optional<Loaded> now = loaded_translation(at_);
-    popup_areas_.watch(at_, now);
+    popup_areas_.watch(now);
     std::map<EntryKey, std::wstring> want;
     if (now && now->on) {
         // The stand-ins' names while their records are (the pickup popup reads ItemNames by
@@ -1338,7 +1336,7 @@ void Game::put_back_all(WidgetCallback callback) {
         // undone when none is in use: an unload waits for the one in use).
         const std::optional<Loaded> now = loaded_translation(at_);
         tr_entries_.restore(now);
-        popup_areas_.restore(at_, now);
+        popup_areas_.restore(now);
     }
 }
 

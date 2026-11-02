@@ -142,11 +142,8 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     // In a translation, its text back to the entry's (the label the game built from it).
     const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
-    if (now && now->on) {
-        const int32_t room = entry_room(now->small, kRandomizerEntry);
-        if (read_text(now->small, entry_offset(now->small, kRandomizerEntry), room, own)) {
-            rebuild_label(a, pointer_at(child_, widget::kLabel), own);
-        }
+    if (now && now->on && read_entry(now->small, kRandomizerEntry, own)) {
+        rebuild_label(a, pointer_at(child_, widget::kLabel), own);
     }
     return true;
 }

@@ -385,6 +385,29 @@ inline void with_translation(zap::GameAddresses& a) {
     a.hd_build_fn = reinterpret_cast<BYTE*>(&hd_build_fn);
     a.wstring_new_fn = reinterpret_cast<BYTE*>(&wstring_new_fn);
 }
+// A label as the game builds it with the flag set (0x8AC30, 0x88480): its translated text
+// built at (x, y), three translated glyphs shown, its pixel glyphs hidden. `glyphs` stay the
+// test's for its life.
+inline void built(BYTE* label, double x = 0, double y = 0) {
+    label[0x230] = 1;
+    put<double>(label, 0x258, x);
+    put<double>(label, 0x260, y);
+}
+struct TranslatedText {
+    BYTE glyphs[3][0x1D8] = {};
+    BYTE* list[3] = {glyphs[0], glyphs[1], glyphs[2]};
+    explicit TranslatedText(BYTE* label) {
+        built(label);
+        put<BYTE**>(label, 0x238, list);
+        put<int32_t>(label, 0x248, 3);
+        put<int32_t>(label, 0x244, 3);
+        put<int32_t>(label, 0x1EC, 0);
+        for (BYTE* g : list) g[0x120] = 1;
+        BYTE** pixel = get<BYTE**>(label, 0x228);
+        for (int32_t i = 0; i < get<int32_t>(label, 0x1D8); ++i) pixel[i][0x120] = 0;
+    }
+};
+
 // No translation: the flag clear, nothing loaded, no call made.
 inline void reset_translation() {
     std::memset(g_translation, 0, sizeof(g_translation));

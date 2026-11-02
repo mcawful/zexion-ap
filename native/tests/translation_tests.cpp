@@ -78,8 +78,7 @@ void test_the_tables() {
     with_translation(a);
     check(zap::translation_keys(a) && zap::translation_on(a), "the keys, the flag");
     auto now = zap::loaded_translation(a);
-    check(now && now->on && now->name == "English(HD)" && now->small.count == 448 &&
-              now->items.count == 51,
+    check(now && now->on && now->small.count == 448 && now->items.count == 51,
           "the translation read");
     check(game.language() == "English(HD)", "hello's language");
     const int32_t own = g_items->offsets[47], next = g_items->offsets[48];
@@ -372,12 +371,6 @@ void test_the_default_english_untouched() {
     fresh.put_back_all(&no_callback);
 }
 
-// The game-mode panel's label, as the game built it translated: its place kept.
-void built(BYTE* label, double x, double y) {
-    label[0x230] = 1;
-    put<double>(label, 0x258, x);
-    put<double>(label, 0x260, y);
-}
 
 int g_calls = 0;
 void panel_handler() { g_calls += 100; }
@@ -419,16 +412,8 @@ void test_assist_shows_its_pixel_glyphs(bool on = true) {
                         reinterpret_cast<void*>(&assist_menu));
     zap::GameAddresses a = options.addresses();
     with_translation(a);
-    // As the game built it translated: three translated glyphs shown, the pixel ones hidden.
-    BYTE translated[3][0x1D8] = {};
-    BYTE* list[3] = {translated[0], translated[1], translated[2]};
-    built(options.label, 0, 0);
-    put<BYTE**>(options.label, 0x238, list);
-    put<int32_t>(options.label, 0x248, 3);
-    put<int32_t>(options.label, 0x244, 3);
-    put<int32_t>(options.label, 0x1EC, 0);
-    for (BYTE* g : list) g[0x120] = 1;
-    for (BYTE* g : options.glyph_list) g[0x120] = 0;
+    TranslatedText text(options.label);
+    BYTE (&translated)[3][0x1D8] = text.glyphs;
     zap::AssistLock lock;
     check(lock.install(a), "locked");
     if (!on) {
