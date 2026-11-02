@@ -221,7 +221,8 @@ line says.
   game's save dressed again (by the client, or by the helper until the client attached).
 - The game's translations (English(HD) above all): the mod's popups, notices, ARCHIPELAGO,
   RETURN HOME WITH THE DISKS?, the equipment screen's disk, the stand-ins' names and the
-  scanner's line in the translation's font, ASSIST and the pause row's count in the pixel font
+  scanner's line in the translation's font (ASSIST, the pause row's count, the Feats note and
+  the helper's icons too since that run, not run in game since; in the pixel font then)
   ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
   translation but English(HD) (`ticks.language_tick`): run in game 2026-11-02 (B1,
   `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): popups, notices, the stand-ins' names, the
