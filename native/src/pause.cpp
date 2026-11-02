@@ -174,8 +174,13 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     BYTE* keys_label = pointer_at(keys, widget::kLabel);
     auto keep_row = [&] {
         const bool hd = translation_on(a);
-        for (int k = 0; k < 4; ++k) {
-            if (writable(sprite[k], sprite::kSize)) *(sprite[k] + sprite::kVisible) = hd ? 0 : 1;
+        // The key slots hidden in a translation, and shown again only if the helper hid them
+        // (the default English's row left as its first turn set it).
+        if (hd || slots_hidden_) {
+            for (int k = 0; k < 4; ++k) {
+                if (writable(sprite[k], sprite::kSize)) *(sprite[k] + sprite::kVisible) = hd ? 0 : 1;
+            }
+            slots_hidden_ = hd;
         }
         if (!hd) return;
         if (keys_label != hd_label_ || built_mark(keys_label) != hd_mark_) {

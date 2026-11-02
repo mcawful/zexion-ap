@@ -82,6 +82,7 @@ private:
     // In a translation: the label whose translated text is the helper's count, and its mark.
     BYTE* hd_label_ = nullptr;
     BuiltMark hd_mark_;
+    bool slots_hidden_ = false;  // the key slots' characters hidden for a translation
 };
 
 }  // namespace zap
