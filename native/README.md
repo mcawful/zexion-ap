@@ -35,10 +35,12 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   the same file.
 - A helper of the client's version that disagrees with it is another build of that version:
   it answers `error unknown request` or `error unknown line …`, refuses `config` with
-  `error missing NAME` (it ignores names it does not know), or reads `build=unknown` for a game
-  build the client knows. Found while attaching, it is refused like another version; found in a
-  later request (a side task's, or giving items), the client stops using it until the game
-  restarts.
+  `error missing NAME` (it ignores names it does not know), reads `build=unknown` for a game
+  build the client knows, or has no `lang` in its `hello` (1.0.0's release candidate, from
+  before the translations: it would take the translation keys and ignore them;
+  `tests/test_native.py` only, not seen in game). Found while attaching, it is refused like
+  another version; found in a later request (a side task's, or giving items), the client stops
+  using it until the game restarts.
 - Each of these, in the client's window: "The Zexion mod and this client don't match", with
   both versions (or "different builds") and what to do (`state.helper_failed`).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
@@ -222,8 +224,8 @@ That is an open menu's panel or entry, the open map or the game's transition rou
 of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
 ending's patch or the map's on-screen marker write still the helper's; or, in a translation, a
 popup still showing the text the helper wrote into a borrowed entry (until that message ends: 3
-seconds in play), or
-a translated name still the helper's when no frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
+seconds in play), or a translated name or the popups' moved entry 70 still the helper's when no
+frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending, and while the ending routine is the
 game's transition with the ending's patch in place: an unload would drop the ending, or put
@@ -317,7 +319,7 @@ Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
-  table entry ("Translations"); one may wait a frame or two for an entry to free.
+  table entry ("Translations"); one may wait a frame or two for an entry to free (not run in game yet).
 
 Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
 2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
@@ -361,7 +363,7 @@ Working in game: 2026-10-23 ("DeathLink").
   comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry shows its pixel glyphs (ASSIST, the padlock, the
   locked look) in place of the translated Assist, and its translated text again when unlocked
-  ("Translations").
+  ("Translations"; not run in game yet).
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -389,7 +391,7 @@ While a plan is armed (`ap_newgame`), each frame call:
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
   sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back
-  ("Translations"). Choosing it sets the menu's
+  ("Translations"; not run in game yet). Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
@@ -436,7 +438,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   pixels. Unload refuses (`error an item record is still restyled (no frame came)`) if no frame
   came to do it.
 - **In a translation:** the pickup popup and the map cursor read the translation's names
-  (ItemNames 47 and 48), not the records: the label is written there too ("Translations").
+  (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
+  not run in game yet).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -467,7 +470,7 @@ Working in game: 2026-10-23 ("Live item objects").
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
 - **In a translation:** the pickup popup reads ItemNames 49: Intel Chip is written there while
-  the record is INTEL CHIP ("Translations").
+  the record is INTEL CHIP ("Translations"; not run in game yet).
 
 Working in game: 2026-10-25 ("Intel Chips").
 
@@ -547,7 +550,7 @@ for a save with no disk; the client's count wins for its seed's slots.
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's.
 
-In a translation ("Translations"): the scanner's line goes into SmallText 12 too, which the
+In a translation ("Translations"; not run in game yet): the scanner's line goes into SmallText 12 too, which the
 translated message reads; the equipment screen's name and description are built again in the
 translation's font as OS Install Disk and its description (no icon); the pause row shows its
 count in the pixel font in place of the translated KEYS label; RETURN HOME WITH THE DISKS?'s
@@ -680,7 +683,8 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   code with one more compare: it calls and reads nothing of the helper's. While the map is open,
   a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
   or SCRAP CHUNK after the game writes the cursor's name, in the same frame; in a translation it
-  builds the cursor's translated text again as the label's first line ("Translations").
+  builds the cursor's translated text again as the label's first line ("Translations";
+  not run in game yet).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
@@ -951,7 +955,8 @@ translation").
   when a client goes away and before an unload, once no area is in use. An unload refuses while
   a popup still reads an area (`error a popup still shows the helper's translated text; not
   unloading`, until that message ends: 3 seconds in play; whether a message counts down off play,
-  at the title, was not traced), and, with no frame, while a name is still the helper's. From
+  at the title, was not traced), and, with no frame, while a name is still the helper's or
+  entry 70 still moved (a frame's put-back undoes it first). From
   the unload's put-back until the helper is gone, popups that still show take no entry (their
   pixel text shows, the slot's mark cleared). With the flag set but the tables not readable, a
   popup's pixel text shows the same way.

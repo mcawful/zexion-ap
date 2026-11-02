@@ -311,7 +311,7 @@ def test_another_language_is_said_once_a_game_run(caplog, monkeypatch) -> None:
         helper.lang = "Japanese"
         asyncio.run(ticks.language_tick(ctx))
         assert helper.hellos == 2 and len(said(caplog)) == 1, "once a game run, whichever"
-        # The next game (game_closed clears it): told again.
+        # The next game (game_closed clears it, tests/test_zexion_client.py): told again.
         ctx.said.clear("language")
         clock[0] += state.LANGUAGE_ASK_SECONDS
         asyncio.run(ticks.language_tick(ctx))

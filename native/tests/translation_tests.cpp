@@ -136,7 +136,8 @@ void test_popups_take_turns_and_empty() {
     frames(game, 1);
     check(g_hd_texts.size() == 3 && g_hd_texts[2].entry == 66, "the third in the area freed");
     // The second's object given a translated message of the game's (GAME SAVED in its slot).
-    put<void*>(hd_object(1), 0x220, slot(3));
+    put<void*>(hd_object(1), 0x220, slot(1));  // the slot itself, as the game binds it
+    put<int32_t>(hd_object(1), 0x228, 7);  // and its message's serial
     put<int32_t>(hd_object(1), 0x20C, 98);
     frames(game, 1);
     check(entry_text(g_small, 70).empty(), "the second's area emptied once its object was taken");
@@ -144,18 +145,21 @@ void test_popups_take_turns_and_empty() {
     frames(game, 1);
     check(entry_text(g_small, 66).empty() && game.popup_areas().in_use() == false,
           "every area empty once its message has gone");
-    check(game.unload_blocker() == nullptr, "nothing for an unload to wait for");
+    check(game.unload_blocker() != nullptr, "the split: an unload no frame came for waits");
 
     // Put back: entry 70 at its own place again.
     game.put_back_all(&no_callback);
     check(g_small->offsets[70] == seventy && !game.popup_areas().split(), "the split undone");
+    check(game.unload_blocker() == nullptr, "nothing for an unload to wait for");
 }
 
 void test_a_notice_too_long_shows_its_pixel_text() {
     zap::Game game;
     start(game);
     // The game's GAME SAVED left slot 0 marked (docs/re/memory.md, "Translated messages").
-    put<void*>(hd_object(0), 0x220, slot(3));
+    // As GAME SAVED leaves slot 0's object: bound to the slot itself, an older serial.
+    put<void*>(hd_object(0), 0x220, slot(0));
+    put<int32_t>(hd_object(0), 0x228, 7);
     hd_object(0)[0x22C] = 1;
     std::string notice = "apply\nnotice 44";
     for (int i = 0; i < 38; ++i) notice += " WORDS";
@@ -173,7 +177,9 @@ void test_the_pixel_text_when_the_tables_cannot_be_used() {
     zap::Game game;
     start(game);
     put<wchar_t*>(g_translation, 0x48, nullptr);
-    put<void*>(hd_object(0), 0x220, slot(3));
+    // As GAME SAVED leaves slot 0's object: bound to the slot itself, an older serial.
+    put<void*>(hd_object(0), 0x220, slot(0));
+    put<int32_t>(hd_object(0), 0x228, 7);
     hd_object(0)[0x22C] = 1;
     queue(game, "apply\npopup 36 FROM ALICE");
     frames(game, 1);
@@ -212,6 +218,31 @@ void test_a_whole_notice() {
     frames(game, 1);
     check(!game.popup_areas().in_use() && entry_text(g_small, 66).empty(), "both free again");
     game.put_back_all(&no_callback);
+}
+
+// The same translation loaded again into the same buffers (same pointers and count, as the
+// allocator may give them), its texts and offsets now another load's: nothing the helper wrote
+// is taken for its own, so neither the area is emptied over the new text nor entry 70 put back
+// over the new table's own offset.
+void test_a_reload_in_place() {
+    zap::Game game;
+    start(game);
+    load_translation("English(HD)", true, L" (old)");
+    LoadedTable* table = g_small;
+    queue(game, "apply\npopup 36 FROM ALICE");
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && game.popup_areas().split(), "a popup in an area");
+    LoadedTable* again = make_table(448, hd_small_texts());  // shorter texts: other offsets
+    std::copy(again->text.begin(), again->text.end(), table->text.begin());
+    std::copy(again->offsets.begin(), again->offsets.end(), table->offsets.begin());
+    const std::vector<wchar_t> fresh = table->text;
+    const int32_t seventy = table->offsets[70];
+    end_message(0);
+    frames(game, 1);
+    check(table->text == fresh, "the area not emptied: it no longer reads as written");
+    game.put_back_all(&no_callback);
+    check(table->offsets[70] == seventy && !game.popup_areas().split(),
+          "entry 70 left at the new table's own offset");
 }
 
 void test_a_language_change_mid_popup() {
@@ -315,7 +346,9 @@ void test_the_default_english_untouched() {
     start(game, false);  // a translation loaded, then the default English picked
     const std::vector<wchar_t> small = g_small->text, items = g_items->text;
     const std::vector<int32_t> offsets = g_small->offsets;
-    put<void*>(hd_object(0), 0x220, slot(3));
+    // As GAME SAVED leaves slot 0's object: bound to the slot itself, an older serial.
+    put<void*>(hd_object(0), 0x220, slot(0));
+    put<int32_t>(hd_object(0), 0x228, 7);
     hd_object(0)[0x22C] = 1;  // what the game left: with the flag clear it hides nothing
     queue(game, "apply\npopup 36 FROM ALICE\nnotice 44 OS INSTALL DISK 3");
     game.set_discs(3, 12, "COLLECT 12 OS INSTALL DISKS!", true);
@@ -379,9 +412,9 @@ void test_archipelago_built_again_and_back() {
     check(g_builds.empty(), "with the flag clear, no translated text built");
 }
 
-void test_assist_shows_its_pixel_glyphs() {
+void test_assist_shows_its_pixel_glyphs(bool on = true) {
     reset_translation();
-    load_translation();
+    load_translation("English(HD)", on);
     OptionsMenu options(reinterpret_cast<void*>(&widget_handler),
                         reinterpret_cast<void*>(&assist_menu));
     zap::GameAddresses a = options.addresses();
@@ -398,6 +431,13 @@ void test_assist_shows_its_pixel_glyphs() {
     for (BYTE* g : options.glyph_list) g[0x120] = 0;
     zap::AssistLock lock;
     check(lock.install(a), "locked");
+    if (!on) {
+        // The flag clear (the default English, a translated label built before): left alone.
+        check(get<int32_t>(options.label, 0x244) == 3 && translated[0][0x120] == 1 &&
+                  lock.restore(a) && get<int32_t>(options.label, 0x244) == 3,
+              "the flag clear: its translated glyphs left as they are");
+        return;
+    }
     check(zap::pixel_glyphs_shown(options.label) && options.glyph_list[7][0x120] == 1 &&
               translated[0][0x120] == 0,
           "its pixel glyphs shown, the padlock with them, its translated ones hidden");
@@ -421,10 +461,12 @@ int main() {
     test_the_pixel_text_when_the_tables_cannot_be_used();
     test_a_whole_notice();
     test_a_language_change_mid_popup();
+    test_a_reload_in_place();
     test_the_names_written_and_put_back();
     test_the_scanner_line();
     test_the_default_english_untouched();
     test_archipelago_built_again_and_back();
     test_assist_shows_its_pixel_glyphs();
+    test_assist_shows_its_pixel_glyphs(false);
     return report("translation tests");
 }

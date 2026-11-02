@@ -11,6 +11,7 @@
 #include "pause.h"
 #include "stand_in.h"  // g_keys_branch
 #include "stand_in_menu.h"  // PauseScreen
+#include "translation.h"
 
 namespace {
 
@@ -241,7 +242,47 @@ void test_the_text() {
 
 }  // namespace
 
+// In a translation the KEYS label's translated text is drawn over the row: its pixel glyphs
+// shown in its place, again after the game builds it again (OPTION MENU's return). With the flag
+// clear (the default English, a translated label built before) the label is left as it is.
+void test_the_row_in_a_translation() {
+    for (bool on : {true, false}) {
+        stand_in::reset_translation();
+        stand_in::load_translation("English(HD)", on);
+        Pause p;
+        zap::PauseDiskRow row;
+        zap::GameAddresses a = p.addresses();
+        stand_in::with_translation(a);
+        BYTE translated[2][0x1D8] = {};
+        BYTE* list[2] = {translated[0], translated[1]};
+        p.label[0x230] = 1;  // built translated, as the game builds it with the flag set
+        put<BYTE**>(p.label, 0x238, list);
+        put<int32_t>(p.label, 0x248, 2);
+        put<int32_t>(p.label, 0x244, 2);
+        put<int32_t>(p.label, 0x1EC, 0);
+        for (BYTE* g : list) g[0x120] = 1;
+        row.set(zap::pause_row_text(2, 15));
+        row.watch(a, false);
+        if (on) {
+            check(zap::pixel_glyphs_shown(p.label) && translated[0][0x120] == 0 &&
+                      p.glyph[0][0x120] == 1,
+                  "the count's pixel glyphs shown over the translated KEYS");
+            put<int32_t>(p.label, 0x244, 2);  // built again on OPTION MENU's return
+            put<int32_t>(p.label, 0x1EC, 0);
+            row.watch(a, false);
+            check(zap::pixel_glyphs_shown(p.label), "and again on the next look");
+        } else {
+            check(get<int32_t>(p.label, 0x244) == 2 && translated[1][0x120] == 1,
+                  "the flag clear: the label's translated glyphs left alone");
+        }
+        row.set("");
+        row.watch(a, false);
+    }
+    stand_in::reset_translation();
+}
+
 int main() {
+    test_the_row_in_a_translation();
     test_the_row_shows_the_disks();
     test_prepared_before_the_count();
     test_the_helpers_disc();

@@ -87,9 +87,9 @@ default English. This has not been played in the game yet: if something shows wr
 all, switch to the default English and please report it.
 
 In the other languages the mod does the same, but its text is in English, and some of it may
-not show (a font without Latin letters, say); the client says so when it sees one. Items and
-checks went through in French and Japanese when they were tried; Simplified Chinese and the
-other European languages have not been tried.
+not show (a font without Latin letters, say); the client says so when it sees one. Received
+items arrived in French and Japanese when they were tried (checks there were not tried);
+Simplified Chinese and the other European languages have not been tried.
 
 ## Playing without the client
 

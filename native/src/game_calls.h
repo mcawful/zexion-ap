@@ -323,6 +323,10 @@ public:
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
         if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
+        // Entry 70 still pointing into the run: put back by the unload's frame (put_back_all),
+        // so only an unload no frame came for is refused, which would leave it for the next
+        // helper to take for the game's.
+        if (popup_areas_.split()) return "a translated popup's entry is still the helper's";
         if (tr_entries_.held() > 0) return "a translated name is still the helper's";
         return nullptr;
     }

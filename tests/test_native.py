@@ -168,6 +168,7 @@ class _Game:
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
+    lang: bool = True  # its hello reports the game's language (1.0.0's release candidate: not)
     stays: bool = False  # the helper refuses to unload
     loads: int = 0
     unloads: int = 0
@@ -197,12 +198,15 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
             if game.loaded == UNREADABLE:
                 raise native.UnreadableHello("garbled")
             hooked = "1" if game.build != "unknown" else "0"
-            return {
+            out = {
                 "version": game.loaded or "",
                 "folder": game.folder,
                 "build": game.build,
                 "hooked": hooked,
             }
+            if game.lang:
+                out["lang"] = "-"
+            return out
 
         def request(self, text: str, *args: object) -> str:
             assert text == "unload"
@@ -454,6 +458,18 @@ def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monke
     game = stand_in_attach(monkeypatch, file_version=native.VERSION, build="unknown")
     with pytest.raises(native.ModMismatch, match="different builds"):
         native.attach(game, built)
+
+
+def test_a_mod_of_this_version_without_the_language_is_an_earlier_build(
+    tmp_path, monkeypatch
+) -> None:
+    # 1.0.0's release candidate, in the game folder: the same version, but no translation
+    # support (its hello has no lang), so its config would ignore the translation keys.
+    game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", lang=False)
+    with pytest.raises(native.ModMismatch, match="different builds") as caught:
+        native.attach(game, tmp_path / "no-build.dll")
+    assert "doesn't report the game's language" in str(caught.value)
+    assert state.helper_failed(caught.value).startswith("The Zexion mod and this client don't")
 
 
 @pytest.mark.parametrize(

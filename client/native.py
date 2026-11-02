@@ -578,6 +578,13 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     "the mod doesn't know this version of Zexion, which the client does"
                 )
             raise HelperError(f"the helper did not hook the game: {hello}")
+        if "lang" not in hello:
+            # A build of this version from before its translation support (the release
+            # candidate's): it would take the config and ignore the translation keys, so in a
+            # translation its popups would hide again with nothing said.
+            raise _other_build(
+                "the mod doesn't report the game's language, so it is an earlier one"
+            )
         helper.configure(dict(g.rva))
     except BaseException:
         helper.close()

@@ -347,9 +347,14 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message) {
 void clear_mark(const GameAddresses& a, BYTE* message) {
     if (!translation_on(a)) return;
     BYTE* object = hd_object(a, message);
-    // Only an object not bound to this message (the message routine never binds one): the mark
-    // is the last translated message's in that slot.
-    if (object != nullptr && pointer_at(object, hd::kMessage) != message) {
+    // Only an object not bound to this message: the mark is the last translated message's in
+    // that slot. A slot's messages are the slot itself, so its object's message (+0x220) is the
+    // same pointer whatever it was bound for; what tells them apart is the serial it was bound
+    // with (+0x228, the slot's +0x1D8 then), and the message routine gives each message a new
+    // one and binds none (docs/re/memory.md, "Translated messages").
+    int32_t bound = 0, serial = 0;
+    if (object != nullptr && read(object, hd::kSerial, bound) &&
+        read(message, message::kSerial, serial) && bound != serial) {
         object[hd::kHasText] = 0;
     }
 }

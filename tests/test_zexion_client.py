@@ -164,6 +164,14 @@ def test_a_mod_of_another_build_is_said_once_and_left_until_zexion_restarts(capl
     assert ctx.helper_retry_at < math.inf, "a restarted Zexion is tried again"
 
 
+def test_the_language_is_told_again_in_the_next_game() -> None:
+    # language_tick says it once a game run (ctx.said's "language"): a closed game clears it.
+    ctx = context(connection(), Closed())
+    assert ctx.said("language", "told") and not ctx.said("language", "told")
+    zc.game_closed(ctx, ctx.conn)
+    assert ctx.said("language", "told"), "the next game's language is told"
+
+
 def test_a_mismatch_the_session_found_is_said_once_not_as_a_lost_helper(caplog) -> None:
     ctx = context(connection(), Closed())
     ctx.helper = Mismatched()
