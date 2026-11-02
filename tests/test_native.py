@@ -222,6 +222,7 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
     def load(handle, pid, dll, if_absent=False) -> bool:
         game.loads += 1
         game.loaded = game.file_version
+        game.lang = True  # the client's build: this branch's, with the language
         return True
 
     monkeypatch.setattr(native, "Helper", FakeHelper)
@@ -470,6 +471,18 @@ def test_a_mod_of_this_version_without_the_language_is_an_earlier_build(
         native.attach(game, tmp_path / "no-build.dll")
     assert "doesn't report the game's language" in str(caught.value)
     assert state.helper_failed(caught.value).startswith("The Zexion mod and this client don't")
+
+
+def test_a_mod_of_this_version_without_the_language_gives_way_to_the_clients_build(
+    tmp_path, monkeypatch
+) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(
+        monkeypatch, loaded=native.VERSION, file_version=native.VERSION, folder="1", lang=False
+    )
+    native.attach(game, built)
+    assert game.unloads == 1 and game.loads == 1 and game.lang
 
 
 @pytest.mark.parametrize(

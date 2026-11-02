@@ -37,8 +37,9 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   it answers `error unknown request` or `error unknown line …`, refuses `config` with
   `error missing NAME` (it ignores names it does not know), reads `build=unknown` for a game
   build the client knows, or has no `lang` in its `hello` (1.0.0's release candidate, from
-  before the translations: it would take the translation keys and ignore them;
-  `tests/test_native.py` only, not seen in game). Found while attaching, it is refused like
+  before the translations: it would take the translation keys and ignore them; with a build of
+  the client's own loaded in its place, as for another version; `tests/test_native.py` only,
+  not seen in game). Found while attaching, it is refused like
   another version; found in a later request (a side task's, or giving items), the client stops
   using it until the game restarts.
 - Each of these, in the client's window: "The Zexion mod and this client don't match", with

@@ -535,6 +535,15 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                         f"{VERSION}: the client's build is used instead (update the game "
                         "folder's copy)."
                     )
+            elif "lang" not in hello and own_build:
+                # This version's release candidate (no lang: before the translations), the
+                # game folder's copy most likely: the client's build takes its place, as for
+                # another version; with no build it is refused below.
+                if not _unloaded(old, handle):
+                    raise _other_build(
+                        "the mod doesn't report the game's language, so it is an earlier one, "
+                        "and it didn't unload to make way for the client's build"
+                    )
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
     if not is_loaded(handle):
