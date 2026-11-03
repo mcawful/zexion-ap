@@ -238,6 +238,9 @@ def test_set_supplies_refuses_values_that_do_not_fit() -> None:
 
 
 SHIELD_AT = 0x1400  # the fake's shield object
+SHIELD_SLOT = 4
+OTHER_OBJECT = 0x1800
+OBJECT_LINK = 0x3C8  # a pool object's link to another object (not read for the shield)
 
 
 def put_shield(
@@ -245,13 +248,11 @@ def put_shield(
 ) -> None:
     """The player's link to a shield object at ``pointer``, and that object, as measured."""
     link = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + game.SHIELD_LINK
-    handle = struct.pack("<IHH", serial, game.SHIELD_POOL_TYPE, 0)
-    g.pm.memory[link : link + 24] = struct.pack("<Q", pointer) + handle + struct.pack("<Q", 4)
-    own = struct.pack("<IHH", serial if live else 0, game.SHIELD_POOL_TYPE, 0)
+    handle = game.HANDLE.pack(serial, game.SHIELD_POOL_TYPE, SHIELD_SLOT)
+    g.pm.memory[link : link + 20] = struct.pack("<Q", pointer) + handle
+    own = game.HANDLE.pack(serial if live else 0, game.SHIELD_POOL_TYPE, SHIELD_SLOT)
     at = SHIELD_AT + game.OBJECT_HANDLE
-    g.pm.memory[at : at + 8] = own
-    at = SHIELD_AT + game.OBJECT_SELF
-    g.pm.memory[at : at + 8] = struct.pack("<Q", SHIELD_AT)
+    g.pm.memory[at : at + game.HANDLE.size] = own
 
 
 def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
@@ -263,6 +264,20 @@ def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
     assert not g.shield_up()
 
 
+def test_a_shield_is_up_whatever_its_slot_kept_from_the_object_before() -> None:
+    # The RC retest's spawn loop (2026-11-02): the shield's constructor leaves +0x3C8
+    # as the slot's last object left it (its Missiles entry's +0x80 is -1), and the game never
+    # sets the handle's two unused bytes. The client once required +0x3C8 to be the object's
+    # own address and those bytes to match, so such a shield was never read up.
+    g = fake_game()
+    put_shield(g)
+    at = SHIELD_AT + OBJECT_LINK
+    g.pm.memory[at : at + 8] = struct.pack("<Q", OTHER_OBJECT)  # another object's link
+    link = 0x1100 - game.INVENTORY_IN_PLAYER_STATE + game.SHIELD_LINK
+    g.pm.memory[link + 14 : link + 16] = bytes([0x5A, 0xA5])  # the link's unused bytes
+    assert g.shield_up()
+
+
 def test_a_link_to_an_object_that_does_not_match_is_no_shield() -> None:
     g = fake_game()
     put_shield(g, live=False)  # the object's slot was freed
@@ -272,8 +287,10 @@ def test_a_link_to_an_object_that_does_not_match_is_no_shield() -> None:
     g.pm.memory[at : at + 4] = struct.pack("<I", 0x9999)  # the slot now holds another object
     assert not g.shield_up()
     put_shield(g)
-    at = SHIELD_AT + game.OBJECT_SELF
-    g.pm.memory[at : at + 8] = struct.pack("<Q", 0x1800)  # not an object of the pool
+    g.pm.memory[at + 4 : at + 6] = struct.pack("<H", 6)  # an object of another pool
+    assert not g.shield_up()
+    put_shield(g)
+    g.pm.memory[at + 8 : at + 12] = struct.pack("<i", SHIELD_SLOT + 1)  # another slot's
     assert not g.shield_up()
     put_shield(g, pointer=0x1C00)  # points somewhere else entirely
     assert not g.shield_up()

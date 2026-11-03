@@ -144,6 +144,8 @@ line says.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
   A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
   and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
+  Fixed since in the client's read and with a stop on spawns not seen; not yet run in game
+  (`docs/re/memory.md`, "Received Energy Shields").
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.

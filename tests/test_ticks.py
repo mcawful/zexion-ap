@@ -9,9 +9,22 @@ import struct
 import types
 from typing import NamedTuple
 
-from fakes import SECRET_LIST, connection, plan, secret_plan, slot_data
+import pytest
+from fakes import SECRET_LIST, FakeProcess, connection, plan, secret_plan, slot_data
 
-from client import aplabels, discs, game, ids, newgame, offline, session, state, ticks
+from client import (
+    aplabels,
+    discs,
+    game,
+    ids,
+    native,
+    newgame,
+    offline,
+    session,
+    shields,
+    state,
+    ticks,
+)
 
 HUNT = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
 
@@ -422,3 +435,225 @@ def test_the_ending_played_again_holds_what_is_received() -> None:
     asked = ctx.helper.requests.count(discs.MISSION_STATUS)
     run(ticks.replay_tick(ctx))
     assert ctx.helper.requests.count(discs.MISSION_STATUS) == asked  # held: not asked again
+
+
+# --- received Energy Shields -------------------------------------------------------------------
+
+PLAYER = 0x100  # the stand-in's player state
+SHIELD_OBJECT, SHIELD_SLOT, STALE_LINK = 0x2000, 7, 0x2800
+
+
+class ShieldWorld(game.Game):
+    """A game already in play when the client attached, with a shield made as the game makes
+    one: the player's link set, the object's serial, type and slot, and its +0x3C8 left as the
+    slot's last object left it (docs/re/memory.md, "Received Energy Shields")."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            pm=FakeProcess(0x3000),
+            base=0,
+            rva={
+                "inventory": PLAYER + game.INVENTORY_IN_PLAYER_STATE,
+                "save_loaded": 0x10,
+                "menu_state": 0x11,
+            },
+            pid=1,
+            build=None,
+        )
+        memory = self.pm.memory
+        memory[0x10], memory[0x11] = 3, 0  # slot 4 loaded, no menu
+        struct.pack_into("<h", memory, PLAYER + game.ENERGY_NOW, 48)  # in play
+        struct.pack_into("<Q", memory, SHIELD_OBJECT + 0x3C8, STALE_LINK)
+        self.serial = 0x8DD0
+
+    def _alive(self) -> bool:
+        return True
+
+    def settled_state(self, gap: float = 0.0) -> str:
+        return self.state()
+
+    def spawn(self) -> None:
+        """The pickup's event: a new shield, or the one up refreshed (the same object)."""
+        memory = self.pm.memory
+        link = PLAYER + game.SHIELD_LINK
+        if struct.unpack_from("<Q", memory, link)[0] == SHIELD_OBJECT:
+            return
+        self.serial += 1
+        handle = game.HANDLE.pack(self.serial, game.SHIELD_POOL_TYPE, SHIELD_SLOT)
+        memory[link : link + 8] = struct.pack("<Q", SHIELD_OBJECT)
+        memory[link + 8 : link + 8 + len(handle)] = handle
+        at = SHIELD_OBJECT + game.OBJECT_HANDLE
+        memory[at : at + len(handle)] = handle
+
+
+class ShieldHelper(Helper):
+    def __init__(self, world: ShieldWorld) -> None:
+        super().__init__()
+        self.world = world
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "shield":
+            self.requests.append(text)
+            self.world.spawn()
+            return "spawned"
+        return super().request(text, seconds)
+
+
+def shield_ctx(world: game.Game, owed: int = 1) -> Ctx:
+    ctx = Ctx(connection())
+    ctx.game_conn = world
+    ctx.shields = shields.Shields()
+    ctx.stored_data = {ctx.conn.shield_key: 0}
+    ctx.sent: list[dict] = []
+    ctx.server = types.SimpleNamespace(socket=types.SimpleNamespace(open=True, closed=False))
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        ctx.sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    ctx.received = [ids.ENERGY_SHIELD] * owed
+    return ctx
+
+
+def play_for(ctx: Ctx, seconds: float, monkeypatch) -> None:
+    """shields_tick each half second of ``seconds`` of the stand-in clock."""
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+
+    async def ticks_for() -> None:  # one event loop: each new one opens a socket pair
+        while clock.now < 1000.0 + seconds:
+            await ticks.shields_tick(ctx, ctx.received)
+            clock.now += 0.5
+
+    run(ticks_for())
+
+
+def counts_sent(ctx: Ctx) -> list[int]:
+    return [m["operations"][0]["value"] for m in ctx.sent if m["key"] == ctx.conn.shield_key]
+
+
+def test_a_shield_received_after_attaching_mid_play_is_spawned_once(monkeypatch) -> None:
+    # The RC retest (2026-11-02): attached to a save already in play, a received shield came up
+    # but was never read up, and was spawned again three times a minute until the save was left.
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = ShieldHelper(world)
+    play_for(ctx, 300.0, monkeypatch)
+    assert ctx.helper.requests == ["shield"]
+    assert counts_sent(ctx) and set(counts_sent(ctx)) == {1}
+
+
+class LostReply(ShieldHelper):
+    """Spawns it, then the reply is lost with the pipe."""
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        super().request(text, seconds)
+        raise native.ReplyLost("the helper's pipe closed: 109")
+
+
+def test_a_spawn_whose_reply_was_lost_is_looked_for_not_spawned_again(monkeypatch) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = LostReply(world)
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+    with pytest.raises(native.ReplyLost):  # side_tick then drops the helper
+        run(ticks.shields_tick(ctx, ctx.received))
+    asked = ctx.helper.requests
+    ctx.helper = None
+    clock.now += 0.5
+    run(ticks.shields_tick(ctx, ctx.received))
+    assert asked == ["shield"] and counts_sent(ctx) == [1]
+
+
+class NeverSeen(ShieldHelper):
+    """The game takes the request, but no shield ever reads up."""
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "shield":
+            self.requests.append(text)
+            return "spawned"
+        return super().request(text, seconds)
+
+
+def test_a_shield_never_seen_up_stops_being_spawned(monkeypatch, caplog) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world, owed=2)
+    ctx.helper = NeverSeen(world)
+    with caplog.at_level(logging.WARNING):
+        play_for(ctx, 3600.0, monkeypatch)
+    assert ctx.helper.requests == ["shield"] * shields.MISSES
+    assert counts_sent(ctx) == []
+    assert sum("no more are asked for" in r.getMessage() for r in caplog.records) == 1
+
+
+# Requests that never reached the helper, or that it answered with an error: nothing spawned.
+UNSENT = {
+    "pipe closed at the write": native.HelperError("the helper's pipe closed: 232"),
+    "error reply": native.HelperError("the game is not settled"),
+    "another build": native.ModMismatch("both are version 1.0.0, but from different builds"),
+}
+
+
+class NotSent(ShieldHelper):
+    def __init__(self, world: ShieldWorld, error: Exception) -> None:
+        super().__init__(world)
+        self.error = error
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "shield":
+            self.requests.append(text)
+            raise self.error
+        return super().request(text, seconds)
+
+
+def failed_rounds(ctx: Ctx, world: ShieldWorld, error: Exception, rounds: int, monkeypatch):
+    """``rounds`` of: a request that fails with ``error``, the helper dropped (side_tick), the
+    next ticks without it, then the helper back."""
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+
+    async def rounds_of() -> None:  # one event loop: each new one opens a socket pair
+        for _ in range(rounds):
+            ctx.helper = NotSent(world, error)
+            with pytest.raises(type(error)):
+                await ticks.shields_tick(ctx, ctx.received)
+            ctx.helper = None
+            for _ in range(int(shields.SEEN_SECONDS * 2) + 2):
+                clock.now += 0.5
+                await ticks.shields_tick(ctx, ctx.received)
+            clock.now += shields.GAP_SECONDS
+
+    run(rounds_of())
+
+
+@pytest.mark.parametrize("why", list(UNSENT))
+def test_a_request_that_never_reached_the_helper_counts_no_shield_up(why, monkeypatch) -> None:
+    # A shield already up (the save's, or one picked up) must not be counted for a received
+    # one that nothing spawned: the received one is still owed.
+    world = ShieldWorld()
+    world.spawn()
+    ctx = shield_ctx(world)
+    failed_rounds(ctx, world, UNSENT[why], 1, monkeypatch)
+    assert ctx.shields.pending is None and counts_sent(ctx) == []
+
+
+@pytest.mark.parametrize("why", list(UNSENT))
+def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    failed_rounds(ctx, world, UNSENT[why], shields.MISSES + 2, monkeypatch)
+    assert not ctx.shields.stopped and ctx.shields.misses == 0
+    ctx.helper = ShieldHelper(world)  # the helper back: the shield is still spawned
+    play_for(ctx, 120.0, monkeypatch)  # the stand-in clock starts again at 1000
+    assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
+
+
+def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
+    # Its thread may still deliver it: dropping it would ask for it twice.
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = NotSent(world, asyncio.CancelledError())
+    with pytest.raises(asyncio.CancelledError):
+        run(ticks.shields_tick(ctx, ctx.received))
+    assert ctx.shields.pending is not None

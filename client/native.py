@@ -43,6 +43,12 @@ class HelperError(RuntimeError):
     """The helper could not be loaded, reached or unloaded."""
 
 
+class ReplyLost(HelperError):
+    """The request went out but no reply came back (the pipe closed after the write, or the
+    reply was late): the helper may have acted on it. Every other HelperError from ``request``
+    means it did not (the write failed, or the helper answered with an error)."""
+
+
 class GameExited(HelperError):
     """The game is no longer running."""
 
@@ -286,7 +292,11 @@ class Helper:
         if self._handle is None:
             raise HelperError("this connection was closed after an error")
         try:
-            reply = self._exchange(text.encode("utf-8"), seconds).decode("utf-8")
+            raw = self._exchange(text.encode("utf-8"), seconds)
+            try:
+                reply = raw.decode("utf-8")
+            except UnicodeDecodeError as exc:  # it answered: what it did can't be read
+                raise ReplyLost(f"a reply that is not UTF-8: {raw[:40]!r}") from exc
         except BaseException:
             self.close()  # a late reply must never answer the next request
             raise
@@ -313,11 +323,11 @@ class Helper:
             if not _kernel32().PeekNamedPipe(
                 self._handle, None, 0, None, ctypes.byref(available), None
             ):
-                raise HelperError(f"the helper's pipe closed: {_last_error()}")
+                raise ReplyLost(f"the helper's pipe closed: {_last_error()}")
             if available.value:
                 break
             if time.monotonic() > deadline:
-                raise HelperError(f"no reply within {seconds} s")
+                raise ReplyLost(f"no reply within {seconds} s")
             time.sleep(0.005)
         reply = b""
         buffer = ctypes.create_string_buffer(65536)
@@ -327,7 +337,7 @@ class Helper:
             if ok:
                 return reply
             if ctypes.get_last_error() != ERROR_MORE_DATA:
-                raise HelperError(f"the helper's pipe closed: {_last_error()}")
+                raise ReplyLost(f"the helper's pipe closed: {_last_error()}")
 
     def hello(self) -> dict[str, str]:
         """The helper's hello as fields: version, build, hooked, configured, feats, folder,

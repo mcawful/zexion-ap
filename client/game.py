@@ -46,13 +46,13 @@ SUPPLY_FIELDS = (0xCEA, 0xCEC, 0xCBC, 0xCC0, 0xCBE, 0xCC2)
 # (player_state).
 PLAYER_SPAN = (min(SUPPLY_FIELDS), INVENTORY_IN_PLAYER_STATE + len(ids.GAME_ITEMS))
 NO_SAVE_LOADED = 0xFF  # save_loaded's value on the title and file-select screens
-# The player's link to their Energy Shield: pointer, then handle (serial, pool type 2). The
-# object repeats the handle at +0x1D8 and its own address at +0x3C8 (docs/re/memory.md,
-# "Received Energy Shields").
+# The player's link to their Energy Shield: pointer, then the object's serial (32-bit), pool
+# type (16-bit, 2), two unused bytes and its slot (32-bit). The object holds the same serial,
+# type and slot from +0x1D8 (docs/re/memory.md, "Received Energy Shields").
 SHIELD_LINK = 0xFE8
 SHIELD_POOL_TYPE = 2
 OBJECT_HANDLE = 0x1D8
-OBJECT_SELF = 0x3C8
+HANDLE = struct.Struct("<IHxxi")  # serial, pool type, slot; the two bytes between are not set
 
 # What state() returns.
 NO_SAVE = "no save loaded"
@@ -394,16 +394,18 @@ class Game:
 
     def shield_up(self) -> bool:
         """Whether the player has an Energy Shield up: the player's link to it is set, and the
-        object it points to holds the same live handle and its own address. A link whose
-        object does not match counts as no shield."""
-        link = self._read("inventory", SHIELD_LINK - INVENTORY_IN_PLAYER_STATE, 16)
+        object it points to holds the link's serial, as the game's own test reads it, and its
+        pool type and slot. A link whose object does not match counts as no shield."""
+        link = self._read("inventory", SHIELD_LINK - INVENTORY_IN_PLAYER_STATE, 8 + HANDLE.size)
         pointer = struct.unpack_from("<Q", link, 0)[0]
-        serial, pool = struct.unpack_from("<IH", link, 8)
+        serial, pool, slot = HANDLE.unpack_from(link, 8)
         if pointer == 0 or serial == 0 or pool != SHIELD_POOL_TYPE:
             return False
-        handle = self._read_pointer(pointer + OBJECT_HANDLE, 8)
-        own = struct.unpack("<Q", self._read_pointer(pointer + OBJECT_SELF, 8))[0]
-        return handle == link[8:16] and own == pointer
+        return HANDLE.unpack(self._read_pointer(pointer + OBJECT_HANDLE, HANDLE.size)) == (
+            serial,
+            pool,
+            slot,
+        )
 
     def state(self, energy: int | None = None) -> str:
         """NO_SAVE, MENU, DEAD or IN_PLAY. Only IN_PLAY is a state to write items in.
