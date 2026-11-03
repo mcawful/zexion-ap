@@ -258,6 +258,10 @@ line says.
   NN; normal and plain randomizer saves unmarked), with and without the client, through
   paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new
   ARCHIPELAGO game's own save getting the logo: 2026-10-27.
+- AP saves' ITEMS row on the file select: empty in the 1.0.0 RC, since the grants set the
+  inventory byte but never the major-item list the row draws (the owner's FILE 03, 2026-11-03);
+  the helper now fills the list from the inventory by the game's own pickup rule
+  (`native/README.md`, "Grants"). Stand-in tests only, not run in game yet.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone

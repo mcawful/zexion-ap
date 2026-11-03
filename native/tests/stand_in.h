@@ -590,6 +590,7 @@ inline BYTE g_map_grid[54 * 54] = {};
 inline BYTE g_flags[0x9C4] = {};
 inline BYTE g_slot_array[30 * 0x9408] = {};
 inline BYTE g_rando_slots[30 * 0x908] = {};
+inline BYTE g_pickups[zap::pickups::kSize] = {};  // the major-item list and its count
 // Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
 inline BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
 inline BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
@@ -718,6 +719,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"fade_level", rva(&g_fade_level)},
         {"keys_branch", rva(g_keys_branch)},
         {"options_back_fn", rva(reinterpret_cast<void*>(&options_back_fn))},
+        {"pickup_list", rva(g_pickups)},
         {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
         {"copy_entry_fn", rva(reinterpret_cast<void*>(&copy_entry_fn))},
@@ -790,6 +792,7 @@ inline void reset_game() {
     g_template_list[34] = g_item_template;
     put<BYTE*>(g_item_template, 0x1A8, g_frames);
     std::memset(g_player, 0, sizeof(g_player));
+    std::memset(g_pickups, 0, sizeof(g_pickups));
     g_save_loaded = 3;
     g_menu = 0;
     field<int16_t>(0xCEA) = 48;  // energy

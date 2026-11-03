@@ -188,6 +188,8 @@ constexpr ConfigKey kConfigKeys[] = {
     translation_key(data("large_count", &G::large_count)),
     // OPTION MENU's way back to the pause screen (pause.h).
     later_key(code("options_back_fn", &G::options_back_fn)),
+    // The loaded save's major-item list (watch_pickups).
+    later_key(data("pickup_list", &G::pickup_list, pickups::kSize)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -731,7 +733,27 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_names();
     watch_ap_items();
     watch_map_marks();
+    watch_pickups();
     watch_translation();
+}
+
+void Game::watch_pickups() {
+    BYTE* list = at_.pickup_list;
+    if (list == nullptr || !in_play() || !ap_save_loaded()) return;
+    BYTE* records = pointer_at(at_.item_records);
+    if (records == nullptr) return;
+    int8_t& count = at<int8_t>(list, pickups::kCount);
+    if (!pickups::count_ok(count)) return;
+    for (int item = 0; item < record::kCount && count < pickups::kMax; ++item) {
+        // The new game's own starting items: the game never picks them up, so never lists them.
+        if (at_.inventory[item] == 0 || rando::started_with(at_.rando_blob, item)) continue;
+        uint8_t icon = 0;
+        if (!read(records, record::kSize * item + record::kIcon, icon)) return;
+        if (!pickups::listed(item, icon)) continue;
+        if (std::find(list, list + count, icon) != list + count) continue;
+        list[count] = icon;
+        ++count;
+    }
 }
 
 void Game::watch_translation() {
@@ -1392,6 +1414,7 @@ void Game::watch_ap_items() {
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
         looks_.scan(at_, base);
+        looks_.hide_marker(at_, base);  // whatever the labels: the logo is painted
         looks_.apply(at_, pool, base);
         looks_.own_colors(at_, pool, base);
     } else {
