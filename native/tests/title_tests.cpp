@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "check.h"
+#include "stand_in.h"
 #include "title.h"
+#include "translation.h"
 
 namespace {
 
@@ -51,6 +53,11 @@ BYTE* text_new(const char* chars, int length, int columns) {
         glyphs[i] = g;
     }
     put<BYTE**>(t, 0x228, glyphs);
+    // Room for translated text, three glyphs a pixel glyph (0x92511), none built yet.
+    auto** translated = reinterpret_cast<BYTE**>(block(sizeof(BYTE*) * 3 * length));
+    for (int i = 0; i < 3 * length; ++i) translated[i] = block(0x1D8);
+    put<BYTE**>(t, 0x238, translated);
+    put<int32_t>(t, 0x240, 3 * length);
     return t;
 }
 
@@ -273,9 +280,84 @@ void test_the_hint_only_without_a_client() {
     check(hint != nullptr && all_visible(hint, true), "the client gone: the hint shown");
 }
 
+// English(HD): the version's line and the hint built in its font, in mixed case, centered,
+// their pixel glyphs hidden; the credit in pixels; back to pixels in another language.
+void test_the_lines_in_english_hd() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    reset_title();
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    auto watch = [&](bool hd) {
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+    };
+    watch(true);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    BYTE* hint = find("START THE AP CLIENT TO PLAY A SEED", false);
+    BYTE* credit = find("C2026 MCAWFUL", true);
+    if (mod == nullptr || hint == nullptr || credit == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    auto built = [](const std::wstring& text) {
+        for (const auto& b : stand_in::g_builds) {
+            if (b.text == text) return true;
+        }
+        return false;
+    };
+    check(built(L"Archipelago Mod 1.0.0") && built(L"Start the AP client to play a seed"),
+          "both built in mixed case");
+    check(!built(L"C2026 MCAWFUL") && all_visible(credit, true), "the credit left in pixels");
+    auto translated_shown = [](BYTE* t, bool visible) {
+        auto** list = get<BYTE**>(t, 0x238);
+        const int32_t n = get<int32_t>(t, 0x248);
+        for (int32_t i = 0; i < n; ++i) {
+            if ((list[i][0x120] != 0) != visible) return false;
+        }
+        return n > 0;
+    };
+    check(all_visible(mod, false) && all_visible(hint, false) && translated_shown(mod, true) &&
+              translated_shown(hint, true),
+          "their translated text shown, their pixel glyphs hidden");
+    const size_t builds = stand_in::g_builds.size();
+    g_client = true;
+    watch(true);
+    check(translated_shown(hint, false) && translated_shown(mod, true) &&
+              stand_in::g_builds.size() == builds,
+          "a client: the hint hidden, nothing built again");
+    g_client = false;
+    // A menu opening on the title hides every glyph of the HD list (its builder): the lines
+    // shown again at the next frame call, each time, not at the next 9th.
+    auto hide_translated = [](BYTE* t) {
+        auto** list = get<BYTE**>(t, 0x238);
+        for (int32_t i = 0; i < get<int32_t>(t, 0x248); ++i) list[i][0x120] = 0;
+    };
+    bool back = true;
+    for (int i = 0; i < 3; ++i) {
+        hide_translated(mod);
+        lines.watch(a, g_client, true);
+        back = back && translated_shown(mod, true);
+    }
+    check(back, "hidden by a menu's builder: shown again at the next frame call, each time");
+    lines.watch(a, g_client, false);  // another language picked: one frame call
+    check(all_visible(mod, true) && all_visible(hint, true) && translated_shown(mod, false),
+          "another language: the pixel lines again, in the same frame call");
+    lines.watch(a, g_client, false);  // a frame call later, its next look 8 calls away
+    const size_t before = stand_in::g_builds.size();
+    lines.watch(a, g_client, true);  // English(HD) again
+    check(stand_in::g_builds.size() > before && translated_shown(mod, true) &&
+              all_visible(mod, false),
+          "English(HD) again: built again with the translation loaded now, in the same frame "
+          "call");
+    stand_in::reset_translation();
+}
+
 }  // namespace
 
 int main() {
+    test_the_lines_in_english_hd();
     test_the_hint_only_without_a_client();
     test_lines_are_made_under_the_copyright();
     test_nothing_without_the_copyright_line();

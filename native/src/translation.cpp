@@ -571,9 +571,9 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
     int32_t capacity = 0;
     double x = 0, y = 0;
     // More glyphs than it holds would be laid over its last one (0x88B14 to 0x88B28).
-    if (!read(label, hdlabel::kBuilt, built) || built == 0 ||
-        !read(label, hdlabel::kCapacity, capacity) || glyphs_in(text) > capacity ||
-        !writable(label, hdlabel::kSize)) {
+    if (!read(label, hdlabel::kBuilt, built) || (built == 0 && !how.first) ||
+        !read(label, hdlabel::kCapacity, capacity) || capacity <= 0 ||
+        glyphs_in(text) > capacity || !writable(label, hdlabel::kSize)) {
         return false;
     }
     if (how.attached) {

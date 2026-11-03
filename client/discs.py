@@ -9,7 +9,8 @@ counts them,
                 + the disks received from other worlds
                 + this world's own disk locations the player has found
 
-Shown in popups ("OS INSTALL DISK 3 OF 15", "OF 15" once the scanner has said how many).
+Shown in popups ("OS Install Disk 3 of 15", "of 15" once the scanner has said how many; in
+capitals but in English(HD)).
 "Found" is what clients reported from the game's map (storage.own_found), not the server's
 checked set, which a release fills; the disc the game gives for its secret boss does not count.
 Pure functions; client/ticks.py talks to the helper.
@@ -24,7 +25,7 @@ from dataclasses import dataclass
 from . import save_patch
 from .ids import DATA_DISC, SECTION_SIZE
 
-NAME = "OS INSTALL DISK"  # what the game's record calls DATA DISC is called here
+NAME = "OS Install Disk"  # what the game's record calls DATA DISC is called here
 
 
 @dataclass(frozen=True)
@@ -63,8 +64,8 @@ def note(count: int, required: int | None = None) -> str:
     """A disk's popup text: the count, and how many are needed once the player has been told
     (the scanner's message; ``required`` None before)."""
     if required is None:
-        return f"OS INSTALL DISK {count}"
-    return f"OS INSTALL DISK {count} OF {required}"
+        return f"{NAME} {count}"
+    return f"{NAME} {count} of {required}"
 
 
 def received_notes(
@@ -123,12 +124,12 @@ def slots_request(count: int, required: int, slots: Sequence[int]) -> str:
 def scan_line(required: int) -> str:
     """What the scanner says in place of ENERGY KEYS DETECTED! (docs/re/memory.md, "The
     scanner"): one line of the game's text, at most 31 characters."""
-    return f"COLLECT {required} OS INSTALL DISK{'' if required == 1 else 'S'}!"
+    return f"Collect {required} {NAME}{'' if required == 1 else 's'}!"
 
 
 # Told once the player has enough disks: RETURN HOME WITH THE DISKS? is offered only after a
 # save at the Landing Pod's save point, whichever room the seed starts in.
-POD_NOTE = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME."
+POD_NOTE = "Enough OS Install Disks found. Save at the landing pod to return home."
 
 # Home: the Landing Pod's save point (start room landing_pod, Kresezoa X16 Y13), tile column
 # then row, as a save's continue point and the world's data.START_ROOMS hold it

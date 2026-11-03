@@ -26,12 +26,17 @@ Entry padded(const std::string& text) {
 bool scan_line_ok(const std::string& line) {
     if (line.empty() || line.size() >= static_cast<size_t>(kTextEntrySize)) return false;
     for (char c : line) {
-        bool ok = std::isupper(static_cast<unsigned char>(c)) ||
+        bool ok = std::isalpha(static_cast<unsigned char>(c)) ||
                   std::isdigit(static_cast<unsigned char>(c)) ||
                   (c != 0 && std::strchr(kFontPunctuation, c) != nullptr);
         if (!ok) return false;
     }
     return true;
+}
+
+std::string scan_line_upper(std::string line) {
+    for (char& c : line) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return line;
 }
 
 bool ScanText::apply(BYTE* table_holder, const std::string& line) {

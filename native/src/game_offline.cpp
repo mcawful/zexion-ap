@@ -9,15 +9,32 @@ namespace zap {
 namespace {
 
 constexpr int kOfflineFrames = 15;  // frames between looks
-// What the player is told on loading an AP save with no client.
+// What the player is told on loading an AP save with no client; each in capitals for the pixel
+// fonts, and in mixed case for English(HD) (Popup::as_sent, Game::hd_popup_text).
 constexpr char kOfflineWarning[] =
     "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
+constexpr char kOfflineWarningHd[] =
+    "Archipelago client not connected. Checks are sent when it connects.";
 // And once a client connects while a save was dressed offline.
 constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
+constexpr char kOnlineNoticeHd[] = "Archipelago client connected.";
 // And once a load, from a client whose seed the loaded randomizer save is not.
 constexpr char kOtherSeedNotice[] =
     "THIS SAVE IS FROM ANOTHER SEED. NOTHING IS SENT FROM IT, AND YOUR ITEMS WAIT FOR YOUR "
     "SEED'S SAVE.";
+constexpr char kOtherSeedNoticeHd[] =
+    "This save is from another seed. Nothing is sent from it, and your items wait for your "
+    "seed's save.";
+static_assert(sizeof(kOfflineWarning) == sizeof(kOfflineWarningHd) &&
+              sizeof(kOnlineNotice) == sizeof(kOnlineNoticeHd) &&
+              sizeof(kOtherSeedNotice) == sizeof(kOtherSeedNoticeHd));
+
+// One of the helper's own notices: silent, for any save, its text in both cases.
+Popup notice(const char* text, const char* mixed) {
+    Popup p{kAreaMapItem, text, true};
+    p.as_sent = mixed;
+    return p;
+}
 
 }  // namespace
 
@@ -177,7 +194,7 @@ void Game::watch_offline() {
             // Once a load and after each client goes (configure): why received items and hints
             // wait (with a client of another seed, its own notice said so: other_save).
             if (!offline_warned_ && !other) {
-                popups_.push_back(Popup{kAreaMapItem, kOfflineWarning, true});
+                popups_.push_back(notice(kOfflineWarning, kOfflineWarningHd));
                 offline_warned_ = true;
             }
             if (!other) offline_played_ = seed;
@@ -237,7 +254,7 @@ std::string Game::other_save() {
     other_save_ = true;
     if (other_warned_) return "already told";
     drop_offline_warning();
-    popups_.push_back(Popup{kAreaMapItem, kOtherSeedNotice, true});
+    popups_.push_back(notice(kOtherSeedNotice, kOtherSeedNoticeHd));
     other_warned_ = true;
     return "told";
 }
@@ -247,7 +264,7 @@ bool Game::client_back() {
                  static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
                  section_is(offline_seeds_[static_cast<size_t>(offline_played_)], at_.rando_blob);
     offline_played_ = -1;
-    if (shown) popups_.push_back(Popup{kAreaMapItem, kOnlineNotice, true});
+    if (shown) popups_.push_back(notice(kOnlineNotice, kOnlineNoticeHd));
     return shown;
 }
 

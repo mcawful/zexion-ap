@@ -4,10 +4,11 @@ The world puts a stand-in at each location holding another player's item: 47 (Sc
 or 48 (Scrap Chunk) for progression (not another Zexion player's supplies, which stay minor:
 world.important_elsewhere), and with the OS Install Disks goal 48 for this player's own disks
 too. The client scouts those locations and sends the helper a label per map cell:
-"PROGRESSION ITEM" or "AP ITEM" over "FOR ALICE", or ``@N`` for another Zexion player's item
+"Progression Item" or "AP Item" over "for Alice", or ``@N`` for another Zexion player's item
 (its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
 "Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a
-line. Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
+line, in the case they are written in: the helper shows them in capitals but in English(HD).
+Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
 from __future__ import annotations
@@ -20,17 +21,33 @@ from .ids import STAND_IN, STAND_IN_PROGRESSION
 
 PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
-AP_ITEM = "AP ITEM"
-PROGRESSION_ITEM = "PROGRESSION ITEM"
+AP_ITEM = "AP Item"
+PROGRESSION_ITEM = "Progression Item"
 # A scouted item's flags: the progression bit (Archipelago's ItemClassification.progression,
 # checked against it in worlds/zexion/test/test_client_agrees.py), kept here so the client's
 # modules other than zexion_client.py import without Archipelago.
 PROGRESSION = 0b00001
 
 
+def font_text(text: str, chars: frozenset[str]) -> str:
+    """``text`` in the characters ``chars`` holds (capital letters, digits, punctuation), each
+    letter in its own case: the helper draws capitals but in English(HD). A character outside
+    ASCII whose capitals are ASCII is spelled out by them first, in its case ("ß" as "ss", "ı"
+    as "i", "ſ" as "s"), as the capitals the client sent before had it ("SS", "I", "S"); any
+    other is dropped."""
+    out = []
+    for c in text:
+        if not c.isascii():
+            capitals = c.upper()
+            if not capitals.isascii():
+                continue
+            c = capitals if c.isupper() else capitals.lower()
+        out.append("".join(ch for ch in c if ch.upper() in chars))
+    return "".join(out)
+
+
 def _font_words(text: str) -> list[str]:
-    kept = "".join(c for c in text.upper() if c in FONT)
-    return kept.split()
+    return font_text(text, FONT).split()
 
 
 def _fit(words: list[str], width: int) -> str:
@@ -50,8 +67,8 @@ def _fit(words: list[str], width: int) -> str:
 
 def _for(player_name: str) -> str:
     """A label's second line: whom the item is for, as much of the name as fits."""
-    player = _fit(_font_words(player_name), PER_LINE - len("FOR "))
-    return f"FOR {player}" if player else "FOR"
+    player = _fit(_font_words(player_name), PER_LINE - len("for "))
+    return f"for {player}" if player else "for"
 
 
 def label(progression: bool, player_name: str) -> str:
@@ -61,12 +78,12 @@ def label(progression: bool, player_name: str) -> str:
     return f"{item}\n{_for(player_name)}"
 
 
-# Zexion items shown under a name of our own: the Data Disc as OS INSTALL DISK, and the Area
+# Zexion items shown under a name of our own: the Data Disc as OS Install Disk, and the Area
 # Map and the Intel Chip, whose record a seed with Area Map Hints renames.
 ZEXION_LOOKS = {
-    ids.DATA_DISC: (ids.DATA_DISC, "OS INSTALL DISK"),
-    ids.AREA_MAP: (ids.AREA_MAP, "AREA MAP"),
-    ids.INTEL_CHIP: (ids.DRAWN_AS[ids.INTEL_CHIP], "INTEL CHIP"),
+    ids.DATA_DISC: (ids.DATA_DISC, "OS Install Disk"),
+    ids.AREA_MAP: (ids.AREA_MAP, "Area Map"),
+    ids.INTEL_CHIP: (ids.DRAWN_AS[ids.INTEL_CHIP], "Intel Chip"),
 }
 
 

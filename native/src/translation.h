@@ -189,6 +189,9 @@ struct Rebuild {
     // Its middle kept where the text it replaces has it, as 0x86660 centers a text on a y
     // (the Feats screen's title, 0x179AC7).
     bool keep_middle = false;
+    // Built even if the game never built the label's translated text (a text object the helper
+    // made, as the title's lines, whose label has its room from 0x92511 all the same).
+    bool first = false;
 };
 // How wide the game's builder lays a line out in the translation's font as loaded now (0x88760
 // on; docs/re/memory.md, "Laying out the helper's popups"): a space by the font's space advance,

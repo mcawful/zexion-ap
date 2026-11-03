@@ -161,12 +161,13 @@ or Assist Unlock, stops generation with an error that names it.
 
 - A location holding another player's item shows the Archipelago logo, with a flashing up arrow
   if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM, and whom it is for
-  (FOR ALICE).
+  (FOR ALICE; in English(HD), Progression Item or AP Item, for Alice).
 - Another Zexion player's item looks like the item itself.
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
   Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
-  what it is (PROGRESSION ITEM, AP ITEM, or a Zexion item's name). Before that, an important
+  what it is (PROGRESSION ITEM, AP ITEM, or a Zexion item's name; in English(HD), Progression
+  Item, AP Item). Before that, an important
   one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
@@ -179,8 +180,8 @@ or Assist Unlock, stops generation with an error that names it.
 With the Area Map Hints option (on by default), Area Maps become **Intel Chips**. Each Intel
 Chip you get, found or sent to you, hints where one of your upgrades, keys or OS Install Disks
 is that you don't have yet, in any world. A popup shows the hint, such as HINT: SLIDE MOD IS AT
-GUARDIA 22,7, and it goes into your hint list. When nothing is left to hint, it says HINT: NO
-HINTS LEFT. Intel Chips don't reveal the map.
+GUARDIA 22,7 (in English(HD), Hint: Slide Mod is at Guardia 22,7), and it goes into your hint
+list. When nothing is left to hint, it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
 With the option off, Area Maps work as in the normal game.
 

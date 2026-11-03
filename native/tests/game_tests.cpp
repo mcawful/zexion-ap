@@ -9,6 +9,7 @@
 
 #include "check.h"
 #include "game_calls.h"
+#include "scan.h"
 #include "stand_in.h"
 #include "stand_in_menu.h"
 
@@ -656,7 +657,11 @@ void test_scanner_line() {
     check(parses("discs 3 15 434f4c4c454354 0") && !told,
           "and whether the player has been told how many are needed");
     check(!parses("discs 3 15 434f4c4c454354 2"), "told is 0 or 1");
-    check(!parses("discs 3 15 636f6c6c656374"), "lower case is not the game's font");
+    // Lower case is kept as sent (English(HD) shows it), written in capitals for the font.
+    check(parses("discs 3 15 436f6c6c656374") && line == "Collect" &&
+              zap::scan_line_upper(line) == "COLLECT",
+          "a line in mixed case");
+    check(!parses("discs 3 15 43c3a9"), "a letter the font lacks is not");
     check(!parses("discs 3 0 41"), "none required");
     check(!parses("discs 3 15"), "no line");
     check(!parses("discs 3 15 " + hex(std::string(32, 'A'))),

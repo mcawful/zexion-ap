@@ -27,7 +27,8 @@ the game can't start a seed.
 Right after installing, the title screen looks as it always did. Once the client has connected
 while Zexion runs (Start playing, below), the title screen shows ARCHIPELAGO MOD and its
 version: the mod is in. From then on, the title screen also says START THE AP CLIENT TO PLAY A
-SEED until the client connects, and again once you close the client.
+SEED until the client connects, and again once you close the client (in English(HD), in its font:
+Archipelago Mod and Start the AP client to play a seed).
 
 ## Make your YAML
 
@@ -89,8 +90,11 @@ another menu (Video, the map), the locked ASSIST could show the selection's colo
 without the client, it could come unlocked while a menu was open (it was once seen unlocked
 after a trip through the menus); its padlock sat low and near the options box's edge; the map's
 cursor showed the Archipelago icon before AP ITEM; and the lines of another player's item you
-pick up were not centered. Much of the mod's own text is still in capitals. If something shows
-wrong or not at all, switch to the default English and please report it.
+pick up were not centered. In this version the mod's own text (its notices, hints, the disks'
+popups, the names of other players' items) is in mixed case in English(HD), the title screen's
+mod lines are in its HD font, and its disk and Archipelago icons are redrawn at the game's icon
+size (not yet tried in the game). If something shows wrong or not at all, switch to the default
+English and please report it.
 
 In the other languages the mod does the same, but its text is in English, and some of it may
 not show (a font without Latin letters, say); the client says so when it sees one. Received
@@ -102,7 +106,8 @@ Simplified Chinese and the other European languages have not been tried.
 
 You can keep playing your seed's save with the client closed: what you find is sent the next
 time you connect. This works once you have connected to that seed at least once; the game then
-shows ARCHIPELAGO CLIENT NOT CONNECTED. The same goes for a save you load while the client is
+shows ARCHIPELAGO CLIENT NOT CONNECTED (in English(HD), Archipelago client not connected.). The
+same goes for a save you load while the client is
 open but not connected (the server down, say), and for the one you are in when you disconnect.
 
 - Locations you check are sent the next time you connect with that save loaded, and so is

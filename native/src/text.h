@@ -40,6 +40,9 @@ struct Label {
     // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
     // the game's record calls DATA DISC).
     std::string item_name;
+    // The first line (without its glyph; an @N item's NAME) and `who` in the case they were sent
+    // in, for English(HD)'s mixed case (Game::hd_label_text); empty where none was sent.
+    std::string own_first, own_who;
 };
 
 // A label's popup layout: `first` (which starts with its glyph) and `who`, each centered in

@@ -243,14 +243,14 @@ async def create_hints(ctx: ZexionContext, entries) -> bool:
 
 
 def hint_note(ctx: ZexionContext, entry: tuple[int, int]) -> str:
-    """An entry's popup text (hints.popup_note), or NO HINTS LEFT."""
+    """An entry's popup text (hints.popup_note), or hints.NO_HINT_NOTE."""
     code_at = {(p, loc): code for p, loc, code in ctx.conn.hint_targets}
     if tuple(entry) == hints.NONE_LEFT or tuple(entry) not in code_at:
         return hints.NO_HINT_NOTE
     player, location = entry
     item = ctx.item_names.lookup_in_slot(ITEM_ID_BASE + code_at[(player, location)], ctx.slot)
     place = ctx.location_names.lookup_in_slot(location, player)
-    whose = None if player == ctx.slot else ctx.player_names.get(player, "ANOTHER PLAYER")
+    whose = None if player == ctx.slot else ctx.player_names.get(player, "another player")
     return hints.popup_note(item, place, whose)
 
 
