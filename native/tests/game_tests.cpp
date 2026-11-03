@@ -1717,6 +1717,28 @@ void test_return_home_lapses_away_from_the_pod() {
     game.put_back_all(&chosen);
 }
 
+// A last message the helper's own call did not change is not taken for its popup (the game makes
+// each new message the last one, with a new sequence number, 0x182CEB): after YES the ending
+// does not wait for it. Here the stand-in leaves the last message alone, a message of the
+// game's in the same slot the popup went to.
+void test_own_popup_needs_a_new_last_message() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    message_showing(1);  // the game's message, the last one, at its end
+    const int shown = g_messages;
+    apply(game, "apply\npopup 36 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == shown + 1 && g_last_message.last == g_message &&
+              g_last_message.sequence == 7,
+          "the popup shown into the same slot, the last message unchanged");
+    put<int32_t>(g_message, 0x1EC, 150);  // that message up again, as if still showing
+    game.mission_yes();
+    game.watch_all(&chosen);
+    check(g_transition_fn == m.hooks.mission_end,
+          "not the helper's popup: the ending at once after YES");
+    game.put_back_all(&chosen);
+}
+
 // YES through the Game (the wiring the YES hook and watch_mission give the prompt): kept black
 // after NO's close, a received death refused meanwhile, a popup received meanwhile held, then
 // the screen back in for it and the ending after it; once started, not offered again until
@@ -1819,6 +1841,7 @@ void test_the_black_after_yes() {
 
 int main() {
     test_the_black_after_yes();
+    test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();

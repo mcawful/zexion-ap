@@ -592,8 +592,9 @@ the helper:
   black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
   of the helper's waiting brings the screen back in for it (as NO's close would have), and the
   ending follows the popups as before; so does the ending not starting within 240 game frames in
-  play (`kDarkFrames`: a popup of the helper's length, 180 frames, with a margin; counted from
-  the game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so
+  play (`kDarkFrames`: a safety that errs long, as after YES the ending waits only for a menu
+  to close and the gap after the helper's last popup, and no popup of the helper's shows in the
+  black, a waiting one ending it first; counted from the game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so
   frames with a menu open, the pause, which saves the fade and puts it back, don't count; until the release
   candidate it counted 180 of the helper's frame calls, which a 165 Hz monitor would run out in
   about 1.1 s, before GAME SAVED ends, by disassembly: below), and the prompt cancelled (the save
@@ -635,7 +636,8 @@ the helper:
   game in lab slot 11, its first ending and a replay: black until the ending, then straight into
   it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
   SAVED up, since, working in game the same day, `zexion_ap.dll` `28ab9954…`, slot 11, a replay:
-  black for a frame or two after YES, then the ending fading in from it). Working: the ending played again on the save past it, with nothing new sent and the
+  black for a frame or two after YES, then the ending fading in from it; a first ending with it
+  is still to run). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups
   shown on the next load; a death received during the first ending dropped; the pause opened
