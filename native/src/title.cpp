@@ -224,7 +224,10 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     if (hd != hd_) frames_ = 0;
     hd_ = hd;
     if (mod_line_.empty() || frames_-- > 0) return "";
-    frames_ = kLookFrames;
+    // In English(HD) every frame call: a menu opening on the title hides every glyph of the HD
+    // list (its builder, docs/re/memory.md "Where a rebuilt label goes"), the lines' too, which
+    // are shown again at once (the title's draw list is short).
+    frames_ = hd ? 0 : kLookFrames;
     const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
     Look l = look(a.draw_layer, texts);
     if (l.game_line == nullptr) {

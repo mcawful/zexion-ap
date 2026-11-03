@@ -328,14 +328,29 @@ void test_the_lines_in_english_hd() {
               stand_in::g_builds.size() == builds,
           "a client: the hint hidden, nothing built again");
     g_client = false;
+    // A menu opening on the title hides every glyph of the HD list (its builder): the lines
+    // shown again at the next frame call, each time, not at the next 9th.
+    auto hide_translated = [](BYTE* t) {
+        auto** list = get<BYTE**>(t, 0x238);
+        for (int32_t i = 0; i < get<int32_t>(t, 0x248); ++i) list[i][0x120] = 0;
+    };
+    bool back = true;
+    for (int i = 0; i < 3; ++i) {
+        hide_translated(mod);
+        lines.watch(a, g_client, true);
+        back = back && translated_shown(mod, true);
+    }
+    check(back, "hidden by a menu's builder: shown again at the next frame call, each time");
     lines.watch(a, g_client, false);  // another language picked: one frame call
     check(all_visible(mod, true) && all_visible(hint, true) && translated_shown(mod, false),
           "another language: the pixel lines again, in the same frame call");
+    lines.watch(a, g_client, false);  // a frame call later, its next look 8 calls away
     const size_t before = stand_in::g_builds.size();
     lines.watch(a, g_client, true);  // English(HD) again
     check(stand_in::g_builds.size() > before && translated_shown(mod, true) &&
               all_visible(mod, false),
-          "English(HD) again: built again with the translation loaded now, at once");
+          "English(HD) again: built again with the translation loaded now, in the same frame "
+          "call");
     stand_in::reset_translation();
 }
 

@@ -30,8 +30,9 @@ struct Popup {
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
-    // The same characters in the case they were sent in, for a translation's font (a
-    // received item's "FROM Bob"); empty for the helper's own.
+    // The same characters in the case they were sent in (a received item's "FROM Bob", a
+    // hint's "Hint: Slide Mod is at ..."), or for the helper's own notices their mixed-case
+    // text (game_offline.cpp); English(HD) shows it (Game::hd_popup_text). Empty where none.
     std::string as_sent;
 };
 

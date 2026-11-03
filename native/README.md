@@ -835,8 +835,11 @@ side), no flash ("Map markers").
   SEED (`src/title.cpp`). It makes them with the game's own text functions in that line's
   palette and style, and the game frees them with the title.
 - **When:** while configured (by a client or from the cache) and no save is loaded, every 9th
-  frame call it looks through the game's draw list for the copyright line without the helper's
-  lines. One that failed is tried again on the next title.
+  frame call (every one in English(HD), and at once when the language changes) it looks through
+  the game's draw list for the copyright line without the helper's lines. One that failed is
+  tried again on the next title. In English(HD) a menu opening on the title hides every glyph
+  of the HD list, the lines' too (its builder: `docs/re/memory.md`, "Where a rebuilt label
+  goes"), so they are shown again at the next frame call (stand-in tests only).
 - **Put back:** a client going away leaves them; an unload hides them (stand-in tests only).
 - **In English(HD):** the version's line and the hint in the translation's font and in mixed
   case (Archipelago Mod 1.0.0, Start the AP client to play a seed): each line's translated text
