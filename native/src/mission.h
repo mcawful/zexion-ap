@@ -46,11 +46,13 @@ constexpr int32_t kFadeDelay = 60;
 // prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
 // after a save.
 constexpr int32_t kFadeMessageLeft = 150;
-// The most game frames the screen stays black after YES with no ending started (after_no):
-// GAME SAVED's length (0x1FC876, as long as a popup of the helper's, the one thing the ending
-// still waits for: game_calls.cpp, watch_mission) with a margin for the gap after it. Then it fades back in. Counted in game frames (GameFrames,
-// game_mem.h): until 1.0.0's release candidate it counted the helper's frame calls, 180 of them,
-// about 1.1 s at 165 Hz, which could end the black before GAME SAVED did.
+// The most game frames the screen stays black after YES with no ending started (after_no), as a
+// safety: after YES the ending waits only for a menu to close and the gap after the helper's
+// last popup (one waiting ends the black first; game_calls.cpp, watch_mission), so 240 errs
+// long (it was GAME SAVED's 180, 0x1FC876, when the ending also waited for that). Then it fades
+// back in. Counted in game frames (GameFrames, game_mem.h): until 1.0.0's release candidate it
+// counted the helper's frame calls, 180 of them, about 1.1 s at 165 Hz, which could end the
+// black before GAME SAVED did, when the ending still waited for it.
 constexpr int kDarkFrames = 240;
 // The ending after YES fades in from black, a level each this many frames (event 3667's step,
 // run back up): black for its first 8 frames, then the normal level 40 frames in. Before, the
@@ -80,7 +82,8 @@ public:
 
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
     // state, no popup of the helper's to show, and the game's last message down to its last
-    // kFadeMessageLeft frames (game_calls.cpp; for the ending, ended). `away`: the player in
+    // kFadeMessageLeft frames (game_calls.cpp; for the ending, any message of the game's, but a
+    // popup of the helper's ended). `away`: the player in
     // play outside home's cell (the Landing Pod's, given with the request). Sets the opener (or,
     // after YES, the ending) once the game is idle, and gives up on an opener another transition
     // took the place of (asked again; taken_over). A request not yet opened lapses while `away`

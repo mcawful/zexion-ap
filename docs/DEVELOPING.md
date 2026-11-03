@@ -184,8 +184,9 @@ line says.
   through a wrapper that puts the black back before that frame is drawn and fades in from it,
   and `mission_black` says how the black ended. Working in game 2026-11-02 (B1, `zexion_ap.dll`
   `d179d32d…`, `lab/ap/live52`, a new game in lab slot 11, its first ending and a replay): black
-  until the ending, then straight into it; a read-only memory record measured the limit as the
-  cause (`mission_black` not read: the game was closed first). In that black the player could
+  until the ending, then straight into it; a read-only memory record's numbers fit the limit as
+  the cause (the release candidate not run again; the ending's own first frame not seen, the
+  wrapper hiding it; `mission_black` not read: the game was closed first). In that black the player could
   still move and pause while the ending waited for GAME SAVED; since, the ending starts with GAME
   SAVED up: stand-in tests only, not run in game
   (`native/README.md`, "The OS Install Disks goal").

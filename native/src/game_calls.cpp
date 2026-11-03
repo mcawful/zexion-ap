@@ -906,7 +906,7 @@ void Game::watch_mission() {
     // last one kPopupGapFrames ago, and the game's last message down to kFadeMessageLeft
     // frames; one of the helper's own popups (the game's last message still) is never cut short.
     // After YES the ending waits for no message of the game's (GAME SAVED): the ending routine
-    // ends every message itself as it starts (0x1F9CE0, from 0x95103: the last message cleared
+    // ends every message itself (0x1F9CE0, at 0x95103 on both its paths: the last message cleared
     // and each slot's frames left 0, 0x1F9ED3 to 0x1F9F41), so the screen stays black only a
     // frame or two, not the rest of GAME SAVED with the player in play under it.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),

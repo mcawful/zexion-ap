@@ -573,9 +573,9 @@ the helper:
   black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
   of the helper's waiting brings the screen back in for it (as NO's close would have), and the
   ending follows the popups as before; so does the ending not starting within 240 game frames in
-  play (`kDarkFrames`: GAME SAVED's length with a margin; counted from the game's frame clock,
-  `frame_clock`, which stands still while a menu has the game paused, so frames with a menu
-  open, the pause, which saves the fade and puts it back, don't count; until the release
+  play (`kDarkFrames`: a popup of the helper's length, 180 frames, with a margin; counted from
+  the game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so
+  frames with a menu open, the pause, which saves the fade and puts it back, don't count; until the release
   candidate it counted 180 of the helper's frame calls, which a 165 Hz monitor would run out in
   about 1.1 s, before GAME SAVED ends, by disassembly: below), and the prompt cancelled (the save
   left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its saved
@@ -586,11 +586,12 @@ the helper:
   `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …`
   note: another fade, the ending not faded in or with the fade no longer the helper's), for a
   live check. In the release candidate the owner saw the screen fade back into play at the pod
-  for a moment before the ending (its retest, 2026-11-02): the limit above running out first was
-  the cause (by disassembly, then measured in game with this fix, 2026-11-02: `docs/re/memory.md`,
-  "The mission prompt"); the other one found is the ending routine itself, which sets the level
-  to 4 as it warps the player to the ending's first scene, in a frame the game draws before the
-  helper's frame call (not seen in game).
+  for a moment before the ending (its retest, 2026-11-02): the limit above running out first is
+  the cause the numbers fit (by disassembly; the run with this fix, 2026-11-02, measured 90 game
+  frames, about 230 frame calls, and no fade back; the release candidate was not run again:
+  `docs/re/memory.md`, "The mission prompt"); the other one found is the ending routine itself,
+  which sets the level to 4 as it warps the player to the ending's first scene, in a frame the
+  game draws before the helper's frame call (not seen in game: the wrapper hides it).
   For that one the helper starts the ending through a wrapper of its own, set as
   the transition with timer 1 in the routine's place: the game runs it, it runs the game's
   routine, and, while the black is still the helper's, it sets the level back to black at once
@@ -613,7 +614,8 @@ the helper:
   at the pod for a moment before the ending began, on both saves (a bug, the causes above; fixed
   since, working in game 2026-11-02, B1, `zexion_ap.dll` `d179d32d…`, `lab/ap/live52`, a new
   game in lab slot 11, its first ending and a replay: black until the ending, then straight into
-  it, the limit's running out measured as the cause; the ending starting with GAME SAVED up, since,
+  it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
+  SAVED up, since,
   is stand-in tests only, not run in game). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups

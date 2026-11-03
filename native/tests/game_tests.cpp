@@ -1592,8 +1592,8 @@ void test_the_mission_request_gives_home() {
 // Asked for with home the Landing Pod's save point, in a seed that starts elsewhere: dropped at
 // the seed's start, which is not home; offered at the pod; held by popups, dropped once the
 // player is in play outside the pod's cell, before it opens; a death's own fade left alone when
-// the opener is put off; and after YES, the ending waits for the game's last message to end,
-// and an unload refuses until it has started.
+// the opener is put off; and after YES, the ending comes with the game's message still up but
+// waits for the helper's own popup to end, and an unload refuses until it has started.
 void test_return_home_lapses_away_from_the_pod() {
     MissionGame m;
     zap::Game& game = m.game;
