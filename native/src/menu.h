@@ -66,10 +66,10 @@ private:
 
     BYTE* menu_ = nullptr;
     BYTE* child_ = nullptr;
+    WidgetCallback callback_ = nullptr;  // the helper's, given to child_ by install
     BYTE* hook_menu_ = nullptr;   // the menu whose panel holds hooks.panel
     BYTE* hook_panel_ = nullptr;  // that panel
     int32_t frames_[kLabelLength] = {};
-    BYTE* frame_ptrs_[kLabelLength] = {};
 };
 
 // The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
@@ -80,9 +80,10 @@ private:
 // 0.45 (a translated glyph's color is its style's, through a table the screens rewrite). It
 // clears the callback, which the generic widget handler then skips
 // (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
-// panel's selectable ones (+0x1EC), so the cursor skips it. Unlocking puts all of it back,
-// under the same rules as the ARCHIPELAGO choice (a 12-glyph label reading ASSIST and six
-// blanks, 0x16285A).
+// panel's selectable ones (+0x1EC), so the cursor skips it. It finds ASSIST (a 12-glyph label
+// reading ASSIST and six blanks, 0x16285A) by its label and callback, and each later frame finds
+// the locked entry again (still_locked) before writing to it; unlocking puts all of it back,
+// only into that entry.
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
 // helper paints it, apitem.h FontGlyph), with a blank before it.
@@ -93,8 +94,9 @@ class AssistLock {
 public:
     // Game thread, each frame while locked. Returns true when it locked an entry this frame.
     bool install(const GameAddresses& addresses);
-    // Game thread: unlocks the entry this locked, if its menu is still open; otherwise forgets
-    // it. Returns true when it wrote the callback back.
+    // Game thread: unlocks the entry this locked, if it is still the locked ASSIST of its open
+    // menu (still_locked); otherwise forgets it unwritten. Returns true when it wrote the
+    // callback back.
     bool restore(const GameAddresses& addresses);
     bool installed() const { return child_ != nullptr; }
 
@@ -108,8 +110,11 @@ private:
     void move_out(BYTE* panel, int32_t index);
     // Puts it back, if the panel is as move_out left it.
     void move_back();
-    // Whether the widget this locked is still a live child of a panel of its menu, its
-    // callback clear: found by its pointer, so a label changed meanwhile does not hide it.
+    // Whether the widget this locked is, read afresh, the locked ASSIST of its menu while that
+    // menu is open: the first live widget of the menu with the generic handler, its callback
+    // clear and its glyphs reading ASSIST and the padlock, in the panel it was locked in. Never
+    // the kept pointer alone: a menu closed and built again may put another widget in its place
+    // (docs/re/memory.md, "The assist menu"). The lock writes only into a widget that passes.
     bool still_locked(const GameAddresses& addresses) const;
     // In a translation: the label's translated text the entry's (SmallText 137) with the
     // padlock after it, built again whenever it is not the helper's, the padlock left out

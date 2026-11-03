@@ -31,7 +31,7 @@ struct ModePanel {
     BYTE child[0x2D0] = {};
     BYTE label[0x268] = {};  // through its translated text's fields (translation.h)
     BYTE* glyph_list[zap::kLabelLength] = {};
-    BYTE glyphs[zap::kLabelLength][0x1D0] = {};
+    BYTE glyphs[zap::kLabelLength][0x1D8] = {};  // through a glyph's last field
     std::vector<BYTE> table = std::vector<BYTE>(kFrames * 0x38);
     BYTE* current = nullptr;  // what current_menu holds
 

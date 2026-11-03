@@ -307,17 +307,21 @@ void FileEntries::restore(const GameAddresses& a) {
             it = wrapped_.erase(it);  // freed with its menu
             continue;
         }
+        // Only an entry still holding the helper's handler is the one wrapped: a menu closed and
+        // built again at the same address may put another entry, holding the game's, in its
+        // place (as the options menu does after Video, docs/re/memory.md, "The assist menu").
+        const bool ours = a.hooks.file_entry != nullptr &&
+                          pointer_at(entry, widget::kHandler) == a.hooks.file_entry;
         // The keys' block, the logo's cells and their glyphs' rows as the game left them.
         BYTE* g[kEntryGlyphs] = {};
-        if (entry_glyphs(entry, g)) {
+        if (ours && entry_glyphs(entry, g)) {
             forget_fills(g, w);
             put_back(g, w);
             place_count(g, false);
             unmark(g, w);
             place_logo(g, false);
         }
-        if (pointer_at(entry, widget::kHandler) == a.hooks.file_entry &&
-            !swap_pointer(entry, widget::kHandler, a.hooks.file_entry, w.original)) {
+        if (ours && !swap_pointer(entry, widget::kHandler, a.hooks.file_entry, w.original)) {
             ++it;  // still the helper's: kept, so an unload refuses
             continue;
         }
