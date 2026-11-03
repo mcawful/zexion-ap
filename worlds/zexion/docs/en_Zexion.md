@@ -30,10 +30,9 @@ Set with the Goal option.
     `custom_base`, or `gates: vanilla` in Custom), whose gates need all four, the seed has
     Gates Unlocked instead, even if you start with keys (Start Keys, or keys in
     `start_inventory` or `start_inventory_from_pool`), and the generator's log says so. The gates
-    then need no keys: once you have visited two of them, they work (by the game's code; not
-    yet checked in game). In the pause menu's RANDO SETTINGS, an OHKO seed then shows
-    as Custom mode, with OHKO's items and amounts and Gates Unlocked (by the game's code; not
-    yet checked in game). The spoiler log's header names the change.
+    then need no keys: once you have visited two of them, they work (checked in game). In the
+    pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
+    amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
   - Your count shows on each disk's popup, on the pause screen and on the file select.
   - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
     you how many you need. Until you have been there, the pause screen shows "OF ?". With
@@ -43,8 +42,7 @@ Set with the Goal option.
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
     back the next time you save there. Once a save has reached the ending, saving there again
-    offers it too, to watch the ending again; the goal has already been sent (not yet checked
-    in game). The seed makes
+    offers it too, to watch the ending again; the goal has already been sent. The seed makes
     sure you can reach the Landing Pod. The
     pause menu's teleport goes to your start room (or second room, with Double Teleport), not
     the Landing Pod, unless you started there.
