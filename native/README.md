@@ -555,16 +555,17 @@ the helper:
   of the helper's waiting brings the screen back in for it (as NO's close would have), and the
   ending follows the popups as before; so does the ending not starting within 240 game frames in
   play (`kDarkFrames`: GAME SAVED's length with a margin; counted from the game's frame clock,
-  `frame_clock`, which a menu frame does not run, so frames with a menu open, the pause, which
-  saves the fade and puts it back, don't count; until the release candidate it counted 180 of
-  the helper's frame calls, which a 165 Hz monitor ran out in about 1.1 s, before GAME SAVED
-  had ended), and the prompt cancelled (the save left, `discs` off, the client
-  gone); asked for with a menu open, the fade back waits until it has closed and put its saved
+  `frame_clock`, which stands still while a menu has the game paused, so frames with a menu
+  open, the pause, which saves the fade and puts it back, don't count; until the release
+  candidate it counted 180 of the helper's frame calls, which a 165 Hz monitor would run out in
+  about 1.1 s, before GAME SAVED ends, by disassembly: below), and the prompt cancelled (the save
+  left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its saved
   black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
   drops it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended:
   the ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
-  `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another fade), for a
+  `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …`
+  note: another fade, the ending not faded in or with the fade no longer the helper's), for a
   live check. In the release candidate the owner saw the screen fade back into play at the pod
   for a moment before the ending (its retest, 2026-11-02): the limit above running out first is
   the likelier cause, by disassembly; the other is the ending routine itself, which sets the
@@ -579,7 +580,7 @@ the helper:
   an unload finds not yet run becomes the game's routine (the ending then comes without the fade
   in). Anything else in the wrapper's place before it ran (a save at the save point, which sets
   the pause opener back and leaves the fade alone; a door, timer 70; a death): the ending is
-  asked for again, the black kept while it is still the helper's (with its 180 frames), else the
+  asked for again, the black kept while it is still the helper's (with its 240 game frames), else the
   other transition's fade left alone. From the frame the helper sets the ending's wrapper until
   another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
   place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the

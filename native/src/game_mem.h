@@ -27,8 +27,8 @@ bool read(const BYTE* base, ptrdiff_t offset, T& out) {
 }
 
 // Game frames, from `frame_clock` (docs/re/memory.md, "The mission prompt"): the 64-bit count
-// the play-frame function (0x7A9E0) adds 1 to once a game update (0x7B8DB), which no menu frame
-// runs. The helper's frame call comes once a swap, which can be more often (166 a second at
+// the play-frame function (0x7A9E0) adds 1 to once a game update (0x7B8DB), skipped while a menu
+// has the game's layers paused (0x7B4CD). The helper's frame call comes once a swap, which can be more often (166 a second at
 // 165 Hz, against the game's 60: the main loop draws and swaps again with no update, 0x7CC9E,
 // 0x7CDD0 to 0x7CE04), so counts meant in game frames are taken from here.
 class GameFrames {
