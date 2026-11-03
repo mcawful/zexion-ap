@@ -500,9 +500,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   (U+E03C, "Translations"), so both showed it (working in game later that day, `zexion_ap.dll`
   `946b08a1…`: the logo before AP ITEM over FOR BOB, and before AP ITEM on the map cursor; bugs:
   the popup's two lines start at the same x, not centered, and the map cursor's logo, where the
-  game's own names carry no icon: "Translations", "Run in game again"). Fixed since, stand-in
-  tests only, not run in game yet: the pickup popup's lines centered with leading spaces (where
-  they fit the name's room), and the map cursor showing the first line without the logo.
+  game's own names carry no icon: "Translations", "Run in game again"). Fixed since: the pickup
+  popup's lines centered with leading spaces (where they fit the name's room), and the map cursor
+  showing the first line without the logo (working in game 2026-11-03, B1, `zexion_ap.dll`
+  `12f090c6…`: the owner's screenshot of the pickup popup, not kept in `lab/`, the logo, then
+  Progression Item over for AneziaDS2, both lines centered; the map cursor's AP Item read back,
+  below).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -840,7 +843,16 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   builds the cursor's translated text again as the label's first line ("Translations";
   working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
   English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
-  for another Zexion player's item, the translation's own name for it (not run in game yet).
+  for another Zexion player's item, the translation's own name for it (working in game
+  2026-11-03, B1, `zexion_ap.dll` `12f090c6…`, `lab/ap/live50`: AP Item on a DLCQuest
+  player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
+  shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
+  names, the owner's look, `lab/ap/live52`; Progression Item and OS Install Disk not looked at
+  on the map). Labels in capitals, as a client from before the mixed case (31d9203) writes them
+  and a seed's offline file may still hold them, show in capitals: the owner's report of AP ITEM
+  and PROGRESSION ITEM on the map cursor with `12f090c6…` (develop 97a6f25's build; a report,
+  no run recorded) came, in the owner's word, from such a client (the client's version was not
+  read; the capitals are that client's `client/aplabels.py`).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
@@ -964,14 +976,17 @@ closed, gone with it open.
     glyph of it is writable and has the font's frames. In a translation, while the note (or the
     title written over the hint) is there, the title's translated text is built again as
     LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
-    it, wrapped, centered and kept at the title's middle as the game lays out its title
-    ("Translations"); the game's own entry (220, or 219 for the hint) again when the note goes.
+    it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
+    and kept at the title's middle as the game lays out its title ("Translations"); the game's
+    own entry (220, or 219 for the hint) again when the note goes.
     Without LargeText's count (a cache from before the `large_count` key), or with too little
     room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
     font. (Seen in game 2026-11-02 in English(HD), `lab/ap/live50`, as that pixel title and
     note; the HD title: working in game later that day, `zexion_ap.dll` `946b08a1…`, after RETURN
     HOME's YES on a save past its ending: Feats of Natu! over "Archipelago save: no Feats
-    earned", both in the HD font, the two lines starting at the same x.)
+    earned", both in the HD font, the two lines starting at the same x, as again on
+    `12f090c6…` on 2026-11-03: a bug, the title not centered over the note. Since, the title's
+    line centered with leading spaces: stand-in tests only, not run in game yet.)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -1120,8 +1135,12 @@ lands, not only the place passed.
     8 x 8 font draws (`Popup::as_sent`, `Label::own_first` and `own_who`; the scanner's line
     written into the game's pixel Text table in capitals, `scan_line_upper`). English(HD) shows
     the case as sent, with the helper's own notices in mixed case; every other translation and
-    the default English show capitals, as before (their fonts may draw no lower case). Stand-in
-    tests only, not run in game yet.
+    the default English show capitals, as before (their fonts may draw no lower case). Labels
+    sent in capitals (a client from before this, or a seed's offline file it wrote) show in
+    capitals. The labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the
+    pickup popup's Progression Item over for AneziaDS2, the map cursor's AP Item ("Other
+    players' items", "Map markers"); the hints, the disks' popups and reminder, the scanner's
+    line and the notices: stand-in tests only, not run in game yet.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
@@ -1139,11 +1158,12 @@ lands, not only the place passed.
     description (no icon) where the game built them for the selection, the description wrapped
     at the box's columns; the map cursor on a labeled stand-in's square (the label's first
     line, without the logo: the game's map names carry no icon); ASSIST while locked, with the
-    padlock, in the locked look; the pause row's count, centered on the row; and the Feats of Natu screen's title with the note under it (LargeText
-    220, read through the translation object and bounded by `large_count`), its middle kept as
-    the game keeps its title's. One built again whenever the game builds its label again (told
-    by the glyph count and the place the build was given). A text with more glyphs than the
-    label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
+    padlock, in the locked look; the pause row's count, centered on the row; and the Feats of
+    Natu screen's title with the note under it (LargeText 220, read through the translation
+    object and bounded by `large_count`), the shorter line centered on the longer, its middle
+    kept as the game keeps its title's. One built again whenever the game builds its label
+    again (told by the glyph count and the place the build was given). A text with more glyphs
+    than the label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
     panel's on the file select before an empty slot is picked) is built hidden, its count kept
     for the game to show when the widget shows.
   - **The helper's icons** (`IconSheets`, `src/apitem.cpp`): its disk, padlock and AP logo,
@@ -1248,13 +1268,13 @@ lands, not only the place passed.
     reproduced; whether it opened was not tried). ASSIST's padlock sits below the text's
     baseline, against the box's right border. The map cursor shows the AP logo before AP ITEM,
     where the game's own names carry no icon. A stand-in's pickup popup (AP ITEM over FOR BOB)
-    starts both lines at the same x, not centered. All four fixed since, stand-in tests only,
+    starts both lines at the same x, not centered. All five fixed since. Stand-in tests only,
     not run in game yet: the locked look in the options entries' style at alpha 0.45, and the
     offline look kept through menus (a re-read of the offline files, done whenever anything
     left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
-    up); the padlock on the text's line with no space before it; the map cursor without the
-    logo; the pickup popup's lines centered ("The assist menu", "AP saves without the client",
-    "Other players' items").
+    up); the padlock on the text's line with no space before it ("The assist menu", "AP saves
+    without the client"). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
+    cursor without the logo and the pickup popup's lines centered ("Other players' items").
   - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
     stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
     matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
