@@ -171,13 +171,15 @@ line says.
   offer after each save at the pod, YES replaying the ending with nothing sent, an item sent
   during it shown on the next load). YES going into the ending with the screen kept black instead
   of fading back into play first: not working in game, the same run, on that save and on one
-  before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending.
-  The ending routine sets the level back to 4 itself, in a frame the game draws before the
-  helper's frame call (by disassembly, `docs/re/memory.md`, "The mission prompt"; how many
-  frames the pod showed was not measured); since, the helper runs the
-  routine through a wrapper that puts the black back before that frame is drawn and fades in
-  from it: stand-in tests only, not run in game (`native/README.md`, "The OS Install Disks
-  goal").
+  before its ending (`lab/ap/live52`): black, then faded back into play at the pod for a moment,
+  then the ending (the owner's report). Two causes fit, by disassembly, neither compared in game
+  (`docs/re/memory.md`, "The mission prompt"): the black's 180-frame limit, which counted the
+  helper's frame calls (166 a second at 165 Hz against the game's 60) and so could end before
+  GAME SAVED and the ending did, the likelier; and the ending routine's own level 4, in a frame
+  the game draws before the helper's frame call. Since, the limit counts game frames (240), the
+  ending runs through a wrapper that puts the black back before that frame is drawn and fades
+  in from it, and `mission_black` says how the black ended: stand-in tests only, not run in game
+  (`native/README.md`, "The OS Install Disks goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.

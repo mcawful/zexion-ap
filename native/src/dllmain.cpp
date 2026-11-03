@@ -508,6 +508,8 @@ const Request kRequests[] = {
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
     {"mission_prompt", true, nullptr, &mission_prompt},
     {"mission_status", true, [] { return g_game.mission_status(); }},
+    // How the last black after YES ended (mission.h, black): for live checks.
+    {"mission_black", true, [] { return g_game.mission_black(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},

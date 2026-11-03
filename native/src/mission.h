@@ -32,6 +32,7 @@
 #include <string>
 
 #include "addresses.h"
+#include "game_mem.h"
 
 namespace zap {
 
@@ -45,13 +46,16 @@ constexpr int32_t kFadeDelay = 60;
 // prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
 // after a save.
 constexpr int32_t kFadeMessageLeft = 150;
-// The most frames the screen stays black after YES with no ending started (after_no): GAME
-// SAVED's length (0x1FC876), the longest message the ending waits for. Then it fades back in.
-constexpr int kDarkFrames = 180;
+// The most game frames the screen stays black after YES with no ending started (after_no):
+// GAME SAVED's length (0x1FC876, the longest message the ending waits for) with a margin for the
+// gap after the helper's last popup. Then it fades back in. Counted in game frames (GameFrames,
+// game_mem.h): until 1.0.0's release candidate it counted the helper's frame calls, 180 of them,
+// about 1.1 s at 165 Hz, which could end the black before GAME SAVED did.
+constexpr int kDarkFrames = 240;
 // The ending after YES fades in from black, a level each this many frames (event 3667's step,
 // run back up): black for its first 8 frames, then the normal level 40 frames in. Before, the
-// routine's frame (and how many after it was not measured) showed the Landing Pod at the
-// normal level (the 1.0.0 release candidate's retest, 2026-11-02).
+// routine's own frame was drawn at the normal level, possibly still at the Landing Pod (by
+// disassembly; not compared in game: docs/re/memory.md, "The mission prompt").
 constexpr int8_t kEndingFadeStep = 8;
 extern const char kMissionQuestion[];
 // The status from the frame the helper sets the ending routine until another save is loaded
@@ -123,8 +127,14 @@ public:
 
     // Game thread: out of the black after YES (popups of the helper's wait to be shown): the fade
     // back to the normal level, as NO's close would have; with a menu open (the pause, whose
-    // close puts the black back), once it has closed (watch). Nothing if not dark.
-    void end_dark(const GameAddresses& addresses);
+    // close puts the black back), once it has closed (watch). Nothing if not dark. `why` is what
+    // black() then says.
+    void end_dark(const GameAddresses& addresses,
+                  const char* why = "ended: a popup waiting, faded back in");
+    // How the last black after YES in this helper ended, or "kept black" while it lasts, "none"
+    // before the first (the `mission_black` request): the ending (faded in from black, or not),
+    // kDarkFrames, a popup waiting, cancelled, the save left, or another fade.
+    const std::string& black() const { return black_; }
 
     // Game thread: another save loaded or none (save_loaded changed): the prompt can be offered
     // again after an ending this helper started.
@@ -188,8 +198,11 @@ private:
     int32_t timer_seen_ = 0;  // and the transition timer then
     bool ending_ = false;     // YES: the ending, when idle
     bool dark_ = false;       // and the screen kept black meanwhile (after_no)
-    int dark_frames_ = 0;     // frames in play kept black so far
+    int dark_frames_ = 0;     // game frames in play kept black so far
     bool undark_ = false;     // the fade back asked for with a menu open: once it closes
+    const char* undark_why_ = "";  // and why
+    GameFrames clock_;        // game frames, for dark_frames_
+    std::string black_ = "none";
     bool queued_ = false;     // the ending's wrapper set, not yet run
     bool end_set_ = false;    // and the game may still hold it (until seen gone, run or put back)
     bool started_ = false;    // the ending started in this save's load: not offered again

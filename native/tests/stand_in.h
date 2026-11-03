@@ -95,6 +95,8 @@ inline int g_message_slot = 0;
 // With `g_slots_live`, the message routine also numbers its message as the game does: its slot
 // at +0x1E0, a new serial at +0x1D8 and its frames left at +0x1EC (translation_tests.cpp).
 inline bool g_slots_live = false;
+// With it too, the message routine makes its message the game's last one, as 0x182CEB does.
+inline bool g_message_is_last = false;
 inline int32_t g_serial = 100;
 inline BYTE g_strip_gate = 0;
 inline BYTE g_sound_system[16];
@@ -235,6 +237,7 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
         *reinterpret_cast<int32_t*>(message + 0x1E0) = g_message_slot;
         *reinterpret_cast<int32_t*>(message + 0x1D8) = ++g_serial;
         *reinterpret_cast<int32_t*>(message + 0x1EC) = frames;
+        if (g_message_is_last && !g_message_fails) g_last_message = {message, g_serial};
     }
     g_text = text;
     g_message_args[0] = per_line;

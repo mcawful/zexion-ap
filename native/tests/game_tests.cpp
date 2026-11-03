@@ -1505,16 +1505,26 @@ void test_popups_wait_for_the_mission_fade() {
     reset_game();
     player_cell(13, 16);  // the player state cleared: back at the pod
     game.request_mission(kPodColumn, kPodRow);
+    // The game makes each new message its last one (0x182CEB): the helper's popup is, then.
+    g_slots_live = true;
+    g_message_is_last = true;
+    BYTE* own = g_slots + 0x1628 * g_message_slot;
     apply(game, "apply\npopup 36 FROM BOB");
     game.pump_popups();
-    check(g_messages == 1, "the helper's popup shows");
-    for (int i = 0; i < 30; ++i) game.pump_popups();  // past the gap between popups
-    message_showing(zap::kFadeMessageLeft);
+    check(g_messages == 1 && g_last_message.last == own, "the helper's popup shows");
+    // As many frame calls as you like (more of them than game frames on a fast monitor).
+    for (int i = 0; i < 300; ++i) game.pump_popups();
+    put<int32_t>(own, 0x1EC, zap::kFadeMessageLeft);
     game.watch_all(&chosen);
     check(g_fade_calls == 0, "not with kFadeMessageLeft frames of the helper's popup left");
-    message_showing(1);
+    put<int32_t>(own, 0x1EC, 2);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 0, "nor with 2 left");
+    put<int32_t>(own, 0x1EC, 1);
     game.watch_all(&chosen);
     check(g_fade_calls == 1, "once it has ended");
+    g_slots_live = false;
+    g_message_is_last = false;
 
     // The player dead when the game runs the opener: no prompt, the fade turned back (toward the
     // normal level, a step every 6 frames), asked again.

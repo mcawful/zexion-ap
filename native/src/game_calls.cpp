@@ -451,6 +451,21 @@ void Game::pump_popups() {
     }
     popups_.erase(next);
     frames_since_popup_ = 0;
+    // The game made it its last message (0x182CEB to 0x182CFF): kept to tell it apart later.
+    BYTE* last = nullptr;
+    own_message_ = nullptr;
+    if (read(at_.last_message, 0, last) && last == message &&
+        read(at_.last_message, 8, own_sequence_)) {
+        own_message_ = last;
+    }
+}
+
+bool Game::own_popup_up() const {
+    BYTE* last = nullptr;
+    int32_t sequence = 0;
+    return own_message_ != nullptr && read(at_.last_message, 0, last) && last == own_message_ &&
+           read(at_.last_message, 8, sequence) && sequence == own_sequence_ &&
+           popup_frames_left() > 0;
 }
 
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
@@ -882,14 +897,14 @@ void Game::watch_mission() {
     }
     // Idle: no popup to show here (one held for another save does not count), the helper's
     // last one kPopupGapFrames ago, and the game's last message down to kFadeMessageLeft
-    // frames; one of the helper's own popups (shown under kPopupFrames ago) is never cut short,
+    // frames; one of the helper's own popups (the game's last message still) is never cut short,
     // nor any message by the ending after YES.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
     // Kept black after YES: a popup waiting is shown first, so the screen fades back in for it
     // (as before the black), and the ending follows the popups.
     if (waiting && mission_.dark()) mission_.end_dark(at_);
-    bool whole = frames_since_popup_ < kPopupFrames || mission_.ending();
+    bool whole = own_popup_up() || mission_.ending();
     int32_t left = whole ? 1 : kFadeMessageLeft;
     bool idle = in_play() && !waiting && popup_frames_left() <= left &&
                 frames_since_popup_ >= kPopupGapFrames;

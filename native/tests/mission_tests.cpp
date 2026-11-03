@@ -615,7 +615,7 @@ void test_yes_keeps_the_screen_black() {
 // draws that frame before the helper's frame call. Run through the helper's wrapper, the
 // routine's frame and the ones after it are drawn black, then fade in to the normal level. (As
 // the game's routine itself, the 1.0.0 release candidate's way, the routine's frame was drawn at
-// level 4: the Landing Pod showed before the ending's first scene, the retest, 2026-11-02.)
+// level 4, possibly still at the Landing Pod.)
 void test_the_ending_comes_out_of_the_black() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -731,6 +731,61 @@ void test_the_endings_wrapper_is_never_left_behind() {
         frame(m, a);
         check(g_endings == 1 && g_fade_level == -1 && fading_in_from_black(), "and run from black");
     }
+}
+
+// The black's limit in game frames (frame_clock), not frame calls: at 165 Hz the helper's frame
+// call came 166 times a second against the game's 60 (docs/re/memory.md, "The per-frame call"),
+// so 180 calls ended the black about 1.1 s in, before GAME SAVED (and so the ending) had: play
+// faded back in at the pod first, as the release candidate's retest saw (2026-11-02).
+void test_the_black_lasts_in_game_frames() {
+    Prompt prompt;
+    zap::GameAddresses a = addresses();
+    int64_t clock = 5000;
+    a.frame_clock = reinterpret_cast<BYTE*>(&clock);
+    zap::MissionPrompt m = yes_pressed(a);
+    m.after_no(a);
+    check(m.black() == "kept black", m.black().c_str());
+    // 11 frame calls each 4 game frames (about 166 to 60): GAME SAVED's 90 frames left run out
+    // after about 250 calls, past the 180 the limit used to count.
+    int calls = 0;
+    for (int frames = 0; frames < 90; ++calls) {
+        if (calls % 11 < 4) {
+            ++clock;
+            ++frames;
+        }
+        m.watch(a, false);  // the message still up: not idle
+    }
+    check(calls > 180 && m.dark() && black_and_off(), "still black when GAME SAVED ends");
+    m.watch(a, true);
+    check(g_fn == a.hooks.mission_end, "then the ending");
+    run_ending(m, a);
+    check(g_endings == 1 && m.black() == "ended: the ending, faded in from black",
+          m.black().c_str());
+
+    // With no ending, back in after kDarkFrames game frames, however many calls.
+    zap::MissionPrompt n = yes_pressed(a);
+    n.after_no(a);
+    for (int i = 0; i < zap::kDarkFrames * 3; ++i) n.watch(a, false);  // the clock still
+    check(n.dark(), "no game frames: still black");
+    for (int i = 0; i < zap::kDarkFrames; ++i) {
+        ++clock;
+        n.watch(a, false);
+    }
+    check(n.dark(), "kDarkFrames game frames: still black");
+    ++clock;
+    n.watch(a, false);
+    check(!n.dark() && fading_back_in() &&
+              n.black() == "ended: kDarkFrames in play with no ending, faded back in",
+          n.black().c_str());
+    // A clock that jumps (a reload) counts as a few frames, not all of them.
+    zap::MissionPrompt j = yes_pressed(a);
+    j.after_no(a);
+    j.watch(a, false);
+    clock += 100000;
+    j.watch(a, false);
+    check(j.dark(), "a jump: still black");
+    j.end_dark(a);
+    check(j.black() == "ended: a popup waiting, faded back in", j.black().c_str());
 }
 
 // No ending for kDarkFrames frames in play: faded back in; frames with a menu open (the pause,
@@ -927,6 +982,7 @@ int main() {
     test_yes_keeps_the_screen_black();
     test_the_ending_comes_out_of_the_black();
     test_the_endings_wrapper_is_never_left_behind();
+    test_the_black_lasts_in_game_frames();
     test_the_black_after_yes_ends();
     test_not_offered_again_after_the_ending();
     test_an_ending_replaced_before_it_ran_is_asked_again();

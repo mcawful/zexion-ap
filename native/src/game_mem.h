@@ -26,6 +26,30 @@ bool read(const BYTE* base, ptrdiff_t offset, T& out) {
     return base != nullptr && safe_read(base + offset, &out, sizeof(T));
 }
 
+// Game frames, from `frame_clock` (docs/re/memory.md, "The mission prompt"): the 64-bit count
+// the play-frame function (0x7A9E0) adds 1 to once a game update (0x7B8DB), which no menu frame
+// runs. The helper's frame call comes once a swap, which can be more often (166 a second at
+// 165 Hz, against the game's 60: the main loop draws and swaps again with no update, 0x7CC9E,
+// 0x7CDD0 to 0x7CE04), so counts meant in game frames are taken from here.
+class GameFrames {
+public:
+    // The most one look adds: a clock that jumps (a reload, say) counts as this many.
+    static constexpr int kMaxStep = 8;
+    // The game frames since the last look: 0 at the first, after the clock went back, or while
+    // it stands still (a menu up); 1 a look while it cannot be read (null in host tests), as a
+    // count of frame calls.
+    int step(const BYTE* clock) {
+        int64_t now = 0;
+        if (!read(clock, 0, now)) return 1;
+        int64_t ran = seen_ < 0 || now < seen_ ? 0 : now - seen_;
+        seen_ = now;
+        return static_cast<int>(ran > kMaxStep ? kMaxStep : ran);
+    }
+
+private:
+    int64_t seen_ = -1;
+};
+
 // The pointer held at base + offset, fault-safe; null if it cannot be read.
 inline BYTE* pointer_at(const BYTE* base, ptrdiff_t offset = 0) {
     BYTE* p = nullptr;

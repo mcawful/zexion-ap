@@ -116,6 +116,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         !read(a.current_menu, 0, top)) {
         return;
     }
+    const int ran = clock_.step(a.frame_clock);  // game frames since the last look
     if (yes_child_ != nullptr && !is_open(a.current_menu, menu_)) {
         yes_child_ = nullptr;  // closed (NO): the game freed it
         menu_ = nullptr;
@@ -148,20 +149,23 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         if (dark_ && !dark_still_ours(a)) {
             dark_ = false;  // the other transition's fade: left alone
             undark_ = false;
+            black_ = "ended: another transition's fade, left alone";
         }
         status_ = "yes: ending when idle (another transition came first)";
     }
     // Black after YES until the ending starts. A menu (the pause) saves the fade as it opens and
     // puts it back as it closes, so only frames with none count, and only those are looked at;
     // the fade back asked for while one was open (end_dark) is made here once it has closed.
+    // The limit counts game frames (GameFrames), not the helper's frame calls.
     if (dark_ && top == nullptr) {
         if (!dark_still_ours(a)) {
             dark_ = false;  // another fade since (a death's, say): left alone
             undark_ = false;
+            black_ = "ended: another fade, left alone";
         } else if (undark_) {
-            end_dark(a);
-        } else if (++dark_frames_ > kDarkFrames) {
-            end_dark(a);
+            end_dark(a, undark_why_);
+        } else if ((dark_frames_ += ran) > kDarkFrames) {
+            end_dark(a, "ended: kDarkFrames in play with no ending, faded back in");
             status_ = "yes: ending when idle, faded back in after the black";
         }
     }
@@ -347,6 +351,7 @@ void MissionPrompt::after_no(const GameAddresses& a) {
     dark_ = true;
     undark_ = false;
     dark_frames_ = 0;
+    black_ = "kept black";
     status_ = "yes: ending when idle, the screen kept black";
 }
 
@@ -366,6 +371,7 @@ void MissionPrompt::end(const GameAddresses& a) {
         status_ = "yes: ending when idle (no ending routine)";
     } else {
         black = dark_ && dark_still_ours(a);
+        if (dark_ && !black) black_ = "ended: the ending, the fade no longer the helper's";
         dark_ = false;
         undark_ = false;
         ending();
@@ -381,7 +387,12 @@ void MissionPrompt::end(const GameAddresses& a) {
     // (0x1D2850); the frame is drawn after this returns, before the helper's frame call. With no
     // menu open (0x92A60 then returns at once, 0x92A8C) nothing puts a level back after it, and
     // its frames run the stepper (0x7BA35): so black again now, and in from there.
-    if (black && at_normal_level(a) && writable(a.fade, fade_state::kSize)) fade(a, Fade::kIn);
+    if (black) {
+        black_ = at_normal_level(a) && writable(a.fade, fade_state::kSize) &&
+                         fade(a, Fade::kIn).empty()
+                     ? "ended: the ending, faded in from black"
+                     : "ended: the ending, not faded in (not as traced)";
+    }
 }
 
 bool MissionPrompt::dark_still_ours(const GameAddresses& a) const {
@@ -390,17 +401,19 @@ bool MissionPrompt::dark_still_ours(const GameAddresses& a) const {
            countdown == 0 && level == kFadeTo;
 }
 
-void MissionPrompt::end_dark(const GameAddresses& a) {
+void MissionPrompt::end_dark(const GameAddresses& a, const char* why) {
     if (!dark_) return;
     BYTE* top = nullptr;
     if (!read(a.current_menu, 0, top) || top != nullptr) {
         // A menu open (the pause): its close puts back the fade it saved, black and off, so
         // the fade back waits for it (watch).
         undark_ = true;
+        undark_why_ = why;
         return;
     }
     dark_ = false;
     undark_ = false;
+    black_ = why;
     // Back as NO's close left it: from black toward 4, a step every 6 frames.
     if (dark_still_ours(a) && writable(a.fade, fade_state::kSize)) {
         set_fade_bytes(a, kNormalLevel, kBackStep);
@@ -412,6 +425,7 @@ void MissionPrompt::left_save() {
     queued_ = false;
     // The black is the save's: once it has left (the title, the file select, which keep menus
     // open, own the fade), no longer held, nor an unload refused for it.
+    if (dark_) black_ = "ended: the save left";
     dark_ = false;
     undark_ = false;
     if (status_ == kEndingStarted) status_ = "not asked";
@@ -426,7 +440,7 @@ bool MissionPrompt::ending_queued(const GameAddresses& a) const {
 void MissionPrompt::cancel(const GameAddresses& a) {
     requested_ = false;
     ending_ = false;
-    end_dark(a);  // no ending to come: out of the black
+    end_dark(a, "ended: cancelled, faded back in");  // no ending to come: out of the black
     void* fn = nullptr;
     if (armed_ && read(a.transition_fn, 0, fn)) {
         if (fn != a.hooks.mission_open) {

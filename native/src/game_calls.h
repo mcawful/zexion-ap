@@ -289,6 +289,7 @@ public:
     // not, the game's ending routine runs (configure's addresses, kept until the next one).
     void mission_end() { mission_.end(at_); }
     std::string mission_status() const { return mission_.status(); }
+    std::string mission_black() const { return mission_.black(); }
     std::string equipment_status() const { return equip_status_; }
 
     // Game thread. Other players' items (apitem.h): set_labels arms it; the watch runs every
@@ -427,7 +428,15 @@ private:
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
+    // Frame calls since the helper's last popup (the gap before the next one; more of them than
+    // game frames on a fast monitor, and the next popup also waits for the game's message to
+    // end, popup_busy).
     int frames_since_popup_ = 1 << 20;
+    // The helper's last popup as the game's last message holds it (0x182670 makes each new one
+    // the last, 0x182CEB): whether it is still up is read there, in game frames (own_popup_up).
+    BYTE* own_message_ = nullptr;
+    int32_t own_sequence_ = 0;
+    bool own_popup_up() const;
 
     bool newgame_armed_ = false;
     NewGamePlan newgame_;
