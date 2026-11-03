@@ -582,3 +582,48 @@ def test_an_address_the_mod_needs_and_the_client_lacks_is_another_build(monkeypa
     with pytest.raises(native.HelperError) as caught:
         helper.configure(rvas)
     assert not isinstance(caught.value, native.ModMismatch)
+
+
+@pytest.mark.parametrize(
+    ("fails", "lost"),
+    [("WriteFile", False), ("PeekNamedPipe", True), ("timeout", True), ("ReadFile", True)],
+)
+def test_a_failed_request_says_whether_it_reached_the_helper(monkeypatch, fails, lost) -> None:
+    # A received Energy Shield is looked for only when its request may have been acted on
+    # (client/ticks.py, shields_tick): ReplyLost is that, every other failure is not.
+    class Kernel32:
+        def WriteFile(self, *args) -> bool:
+            return fails != "WriteFile"
+
+        def PeekNamedPipe(self, handle, buffer, size, read, available, left) -> bool:
+            if fails == "PeekNamedPipe":
+                return False
+            available._obj.value = 0 if fails == "timeout" else 5
+            return True
+
+        def ReadFile(self, *args) -> bool:
+            return fails != "ReadFile"
+
+        def CloseHandle(self, handle: int) -> bool:
+            return True
+
+    monkeypatch.setattr(native, "_kernel32", Kernel32)
+    # Windows-only in ctypes: stand-ins, so this runs on CI's Linux and macOS too.
+    monkeypatch.setattr(native, "_last_error", lambda: "stand-in error")
+    monkeypatch.setattr(native.ctypes, "get_last_error", lambda: 0, raising=False)
+    helper = native.Helper.__new__(native.Helper)
+    helper._handle = 1234
+    with pytest.raises(native.HelperError) as caught:
+        helper.request("shield", seconds=0.01)
+    assert isinstance(caught.value, native.ReplyLost) == lost
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: b"error unknown line shield")
+    with pytest.raises(native.HelperError) as caught:
+        helper.request("shield")
+    assert not isinstance(caught.value, native.ReplyLost), "the helper answered: not acted on"
+
+
+def test_a_reply_that_cant_be_read_may_have_been_acted_on(monkeypatch) -> None:
+    helper, closed = piped_helper(monkeypatch, lambda data, seconds: b"spawned" + bytes([0xFF]))
+    with pytest.raises(native.ReplyLost):
+        helper.request("shield")
+    assert closed == [1234], "a late reply must not answer the next request"

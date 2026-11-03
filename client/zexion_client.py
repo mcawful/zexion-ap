@@ -370,6 +370,7 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
     dress a save at its title) included."""
     logger.info("Zexion has closed.")
     ctx.shields.left()
+    ctx.shields.restart()  # the next game's spawns are its own
     ctx.load.leave()
     state.end_kept_load(kept, ctx.conn)
     with contextlib.suppress(Exception):
@@ -541,6 +542,7 @@ async def poll(ctx: ZexionContext) -> None:
     load = ctx.load
     if step.left_seed:
         ctx.shields.left()
+        ctx.shields.restart()  # a stop was that load's (not a reconnect's: the load goes on)
         load.assists_want = load.intel_want = False
     if ctx.conn is not conn:
         return  # a poll from before a reconnect says nothing of this seed

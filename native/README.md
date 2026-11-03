@@ -348,7 +348,9 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   cell (`spawn_shield`, which checks the record, the event and its handler first).
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
-  asks once per received shield not yet given, and counts it once it sees the shield up
+  asks for each received shield not yet given, again for one not seen up within a few seconds,
+  and counts it once it sees the shield up; after three requests in a row not seen up it asks
+  for none until the save is left or the game closes, or another slot connects
   (`client/shields.py`).
 - **Put back:** nothing to put back.
 
@@ -356,8 +358,10 @@ Working in game: 2026-10-23 ("Received Energy Shields"). A bug, 2026-11-02 (B1, 
 `946b08a1…`, `lab/ap/live50/client-r3.log`): with a client attached to a save already in play
 (slot 8, past its ending), a received shield came up (seen around the player in the owner's
 screenshot) but the client never read it as up, so it spawned it again three times a round,
-a round about every minute, until the save was left; after the next load it read a shield up at
-once.
+a round about every minute, until the save was left; it still missed after the next load, and
+read a shield up at once on the load after the ending replayed. Fixed since in the client
+(its read of the shield, and the stop above); the fix has not run in game
+(`docs/re/memory.md`, "Received Energy Shields").
 
 ### DeathLink
 

@@ -14,7 +14,7 @@ from unittest import mock
 
 from fakes import connection
 
-from client import game, native, state
+from client import game, native, session, state
 
 
 class CommonContext:
@@ -357,3 +357,25 @@ def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:
     ctx.game_conn.pm = types.SimpleNamespace(alive=lambda: False, close_process=lambda: None)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach", "step"] and ctx.game_conn is None
+
+
+def test_a_stop_on_energy_shields_ends_with_the_game_or_the_load(monkeypatch) -> None:
+    # client/shields.py: a stop holds for the load it happened in, a reconnect included.
+    ctx = context(connection(), Closed())
+    ctx.shields.stopped, ctx.shields.misses = True, 3
+    zc.game_closed(ctx, ctx.conn)
+    assert not ctx.shields.stopped and ctx.shields.misses == 0
+    conn = connection()
+    ctx = context(conn, Running(game.IN_PLAY))
+    steps = [session.Step(seed_matches=True, state=game.IN_PLAY, save_stamp=bytes(14))]
+    monkeypatch.setattr(conn.session, "step", lambda g, received, **kwargs: steps[0])
+    monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
+    asyncio.run(zc.poll(ctx))
+    assert ctx.conn is conn and ctx.load.seed_loaded, "the poll took the load"
+    ctx.shields.stopped = True
+    ctx.load.seed_loaded = False  # a reconnect: the same load, looked at afresh (connected)
+    asyncio.run(zc.poll(ctx))
+    assert ctx.shields.stopped, "a reconnect does not end it"
+    steps[0] = session.Step(left_seed=True)  # the title, or another save
+    asyncio.run(zc.poll(ctx))
+    assert not ctx.shields.stopped, "leaving the save ends it"
