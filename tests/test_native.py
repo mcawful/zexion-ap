@@ -539,6 +539,9 @@ def test_a_failed_request_says_whether_it_reached_the_helper(monkeypatch, fails,
             return True
 
     monkeypatch.setattr(native, "_kernel32", Kernel32)
+    # Windows-only in ctypes: stand-ins, so this runs on CI's Linux and macOS too.
+    monkeypatch.setattr(native, "_last_error", lambda: "stand-in error")
+    monkeypatch.setattr(native.ctypes, "get_last_error", lambda: 0, raising=False)
     helper = native.Helper.__new__(native.Helper)
     helper._handle = 1234
     with pytest.raises(native.HelperError) as caught:
