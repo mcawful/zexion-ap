@@ -544,9 +544,11 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
 - **Safety:** it writes only stand-ins with the template's base and palette 8, or ones it
-  dressed (the same spawn).
+  dressed (the same spawn); and, for a marker (below), only its frame shown, to the space glyph
+  and back to the object's own frame, only while it is the spawn it hid.
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
-  every 31st frame call finds any live object drawing a logo frame and dresses it the same way.
+  every 31st frame call finds any live object drawing a logo frame and dresses it the same way
+  (a marker, below, is hidden instead).
 - **Markers:** an object there drawing a logo frame in a palette other than the stand-ins' (8),
   not dressed by the helper, is no stand-in: the game's art leaves those frames empty, so it is
   meant to show nothing (R'Talva X34 Y51's marker, which showed the logo swaying in the gate's
@@ -1368,7 +1370,9 @@ unload.
   (page by page, a guard page left armed), a sprite's frame bounds and the code patches' put-back
   (one that fails held), the build check and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
+- `game`: the `discs` and `@N NAME` parsers, configuring, applying, a general-pool marker drawn
+  blank (hidden every frame, put back at the next scan and on restore, no stand-in for names),
+  the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a

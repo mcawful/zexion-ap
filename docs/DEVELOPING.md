@@ -141,6 +141,9 @@ line says.
   Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
+- The helper draws R'Talva X34 Y51's marker (an object the game draws on the logo's empty
+  frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) blank (`native/README.md`,
+  "Other Zexion players' items, as themselves"). Stand-in tests only; not run in game yet.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
   A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
   and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
@@ -250,10 +253,6 @@ line says.
   NN; normal and plain randomizer saves unmarked), with and without the client, through
   paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new
   ARCHIPELAGO game's own save getting the logo: 2026-10-27.
-- The AP logo no longer shows on R'Talva X34 Y51's marker, an object the game draws on the
-  logo's empty frame (the owner's report, 2026-11-03, on the 1.0.0 RC): the helper draws it blank
-  (`native/README.md`, "Other Zexion players' items, as themselves"). Stand-in tests only, not
-  run in game yet.
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
