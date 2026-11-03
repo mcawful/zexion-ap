@@ -1011,7 +1011,8 @@ lands, not only the place passed.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
-    line at one x) while their records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
+    line at one x, where those spaces fit the entry's room, else as they are so no name is cut)
+    while their records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
     Map's record is INTEL CHIP; the scanner's line into SmallText 12 (its message event's entry)
     while the Text table's entry is the helper's.
   - **Menu labels built again** with the game's builder (`hd_build_fn`, the string from
@@ -1164,7 +1165,7 @@ unload.
   that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
   undressed, the look held through a menu (the files read again, a read of no known seed, a
-  client going away), a notice withdrawn with its save, the not-connected warning again after a client
+  client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
   came and went, a seed put with a client, the AP saves' slots, and the file select's logo
   through the frame call: painted, whitened through a new game's fade, and cleared by
   `restore_files`, and a cache without the translation keys).
@@ -1181,7 +1182,8 @@ unload.
   through the game (painted while a translation shows, cleared when the default English is
   picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
   widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's lines
-  centered; a popup through the game measured
+  centered, and through the game into ItemNames, not where the spaces would pass its room; a
+  popup through the game measured
   with its icon's width, a long notice wrapped), and
   the default English (the flag clear, or nothing loaded) left as it was (`mission`, `equip`,
   `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the equipment

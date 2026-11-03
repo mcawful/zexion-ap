@@ -13,6 +13,7 @@
 #include "game_calls.h"
 #include "offline.h"
 #include "stand_in.h"
+#include "stand_in_menu.h"
 #include "fake_gl.h"
 
 using namespace stand_in;
@@ -379,6 +380,30 @@ void test_a_save_of_the_seed_dressed_offline() {
 // pipe client goes), a read of no known seed for a check, and a client going away all with a
 // menu up. The 2026-11-02 retest once saw ASSIST unlocked in the options menu with no client:
 // each of these used to undress the save until play.
+// A client going away with the options menu up: the save dressed again and ASSIST locked in the
+// same frame call (watch_assists runs after watch_offline), so the cursor never finds it open.
+void test_assist_locked_again_in_the_same_frame() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    dress_offline(game, s);
+    g_menu = 2;  // the pause menu, then the options
+    OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                        reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "dressed offline: ASSIST locked");
+    configure(game);  // a client of this seed, its own look (no lock sent yet)
+    game.watch_all(&no_callback);
+    check(options.callback() == &assist_menu_fn, "the client's look: ASSIST free");
+    game.client_gone(&no_callback);
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "the client gone: locked again in the same frame call");
+    game.put_back_all(&no_callback);
+    g_current_menu = nullptr;
+}
+
 void test_the_look_held_in_a_menu() {
     reset_game();
     zap::Game game;
@@ -922,6 +947,7 @@ int main() {
     test_a_save_of_the_seed_dressed_offline();
     test_a_notice_not_shown_goes_with_its_save();
     test_the_look_held_in_a_menu();
+    test_assist_locked_again_in_the_same_frame();
     test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();
