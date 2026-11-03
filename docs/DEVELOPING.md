@@ -164,11 +164,18 @@ line says.
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's
   cutscenes across a Disconnect then Connect during them (the goal's collect, then two items
-  sent after the Connect: no popup until the save was loaded again): 2026-10-27. Not yet run in
-  game (stand-in tests only, 2026-11-02): RETURN HOME offered on a save past its ending too (YES
-  plays the ending again, sending nothing, the goal already sent; what is received waits as in a
-  first ending: `client/ticks.py`, `replay_tick`), and YES going into the ending with the screen
-  kept black instead of fading back into play first (`native/README.md`, "The OS Install Disks
+  sent after the Connect: no popup until the save was loaded again): 2026-10-27. RETURN HOME
+  offered on a save past its ending too (YES plays the ending again, sending nothing, the goal
+  already sent; what is received waits as in a first ending: `client/ticks.py`, `replay_tick`):
+  working in game 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`, `lab/ap/live50` slot 8: the
+  offer after each save at the pod, YES replaying the ending with nothing sent, an item sent
+  during it shown on the next load). YES going into the ending with the screen kept black instead
+  of fading back into play first: not working in game, the same run, on that save and on one
+  before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending.
+  The ending routine sets the level back to 4 itself, in a frame the game draws before the
+  helper's frame call (`docs/re/memory.md`, "The mission prompt"); since, the helper runs the
+  routine through a wrapper that puts the black back before that frame is drawn and fades in
+  from it: stand-in tests only, not run in game (`native/README.md`, "The OS Install Disks
   goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.

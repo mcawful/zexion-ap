@@ -232,8 +232,9 @@ seconds in play), or a translated name or the popups' moved entry 70 still the h
 frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending (and while the screen is still kept
-black after it), and while the ending routine is the game's transition with the ending's patch
-in place: an unload would drop the ending, or put
+black after it, until the helper's wrapper has run the ending routine), and while the ending
+routine or that wrapper is the game's transition with the ending's patch in place: an unload
+would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
 a few frames, longer while received items' popups or a message hold the ending after YES.
 Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
@@ -541,10 +542,10 @@ the helper:
   in, as the game's NO does there. NO's close puts back, inside its call, the fade the prompt's
   builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`, "The
   mission prompt"), so right after it YES turns that fade off with the screen still black (the
-  fade's step, countdown and target set as event 3667's fade ends), and the ending routine sets
-  the level back to 4 itself as it starts: no fade back into play between YES and the ending.
-  Only a fade that reads as NO's close leaves it is turned off (`mission_status` then says `yes:
-  ending when idle, the screen kept black`); anything else fades back in as before. While it is
+  fade's step, countdown and target set as event 3667's fade ends): no fade back into play
+  between YES and the ending. Only a fade that reads as NO's close leaves it is turned off
+  (`mission_status` then says `yes: ending when idle, the screen kept black`); anything else
+  fades back in as before. While it is
   black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
   of the helper's waiting brings the screen back in for it (as NO's close would have), and the
   ending follows the popups as before; so does the ending not starting within 180 frames in play
@@ -553,20 +554,37 @@ the helper:
   gone); asked for with a menu open, the fade back waits until it has closed and put its saved
   black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
-  drops it. The black ends once the ending routine is seen to have run, on what it leaves: it
-  sets `0x948A0` with timer 1, which clears the transition, and it sets the level to 4. So the
-  next frame the transition is cleared, or on timer 1 (not the pause opener), or, with frames
-  missed, the pause opener with timer 0 and the level 4 (the black no longer the helper's).
-  Anything else took its place before it ran (a save at the save point, which sets the pause
-  opener back and leaves the fade alone; a door, timer 70; a death): the ending is asked for
-  again, the black kept while it is still the helper's (with its 180 frames), else the other
-  transition's fade left alone. From the frame the helper sets the ending routine until another
-  save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
+  drops it. The ending routine sets the level to 4 itself as it warps the player to the
+  ending's first scene, and the game draws that frame before the helper's frame call, so in the
+  1.0.0 release candidate the Landing Pod showed for a moment between the black and the ending
+  (its retest, 2026-11-02). So the helper starts the ending through a wrapper of its own, set as
+  the transition with timer 1 in the routine's place: the game runs it, it runs the game's
+  routine, and, while the black is still the helper's, it sets the level back to black at once
+  (event 3667 aimed from −1 to 4, a step every 8 frames, `kEndingFadeStep`) before that frame is
+  drawn: the ending fades in from black, at the normal level 40 frames in. The black ends there.
+  A wrapper still the transition after the routine (not as traced) becomes the idle routine; one
+  an unload finds not yet run becomes the game's routine (the ending then comes without the fade
+  in). Anything else in the wrapper's place before it ran (a save at the save point, which sets
+  the pause opener back and leaves the fade alone; a door, timer 70; a death): the ending is
+  asked for again, the black kept while it is still the helper's (with its 180 frames), else the
+  other transition's fade left alone. From the frame the helper sets the ending's wrapper until
+  another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
   place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
   ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
   `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
-  next load), and popups already queued wait for the seed's next load. Stand-in tests only
-  (`native/tests/mission_tests.cpp`, `game_tests.cpp`), not run in game. If event 3667 or its
+  next load), and popups already queued wait for the seed's next load. Stand-in tests
+  (`native/tests/mission_tests.cpp`, `game_tests.cpp`); the release candidate run in game
+  2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`, English(HD), `lab/ap/live50` slot 8, past its
+  ending, and `lab/ap/live52` slot 9, before it): after YES the screen went black, then showed
+  play at the pod for a moment before the ending began, on both saves (the ending routine's own
+  level 4, above; the fade in from black since is stand-in tests only, not run in game).
+  Working: the ending played again on the save past it, with nothing new sent and the Feats
+  note shown; the goal sent on the save before it; items received during either (a Missile
+  Container sent during the replay; the items collected at the goal) held, their popups shown
+  on the next load; a death received during the first ending dropped; the pause opened in the
+  black after YES and EXIT GAME going to the title with no black left, and `/reload_mod` not
+  refused after that. Not run in game: a door or a death right after YES, and the prompt asked
+  for again. If event 3667 or its
   handler is not as traced, the prompt opens at once with no fade, as before. A request not yet
   opened lapses (`lapsed: the player left the landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
   / 14 against the player state's cell, as the client tests a save at the pod: `docs/re/memory.md`,
@@ -1136,7 +1154,10 @@ unload.
   kept black after YES, a popup waiting bringing it back in, received deaths refused (`RETURN
   HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
   until another save is loaded). `mission` covers the black after YES on its own: kept, not
-  kept for a fade not as NO leaves it, ended by 180 frames in play, another fade or cancel.
+  kept for a fade not as NO leaves it, ended by 180 frames in play, another fade or cancel; and
+  the ending out of it through the helper's wrapper, in a stand-in main loop that draws each frame
+  after the transition and the stepper: the routine's frame drawn black, then the fade in, and the
+  wrapper never left as the transition (unload, a routine not as traced, none in the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause

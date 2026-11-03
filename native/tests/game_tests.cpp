@@ -1420,7 +1420,15 @@ int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
 void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
 void opener() { g_routine_runs += 3; }  // the helper's (dllmain.cpp); not run here
-void ending_routine() { g_routine_runs += 4; }
+void ender() { g_routine_runs += 5; }   // the helper's ending wrapper: Game::mission_end stands in
+void after_ending() { g_routine_runs += 6; }  // 0x948A0
+// As B1's with no menu open: the level to 4 (0x95230), 0x948A0 the transition with timer 1.
+void ending_routine() {
+    g_routine_runs += 4;
+    g_fade_level = 4;
+    g_transition_fn = reinterpret_cast<void*>(&after_ending);
+    g_transition_timer = 1;
+}
 struct MissionGame {
     zap::Game game;
     zap::Hooks hooks;
@@ -1430,6 +1438,7 @@ struct MissionGame {
         std::memset(g_section, 0, sizeof(g_section));
         player_cell(13, 16);  // at the pod
         hooks.mission_open = reinterpret_cast<void*>(&opener);
+        hooks.mission_end = reinterpret_cast<void*>(&ender);
         game.set_hooks(hooks);
         g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
         g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
@@ -1670,7 +1679,7 @@ void test_return_home_lapses_away_from_the_pod() {
           "not with kFadeMessageLeft frames of a message left");
     message_showing(1);
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
+    check(g_transition_fn == m.hooks.mission_end &&
               game.mission_status() == "ending started",
           "once it has ended");
     check(!game.ending_pending() && game.unload_refusal() == nullptr,
@@ -1708,7 +1717,7 @@ void test_the_black_after_yes() {
     check(g_messages == 1, "shown");
     message_showing(1);
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
+    check(g_transition_fn == m.hooks.mission_end &&
               game.mission_status() == zap::kEndingStarted,
           "then the ending");
 
@@ -1738,11 +1747,17 @@ void test_the_black_after_yes() {
     game.mission_after_no();
     message_showing(1);
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] && g_fade_level == -1 &&
+    check(g_transition_fn == m.hooks.mission_end && g_fade_level == -1 &&
               g_fade[zap::fade_state::kStep] == 0,
           "the ending, from black");
-    g_transition_fn = nullptr;  // the routine run: 0x948A0 set and run, the transition cleared
-    g_fade_level = 4;
+    g_transition_timer = 0;  // the game runs the wrapper, which runs the routine
+    int runs = g_routine_runs;
+    game.mission_end();
+    check(g_routine_runs == runs + 4 && g_transition_fn == reinterpret_cast<void*>(&after_ending) &&
+              g_fade_level == -1 && at<int8_t>(g_fade, zap::fade_state::kTarget) == 4 &&
+              g_fade[zap::fade_state::kStep] == zap::kEndingFadeStep && !game.ending_pending(),
+          "run: drawn black, fading in from there; nothing pending");
+    g_transition_fn = nullptr;  // 0x948A0 run: the transition cleared
     game.watch_all(&chosen);
     MissionGame::idle();  // idle-looking later in its cutscenes
     game.request_mission(kPodColumn, kPodRow);

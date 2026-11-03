@@ -139,8 +139,8 @@ public:
     void watch_menu(WidgetCallback callback);
     // Whether the game may still hold one of the helper's functions, which unload must take
     // back first: ARCHIPELAGO's callback or the game-mode panel's handler, EQUIPMENT's callback
-    // or the Energy Tank panel's handler, the mission prompt's opener or YES, a file entry's
-    // handler or the map's. The locked ASSIST holds none.
+    // or the Energy Tank panel's handler, the mission prompt's opener, YES or ending wrapper, a
+    // file entry's handler or the map's. The locked ASSIST holds none.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
                equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
@@ -192,14 +192,14 @@ public:
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it, with
     // home's save point in tiles (`column`, `row`: the Landing Pod's, whichever room the seed
     // starts in); the watch runs every frame, and drops a request not yet opened once the player
-    // is in play outside home's cell; the helper's opener and YES call mission_open and
-    // mission_yes; put_back_all puts back what it holds (before an unload). False, nothing
-    // asked, unless client_ready and home on the map.
+    // is in play outside home's cell; the helper's opener, YES and ending wrapper call
+    // mission_open, mission_yes and mission_end; put_back_all puts back what it holds (before an
+    // unload). False, nothing asked, unless client_ready and home on the map.
     bool request_mission(int column, int row);
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded (its
     // patch put back before it runs) or drop: YES pressed and the ending not started yet (or the
-    // screen still kept black after it), or the ending routine set as the transition with the
-    // ending patched.
+    // screen still kept black after it), or the ending routine (or the helper's wrapper for it)
+    // set as the transition with the ending patched.
     bool ending_pending() const;
     // Game thread, in the unload's frame call before anything is put back: why it refuses then,
     // or null. A menu open (an open screen keeps what it was built from, the pause row's disc or
@@ -285,6 +285,9 @@ public:
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
     void mission_after_no();  // YES, once the game's NO has closed the prompt (mission.h)
+    // The ending's wrapper, run by the game as its transition (mission.h, end): configured or
+    // not, the game's ending routine runs (configure's addresses, kept until the next one).
+    void mission_end() { mission_.end(at_); }
     std::string mission_status() const { return mission_.status(); }
     std::string equipment_status() const { return equip_status_; }
 

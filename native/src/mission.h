@@ -8,17 +8,22 @@
 // If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
 // builder, relabels the question and points YES at the helper; YES runs the game's NO (which
 // closes the prompt and puts back the fade the builder saved: black, then back in) and then,
-// once idle, starts routine 4 (0x94A30, which records the ending only with no menu open, and
-// sets the global level back to 4 itself, 0x95230). Right after NO, YES turns that fade off
-// with the screen still black (after_no), so play does not fade back in before the ending; it
-// fades back in as before when popups of the helper's wait (they would show on black), or after
-// kDarkFrames with no ending, or when cancelled. Once the ending is started, the prompt is not
-// offered again while that save stays loaded (its cutscenes read as play, and the ending's own
-// save reads as a save at the pod). An opener the helper takes back before it runs (cancel,
-// unload) becomes the idle routine, and its fade is turned back to the normal level; one another
-// transition took the place of (a save sets the pause opener back) has its fade turned back only
-// while the game's fade is still event 3667's (fade_state); on unload a wrapped YES points at NO
-// (never the game's own YES, which skips the escape and final battle).
+// once idle, starts routine 4 (0x94A30, which records the ending only with no menu open). Right
+// after NO, YES turns that fade off with the screen still black (after_no), so play does not
+// fade back in before the ending; it fades back in as before when popups of the helper's wait
+// (they would show on black), or after kDarkFrames with no ending, or when cancelled. The ending
+// routine sets the global level back to 4 itself (0x95230) as it warps the player to the
+// ending's first scene (0x1D2850), and the game draws that frame before the helper's frame call:
+// so the helper sets its own wrapper as the transition (end), which runs the routine and, while
+// the black is still the helper's, sets the level back to black before that frame is drawn and
+// fades in from it (kEndingFadeStep), as the game's own fades do. Once the ending is started, the
+// prompt is not offered again while that save stays loaded (its cutscenes read as play, and the
+// ending's own save reads as a save at the pod). An opener the helper takes back before it runs
+// (cancel, unload) becomes the idle routine, and its fade is turned back to the normal level; one
+// another transition took the place of (a save sets the pause opener back) has its fade turned
+// back only while the game's fade is still event 3667's (fade_state); on unload a wrapped YES
+// points at NO (never the game's own YES, which skips the escape and final battle), and the
+// ending's wrapper not run yet becomes the game's ending routine.
 #pragma once
 
 #include <windows.h>
@@ -43,6 +48,11 @@ constexpr int32_t kFadeMessageLeft = 150;
 // The most frames the screen stays black after YES with no ending started (after_no): GAME
 // SAVED's length (0x1FC876), the longest message the ending waits for. Then it fades back in.
 constexpr int kDarkFrames = 180;
+// The ending after YES fades in from black, a level each this many frames (event 3667's step,
+// run back up): black for its first 8 frames, then the normal level 40 frames in. Before, the
+// routine's frame (and how many after it was not measured) showed the Landing Pod at the
+// normal level (the 1.0.0 release candidate's retest, 2026-11-02).
+constexpr int8_t kEndingFadeStep = 8;
 extern const char kMissionQuestion[];
 // The status from the frame the helper sets the ending routine until another save is loaded
 // (left_save); the client reads it (client/discs.py, ENDING_STARTED).
@@ -91,8 +101,16 @@ public:
     // Game thread, from YES once the game's NO has returned: if the fade reads as NO's close
     // leaves it (the builder's: level -1, toward 4 a step every 6 frames, the countdown 6), the
     // fade off there (target -1, step and countdown 0, as event 3667's fade ends), so the screen
-    // stays black until the ending routine sets the level itself. Else left to fade back in.
+    // stays black until the ending. Else left to fade back in.
     void after_no(const GameAddresses& addresses);
+
+    // Game thread, from the ending's wrapper (hooks.mission_end), which the helper sets as the
+    // transition in the ending routine's place once idle after YES: runs the game's ending
+    // routine, as the main loop would have; then, if the screen was the helper's black, the
+    // level back to black at once (the routine set it to 4) and the game's fade toward 4 a step
+    // every kEndingFadeStep frames, before the game draws the frame. A wrapper left as the
+    // transition after it (the routine not as traced) becomes the idle routine.
+    void end(const GameAddresses& addresses);
 
     // Game thread: the screen kept black after YES, the ending not started yet: popups and
     // received deaths wait (game_calls.cpp).
@@ -111,8 +129,10 @@ public:
     // again after an ending this helper started.
     void left_save();
 
-    // Game thread: puts back what the helper holds (before an unload). An opener it could not
-    // take off stays held (the helper then refuses to unload).
+    // Game thread: puts back what the helper holds (before an unload). The ending's wrapper still
+    // the transition becomes the game's ending routine (the ending then runs without the fade
+    // in). An opener or wrapper it could not take off stays held (the helper then refuses to
+    // unload).
     void restore(const GameAddresses& addresses);
 
     // Game thread: drops a prompt asked for or the ending after YES, and an opener not yet run
@@ -120,24 +140,28 @@ public:
     // opener another transition took the place of as in watch (taken_over).
     void cancel(const GameAddresses& addresses);
 
-    // Whether the game holds a pointer into the helper: the opener set, or YES wrapped.
-    bool holds_hook() const { return armed_ || yes_child_ != nullptr; }
+    // Whether the game holds a pointer into the helper: the opener set, YES wrapped, or the
+    // ending's wrapper set.
+    bool holds_hook() const { return armed_ || yes_child_ != nullptr || end_set_; }
     // The opener set and not run yet (the fade, then the prompt): popups wait.
     bool opening() const { return armed_; }
     // For a refused unload: a prompt on its way (asked for, opening or shown), the ending after
     // YES; `resume` asks for them again after restore.
     bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
     bool ending() const { return ending_; }
-    // Whether the ending routine is the game's transition now (set and not run yet); false
-    // without the routine table.
+    // Whether the ending routine, or the helper's wrapper for it, is the game's transition now
+    // (set and not run yet); false without the routine table.
     bool ending_queued(const GameAddresses& addresses) const;
     void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 
 private:
-    // Runs event 3667 (`out`), or a copy of it aimed back at the normal level, through the
-    // type 1 handler: "" or what was not as traced (nothing run).
-    std::string fade(const GameAddresses& addresses, bool out);
+    // Event 3667 itself (kOut, to black), or a copy of it aimed at the normal level: from the
+    // level as it is, a step every 6 frames (kBack), or from black, a step every
+    // kEndingFadeStep frames (kIn).
+    enum class Fade { kOut, kBack, kIn };
+    // Runs that fade through the type 1 handler: "" or what was not as traced (nothing run).
+    std::string fade(const GameAddresses& addresses, Fade kind);
     // Turns the fade back to the normal level, if it ran for the opener: whether it did.
     bool fade_back(const GameAddresses& addresses);
     // Whether the game's fade is still the one the opener ran: on event 3667's way (fade_frames)
@@ -165,7 +189,8 @@ private:
     bool dark_ = false;       // and the screen kept black meanwhile (after_no)
     int dark_frames_ = 0;     // frames in play kept black so far
     bool undark_ = false;     // the fade back asked for with a menu open: once it closes
-    bool queued_ = false;     // the ending routine set, not yet seen to have run
+    bool queued_ = false;     // the ending's wrapper set, not yet run
+    bool end_set_ = false;    // and the game may still hold it (until seen gone, run or put back)
     bool started_ = false;    // the ending started in this save's load: not offered again
     BYTE* menu_ = nullptr;
     BYTE* yes_child_ = nullptr;  // YES, wrapped
