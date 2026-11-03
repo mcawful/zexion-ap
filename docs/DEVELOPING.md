@@ -141,9 +141,10 @@ line says.
   Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
-- The helper draws R'Talva X34 Y51's marker (an object the game draws on the logo's empty
-  frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) blank (`native/README.md`,
-  "Other Zexion players' items, as themselves"). Stand-in tests only; not run in game yet.
+- The helper hides R'Talva X34 Y51's marker (an object the game draws on the logo's empty
+  frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) by its shown byte
+  (`native/README.md`, "Other Zexion players' items, as themselves"). The byte, written by hand,
+  hid it in game, 2026-11-03; the helper's hiding: stand-in tests only, not run in game yet.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
   A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
   and spawned it again about every minute (`native/README.md`, "Received Energy Shields").

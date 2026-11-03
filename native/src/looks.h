@@ -16,9 +16,10 @@
 // A general object drawing a logo frame in a palette other than the stand-ins' is not a stand-in:
 // the game draws such a frame empty (its art is blank there), so the helper's logo would show
 // where the game shows nothing (R'Talva X34 Y51's marker, docs/re/memory.md, "Other players'
-// items"). While the stand-ins are restyled, each such object is pointed at the font's space
-// glyph, blank too, every frame, and put back on its own frame when it no longer draws a logo
-// frame, the stand-ins are put back, or the helper unloads.
+// items"). While the stand-ins are restyled, each such object is hidden every frame (its shown
+// byte cleared, which the draw loop skips and its own update leaves), and shown again while it
+// still draws a logo frame, when the stand-ins are put back or the helper unloads. One that
+// stops drawing a logo frame is left as the game has it.
 #pragma once
 
 #include <windows.h>
@@ -64,8 +65,6 @@ public:
     int hidden_markers() const;
     // The stand-ins' palette object, or null.
     static BYTE* stand_ins_palette(const GameAddresses& at);
-    // The blank frame markers are pointed at: the font's space glyph, or null.
-    static BYTE* blank_frame(const GameAddresses& at);
     // The item sprites' frame list (every item object's base, the template's), or null.
     static BYTE* item_frame_base(const GameAddresses& at);
 
@@ -97,10 +96,10 @@ private:
     struct Hidden {
         int32_t spawn = 0;  // 0 for none
     };
-    // Puts marker `object` (`seen`: its copy) back on its own frame (its frame list's entry at
-    // its frame index) if it is still the spawn `h` hid and still on the blank frame; forgets it.
-    static void unhide(BYTE* object, const BYTE* seen, Hidden& h, const BYTE* blank);
-    static void unhide_live(BYTE* object, Hidden& h, const BYTE* blank);
+    // Shows marker `object` (`seen`: its copy) again if it is still the spawn `h` hid, still
+    // hidden and still on a logo frame (empty then, as the game's art has it); forgets it.
+    static void unhide(BYTE* object, const BYTE* seen, Hidden& h);
+    static void unhide_live(BYTE* object, Hidden& h);
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};

@@ -544,8 +544,8 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
 - **Safety:** it writes only stand-ins with the template's base and palette 8, or ones it
-  dressed (the same spawn); and, for a marker (below), only its frame shown, to the space glyph
-  and back to the object's own frame, only while it is the spawn it hid.
+  dressed (the same spawn); and, for a marker (below), only its shown byte (`+0x120`), cleared
+  and set again, only while it is the spawn it hid.
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way
   (a marker, below, is hidden instead).
@@ -553,12 +553,15 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   not dressed by the helper, is no stand-in: the game's art leaves those frames empty, so it is
   meant to show nothing (R'Talva X34 Y51's marker, which showed the logo swaying in the gate's
   center: `docs/re/memory.md`, "Other players' items"). While the stand-ins are restyled, every
-  frame call points its frame shown at the font's space glyph, blank too, leaving its frame list,
-  frame number and palette the game's; it is not counted as a stand-in for naming them. It is put
-  back on its own frame once it draws another frame, when the stand-ins are put back, and on an
-  unload, if it is still that spawn on the space. A marker that comes into view can show the logo
-  until the next scan, up to 30 frame calls. The space is the game's own frame, so a marker left
-  on it shows nothing either way. Stand-in tests only; not run in game yet.
+  frame call hides it (clears its shown byte, `+0x120`, which the draw loop skips and its own
+  update leaves; its frame, frame list and palette stay the game's), but only one the game
+  shows: a marker the game hid is left to it. It is not counted as a stand-in for naming them. It
+  is shown again when the stand-ins are put back and on an unload, if it is still that spawn,
+  still hidden and still on a logo frame (empty then); once it draws another frame it is left as
+  the game has it. A marker that comes into view can show the logo until the next scan, up to 30
+  frame calls; a hit's blink can show it for a frame. Hiding it by that byte worked in game
+  (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: stand-in tests
+  only, not run in game yet.
 - **Put back:** when the label goes, and with the rest.
 
 Working in game: 2026-10-23 ("Live item objects").
@@ -1370,8 +1373,8 @@ unload.
   (page by page, a guard page left armed), a sprite's frame bounds and the code patches' put-back
   (one that fails held), the build check and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, a general-pool marker drawn
-  blank (hidden every frame, put back at the next scan and on restore, no stand-in for names),
+- `game`: the `discs` and `@N NAME` parsers, configuring, applying, a general-pool marker hidden
+  (every frame, by its shown byte; shown again on restore; no stand-in for names),
   the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME

@@ -14,7 +14,6 @@ namespace {
 constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
-constexpr int kBlankGlyph = 0x20;   // the font's space: fully transparent in Sprites.png
 
 // How item `item` looks at `clock`: the frame its record's animation is on, and its palette.
 struct Look {
@@ -58,16 +57,6 @@ BYTE* ItemLooks::stand_ins_palette(const GameAddresses& at) {
     return pointer_at(at.palette_table, kStandInPalette * 8);
 }
 
-BYTE* ItemLooks::blank_frame(const GameAddresses& at) {
-    BYTE* font = pointer_at(pointer_at(at.sprite_templates), sprite::kFontTemplate);
-    BYTE* list = pointer_at(font, sprite::kFrameList);
-    int32_t count = 0;
-    if (list == nullptr || !read(font, sprite::kFrameCount, count) || count <= kBlankGlyph) {
-        return nullptr;
-    }
-    return list + kBlankGlyph * sprite::kFrameSize;
-}
-
 bool ItemLooks::is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const {
     return slot >= 0 && slot < kObjectSlots && flipped_dressed_[slot].spawn == 0 &&
            standin_palette != nullptr && field<BYTE*>(object, sprite::kPalette) != standin_palette;
@@ -78,27 +67,23 @@ int ItemLooks::hidden_markers() const {
                                           [](const Hidden& h) { return h.spawn != 0; }));
 }
 
-void ItemLooks::unhide(BYTE* object, const BYTE* seen, Hidden& h, const BYTE* blank) {
+void ItemLooks::unhide(BYTE* object, const BYTE* seen, Hidden& h) {
     if (h.spawn == 0) return;
-    BYTE* list = field<BYTE*>(seen, sprite::kFrameList);
-    const int32_t frame = field<int32_t>(seen, sprite::kFrameIndex);
-    const int32_t count = field<int32_t>(seen, sprite::kFrameCount);
-    if (field<int32_t>(seen, obj::kSpawn) == h.spawn && blank != nullptr &&
-        field<BYTE*>(seen, sprite::kFrameShown) == blank && list != nullptr && frame >= 0 &&
-        frame < count) {
-        put(object, sprite::kFrameShown, list + frame * sprite::kFrameSize);
+    if (field<int32_t>(seen, obj::kSpawn) == h.spawn && seen[sprite::kVisible] == 0 &&
+        logo_index(field<int32_t>(seen, sprite::kFrameIndex)) >= 0) {
+        put<BYTE>(object, sprite::kVisible, 1);
     }
     h = {};
 }
 
-void ItemLooks::unhide_live(BYTE* object, Hidden& h, const BYTE* blank) {
+void ItemLooks::unhide_live(BYTE* object, Hidden& h) {
     if (h.spawn == 0) return;
     BYTE seen[obj::kGeneralSize];
     if (!safe_read(object, seen, sizeof(seen))) {
         h = {};
         return;
     }
-    unhide(object, seen, h, blank);
+    unhide(object, seen, h);
 }
 
 int ItemLooks::item_at(uint8_t row, uint8_t column) const {
@@ -233,11 +218,10 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
         }
     }
     // Any dressed or hidden earlier and not found now is put back if it is still ours.
-    BYTE* blank = blank_frame(at);
     for (int slot = 0; slot < kObjectSlots; ++slot) {
         if (hidden_[slot].spawn != 0 &&
             std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
-            unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot], blank);
+            unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
         }
         if (flipped_dressed_[slot].spawn != 0 &&
             std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
@@ -250,7 +234,6 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
 void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette,
                               BYTE* records, int64_t clock, const bool (&ours)[2]) {
     if (at.object_pool == nullptr) return;
-    BYTE* blank = blank_frame(at);
     for (int slot : flipped_slots_) {
         BYTE* object = at.object_pool + slot * obj::kGeneralSize;
         BYTE seen[obj::kGeneralSize];
@@ -267,19 +250,18 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         // Which stand-in: the logo frame the game computed from its record.
         int32_t frame = field<int32_t>(seen, sprite::kFrameIndex);
         const int stand_in = logo_index(frame);
-        // A marker: shown blank while its logo frame is the helper's, put back otherwise.
+        // A marker: hidden while its logo frame is the helper's, shown again otherwise. Hidden
+        // only if the game shows it: one the game hid is left to the game.
         if (shows_stand_in(seen, base) && is_marker(slot, seen, standin_palette)) {
-            if (stand_in < 0 || !ours[stand_in] || blank == nullptr) {
-                unhide(object, seen, h, blank);
-            } else {
-                if (field<BYTE*>(seen, sprite::kFrameShown) != blank) {
-                    put(object, sprite::kFrameShown, blank);
-                }
+            if (stand_in < 0 || !ours[stand_in]) {
+                unhide(object, seen, h);
+            } else if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
+                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
                 h = {spawn};
             }
             continue;
         }
-        unhide(object, seen, h, blank);  // no longer a marker: its own frame again
+        unhide(object, seen, h);  // no longer a marker
         int item = item_at(seen[obj::kGeneralRow], seen[obj::kGeneralColumn]);
         if (!shows_stand_in(seen, base) || stand_in < 0 || !ours[stand_in] || item < 0) {
             undress(object, seen, d, base, standin_palette, true);
@@ -305,12 +287,11 @@ void ItemLooks::restore(const GameAddresses& at) {
     flipped_slots_.clear();  // found again by the next scan
     frames_to_scan_ = 0;
     if (hidden_markers() > 0) {
-        BYTE* blank = blank_frame(at);
         for (int slot = 0; slot < kObjectSlots; ++slot) {
             if (at.object_pool == nullptr) {
                 hidden_[slot] = {};
             } else {
-                unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot], blank);
+                unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
             }
         }
     }
