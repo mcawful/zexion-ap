@@ -89,9 +89,10 @@ def test_the_scanner_line_fits_one_line_of_the_game_text() -> None:
     assert len(discs.scan_line(41)) <= 31
 
 
-def stamp(time: int, column: int, row: int, slot: int = 3) -> bytes:
-    """A save stamp as game.Game.save_stamp reads it: the slot, then the block from +0x9354."""
-    return struct.pack("<iHHHHH", slot, time, 0, 0, row, column)
+def stamp(time: int, column: int, row: int, slot: int = 3, deaths: int = 0) -> bytes:
+    """A save stamp as game.Game.save_stamp reads it: the slot, then the block from +0x9354,
+    then its death count."""
+    return struct.pack("<iHHHHHI", slot, time, 0, 0, row, column, deaths)
 
 
 def test_saved_at_home_compares_the_continue_point_with_the_landing_pod() -> None:
@@ -120,41 +121,120 @@ def test_the_mission_request_gives_the_helper_home() -> None:
 
 def test_return_home_is_offered_after_a_save_at_the_pod_only() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329), True, True, True)
+    home.see(stamp(100, 191, 329), True, True, True, True)
     assert not home.offer  # loaded at the pod: not a save
-    home.see(stamp(100, 191, 329), True, True, True)
+    home.see(stamp(100, 191, 329), True, True, True, True)
     assert not home.offer  # nothing new
-    home.see(stamp(200, 151, 464), False, True, False)
+    home.see(stamp(200, 151, 464), True, False, True, False)
     assert not home.offer  # saved elsewhere
-    home.see(stamp(300, 191, 329), True, False, True)
+    home.see(stamp(300, 191, 329), True, True, False, True)
     assert not home.offer  # saved at the pod without enough disks
-    home.see(stamp(400, 191, 329), True, True, True)
+    home.see(stamp(400, 191, 329), True, True, True, True)
     assert home.offer  # saved at the pod with enough
     home.offer = False  # the prompt queued (NO plays on)
-    home.see(stamp(400, 191, 329), True, True, True)
+    home.see(stamp(400, 191, 329), True, True, True, True)
     assert not home.offer
-    home.see(stamp(500, 191, 329), True, True, True)
+    home.see(stamp(500, 191, 329), True, True, True, True)
     assert home.offer  # the next save there offers it again
 
 
 def test_a_save_away_from_the_pods_cell_offers_nothing() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329), True, True, False)
+    home.see(stamp(100, 191, 329), True, True, True, False)
     # The game's own save in the escape keeps the pod as the continue point.
-    home.see(stamp(200, 191, 329), True, True, False)
+    home.see(stamp(200, 191, 329), True, True, True, False)
     assert not home.offer
-    home.see(stamp(300, 191, 329), True, True, True)
+    home.see(stamp(300, 191, 329), True, True, True, True)
     assert home.offer
-    home.see(stamp(300, 191, 329), True, True, False)
+    home.see(stamp(300, 191, 329), True, True, True, False)
     assert not home.offer  # left the cell before the prompt came: it lapses
 
 
 def test_another_slot_is_not_a_save() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329, slot=3), True, True, True)
-    home.see(stamp(900, 191, 329, slot=5), True, True, True)
+    home.see(stamp(100, 191, 329, slot=3), True, True, True, True)
+    home.see(stamp(900, 191, 329, slot=5), True, True, True, True)
     assert not home.offer  # another save of the seed loaded at its pod
-    home.see(stamp(950, 191, 329, slot=5), True, True, True)
+    home.see(stamp(950, 191, 329, slot=5), True, True, True, True)
+    assert home.offer
+
+
+def test_the_stamp_holds_the_death_count() -> None:
+    assert discs.deaths(stamp(100, 191, 329, deaths=7)) == 7
+    assert discs.deaths(stamp(100, 191, 329)[:14]) is None  # a stamp without one
+
+
+POD = (191, 329)
+
+
+def at_pod(time: int, deaths: int = 0) -> bytes:
+    """The stamp of a save whose continue point is the pod."""
+    return stamp(time, *POD, deaths=deaths)
+
+
+def test_a_death_respawning_the_player_at_the_pod_is_not_a_save() -> None:
+    # The death writes the block's play time and death count with the player dead (death_fn's
+    # tail, 0x1DCB11), then the player respawns at the continue point, in the pod's cell.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)  # in play away from the pod
+    home.see(at_pod(200, deaths=1), False, True, True, False)  # the death screen
+    home.see(at_pod(200, deaths=1), True, True, True, True)  # respawned at the pod
+    assert not home.offer
+    home.see(at_pod(300, deaths=1), True, True, True, True)
+    assert home.offer  # a save there after the death
+
+
+def test_a_death_no_poll_saw_is_not_a_save_either() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200, deaths=1), True, True, True, True)  # in play both times
+    assert not home.offer
+
+
+def test_a_death_in_the_pods_cell_is_not_a_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200, deaths=1), False, True, True, True)
+    home.see(at_pod(200, deaths=1), True, True, True, True)
+    assert not home.offer
+
+
+def test_a_death_drops_an_offer_not_queued_yet() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200), True, True, True, True)
+    assert home.offer  # saved at the pod; the helper has not queued it yet
+    home.see(at_pod(300, deaths=1), False, True, True, True)
+    assert not home.offer
+
+
+def test_a_teleport_to_the_pod_is_not_a_save() -> None:
+    # TELEPORT TO START (0xA3430) reloads a copy of the play state (0x9FF60), not the slot:
+    # the stamp stays.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)  # in play away from the pod
+    home.see(at_pod(100), False, True, True, False)  # the pause menu
+    home.see(at_pod(100), True, True, True, True)  # at the start, the pod
+    assert not home.offer
+
+
+def test_a_stamp_written_behind_a_menu_is_not_a_save() -> None:
+    # The block's play time written while a menu is up (the exits write it), the player then
+    # in play at the pod: not a save.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)
+    home.see(at_pod(200), False, True, True, False)
+    home.see(at_pod(200), True, True, True, True)
+    assert not home.offer
+    home.see(at_pod(200), False, True, True, True)  # paused at the pod
+    home.see(at_pod(300), True, True, True, True)  # the first look back in play is new
+    assert not home.offer
+
+
+def test_a_save_at_the_pod_is_offered_between_two_looks_in_play() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100, deaths=4), True, True, True, True)
+    home.see(at_pod(200, deaths=4), True, True, True, True)
     assert home.offer
 
 

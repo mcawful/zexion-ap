@@ -166,6 +166,11 @@ line says.
   prompt after a save in the start room, the prompt after a save at the pod, NO, the request
   lapsing on leaving the pod's room while popups held it, the offer again, YES to the goal;
   B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`).
+  A bug, 2026-11-03 (the 1.0.0 release candidate): with enough disks, respawning at the pod
+  after a death, or by the owner's account after a teleport, offered RETURN HOME, as a death
+  rewrites the slot's block like a save. Fixed since in the client (a new block is a save only
+  between two looks in play with no death); not yet run in game (`docs/re/memory.md`, "The
+  mission prompt").
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's
