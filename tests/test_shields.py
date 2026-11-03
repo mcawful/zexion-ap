@@ -58,15 +58,39 @@ def test_a_shield_seen_up_in_play_counts_once() -> None:
     assert sh.given == (KEY, 5) and sh.pending is None and sh.misses == 0
 
 
-def test_a_shield_not_seen_in_time_is_spawned_again_then_backs_off() -> None:
+def test_a_shield_not_seen_in_time_is_spawned_again_then_stops() -> None:
     sh = shields.Shields()
+    now = 0.0
     for n in range(shields.MISSES):
+        assert sh.may_spawn(now)
+        sh.spawned(KEY, now)
+        assert sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, now + 1) == shields.WAIT
+        now += shields.SEEN_SECONDS + 1
+        outcome = sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, now)
+        assert outcome == (shields.STOP if n == shields.MISSES - 1 else shields.AGAIN)
+        now += shields.GAP_SECONDS
+    # each spawn not seen may be a shield given twice: none more in this client run
+    assert sh.stopped and not sh.may_spawn(now + 1e6)
+
+
+def test_a_shield_seen_up_resets_the_misses() -> None:
+    sh = shields.Shields()
+    for _ in range(shields.MISSES - 1):
         sh.spawned(KEY, 0.0)
-        assert sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, 1.0) == shields.WAIT
-        late = shields.SEEN_SECONDS + 1
-        outcome = sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, late)
-        assert outcome == (shields.BACKOFF if n == shields.MISSES - 1 else shields.AGAIN)
-    assert sh.misses == 0 and sh.retry_at == late + shields.BACKOFF_SECONDS
+        assert sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, 10.0) == shields.AGAIN
+    sh.spawned(KEY, 0.0)
+    assert sh.looked(sh.pending, game.IN_PLAY, True, KEY, 0, 1.0) == shields.UP
+    sh.spawned(KEY, 0.0)
+    assert sh.looked(sh.pending, game.IN_PLAY, False, KEY, 1, 10.0) == shields.AGAIN
+    assert not sh.stopped
+
+
+def test_a_shield_is_looked_for_from_the_request_until_refused() -> None:
+    sh = shields.Shields()
+    sh.asking(KEY, 0.0)
+    assert sh.current(KEY) is not None, "a lost reply leaves it to be looked for"
+    sh.refused("refused not settled", 0.5)
+    assert sh.pending is None and not sh.may_spawn(1.0)
 
 
 def test_the_time_to_see_it_runs_in_play_only() -> None:
@@ -110,3 +134,18 @@ def test_the_look_reads_the_shield_in_play_only_and_a_failed_read_is_not_seen() 
     assert shields.look(ShieldGame(up=True), game.MENU) == (False, "")
     broken = ShieldGame(error=game.GameError("bad link"))
     assert shields.look(broken, game.IN_PLAY) == (False, "bad link")
+
+
+def test_a_shield_taken_back_by_a_death_or_unload_is_not_a_miss() -> None:
+    sh = shields.Shields()
+    for n in range(shields.MISSES * 2):
+        sh.spawned(KEY, n * 10.0)
+        sh.left()
+        assert sh.looked(sh.pending, game.IN_PLAY, False, KEY, 0, n * 10.0 + 1) == shields.AGAIN
+    assert sh.misses == 0 and not sh.stopped
+
+
+def test_another_slots_misses_are_not_this_ones() -> None:
+    sh = shields.Shields(misses=shields.MISSES - 1)
+    sh.spawned(OTHER, 0.0)
+    assert sh.current(KEY) is None and sh.misses == 0

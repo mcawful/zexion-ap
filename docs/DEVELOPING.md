@@ -139,7 +139,9 @@ line says.
   Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
-- Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
+- Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23, with
+  the client's earlier read of the shield, which failed in the 1.0.0 RC retest (2026-11-02); the
+  read since then has not run in game (`docs/re/memory.md`, "Received Energy Shields").
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.

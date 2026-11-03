@@ -344,11 +344,13 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   cell (`spawn_shield`, which checks the record, the event and its handler first).
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
-  asks once per received shield not yet given, and counts it once it sees the shield up
-  (`client/shields.py`).
+  asks for each received shield not yet given, again for one not seen up within a few seconds,
+  and counts it once it sees the shield up; after three spawns in a row not seen up it asks for
+  none until it is started again (`client/shields.py`).
 - **Put back:** nothing to put back.
 
-Working in game: 2026-10-23 ("Received Energy Shields").
+Working in game: 2026-10-23, the spawn; the client's read of the shield changed on 2026-11-02
+and has not run in game since (`docs/re/memory.md`, "Received Energy Shields").
 
 ### DeathLink
 

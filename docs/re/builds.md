@@ -22,8 +22,10 @@ Measured 2026-10-20 with `tools/build_id.py`, on the Steam install that was curr
   - `Files/Flags`: `e9882b596fc69a59` (8 bytes)
   - `Files/Text`: `3bf8cd5e07ede18f` (114,050 bytes)
   - `Files/Bosses`: `265feab61b4aa2cf` (1,176,558 bytes)\*
+  - `Files/Missiles`: `4ea5d6ccb2830d21` (473,364 bytes)\*\*
 
 \* Fingerprinted on 2026-10-22, from the same install.
+\*\* Fingerprinted on 2026-11-02, from the copy `tools/game_data.py` made of the same install that day.
 
 ## Engine and mod support (B1)
 
