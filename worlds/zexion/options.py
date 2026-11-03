@@ -390,11 +390,9 @@ def _make_start_room() -> type[Choice]:
         "('random' is random_start too). Or one of the game's 34 rooms, by its name in the\n"
         "menu: a room from which your starting items reach no location, or every item does\n"
         "not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is\n"
-        "refused. From a room where they reach only a few, generation can fail, and from some\n"
-        "often: below_machinus about one try in three in Easy and one in ten in Standard,\n"
-        "vulknor_entry and below_arena about one in thirteen in Easy. Generate again, or pick\n"
-        "another room. automatic (the default): landing_pod, or a random start where that room\n"
-        "is refused."
+        "refused. automatic (the default): landing_pod, or a random start where that room is\n"
+        "refused. In any game, alone or in a multiworld, the few items that open your start\n"
+        "area are placed in your own start area."
     )
 
     @classmethod

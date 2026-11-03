@@ -110,10 +110,7 @@ weapons, and Easy's are the same 17: `exodia`, `upper_tower`, `below_arena`, `to
 `lower_tower`, `ktarel_sub`, `open_cave`, `lower_machinus`, `below_machinus`, `fijedar_entry`
 and `vulknor_entry`. The Force Blaster adds `below_junkyard` and `phobyss_entry`, and the Lance
 `crysmoon_entry`, `white_crysmoon` and `phobyss_entry`; a seed that draws another weapon stops
-with an error in those (generate again, or pick one of the 17). From a room where your starting
-items reach only a few locations, generation sometimes fails, and from some often:
-`below_machinus` about one try in three in Easy and one in ten in Standard, `vulknor_entry` and
-`below_arena` about one in thirteen in Easy. Generate again, or pick another room. With Double
+with an error in those (generate again, or pick one of the 17). With Double
 Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
 Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
 only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks
@@ -122,6 +119,12 @@ per item of the menu's 27 but the Navcore and Magnus Armor. `random_start` (or `
 room as the game's Random Start does. The spoiler log names the start room (and a second room to
 teleport to, with Double Teleport, as in OHKO) and the starting items, Standard's weapon among
 them.
+
+In any game, alone or in a multiworld, the few items that open your start area are placed in
+your own start area: until your starting items reach 20 of your locations, the generator places
+one of your items that opens more (or two that open more together) in a location you can
+already reach, then fills the rest as usual. From a room where your starting items reach only
+one or two locations, that may be several items in a row.
 
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
