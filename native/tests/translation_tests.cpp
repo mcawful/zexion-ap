@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,8 @@
 #include "fake_gl.h"
 #include "game_calls.h"
 #include "menu.h"
+#include "offline.h"
+#include "requests.h"
 #include "stand_in.h"
 #include "stand_in_menu.h"
 #include "translation.h"
@@ -788,10 +791,125 @@ void test_the_suffix_case() {
     reset_translation();
 }
 
+// The mod's own text in mixed case in English(HD) only (the owner's choice, 2026-11-02): a
+// client's notice, the helper's own, a label and the scanner's line in the case they were
+// written in; in capitals in French and in the default English's pixel text.
+void test_the_mixed_case() {
+    struct Language {
+        const char* name;
+        bool on;
+    };
+    for (const Language language : {Language{"English(HD)", true}, Language{"French", true},
+                                    Language{"English(HD)", false}}) {
+        const bool hd = language.on && std::string(language.name) == "English(HD)";
+        const std::string where = language.on ? language.name : "the default English";
+        zap::Game game;
+        start(game, language.on);
+        if (language.on) load_translation(language.name);
+        // A client's notice (an Area Map's hint).
+        queue(game, "apply\nnotice 49 Hint: Slide Mod is at Guardia 22,7");
+        frames(game, 1);
+        const std::wstring hint = g_hd_texts.empty() ? L"" : g_hd_texts.back().text;
+        if (language.on) {
+            check(hint.find(hd ? L"Hint: Slide Mod is at" : L"HINT: SLIDE MOD IS AT") !=
+                      std::wstring::npos,
+                  "a client's notice", where);
+        } else {
+            check(g_hd_texts.empty() && g_text.find("HINT: SLIDE MOD IS AT") != std::string::npos,
+                  "a client's notice in pixels", where);
+        }
+        // A label sent in mixed case, its lines kept in both cases.
+        std::map<int, zap::Label> labels;
+        const std::string text = "AP Item\nfor Alice";
+        check(zap::parse_labels("ap_labels\nlabel 5 2 " + hex(text), labels).empty() &&
+                  labels.size() == 1 && labels.begin()->second.own_first == "AP Item" &&
+                  labels.begin()->second.own_who == "for Alice" &&
+                  labels.begin()->second.who == "FOR ALICE",
+              "a label parsed in both cases");
+        game.set_labels(labels);
+        const int cell = 2 * 54 + 5;
+        if (language.on) {
+            check(game.hd_label_text(cell, false, true) ==
+                      (hd ? L"\xE03C" L"AP Item\nfor Alice" : L"\xE03C" L"AP ITEM\nFOR ALICE"),
+                  "a stand-in's name", where);
+            check(game.hd_label_text(cell, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
+                  "the map cursor's", where);
+        }
+        // Another Zexion player's item with no name of the client's: in English(HD), the
+        // translation's own name for it.
+        std::map<int, zap::Label> zexion;
+        check(zap::parse_labels("ap_labels\nlabel 6 2 " + hex(std::string("@36\nfor Bob")),
+                                zexion)
+                  .empty(),
+              "an @N label parsed");
+        game.set_labels(zexion);
+        if (hd) {
+            const std::wstring own_name = entry_text(g_items, 36);
+            check(!own_name.empty() &&
+                      game.hd_label_text(2 * 54 + 6, false, false) == own_name + L"\nfor Bob",
+                  "another Zexion player's item by the translation's name");
+            // Another player's Scrap Energy (@47) where the player stands: its name is the
+            // game's own, not the label the helper writes into that same entry, frame after
+            // frame.
+            own_stand_ins(g_records);
+            field<uint8_t>(0x107A) = 2;
+            field<uint8_t>(0x107B) = 7;
+            std::map<int, zap::Label> scrap;
+            zap::parse_labels("ap_labels\nlabel 7 2 " + hex(std::string("@47\nfor Bob")), scrap);
+            game.set_labels(scrap);
+            frames(game, 3);
+            check(entry_text(g_items, 47) == L"\xE03C" L"Scrap Energy\nfor Bob",
+                  "@47: the game's own name, written once, not grown from the helper's",
+                  std::string(entry_text(g_items, 47).size(), '.'));
+        }
+        // The scanner's line: in the pixel Text table always in capitals.
+        game.set_discs(3, 12, "Collect 12 OS Install Disks!", true);
+        frames(game, 1);
+        if (language.on) {
+            check(entry_text(g_small, 12) == (hd ? L"Collect 12 OS Install Disks!"
+                                                 : L"COLLECT 12 OS INSTALL DISKS!"),
+                  "the scanner's line", where);
+        }
+        check(std::string(reinterpret_cast<const char*>(g_text_table + 12 * 32)) ==
+                  "COLLECT 12 OS INSTALL DISKS!",
+              "the scanner's pixel line in capitals", where);
+        game.put_back_all(&no_callback);
+    }
+    reset_translation();
+}
+
+// The helper's own notices in mixed case in English(HD): an AP save dressed with no client.
+void test_the_helpers_notice_case() {
+    for (const bool hd : {true, false}) {
+        zap::Game game;
+        start(game);
+        if (!hd) load_translation("French");
+        std::memset(g_section, 0, sizeof(g_section));
+        g_section[0x26C] = 0x77;  // a table to match
+        const zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+        game.leave_offline();
+        configure(game, false);  // no client
+        game.set_offline({seed});
+        g_rando_marker = 1;
+        g_save_loaded = 3;
+        for (int i = 0; i < 16; ++i) game.watch_offline();
+        check(game.queued_popups() == 1, "the not-connected notice queued");
+        frames(game, 1);
+        const std::wstring shown = g_hd_texts.empty() ? L"" : g_hd_texts.back().text;
+        check(shown.find(hd ? L"Archipelago client not" : L"ARCHIPELAGO CLIENT NOT") !=
+                  std::wstring::npos,
+              hd ? "English(HD): the helper's notice in mixed case" : "French: in capitals");
+        game.put_back_all(&no_callback);
+    }
+    reset_translation();
+}
+
 }  // namespace
 
 int main() {
     test_the_text_helpers();
+    test_the_mixed_case();
+    test_the_helpers_notice_case();
     test_the_popup_layout();
     test_the_icons_through_the_game();
     test_a_popup_laid_out_by_the_font();

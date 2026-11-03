@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -98,8 +99,11 @@ public:
     void watch(const GameAddresses& a, bool on);
     // The game's handler for `child`, if this wrapped it.
     void* original(void* child) const { return child == child_ ? original_ : nullptr; }
+    // In a translation the cursor's name is `hd_name(cell)` if given and not empty, else the
+    // label's first line (translation.h hd_label) without its icon.
     void after(const GameAddresses& a, const std::map<int, std::string>& labels,
-               const std::map<int, int>& widths);
+               const std::map<int, int>& widths,
+               const std::function<std::wstring(int)>& hd_name = {});
     void restore(const GameAddresses& a);
     bool holds_hook() const { return child_ != nullptr; }
 

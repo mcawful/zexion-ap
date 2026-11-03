@@ -89,7 +89,8 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
 // item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
-// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &), and of each of its two
+// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &; each line also kept in
+// the case it was sent in, Label::own_first and own_who, for English(HD)), and of each of its two
 // lines only the first line it wraps to: the item's at 23 characters (after the logo glyph),
 // whom it is for at 24.
 std::string parse_labels(const std::string& request, std::map<int, Label>& out);
@@ -108,7 +109,8 @@ std::string parse_config(const std::string& request, std::map<std::string, uint6
 // "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
 // "notice ITEM TEXT". A popup's suffix keeps only letters (made upper-case), digits, space and
 // . , ' ! ? -, at most 40 characters; a notice's text keeps the same and :, at most 200, and is
-// shown alone, with no icon or name (notice_text).
+// shown alone, with no icon or name (notice_text). Either keeps the same characters in the case
+// they were sent in (Popup::as_sent), which English(HD) shows.
 std::string parse_batch(const std::string& request, Batch& out);
 
 // A `discs` request: "discs" (off: count 0, required 0, line "") or "discs COUNT REQUIRED HEX

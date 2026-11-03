@@ -401,6 +401,22 @@ class Helper:
 # Helper files that loaded as another version than VERSION, by path: (mtime, version). Not
 # loaded again until the file changes.
 _STALE: dict[str, tuple[int, str]] = {}
+# Helper files of this version that loaded as an earlier build of it (_earlier), by path:
+# (mtime, why). Not loaded again until the file changes.
+_EARLIER: dict[str, tuple[int | None, str]] = {}
+
+
+def _earlier(hello: dict[str, str]) -> str | None:
+    """Why a helper of this version is an earlier build of it, or None: no ``lang`` (1.0.0's
+    release candidate, before the translations: it would take the translation keys and ignore
+    them, so its popups would hide in a translation) or no ``case`` (before the mixed case: it
+    would refuse the scanner's line in mixed case, and with it every disks request and the
+    offline file, so the disks goal could not be sent)."""
+    if "lang" not in hello:
+        return "the mod doesn't report the game's language, so it is an earlier one"
+    if "case" not in hello:
+        return "the mod doesn't take the client's text in mixed case, so it is an earlier one"
+    return None
 
 
 def _modified(dll: Path) -> int | None:
@@ -506,6 +522,9 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     stale = _STALE.get(str(dll))
     if stale is not None and stale[0] != _modified(dll):
         stale = None  # rebuilt or replaced since: tried again
+    earlier = _EARLIER.get(str(dll))
+    if earlier is not None and earlier[0] != _modified(dll):
+        earlier = None
     if is_loaded(handle):
         with Helper(g.pid) as old:
             hello = _hello(old)
@@ -535,14 +554,16 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                         f"{VERSION}: the client's build is used instead (update the game "
                         "folder's copy)."
                     )
-            elif "lang" not in hello and own_build:
-                # This version's release candidate (no lang: before the translations), the
-                # game folder's copy most likely: the client's build takes its place, as for
-                # another version; with no build it is refused below.
+            elif (why := _earlier(hello)) is not None and own_build:
+                # An earlier build of this version (_earlier), the game folder's copy most
+                # likely: the client's build takes its place, as for another version, unless
+                # that build is the earlier one (left alone, refused); with no build it is
+                # refused below.
+                if earlier is not None:
+                    raise _other_build(earlier[1])
                 if not _unloaded(old, handle):
                     raise _other_build(
-                        "the mod doesn't report the game's language, so it is an earlier one, "
-                        "and it didn't unload to make way for the client's build"
+                        f"{why}, and it didn't unload to make way for the client's build"
                     )
             elif in_folder and notes is not None:
                 notes.append("The helper was loaded with the game (the proxy in its folder).")
@@ -562,6 +583,8 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
             raise ModFixable(f"none is loaded in the game, and there is no build at {dll}")
         if stale is not None:
             raise _wrong_version(dll, stale[1], own_build)
+        if earlier is not None:
+            raise _other_build(earlier[1])
         loaded_here = load(handle, g.pid, dll, if_absent=True)
     else:
         loaded_here = False
@@ -587,13 +610,11 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     "the mod doesn't know this version of Zexion, which the client does"
                 )
             raise HelperError(f"the helper did not hook the game: {hello}")
-        if "lang" not in hello:
-            # A build of this version from before its translation support (the release
-            # candidate's): it would take the config and ignore the translation keys, so in a
-            # translation its popups would hide again with nothing said.
-            raise _other_build(
-                "the mod doesn't report the game's language, so it is an earlier one"
-            )
+        why = _earlier(hello)
+        if why is not None:
+            if loaded_here:  # this file is that build: not loaded again until it changes
+                _EARLIER[str(dll)] = (_modified(dll), why)
+            raise _other_build(why)
         helper.configure(dict(g.rva))
     except BaseException:
         helper.close()

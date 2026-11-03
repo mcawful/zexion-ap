@@ -19,9 +19,10 @@ from .ids import AREA_MAP
 
 NONE_LEFT = (-1, -1)  # an Area Map that found no item left to hint
 POPUP_MAX = 200  # the helper's longest notice (native/src/requests.cpp, kNoticeMax)
-NO_HINT_NOTE = "HINT: NO HINTS LEFT"
+NO_HINT_NOTE = "Hint: no hints left"
 # What the helper keeps of a notice's text (native/src/requests.cpp, the notice line's
-# parser): anything else would be dropped there, and counted here.
+# parser), a letter in either case (shown in capitals but in English(HD)): anything else would
+# be dropped there, and counted here.
 POPUP_CHARS = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:")
 
 
@@ -79,20 +80,21 @@ def assign(
 
 
 def _popup_text(text: str) -> str:
-    kept = "".join(c for c in text.upper() if c in POPUP_CHARS)
+    kept = "".join(c for c in text if c.upper() in POPUP_CHARS)
     return " ".join(kept.split())
 
 
 def popup_note(item: str, location: str, player: str | None = None) -> str:
-    """A hint's notice, worded as the server's hint: "HINT: SLIDE MOD IS AT GUARDIA 22,7" for an
-    item in this world, "HINT: SLIDE MOD IS AT <LOCATION> IN ALICE'S WORLD" for one in
-    ``player``'s, in the characters the helper keeps (POPUP_CHARS). The helper wraps it, every
-    line shown. Past POPUP_MAX it drops the words between the names
-    ("HINT: SLIDE MOD - <LOCATION> - ALICE"), and is cut at a word only past that."""
+    """A hint's notice, worded as the server's hint: "Hint: Slide Mod is at Guardia 22,7" for an
+    item in this world, "Hint: Slide Mod is at <location> in Alice's world" for one in
+    ``player``'s, the names as Archipelago has them, in the characters the helper keeps
+    (POPUP_CHARS; in capitals but in English(HD)). The helper wraps it, every line shown. Past
+    POPUP_MAX it drops the words between the names ("Hint: Slide Mod - <location> - Alice"),
+    and is cut at a word only past that."""
     item, location = _popup_text(item), _popup_text(location)
     whose = None if player is None else _popup_text(player)
-    full = f"HINT: {item} IS AT {location}" + (f" IN {whose}'S WORLD" if whose else "")
-    short = f"HINT: {item} - {location}" + (f" - {whose}" if whose else "")
+    full = f"Hint: {item} is at {location}" + (f" in {whose}'s world" if whose else "")
+    short = f"Hint: {item} - {location}" + (f" - {whose}" if whose else "")
     for text in (full, short):
         if len(text) <= POPUP_MAX:
             return text

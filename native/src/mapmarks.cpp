@@ -245,7 +245,8 @@ bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
 }
 
 void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels,
-                           const std::map<int, int>& widths) {
+                           const std::map<int, int>& widths,
+                           const std::function<std::wstring(int)>& hd_name) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
     if (!map_menu(a.current_menu, a.hooks.map, menu, panel, child)) return;
@@ -270,8 +271,9 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
     // In a translation the cursor shows the text the game just built from ItemNames 47 or 48,
     // built again as the label's first line, without its icon (translation.h).
-    rebuild_label(a, text,
-                  hd_label(it->second, width == widths.end() ? 0 : width->second, true, false));
+    std::wstring hd = hd_name ? hd_name(it->first) : std::wstring();
+    if (hd.empty()) hd = hd_label(it->second, width == widths.end() ? 0 : width->second, true, false);
+    rebuild_label(a, text, hd);
 }
 
 void MapCursorNames::restore(const GameAddresses& a) {

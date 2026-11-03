@@ -516,11 +516,24 @@ bool in_circle(double x, double y, double cx, double cy, double r) {
 // spans y 6 to 46 there, from the cap height to the baseline (measured on the retest's shot of
 // ASSIST in English(HD), 2026-11-02: the cell drawn 1.74 units a screen pixel at 3x).
 constexpr double kLockBox[4] = {16, 6, 50, 46};
+// Where the disk and the AP logo sit, which lead their text: the game's own HD icons' box (their
+// boxes' medians are x 9 to 53, y 7 to 50 in BigFontIcons.png), from the cap height to a
+// little under the baseline, the owner's pick (D1, L1 of the 2026-11-02 mockups).
+constexpr double kLeadBox[4] = {10, 6, 54, 50};
 
-// The HD icons' shapes in a 64 x 64 cell, a little inside it as the game's are.
+// (x, y) in `box` as the point of a shape drawn in `drawn` (both left, top, right, bottom), the
+// same scale both ways.
+void fit(double& x, double& y, const double (&box)[4], const double (&drawn)[4]) {
+    const double s = (box[3] - box[1]) / (drawn[3] - drawn[1]);
+    x = drawn[0] + (x - box[0]) / s;
+    y = drawn[1] + (y - box[1]) / s;
+}
+
+// The HD icons' shapes in a 64 x 64 cell, each drawn in its own box and fitted into its place.
 bool hd_shape(int k, double x, double y) {
     switch (k) {
-        case 0: {  // a disc with its hole and a groove
+        case 0: {  // a disc with its hole and a groove, drawn in x 6 to 58, y 6 to 58
+            fit(x, y, kLeadBox, {6, 6, 58, 58});
             const double d = std::hypot(x - 32, y - 32);
             return d <= 26 && d >= 7 && !(d >= 14.5 && d <= 17);
         }
@@ -528,9 +541,7 @@ bool hd_shape(int k, double x, double y) {
             // Drawn in x 12 to 52, y 11 to 58 below, and fitted into kLockBox: from the font's
             // cap height to its baseline, 16 units (about 3 pixels of the game's 320) from its
             // left as its gap (ASSIST's padlock has no space before it in English(HD)).
-            const double s = (kLockBox[3] - kLockBox[1]) / 47.0;
-            x = 12 + (x - kLockBox[0]) / s;
-            y = 11 + (y - kLockBox[1]) / s;
+            fit(x, y, kLockBox, {12, 11, 52, 58});
             const double d = std::hypot(x - 32, y - 26);
             if (y <= 30 && d >= 9 && d <= 15) return true;
             const bool body = x >= 12 && x <= 52 && y >= 28 && y <= 58 &&
@@ -540,7 +551,9 @@ bool hd_shape(int k, double x, double y) {
                               (x >= 29.5 && x <= 34.5 && y >= 40 && y <= 50);
             return body && !hole;
         }
-        default: {  // the logo: six dots on a ring, as the pixel glyph's (kApItemRows)
+        default: {  // the logo: six dots on a ring, as the pixel glyph's (kApItemRows), drawn
+                    // in x 3 to 61, y 3 to 61
+            fit(x, y, kLeadBox, {3, 3, 61, 61});
             for (int i = 0; i < 6; ++i) {
                 const double a = (90.0 + 60.0 * i) * 3.14159265358979 / 180.0;
                 if (in_circle(x, y, 32 + 21 * std::cos(a), 32 - 21 * std::sin(a), 8)) return true;

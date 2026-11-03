@@ -470,21 +470,25 @@ void test_the_icon_sheets() {
     check(alpha(disk, 64, 32, 32) == 0 && alpha(disk, 64, 32, 10) == 255 &&
               disk[(10 * 64 + 32) * 4] == 255,
           "the HD disk: a hole in a white disc");
-    // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a letter's gap in.
-    const std::vector<uint8_t> hd_lock = zap::IconSheets::art(1, 64, 64);
-    int left = 64, top = 64, right = -1, bottom = -1;
-    for (int y = 0; y < 64; ++y) {
-        for (int x = 0; x < 64; ++x) {
-            if (alpha(hd_lock, 64, x, y) < 128) continue;
-            left = (std::min)(left, x), right = (std::max)(right, x);
-            top = (std::min)(top, y), bottom = (std::max)(bottom, y);
+    // Each HD icon's opaque box in its cell: left, top, right, bottom.
+    auto box = [&](int k) {
+        const std::vector<uint8_t> art = zap::IconSheets::art(k, 64, 64);
+        int b[4] = {64, 64, -1, -1};
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                if (alpha(art, 64, x, y) < 128) continue;
+                b[0] = (std::min)(b[0], x), b[2] = (std::max)(b[2], x);
+                b[1] = (std::min)(b[1], y), b[3] = (std::max)(b[3], y);
+            }
         }
-    }
-    check(left >= 15 && left <= 17 && right <= 50 && top >= 5 && top <= 7 && bottom >= 44 &&
-              bottom <= 46,
-          "the HD padlock on the text's line",
-          std::to_string(left) + "," + std::to_string(top) + " to " + std::to_string(right) +
-              "," + std::to_string(bottom));
+        return std::to_string(b[0]) + "," + std::to_string(b[1]) + " to " +
+               std::to_string(b[2]) + "," + std::to_string(b[3]);
+    };
+    // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a gap in; the disk
+    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50 (D1, L1).
+    check(box(1) == "16,6 to 49,45", "the HD padlock on the text's line", box(1));
+    check(box(0) == "10,6 to 53,49", "the HD disk the game's icons' size", box(0));
+    check(box(2) == "12,6 to 51,49", "the HD logo the game's icons' size", box(2));
     const std::vector<uint8_t> lock = zap::IconSheets::art(1, 10, 9);
     check(alpha(lock, 10, 1 + 3, 0) == 255 && alpha(lock, 10, 0, 0) == 0,
           "the pixel padlock: the 8 x 8 glyph a column in");

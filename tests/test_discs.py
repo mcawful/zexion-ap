@@ -45,22 +45,22 @@ def test_owned_counts_received_own_checked_and_starting_discs() -> None:
 
 def test_before_the_scanner_the_popups_give_the_count_alone() -> None:
     hunt = discs.from_slot_data(SLOT)
-    assert discs.note(2) == "OS INSTALL DISK 2"
-    assert discs.received_notes(hunt, [44], [], told=False) == {0: "OS INSTALL DISK 1"}
+    assert discs.note(2) == "OS Install Disk 2"
+    assert discs.received_notes(hunt, [44], [], told=False) == {0: "OS Install Disk 1"}
 
 
 def test_received_discs_count_up_in_their_popups() -> None:
     hunt = discs.from_slot_data(SLOT)
     notes = discs.received_notes(hunt, [44, 0, 44, 44], [40])
     assert notes == {
-        0: "OS INSTALL DISK 2 OF 3",
-        2: "OS INSTALL DISK 3 OF 3",
-        3: "OS INSTALL DISK 4 OF 3",
+        0: "OS Install Disk 2 of 3",
+        2: "OS Install Disk 3 of 3",
+        3: "OS Install Disk 4 of 3",
     }
 
 
 def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
-    assert discs.request(2, 3) == "discs 2 3 " + b"COLLECT 3 OS INSTALL DISKS!".hex() + " 1"
+    assert discs.request(2, 3) == "discs 2 3 " + b"Collect 3 OS Install Disks!".hex() + " 1"
     assert discs.request(2, 3, told=False).endswith(" 0")
     assert discs.OFF == "discs"
 
@@ -84,8 +84,8 @@ def test_the_slots_request() -> None:
 
 
 def test_the_scanner_line_fits_one_line_of_the_game_text() -> None:
-    assert discs.scan_line(15) == "COLLECT 15 OS INSTALL DISKS!"
-    assert discs.scan_line(1) == "COLLECT 1 OS INSTALL DISK!"
+    assert discs.scan_line(15) == "Collect 15 OS Install Disks!"
+    assert discs.scan_line(1) == "Collect 1 OS Install Disk!"
     assert len(discs.scan_line(41)) <= 31
 
 
