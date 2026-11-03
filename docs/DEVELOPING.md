@@ -266,7 +266,7 @@ line says.
   then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, its padlock
   low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since,
   stand-in tests only, not run in game yet; on the 1.0.0 RC, ASSIST unlocked and the version
-  line locked in its place after Video, fixed since, stand-in tests only), and the scanner's line was not run (`native/README.md`, "Translations", "Run
+  line locked in its place after Video, fixed since, run in game 2026-11-03: "seems to work"), and the scanner's line was not run (`native/README.md`, "Translations", "Run
   in game" and "Run in game again"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
   not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations"). Since the

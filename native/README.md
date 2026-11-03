@@ -402,7 +402,11 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   entry again in the menu open now: a live widget with the generic handler, its callback
   cleared, its glyphs reading ASSIST and the padlock, in the panel it was locked in. It writes
   only into one that passes; any other is forgotten unwritten, and the new menu's ASSIST is
-  locked. One the game relabeled stays shut until its menu is built again.
+  locked. One the game relabeled stays shut until its menu is built again. (Stand-in tests,
+  and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…` from PR #89, in English(HD):
+  Option, Video and back several times, the map and back, then the default English; the
+  owner: "seems to work". The bug it fixes showed only sometimes, so a clean run is weaker
+  evidence than a repro.)
 - **Put back:** `assists free`, the menu closing, a client going away or an unload, only into
   the entry found again as above, and the order only if the panel is as the helper left it. An
   unload no frame comes for leaves it locked until the options menu closes, harmlessly.
@@ -426,7 +430,7 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   saves without the client"). On the 1.0.0 RC (develop `78320a6`) the owner then saw, sometimes,
   after Video and back in English(HD): the version line gray with the padlock in place of its
   blank and ASSIST open, white with no padlock; that is the reused place above, fixed since by
-  finding the entry again each frame, stand-in tests only, not run in game yet.)
+  finding the entry again each frame, run in game 2026-11-03 as above.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -1273,7 +1277,7 @@ lands, not only the place passed.
     logo; the pickup popup's lines centered ("The assist menu", "AP saves without the client",
     "Other players' items"). A second path to ASSIST unlocked, seen on the 1.0.0 RC (the version
     line locked in its place after Video), fixed since by finding the entry again each frame,
-    stand-in tests only, not run in game yet ("The assist menu").
+    run in game 2026-11-03 (the owner: "seems to work"; "The assist menu").
   - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
     stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
     matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
