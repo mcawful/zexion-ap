@@ -394,9 +394,9 @@ def _make_start_room() -> type[Choice]:
         "refused. In any game, alone or in a multiworld, the few items that open your start are\n"
         "placed in your own world, in the area around your start: each where you can already\n"
         "reach it. Items your non_local_items keep out of your world are not. If every item\n"
-        "that opens your start alone is, or you exclude or plando every location your starting\n"
-        "items reach, or so many that two items that open it together no longer fit, the\n"
-        "generator warns, naming which, and generation may fail."
+        "that opens your start (alone, or with another) is, or you exclude or plando every\n"
+        "location your starting items reach, or so many that two items that open it together\n"
+        "no longer fit, the generator warns, naming which, and generation may fail."
     )
 
     @classmethod

@@ -19,7 +19,7 @@ from Fill import FillError, distribute_items_restrictive
 from Options import OptionError
 from test.general import gen_steps, setup_multiworld
 from worlds.AutoWorld import call_all
-from worlds.generic.Rules import exclusion_rules, locality_rules
+from worlds.generic.Rules import add_item_rule, exclusion_rules, locality_rules
 
 from .. import data, reach, rules
 from ..items import (
@@ -582,6 +582,25 @@ class TestTheStartIsOpened(ZexionTestBase):
         self.assertTrue(any("too few of those locations" in line for line in logs.output))
         self.assertFalse([loc for loc in self.mine() if loc.locked])
 
+    def test_pairs_kept_out_warn_so(self) -> None:
+        # Easy's Jungle Entry without its six single openers in the pool, and its two start
+        # locations taking no progression (an item rule): the pairs that open it together are
+        # kept out, and the warning says so, not that too few locations are free.
+        alone = (
+            "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser",
+            "Gravity Harness", "Zenith Thrusters",
+        )  # fmt: skip
+        _, reached, empty, _ = self.step_without("jungle_entry", alone)
+        self.assertEqual(reached, 2)
+        for location in empty:
+            add_item_rule(location, lambda item: not item.advancement)
+        pool = [i for i in self.multiworld.itempool if i.advancement and i.name not in alone]
+        spots = list(self.multiworld.get_unfilled_locations())
+        with self.assertLogs(level="WARNING") as logs:
+            self.world.open_the_start(pool, spots)
+        self.assertTrue(any("every two that do together are kept" in line for line in logs.output))
+        self.assertFalse([loc for loc in self.mine() if loc.locked])
+
     def test_not_in_excluded_locations(self) -> None:
         # Easy from Landing Pod: its starting items reach 3 locations; with 2 excluded, which
         # take no progression, the start is opened through the third.
@@ -604,13 +623,16 @@ class TestTheStartIsOpened(ZexionTestBase):
 
     def test_excluded_locations_do_not_count(self) -> None:
         # Exclude 8 of the locations the opened start reaches: it opens on until 20 that are
-        # not excluded are reached, since excluded locations take no progression.
+        # not excluded are reached, since excluded locations take no progression. On seed 5
+        # (Easy, Landing Pod) the opened start reaches exactly 20, so counting the excluded ones
+        # would stop it at 12 that are not.
         self.options = {"mode": "easy"}
-        self.world_setup(1)
+        self.world_setup(5)
         order = fill_recording(self.multiworld)
+        self.assertEqual(len(self.reached_with(order)), START_REACH)
         placed = {loc.name for loc in order}
         excluded = set(sorted(self.reached_with(order) - placed)[:8])
-        self.world_setup(1)
+        self.world_setup(5)
         exclusion_rules(self.multiworld, self.player, excluded)
         order = fill_recording(self.multiworld)
         self.assertGreaterEqual(len(self.reached_with(order) - excluded), START_REACH)

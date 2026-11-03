@@ -361,10 +361,17 @@ class ZexionWorld(World):
                         "every item that reaches more alone is kept out of those locations "
                         "(non_local_items or an item rule)"
                     )
-                else:
+                elif not self.openers_together(state, mine, len(reached), progitempool):
+                    why = "no item reaches more, alone or with another"
+                elif len(empty) < 2:
                     why = (
                         "no item reaches more alone, and too few of those locations are free "
-                        "(not excluded or filled by plando) for two that do together, or none do"
+                        "(not excluded or filled by plando) for two that do together"
+                    )
+                else:
+                    why = (
+                        "no item reaches more alone, and every two that do together are kept "
+                        "out of those locations (non_local_items or an item rule)"
                     )
                 logging.warning(
                     f"Zexion ({self.player_name}): the starting items reach {len(reached)} of "
@@ -452,6 +459,22 @@ class ZexionWorld(World):
         kinds = self.by_kind(pool)
         return sorted(
             n for (_, n), items in kinds.items() if self.opens(state, mine, reached, items[:1])
+        )
+
+    def openers_together(
+        self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
+    ) -> bool:
+        """Whether two items in ``pool`` (``by_kind``) reach more together, wherever they could
+        be placed: for the warning when none can be."""
+        kinds = self.by_kind(pool)
+        keys = sorted(kinds)
+        return any(
+            self.opens(
+                state, mine, reached, kinds[a][:2] if a == b else kinds[a][:1] + kinds[b][:1]
+            )
+            for i, a in enumerate(keys)
+            for b in keys[i:]
+            if a != b or len(kinds[a]) > 1
         )
 
     @property
