@@ -32,6 +32,22 @@ constexpr int kTextureSize = 2048;
 namespace rando {
 constexpr ptrdiff_t kItemTable = 0x26C, kStart = 0x310, kSettings = 0x87B;
 constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37, kStartSize = 6;
+// The start-with array: one byte per item, 1 for an item the new game starts with, in the order
+// of the menu's Starting Items (docs/re/randocells.md, "Starting Items and Item Pool"; the
+// placement writes it, docs/re/memory.md, "Starting a new game"; client/newgame.py,
+// START_WITH_ORDER).
+constexpr ptrdiff_t kStartWith = 0x689;
+constexpr int kStartWithOrder[] = {16, 19, 21, 32, 3,  4,  5,  6,  7,  11, 22, 20, 17, 9,
+                                   14, 15, 10, 12, 34, 24, 26, 25, 13, 33, 8,  23, 18};
+constexpr int kStartWithCount = sizeof(kStartWithOrder) / sizeof(kStartWithOrder[0]);
+static_assert(kStartWithCount == 27 && kStartWith + kStartWithCount <= kSettings, "in this order");
+// Whether the loaded section's new game started with `item`.
+inline bool started_with(const uint8_t* section, int item) {
+    for (int i = 0; i < kStartWithCount; ++i) {
+        if (kStartWithOrder[i] == item) return section[kStartWith + i] != 0;
+    }
+    return false;
+}
 static_assert(kItemTable + kMaxLocations <= kStart && kStart + kStartSize <= kSettings,
               "in this order");
 inline int locations(const uint8_t* section) {
@@ -62,6 +78,25 @@ constexpr ptrdiff_t kType = 0, kTypeHigh = 1;
 constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;
 constexpr ptrdiff_t kSelf = 0x24;
 }  // namespace event
+
+// The loaded save's major-item list, [pickup_list] (docs/re/memory.md, "The pickup record holds
+// the major-item list"): up to 26 icon codes in pickup order, then their count, a signed byte.
+// The game saves it (file 0x9333 and 0x934D), and the file select's ITEMS row draws it.
+namespace pickups {
+constexpr int kMax = 26;
+constexpr ptrdiff_t kCount = 0x1A;
+constexpr size_t kSize = kCount + 1;
+// Whether the pickup lists an item (record = item ID) with this icon (its record's +0x08), as at
+// 0x1F761 to 0x1F7AC: not items 0 to 2, 27 to 31 or above 44, nor icon 0, 0x6E (the Mega Bomb's
+// and the Bomb Box's) or 0xE8 (the Missile Container's and the Missile Box's).
+constexpr bool listed(int item, uint8_t icon) {
+    if (icon == 0 || icon == 0x6E || icon == 0xE8 || item <= 2) return false;
+    return item <= 26 || (item >= 32 && item <= 44);
+}
+// A count the game can have written (it appends only below kMax): 0 to kMax. Another means
+// the list is not the game's, and nothing is read or written by it.
+constexpr bool count_ok(int count) { return count >= 0 && count <= kMax; }
+}  // namespace pickups
 
 // The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408, each a
 // save file from its offset 2, so file offset F is at F - 2 (empty: 0xFF at the file's 0x9360;

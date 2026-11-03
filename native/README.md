@@ -174,10 +174,11 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
   `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
-  the later keys, marked `later_key` (`options_back_fn`, newer than caches already written),
-  may be missing too: the helper configures without them, every part as usual but for what one
-  serves (without `options_back_fn` the pause row is turned on OPTION MENU's way back a frame
-  late, as before it: below), until a client's `config` gives them (stand-in tests only:
+  the later keys, marked `later_key` (`options_back_fn` and `pickup_list`, newer than caches
+  already written), may be missing too: the helper configures without them, every part as usual
+  but for what one serves (without `options_back_fn` the pause row is turned on OPTION MENU's way
+  back a frame late, as before it: below; without `pickup_list` an AP save's major-item list is
+  not filled: "Grants"), until a client's `config` gives them (stand-in tests only:
   `tests/offline_tests.cpp`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
@@ -309,7 +310,22 @@ It leaves out what only a real pickup should do: the map cell, the pickup counte
 major-item list, achievements, switching to a new weapon, and a key's area event (which only
 hides the key's map marker: `docs/re/memory.md`, "Keys, the gates and the key markers").
 
-Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a live game").
+**The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
+frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
+item the game's pickup would list (`pickups::listed`, `src/game_layout.h`) whose icon is not in
+it yet, by item ID, stopping at 26 as the game does (it reads the records' icons with
+`safe_read`). The game's pickup lists this world's own items found in it; the received items
+are what the helper adds. It leaves out what the new game started with (the section's
+start-with array, `rando::started_with`), as the game does (Standard's Machine Gun); and an
+older save's items, owned before this helper, go in by item ID, not in the order they came. So an AP save's row fills as items arrive, and an
+older one's the first time it is played with this helper; it shows on the file select once the
+game saves. It runs without a client too, once the client has written `pickup_list` into the
+offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
+the game's own data, so a client going away or an unload leaves it. Not run in game yet
+(`docs/re/memory.md`, "The pickup record holds the major-item list").
+
+Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
+calls", "The client in a live game").
 
 ### Popups
 
@@ -1358,7 +1374,8 @@ unload.
   (page by page, a guard page left armed), a sprite's frame bounds and the code patches' put-back
   (one that fails held), the build check and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
+- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
+  (an AP save's only, each icon once, by item ID, up to 26), the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a

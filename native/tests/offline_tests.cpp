@@ -776,7 +776,7 @@ bool is_translation_key(const std::string& key) {
 }
 
 // The keys newer than caches already written (game_calls.cpp, later_key).
-const char* const kLaterKeys[] = {"options_back_fn"};
+const char* const kLaterKeys[] = {"options_back_fn", "pickup_list"};
 
 bool is_later_key(const std::string& key) {
     for (const char* k : kLaterKeys) {

@@ -86,6 +86,15 @@ TARGETS = (
         # from the instruction at RVA 0x167db6 on B1
         rip("0F BF 05 ?? ?? ?? ?? F3 0F 11 74 24 40 F3 0F 11 74 24 38 48 8B 4C D1 F8", 3, 7),
     )),
+    Target("pickup_list", "the loaded save's major-item list (file 0x9333): 26 icon codes in pickup order, its length at +0x1A", {"B1": 0x3D0180}, (
+        # from the instruction at RVA 0x9db9b on B1 (the load writes the list's first code)
+        rip("88 05 ?? ?? ?? ?? 0F B6 83 32 93 00 00 88 05 ?? ?? ?? ?? 0F B6 83 33 93 00 00", 2, 6),
+        # from the instruction at RVA 0x1fda99 on B1 (the save reads the list's first code)
+        rip("0F B6 05 ?? ?? ?? ?? 88 87 31 93 00 00 0F B6 05 ?? ?? ?? ??", 3, 7),
+        # from the instruction at RVA 0x1f798 on B1 (the pickup reads the length, 0x1A into the
+        # target, and stops at 26)
+        rip("48 0F BE 05 ?? ?? ?? ?? 3C 1A 7D 0E 46 88 84 20 ?? ?? ?? ??", 4, 8, -0x1A),
+    )),
     Target("rando_blob", "the loaded save's randomizer section: location list, item table, settings", {"B1": 0xCDD6D0}, (
         # from the instruction at RVA 0xeb6ec on B1
         rip("48 8D 05 ?? ?? ?? ?? 44 0F B7 74 24 44 88 94 08 6C 02 00 00 41 0F BF D1 44 0F B7 C3 66 44 3B CB 7D 1C", 3, 7),

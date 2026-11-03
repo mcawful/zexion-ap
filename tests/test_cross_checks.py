@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from client import discs, game, ids, native, offline, patterns, session
+from client import discs, game, ids, native, newgame, offline, patterns, session
 from client import save_patch as sp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -321,6 +321,10 @@ def test_the_randomizer_section_is_laid_out_alike() -> None:
     assert rando["kSettings"] == sp.OPTIONS_AT == 0x87B
     assert (rando["kLocations"], rando["kMaxLocations"]) == (ids.LOCATIONS, ids.MAX_LOCATIONS)
     assert rando["kSecretShuffle"] == ids.SECRET_SHUFFLE
+    # The start-with array (the helper leaves those items out of the major-item list).
+    assert rando["kStartWith"] == newgame.START_WITH - sp.SECTION == 0x689
+    order = braced(source("game_layout.h"), "constexpr int kStartWithOrder[] = {")
+    assert tuple(int(n) for n in re.findall(r"\d+", order)) == newgame.START_WITH_ORDER
 
 
 def test_the_save_slots_are_laid_out_alike() -> None:
