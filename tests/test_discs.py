@@ -210,7 +210,8 @@ def test_a_death_drops_an_offer_not_queued_yet() -> None:
 
 def test_a_teleport_to_the_pod_is_not_a_save() -> None:
     # TELEPORT TO START (0xA3430) reloads a copy of the play state (0x9FF60), not the slot:
-    # the stamp stays.
+    # the stamp stays. A guard of that reading, not of the fix: with the stamp unchanged,
+    # develop's rule passes it too.
     home = discs.ReturnHome()
     home.see(at_pod(100), True, True, True, False)  # in play away from the pod
     home.see(at_pod(100), False, True, True, False)  # the pause menu

@@ -173,9 +173,9 @@ line says.
   disassembly). Fixed since in the client (a new block is a save only between two looks in
   play with no death): working in game 2026-11-03 (B1, `lab/ap/live50` slot 4, past its
   ending: no prompt after a death or RELOAD FROM SAVE at the pod, the prompt after each save
-  there); RELOAD FROM CHECKPOINT and a teleport to the pod not run. A save made within about
-  a third of a second of closing a menu is not offered (the next one there is), and a reload
-  on a button press, if players can reach it, is not covered (`docs/re/memory.md`, "The
+  there); RELOAD FROM CHECKPOINT and a teleport to the pod not run. A save made within a poll
+  or two (up to about half a second or more) of closing a menu is not offered (the next one
+  there is), and a reload on a button press, if players can reach it, is not covered (`docs/re/memory.md`, "The
   mission prompt").
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
