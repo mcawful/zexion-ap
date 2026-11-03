@@ -264,17 +264,22 @@ line says.
   fixed since and working in game later that day (`zexion_ap.dll` `946b08a1…`, with the HD
   icons, the pause row's count, the locked ASSIST and the Feats note in the HD font; new bugs
   then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, its padlock
-  low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since,
-  stand-in tests only, not run in game yet), and the scanner's line was not run (`native/README.md`, "Translations", "Run
+  low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since:
+  the last two working in game 2026-11-03, `12f090c6…`, the rest stand-in tests only, not run
+  in game yet; on the 1.0.0 RC, ASSIST unlocked and the version line locked in its place after
+  Video, fixed since, run in game 2026-11-03: "seems to work"), and the scanner's line was not
+  run (`native/README.md`, "Translations", "Run
   in game" and "Run in game again"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
   not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations"). Since the
-  2026-11-02 retest, not run in game yet: the mod's own text in mixed case in English(HD) (its
-  notices, the client's hints, the disks' popups and reminder, the scanner's line, the
-  stand-ins' names and the map cursor), and the HD disk and logo redrawn at the game's icon
-  size. Found since on the release candidate: the pause row showing the game's Keys for one
-  frame after OPTION MENU closes (the owner, 2026-11-03); fixed since, stand-in tests only, not
-  run in game yet.
+  2026-11-02 retest: the mod's own text in mixed case in English(HD), working in game
+  2026-11-03 (`12f090c6…`) for the stand-ins' names and the map cursor, not run in game yet for
+  its notices, the client's hints, the disks' popups and reminder and the scanner's line; the
+  HD disk and logo redrawn at the game's icon size, not run in game yet; and the Feats screen's
+  HD title, its two lines starting at the same x (a bug, seen 2026-11-03 on `12f090c6…`), its
+  shorter line centered since, stand-in tests only, not run in game yet. Found since on the release candidate: the pause row showing the
+  game's Keys for one frame after OPTION MENU closes (the owner, 2026-11-03); fixed since,
+  stand-in tests only, not run in game yet.
 
 ## Platforms
 

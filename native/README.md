@@ -400,9 +400,22 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
   that disallows assists has its save loaded, until the slot receives Assist Unlock.
-- **Put back:** `assists free`, the menu closing, a client going away or an unload, into a menu
-  still open only, and the order only if the panel is as the helper left it. An unload no frame
-  comes for leaves it locked until the options menu closes, harmlessly.
+- **Found again each frame:** never taken on the pointer kept from the frame it was locked.
+  Leaving Video, GENERAL (which holds the language) or the assist menu closes the options menu
+  and builds another (`0x124D30`), whose widgets may take
+  the freed ones' places: its VERSION 1.20, 12 glyphs with no callback like the locked ASSIST,
+  in ASSIST's (`docs/re/memory.md`, "The assist menu"). Each frame call the helper finds the
+  entry again in the menu open now: a live widget with the generic handler, its callback
+  cleared, its glyphs reading ASSIST and the padlock, in the panel it was locked in. It writes
+  only into one that passes; any other is forgotten unwritten, and the new menu's ASSIST is
+  locked. One the game relabeled stays shut until its menu is built again. (Stand-in tests,
+  and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…` from PR #89, in English(HD):
+  Option, Video and back several times, the map and back, then the default English; the
+  owner: "seems to work". The bug it fixes showed only sometimes, so a clean run is weaker
+  evidence than a repro. GENERAL and the assist menu: stand-in tests only, not run in game.)
+- **Put back:** `assists free`, the menu closing, a client going away or an unload, only into
+  the entry found again as above, and the order only if the panel is as the helper left it. An
+  unload no frame comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry's translated text (SmallText 137) is built
   again with the HD padlock after it ("Translations", the helper's icons; in English(HD) with
   no space before it, the padlock's cell holding its own gap), the padlock left out where it
@@ -420,7 +433,10 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   unlocked after going through menus, not reproduced (a bug): "Translations", "Run in game
   again". Fixed since, stand-in tests only, not run in game yet: the look above, the padlock
   on the text's line with no space before it, and the offline look held through menus ("AP
-  saves without the client").)
+  saves without the client"). On the 1.0.0 RC (develop `78320a6`) the owner then saw, sometimes,
+  after Video and back in English(HD): the version line gray with the padlock in place of its
+  blank and ASSIST open, white with no padlock; that is the reused place above, fixed since by
+  finding the entry again each frame, run in game 2026-11-03 as above.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -463,7 +479,10 @@ While a plan is armed (`ap_newgame`), each frame call:
   `disarm` and before an unload, but only while that menu is still open (the game frees a closed
   menu's widgets without clearing them). While the panel may still hold the wrapper, the helper
   refuses to unload. Once the new game is queued only the callback and handler go back, so the
-  label reads ARCHIPELAGO through the fade.
+  label reads ARCHIPELAGO through the fade. Every write goes only into a choice still holding
+  the helper's callback (and the handler only over the helper's own): the hover border too,
+  which the panel's wrapper fits inside the game's frame, where a menu closed and built again
+  since the frame call could have put another choice in its place.
 
 Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label through the fade
 ("Starting a new game", "The game-mode panel"); 2026-10-29, a Custom seed with Secret Shuffle
@@ -505,9 +524,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   (U+E03C, "Translations"), so both showed it (working in game later that day, `zexion_ap.dll`
   `946b08a1…`: the logo before AP ITEM over FOR BOB, and before AP ITEM on the map cursor; bugs:
   the popup's two lines start at the same x, not centered, and the map cursor's logo, where the
-  game's own names carry no icon: "Translations", "Run in game again"). Fixed since, stand-in
-  tests only, not run in game yet: the pickup popup's lines centered with leading spaces (where
-  they fit the name's room), and the map cursor showing the first line without the logo.
+  game's own names carry no icon: "Translations", "Run in game again"). Fixed since: the pickup
+  popup's lines centered with leading spaces (where they fit the name's room), and the map cursor
+  showing the first line without the logo (working in game 2026-11-03, B1, `zexion_ap.dll`
+  `12f090c6…`: the owner's screenshot of the pickup popup, not kept in `lab/`, the logo, then
+  Progression Item over for AneziaDS2, both lines centered; the map cursor's AP Item read back,
+  below).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -748,7 +770,10 @@ turned back after a save at the pod during it (the owner's report).
   the image whiter each frame, all white on the last, and in its colors again after. A load's
   fade to black darkens the logo with the rest.
 - **Put back:** the cells' frames and rows when a save stops being marked, when nothing is
-  marked any more, and before an unload; the image is cleared from the texture.
+  marked any more, and before an unload; the image is cleared from the texture. Only into an
+  entry still holding the helper's handler: one the game built again in a wrapped entry's
+  place (its menu closed and built again at the same address) is left alone, the old one
+  forgotten.
 
 Working in game: 2026-10-26, helper 0.30.0 with this change, with no client and with one: the
 file select through paging, COPY FILE, DELETE FILE, a copy of an AP save and its delete, and the
@@ -855,7 +880,16 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   builds the cursor's translated text again as the label's first line ("Translations";
   working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
   English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
-  for another Zexion player's item, the translation's own name for it (not run in game yet).
+  for another Zexion player's item, the translation's own name for it (working in game
+  2026-11-03, B1, `zexion_ap.dll` `12f090c6…`, `lab/ap/live50`: AP Item on a DLCQuest
+  player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
+  shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
+  names, the owner's look, `lab/ap/live52`; Progression Item and OS Install Disk not looked at
+  on the map). Labels in capitals, as a client from before the mixed case (31d9203) writes them
+  and a seed's offline file may still hold them, show in capitals: the owner's report of AP ITEM
+  and PROGRESSION ITEM on the map cursor with `12f090c6…` (develop 97a6f25's build; a report,
+  no run recorded) came, in the owner's word, from such a client (the client's version was not
+  read; the capitals are that client's `client/aplabels.py`).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
@@ -979,14 +1013,17 @@ closed, gone with it open.
     glyph of it is writable and has the font's frames. In a translation, while the note (or the
     title written over the hint) is there, the title's translated text is built again as
     LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
-    it, wrapped, centered and kept at the title's middle as the game lays out its title
-    ("Translations"); the game's own entry (220, or 219 for the hint) again when the note goes.
+    it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
+    and kept at the title's middle as the game lays out its title ("Translations"); the game's
+    own entry (220, or 219 for the hint) again when the note goes.
     Without LargeText's count (a cache from before the `large_count` key), or with too little
     room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
     font. (Seen in game 2026-11-02 in English(HD), `lab/ap/live50`, as that pixel title and
     note; the HD title: working in game later that day, `zexion_ap.dll` `946b08a1…`, after RETURN
     HOME's YES on a save past its ending: Feats of Natu! over "Archipelago save: no Feats
-    earned", both in the HD font, the two lines starting at the same x.)
+    earned", both in the HD font, the two lines starting at the same x, as again on
+    `12f090c6…` on 2026-11-03: a bug, the title not centered over the note. Since, the title's
+    line centered with leading spaces: stand-in tests only, not run in game yet.)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -1135,8 +1172,12 @@ lands, not only the place passed.
     8 x 8 font draws (`Popup::as_sent`, `Label::own_first` and `own_who`; the scanner's line
     written into the game's pixel Text table in capitals, `scan_line_upper`). English(HD) shows
     the case as sent, with the helper's own notices in mixed case; every other translation and
-    the default English show capitals, as before (their fonts may draw no lower case). Stand-in
-    tests only, not run in game yet.
+    the default English show capitals, as before (their fonts may draw no lower case). Labels
+    sent in capitals (a client from before this, or a seed's offline file it wrote) show in
+    capitals. The labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the
+    pickup popup's Progression Item over for AneziaDS2, the map cursor's AP Item ("Other
+    players' items", "Map markers"); the hints, the disks' popups and reminder, the scanner's
+    line and the notices: stand-in tests only, not run in game yet.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
@@ -1154,11 +1195,12 @@ lands, not only the place passed.
     description (no icon) where the game built them for the selection, the description wrapped
     at the box's columns; the map cursor on a labeled stand-in's square (the label's first
     line, without the logo: the game's map names carry no icon); ASSIST while locked, with the
-    padlock, in the locked look; the pause row's count, centered on the row; and the Feats of Natu screen's title with the note under it (LargeText
-    220, read through the translation object and bounded by `large_count`), its middle kept as
-    the game keeps its title's. One built again whenever the game builds its label again (told
-    by the glyph count and the place the build was given). A text with more glyphs than the
-    label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
+    padlock, in the locked look; the pause row's count, centered on the row; and the Feats of
+    Natu screen's title with the note under it (LargeText 220, read through the translation
+    object and bounded by `large_count`), the shorter line centered on the longer, its middle
+    kept as the game keeps its title's. One built again whenever the game builds its label
+    again (told by the glyph count and the place the build was given). A text with more glyphs
+    than the label holds is not built; one whose text was hidden (a hidden widget's, as the game-mode
     panel's on the file select before an empty slot is picked) is built hidden, its count kept
     for the game to show when the widget shows.
   - **The helper's icons** (`IconSheets`, `src/apitem.cpp`): its disk, padlock and AP logo,
@@ -1263,13 +1305,16 @@ lands, not only the place passed.
     reproduced; whether it opened was not tried). ASSIST's padlock sits below the text's
     baseline, against the box's right border. The map cursor shows the AP logo before AP ITEM,
     where the game's own names carry no icon. A stand-in's pickup popup (AP ITEM over FOR BOB)
-    starts both lines at the same x, not centered. All four fixed since, stand-in tests only,
+    starts both lines at the same x, not centered. All five fixed since. Stand-in tests only,
     not run in game yet: the locked look in the options entries' style at alpha 0.45, and the
     offline look kept through menus (a re-read of the offline files, done whenever anything
     left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
-    up); the padlock on the text's line with no space before it; the map cursor without the
-    logo; the pickup popup's lines centered ("The assist menu", "AP saves without the client",
-    "Other players' items").
+    up); the padlock on the text's line with no space before it ("The assist menu", "AP saves
+    without the client"). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
+    cursor without the logo and the pickup popup's lines centered ("Other players' items"). A
+    second path to ASSIST unlocked, seen on the 1.0.0 RC (the version line locked in its place
+    after Video), fixed since by finding the entry again each frame, run in game 2026-11-03 (the
+    owner: "seems to work"; "The assist menu").
   - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
     stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
     matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
@@ -1331,7 +1376,8 @@ unload.
   after the transition and the stepper: the routine's frame drawn black, then the fade in, and the
   wrapper never left as the transition (unload, a routine not as traced, none in the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
-  released widgets, the ASSIST lock's look and cursor order).
+  released widgets, the ASSIST lock's look and cursor order, the options menu built again after
+  Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each

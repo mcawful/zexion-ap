@@ -99,6 +99,11 @@ void test_the_border_under_the_mouse_fits_archipelago() {
     check(!choice.fit_border(a) && right_x() == 240.1,
           "another widget in ARCHIPELAGO's place: untouched");
     stand.children[1] = stand.child;
+    // The menu built again in its place within the game's frame: RANDOMIZER's callback there.
+    at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    check(!choice.fit_border(a) && right_x() == 240.1,
+          "a choice not holding the helper's callback: untouched");
+    at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&archipelago);
     check(choice.fit_border(a) && fitted(), "and fitted once all is as the game lays it out");
     choice.restore(a, &archipelago);
 }
@@ -405,17 +410,201 @@ void test_assist_lock_follows_the_menu() {
           "unwritten: the freed widget is left as it was");
 }
 
-void test_assist_lock_comes_off_even_if_the_label_changed() {
+void test_a_relabeled_assist_is_forgotten_unwritten() {
     Options options;
     zap::AssistLock lock;
     zap::GameAddresses a = options.addresses();
     lock.install(a);
     at<int32_t>(options.glyphs[0], 0x1C4) = 'Z';  // relabeled while locked
-    check(!lock.install(a) && lock.installed(),
-          "still locked: found by its pointer, not its label");
-    check(lock.restore(a), "unlocks");
-    check(options.callback() == reinterpret_cast<void*>(&assist_menu),
-          "the game's callback is back whatever the label says");
+    at<BYTE*>(options.glyphs[0], 0x1B0) = options.table.data() + 'Z' * 0x38;
+    check(!lock.install(a) && !lock.installed(),
+          "no longer reading as the locked ASSIST: forgotten, not taken on its pointer");
+    check(options.callback() == nullptr && options.code(0) == 'Z' && options.code(7) == 0xEF &&
+              options.children[7] == options.child,
+          "and nothing written into it (it stays shut until its menu is built again)");
+    check(!lock.restore(a) && options.callback() == nullptr, "nothing to unlock");
+}
+
+// Glyph i of `o`'s label shows `text[i]`, each glyph as the game builds an options entry.
+void build_label(stand_in::OptionsMenu& o, const char (&text)[zap::kAssistLength + 1]) {
+    for (int i = 0; i < zap::kAssistLength; ++i) {
+        BYTE* g = o.glyph_list[i];
+        const int32_t c = static_cast<unsigned char>(text[i]);
+        at<int32_t>(g, 0x1C4) = c;
+        at<BYTE*>(g, 0x1B0) = o.table.data() + c * 0x38;
+        at<int32_t>(g, 0x1D0) = 0x15;
+        for (ptrdiff_t t : {0x68, 0x6C, 0x70, 0x74, 0x78, 0x7C, 0x80, 0x84}) at<float>(g, t) = 1.0f;
+        at<void*>(g, 0x198) = o.palette_objects[1];
+        at<int16_t>(g, 0x1A0) = 26;
+    }
+}
+
+// The whole label, if each glyph's frame matches its character.
+std::string whole_label(stand_in::OptionsMenu& o) {
+    std::string s;
+    for (int i = 0; i < zap::kAssistLength; ++i) {
+        if (o.code(i) < 0) return "frame mismatch";
+        s += static_cast<char>(o.code(i));
+    }
+    return s;
+}
+
+constexpr char kVersion[zap::kAssistLength + 1] = "VERSION 1.20";
+
+// Leaving Video closes the options menu and builds another (0x124D30), which may come back at the
+// same address, the new menu's VERSION 1.20 (12 glyphs, the generic handler, no callback) in the
+// locked ASSIST's freed place and the new ASSIST elsewhere: on the 1.0.0 RC the lock then grayed
+// the version line, put the padlock in its eighth glyph and left the new ASSIST open.
+struct RebuiltOptions {
+    Options options;  // the menu, rebuilt in place: its old ASSIST widget now VERSION
+    Options fresh;    // the new ASSIST widget, its label and glyphs
+    BYTE* version_list[1] = {};
+
+    // Builds the options menu again where it was, after `lock` locked its ASSIST.
+    void rebuild() {
+        BYTE* version = options.child;
+        at<void*>(version, 0x2C0) = nullptr;
+        at<int32_t>(version, 0x1E0) = 0;
+        build_label(options, kVersion);
+        version_list[0] = version;  // in its own panel, as 0x163AF7 builds it
+        at<BYTE**>(options.first, 0x1E0) = version_list;
+        at<int32_t>(options.first, 0x1E8) = 1;
+        for (int i = 0; i < 7; ++i) options.children[i < 6 ? i : 7] = options.others[i];
+        options.children[6] = fresh.child;
+        for (int i = 0; i < 8; ++i) at<int32_t>(options.children[i], 0x1E0) = i;
+        at<int32_t>(options.second, 0x1EC) = 8;
+        at<int32_t>(options.second, 0x2DC) = -1;
+        options.current = options.menu;
+    }
+
+    void* fresh_callback() { return at<void*>(fresh.child, 0x2C0); }
+};
+
+void test_assist_lock_after_the_options_menu_is_built_again() {
+    RebuiltOptions r;
+    zap::GameAddresses a = r.options.addresses();
+    zap::AssistLock lock;
+    check(lock.install(a), "locked");
+    r.rebuild();
+    check(lock.install(a), "the new menu's ASSIST locked");
+    check(whole_label(r.options) == kVersion && r.options.style() == 0x15 &&
+              r.options.palette().second == 26 && at<float>(r.options.glyphs[0], 0x68) == 1.0f &&
+              r.options.callback() == nullptr,
+          "VERSION 1.20, in the old ASSIST's place, left as the game built it");
+    check(r.fresh_callback() == nullptr && r.fresh.text() == "ASSIST" &&
+              r.fresh.code(7) == zap::kLockGlyph && r.fresh.style() == 5 &&
+              r.options.children[7] == r.fresh.child && at<int32_t>(r.options.second, 0x1EC) == 7,
+          "the new ASSIST: its callback cleared, the padlock, moved past the selectable ones");
+    check(!lock.install(a) && whole_label(r.options) == kVersion,
+          "kept on later frames, VERSION still untouched");
+    check(lock.restore(a) && r.fresh_callback() == reinterpret_cast<void*>(&assist_menu) &&
+              r.options.children[6] == r.fresh.child && whole_label(r.options) == kVersion &&
+              r.options.callback() == nullptr,
+          "unlocked: the new ASSIST back, VERSION never written");
+}
+
+void test_assist_unlock_after_the_options_menu_is_built_again() {
+    RebuiltOptions r;
+    zap::GameAddresses a = r.options.addresses();
+    zap::AssistLock lock;
+    lock.install(a);
+    r.rebuild();
+    // Assist Unlock arrives before a frame call has looked at the new menu.
+    check(!lock.restore(a) && !lock.installed(), "nothing of the old lock to put back");
+    check(r.options.callback() == nullptr && whole_label(r.options) == kVersion &&
+              r.options.style() == 0x15 && at<int32_t>(r.options.child, 0x1E0) == 0,
+          "VERSION given no callback, no ASSIST label, no place");
+    check(r.fresh_callback() == reinterpret_cast<void*>(&assist_menu) &&
+              r.options.children[6] == r.fresh.child && at<int32_t>(r.options.second, 0x1EC) == 8,
+          "the new ASSIST left as the game built it");
+}
+
+// A font with no frame for the padlock: the eighth glyph stays blank, and the entry is still
+// found again as the locked ASSIST on later frames.
+void test_assist_lock_without_the_padlock_frame() {
+    Options options;
+    zap::GameAddresses a = options.addresses();
+    at<int32_t>(options.glyphs[7], 0x1BC) = zap::kLockGlyph;  // frames 0 to 0xEE only
+    zap::AssistLock lock;
+    check(lock.install(a) && options.code(7) == 0 && options.callback() == nullptr,
+          "locked, the eighth glyph blank");
+    check(!lock.install(a) && lock.installed() && options.style() == 5,
+          "and kept on later frames");
+    check(lock.restore(a) && options.callback() == reinterpret_cast<void*>(&assist_menu),
+          "and unlocked");
+}
+
+// The locked entry found again only as it was left: in the panel it was locked in, with the
+// padlock eighth. Anything else at its address is forgotten, and nothing drawn on it again (the
+// game's restyle stays).
+void test_assist_lock_found_again_only_as_left() {
+    struct Case {
+        const char* what;
+        void (*change)(Options&);
+    };
+    const Case cases[] = {
+        {"listed in another panel of its menu: forgotten, not drawn on",
+         [](Options& o) {
+             static BYTE* moved[1];
+             moved[0] = o.child;
+             at<BYTE**>(o.first, 0x1E0) = moved;
+             at<int32_t>(o.first, 0x1E8) = 1;
+             o.children[7] = o.others[6];  // and no longer in the second
+         }},
+        {"the padlock ninth, not eighth: forgotten, not drawn on",
+         [](Options& o) {
+             for (int i : {7, 8}) {
+                 const int32_t c = i == 8 ? zap::kLockGlyph : 0;
+                 at<int32_t>(o.glyphs[i], 0x1C4) = c;
+                 at<BYTE*>(o.glyphs[i], 0x1B0) = o.table.data() + c * 0x38;
+             }
+         }},
+    };
+    for (const Case& c : cases) {
+        Options options;
+        zap::GameAddresses a = options.addresses();
+        zap::AssistLock lock;
+        lock.install(a);
+        c.change(options);
+        for (BYTE* g : options.glyph_list) at<int32_t>(g, 0x1D0) = 0x15;  // the game restyles
+        check(!lock.install(a) && !lock.installed() && options.style() == 0x15, c.what);
+    }
+}
+
+// A glyph the helper could not write (read-only memory): nothing locked, nothing written.
+void test_assist_lock_leaves_an_unwritable_label_alone() {
+    Options options;
+    zap::GameAddresses a = options.addresses();
+    BYTE* page = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    std::memcpy(page, options.glyphs[3], sizeof(options.glyphs[3]));
+    options.glyph_list[3] = page;
+    DWORD old = 0;
+    VirtualProtect(page, 4096, PAGE_READONLY, &old);
+    zap::AssistLock lock;
+    check(!lock.install(a) && !lock.installed() &&
+              options.callback() == reinterpret_cast<void*>(&assist_menu) &&
+              options.style() == 0x15,
+          "a glyph not writable: ASSIST left as the game built it");
+    VirtualFree(page, 0, MEM_RELEASE);
+}
+
+void test_assist_lock_when_the_new_assist_takes_the_old_place() {
+    Options options;
+    zap::GameAddresses a = options.addresses();
+    zap::AssistLock lock;
+    lock.install(a);
+    // Built again with its new ASSIST at the very same address, open as the game builds it.
+    for (int i = 0; i < 8; ++i) {
+        options.children[i] = i == 6 ? options.child : options.others[i < 6 ? i : 6];
+        at<int32_t>(options.children[i], 0x1E0) = i;
+    }
+    at<int32_t>(options.second, 0x1EC) = 8;
+    at<void*>(options.child, 0x2C0) = reinterpret_cast<void*>(&assist_menu);
+    build_label(options, "ASSIST\0\0\0\0\0\0");  // and six blanks
+    check(lock.install(a) && options.callback() == nullptr &&
+              options.code(7) == zap::kLockGlyph && options.children[7] == options.child,
+          "taken as a new ASSIST, and locked");
 }
 
 void test_assist_lock_leaves_anything_else_alone() {
@@ -452,7 +641,13 @@ int main() {
     test_assist_lock_and_unlock();
     test_assist_lock_follows_the_menu();
     test_assist_lock_leaves_anything_else_alone();
-    test_assist_lock_comes_off_even_if_the_label_changed();
+    test_a_relabeled_assist_is_forgotten_unwritten();
+    test_assist_lock_after_the_options_menu_is_built_again();
+    test_assist_unlock_after_the_options_menu_is_built_again();
+    test_assist_lock_when_the_new_assist_takes_the_old_place();
+    test_assist_lock_without_the_padlock_frame();
+    test_assist_lock_found_again_only_as_left();
+    test_assist_lock_leaves_an_unwritable_label_alone();
     test_assist_lock_moves_assist_past_the_selectable_entries();
     test_assist_lock_leaves_an_unexpected_order_alone();
     test_install_and_restore();
