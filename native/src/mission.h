@@ -107,9 +107,9 @@ public:
     // Game thread, from the ending's wrapper (hooks.mission_end), which the helper sets as the
     // transition in the ending routine's place once idle after YES: runs the game's ending
     // routine, as the main loop would have (only once per wrapper set: called again, or after
-    // the save was left, it only takes the wrapper off); then, if the screen was the helper's black, the
-    // level back to black at once (the routine set it to 4) and the game's fade toward 4 a step
-    // every kEndingFadeStep frames, before the game draws the frame. A wrapper left as the
+    // the save was left, it only takes the wrapper off); then, if the screen was the helper's
+    // black, the level back to black at once (the routine set it to 4) and the game's fade toward
+    // 4 a step every kEndingFadeStep frames, before the game draws the frame. A wrapper left as the
     // transition after it (the routine not as traced) becomes the idle routine.
     void end(const GameAddresses& addresses);
 
