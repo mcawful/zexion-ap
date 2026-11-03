@@ -569,7 +569,8 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   naming them. It is shown again, on whatever frame, the frame call after flag 154 is set or it
   leaves the logo frame (its reward), when the stand-ins are put back and on an unload, if it is
   still that spawn and still hidden. Other objects on a logo frame in their own palette (a boss's
-  drop showing another game's item, type 1998) are left showing the logo. The marker can show
+  drop showing another game's item, type 1998) are left as they are, drawing the logo frame
+  through their own palette. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: stand-in tests
@@ -1387,7 +1388,9 @@ unload.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, R'Talva X34 Y51's marker hidden
   (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone),
+  frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
+  in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
+  world's items left alone; put back when not restyled and on restore),
   the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
@@ -1408,7 +1411,8 @@ unload.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order, the options menu built again after
   Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
-- `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
+- `apitem`: the stand-in records restyled and named, the logo (in its own colors, the arrow
+  yellow then white), the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each
   sheet's icons made once), the label parser.
