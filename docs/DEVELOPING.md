@@ -211,7 +211,9 @@ line says.
   2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
   CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27. In English(HD),
-  the version's line and the hint in its font and in mixed case: not run in game yet.
+  the version's line and the hint in its font and in mixed case: seen 2026-11-03 (the 1.0.0
+  RC), staying over the Option menu and the file select after the title (a bug); fixed since,
+  stand-in tests only, not run in game yet.
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
   SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
   2026-10-26, with the client connected; again 2026-10-27, `GameUnlocks.sav` unchanged by the
