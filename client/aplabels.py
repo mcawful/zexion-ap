@@ -29,9 +29,25 @@ PROGRESSION_ITEM = "Progression Item"
 PROGRESSION = 0b00001
 
 
+def font_text(text: str, chars: frozenset[str]) -> str:
+    """``text`` in the characters ``chars`` holds (capital letters, digits, punctuation), each
+    letter in its own case: the helper draws capitals but in English(HD). A character outside
+    ASCII whose capitals are ASCII is spelled out by them first, in its case ("ß" as "ss", "ı"
+    as "i", "ſ" as "s"), as the capitals the client sent before had it ("SS", "I", "S"); any
+    other is dropped."""
+    out = []
+    for c in text:
+        if not c.isascii():
+            capitals = c.upper()
+            if not capitals.isascii():
+                continue
+            c = capitals if c.isupper() else capitals.lower()
+        out.append("".join(ch for ch in c if ch.upper() in chars))
+    return "".join(out)
+
+
 def _font_words(text: str) -> list[str]:
-    kept = "".join(c for c in text if c.upper() in FONT)
-    return kept.split()
+    return font_text(text, FONT).split()
 
 
 def _fit(words: list[str], width: int) -> str:

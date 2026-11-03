@@ -38,6 +38,19 @@ def test_the_helper_is_the_version_the_client_asks_for() -> None:
     assert versions == [native.VERSION]
 
 
+def test_the_helpers_hello_has_each_field_the_client_requires_of_this_version() -> None:
+    # A helper of this version without one of these is refused as an earlier build
+    # (native._earlier): the helper's own hello must carry each, or every client would refuse
+    # its own build.
+    hello = source("dllmain.cpp").split("std::string hello() {", 1)[1].split("\n}\n", 1)[0]
+    full = {"version": native.VERSION, "lang": "-", "case": "1"}
+    assert native._earlier(full) is None
+    for name in ("lang", "case"):
+        assert native._earlier({k: v for k, v in full.items() if k != name}) is not None, name
+        assert re.search(rf'" {name}=', hello), f"the helper's hello has no {name}="
+    assert re.search(r'" case=1 ', hello), "case is always 1"
+
+
 def test_the_client_reads_the_ending_started_as_the_helper_says_it() -> None:
     said = re.findall(r'const char kEndingStarted\[\] = "([^"]+)";', source("mission.cpp"))
     assert said == [discs.ENDING_STARTED]

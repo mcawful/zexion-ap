@@ -15,6 +15,7 @@ from __future__ import annotations
 import string
 from collections.abc import Iterable, Mapping, Sequence
 
+from .aplabels import font_text
 from .ids import AREA_MAP
 
 NONE_LEFT = (-1, -1)  # an Area Map that found no item left to hint
@@ -80,8 +81,7 @@ def assign(
 
 
 def _popup_text(text: str) -> str:
-    kept = "".join(c for c in text if c.upper() in POPUP_CHARS)
-    return " ".join(kept.split())
+    return " ".join(font_text(text, POPUP_CHARS).split())
 
 
 def popup_note(item: str, location: str, player: str | None = None) -> str:

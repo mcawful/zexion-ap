@@ -27,6 +27,14 @@ def test_the_notice_is_worded_as_the_servers_hint() -> None:
     )
 
 
+def test_letters_whose_capitals_are_others_are_spelled_out() -> None:
+    note = hints.popup_note("Slide Mod", "Großes Tor", "Weiß")
+    assert note == "Hint: Slide Mod is at Grosses Tor in Weiss's world"
+    # The default English shows the helper's capitals of it, as the client once sent them.
+    assert note.upper() == "HINT: SLIDE MOD IS AT GROSSES TOR IN WEISS'S WORLD"
+    assert hints.popup_note("Kılıç", "Aı") == "Hint: Kili is at Ai"
+
+
 def test_another_games_long_location_is_shown_whole() -> None:
     note = hints.popup_note("Gamma Key", "Hyrule Castle - Big Key Chest (Upper Floor)", "Alice")
     assert (

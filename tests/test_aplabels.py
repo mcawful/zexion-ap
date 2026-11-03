@@ -53,6 +53,14 @@ def test_each_line_fits_the_popup() -> None:
     assert all(len(line) <= 24 for line in lines(text))
 
 
+def test_letters_whose_capitals_are_others_are_spelled_out() -> None:
+    # English(HD) shows the label as sent; the default English its capitals (the helper's).
+    for name, sent in [("Weiß", "for Weiss"), ("Kılıç", "for Kili"), ("ſam", "for sam")]:
+        text = al.label(False, name)
+        assert lines(text) == ["@AP Item", sent], name
+        assert lines(text.upper())[1] == sent.upper(), name
+
+
 def test_characters_the_font_lacks_are_dropped() -> None:
     assert lines(al.label(False, "€")) == ["@AP Item", "for"]
 
