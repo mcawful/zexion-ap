@@ -189,6 +189,14 @@ void mission_yes(void* widget, int event) {
     guarded([] { g_game.mission_after_no(); });
 }
 
+// The ending after YES: the game runs it as its transition routine; it runs the game's ending
+// routine and, while the screen is the helper's black, puts it back to black before the game
+// draws the routine's frame, fading in from there.
+void mission_end() {
+    InCallback in;
+    guarded([] { g_game.mission_end(); });
+}
+
 // The helper's wrappers for the game's menus, given to Game once, before the hook.
 void set_hooks() {
     zap::Hooks hooks;
@@ -198,6 +206,7 @@ void set_hooks() {
         reinterpret_cast<void*>(&handler_event<&equip_panel_original, &equip_panel_after>);
     hooks.mission_open = reinterpret_cast<void*>(&mission_open);
     hooks.mission_yes = reinterpret_cast<void*>(&mission_yes);
+    hooks.mission_end = reinterpret_cast<void*>(&mission_end);
     hooks.file_entry =
         reinterpret_cast<void*>(&handler_event<&file_entry_original, &file_entry_after>);
     hooks.map = reinterpret_cast<void*>(&handler_event<&map_original, &map_after>);
@@ -502,6 +511,8 @@ const Request kRequests[] = {
     // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play (mission.h).
     {"mission_prompt", true, nullptr, &mission_prompt},
     {"mission_status", true, [] { return g_game.mission_status(); }},
+    // How the last black after YES ended (mission.h, black): for live checks.
+    {"mission_black", true, [] { return g_game.mission_black(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},

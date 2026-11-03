@@ -23,13 +23,16 @@ int g_calls = 0;
 // Bodies of their own: the linker folds identical functions into one address.
 void widget_handler() { g_calls += 1; }
 void pause_routine() { g_calls += 2; }
-void ending_routine() { g_calls += 3; }
+void ending_routine();
 void door_routine() { g_calls += 4; }
 void escape_yes(void*, int) { g_calls += 5; }
 void game_no(void*, int) { g_calls += 6; }
 void open_hook() { g_calls += 7; }
 void yes_hook(void*, int) { g_calls += 8; }
+void end_hook() { g_calls += 9; }  // the ending's wrapper: frame() calls end in its place
+void after_ending() { g_calls += 10; }  // 0x948A0
 void* const kIdle = reinterpret_cast<void*>(&pause_routine);  // the routine idle in play
+void* const kEnding = reinterpret_cast<void*>(&ending_routine);
 
 std::map<BYTE*, std::string> g_set;
 void text_set(void* text, const char* str, int, int) { g_set[static_cast<BYTE*>(text)] = str; }
@@ -39,6 +42,17 @@ void* g_fn = nullptr;
 int32_t g_timer = 0;
 BYTE* g_current = nullptr;
 void* g_table[16] = {};
+
+// The ending routine (0x94A30) as B1 runs it with no menu open: the level set to 4 (0x95230),
+// and 0x948A0 set as the transition with timer 1 (0x9511B, 0x952FE).
+int g_endings = 0;
+void ending_routine() {
+    g_calls += 3;
+    ++g_endings;
+    g_fade_level = 4;
+    g_fn = reinterpret_cast<void*>(&after_ending);
+    g_timer = 1;
+}
 
 // Passes of the stepper (0x1F7900) over the global level: the countdown down while the step is
 // set; at 0 the level one toward the target, then the step off there, or the countdown again.
@@ -67,6 +81,7 @@ void reset() {
     g_timer = 0;
     g_current = nullptr;
     g_set.clear();
+    g_endings = 0;
     reset_events();
     g_event_handlers[1] = reinterpret_cast<void*>(&fade_handler);
     reset_fade();
@@ -123,6 +138,7 @@ zap::GameAddresses addresses() {
     a.fade_level = reinterpret_cast<BYTE*>(&g_fade_level);
     a.hooks.mission_open = reinterpret_cast<void*>(&open_hook);
     a.hooks.mission_yes = reinterpret_cast<void*>(&yes_hook);
+    a.hooks.mission_end = reinterpret_cast<void*>(&end_hook);
     return a;
 }
 
@@ -139,6 +155,36 @@ zap::MissionPrompt fading(const zap::GameAddresses& a) {
     m.request();
     m.watch(a, true);
     return m;
+}
+
+// One frame of the game's main loop, as far as the transition and the fade go: the timer counted
+// down and the transition run when it reaches 0 (0x7ACA1 to 0x7AE43; the helper's ending wrapper
+// runs end), then the stepper's pass (0x7BA35); then the frame is drawn, before the helper's
+// frame call (the swap): the level it is drawn at. 0x948A0, run, clears the transition.
+int8_t frame(zap::MissionPrompt& m, const zap::GameAddresses& a) {
+    if (g_timer > 0 && --g_timer == 0 && g_fn != nullptr) {
+        if (g_fn == a.hooks.mission_end) {
+            m.end(a);
+        } else if (g_fn == reinterpret_cast<void*>(&after_ending)) {
+            g_fn = nullptr;
+        } else {
+            reinterpret_cast<void (*)()>(g_fn)();
+        }
+    }
+    run_fade(1);
+    return g_fade_level;
+}
+
+// The ending started: the frames that run the helper's wrapper (and the routine) and 0x948A0.
+void run_ending(zap::MissionPrompt& m, const zap::GameAddresses& a) {
+    frame(m, a);
+    frame(m, a);
+}
+
+// The fade the ending's wrapper starts: from black toward 4, a step every kEndingFadeStep frames.
+bool fading_in_from_black() {
+    return at<int8_t>(g_fade, zap::fade_state::kTarget) == 4 &&
+           g_fade[zap::fade_state::kStep] == zap::kEndingFadeStep;
 }
 
 // The fade back: event 3667 aimed at level 4, the level left as it is, a step every 6 frames,
@@ -187,9 +233,11 @@ void test_offered_when_idle_then_yes_ends() {
     g_current = nullptr;  // closed: the game's close sets the pause routine back
     g_fn = kIdle;
     m.watch(a, true);
-    check(g_fn == reinterpret_cast<void*>(&ending_routine) && g_timer == 1,
-          "the ending, as the ship's event starts it");
-    check(!m.holds_hook() && m.status() == "ending started", "and nothing held");
+    check(g_fn == a.hooks.mission_end && g_timer == 1,
+          "the ending (the helper's wrapper), as the ship's event starts the routine");
+    check(m.holds_hook() && m.status() == "ending started", "the wrapper held until it runs");
+    frame(m, a);
+    check(g_endings == 1 && !m.holds_hook(), "run: nothing held");
     check(g_fades.size() == 1, "no fade back: NO's own close fades in");
 }
 
@@ -485,13 +533,6 @@ bool fading_back_in() {
            g_fade[zap::fade_state::kStep] == 6 && g_fade[zap::fade_state::kCountdown] == 6;
 }
 
-// The ending routine run: the level back to 4 (0x95230), and 0x948A0 set and run, which clears
-// the transition.
-void run_ending() {
-    g_fn = nullptr;
-    g_timer = 0;
-    g_fade_level = 4;
-}
 
 // A prompt opened and YES pressed, NO's close run: what the helper's YES then sees.
 zap::MissionPrompt yes_pressed(const zap::GameAddresses& a) {
@@ -520,12 +561,14 @@ void test_yes_keeps_the_screen_black() {
         m.watch(a, false);  // not idle yet (the game's last message, say)
         check(m.dark() && g_fn == kIdle, "still black, the ending waiting");
         m.watch(a, true);
-        check(g_fn == reinterpret_cast<void*>(&ending_routine) && g_timer == 1 && m.dark() &&
+        check(g_fn == a.hooks.mission_end && g_timer == 1 && m.dark() && m.holds_hook() &&
                   m.status() == zap::kEndingStarted && black_and_off(),
-              "then the ending, the screen still black for it");
-        run_ending();
+              "then the ending, through the helper's wrapper, the screen still black for it");
+        run_ending(m, a);
         m.watch(a, false);
-        check(!m.dark() && g_fade_level == 4, "run: it set the level itself");
+        check(g_endings == 1 && !m.dark() && !m.holds_hook() && g_fn == nullptr &&
+                  m.status() == zap::kEndingStarted,
+              "run, nothing held");
     }
     // Not as NO leaves it: left to fade back in as before.
     struct Case {
@@ -553,7 +596,10 @@ void test_yes_keeps_the_screen_black() {
                   "yes: ending when idle (the fade not as NO leaves it, so it fades back in)",
               m.status().c_str());
         m.watch(a, true);
-        check(g_fn == reinterpret_cast<void*>(&ending_routine), "the ending as before");
+        check(g_fn == a.hooks.mission_end, "the ending as before");
+        run_fade(30);  // faded back in, as NO's close left it
+        check(frame(m, a) == 4 && g_endings == 1 && !fading_in_from_black(),
+              "not black when it runs: its level 4 left as it is");
     }
     {
         Prompt prompt;  // no YES: nothing
@@ -563,6 +609,183 @@ void test_yes_keeps_the_screen_black() {
         m.after_no(a);
         check(!m.dark() && fading_back_in(), "not after YES: left alone");
     }
+}
+
+// The ending out of the black: the routine sets the level to 4 itself (0x95230), and the game
+// draws that frame before the helper's frame call. Run through the helper's wrapper, the
+// routine's frame and the ones after it are drawn black, then fade in to the normal level. (As
+// the game's routine itself, the 1.0.0 release candidate's way, the routine's frame was drawn at
+// level 4, possibly still at the Landing Pod.)
+void test_the_ending_comes_out_of_the_black() {
+    Prompt prompt;
+    zap::GameAddresses a = addresses();
+    zap::MissionPrompt m = yes_pressed(a);
+    m.after_no(a);
+    size_t fades = g_fades.size();
+    bool black = true;
+    for (int i = 0; i < 5; ++i) {
+        black = black && frame(m, a) == -1;
+        m.watch(a, false);  // the game's last message still up
+    }
+    check(black, "black while the ending waits");
+    m.watch(a, true);
+    std::vector<int8_t> drawn;
+    for (int i = 0; i < 60; ++i) {
+        drawn.push_back(frame(m, a));
+        m.watch(a, false);
+    }
+    check(g_endings == 1 && !m.dark() && !m.holds_hook() && m.status() == zap::kEndingStarted,
+          "the ending run once, nothing held");
+    std::vector<BYTE> in(event_3667(), event_3667() + 0x28);
+    const int16_t words[] = {4, -1, zap::kEndingFadeStep, 0, 1};
+    std::memcpy(in.data() + 4, words, sizeof(words));
+    check(g_fades.size() == fades + 1 && g_fades.back() == in,
+          "event 3667 aimed from black to 4, a step every kEndingFadeStep frames, no side fields");
+    check(drawn[0] == -1, "the routine's frame drawn black");
+    // The stepper's first pass comes in the routine's own frame.
+    const int first_lit = zap::kEndingFadeStep - 1, lit = first_lit + 4 * zap::kEndingFadeStep;
+    bool rising = true;
+    for (int i = 0; i < static_cast<int>(drawn.size()); ++i) {
+        int want = i < first_lit ? -1 : (i - first_lit) / zap::kEndingFadeStep;
+        if (i >= lit) want = 4;
+        rising = rising && drawn[i] == want;
+    }
+    check(rising, "black for its first frames, then a level each kEndingFadeStep frames to 4");
+}
+
+// The ending's wrapper as the transition: put back as the game's routine on unload (the ending
+// still comes, without the fade in); left there by a routine not as traced, or with no routine
+// in the table when it runs, the idle routine in its place; replaced before it ran, asked again.
+void test_the_endings_wrapper_is_never_left_behind() {
+    {
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.watch(a, true);  // NO's fade back left as it is: no black
+        check(g_fn == a.hooks.mission_end && m.holds_hook(), "set: held");
+        m.restore(a);
+        check(g_fn == kEnding && g_timer == 1 && !m.holds_hook(),
+              "unload: the game's routine in its place, nothing held");
+        m.watch(a, false);
+        check(g_fn == kEnding && m.started() && !m.ending(), "not asked again: it runs");
+    }
+    {
+        // A door in the wrapper's place, then an unload (the client gone) in the same frame:
+        // not asked again later.
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.watch(a, true);
+        g_fn = reinterpret_cast<void*>(&door_routine);
+        g_timer = 70;
+        m.restore(a);
+        check(!m.holds_hook() && g_fn == reinterpret_cast<void*>(&door_routine), "left alone");
+        g_fn = kIdle;
+        g_timer = 0;
+        m.watch(a, true);
+        check(g_fn == kIdle && !m.ending(), "and no ending asked again");
+    }
+    {
+        // The wrapper called again (a pause press with it left at timer 0) or after the save
+        // was left: taken off, the routine not run a second time.
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.watch(a, true);
+        frame(m, a);
+        g_fn = a.hooks.mission_end;
+        g_timer = 0;
+        m.end(a);
+        check(g_endings == 1 && g_fn == kIdle && !m.holds_hook(), "called again: taken off");
+        zap::MissionPrompt n = yes_pressed(a);
+        n.watch(a, true);
+        n.left_save();
+        frame(n, a);
+        check(g_endings == 1 && g_fn == kIdle && !n.holds_hook(),
+              "after the save was left: taken off, no ending");
+    }
+    {
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.after_no(a);
+        m.watch(a, true);
+        g_table[zap::kEndingRoutine] = reinterpret_cast<void*>(&door_routine);  // sets nothing
+        check(frame(m, a) == -1 && g_fn == kIdle && !m.holds_hook(),
+              "the wrapper left as the transition: the idle routine");
+    }
+    {
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.after_no(a);
+        m.watch(a, true);
+        g_table[zap::kEndingRoutine] = nullptr;
+        frame(m, a);
+        check(g_fn == kIdle && !m.holds_hook() && !m.started() && m.ending() && m.dark() &&
+                  m.status() == "yes: ending when idle (no ending routine)",
+              m.status().c_str());
+        g_table[zap::kEndingRoutine] = kEnding;
+        m.watch(a, true);
+        check(g_fn == a.hooks.mission_end && m.started(), "asked again once idle");
+        frame(m, a);
+        check(g_endings == 1 && g_fade_level == -1 && fading_in_from_black(), "and run from black");
+    }
+}
+
+// The black's limit in game frames (frame_clock), not frame calls: at 165 Hz the helper's frame
+// call came 166 times a second against the game's 60 (docs/re/memory.md, "The per-frame call"),
+// so 180 calls ended the black about 1.1 s in, before GAME SAVED (and so the ending) had: play
+// faded back in at the pod first, as the release candidate's retest saw (2026-11-02).
+void test_the_black_lasts_in_game_frames() {
+    Prompt prompt;
+    zap::GameAddresses a = addresses();
+    int64_t clock = 5000;
+    a.frame_clock = reinterpret_cast<BYTE*>(&clock);
+    zap::MissionPrompt m = yes_pressed(a);
+    m.after_no(a);
+    check(m.black() == "kept black", m.black().c_str());
+    // 11 frame calls each 4 game frames (about 166 to 60): GAME SAVED's 90 frames left run out
+    // after about 250 calls, past the 180 the limit used to count.
+    int calls = 0;
+    for (int frames = 0; frames < 90; ++calls) {
+        if (calls % 11 < 4) {
+            ++clock;
+            ++frames;
+        }
+        m.watch(a, false);  // the message still up: not idle
+    }
+    check(calls > 180 && m.dark() && black_and_off(), "still black when GAME SAVED ends");
+    m.watch(a, true);
+    check(g_fn == a.hooks.mission_end, "then the ending");
+    run_ending(m, a);
+    check(g_endings == 1 && m.black() == "ended: the ending, faded in from black",
+          m.black().c_str());
+
+    // With no ending, back in after kDarkFrames game frames, however many calls.
+    zap::MissionPrompt n = yes_pressed(a);
+    n.after_no(a);
+    for (int i = 0; i < zap::kDarkFrames * 3; ++i) n.watch(a, false);  // the clock still
+    check(n.dark(), "no game frames: still black");
+    for (int i = 0; i < zap::kDarkFrames; ++i) {
+        ++clock;
+        n.watch(a, false);
+    }
+    check(n.dark(), "kDarkFrames game frames: still black");
+    ++clock;
+    n.watch(a, false);
+    check(!n.dark() && fading_back_in() &&
+              n.black() == "ended: kDarkFrames in play with no ending, faded back in",
+          n.black().c_str());
+    // A clock that jumps (a reload) counts as a few frames, not all of them.
+    zap::MissionPrompt j = yes_pressed(a);
+    j.after_no(a);
+    j.watch(a, false);
+    clock += 100000;
+    j.watch(a, false);
+    check(j.dark(), "a jump: still black");
+    j.end_dark(a);
+    check(j.black() == "ended: a popup waiting, faded back in", j.black().c_str());
 }
 
 // No ending for kDarkFrames frames in play: faded back in; frames with a menu open (the pause,
@@ -588,7 +811,7 @@ void test_the_black_after_yes_ends() {
         run_fade(30);
         check(g_fade_level == 4, "at the normal level");
         m.watch(a, true);
-        check(g_fn == reinterpret_cast<void*>(&ending_routine), "the ending still comes");
+        check(g_fn == a.hooks.mission_end, "the ending still comes");
     }
     {
         Prompt prompt;
@@ -642,7 +865,7 @@ void test_the_black_after_yes_ends() {
     }
 }
 
-// The ending routine set, and a save at the save point in its place before it ran (the pause
+// The ending's wrapper set, and a save at the save point in its place before it ran (the pause
 // opener back, timer 0): the ending asked again, the screen still black, nothing held.
 void test_an_ending_replaced_before_it_ran_is_asked_again() {
     Prompt prompt;
@@ -650,27 +873,27 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
     zap::MissionPrompt m = yes_pressed(a);
     m.after_no(a);
     m.watch(a, true);
-    check(m.started() && g_fn == reinterpret_cast<void*>(&ending_routine), "set");
+    check(m.started() && g_fn == a.hooks.mission_end, "set");
     g_fn = kIdle;
     g_timer = 0;
     m.watch(a, false);
-    check(!m.started() && m.ending() && m.dark() && black_and_off() &&
+    check(!m.started() && m.ending() && m.dark() && black_and_off() && !m.holds_hook() &&
               m.status() == "yes: ending when idle (another transition came first)",
           m.status().c_str());
     m.watch(a, true);
-    check(g_fn == reinterpret_cast<void*>(&ending_routine) && m.started(), "set again");
-    run_ending();
+    check(g_fn == a.hooks.mission_end && m.started(), "set again");
+    run_ending(m, a);
     m.watch(a, false);
-    check(m.started() && !m.dark(), "run");
+    check(m.started() && !m.dark() && g_endings == 1, "run");
 
-    // Run, with the frame of 0x948A0 missed: its close has set the pause opener back with timer
-    // 0, but the routine set the level to 4, so the black is not the helper's: run, not asked.
+    // Run: 0x948A0's close then sets the pause opener back with timer 0, as a save would; the
+    // wrapper ran, so it is not taken for one.
     zap::MissionPrompt n = yes_pressed(a);
     n.after_no(a);
     n.watch(a, true);
+    frame(n, a);
     g_fn = kIdle;
     g_timer = 0;
-    g_fade_level = 4;
     n.watch(a, false);
     check(n.started() && !n.ending() && !n.dark() && n.status() == zap::kEndingStarted,
           "the pause opener after the ending ran: not taken for a save");
@@ -705,7 +928,7 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
         g_fn = kIdle;
         g_timer = 0;
         d.watch(a, true);
-        check(g_fn == reinterpret_cast<void*>(&ending_routine) && d.started(),
+        check(g_fn == a.hooks.mission_end && d.started(),
               (std::string(c.what) + ": the ending set again once idle").c_str());
         d.left_save();
     }
@@ -735,7 +958,7 @@ void test_not_offered_again_after_the_ending() {
     m.after_no(a);
     m.watch(a, true);
     check(m.status() == zap::kEndingStarted, m.status().c_str());
-    run_ending();
+    run_ending(m, a);
     m.watch(a, false);
     g_fn = kIdle;  // idle-looking later in its cutscenes
     g_timer = 0;
@@ -757,6 +980,9 @@ void test_not_offered_again_after_the_ending() {
 
 int main() {
     test_yes_keeps_the_screen_black();
+    test_the_ending_comes_out_of_the_black();
+    test_the_endings_wrapper_is_never_left_behind();
+    test_the_black_lasts_in_game_frames();
     test_the_black_after_yes_ends();
     test_not_offered_again_after_the_ending();
     test_an_ending_replaced_before_it_ran_is_asked_again();

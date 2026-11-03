@@ -122,6 +122,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
+| `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
 
@@ -236,14 +237,17 @@ seconds in play), or a translated name or the popups' moved entry 70 still the h
 frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
 started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
 THE DISKS?'s YES until the helper has started the ending (and while the screen is still kept
-black after it), and while the ending routine is the game's transition with the ending's patch
-in place: an unload would drop the ending, or put
+black after it, until the helper's wrapper has run the ending routine), and while the ending
+routine or that wrapper is the game's transition with the ending's patch in place: an unload
+would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
-a few frames, longer while received items' popups or a message hold the ending after YES.
+a few frames, longer while received items' popups (the helper's own) hold the ending after YES.
 Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
 `reload_spam.txt`): `/reload_mod` sent every half second from the open prompt through YES,
 refused as a menu open while the prompt showed, then twice as the ending on its way while five
-received items' popups held it; the helper stayed, and the ending ran and sent the goal.
+received items' popups held it; the helper stayed, and the ending ran and sent the goal. That
+run was before the ending's wrapper: its refusal and its put back on unload are stand-in tests
+only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -566,36 +570,59 @@ the helper:
   with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
   its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
   until then 70, as far into it as the game's escape skip fade is into Zexion's popup:
-  `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut short),
+  `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut short:
+  while the game's last message is still the helper's, the prompt waits for its end, read from
+  that message's frames left, so in game frames),
   opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way the
   game opens it as SKIP ESCAPE AND FINAL BATTLE?: it runs the game's fade to black (area event
   3667, checked byte for byte, through the game's handler for its type) and sets its opener as the transition 60 frames away (the
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
-  through the game's NO and then starts the ending once no message shows; NO fades the screen back
+  through the game's NO and then starts the ending once no popup of the helper's shows (one up
+  is never cut short; a message of the game's, GAME SAVED, does not hold it: the ending routine
+  ends every message itself as it starts, `docs/re/memory.md`, "The mission prompt"; until then
+  the ending also waited for GAME SAVED, up to about 1.5 s of black in which the player could
+  still move and pause, the owner's report, 2026-11-02); NO fades the screen back
   in, as the game's NO does there. NO's close puts back, inside its call, the fade the prompt's
   builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`, "The
   mission prompt"), so right after it YES turns that fade off with the screen still black (the
-  fade's step, countdown and target set as event 3667's fade ends), and the ending routine sets
-  the level back to 4 itself as it starts: no fade back into play between YES and the ending.
-  Only a fade that reads as NO's close leaves it is turned off (`mission_status` then says `yes:
-  ending when idle, the screen kept black`); anything else fades back in as before. While it is
+  fade's step, countdown and target set as event 3667's fade ends): no fade back into play
+  between YES and the ending. Only a fade that reads as NO's close leaves it is turned off
+  (`mission_status` then says `yes: ending when idle, the screen kept black`); anything else
+  fades back in as before. While it is
   black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
   of the helper's waiting brings the screen back in for it (as NO's close would have), and the
-  ending follows the popups as before; so does the ending not starting within 180 frames in play
-  (`kDarkFrames`, GAME SAVED's length; frames with a menu open, the pause, which saves the fade
-  and puts it back, don't count), and the prompt cancelled (the save left, `discs` off, the client
-  gone); asked for with a menu open, the fade back waits until it has closed and put its saved
+  ending follows the popups as before; so does the ending not starting within 240 game frames in
+  play (`kDarkFrames`: a popup of the helper's length, 180 frames, with a margin; counted from
+  the game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so
+  frames with a menu open, the pause, which saves the fade and puts it back, don't count; until the release
+  candidate it counted 180 of the helper's frame calls, which a 165 Hz monitor would run out in
+  about 1.1 s, before GAME SAVED ends, by disassembly: below), and the prompt cancelled (the save
+  left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its saved
   black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
-  drops it. The black ends once the ending routine is seen to have run, on what it leaves: it
-  sets `0x948A0` with timer 1, which clears the transition, and it sets the level to 4. So the
-  next frame the transition is cleared, or on timer 1 (not the pause opener), or, with frames
-  missed, the pause opener with timer 0 and the level 4 (the black no longer the helper's).
-  Anything else took its place before it ran (a save at the save point, which sets the pause
-  opener back and leaves the fade alone; a door, timer 70; a death): the ending is asked for
-  again, the black kept while it is still the helper's (with its 180 frames), else the other
-  transition's fade left alone. From the frame the helper sets the ending routine until another
-  save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
+  drops it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended:
+  the ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
+  `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …`
+  note: another fade, the ending not faded in or with the fade no longer the helper's), for a
+  live check. In the release candidate the owner saw the screen fade back into play at the pod
+  for a moment before the ending (its retest, 2026-11-02): the limit above running out first is
+  the cause the numbers fit (by disassembly; the run with this fix, 2026-11-02, measured 90 game
+  frames, about 230 frame calls, and no fade back; the release candidate was not run again:
+  `docs/re/memory.md`, "The mission prompt"); the other one found is the ending routine itself,
+  which sets the level to 4 as it warps the player to the ending's first scene, in a frame the
+  game draws before the helper's frame call (not seen in game: the wrapper hides it).
+  For that one the helper starts the ending through a wrapper of its own, set as
+  the transition with timer 1 in the routine's place: the game runs it, it runs the game's
+  routine, and, while the black is still the helper's, it sets the level back to black at once
+  (event 3667 aimed from −1 to 4, a step every 8 frames, `kEndingFadeStep`) before that frame is
+  drawn: the ending fades in from black, at the normal level 40 frames in. The black ends there.
+  A wrapper still the transition after the routine (not as traced) becomes the idle routine; one
+  an unload finds not yet run becomes the game's routine (the ending then comes without the fade
+  in). Anything else in the wrapper's place before it ran (a save at the save point, which sets
+  the pause opener back and leaves the fade alone; a door, timer 70; a death): the ending is
+  asked for again, the black kept while it is still the helper's (with its 240 game frames), else the
+  other transition's fade left alone. From the frame the helper sets the ending's wrapper until
+  another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
   place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
   ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
   `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
@@ -603,8 +630,12 @@ the helper:
   (`native/tests/mission_tests.cpp`, `game_tests.cpp`); run in game 2026-11-02 (B1,
   `zexion_ap.dll` `946b08a1…`, English(HD), `lab/ap/live50` slot 8, past its ending, and
   `lab/ap/live52` slot 9, before it): after YES the screen went black, then faded back into play
-  at the pod for a moment before the ending began, on both saves (a bug: the fade is not kept
-  off). Working: the ending played again on the save past it, with nothing new sent and the
+  at the pod for a moment before the ending began, on both saves (a bug, the causes above; fixed
+  since, working in game 2026-11-02, B1, `zexion_ap.dll` `d179d32d…`, `lab/ap/live52`, a new
+  game in lab slot 11, its first ending and a replay: black until the ending, then straight into
+  it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
+  SAVED up, since, working in game the same day, `zexion_ap.dll` `28ab9954…`, slot 11, a replay:
+  black for a frame or two after YES, then the ending fading in from it). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups
   shown on the next load; a death received during the first ending dropped; the pause opened
@@ -1251,12 +1282,18 @@ unload.
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
-  parser, a death's own fade left alone, the ending after YES
-  waiting for the last message, and the ending's wait that an unload refuses for; the screen
+  parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
+  game's last message, however many frame calls pass, the ending after YES
+  starting with a message of the game's still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for; the screen
   kept black after YES, a popup waiting bringing it back in, received deaths refused (`RETURN
   HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
   until another save is loaded). `mission` covers the black after YES on its own: kept, not
-  kept for a fade not as NO leaves it, ended by 180 frames in play, another fade or cancel.
+  kept for a fade not as NO leaves it, ended by kDarkFrames game frames in play (from a stand-in
+  frame clock, with frame calls coming faster than game frames, as at 165 Hz), another fade or
+  cancel, and what `mission_black` then says; and
+  the ending out of it through the helper's wrapper, in a stand-in main loop that draws each frame
+  after the transition and the stepper: the routine's frame drawn black, then the fade in, and the
+  wrapper never left as the transition (unload, a routine not as traced, none in the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause

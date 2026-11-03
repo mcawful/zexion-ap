@@ -1425,7 +1425,15 @@ int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
 void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
 void opener() { g_routine_runs += 3; }  // the helper's (dllmain.cpp); not run here
-void ending_routine() { g_routine_runs += 4; }
+void ender() { g_routine_runs += 5; }   // the helper's ending wrapper: Game::mission_end stands in
+void after_ending() { g_routine_runs += 6; }  // 0x948A0
+// As B1's with no menu open: the level to 4 (0x95230), 0x948A0 the transition with timer 1.
+void ending_routine() {
+    g_routine_runs += 4;
+    g_fade_level = 4;
+    g_transition_fn = reinterpret_cast<void*>(&after_ending);
+    g_transition_timer = 1;
+}
 struct MissionGame {
     zap::Game game;
     zap::Hooks hooks;
@@ -1435,6 +1443,7 @@ struct MissionGame {
         std::memset(g_section, 0, sizeof(g_section));
         player_cell(13, 16);  // at the pod
         hooks.mission_open = reinterpret_cast<void*>(&opener);
+        hooks.mission_end = reinterpret_cast<void*>(&ender);
         game.set_hooks(hooks);
         g_routine_table[zap::kIdleRoutine] = reinterpret_cast<void*>(&idle_routine);
         g_routine_table[zap::kPromptRoutine] = reinterpret_cast<void*>(&prompt_routine);
@@ -1501,16 +1510,26 @@ void test_popups_wait_for_the_mission_fade() {
     reset_game();
     player_cell(13, 16);  // the player state cleared: back at the pod
     game.request_mission(kPodColumn, kPodRow);
+    // The game makes each new message its last one (0x182CEB): the helper's popup is, then.
+    g_slots_live = true;
+    g_message_is_last = true;
+    BYTE* own = g_slots + 0x1628 * g_message_slot;
     apply(game, "apply\npopup 36 FROM BOB");
     game.pump_popups();
-    check(g_messages == 1, "the helper's popup shows");
-    for (int i = 0; i < 30; ++i) game.pump_popups();  // past the gap between popups
-    message_showing(zap::kFadeMessageLeft);
+    check(g_messages == 1 && g_last_message.last == own, "the helper's popup shows");
+    // As many frame calls as you like (more of them than game frames on a fast monitor).
+    for (int i = 0; i < 300; ++i) game.pump_popups();
+    put<int32_t>(own, 0x1EC, zap::kFadeMessageLeft);
     game.watch_all(&chosen);
     check(g_fade_calls == 0, "not with kFadeMessageLeft frames of the helper's popup left");
-    message_showing(1);
+    put<int32_t>(own, 0x1EC, 2);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 0, "nor with 2 left");
+    put<int32_t>(own, 0x1EC, 1);
     game.watch_all(&chosen);
     check(g_fade_calls == 1, "once it has ended");
+    g_slots_live = false;
+    g_message_is_last = false;
 
     // The player dead when the game runs the opener: no prompt, the fade turned back (toward the
     // normal level, a step every 6 frames), asked again.
@@ -1578,8 +1597,8 @@ void test_the_mission_request_gives_home() {
 // Asked for with home the Landing Pod's save point, in a seed that starts elsewhere: dropped at
 // the seed's start, which is not home; offered at the pod; held by popups, dropped once the
 // player is in play outside the pod's cell, before it opens; a death's own fade left alone when
-// the opener is put off; and after YES, the ending waits for the game's last message to end,
-// and an unload refuses until it has started.
+// the opener is put off; and after YES, the ending comes with the game's message still up but
+// waits for the helper's own popup to end, and an unload refuses until it has started.
 void test_return_home_lapses_away_from_the_pod() {
     MissionGame m;
     zap::Game& game = m.game;
@@ -1658,8 +1677,28 @@ void test_return_home_lapses_away_from_the_pod() {
           "put off, the death's fade not turned back");
     field<int16_t>(0xCEA) = 48;
 
-    // YES: the ending waits for the game's last message to end, not just its last
-    // kFadeMessageLeft frames.
+    // The helper's own popup the last message after YES: the ending waits for its end.
+    m.again();
+    g_slots_live = true;
+    g_message_is_last = true;
+    BYTE* popup = g_slots + 0x1628 * g_message_slot;
+    g_last_message = {nullptr, 0};  // GAME SAVED over
+    int shown = g_messages;
+    apply(game, "apply\npopup 36 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == shown + 1 && g_last_message.last == popup, "the helper's popup up");
+    game.mission_yes();
+    put<int32_t>(popup, 0x1EC, 2);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine],
+          "with the helper's popup up: the ending waits");
+    put<int32_t>(popup, 0x1EC, 1);
+    game.watch_all(&chosen);
+    check(g_transition_fn == m.hooks.mission_end, "then comes as it ends");
+    g_slots_live = false;
+    g_message_is_last = false;
+    // YES: the ending waits for no message of the game's (GAME SAVED: the ending routine ends
+    // every message itself, 0x1F9CE0), but for one of the helper's own popups to end.
     m.again();
     check(!game.ending_pending() && game.unload_refusal() == nullptr, "nothing pending");
     g_menu = 2;
@@ -1668,18 +1707,13 @@ void test_return_home_lapses_away_from_the_pod() {
     game.mission_yes();
     check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
           "YES: the ending pending, and an unload refuses");
-    message_showing(zap::kFadeMessageLeft);
+    message_showing(150);  // GAME SAVED, 30 frames in
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
-              game.mission_status() == "yes: ending when idle",
-          "not with kFadeMessageLeft frames of a message left");
-    message_showing(1);
-    game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
-              game.mission_status() == "ending started",
-          "once it has ended");
+    check(g_transition_fn == m.hooks.mission_end && game.mission_status() == "ending started",
+          "with the game's message still up: the ending at once");
     check(!game.ending_pending() && game.unload_refusal() == nullptr,
           "started, with no ending patch: nothing an unload would undo");
+
     game.put_back_all(&chosen);
 }
 
@@ -1713,7 +1747,7 @@ void test_the_black_after_yes() {
     check(g_messages == 1, "shown");
     message_showing(1);
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] &&
+    check(g_transition_fn == m.hooks.mission_end &&
               game.mission_status() == zap::kEndingStarted,
           "then the ending");
 
@@ -1743,11 +1777,17 @@ void test_the_black_after_yes() {
     game.mission_after_no();
     message_showing(1);
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kEndingRoutine] && g_fade_level == -1 &&
+    check(g_transition_fn == m.hooks.mission_end && g_fade_level == -1 &&
               g_fade[zap::fade_state::kStep] == 0,
           "the ending, from black");
-    g_transition_fn = nullptr;  // the routine run: 0x948A0 set and run, the transition cleared
-    g_fade_level = 4;
+    g_transition_timer = 0;  // the game runs the wrapper, which runs the routine
+    int runs = g_routine_runs;
+    game.mission_end();
+    check(g_routine_runs == runs + 4 && g_transition_fn == reinterpret_cast<void*>(&after_ending) &&
+              g_fade_level == -1 && at<int8_t>(g_fade, zap::fade_state::kTarget) == 4 &&
+              g_fade[zap::fade_state::kStep] == zap::kEndingFadeStep && !game.ending_pending(),
+          "run: drawn black, fading in from there; nothing pending");
+    g_transition_fn = nullptr;  // 0x948A0 run: the transition cleared
     game.watch_all(&chosen);
     MissionGame::idle();  // idle-looking later in its cutscenes
     game.request_mission(kPodColumn, kPodRow);

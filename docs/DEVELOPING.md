@@ -178,6 +178,21 @@ line says.
   during it shown on the next load). YES going into the ending with the screen kept black instead
   of fading back into play first: not working in game, the same run, on that save and on one
   before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending
+  (the owner's report: it faded back into play). Two causes fit, by disassembly
+  (`docs/re/memory.md`, "The mission prompt"): the black's 180-frame limit, which counted the
+  helper's frame calls (166 a second at 165 Hz against the game's 60) and so could end before
+  GAME SAVED and the ending did; and the ending routine's own level 4, in a frame the game draws
+  before the helper's frame call. Since, the limit counts game frames (240), the ending runs
+  through a wrapper that puts the black back before that frame is drawn and fades in from it,
+  and `mission_black` says how the black ended. Working in game 2026-11-02 (B1, `zexion_ap.dll`
+  `d179d32d…`, `lab/ap/live52`, a new game in lab slot 11, its first ending and a replay): black
+  until the ending, then straight into it; a read-only memory record's numbers fit the limit as
+  the cause (the release candidate not run again; the ending's own first frame not seen, the
+  wrapper hiding it; `mission_black` not read: the game was closed first). In that black the player could
+  still move and pause while the ending waited for GAME SAVED; since, the ending starts with GAME
+  SAVED up: working in game the same day (`zexion_ap.dll` `28ab9954…`, slot 11, a replay: black
+  for a frame or two after YES, then the ending fading in from it; the owner: "worked exactly how
+  we wanted")
   (`native/README.md`, "The OS Install Disks goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.

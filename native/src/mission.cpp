@@ -116,6 +116,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         !read(a.current_menu, 0, top)) {
         return;
     }
+    const int ran = clock_.step(a.frame_clock);  // game frames since the last look
     if (yes_child_ != nullptr && !is_open(a.current_menu, menu_)) {
         yes_child_ = nullptr;  // closed (NO): the game freed it
         menu_ = nullptr;
@@ -135,46 +136,36 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         requested_ = false;
         status_ = "lapsed: the player left the landing pod";
     }
-    if (queued_ && fn != routine(a, kEndingRoutine)) {
-        // The ending routine set last frame is no longer the transition. Run, only on what the
-        // routine leaves: it sets 0x948A0 with timer 1 as it ends (0x952FE), which closes the
-        // menus (0x92A60, the pause opener with timer 0) and then clears the transition
-        // (0x948EF); and it sets the level to 4 itself (0x95230). So: the transition cleared, or
-        // timer 1 on a routine other than the pause opener; or, with frames missed, the pause
-        // opener with timer 0 and the black no longer the helper's but the level 4. Anything else
-        // took its place before it ran (a save at the save point sets the pause opener back and
-        // leaves the fade alone, 0x1FC8F1; a door sets its own routine with timer 70, 0x1D93E3;
-        // a death): asked again, the black kept while it is still the helper's.
+    if (end_set_ && fn != a.hooks.mission_end) end_set_ = false;  // no longer the game's to call
+    if (queued_ && fn != a.hooks.mission_end) {
+        // The ending's wrapper set last frame is no longer the transition, and has not run (end
+        // clears queued_): another transition took its place before it ran (a save at the save
+        // point sets the pause opener back and leaves the fade alone, 0x1FC8F1; a door sets its
+        // own routine with timer 70, 0x1D93E3; a death). Asked again, the black kept while it
+        // is still the helper's.
         queued_ = false;
-        void* idle_fn = routine(a, kIdleRoutine);
-        bool ran = fn == nullptr || (timer == 1 && fn != idle_fn);
-        if (!ran && fn == idle_fn && timer == 0 && dark_) {
-            ran = !dark_still_ours(a) && at_normal_level(a);
-        }
-        if (ran) {
-            dark_ = false;  // it set the level back to 4 itself (0x95230)
+        started_ = false;
+        ending_ = true;
+        if (dark_ && !dark_still_ours(a)) {
+            dark_ = false;  // the other transition's fade: left alone
             undark_ = false;
-        } else {
-            started_ = false;
-            ending_ = true;
-            if (dark_ && !dark_still_ours(a)) {
-                dark_ = false;  // the other transition's fade: left alone
-                undark_ = false;
-            }
-            status_ = "yes: ending when idle (another transition came first)";
+            black_ = "ended: another transition's fade, left alone";
         }
+        status_ = "yes: ending when idle (another transition came first)";
     }
     // Black after YES until the ending starts. A menu (the pause) saves the fade as it opens and
     // puts it back as it closes, so only frames with none count, and only those are looked at;
     // the fade back asked for while one was open (end_dark) is made here once it has closed.
+    // The limit counts game frames (GameFrames), not the helper's frame calls.
     if (dark_ && top == nullptr) {
         if (!dark_still_ours(a)) {
             dark_ = false;  // another fade since (a death's, say): left alone
             undark_ = false;
+            black_ = "ended: another fade, left alone";
         } else if (undark_) {
-            end_dark(a);
-        } else if (++dark_frames_ > kDarkFrames) {
-            end_dark(a);
+            end_dark(a, undark_why_);
+        } else if ((dark_frames_ += ran) > kDarkFrames) {
+            end_dark(a, "ended: kDarkFrames in play with no ending, faded back in");
             status_ = "yes: ending when idle, faded back in after the black";
         }
     }
@@ -183,12 +174,14 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
                 writable_fields(a);
     if (!idle) return;
     if (ending_) {
-        void* ending = routine(a, kEndingRoutine);
-        if (ending == nullptr) return;
-        put(a.transition_fn, 0, ending);
+        // The helper's wrapper (end) in the routine's place, run as the ship's event 2567 runs
+        // the routine: timer 1, the next frame.
+        if (a.hooks.mission_end == nullptr || routine(a, kEndingRoutine) == nullptr) return;
+        put(a.transition_fn, 0, a.hooks.mission_end);
         put<int32_t>(a.transition_timer, 0, 1);
         ending_ = false;
-        queued_ = true;  // the black kept until it is seen to have run (above)
+        queued_ = true;  // the black kept until it has run (end), or asked again (above)
+        end_set_ = true;
         started_ = true;
         status_ = kEndingStarted;
         return;
@@ -200,7 +193,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         put<int32_t>(a.transition_timer, 0, 1);  // no fade: at once
         requested_ = false;
         armed_ = true;
-        std::string why = fade(a, true);
+        std::string why = fade(a, Fade::kOut);
         faded_ = why.empty();
         fade_seen_ = faded_ ? fade_frames(a) : -1;
         if (faded_) {
@@ -211,7 +204,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
     }
 }
 
-std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
+std::string MissionPrompt::fade(const GameAddresses& a, Fade kind) {
     BYTE* table = pointer_at(a.event_table);
     int16_t events = 0;
     if (table == nullptr || !read(a.event_count, 0, events) || events <= kFadeEvent) {
@@ -226,12 +219,16 @@ std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
     if (handler == nullptr || image_ == nullptr || !in_image_code(image_, handler)) {
         return "its handler not in the game's code";
     }
-    if (out) {
+    if (kind == Fade::kOut) {
         reinterpret_cast<EventFn>(handler)(0, 0, ev);
     } else {
+        // kIn: the level -1 (0x1F6E28 sets it, 0x1ECC20, and repaints the palettes for it),
+        // then the fade toward 4 from there.
+        const int16_t level = kind == Fade::kIn ? kFadeTo : kKeepLevel;
+        const int16_t step = kind == Fade::kIn ? kEndingFadeStep : kBackStep;
         std::memcpy(copy + kFadeTarget, &kNormalLevel, sizeof(int16_t));
-        std::memcpy(copy + kFadeLevel, &kKeepLevel, sizeof(int16_t));
-        std::memcpy(copy + kFadeStep, &kBackStep, sizeof(int16_t));
+        std::memcpy(copy + kFadeLevel, &level, sizeof(int16_t));
+        std::memcpy(copy + kFadeStep, &step, sizeof(int16_t));
         // +0xC 1: none of the side fields 3667 also sets (0xD7C3), which the game's own fade
         // back (the menu close) leaves alone too.
         std::memcpy(copy + kFadeSide, &kNoSide, sizeof(int16_t));
@@ -242,7 +239,7 @@ std::string MissionPrompt::fade(const GameAddresses& a, bool out) {
 
 bool MissionPrompt::fade_back(const GameAddresses& a) {
     // The record checked again: skipped if it changed since.
-    bool back = faded_ && fade(a, false).empty();
+    bool back = faded_ && fade(a, Fade::kBack).empty();
     faded_ = false;
     fade_seen_ = -1;
     return back;
@@ -354,7 +351,48 @@ void MissionPrompt::after_no(const GameAddresses& a) {
     dark_ = true;
     undark_ = false;
     dark_frames_ = 0;
+    black_ = "kept black";
     status_ = "yes: ending when idle, the screen kept black";
+}
+
+void MissionPrompt::end(const GameAddresses& a) {
+    auto ending = reinterpret_cast<void (*)()>(routine(a, kEndingRoutine));
+    bool asked = queued_;
+    queued_ = false;
+    bool black = false;
+    if (!asked) {
+        // Not set by this helper since (left_save, restore), or called again from a pause press
+        // after a swap below failed: only taken off, never the ending a second time.
+    } else if (ending == nullptr) {
+        // Gone from the table since it was set: asked again once idle (the black, if kept,
+        // ends after kDarkFrames as before).
+        started_ = false;
+        ending_ = true;
+        status_ = "yes: ending when idle (no ending routine)";
+    } else {
+        black = dark_ && dark_still_ours(a);
+        if (dark_ && !black) black_ = "ended: the ending, the fade no longer the helper's";
+        dark_ = false;
+        undark_ = false;
+        ending();
+    }
+    // The routine sets 0x948A0 as the transition as it ends (0x952FE). The wrapper still there
+    // (not as traced, or no routine): the idle routine, not a wrapper the game would call again.
+    // An unreadable transition counts as still held (an unload then refuses).
+    void* fn = nullptr;
+    end_set_ = !read(a.transition_fn, 0, fn) ||
+               (fn == a.hooks.mission_end &&
+                !swap_pointer(a.transition_fn, 0, a.hooks.mission_end, routine(a, kIdleRoutine)));
+    // It sets the level to 4 (0x95230) and warps the player to the ending's first scene
+    // (0x1D2850); the frame is drawn after this returns, before the helper's frame call. With no
+    // menu open (0x92A60 then returns at once, 0x92A8C) nothing puts a level back after it, and
+    // its frames run the stepper (0x7BA35): so black again now, and in from there.
+    if (black) {
+        black_ = at_normal_level(a) && writable(a.fade, fade_state::kSize) &&
+                         fade(a, Fade::kIn).empty()
+                     ? "ended: the ending, faded in from black"
+                     : "ended: the ending, not faded in (not as traced)";
+    }
 }
 
 bool MissionPrompt::dark_still_ours(const GameAddresses& a) const {
@@ -363,17 +401,19 @@ bool MissionPrompt::dark_still_ours(const GameAddresses& a) const {
            countdown == 0 && level == kFadeTo;
 }
 
-void MissionPrompt::end_dark(const GameAddresses& a) {
+void MissionPrompt::end_dark(const GameAddresses& a, const char* why) {
     if (!dark_) return;
     BYTE* top = nullptr;
     if (!read(a.current_menu, 0, top) || top != nullptr) {
         // A menu open (the pause): its close puts back the fade it saved, black and off, so
         // the fade back waits for it (watch).
         undark_ = true;
+        undark_why_ = why;
         return;
     }
     dark_ = false;
     undark_ = false;
+    black_ = why;
     // Back as NO's close left it: from black toward 4, a step every 6 frames.
     if (dark_still_ours(a) && writable(a.fade, fade_state::kSize)) {
         set_fade_bytes(a, kNormalLevel, kBackStep);
@@ -385,6 +425,7 @@ void MissionPrompt::left_save() {
     queued_ = false;
     // The black is the save's: once it has left (the title, the file select, which keep menus
     // open, own the fade), no longer held, nor an unload refused for it.
+    if (dark_) black_ = "ended: the save left";
     dark_ = false;
     undark_ = false;
     if (status_ == kEndingStarted) status_ = "not asked";
@@ -393,13 +434,13 @@ void MissionPrompt::left_save() {
 bool MissionPrompt::ending_queued(const GameAddresses& a) const {
     void* fn = nullptr;
     if (a.routine_table == nullptr || !read(a.transition_fn, 0, fn) || fn == nullptr) return false;
-    return fn == routine(a, kEndingRoutine);
+    return fn == routine(a, kEndingRoutine) || fn == a.hooks.mission_end;
 }
 
 void MissionPrompt::cancel(const GameAddresses& a) {
     requested_ = false;
     ending_ = false;
-    end_dark(a);  // no ending to come: out of the black
+    end_dark(a, "ended: cancelled, faded back in");  // no ending to come: out of the black
     void* fn = nullptr;
     if (armed_ && read(a.transition_fn, 0, fn)) {
         if (fn != a.hooks.mission_open) {
@@ -414,6 +455,23 @@ void MissionPrompt::cancel(const GameAddresses& a) {
 
 void MissionPrompt::restore(const GameAddresses& a) {
     cancel(a);  // an opener it could not take off stays armed_: still held
+    if (end_set_) {
+        // The ending's wrapper not run yet: the game's routine in its place, so the ending still
+        // comes (without the fade in). Kept if it reads as the wrapper but can't be written.
+        void* fn = nullptr;
+        if (!read(a.transition_fn, 0, fn)) {
+            // Not known: still held, so an unload refuses.
+        } else if (fn != a.hooks.mission_end) {
+            // Another transition in its place: not asked again from here (cancel has dropped
+            // the ending; watch would otherwise ask for it once more).
+            end_set_ = false;
+            queued_ = false;
+        } else if (swap_pointer(a.transition_fn, 0, a.hooks.mission_end,
+                                routine(a, kEndingRoutine))) {
+            end_set_ = false;
+            queued_ = false;  // the game's routine set: the ending runs, not asked again
+        }
+    }
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
         pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes &&
         !swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {

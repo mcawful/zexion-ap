@@ -18,6 +18,7 @@ struct Hooks {
     void* equipment_panel = nullptr;  // the Energy Tank panel's handler (equip.h)
     void* mission_open = nullptr;     // the mission prompt's opener, no arguments (mission.h)
     void* mission_yes = nullptr;      // the prompt's YES callback (mission.h)
+    void* mission_end = nullptr;      // the ending after YES, no arguments (mission.h)
     void* file_entry = nullptr;       // a save entry's handler (files.h)
     void* map = nullptr;              // the map's per-frame handler (mapmarks.h)
 };
