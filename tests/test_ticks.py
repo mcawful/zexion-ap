@@ -427,9 +427,10 @@ def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -
         assert ctx.load.replay == ended
 
 
-def test_a_teleport_to_the_pod_is_not_offered_return_home() -> None:
-    # The pause menu's TELEPORT TO START leaves the slot's block as it was; whatever the game
-    # wrote behind the menu, the first look back in play is no save.
+def test_a_teleport_or_reload_from_save_to_the_pod_is_not_offered_return_home() -> None:
+    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100); RELOAD
+    # FROM SAVE writes its play time behind its menu (200): the first look back in play is no
+    # save either way.
     ctx = homing_ctx()
     run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, False)))
     for time in (100, 200):

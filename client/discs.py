@@ -190,7 +190,8 @@ class ReturnHome:
 
     The game also rewrites the stamp without a save: a death writes the block's play time and
     death count (then respawns the player at the continue point, the pod after a save there),
-    and leaving to the title, some story events and the ending write its play time
+    and the pause menu's RELOAD FROM SAVE and RELOAD FROM CHECKPOINT (the latter raising the
+    death count), leaving to the title, some story events and the ending write its play time
     (docs/re/memory.md, "A save at the Landing Pod"). So a new stamp is no save when a look
     between it and the last one was not in play (the death screen, a menu), or when the death
     count rose (a death no poll caught)."""

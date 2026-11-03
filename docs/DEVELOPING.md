@@ -168,10 +168,12 @@ line says.
   B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`).
   A bug, 2026-11-03 (the 1.0.0 release candidate): with enough disks, respawning at the pod
   after a death, or by the owner's account after a teleport, offered RETURN HOME. A death
-  rewrites the slot's block like a save: fixed since in the client (a new block is a save only
-  between two looks in play with no death); not yet run in game. A teleport writes neither
-  the block nor the file (by disassembly), so the teleport report is not explained and may
-  still happen (`docs/re/memory.md`, "The mission prompt").
+  rewrites the slot's block like a save, and so do the pause menu's RELOAD FROM SAVE and
+  RELOAD FROM CHECKPOINT (most likely the "teleport": a teleport writes neither, by
+  disassembly). Fixed since in the client (a new block is a save only between two looks in
+  play with no death); not yet run in game. A save made within about a third of a second of
+  closing a menu is not offered (the next one there is), and a reload on a button press, if
+  players can reach it, is not covered (`docs/re/memory.md`, "The mission prompt").
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's

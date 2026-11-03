@@ -218,9 +218,9 @@ def test_a_teleport_to_the_pod_is_not_a_save() -> None:
     assert not home.offer
 
 
-def test_a_stamp_written_behind_a_menu_is_not_a_save() -> None:
-    # The block's play time written while a menu is up (the exits write it), the player then
-    # in play at the pod: not a save.
+def test_reload_from_save_at_the_pod_is_not_a_save() -> None:
+    # RELOAD FROM SAVE (0xA3150): its YES sets 0x9F620, which writes the block's play time the
+    # next frame with no death, then puts the player back at the continue point, the pod.
     home = discs.ReturnHome()
     home.see(at_pod(100), True, True, True, False)
     home.see(at_pod(200), False, True, True, False)
@@ -229,6 +229,26 @@ def test_a_stamp_written_behind_a_menu_is_not_a_save() -> None:
     home.see(at_pod(200), False, True, True, True)  # paused at the pod
     home.see(at_pod(300), True, True, True, True)  # the first look back in play is new
     assert not home.offer
+
+
+def test_reload_from_checkpoint_at_the_pod_is_not_a_save() -> None:
+    # RELOAD FROM CHECKPOINT (0xA3000) adds one to the death count, then writes the block.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)  # the pause menu
+    home.see(at_pod(200, deaths=1), True, True, True, True)
+    assert not home.offer
+
+
+def test_a_save_right_after_a_menu_is_not_offered_but_the_next_is() -> None:
+    # The trade-off: a save whose last look before it was not in play reads as a reload.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)
+    home.see(at_pod(200), True, True, True, True)
+    assert not home.offer
+    home.see(at_pod(300), True, True, True, True)
+    assert home.offer
 
 
 def test_a_save_at_the_pod_is_offered_between_two_looks_in_play() -> None:
