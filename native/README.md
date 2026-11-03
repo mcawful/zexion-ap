@@ -873,20 +873,23 @@ side), no flash ("Map markers").
   palette and style, and the game frees them with the title.
 - **When:** while configured (by a client or from the cache) and no save is loaded, every 9th
   frame call (every one in English(HD), and at once when the language changes) it looks through
-  the game's draw list for the copyright line without the helper's lines. One that failed is
-  tried again on the next title. In English(HD) a menu's builder hides every glyph of the HD
+  the game's draw list for the copyright line without the helper's lines, and makes them only
+  while no menu is open (`menu_state` 0): made under one (a client configuring the helper with
+  the file select up), they would join the list after the menu's objects, over them. One that
+  failed is tried again on the next title. In English(HD) a menu's builder hides every glyph of the HD
   list, the lines' too (`docs/re/memory.md`, "Where a rebuilt label goes"), so they are shown
   again at the next frame call the title is up with no menu open (stand-in tests only).
 - **Shown:** while the game's © is shown, the hint only while no client is active. In
   English(HD) the two translated lines also only while no menu is open (`menu_state` 0): the
-  game's menus (Option, the file select) open over the title, which stays in the draw list,
+  file select (the title's key press opens it, and its OPTION MENU button opens Option over
+  it) opens over the title, which stays in the draw list,
   and the HD list is drawn over them, so the lines showed over those menus in the 1.0.0 RC
   (`docs/re/memory.md`, "The title screen"). They are hidden there with their count kept and
   not built again; any of the helper's lines found without the game's line are hidden too. The
   pixel lines (©2026 MCAWFUL, and every line in another language) follow the game's © as before.
   With `menu_state` unreadable the two translated lines stay hidden. `menu_state` reads 3 with
-  the file select up; with Option open from the title it is not measured (its builder sets it
-  as the file select's does). Whether a frame call between a menu closing and a load (or a new
+  the file select up; with Option up over it, and back on the file select after it, it is not
+  measured (the options builder stores 2 or has the widget set 3, never 0). Whether a frame call between a menu closing and a load (or a new
   game) starting sees `menu_state` 0 with the © still shown, and so shows the lines for a moment,
   is not known. Stand-in tests only, not run in game yet.
 - **Put back:** a client going away leaves them; an unload hides them (stand-in tests only).
@@ -896,7 +899,7 @@ side), no flash ("Map markers").
   label), centered on the screen, its pixel glyphs hidden, and shown and hidden in their place;
   ©2026 MCAWFUL stays in pixels, as the game's own copyright line does. In another language the
   pixel lines show again. The game's text destructor frees the translated glyphs with the
-  title (`docs/re/memory.md`, "The title screen"). Seen in game 2026-11-03 (B1, the 1.0.0 RC,
+  title (`docs/re/memory.md`, "The title screen"). Seen in game 2026-11-02 (B1, the 1.0.0 RC,
   develop d484024, `zexion_ap.dll` `6e5dcb1b…`, the owner's screenshots): the two lines stayed
   on screen after the title, over the Option menu, below the Option box and over the file
   select's bottom buttons (a bug, fixed since as under "Shown"; stand-in tests only).
@@ -1320,7 +1323,8 @@ unload.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
   that name (`files`: the disk count and the AP logo; `title`: also its two lines built in
   English(HD)'s font and back to pixels, hidden there under a menu (Option, the file select,
-  a client connecting meanwhile, English(HD) picked there), with `menu_state` unreadable and
+  a client connecting meanwhile, English(HD) picked there), none made under a menu, with
+  `menu_state` unreadable and
   with the game's line gone, and the default English's
   lines following the © whatever the menu; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and

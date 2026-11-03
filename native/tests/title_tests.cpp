@@ -481,6 +481,33 @@ void test_english_hd_picked_under_a_menu() {
     stand_in::reset_translation();
 }
 
+// The title with a menu already open over it when the helper is first configured (a client
+// connecting with the file select up): no lines made until the menu closes, in either language.
+void test_no_lines_made_under_a_menu() {
+    for (bool hd : {false, true}) {
+        stand_in::reset_translation();
+        zap::GameAddresses a = addresses();
+        if (hd) {
+            stand_in::load_translation("English(HD)", true);
+            stand_in::with_translation(a);
+        }
+        reset_title();
+        g_client = false;
+        g_menu = 3;
+        zap::TitleLines lines;
+        lines.set_version("1.0.0");
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        check(g_made == 0 && !lines.shown(),
+              hd ? "English(HD), a menu open: nothing made" : "a menu open: nothing made");
+        g_menu = 0;
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        BYTE* credit = find("C2026 MCAWFUL", true);
+        check(g_made == 3 && lines.shown() && credit != nullptr && all_visible(credit, true),
+              hd ? "English(HD), the menu closed: made" : "the menu closed: made");
+    }
+    stand_in::reset_translation();
+}
+
 // The default English keeps its rule: the lines follow the game's ©, a menu open or not.
 void test_the_default_english_ignores_menus() {
     reset_title();
@@ -501,6 +528,7 @@ int main() {
     test_the_lines_in_english_hd();
     test_the_hd_lines_off_the_title();
     test_english_hd_picked_under_a_menu();
+    test_no_lines_made_under_a_menu();
     test_the_default_english_ignores_menus();
     test_the_hint_only_without_a_client();
     test_lines_are_made_under_the_copyright();

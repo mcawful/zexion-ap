@@ -21,8 +21,9 @@
 // centered on the screen, its pixel glyphs hidden; the credit stays in pixels, as the game's
 // own copyright line does. The game's text destructor (0x92010) frees a text object's
 // translated glyphs with it. Those glyphs are drawn from the HD list, not the title's, and the
-// game's menus (Option, the file select) open over the title without clearing it, so they are
+// file select (and Option, from it) opens over the title without clearing it, so they are
 // shown only while no menu is open (menu_state 0) as well; the pixel ones follow the game's ©.
+// The lines are made only while no menu is open, so none join the list over a menu.
 #pragma once
 
 #include <windows.h>

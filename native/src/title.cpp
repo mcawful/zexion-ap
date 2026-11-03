@@ -239,10 +239,15 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
         last_error_.clear();  // a new title tries again
         return "";
     }
+    // No menu open over the title (menu_state 0; unreadable taken as one).
+    uint8_t menu = 0xFF;
+    const bool no_menu = read(a.menu_state, 0, menu) && menu == 0;
     // Once a title: a line that failed is not made again until the game's line goes and comes.
+    // Made only with no menu open: made under one (a client configuring the helper with the file
+    // select up), they would join the list after the menu's objects, over them.
     std::string why = last_error_;
     for (int k = 0; k < kLines && why.empty(); ++k) {
-        if (l.made[k] == nullptr) {
+        if (l.made[k] == nullptr && no_menu) {
             why = make_line(a, l.list, l.game_line, texts[k], k == kCredit, kLineY[k], l.made[k]);
         }
     }
@@ -259,8 +264,6 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     // not the title's (docs/re/memory.md, "The title screen"), so they are shown only while no
     // menu is open either: the game's menus open over the title, which stays in the list, and
     // the HD list is drawn over them.
-    uint8_t menu = 0xFF;
-    const bool no_menu = read(a.menu_state, 0, menu) && menu == 0;
     BYTE* g[kGameLineLength] = {};
     uint8_t visible = 0;  // the © unreadable: hidden
     if (!glyphs_of(l.game_line, kGameLineLength, g) || !read(g[0], sprite::kVisible, visible)) {
