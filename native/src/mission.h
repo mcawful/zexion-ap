@@ -47,8 +47,8 @@ constexpr int32_t kFadeDelay = 60;
 // after a save.
 constexpr int32_t kFadeMessageLeft = 150;
 // The most game frames the screen stays black after YES with no ending started (after_no):
-// GAME SAVED's length (0x1FC876, the longest message the ending waits for) with a margin for the
-// gap after the helper's last popup. Then it fades back in. Counted in game frames (GameFrames,
+// GAME SAVED's length (0x1FC876, as long as a popup of the helper's, the one thing the ending
+// still waits for: game_calls.cpp, watch_mission) with a margin for the gap after it. Then it fades back in. Counted in game frames (GameFrames,
 // game_mem.h): until 1.0.0's release candidate it counted the helper's frame calls, 180 of them,
 // about 1.1 s at 165 Hz, which could end the black before GAME SAVED did.
 constexpr int kDarkFrames = 240;

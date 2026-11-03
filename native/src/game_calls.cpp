@@ -432,6 +432,10 @@ void Game::pump_popups() {
         }
         text = popup_text(head, popup.suffix, kGamePopupWidth, &per_line);
     }
+    BYTE* last_before = nullptr;
+    int32_t seq_before = 0;
+    read(at_.last_message, 0, last_before);
+    read(at_.last_message, 8, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
@@ -451,12 +455,15 @@ void Game::pump_popups() {
     }
     popups_.erase(next);
     frames_since_popup_ = 0;
-    // The game made it its last message (0x182CEB to 0x182CFF): kept to tell it apart later.
+    // The game made it its last message (0x182CEB to 0x182CFF), with a new sequence number:
+    // kept to tell it apart later. A last message this call did not change is not taken for it.
     BYTE* last = nullptr;
+    int32_t sequence = 0;
     own_message_ = nullptr;
     if (read(at_.last_message, 0, last) && last == message &&
-        read(at_.last_message, 8, own_sequence_)) {
+        read(at_.last_message, 8, sequence) && (last != last_before || sequence != seq_before)) {
         own_message_ = last;
+        own_sequence_ = sequence;
     }
 }
 
@@ -897,15 +904,18 @@ void Game::watch_mission() {
     }
     // Idle: no popup to show here (one held for another save does not count), the helper's
     // last one kPopupGapFrames ago, and the game's last message down to kFadeMessageLeft
-    // frames; one of the helper's own popups (the game's last message still) is never cut short,
-    // nor any message by the ending after YES.
+    // frames; one of the helper's own popups (the game's last message still) is never cut short.
+    // After YES the ending waits for no message of the game's (GAME SAVED): the ending routine
+    // ends every message itself as it starts (0x1F9CE0, from 0x95103: the last message cleared
+    // and each slot's frames left 0, 0x1F9ED3 to 0x1F9F41), so the screen stays black only a
+    // frame or two, not the rest of GAME SAVED with the player in play under it.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
     // Kept black after YES: a popup waiting is shown first, so the screen fades back in for it
     // (as before the black), and the ending follows the popups.
     if (waiting && mission_.dark()) mission_.end_dark(at_);
-    bool whole = own_popup_up() || mission_.ending();
-    int32_t left = whole ? 1 : kFadeMessageLeft;
+    const bool own = own_popup_up();
+    int32_t left = own ? 1 : mission_.ending() ? INT32_MAX : kFadeMessageLeft;
     bool idle = in_play() && !waiting && popup_frames_left() <= left &&
                 frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle, away_from_home());

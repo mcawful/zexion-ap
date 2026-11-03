@@ -237,7 +237,7 @@ black after it, until the helper's wrapper has run the ending routine), and whil
 routine or that wrapper is the game's transition with the ending's patch in place: an unload
 would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
-a few frames, longer while received items' popups or a message hold the ending after YES.
+a few frames, longer while received items' popups (the helper's own) hold the ending after YES.
 Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
 `reload_spam.txt`): `/reload_mod` sent every half second from the open prompt through YES,
 refused as a menu open while the prompt showed, then twice as the ending on its way while five
@@ -558,7 +558,11 @@ the helper:
   game opens it as SKIP ESCAPE AND FINAL BATTLE?: it runs the game's fade to black (area event
   3667, checked byte for byte, through the game's handler for its type) and sets its opener as the transition 60 frames away (the
   pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
-  through the game's NO and then starts the ending once no message shows; NO fades the screen back
+  through the game's NO and then starts the ending once no popup of the helper's shows (one up
+  is never cut short; a message of the game's, GAME SAVED, does not hold it: the ending routine
+  ends every message itself as it starts, `docs/re/memory.md`, "The mission prompt"; until then
+  the ending also waited for GAME SAVED, up to about 1.5 s of black in which the player could
+  still move and pause, the owner's report, 2026-11-02); NO fades the screen back
   in, as the game's NO does there. NO's close puts back, inside its call, the fade the prompt's
   builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`, "The
   mission prompt"), so right after it YES turns that fade off with the screen still black (the
@@ -582,10 +586,11 @@ the helper:
   `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …`
   note: another fade, the ending not faded in or with the fade no longer the helper's), for a
   live check. In the release candidate the owner saw the screen fade back into play at the pod
-  for a moment before the ending (its retest, 2026-11-02): the limit above running out first is
-  the likelier cause, by disassembly; the other is the ending routine itself, which sets the
-  level to 4 as it warps the player to the ending's first scene, in a frame the game draws before
-  the helper's frame call (`docs/re/memory.md`, "The mission prompt"; neither compared in game).
+  for a moment before the ending (its retest, 2026-11-02): the limit above running out first was
+  the cause (by disassembly, then measured in game with this fix, 2026-11-02: `docs/re/memory.md`,
+  "The mission prompt"); the other one found is the ending routine itself, which sets the level
+  to 4 as it warps the player to the ending's first scene, in a frame the game draws before the
+  helper's frame call (not seen in game).
   For that one the helper starts the ending through a wrapper of its own, set as
   the transition with timer 1 in the routine's place: the game runs it, it runs the game's
   routine, and, while the black is still the helper's, it sets the level back to black at once
@@ -605,9 +610,11 @@ the helper:
   (`native/tests/mission_tests.cpp`, `game_tests.cpp`); run in game 2026-11-02 (B1,
   `zexion_ap.dll` `946b08a1…`, English(HD), `lab/ap/live50` slot 8, past its ending, and
   `lab/ap/live52` slot 9, before it): after YES the screen went black, then faded back into play
-  at the pod for a moment before the ending began, on both saves (a bug, fixed since and not yet
-  run in game: the causes above; the limit in game frames and the fade in from black are
-  stand-in tests only). Working: the ending played again on the save past it, with nothing new sent and the
+  at the pod for a moment before the ending began, on both saves (a bug, the causes above; fixed
+  since, working in game 2026-11-02, B1, `zexion_ap.dll` `d179d32d…`, `lab/ap/live52`, a new
+  game in lab slot 11, its first ending and a replay: black until the ending, then straight into
+  it, the limit's running out measured as the cause; the ending starting with GAME SAVED up, since,
+  is stand-in tests only, not run in game). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups
   shown on the next load; a death received during the first ending dropped; the pause opened
@@ -1214,7 +1221,7 @@ unload.
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
   game's last message, however many frame calls pass, the ending after YES
-  waiting for the last message, and the ending's wait that an unload refuses for; the screen
+  starting with a message of the game's still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for; the screen
   kept black after YES, a popup waiting bringing it back in, received deaths refused (`RETURN
   HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
   until another save is loaded). `mission` covers the black after YES on its own: kept, not

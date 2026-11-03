@@ -1672,8 +1672,28 @@ void test_return_home_lapses_away_from_the_pod() {
           "put off, the death's fade not turned back");
     field<int16_t>(0xCEA) = 48;
 
-    // YES: the ending waits for the game's last message to end, not just its last
-    // kFadeMessageLeft frames.
+    // The helper's own popup the last message after YES: the ending waits for its end.
+    m.again();
+    g_slots_live = true;
+    g_message_is_last = true;
+    BYTE* popup = g_slots + 0x1628 * g_message_slot;
+    g_last_message = {nullptr, 0};  // GAME SAVED over
+    int shown = g_messages;
+    apply(game, "apply\npopup 36 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == shown + 1 && g_last_message.last == popup, "the helper's popup up");
+    game.mission_yes();
+    put<int32_t>(popup, 0x1EC, 2);
+    game.watch_all(&chosen);
+    check(g_transition_fn == g_routine_table[zap::kIdleRoutine],
+          "with the helper's popup up: the ending waits");
+    put<int32_t>(popup, 0x1EC, 1);
+    game.watch_all(&chosen);
+    check(g_transition_fn == m.hooks.mission_end, "then comes as it ends");
+    g_slots_live = false;
+    g_message_is_last = false;
+    // YES: the ending waits for no message of the game's (GAME SAVED: the ending routine ends
+    // every message itself, 0x1F9CE0), but for one of the helper's own popups to end.
     m.again();
     check(!game.ending_pending() && game.unload_refusal() == nullptr, "nothing pending");
     g_menu = 2;
@@ -1682,18 +1702,13 @@ void test_return_home_lapses_away_from_the_pod() {
     game.mission_yes();
     check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
           "YES: the ending pending, and an unload refuses");
-    message_showing(zap::kFadeMessageLeft);
+    message_showing(150);  // GAME SAVED, 30 frames in
     game.watch_all(&chosen);
-    check(g_transition_fn == g_routine_table[zap::kIdleRoutine] &&
-              game.mission_status() == "yes: ending when idle",
-          "not with kFadeMessageLeft frames of a message left");
-    message_showing(1);
-    game.watch_all(&chosen);
-    check(g_transition_fn == m.hooks.mission_end &&
-              game.mission_status() == "ending started",
-          "once it has ended");
+    check(g_transition_fn == m.hooks.mission_end && game.mission_status() == "ending started",
+          "with the game's message still up: the ending at once");
     check(!game.ending_pending() && game.unload_refusal() == nullptr,
           "started, with no ending patch: nothing an unload would undo");
+
     game.put_back_all(&chosen);
 }
 
