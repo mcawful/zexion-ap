@@ -327,15 +327,18 @@ class ZexionWorld(World):
         """Place items that open the way out of what the starting items reach, one step at a
         time, until this player's starting state reaches START_REACH of its locations that are
         not excluded (or all of them; excluded locations take no progression, so they do not
-        count): at each step an item of this player's in ``progitempool`` that reaches more,
-        drawn at random, or where none does alone, two that do together, each locked in an
-        empty location of this player's that the state already reaches, and taken out of
-        ``progitempool`` and ``fill_locations``. Archipelago calls this in its main fill
-        (fill_hook), after plando and early items and before it places progression, which then
-        starts from that reach. From a few locations it could fill them with Missile Containers
-        and fail, with "No more spots to place" (docs/re/locations.md, "Which start rooms the
-        world offers" and "Where the world departs from the game"). Each item goes only where
-        the state already reaches it, so the placed items can always be collected."""
+        count): at each step an item in ``progitempool`` of this player's, or of an item link
+        it is in, that reaches more, drawn at random among those that one of this player's
+        empty locations the state reaches can take (``can_fill``: not an item its
+        non_local_items or an item rule keeps out), or where none does alone, two that do
+        together, each locked in such a location and taken out of ``progitempool`` and
+        ``fill_locations``. Archipelago calls this in its main fill (fill_hook), after plando
+        and early items and before it places progression, which then starts from that reach.
+        From a few locations it could fill them with Missile Containers and fail, with "No more
+        spots to place" (docs/re/locations.md, "Which start rooms the world offers" and "Where
+        the world departs from the game"). Each item goes only where the state already reaches
+        it, so the placed items can always be collected. Where no item can be placed that opens
+        more, it stops short, with a warning naming the cause."""
         multiworld, player = self.multiworld, self.player
         mine = [
             loc
@@ -348,50 +351,108 @@ class ZexionWorld(World):
             reached = [loc for loc in mine if loc.can_reach(state)]
             if len(reached) >= min(START_REACH, len(mine)):
                 return
-            step = self.opening_step(state, mine, len(reached), progitempool)
             empty = [loc for loc in reached if loc.item is None]
-            if not step or len(empty) < len(step):
+            step = self.opening_step(state, mine, len(reached), progitempool, empty)
+            if not step:
+                if not empty:
+                    why = "every one of those locations is excluded or already filled (plando)"
+                elif self.openers_alone(state, mine, len(reached), progitempool):
+                    why = (
+                        "every item that reaches more alone is kept out of those locations "
+                        "(non_local_items or an item rule)"
+                    )
+                else:
+                    why = (
+                        "no item reaches more alone, and too few of those locations are free "
+                        "(not excluded or filled by plando) for two that do together, or none do"
+                    )
+                logging.warning(
+                    f"Zexion ({self.player_name}): the starting items reach {len(reached)} of "
+                    f"their locations, fewer than {START_REACH}, and {why}; Archipelago's fill "
+                    f'may stop with "No more spots to place"'
+                )
                 return
-            for item in step:
-                spots = [loc for loc in empty if loc.can_fill(state, item)]
-                if not spots:
-                    return
-                spot = self.random.choice(spots)
-                empty.remove(spot)
+            for item, spot in step:
                 progitempool.pop(next(i for i, x in enumerate(progitempool) if x is item))
                 fill_locations.pop(next(i for i, x in enumerate(fill_locations) if x is spot))
                 spot.place_locked_item(item)
             state.sweep_for_advancements()
 
     def opening_step(
-        self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
-    ) -> list[Item]:
-        """Items of this player's in ``pool`` that, collected into ``state``, reach more of
-        ``mine`` than ``reached``: one drawn at random among those that do alone, or else a pair
-        drawn among those that do together; empty when none does."""
-        first: dict[str, list[Item]] = {}
-        for item in pool:
-            if item.player == self.player and item.advancement:
-                first.setdefault(item.name, []).append(item)
-        names = sorted(first)
+        self,
+        state: CollectionState,
+        mine: list[Location],
+        reached: int,
+        pool: list[Item],
+        empty: list[Location],
+    ) -> list[tuple[Item, Location]]:
+        """Items in ``pool`` of this player's, or of an item link it is in, that, collected into
+        ``state``, reach more of ``mine`` than ``reached``, each with a location of ``empty``
+        that can take it: one drawn at random among those that do alone, or else a pair drawn
+        among those that do together, in two locations; empty when none does."""
+        first = self.by_kind(pool)
+        spots = {
+            key: [loc for loc in empty if loc.can_fill(state, items[0])]
+            for key, items in first.items()
+        }
+        keys = sorted(key for key in first if spots[key])
 
         def opens(items: list[Item]) -> bool:
-            more = state.copy()
-            for item in items:
-                more.collect(item, True)
-            return sum(1 for loc in mine if loc.can_reach(more)) > reached
+            return self.opens(state, mine, reached, items)
 
-        alone = [n for n in names if opens(first[n][:1])]
+        alone = [key for key in keys if opens(first[key][:1])]
         if alone:
-            return first[self.random.choice(alone)][:1]
-        pairs = [
-            first[a][:1] + first[b][:1] if a != b else first[a][:2]
-            for i, a in enumerate(names)
-            for b in names[i:]
-            if a != b or len(first[a]) > 1
-        ]
-        together = [pair for pair in pairs if opens(pair)]
-        return self.random.choice(together) if together else []
+            key = self.random.choice(alone)
+            return [(first[key][0], self.random.choice(spots[key]))]
+        pairs = []
+        for i, a in enumerate(keys):
+            for b in keys[i:]:
+                items = first[a][:2] if a == b else first[a][:1] + first[b][:1]
+                if len(items) < 2 or len({id(loc) for loc in spots[a] + spots[b]}) < 2:
+                    continue
+                if opens(items):
+                    pairs.append((a, b, items))
+        if not pairs:
+            return []
+        a, b, (one, two) = self.random.choice(pairs)
+        first_spot = self.random.choice([s for s in spots[a] if any(t is not s for t in spots[b])])
+        second_spot = self.random.choice([t for t in spots[b] if t is not first_spot])
+        return [(one, first_spot), (two, second_spot)]
+
+    def by_kind(self, pool: list[Item]) -> dict[tuple[int, str], list[Item]]:
+        """The progression items in ``pool`` of this player's, or of an item link it is in, by
+        owner and name."""
+        groups = self.multiworld.groups
+        owners = {self.player} | {
+            g for g, group in groups.items() if self.player in group["players"]
+        }
+        out: dict[tuple[int, str], list[Item]] = {}
+        for item in pool:
+            if item.player in owners and item.advancement:
+                out.setdefault((item.player, item.name), []).append(item)
+        return out
+
+    def opens(
+        self, state: CollectionState, mine: list[Location], reached: int, items: list[Item]
+    ) -> bool:
+        """Whether ``items``, collected into a copy of ``state``, reach more of ``mine`` than
+        ``reached``."""
+        more = state.copy()
+        for item in items:
+            more.collect(item, True)
+        if any(item.player != self.player for item in items):
+            more.sweep_for_advancements()  # a link's items reach its players through events
+        return sum(1 for loc in mine if loc.can_reach(more)) > reached
+
+    def openers_alone(
+        self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
+    ) -> list[str]:
+        """The names of the items in ``pool`` (``by_kind``) that reach more alone, wherever
+        they could be placed: for the warning when none can be."""
+        kinds = self.by_kind(pool)
+        return sorted(
+            n for (_, n), items in kinds.items() if self.opens(state, mine, reached, items[:1])
+        )
 
     @property
     def disc_hunt(self) -> bool:

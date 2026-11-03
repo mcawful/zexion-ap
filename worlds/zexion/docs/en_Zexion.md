@@ -120,11 +120,16 @@ room as the game's Random Start does. The spoiler log names the start room (and 
 teleport to, with Double Teleport, as in OHKO) and the starting items, Standard's weapon among
 them.
 
-In any game, alone or in a multiworld, the few items that open your start area are placed in
-your own start area: until your starting items reach 20 of your locations, the generator places
-one of your items that opens more (or two that open more together) in a location you can
-already reach, then fills the rest as usual. From a room where your starting items reach only
-one or two locations, that may be several items in a row.
+In any game, alone or in a multiworld, the few items that open your start are placed in your own
+world, in the area around your start: until your starting items reach 20 of your locations that
+are not excluded, the generator places one of your items that opens more (or two that open more
+together) in a location you can already reach, then fills the rest as usual. From a room where
+your starting items reach only one or two locations, that may be several items in a row. An item
+shared by an item link you are in counts as yours. An item in your `non_local_items` is not
+placed this way, since it must go to another world. If every item that opens your start alone
+is in it, or if you exclude (or fill by plando) every location your starting items reach, or so
+many of them that two items that open it only together no longer fit, the generator logs a
+warning naming which, and generation may fail.
 
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,

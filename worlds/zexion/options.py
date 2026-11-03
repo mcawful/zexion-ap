@@ -391,8 +391,12 @@ def _make_start_room() -> type[Choice]:
         "menu: a room from which your starting items reach no location, or every item does\n"
         "not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is\n"
         "refused. automatic (the default): landing_pod, or a random start where that room is\n"
-        "refused. In any game, alone or in a multiworld, the few items that open your start\n"
-        "area are placed in your own start area."
+        "refused. In any game, alone or in a multiworld, the few items that open your start are\n"
+        "placed in your own world, in the area around your start: each where you can already\n"
+        "reach it. Items your non_local_items keep out of your world are not. If every item\n"
+        "that opens your start alone is, or you exclude or plando every location your starting\n"
+        "items reach, or so many that two items that open it together no longer fit, the\n"
+        "generator warns, naming which, and generation may fail."
     )
 
     @classmethod
