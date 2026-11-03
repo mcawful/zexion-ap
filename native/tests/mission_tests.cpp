@@ -670,6 +670,41 @@ void test_the_endings_wrapper_is_never_left_behind() {
         check(g_fn == kEnding && m.started() && !m.ending(), "not asked again: it runs");
     }
     {
+        // A door in the wrapper's place, then an unload (the client gone) in the same frame:
+        // not asked again later.
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.watch(a, true);
+        g_fn = reinterpret_cast<void*>(&door_routine);
+        g_timer = 70;
+        m.restore(a);
+        check(!m.holds_hook() && g_fn == reinterpret_cast<void*>(&door_routine), "left alone");
+        g_fn = kIdle;
+        g_timer = 0;
+        m.watch(a, true);
+        check(g_fn == kIdle && !m.ending(), "and no ending asked again");
+    }
+    {
+        // The wrapper called again (a pause press with it left at timer 0) or after the save
+        // was left: taken off, the routine not run a second time.
+        Prompt prompt;
+        zap::GameAddresses a = addresses();
+        zap::MissionPrompt m = yes_pressed(a);
+        m.watch(a, true);
+        frame(m, a);
+        g_fn = a.hooks.mission_end;
+        g_timer = 0;
+        m.end(a);
+        check(g_endings == 1 && g_fn == kIdle && !m.holds_hook(), "called again: taken off");
+        zap::MissionPrompt n = yes_pressed(a);
+        n.watch(a, true);
+        n.left_save();
+        frame(n, a);
+        check(g_endings == 1 && g_fn == kIdle && !n.holds_hook(),
+              "after the save was left: taken off, no ending");
+    }
+    {
         Prompt prompt;
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);

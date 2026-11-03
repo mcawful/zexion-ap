@@ -352,9 +352,13 @@ void MissionPrompt::after_no(const GameAddresses& a) {
 
 void MissionPrompt::end(const GameAddresses& a) {
     auto ending = reinterpret_cast<void (*)()>(routine(a, kEndingRoutine));
+    bool asked = queued_;
     queued_ = false;
     bool black = false;
-    if (ending == nullptr) {
+    if (!asked) {
+        // Not set by this helper since (left_save, restore), or called again from a pause press
+        // after a swap below failed: only taken off, never the ending a second time.
+    } else if (ending == nullptr) {
         // Gone from the table since it was set: asked again once idle (the black, if kept,
         // ends after kDarkFrames as before).
         started_ = false;
@@ -368,9 +372,11 @@ void MissionPrompt::end(const GameAddresses& a) {
     }
     // The routine sets 0x948A0 as the transition as it ends (0x952FE). The wrapper still there
     // (not as traced, or no routine): the idle routine, not a wrapper the game would call again.
+    // An unreadable transition counts as still held (an unload then refuses).
     void* fn = nullptr;
-    end_set_ = read(a.transition_fn, 0, fn) && fn == a.hooks.mission_end &&
-               !swap_pointer(a.transition_fn, 0, a.hooks.mission_end, routine(a, kIdleRoutine));
+    end_set_ = !read(a.transition_fn, 0, fn) ||
+               (fn == a.hooks.mission_end &&
+                !swap_pointer(a.transition_fn, 0, a.hooks.mission_end, routine(a, kIdleRoutine)));
     // It sets the level to 4 (0x95230) and warps the player to the ending's first scene
     // (0x1D2850); the frame is drawn after this returns, before the helper's frame call. With no
     // menu open (0x92A60 then returns at once, 0x92A8C) nothing puts a level back after it, and
@@ -439,8 +445,13 @@ void MissionPrompt::restore(const GameAddresses& a) {
         // The ending's wrapper not run yet: the game's routine in its place, so the ending still
         // comes (without the fade in). Kept if it reads as the wrapper but can't be written.
         void* fn = nullptr;
-        if (!read(a.transition_fn, 0, fn) || fn != a.hooks.mission_end) {
-            end_set_ = false;  // gone: watch's next look would have said so
+        if (!read(a.transition_fn, 0, fn)) {
+            // Not known: still held, so an unload refuses.
+        } else if (fn != a.hooks.mission_end) {
+            // Another transition in its place: not asked again from here (cancel has dropped
+            // the ending; watch would otherwise ask for it once more).
+            end_set_ = false;
+            queued_ = false;
         } else if (swap_pointer(a.transition_fn, 0, a.hooks.mission_end,
                                 routine(a, kEndingRoutine))) {
             end_set_ = false;

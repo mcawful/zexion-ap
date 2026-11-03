@@ -173,7 +173,8 @@ line says.
   of fading back into play first: not working in game, the same run, on that save and on one
   before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending.
   The ending routine sets the level back to 4 itself, in a frame the game draws before the
-  helper's frame call (`docs/re/memory.md`, "The mission prompt"); since, the helper runs the
+  helper's frame call (by disassembly, `docs/re/memory.md`, "The mission prompt"; how many
+  frames the pod showed was not measured); since, the helper runs the
   routine through a wrapper that puts the black back before that frame is drawn and fades in
   from it: stand-in tests only, not run in game (`native/README.md`, "The OS Install Disks
   goal").

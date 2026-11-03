@@ -240,7 +240,9 @@ a few frames, longer while received items' popups or a message hold the ending a
 Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
 `reload_spam.txt`): `/reload_mod` sent every half second from the open prompt through YES,
 refused as a menu open while the prompt showed, then twice as the ending on its way while five
-received items' popups held it; the helper stayed, and the ending ran and sent the goal.
+received items' popups held it; the helper stayed, and the ending ran and sent the goal. That
+run was before the ending's wrapper: its refusal and its put back on unload are stand-in tests
+only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload sets again, in the next frame call and before any
@@ -555,9 +557,10 @@ the helper:
   black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
   drops it. The ending routine sets the level to 4 itself as it warps the player to the
-  ending's first scene, and the game draws that frame before the helper's frame call, so in the
-  1.0.0 release candidate the Landing Pod showed for a moment between the black and the ending
-  (its retest, 2026-11-02). So the helper starts the ending through a wrapper of its own, set as
+  ending's first scene, and the game draws that frame before the helper's frame call (by
+  disassembly: `docs/re/memory.md`, "The mission prompt"); in the 1.0.0 release candidate the
+  Landing Pod showed for a moment between the black and the ending (its retest, 2026-11-02; how
+  many frames was not measured). So the helper starts the ending through a wrapper of its own, set as
   the transition with timer 1 in the routine's place: the game runs it, it runs the game's
   routine, and, while the black is still the helper's, it sets the level back to black at once
   (event 3667 aimed from −1 to 4, a step every 8 frames, `kEndingFadeStep`) before that frame is
