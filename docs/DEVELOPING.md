@@ -112,6 +112,8 @@ line says.
     teleported to; Gates Open, three gates working without keys and R'Talva's appearing only
     after a boss; Gates Off with the core goal, the core taken with the four keys under
     Abridged Finale and the goal sent: 2026-10-28.
+  - Gates Vanilla made Unlocked by the disks goal: a gate lighting up when visited, then the
+    warp at a second gate visited, used with no keys: 2026-11-02 (`lab/ap/live52`).
   - Guns First off: each upgrade, picked up or received, set only its own byte, and a reload
     gave back only what the save lost: 2026-10-28.
   - Secret Shuffle: the client taking the 155-entry list as the seed's, and the 155th location,
@@ -140,6 +142,8 @@ line says.
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
+  A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
+  and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.
@@ -171,14 +175,15 @@ line says.
   offer after each save at the pod, YES replaying the ending with nothing sent, an item sent
   during it shown on the next load). YES going into the ending with the screen kept black instead
   of fading back into play first: not working in game, the same run, on that save and on one
-  before its ending (`lab/ap/live52`): black, then faded back into play at the pod for a moment,
-  then the ending (the owner's report). Two causes fit, by disassembly, neither compared in game
-  (`docs/re/memory.md`, "The mission prompt"): the black's 180-frame limit, which counted the
-  helper's frame calls (166 a second at 165 Hz against the game's 60) and so could end before
-  GAME SAVED and the ending did, the likelier; and the ending routine's own level 4, in a frame
-  the game draws before the helper's frame call. Since, the limit counts game frames (240), the
-  ending runs through a wrapper that puts the black back before that frame is drawn and fades
-  in from it, and `mission_black` says how the black ended: stand-in tests only, not run in game
+  before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending
+  (the owner's report: it faded back into play). Fixed since, not yet run in game. Two causes
+  fit, by disassembly, neither compared in game (`docs/re/memory.md`, "The mission prompt"): the
+  black's 180-frame limit, which counted the helper's frame calls (166 a second at 165 Hz
+  against the game's 60) and so could end before GAME SAVED and the ending did, the likelier;
+  and the ending routine's own level 4, in a frame the game draws before the helper's frame
+  call. Since, the limit counts game frames (240), the ending runs through a wrapper that puts
+  the black back before that frame is drawn and fades in from it, and `mission_black` says how
+  the black ended: stand-in tests only, not run in game
   (`native/README.md`, "The OS Install Disks goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
@@ -237,15 +242,18 @@ line says.
 - The game's translations (English(HD) above all): the mod's popups, notices, ARCHIPELAGO,
   RETURN HOME WITH THE DISKS?, the equipment screen's disk, the stand-ins' names and the
   scanner's line in the translation's font (ASSIST, the pause row's count, the Feats note and
-  the helper's icons too since that run, not run in game since; in the pixel font then)
+  the helper's icons too since that run, working in the run after; in the pixel font then)
   ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
   translation but English(HD) (`ticks.language_tick`): run in game 2026-11-02 (B1,
   `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): popups, notices, the stand-ins' names, the
   equipment screen's disk, RETURN HOME's question and the pixel-font parts showed in
   English(HD), popups in French and Japanese, and the warning once, for French; ARCHIPELAGO's
-  label, the question's place, the equipment description's width and ASSIST's padlock are bugs
-  (fixed since, not run in game since), and the scanner's line was not run
-  (`native/README.md`, "Translations", "Run in game"). Before them, 1.0.0's release candidate in
+  label, the question's place, the equipment description's width and ASSIST's padlock are bugs,
+  fixed since and working in game later that day (`zexion_ap.dll` `946b08a1…`, with the HD
+  icons, the pause row's count, the locked ASSIST and the Feats note in the HD font; new bugs
+  then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, the logo on
+  the map cursor), and the scanner's line was not run (`native/README.md`, "Translations", "Run
+  in game" and "Run in game again"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
   not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
 
