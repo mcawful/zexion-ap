@@ -569,7 +569,8 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   `+0x32E`) draws logo frame 63 in its own palette while it waits for the boss (flag 154 clear),
   empty in the game's art, so it showed the helper's logo swaying in the gate's center; after the
   boss it is location 81's reward display (`docs/re/memory.md`, "Other players' items"). While
-  the stand-ins are restyled and flag 154 is clear, every frame call hides it (clears its shown
+  the stand-ins are restyled (with any labels, other Zexion players' items among them or not) and
+  flag 154 is clear, every frame call hides it (`ItemLooks::hide_marker`, apart from the dressing) (clears its shown
   byte, `+0x120`, which the draw loop skips and its own update leaves; its frame, frame list and
   palette stay the game's), but only if the game shows it. It is not counted as a stand-in for
   naming them. It is shown again, on whatever frame, the frame call after flag 154 is set or it

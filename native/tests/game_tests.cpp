@@ -949,6 +949,21 @@ void test_the_marker_hidden() {
     check(shown(20) == 0, "hidden");
     game.restore_ap_items();
     check(shown(20) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
+
+    // A multiworld with no other Zexion player: labels, none of them an item to dress (no "@N").
+    std::map<int, zap::Label> plain;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", plain);
+    game.set_labels(plain);
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));  // no item-pool stand-in dressed either
+    marker(20, 606, 63);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(20) == 0 && game.looks().hidden_markers() == 1,
+          "hidden with no Zexion item to dress");
+    g_flags[154] = 1;
+    game.watch_ap_items();
+    check(shown(20) == 1, "and shown again on the flag");
+    g_flags[154] = 0;
+    game.restore_ap_items();
 }
 
 void test_zexion_items_show_as_themselves() {

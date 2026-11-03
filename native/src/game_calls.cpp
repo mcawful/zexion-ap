@@ -1414,6 +1414,7 @@ void Game::watch_ap_items() {
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
         looks_.scan(at_, base);
+        looks_.hide_marker(at_, base);  // whatever the labels: the logo is painted
         looks_.apply(at_, pool, base);
     } else {
         looks_.restore(at_);

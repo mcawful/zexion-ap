@@ -46,6 +46,18 @@ bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t c
     return true;
 }
 
+// Which stand-ins' records the helper has restyled now (one logo frame each): their logos are
+// painted, and their objects may be dressed.
+void restyled_stand_ins(const BYTE* records, bool (&ours)[kStandInCount]) {
+    for (int i = 0; i < kStandInCount; ++i) {
+        BYTE r[record::kSize];
+        ours[i] = records != nullptr &&
+                  safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
+                  field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
+                  field<int16_t>(r, record::kFrames) == 1;
+    }
+}
+
 // The object drawn in the look's palette, if it is not already (`seen`: its copy).
 void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
     if (field<BYTE*>(seen, sprite::kPalette) == look.palette_object) return;
@@ -158,13 +170,8 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
     // The stand-ins' records as they are now: an object is dressed only while its record shows
     // the one logo frame the shift is worked out from (restyled by apitem.h), so the game's
     // frame plus the shift always stays in the frame list.
-    auto restyled = [&](int i) {
-        BYTE r[record::kSize];
-        return safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
-               field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
-               field<int16_t>(r, record::kFrames) == 1;
-    };
-    const bool ours[kStandInCount] = {restyled(0), restyled(1)};
+    bool ours[kStandInCount];
+    restyled_stand_ins(records, ours);
     for (int slot = 0; slot < kSlots; ++slot) {
         const BYTE* seen = pool + slot * obj::kItemSize;
         BYTE* object = at.item_pool + slot * obj::kItemSize;
@@ -239,38 +246,55 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     }
 }
 
-void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette,
-                              BYTE* records, int64_t clock, const bool (&ours)[2]) {
+void ItemLooks::hide_marker(const GameAddresses& at, BYTE* base) {
     if (at.object_pool == nullptr) return;
+    BYTE* standin_palette = stand_ins_palette(at);
+    bool ours[kStandInCount];
+    restyled_stand_ins(pointer_at(at.item_records), ours);
     const bool waits = marker_waits(at);
     for (int slot : flipped_slots_) {
         BYTE* object = at.object_pool + slot * obj::kGeneralSize;
         BYTE seen[obj::kGeneralSize];
-        Dressed& d = flipped_dressed_[slot];
         Hidden& h = hidden_[slot];
         if (!safe_read(object, seen, sizeof(seen))) {
-            d = {};
             h = {};
+            continue;
+        }
+        const int32_t spawn = field<int32_t>(seen, obj::kSpawn);
+        if (h.spawn != 0 && h.spawn != spawn) h = {};  // another object now: not ours to put back
+        const int stand_in = logo_index(field<int32_t>(seen, sprite::kFrameIndex));
+        // Hidden while it waits on the helper's logo frame, if the game shows it (one the game
+        // hid is left to the game); shown again otherwise, whatever its frame.
+        if (base != nullptr && shows_stand_in(seen, base) &&
+            is_marker(slot, seen, standin_palette) && stand_in >= 0 && ours[stand_in] && waits) {
+            if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
+                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
+                h = {spawn};
+            }
+        } else {
+            unhide(object, seen, h);
+        }
+    }
+}
+
+void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette,
+                              BYTE* records, int64_t clock, const bool (&ours)[2]) {
+    if (at.object_pool == nullptr) return;
+    for (int slot : flipped_slots_) {
+        BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+        BYTE seen[obj::kGeneralSize];
+        Dressed& d = flipped_dressed_[slot];
+        if (!safe_read(object, seen, sizeof(seen))) {
+            d = {};
             continue;
         }
         int32_t spawn = field<int32_t>(seen, obj::kSpawn);
         if (d.spawn != 0 && d.spawn != spawn) d = {};
-        if (h.spawn != 0 && h.spawn != spawn) h = {};  // another object now: not ours to put back
         // Which stand-in: the logo frame the game computed from its record.
         int32_t frame = field<int32_t>(seen, sprite::kFrameIndex);
         const int stand_in = logo_index(frame);
-        // The marker: hidden while it waits on the helper's logo frame, shown again otherwise.
-        // Hidden only if the game shows it: one the game hid is left to the game.
-        if (shows_stand_in(seen, base) && is_marker(slot, seen, standin_palette)) {
-            if (stand_in < 0 || !ours[stand_in] || !waits) {
-                unhide(object, seen, h);
-            } else if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
-                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
-                h = {spawn};
-            }
-            continue;
-        }
-        unhide(object, seen, h);  // no longer a marker on a logo frame: shown again
+        // The marker is no stand-in to dress (hide_marker hides it).
+        if (shows_stand_in(seen, base) && is_marker(slot, seen, standin_palette)) continue;
         int item = item_at(seen[obj::kGeneralRow], seen[obj::kGeneralColumn]);
         if (!shows_stand_in(seen, base) || stand_in < 0 || !ours[stand_in] || item < 0) {
             undress(object, seen, d, base, standin_palette, true);

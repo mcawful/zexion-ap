@@ -16,7 +16,8 @@
 // R'Talva X34 Y51's marker (type 1146, its first state 8210) draws the logo frame 63 in its own
 // palette while it waits for the boss (flag 154 clear): empty in the game's art, it would show the
 // helper's logo (docs/re/memory.md, "Other players' items"). After the boss it becomes location
-// 81's reward display. While the stand-ins are restyled and flag 154 is clear, it is hidden every
+// 81's reward display. While the stand-ins are restyled (whatever the labels: the logo is
+// painted for any) and flag 154 is clear, it is hidden every
 // frame (its shown byte cleared, which the draw loop skips and its own update leaves); it is shown
 // again, on whatever frame, as soon as it no longer is such a marker (the flag set, another
 // frame), and when the stand-ins are put back or the helper unloads.
@@ -47,6 +48,11 @@ public:
     // finds the general objects showing a stand-in's logo (flipped_slots), and puts back any it
     // dressed that no longer shows one.
     void scan(const GameAddresses& at, BYTE* base);
+
+    // Game thread, every frame while the stand-ins are restyled, after scan, whatever the labels:
+    // R'Talva X34 Y51's marker among the scan's objects hidden while it waits on a painted logo
+    // frame, shown again otherwise (above).
+    void hide_marker(const GameAddresses& at, BYTE* base);
 
     // Game thread: puts back every object it dressed that is still that spawn; forgets them.
     void restore(const GameAddresses& at);
