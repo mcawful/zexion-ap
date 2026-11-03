@@ -587,6 +587,15 @@ void test_the_title_in_a_translations_font() {
         put<double>(hd.glyphs[i], 0xC0, 4.0);
     }
     put<double>(screen.glyphs[0], 0x40, 8.0);
+    // The font measured as the builder lays it out: every character 6 wide, a space 3 (a
+    // stand-in pixel font, as translation_tests' popup layout).
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);
     // The game's title, one line, its middle at y 33.
     built(screen.label, 7.0, 30.0);
     check(zap::rebuild_label(a, screen.label, L"Feats of Natu!", {.wrap = true}), "the game's");
@@ -595,10 +604,12 @@ void test_the_title_in_a_translations_font() {
     check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(),
           "the note in the pixel glyphs, as ever");
     const int32_t n = get<int32_t>(screen.label, 0x248);
+    // The title (78 wide) centered on the note (186) with 18 spaces: half of 108, over 3.
     check(!g_builds.empty() &&
-              g_builds.back().text == L"Feats of Natu!\nArchipelago save: no Feats earned" &&
+              g_builds.back().text == std::wstring(18, L' ') +
+                                          L"Feats of Natu!\nArchipelago save: no Feats earned" &&
               g_builds.back().flag == 1 && !zap::pixel_glyphs_shown(screen.label),
-          "the title and the note under it in the translation's font, wrapped as the game's");
+          "the title centered over the note in the translation's font, wrapped as the game's");
     check((hd.y(0) + hd.y(n - 1)) / 2 == middle,
           "kept at the middle the game's title had (its lines about it)");
     const size_t builds = g_builds.size();

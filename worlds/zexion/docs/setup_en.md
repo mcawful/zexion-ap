@@ -88,12 +88,13 @@ of the mod's disk, padlock and Archipelago icons, and a received item's sender a
 Fixed in this version but not yet checked in the game: after you came back to the options from
 another menu (Video, the map), the locked ASSIST could show the selection's colors; played
 without the client, it could come unlocked while a menu was open (it was once seen unlocked
-after a trip through the menus); its padlock sat low and near the options box's edge; the map's
-cursor showed the Archipelago icon before AP ITEM; and the lines of another player's item you
-pick up were not centered. In this version the mod's own text (its notices, hints, the disks'
-popups, the names of other players' items) is in mixed case in English(HD), the title screen's
-mod lines are in its HD font, and its disk and Archipelago icons are redrawn at the game's icon
-size (not yet tried in the game). If something shows wrong or not at all, switch to the default
+after a trip through the menus); its padlock sat low and near the options box's edge; and the
+Feats screen's title was not centered over the mod's note. In this version the mod's own text
+(its notices, hints, the disks' popups, the names of other players' items) is in mixed case in
+English(HD), the title screen's mod lines are in its HD font, and its disk and Archipelago
+icons are redrawn at the game's icon size (some names of other players' items checked in the
+game; the rest not yet). A client from an earlier version names other players' items in
+capitals. If something shows wrong or not at all, switch to the default
 English and please report it.
 
 In the other languages the mod does the same, but its text is in English, and some of it may
