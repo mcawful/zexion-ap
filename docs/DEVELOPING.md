@@ -272,7 +272,9 @@ line says.
   2026-11-02 retest, not run in game yet: the mod's own text in mixed case in English(HD) (its
   notices, the client's hints, the disks' popups and reminder, the scanner's line, the
   stand-ins' names and the map cursor), and the HD disk and logo redrawn at the game's icon
-  size.
+  size. Found since on the release candidate: the pause row showing the game's Keys for one
+  frame after OPTION MENU closes (the owner, 2026-11-03); fixed since, stand-in tests only, not
+  run in game yet.
 
 ## Platforms
 

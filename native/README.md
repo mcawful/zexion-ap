@@ -697,7 +697,8 @@ shows each save's count on the file select, COPY FILE and DELETE FILE in place o
 for a save with no disk; the client's count wins for its seed's slots.
 
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
-the scanner's text or the pause screen's branch is still the helper's.
+the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
+back from OPTION MENU is still its wrapper.
 
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
 screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
@@ -1347,7 +1348,7 @@ unload.
   client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
   came and went, a seed put with a client, the AP saves' slots, and the file select's logo
   through the frame call: painted, whitened through a new game's fade, and cleared by
-  `restore_files`, and a cache without the translation keys).
+  `restore_files`, and a cache without the translation keys or the later keys).
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
@@ -1397,7 +1398,7 @@ unload.
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
-| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only and translation ones null after an offline cache lacking them) |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only, translation and later ones null after an offline cache lacking them) |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout |
