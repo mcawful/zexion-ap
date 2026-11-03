@@ -188,7 +188,9 @@ line says.
   the cause (the release candidate not run again; the ending's own first frame not seen, the
   wrapper hiding it; `mission_black` not read: the game was closed first). In that black the player could
   still move and pause while the ending waited for GAME SAVED; since, the ending starts with GAME
-  SAVED up: stand-in tests only, not run in game
+  SAVED up: working in game the same day (`zexion_ap.dll` `28ab9954…`, slot 11, a replay: black
+  for a frame or two after YES, then the ending fading in from it; the owner: "worked exactly how
+  we wanted")
   (`native/README.md`, "The OS Install Disks goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.

@@ -615,8 +615,8 @@ the helper:
   since, working in game 2026-11-02, B1, `zexion_ap.dll` `d179d32d…`, `lab/ap/live52`, a new
   game in lab slot 11, its first ending and a replay: black until the ending, then straight into
   it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
-  SAVED up, since,
-  is stand-in tests only, not run in game). Working: the ending played again on the save past it, with nothing new sent and the
+  SAVED up, since, working in game the same day, `zexion_ap.dll` `28ab9954…`, slot 11, a replay:
+  black for a frame or two after YES, then the ending fading in from it). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups
   shown on the next load; a death received during the first ending dropped; the pause opened
