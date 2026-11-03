@@ -443,6 +443,58 @@ class TestOHKO(ZexionTestBase):
         self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
 
 
+class TestAnOpenerIsPlacedEarly(ZexionTestBase):
+    """One item that opens the way out of what the starting items reach is an early item
+    (ZexionWorld.choose_opener). OHKO with the OS Install Disks goal from Tower Gauntlet, seed
+    187, Kresezoa Cave the second teleport target: its starting items reach 7 locations, and
+    without the opener Archipelago's fill put Missile Containers in 6 of them and stopped with
+    "No more spots to place 124 items", as CI run 41698877558 stopped on a seed it did not log
+    (docs/re/locations.md, "Which start rooms the world offers")."""
+
+    auto_construct = False
+    run_default_tests = False
+
+    def test_the_seed_that_failed_fills(self) -> None:
+        self.options = {"mode": "ohko", "goal": "os_install_disks", "start_room": "tower_gauntlet"}
+        self.world_setup(187)
+        w = self.world
+        # The draws it failed with: the opener is drawn after them.
+        self.assertEqual((w.start["index"], w.second["index"]), (4, 12))
+        early = self.multiworld.early_items[self.player]
+        self.assertEqual(list(early.values()), [1])
+        (name,) = early
+        self.assertIn(code_of[name], reach.openers(w.seed_reach, w.start, w.second, w.pool_codes))
+        distribute_items_restrictive(self.multiworld)
+        self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
+        reached = {location_name(i) for i in w.seed_reach.sphere0_from(w.start, w.second).locations}
+        placed = [
+            loc.name
+            for loc in self.multiworld.get_filled_locations(self.player)
+            if loc.item.player == self.player and loc.item.name == name
+        ]
+        self.assertTrue(set(placed) & reached, placed)
+
+    def test_not_one_the_player_starts_with_from_the_pool(self) -> None:
+        # Archipelago takes start_inventory_from_pool's items out of the pool; an early item
+        # it took would never be placed. OHKO's pool holds one Gravity Harness and one Zenith
+        # Thrusters, both openers from Tower Gauntlet.
+        taken = {"Gravity Harness": 1, "Zenith Thrusters": 1}
+        self.options = {
+            "mode": "ohko",
+            "start_room": "tower_gauntlet",
+            "start_inventory_from_pool": taken,
+        }
+        with mock.patch.object(reach, "openers", wraps=reach.openers) as openers:
+            self.world_setup(1)
+        offered = openers.call_args.args[3]
+        self.assertTrue(offered)
+        for name in taken:
+            self.assertIn(code_of[name], self.world.pool_codes)
+            self.assertNotIn(code_of[name], offered)
+        (name,) = self.multiworld.early_items[self.player]
+        self.assertIn(code_of[name], offered)
+
+
 class TestSlotDataForTheClient(ZexionTestBase):
     """The slot data the client builds its plan and new game from."""
 

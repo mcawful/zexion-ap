@@ -90,7 +90,7 @@ Zexion:
     # ('random' is random_start too). Or one of the game's 34 rooms, by its name in the
     # menu: a room from which your starting items reach no location, or every item does
     # not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is
-    # refused. From a room where they reach only one, generation can fail now and then: try
+    # refused. From a room where they reach only a few, generation can fail now and then: try
     # again or pick another. automatic (the default): landing_pod, or a random start where
     # that room is refused.
     random_start: 0

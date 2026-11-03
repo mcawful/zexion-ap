@@ -390,7 +390,7 @@ def _make_start_room() -> type[Choice]:
         "('random' is random_start too). Or one of the game's 34 rooms, by its name in the\n"
         "menu: a room from which your starting items reach no location, or every item does\n"
         "not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is\n"
-        "refused. From a room where they reach only one, generation can fail now and then: try\n"
+        "refused. From a room where they reach only a few, generation can fail now and then: try\n"
         "again or pick another. automatic (the default): landing_pod, or a random start where\n"
         "that room is refused."
     )

@@ -295,11 +295,39 @@ class ZexionWorld(World):
         place; pool_codes keeps them, one code per location, for create_items to put in."""
         from_pool = self.option_start("start_inventory_from_pool")
         start = Counter(self.start_inventory) + self.option_start("start_inventory") + from_pool
+        return reach.Seed.of(self.logic_settings, start, self.pool_left())
+
+    def pool_left(self) -> list[int]:
+        """pool_codes without start_inventory_from_pool's items, as Archipelago takes them out
+        after create_items."""
         pool = list(self.pool_codes)
-        for code, n in from_pool.items():
+        for code, n in self.option_start("start_inventory_from_pool").items():
             for _ in range(min(n, pool.count(code))):
                 pool.remove(code)
-        return reach.Seed.of(self.logic_settings, start, pool)
+        return pool
+
+    def choose_opener(self) -> None:
+        """One progression item of the pool that opens the way out of what the starting items
+        reach from the start(s) (``reach.openers``), drawn at random, as an early item:
+        Archipelago places it where the starting items (any player's, in a multiworld) reach
+        before its main fill. Without it the fill could fill those few locations with Missile
+        Containers and then fail, with "No more spots to place"; a seed opened there only by
+        two items together, neither alone, is no longer made (docs/re/locations.md, "Which
+        start rooms the world offers" and "Where the world departs from the game"). Drawn in
+        create_items, after the start rooms and the pool, so it changes neither. No rule reads
+        the keys or the OS Install Disks, so pool_left, which still has the keys of a disks seed
+        and not its disks, gives the same openers as the pool create_items makes."""
+        progression = [
+            code
+            for code in self.pool_left()
+            if ItemClassification.progression in classification(code)
+        ]
+        found = reach.openers(self.seed_reach, self.start, self.second, progression)
+        if not found:
+            return
+        name = NAMES[self.random.choice(found)]
+        early = self.multiworld.early_items[self.player]
+        early[name] = max(early.get(name, 0), 1)
 
     @property
     def disc_hunt(self) -> bool:
@@ -339,8 +367,9 @@ class ZexionWorld(World):
         starting items collect a location from it, and every item reaches the goal (the core
         and Zexion, or with the OS Install Disks goal the Landing Pod); with Double Teleport,
         the same for the start and a second teleport target (``partners``). From a room with
-        one such location the fill can fail, the owner's choice (docs/re/locations.md, "Which
-        start rooms the world offers")."""
+        one such location the fill can fail, the owner's choice, and from one with a few, less
+        often with the early opener (choose_opener; docs/re/locations.md, "Which start rooms the
+        world offers")."""
         if self.double_teleport:
             return bool(self.partners(room))
         return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_goal(room)
@@ -529,6 +558,7 @@ class ZexionWorld(World):
             codes = [INTEL_CHIP if c == AREA_MAP else c for c in codes]
         pool = [self.create_item(NAMES[code]) for code in codes]
         self.multiworld.itempool += pool
+        self.choose_opener()
 
     def set_rules(self) -> None:
         # This player's own Assist Unlock never goes to this player's own locations, by plando
