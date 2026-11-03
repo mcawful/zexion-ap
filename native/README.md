@@ -348,7 +348,12 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   (`client/shields.py`).
 - **Put back:** nothing to put back.
 
-Working in game: 2026-10-23 ("Received Energy Shields").
+Working in game: 2026-10-23 ("Received Energy Shields"). A bug, 2026-11-02 (B1, `zexion_ap.dll`
+`946b08a1…`, `lab/ap/live50/client-r3.log`): with a client attached to a save already in play
+(slot 8, past its ending), a received shield came up (seen around the player in the owner's
+screenshot) but the client never read it as up, so it spawned it again three times a round,
+a round about every minute, until the save was left; after the next load it read a shield up at
+once.
 
 ### DeathLink
 
@@ -365,7 +370,9 @@ Working in game: 2026-10-23 ("Received Energy Shields").
   ended deals them as any save does until its ending is played again (stand-in tests only).
 - **Put back:** nothing to put back.
 
-Working in game: 2026-10-23 ("DeathLink").
+Working in game: 2026-10-23 ("DeathLink"); 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`,
+`lab/ap/live52/carol.log`), a death received during an ending that began in that load (RETURN
+HOME's YES on a disks seed) dropped, and none dealt on the next load.
 
 ### The assist menu
 
@@ -385,7 +392,11 @@ Working in game: 2026-10-23 ("DeathLink").
   would pass the options box's right edge (its border's top right piece), since a translation
   sizes the box from its own texts; the entry's text again when unlocked. Built again whenever
   the game builds the label again. (Seen in game 2026-11-02 in English(HD) as the pixel look
-  it replaced, its padlock past the box; this: stand-in tests only, not run in game yet.)
+  it replaced, its padlock past the box. This: run in game later that day, `zexion_ap.dll`
+  `946b08a1…`: the entry in the HD font, gray, its padlock inside the box but low and against
+  its border; after coming back from another menu (Video, the map) it took the selection's
+  colors (a bug); once it showed unlocked after going through menus, not reproduced (a bug):
+  "Translations", "Run in game again".)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -415,7 +426,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back, where the
   game's attach would build it now ("Translations"; run in game 2026-11-02 in English(HD): the
   label built where the game first built it, at the window's corner, a bug listed there, since
-  fixed, not run in game since). Choosing it sets the menu's
+  fixed and working in game later that day, `946b08a1…`: "Translations", "Run in game
+  again"). Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
@@ -465,7 +477,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
   working in game 2026-11-02 in English(HD): the pickup popup AP ITEM over FOR BOB, with no logo
   glyph, and the map cursor AP ITEM). The label's logo glyph is now the helper's HD logo
-  (U+E03C, "Translations"), so both show it (stand-in tests only, not run in game yet).
+  (U+E03C, "Translations"), so both show it (working in game later that day, `zexion_ap.dll`
+  `946b08a1…`: the logo before AP ITEM over FOR BOB, and before AP ITEM on the map cursor; bugs:
+  the popup's two lines start at the same x, not centered, and the map cursor's logo, where the
+  game's own names carry no icon: "Translations", "Run in game again").
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -565,8 +580,18 @@ the helper:
   place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
   ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
   `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
-  next load), and popups already queued wait for the seed's next load. Stand-in tests only
-  (`native/tests/mission_tests.cpp`, `game_tests.cpp`), not run in game. If event 3667 or its
+  next load), and popups already queued wait for the seed's next load. Stand-in tests
+  (`native/tests/mission_tests.cpp`, `game_tests.cpp`); run in game 2026-11-02 (B1,
+  `zexion_ap.dll` `946b08a1…`, English(HD), `lab/ap/live50` slot 8, past its ending, and
+  `lab/ap/live52` slot 9, before it): after YES the screen went black, then faded back into play
+  at the pod for a moment before the ending began, on both saves (a bug: the fade is not kept
+  off). Working: the ending played again on the save past it, with nothing new sent and the
+  Feats note shown; the goal sent on the save before it; items received during either (a
+  Missile Container sent during the replay; the items collected at the goal) held, their popups
+  shown on the next load; a death received during the first ending dropped; the pause opened
+  in the black after YES and EXIT GAME going to the title with no black left, and
+  `/reload_mod` not refused after that. Not run in game: a door or a death right after YES, and
+  the prompt asked for again. If event 3667 or its
   handler is not as traced, the prompt opens at once with no fade, as before. A request not yet
   opened lapses (`lapsed: the player left the landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
   / 14 against the player state's cell, as the client tests a save at the pod: `docs/re/memory.md`,
@@ -621,8 +646,11 @@ the equipment screen's OS Install Disk and its description in the HD font, the d
 first line running past the box's right edge (a bug); the question in the HD font, left of
 center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet. Since
 then the description is wrapped at the box's columns and the question centered, as the game
-does its own, and the pause row's count and the icons are in the translation's font (not run
-in game since).
+does its own, and the pause row's count and the icons are in the translation's font: working in
+game later that day (`zexion_ap.dll` `946b08a1…`, `lab/ap/live50`), the description wrapped
+inside its box, the question centered, the count "4 of ?" in the HD font, and the equipment
+screen's name after the HD disk icon (whose look the owner wants drawn again). The scanner's
+line: still not run in game.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -853,7 +881,9 @@ closed, gone with it open.
     Without LargeText's count (a cache from before the `large_count` key), or with too little
     room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
     font. (Seen in game 2026-11-02 in English(HD), `lab/ap/live50`, as that pixel title and
-    note; the HD title: stand-in tests only, not run in game yet.)
+    note; the HD title: working in game later that day, `zexion_ap.dll` `946b08a1…`, after RETURN
+    HOME's YES on a save past its ending: Feats of Natu! over "Archipelago save: no Feats
+    earned", both in the HD font, the two lines starting at the same x.)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -1062,8 +1092,8 @@ lands, not only the place passed.
     5 and 8 (every one shown), and after a language change; notices (an
     Intel Chip's hint, long ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a
     stand-in's pickup popup and the map cursor on its square ("Other players' items"); the pause
-    row's count and the locked ASSIST in the pixel font (in the translation's font since, not
-    run in game since); the equipment screen's name; the question's text, NO and YES; the Feats
+    row's count and the locked ASSIST in the pixel font (in the translation's font since: the run
+    after, below); the equipment screen's name; the question's text, NO and YES; the Feats
     of Natu screen's note (likewise); `/reload_mod` (the unload and
     the load again; its refusal while a popup shows was not tried).
   - A language change mid-play, with popups showing: English(HD) to French and back, then
@@ -1079,17 +1109,46 @@ lands, not only the place passed.
     panel's left edge, away from Normal, while the helper stayed loaded. The question sits left of center (about 90 pixels left of where the game's own line
     starts). The equipment screen's description is one line with no break and runs past the
     box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
-    since, not run in game since: the panel's label and the question built where the game's
-    attach would build them now, the question centered and the description wrapped as the game
-    does its own, and the locked ASSIST built again in the translation's font with its padlock
-    only where it stays in the box ("The assist menu"; `docs/re/memory.md`, "Where a rebuilt
-    label goes").
+    since, working in the run after (below): the panel's label and the question built where the
+    game's attach would build them now, the question centered and the description wrapped as the
+    game does its own, and the locked ASSIST built again in the translation's font with its
+    padlock only where it stays in the box ("The assist menu"; `docs/re/memory.md`, "Where a
+    rebuilt label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
     stand-in's pickup popup (with its logo glyph), all as before.
   - Not run in game: the scanner's line, an Intel Chip picked up in the world (ItemNames 49),
     the unload's refusal while a popup shows, Assist Unlock in a translation, a save-state load.
+- **Run in game again:** 2026-11-02, later that day, B1, `zexion_ap.dll` `946b08a1…` and
+  `version.dll` `7a1b2b40…` (develop ea1a801) loaded by the proxy, the client from source,
+  `lab/ap/live50` again and a disks seed `lab/ap/live52` (logs; the owner's screenshots in
+  `lab/ap/live50/shots-r2/` and `lab/ap/live52/shots/`).
+  - Working in English(HD): ARCHIPELAGO on the game-mode panel in its place, in the HD font,
+    with its hover border around it; the file select with nothing stray, before an empty slot is
+    picked and after the client went away; Randomizer back in its place after the client went
+    away; RETURN HOME's question centered (within about 10 pixels of the YES/NO column's
+    middle); the equipment screen's description wrapped inside its box; the locked ASSIST in the
+    HD font with its padlock inside the box; the pause row's count in the HD font ("4 of ?");
+    the HD disk icon on the equipment screen, and the HD AP logo on a stand-in's pickup popup
+    and on the map cursor; long notices wrapped (NOT CONNECTED on three lines, an Intel Chip's
+    hint on two, its lines left as they wrap); a received popup's name centered over "from
+    Archipelago", and "from Bob" (the owner's reading); the Feats of Natu screen's title and
+    note in the HD font. No stutter noticed (the owner, through the run's play in HD).
+  - Bugs (English(HD)): after coming back from another menu (Video, the map) the locked ASSIST
+    takes the selection's colors, as the default English once did; once, after going through
+    menus, ASSIST showed unlocked (white, selectable, no padlock) in a seed that locks it (not
+    reproduced; whether it opened was not tried). ASSIST's padlock sits below the text's
+    baseline, against the box's right border. The map cursor shows the AP logo before AP ITEM,
+    where the game's own names carry no icon. A stand-in's pickup popup (AP ITEM over FOR BOB)
+    starts both lines at the same x, not centered.
+  - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
+    stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
+    matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
+  - The default English: the title, ARCHIPELAGO on the panel with its hover border, a received
+    popup (FROM ARCHIPELAGO in capitals), RETURN HOME's question centered and NO, as before.
+  - Not run in game: as in the run before, and French and Japanese since the HD icons (their
+    FROM … in capitals).
 
 ## Building
 
