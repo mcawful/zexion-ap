@@ -175,9 +175,10 @@ void ItemLooks::own_colors(const GameAddresses& at, const BYTE* pool, BYTE* base
     }
 }
 
-bool ItemLooks::is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const {
+bool ItemLooks::is_marker(int slot, const BYTE* object, const GameAddresses& at) const {
     return slot >= 0 && slot < kObjectSlots && flipped_dressed_[slot].spawn == 0 &&
-           standin_palette != nullptr && field<BYTE*>(object, sprite::kPalette) != standin_palette &&
+           stand_ins_palette(at) != nullptr &&
+           !stand_in_palette(at, field<BYTE*>(object, sprite::kPalette)) &&
            field<int16_t>(object, obj::kFirstState) == kMarkerFirstState;
 }
 
@@ -379,7 +380,7 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         const int stand_in = logo_index(frame);
         // The marker: hidden while it waits on the helper's logo frame, shown again otherwise.
         // Hidden only if the game shows it: one the game hid is left to the game.
-        if (shows_stand_in(seen, base) && is_marker(slot, seen, standin_palette)) {
+        if (shows_stand_in(seen, base) && is_marker(slot, seen, at)) {
             if (stand_in < 0 || !ours[stand_in] || !waits) {
                 unhide(object, seen, h);
             } else if (h.spawn != 0 || seen[sprite::kVisible] != 0) {

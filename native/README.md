@@ -515,9 +515,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   texture's own colors, under white, where the game's palette 8 follows the suit, the weapon and
   the room, so the logo kept changing colors (`docs/re/memory.md`, "Other players' items"). An
   object is colored only with the template's frame list and palette 8 or 26; its style is kept,
-  and palette 8 and that style are put back when the stand-ins are, and on an unload. A stand-in
-  draws in palette 8 for its first frame (the game's spawn), and for one frame after its Zexion
-  item look comes off. Palette 26 on a stand-in, written by hand, worked in game (2026-11-03);
+  and palette 8 and that style are put back when the stand-ins are, and on an unload. An
+  item-pool stand-in draws in palette 8, its colors wrong, for its first frame (the game's spawn)
+  and for one frame after its Zexion item look comes off; a general-pool one, until the next scan
+  finds it (up to 30 frame calls, as for its Zexion item look). Palette 26 on a stand-in, written by hand, worked in game (2026-11-03);
   the helper's own colors: stand-in tests only, not run in game yet.
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x

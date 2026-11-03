@@ -73,10 +73,11 @@ public:
     // logo frame, empty in the game's own art: a stand-in, or a marker (is_marker).
     static bool shows_stand_in(const BYTE* object, const BYTE* base);
     // General object `slot` (`object`: a copy up to its first state, obj::kFirstState) is the
-    // marker, not a stand-in: type 1146's first state, in a palette other than the stand-ins'
-    // (`standin_palette`), not dressed by this helper. A marker on a logo frame (shows_stand_in)
-    // is the one to hide while flag 154 is clear.
-    bool is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const;
+    // marker, not a stand-in: type 1146's first state, in a palette other than a stand-in's (8 or
+    // 26: after the boss it shows location 81's item, a stand-in in palette 8 the helper colors),
+    // not dressed by this helper. A marker on a logo frame (shows_stand_in) is the one to hide
+    // while flag 154 is clear.
+    bool is_marker(int slot, const BYTE* object, const GameAddresses& at) const;
     // Markers this helper has hidden, still to be put back (tests).
     int hidden_markers() const;
     // The stand-ins' palette object as the game gives it (8), or null.

@@ -901,6 +901,17 @@ void test_stand_ins_in_their_own_colors() {
           "this world's items and an object not as expected are left alone");
     check(game.looks().colored() == 2, "two colored");
 
+    // The marker's type showing a stand-in in palette 8 (location 81's reward display): colored,
+    // and then still no marker, so neither hidden nor left out of the names.
+    g_flags[154] = 0;
+    put_flipped(14, 503, 63, 6, 2);
+    put<int16_t>(general_slot(14), 0x32E, 8210);
+    general_slot(14)[0x120] = 1;
+    for (int i = 0; i < 33; ++i) game.watch_ap_items();  // the next scan, then two frames
+    check(general_ptr(14, 0x198) == g_palette_table[26] && general_slot(14)[0x120] == 1,
+          "the reward display in its own colors, not hidden");
+    check(game.stand_ins_seen(g_item_pool, g_frames).size() == 5, "and counted for names");
+
     // The stand-ins' records no longer the helper's (another tool, say): put back.
     BYTE* r = g_records + 47 * 100;
     put<int16_t>(r, 0x06, 2);
