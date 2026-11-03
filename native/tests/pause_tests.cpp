@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <new>
 #include <string>
 
 #include "check.h"
@@ -240,7 +241,235 @@ void test_the_text() {
     check(zap::pause_row_text(3, 9) == " 3 OF 9 ", "centered");
 }
 
+// The helper's wrapper of the pause menu's way back from OPTION MENU, as dllmain.cpp's: the
+// game's, then the row turned.
+zap::PauseDiskRow* g_row = nullptr;
+const zap::GameAddresses* g_at = nullptr;
+void options_back(void* menu) {
+    reinterpret_cast<void (*)(void*)>(g_at->options_back_fn)(menu);
+    g_row->returned(*g_at, static_cast<BYTE*>(menu), false);
+}
+
+void* on_return(Pause& p) { return at<void*>(p.menu, 0x68); }
+
+// OPTION MENU opened over the pause screen `p`, as its opener does: the pause menu's way back
+// set to 0x168910 (0x16207D), then a menu of its own on top, with the pause menu below it.
+struct Options {
+    BYTE menu[0x80] = {};
+    Pause& under;
+    explicit Options(Pause& p) : under(p) {
+        at<void*>(p.menu, 0x68) = reinterpret_cast<void*>(&stand_in::options_back_fn);
+        at<BYTE*>(menu, 0x78) = p.menu;
+        p.current = menu;
+    }
+    // Closed, as the game's menu-close code does (0x92B10 to 0x935C9): the pause menu on top
+    // again, then its way back called with it. The game draws the frame after this.
+    void close() {
+        under.current = under.menu;
+        reinterpret_cast<void (*)(void*)>(on_return(under))(under.menu);
+    }
+};
+
+zap::GameAddresses hooked_addresses(Pause& p, zap::PauseDiskRow& row) {
+    zap::GameAddresses a = p.addresses();
+    a.options_back_fn = reinterpret_cast<BYTE*>(&stand_in::options_back_fn);
+    a.hooks.options_back = reinterpret_cast<void*>(&options_back);
+    g_row = &row;
+    return a;
+}
+
 }  // namespace
+
+// The flash the owner saw in English(HD) (2026-11-03): OPTION MENU opened from the pause screen
+// and backed out of; the game's way back builds KEYS's translated text again before it draws the
+// frame. With the pause menu's way back wrapped, the count is built again in the same call, so the
+// frame drawn after it shows the count, never Keys.
+void test_back_from_options_in_a_translation() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    Pause p;
+    zap::PauseDiskRow row;
+    zap::GameAddresses a = hooked_addresses(p, row);
+    g_at = &a;
+    stand_in::with_translation(a);
+    stand_in::HdGlyphs<12> hd(p.label);
+    put<double>(p.glyph[0], 0x40, 144.0);
+    put<double>(p.glyph[0], 0x48, 208.0);
+    stand_in::built(p.label, 143.0, 207.0);
+    put<int32_t>(p.label, 0x248, 4);  // the game's Keys
+    row.set(zap::pause_row_text(2, 15));
+    row.watch(a, false);
+    check(get<int32_t>(p.label, 0x248) == 5 && !row.holds_hook(), "the count, before OPTION MENU");
+
+    for (int round = 0; round < 3; ++round) {
+        Options options(p);
+        row.watch(a, false);  // a frame with OPTION MENU on top
+        check(row.holds_hook() && on_return(p) == a.hooks.options_back,
+              "the pause menu's way back is the helper's while OPTION MENU is open");
+        row.watch(a, false);
+        check(row.holds_hook() && on_return(p) == a.hooks.options_back, "and stays so");
+        const int backs = stand_in::g_options_backs;
+        options.close();
+        // What the game draws next, before the helper's frame call.
+        check(stand_in::g_options_backs == backs + 1, "the game's way back ran");
+        check(get<int32_t>(p.label, 0x248) == 5 && !stand_in::g_builds.empty() &&
+                  stand_in::g_builds.back().text == L"2 of 15" && hd.glyphs[0][0x120] == 1 &&
+                  hd.glyphs[4][0x120] == 1 && !zap::pixel_glyphs_shown(p.label),
+              "the frame drawn after OPTION MENU closes shows the count, not Keys");
+        check(on_return(p) == reinterpret_cast<void*>(&stand_in::pause_on_return_fn) &&
+                  !row.holds_hook(),
+              "the game's way back set the pause menu's own: nothing left to put back");
+        const size_t builds = stand_in::g_builds.size();
+        row.watch(a, false);
+        check(stand_in::g_builds.size() == builds && get<int32_t>(p.label, 0x248) == 5,
+              "the next frame keeps it");
+    }
+    row.set("");
+    row.watch(a, false);
+    stand_in::reset_translation();
+}
+
+// With the flag clear (the default English) the game's way back shows the label's four pixel
+// glyphs again, which still hold the helper's characters, and leaves the sprites: the row as it
+// was, the key slots' characters shown.
+void test_back_from_options_in_the_default_english() {
+    stand_in::reset_translation();
+    Pause p;
+    zap::PauseDiskRow row;
+    zap::GameAddresses a = hooked_addresses(p, row);
+    g_at = &a;
+    row.set(zap::pause_row_text(2, 0));
+    row.watch(a, false);
+    Options options(p);
+    for (int i = 0; i < 4; ++i) p.glyph[i][0x120] = 0;  // hidden under OPTION MENU
+    row.watch(a, false);
+    check(row.holds_hook(), "wrapped in the default English too");
+    options.close();
+    const char* text = " 2 OF ? ";
+    bool shown = true;
+    for (int i = 0; i < 4; ++i) {
+        shown = shown && p.frame(p.glyph[i]) == text[2 + i] && p.glyph[i][0x120] == 1;
+    }
+    for (int k = 0; k < 4; ++k) shown = shown && p.sprite[k][0x120] == 1;
+    check(shown && p.frame(p.sprite[1]) == '2' && p.frame(p.sprite[4]) == 829 &&
+              stand_in::g_builds.empty(),
+          "the count on all eight cells, nothing built");
+    row.set("");
+    row.watch(a, false);
+}
+
+// The way back is the game's again when the row turns off and before an unload, while its menu is
+// open and holds the wrapper; a menu that closed is forgotten, never written. Nothing else is
+// wrapped: a menu of another shape, another way back, no address for it (an offline cache from
+// before it), the row off.
+void test_the_way_back_put_back() {
+    stand_in::reset_translation();
+    const void* game_fn = reinterpret_cast<void*>(&stand_in::options_back_fn);
+    {
+        Pause p;
+        zap::PauseDiskRow row;
+        zap::GameAddresses a = hooked_addresses(p, row);
+        row.set(zap::pause_row_text(2, 0));
+        Options options(p);
+        row.watch(a, false);
+        row.set("");
+        row.watch(a, false);
+        check(!row.holds_hook() && on_return(p) == game_fn, "the row off: the game's way back");
+        row.set(zap::pause_row_text(2, 0));
+        row.watch(a, false);
+        check(row.holds_hook(), "on again: wrapped again");
+        row.restore(a);
+        check(!row.holds_hook() && on_return(p) == game_fn && branch() == 0x75,
+              "before an unload: the game's way back, the branch back");
+        row.watch(a, false);
+        p.current = nullptr;  // every menu closed, the pause menu freed with them
+        row.restore(a);
+        check(!row.holds_hook() && on_return(p) == a.hooks.options_back,
+              "a menu no longer open: forgotten, not written");
+        // Changed since by something else: forgotten, the field not touched.
+        p.current = options.menu;
+        at<void*>(p.menu, 0x68) = const_cast<void*>(game_fn);
+        row.watch(a, false);
+        check(row.holds_hook(), "wrapped once more");
+        at<void*>(p.menu, 0x68) = nullptr;
+        row.watch(a, false);
+        check(!row.holds_hook() && on_return(p) == nullptr, "no longer the wrapper: forgotten");
+        row.set("");
+        row.watch(a, false);
+    }
+    struct Case {
+        const char* what;
+        void (*spoil)(Pause&, zap::GameAddresses&, zap::PauseDiskRow&);
+    };
+    const Case cases[] = {
+        {"a menu of another shape",
+         [](Pause& p, zap::GameAddresses&, zap::PauseDiskRow&) { at<int32_t>(p.menu, 8) = 3; }},
+        {"another way back",
+         [](Pause& p, zap::GameAddresses&, zap::PauseDiskRow&) {
+             at<void*>(p.menu, 0x68) = reinterpret_cast<void*>(&other_fn);
+         }},
+        {"no address for the game's way back",
+         [](Pause&, zap::GameAddresses& a, zap::PauseDiskRow&) { a.options_back_fn = nullptr; }},
+        {"the row off", [](Pause&, zap::GameAddresses&, zap::PauseDiskRow& r) { r.set(""); }},
+    };
+    for (const Case& c : cases) {
+        Pause p;
+        zap::PauseDiskRow row;
+        zap::GameAddresses a = hooked_addresses(p, row);
+        row.set(zap::pause_row_text(2, 0));
+        Options options(p);
+        c.spoil(p, a, row);
+        void* before = on_return(p);
+        row.watch(a, false);
+        check(!row.holds_hook() && on_return(p) == before, c.what);
+        row.set("");
+        row.restore(a);
+    }
+}
+
+// A fresh pause screen's label is the game's even where the last one the helper built was, with
+// its mark: the count is built on it.
+void test_a_fresh_label_at_the_last_ones_place() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::PauseDiskRow row;
+    alignas(Pause) static unsigned char room[sizeof(Pause)];
+    Pause* p = new (room) Pause();
+    zap::GameAddresses a = p->addresses();
+    stand_in::with_translation(a);
+    auto set_up = [](Pause& q) {
+        put<double>(q.glyph[0], 0x40, 144.0);
+        put<double>(q.glyph[0], 0x48, 208.0);
+        stand_in::built(q.label, 143.0, 207.0);
+        put<int32_t>(q.label, 0x248, 4);
+    };
+    {
+        stand_in::HdGlyphs<12> hd(p->label);
+        set_up(*p);
+        row.set(zap::pause_row_text(2, 15));
+        row.watch(a, false);
+        // Two calls a build: one to measure it for centering, one at its place.
+        check(stand_in::g_builds.size() == 2, "the first screen's count built");
+        const int32_t count = get<int32_t>(p->label, 0x248);
+        const double x = get<double>(p->label, 0x258), y = get<double>(p->label, 0x260);
+        // Closed, and the next pause screen built at the same place, its label's mark (by
+        // chance) the one the helper left.
+        p->~Pause();
+        p = new (room) Pause();
+        stand_in::HdGlyphs<12> hd2(p->label);
+        set_up(*p);
+        put<int32_t>(p->label, 0x248, count);
+        put<double>(p->label, 0x258, x);
+        put<double>(p->label, 0x260, y);
+        row.watch(a, false);
+        check(stand_in::g_builds.size() == 4 && stand_in::g_builds.back().text == L"2 of 15",
+              "the next screen's count built too");
+        row.set("");
+        row.watch(a, false);
+    }
+    p->~Pause();
+    stand_in::reset_translation();
+}
 
 // In a translation the count is the KEYS label's translated text, in the translation's font,
 // centered on the row (x 160), the key slots' characters hidden; built again after the game
@@ -297,6 +526,10 @@ void test_the_row_in_a_translation() {
 }
 
 int main() {
+    test_back_from_options_in_a_translation();
+    test_back_from_options_in_the_default_english();
+    test_the_way_back_put_back();
+    test_a_fresh_label_at_the_last_ones_place();
     test_the_row_in_a_translation();
     test_the_row_shows_the_disks();
     test_prepared_before_the_count();

@@ -172,6 +172,15 @@ void equipment_chosen(void* widget, int event) {
     guarded([] { g_game.equipment_built(); });
 }
 
+// The pause menu's way back from OPTION MENU while the disk row is on (pause.h): the game's, then
+// the row turned in the same call, before the frame is drawn.
+void options_back(void* menu) {
+    InCallback in;
+    auto game_fn = reinterpret_cast<void (*)(void*)>(g_game.options_back_fn());
+    if (game_fn != nullptr) game_fn(menu);
+    guarded([&] { g_game.options_returned(menu); });
+}
+
 // RETURN HOME WITH THE DISKS? (mission.h). The opener: the game runs it as its transition
 // routine; it builds the game's prompt and relabels it. YES: the game's NO (closing the prompt),
 // the screen kept black, then the ending once idle.
@@ -210,6 +219,7 @@ void set_hooks() {
     hooks.file_entry =
         reinterpret_cast<void*>(&handler_event<&file_entry_original, &file_entry_after>);
     hooks.map = reinterpret_cast<void*>(&handler_event<&map_original, &map_after>);
+    hooks.options_back = reinterpret_cast<void*>(&options_back);
     g_game.set_hooks(hooks);
 }
 

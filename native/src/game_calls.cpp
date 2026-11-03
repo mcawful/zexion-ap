@@ -80,6 +80,7 @@ struct ConfigKey {
     uint64_t before;  // and bytes before it
     bool client_only = false;  // read only by the client's parts: the cache may lack it
     bool translated = false;  // read only by the translation parts: the cache may lack it
+    bool later = false;       // newer than offline caches already written: the cache may lack it
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, 0};
@@ -100,6 +101,12 @@ constexpr ConfigKey client_only(ConfigKey key) {
 // translation.cpp.
 constexpr ConfigKey translation_key(ConfigKey key) {
     key.translated = true;
+    return key;
+}
+// Added after offline caches were already written: a cache from before it lacks it, and its part
+// then does without it (addresses.h says how) until a client's config gives it.
+constexpr ConfigKey later_key(ConfigKey key) {
+    key.later = true;
     return key;
 }
 // transition_fn is data: it holds the address of the routine the game runs next.
@@ -179,6 +186,8 @@ constexpr ConfigKey kConfigKeys[] = {
     // LargeText's count, for the Feats screen's title (feats.h): without it (a cache from
     // before it) that title alone stays in the pixel font.
     translation_key(data("large_count", &G::large_count)),
+    // OPTION MENU's way back to the pause screen (pause.h).
+    later_key(code("options_back_fn", &G::options_back_fn)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -231,8 +240,8 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
-    // The client-only and translation keys an offline cache lacks, or has where they do not
-    // fit: left null.
+    // The client-only, translation and later keys an offline cache lacks, or has where they do
+    // not fit: left null.
     std::string left_out;
     bool client_left_out = false;
     for (const ConfigKey& key : kConfigKeys) {
@@ -240,7 +249,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
         if (!why.empty()) {
-            if (active || !(key.client_only || key.translated)) return why;
+            if (active || !(key.client_only || key.translated || key.later)) return why;
             left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
             client_left_out = client_left_out || key.client_only;
             continue;
@@ -938,6 +947,10 @@ void Game::watch_equipment() {
         if (equip_.installed()) equip_.restore(at_);
         if (equip_screen_.holds_hook()) equip_screen_.restore(at_);
     }
+}
+
+void Game::options_returned(void* menu) {
+    if (configured_) pause_row_.returned(at_, static_cast<BYTE*>(menu), pause_disc_.painted());
 }
 
 void Game::equipment_built() {
