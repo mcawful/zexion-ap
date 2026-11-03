@@ -24,6 +24,7 @@ BYTE g_list[0x30];
 BYTE* g_layer = g_list;
 int g_made = 0;
 bool g_client = false;
+uint8_t g_menu = 0;  // menu_state: 0 on the idle title, 3 with the file select up
 BYTE g_palette[8], g_tag[8];
 
 BYTE* block(size_t size) {
@@ -132,6 +133,7 @@ zap::GameAddresses addresses() {
     a.text_new_fn = reinterpret_cast<BYTE*>(&text_new);
     a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
     a.text_link_fn = reinterpret_cast<BYTE*>(&text_link);
+    a.menu_state = &g_menu;
     return a;
 }
 
@@ -354,10 +356,180 @@ void test_the_lines_in_english_hd() {
     stand_in::reset_translation();
 }
 
+// English(HD) off the title: the game's menus open over the title, its line and its © still
+// shown, and the HD list is drawn over them, so the translated lines are hidden while a menu is
+// open (or the game's line is gone), and shown again on the title. Nothing is built again.
+void test_the_hd_lines_off_the_title() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    BYTE* line = reset_title();
+    g_menu = 0;
+    g_client = false;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    for (int i = 0; i < 9; ++i) lines.watch(a, g_client, true);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    BYTE* hint = find("START THE AP CLIENT TO PLAY A SEED", false);
+    BYTE* credit = find("C2026 MCAWFUL", true);
+    if (mod == nullptr || hint == nullptr || credit == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    auto translated_shown = [](BYTE* t, bool visible) {
+        auto** list = get<BYTE**>(t, 0x238);
+        const int32_t n = get<int32_t>(t, 0x248);
+        for (int32_t i = 0; i < n; ++i) {
+            if ((list[i][0x120] != 0) != visible) return false;
+        }
+        return n > 0;
+    };
+    auto hide_translated = [](BYTE* t) {
+        auto** list = get<BYTE**>(t, 0x238);
+        for (int32_t i = 0; i < get<int32_t>(t, 0x248); ++i) list[i][0x120] = 0;
+    };
+    const size_t builds = stand_in::g_builds.size();
+    auto none_shown = [&] {
+        return translated_shown(mod, false) && translated_shown(hint, false) &&
+               all_visible(mod, false) && all_visible(hint, false) &&
+               get<int32_t>(mod, 0x244) == get<int32_t>(mod, 0x248) &&
+               get<int32_t>(hint, 0x244) == get<int32_t>(hint, 0x248);
+    };
+    auto title_shown = [&](bool hint_too) {
+        return translated_shown(mod, true) && translated_shown(hint, hint_too) &&
+               all_visible(mod, false) && all_visible(hint, false);
+    };
+    check(title_shown(true), "on the title: both shown");
+    // The title to Option: the menu's builder hides the HD list, the © stays shown.
+    g_menu = 3;
+    hide_translated(mod);
+    hide_translated(hint);
+    bool hidden = true;
+    for (int i = 0; i < 9; ++i) {
+        lines.watch(a, g_client, true);
+        hidden = hidden && none_shown();
+    }
+    check(hidden, "Option open: hidden every frame call, their count kept");
+    check(all_visible(credit, true), "the credit in pixels follows the game's line, as before");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "back on the title: shown at the next frame call");
+    // The title to the file select: the same, without the builder's hide.
+    g_menu = 3;
+    lines.watch(a, g_client, true);
+    check(none_shown(), "the file select: hidden at once");
+    // A client connecting while the file select is up: still hidden; the hint stays hidden on
+    // the title after it.
+    g_client = true;
+    for (int i = 0; i < 9; ++i) lines.watch(a, g_client, true);
+    check(none_shown(), "a client connecting on the file select: still hidden");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    check(title_shown(false), "back on the title with a client: the version only");
+    g_client = false;
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "the client gone: the hint again");
+    check(stand_in::g_builds.size() == builds, "nothing built again on the way");
+    // menu_state unreadable: the translated lines hidden, the credit following the ©.
+    zap::GameAddresses unread = a;
+    unread.menu_state = nullptr;
+    lines.watch(unread, g_client, true);
+    check(none_shown() && all_visible(credit, true), "menu_state unreadable: hidden");
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "readable again: shown");
+    // The game's line gone from the list while the helper's are still there: hidden.
+    BYTE* before = get<BYTE*>(line, 0x18);
+    BYTE* after = get<BYTE*>(glyph(line, 17), 0x10);
+    put<BYTE*>(before, 0x10, after);
+    if (after != nullptr) put<BYTE*>(after, 0x18, before);
+    lines.watch(a, g_client, true);
+    check(none_shown() && !lines.shown(), "the game's line gone: hidden");
+    stand_in::reset_translation();
+}
+
+// English(HD) picked while a menu is open over the title (Option): the lines built in its font
+// and hidden in the same frame call; shown once the menu closes.
+void test_english_hd_picked_under_a_menu() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    reset_title();
+    g_client = false;
+    g_menu = 0;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    look(lines);  // the default English: pixel lines
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    if (mod == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    g_menu = 3;
+    lines.watch(a, g_client, true);
+    auto** list = get<BYTE**>(mod, 0x238);
+    const int32_t n = get<int32_t>(mod, 0x248);
+    bool hidden = n > 0 && all_visible(mod, false);
+    for (int32_t i = 0; i < n; ++i) hidden = hidden && list[i][0x120] == 0;
+    check(hidden, "picked under a menu: built and hidden in the same frame call");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    bool shown = n > 0;
+    for (int32_t i = 0; i < n; ++i) shown = shown && list[i][0x120] != 0;
+    check(shown, "the menu closed: shown");
+    stand_in::reset_translation();
+}
+
+// The title with a menu already open over it when the helper is first configured (a client
+// connecting with the file select up): no lines made until the menu closes, in either language.
+void test_no_lines_made_under_a_menu() {
+    for (bool hd : {false, true}) {
+        stand_in::reset_translation();
+        zap::GameAddresses a = addresses();
+        if (hd) {
+            stand_in::load_translation("English(HD)", true);
+            stand_in::with_translation(a);
+        }
+        reset_title();
+        g_client = false;
+        g_menu = 3;
+        zap::TitleLines lines;
+        lines.set_version("1.0.0");
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        check(g_made == 0 && !lines.shown(),
+              hd ? "English(HD), a menu open: nothing made" : "a menu open: nothing made");
+        g_menu = 0;
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        BYTE* credit = find("C2026 MCAWFUL", true);
+        check(g_made == 3 && lines.shown() && credit != nullptr && all_visible(credit, true),
+              hd ? "English(HD), the menu closed: made" : "the menu closed: made");
+    }
+    stand_in::reset_translation();
+}
+
+// The default English keeps its rule: the lines follow the game's ©, a menu open or not.
+void test_the_default_english_ignores_menus() {
+    reset_title();
+    g_client = false;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    look(lines);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    g_menu = 3;
+    look(lines);
+    check(mod != nullptr && all_visible(mod, true), "a menu open: shown with the game's line");
+    g_menu = 0;
+}
+
 }  // namespace
 
 int main() {
     test_the_lines_in_english_hd();
+    test_the_hd_lines_off_the_title();
+    test_english_hd_picked_under_a_menu();
+    test_no_lines_made_under_a_menu();
+    test_the_default_english_ignores_menus();
     test_the_hint_only_without_a_client();
     test_lines_are_made_under_the_copyright();
     test_nothing_without_the_copyright_line();

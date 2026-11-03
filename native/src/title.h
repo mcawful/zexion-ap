@@ -20,7 +20,10 @@
 // case: each line's translated text built by the game's builder (translation.h, Rebuild::first)
 // centered on the screen, its pixel glyphs hidden; the credit stays in pixels, as the game's
 // own copyright line does. The game's text destructor (0x92010) frees a text object's
-// translated glyphs with it.
+// translated glyphs with it. Those glyphs are drawn from the HD list, not the title's, and the
+// file select (and Option, from it) opens over the title without clearing it, so they are
+// shown only while no menu is open (menu_state 0) as well; the pixel ones follow the game's ©.
+// The lines are made only while no menu is open, so none join the list over a menu.
 #pragma once
 
 #include <windows.h>
@@ -47,7 +50,8 @@ public:
     }
 
     // Game thread, every frame call (looks every 9th, every one with `hd`): adds the lines when
-    // the copyright line is up without them, and shows them as the game shows its line's ©.
+    // the copyright line is up without them, and shows them as the game shows its line's © (in
+    // English(HD), the translated ones only with no menu open).
     // Returns "" or why the lines could not be made on this title. `client`: a client is connected (the hint is
     // hidden). `hd`: English(HD) shows (its two lines in the translation's font).
     std::string watch(const GameAddresses& a, bool client, bool hd = false);
