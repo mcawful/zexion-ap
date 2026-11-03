@@ -148,9 +148,8 @@ void PauseDiskRow::hook_return(const GameAddresses& a) {
 
 void PauseDiskRow::unhook_return(const GameAddresses& a) {
     if (hooked_ == nullptr) return;
-    if (is_open(a.current_menu, hooked_) &&
-        pointer_at(hooked_, menu::kOnReturn) == a.hooks.options_back) {
-        put(hooked_, menu::kOnReturn, a.options_back_fn);
+    if (is_open(a.current_menu, hooked_)) {
+        swap_pointer(hooked_, menu::kOnReturn, a.hooks.options_back, a.options_back_fn);
     }
     hooked_ = nullptr;
 }
