@@ -396,7 +396,8 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   armed: whether an entry was found shows only in the game. The client locks it while a seed
   that disallows assists has its save loaded, until the slot receives Assist Unlock.
 - **Found again each frame:** never taken on the pointer kept from the frame it was locked.
-  Leaving Video closes the options menu and builds another (`0x124D30`), whose widgets may take
+  Leaving Video, GENERAL (which holds the language) or the assist menu closes the options menu
+  and builds another (`0x124D30`), whose widgets may take
   the freed ones' places: its VERSION 1.20, 12 glyphs with no callback like the locked ASSIST,
   in ASSIST's (`docs/re/memory.md`, "The assist menu"). Each frame call the helper finds the
   entry again in the menu open now: a live widget with the generic handler, its callback
@@ -406,7 +407,7 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…` from PR #89, in English(HD):
   Option, Video and back several times, the map and back, then the default English; the
   owner: "seems to work". The bug it fixes showed only sometimes, so a clean run is weaker
-  evidence than a repro.)
+  evidence than a repro. GENERAL and the assist menu: stand-in tests only, not run in game.)
 - **Put back:** `assists free`, the menu closing, a client going away or an unload, only into
   the entry found again as above, and the order only if the panel is as the helper left it. An
   unload no frame comes for leaves it locked until the options menu closes, harmlessly.
@@ -1340,7 +1341,7 @@ unload.
   wrapper never left as the transition (unload, a routine not as traced, none in the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order, the options menu built again after
-  Video with another widget in the locked ASSIST's place).
+  Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each

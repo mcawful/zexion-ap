@@ -322,10 +322,10 @@ BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_c
 }
 
 bool AssistLock::still_locked(const GameAddresses& a) const {
-    // Found afresh in the menu open now, never taken on the kept pointer alone: leaving Video
-    // closes the options menu and builds another (0x124D30), whose widgets may take the freed
-    // ones' places, its VERSION 1.20 (12 glyphs, no callback) in ASSIST's (docs/re/memory.md,
-    // "The assist menu").
+    // Found afresh in the menu open now, never taken on the kept pointer alone: leaving Video,
+    // GENERAL or the assist menu closes the options menu and builds another (0x124D30), whose
+    // widgets may take the freed ones' places, its VERSION 1.20 (12 glyphs, no callback) in
+    // ASSIST's (docs/re/memory.md, "The assist menu").
     if (child_ == nullptr || !is_open(a.current_menu, menu_)) return false;
     BYTE* panel = nullptr;
     return find_assist(menu_, a, nullptr, true, &panel, nullptr) == child_ && panel == panel_;

@@ -309,7 +309,7 @@ void FileEntries::restore(const GameAddresses& a) {
         }
         // Only an entry still holding the helper's handler is the one wrapped: a menu closed and
         // built again at the same address may put another entry, holding the game's, in its
-        // place (as the options menu does after Video, docs/re/memory.md, "The assist menu").
+        // place (as the options menu does after Video, GENERAL or ASSIST, docs/re/memory.md, "The assist menu").
         const bool ours = a.hooks.file_entry != nullptr &&
                           pointer_at(entry, widget::kHandler) == a.hooks.file_entry;
         // The keys' block, the logo's cells and their glyphs' rows as the game left them.

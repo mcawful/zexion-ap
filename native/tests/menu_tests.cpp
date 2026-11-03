@@ -534,6 +534,61 @@ void test_assist_lock_without_the_padlock_frame() {
           "and unlocked");
 }
 
+// The locked entry found again only as it was left: in the panel it was locked in, with the
+// padlock eighth. Anything else at its address is forgotten, and nothing drawn on it again (the
+// game's restyle stays).
+void test_assist_lock_found_again_only_as_left() {
+    struct Case {
+        const char* what;
+        void (*change)(Options&);
+    };
+    const Case cases[] = {
+        {"listed in another panel of its menu: forgotten, not drawn on",
+         [](Options& o) {
+             static BYTE* moved[1];
+             moved[0] = o.child;
+             at<BYTE**>(o.first, 0x1E0) = moved;
+             at<int32_t>(o.first, 0x1E8) = 1;
+             o.children[7] = o.others[6];  // and no longer in the second
+         }},
+        {"the padlock ninth, not eighth: forgotten, not drawn on",
+         [](Options& o) {
+             for (int i : {7, 8}) {
+                 const int32_t c = i == 8 ? zap::kLockGlyph : 0;
+                 at<int32_t>(o.glyphs[i], 0x1C4) = c;
+                 at<BYTE*>(o.glyphs[i], 0x1B0) = o.table.data() + c * 0x38;
+             }
+         }},
+    };
+    for (const Case& c : cases) {
+        Options options;
+        zap::GameAddresses a = options.addresses();
+        zap::AssistLock lock;
+        lock.install(a);
+        c.change(options);
+        for (BYTE* g : options.glyph_list) at<int32_t>(g, 0x1D0) = 0x15;  // the game restyles
+        check(!lock.install(a) && !lock.installed() && options.style() == 0x15, c.what);
+    }
+}
+
+// A glyph the helper could not write (read-only memory): nothing locked, nothing written.
+void test_assist_lock_leaves_an_unwritable_label_alone() {
+    Options options;
+    zap::GameAddresses a = options.addresses();
+    BYTE* page = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    std::memcpy(page, options.glyphs[3], sizeof(options.glyphs[3]));
+    options.glyph_list[3] = page;
+    DWORD old = 0;
+    VirtualProtect(page, 4096, PAGE_READONLY, &old);
+    zap::AssistLock lock;
+    check(!lock.install(a) && !lock.installed() &&
+              options.callback() == reinterpret_cast<void*>(&assist_menu) &&
+              options.style() == 0x15,
+          "a glyph not writable: ASSIST left as the game built it");
+    VirtualFree(page, 0, MEM_RELEASE);
+}
+
 void test_assist_lock_when_the_new_assist_takes_the_old_place() {
     Options options;
     zap::GameAddresses a = options.addresses();
@@ -591,6 +646,8 @@ int main() {
     test_assist_unlock_after_the_options_menu_is_built_again();
     test_assist_lock_when_the_new_assist_takes_the_old_place();
     test_assist_lock_without_the_padlock_frame();
+    test_assist_lock_found_again_only_as_left();
+    test_assist_lock_leaves_an_unwritable_label_alone();
     test_assist_lock_moves_assist_past_the_selectable_entries();
     test_assist_lock_leaves_an_unexpected_order_alone();
     test_install_and_restore();
