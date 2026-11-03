@@ -64,14 +64,14 @@ constexpr ptrdiff_t kBoxTopRight = 0x228;
 constexpr int32_t kMaxTranslatedGlyphs = 3 * kAssistLength;  // the label's capacity
 constexpr char kAssist[kAssistLength + 1] = "ASSIST\0\0\0\0\0";
 
-// Reads the glyph pointers of a live label of N glyphs, or returns false.
+// Reads the glyph pointers of a live label of N glyphs, each writable, or returns false.
 template <int N>
 bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
     if (!label_glyphs(pointer_at(child, widget::kLabel), N, glyphs)) return false;
     for (BYTE* g : glyphs) {
         int32_t released = 1;
         if (!read(g, sprite::kReleased, released) || released != 0 ||
-            frame_list(g, 'Z') == nullptr) {
+            frame_list(g, 'Z') == nullptr || !writable(g, sprite::kSize)) {
             return false;
         }
     }
@@ -144,10 +144,8 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     }
     BYTE* glyphs[kLabelLength] = {};
     if (glyphs_of(child_, glyphs)) {
-        for (int i = 0; i < kLabelLength; ++i) {
-            at<int32_t>(glyphs[i], sprite::kFrameIndex) = frames_[i];
-            at<BYTE*>(glyphs[i], sprite::kFrameShown) = frame_ptrs_[i];
-        }
+        // Each frame shown derived afresh from the glyph's frame list now, not a pointer kept.
+        for (int i = 0; i < kLabelLength; ++i) set_frame(glyphs[i], frames_[i]);
     }
     // The callback goes back even if the label changed shape: the widget is alive and would
     // otherwise keep pointing into the helper.
@@ -194,14 +192,8 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
     const bool already = glyphs_show(glyphs, kLabel);
     for (int i = 0; i < kLabelLength; ++i) {
         BYTE* g = glyphs[i];
-        if (already) {
-            int32_t r = static_cast<unsigned char>(kRandomizer[i]);
-            frames_[i] = r;
-            frame_ptrs_[i] = at<BYTE*>(g, sprite::kFrameList) + r * sprite::kFrameSize;
-        } else {
-            frames_[i] = at<int32_t>(g, sprite::kFrameIndex);
-            frame_ptrs_[i] = at<BYTE*>(g, sprite::kFrameShown);
-        }
+        frames_[i] = already ? static_cast<unsigned char>(kRandomizer[i])
+                             : at<int32_t>(g, sprite::kFrameIndex);
         set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
     }
     // In a translation the label shows its translated text: built again as ARCHIPELAGO's, where
@@ -220,6 +212,7 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
     }
     menu_ = top;
     child_ = child;
+    callback_ = callback;
     return true;
 }
 
@@ -229,7 +222,10 @@ bool ArchipelagoChoice::fit_border(const GameAddresses& a) {
     int32_t selected = -1, width = 0;
     BYTE* label = nullptr;
     double label_x = 0;
-    if (child_at(panel, 1) != child_ || !read(panel, kPanelSelected, selected) || selected != 1 ||
+    // The choice still holding the helper's callback: called from the panel's hook inside the
+    // game's frame, the menu may have been closed and built again since install looked.
+    if (choice_in(menu_, a, reinterpret_cast<void*>(callback_)) != child_ ||
+        !read(panel, kPanelSelected, selected) || selected != 1 ||
         !read(panel, kPanelBorderWidth, width) || width != kGameBorderWidth ||
         !read(child_, widget::kLabel, label) || !read(label, sprite::kX, label_x)) {
         return false;
@@ -281,14 +277,32 @@ bool ArchipelagoChoice::restore(const GameAddresses& a, WidgetCallback callback)
     return put;
 }
 
-BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_callback,
-                            BYTE** panel_out, int32_t* index_out) {
-    if (expected_callback == nullptr) return nullptr;
+namespace {
+
+// Whether a 12-glyph label reads as the lock leaves ASSIST: ASSIST, a blank, the padlock (or a
+// blank, where the font has no frame for it: draw_locked's set_frame then fails), four blanks.
+bool shows_locked(BYTE* (&glyphs)[kAssistLength]) {
+    for (int i = 0; i < kAssistLength; ++i) {
+        const int32_t frame = frame_of(glyphs[i]);
+        if (frame != static_cast<unsigned char>(kAssist[i]) &&
+            !(i == kLockAt && frame == kLockGlyph)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The first live widget of `menu` with the generic handler and `callback` whose glyphs read
+// ASSIST, as the game builds it (`locked` false) or as the lock leaves it (true); with its panel
+// and its place among the panel's children.
+BYTE* find_assist(BYTE* menu, const GameAddresses& a, const void* callback, bool locked,
+                  BYTE** panel_out, int32_t* index_out) {
     BYTE* found = nullptr;
     for_each_child(menu, [&](BYTE* panel, int32_t index, BYTE* child) {
-        if (!live_widget(child, a.widget_handler_fn, expected_callback)) return false;
+        if (!live_widget(child, a.widget_handler_fn, callback)) return false;
         BYTE* glyphs[kAssistLength] = {};
-        if (!glyphs_of(child, glyphs) || !glyphs_show(glyphs, {kAssist, kAssistLength})) {
+        if (!glyphs_of(child, glyphs) ||
+            !(locked ? shows_locked(glyphs) : glyphs_show(glyphs, {kAssist, kAssistLength}))) {
             return false;
         }
         if (panel_out != nullptr) *panel_out = panel;
@@ -299,15 +313,22 @@ BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_c
     return found;
 }
 
+}  // namespace
+
+BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_callback,
+                            BYTE** panel_out, int32_t* index_out) {
+    if (expected_callback == nullptr) return nullptr;
+    return find_assist(menu, a, expected_callback, false, panel_out, index_out);
+}
+
 bool AssistLock::still_locked(const GameAddresses& a) const {
-    if (child_ == nullptr) return false;
-    bool locked = false;
-    for_each_child(menu_, [&](BYTE*, int32_t, BYTE* child) {
-        if (child != child_) return false;
-        locked = live_widget(child, a.widget_handler_fn, nullptr);  // its callback cleared
-        return true;  // found: the first holding it decides
-    });
-    return locked;
+    // Found afresh in the menu open now, never taken on the kept pointer alone: leaving Video,
+    // GENERAL or the assist menu closes the options menu and builds another (0x124D30), whose
+    // widgets may take the freed ones' places, its VERSION 1.20 (12 glyphs, no callback) in
+    // ASSIST's (docs/re/memory.md, "The assist menu").
+    if (child_ == nullptr || !is_open(a.current_menu, menu_)) return false;
+    BYTE* panel = nullptr;
+    return find_assist(menu_, a, nullptr, true, &panel, nullptr) == child_ && panel == panel_;
 }
 
 namespace {
@@ -342,7 +363,7 @@ bool box_right(const BYTE* panel, double& x) {
 bool AssistLock::install(const GameAddresses& a) {
     BYTE* top = pointer_at(a.current_menu);
     if (child_ != nullptr) {
-        if (is_open(a.current_menu, menu_) && still_locked(a)) {
+        if (still_locked(a)) {
             // Still locked, with its menu open (on top or under another). The options menu takes
             // another palette after some screens (the map's 26), so the locked look is pinned
             // again whenever it is the menu up.
@@ -494,9 +515,10 @@ void AssistLock::move_back() {
 
 bool AssistLock::restore(const GameAddresses& a) {
     if (child_ == nullptr) return false;
-    // The callback goes back even if the label changed meanwhile: the widget is alive, and ASSIST
-    // would otherwise stay shut.
-    bool put = is_open(a.current_menu, menu_) && still_locked(a);
+    // Only into the widget found again as the locked ASSIST of its open menu. Any other (its menu
+    // closed, or its place taken by another widget, or its label changed) is forgotten unwritten:
+    // a relabeled ASSIST stays shut until its menu is built again, which builds it open.
+    bool put = still_locked(a);
     if (put) {
         BYTE* glyphs[kAssistLength] = {};
         if (glyphs_of(child_, glyphs)) {
@@ -527,6 +549,7 @@ bool AssistLock::restore(const GameAddresses& a) {
     menu_ = nullptr;
     panel_ = nullptr;
     moved_from_ = -1;
+    hd_label_ = nullptr;  // a label at the same place later is another's
     return put;
 }
 

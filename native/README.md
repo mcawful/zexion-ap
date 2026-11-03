@@ -395,9 +395,22 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
   that disallows assists has its save loaded, until the slot receives Assist Unlock.
-- **Put back:** `assists free`, the menu closing, a client going away or an unload, into a menu
-  still open only, and the order only if the panel is as the helper left it. An unload no frame
-  comes for leaves it locked until the options menu closes, harmlessly.
+- **Found again each frame:** never taken on the pointer kept from the frame it was locked.
+  Leaving Video, GENERAL (which holds the language) or the assist menu closes the options menu
+  and builds another (`0x124D30`), whose widgets may take
+  the freed ones' places: its VERSION 1.20, 12 glyphs with no callback like the locked ASSIST,
+  in ASSIST's (`docs/re/memory.md`, "The assist menu"). Each frame call the helper finds the
+  entry again in the menu open now: a live widget with the generic handler, its callback
+  cleared, its glyphs reading ASSIST and the padlock, in the panel it was locked in. It writes
+  only into one that passes; any other is forgotten unwritten, and the new menu's ASSIST is
+  locked. One the game relabeled stays shut until its menu is built again. (Stand-in tests,
+  and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…` from PR #89, in English(HD):
+  Option, Video and back several times, the map and back, then the default English; the
+  owner: "seems to work". The bug it fixes showed only sometimes, so a clean run is weaker
+  evidence than a repro. GENERAL and the assist menu: stand-in tests only, not run in game.)
+- **Put back:** `assists free`, the menu closing, a client going away or an unload, only into
+  the entry found again as above, and the order only if the panel is as the helper left it. An
+  unload no frame comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry's translated text (SmallText 137) is built
   again with the HD padlock after it ("Translations", the helper's icons; in English(HD) with
   no space before it, the padlock's cell holding its own gap), the padlock left out where it
@@ -415,7 +428,10 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   unlocked after going through menus, not reproduced (a bug): "Translations", "Run in game
   again". Fixed since, stand-in tests only, not run in game yet: the look above, the padlock
   on the text's line with no space before it, and the offline look held through menus ("AP
-  saves without the client").)
+  saves without the client"). On the 1.0.0 RC (develop `78320a6`) the owner then saw, sometimes,
+  after Video and back in English(HD): the version line gray with the padlock in place of its
+  blank and ASSIST open, white with no padlock; that is the reused place above, fixed since by
+  finding the entry again each frame, run in game 2026-11-03 as above.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -458,7 +474,10 @@ While a plan is armed (`ap_newgame`), each frame call:
   `disarm` and before an unload, but only while that menu is still open (the game frees a closed
   menu's widgets without clearing them). While the panel may still hold the wrapper, the helper
   refuses to unload. Once the new game is queued only the callback and handler go back, so the
-  label reads ARCHIPELAGO through the fade.
+  label reads ARCHIPELAGO through the fade. Every write goes only into a choice still holding
+  the helper's callback (and the handler only over the helper's own): the hover border too,
+  which the panel's wrapper fits inside the game's frame, where a menu closed and built again
+  since the frame call could have put another choice in its place.
 
 Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label through the fade
 ("Starting a new game", "The game-mode panel"); 2026-10-29, a Custom seed with Secret Shuffle
@@ -736,7 +755,10 @@ turned back after a save at the pod during it (the owner's report).
   the image whiter each frame, all white on the last, and in its colors again after. A load's
   fade to black darkens the logo with the rest.
 - **Put back:** the cells' frames and rows when a save stops being marked, when nothing is
-  marked any more, and before an unload; the image is cleared from the texture.
+  marked any more, and before an unload; the image is cleared from the texture. Only into an
+  entry still holding the helper's handler: one the game built again in a wrapped entry's
+  place (its menu closed and built again at the same address) is left alone, the old one
+  forgotten.
 
 Working in game: 2026-10-26, helper 0.30.0 with this change, with no client and with one: the
 file select through paging, COPY FILE, DELETE FILE, a copy of an AP save and its delete, and the
@@ -1274,7 +1296,10 @@ lands, not only the place passed.
     left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
     up); the padlock on the text's line with no space before it ("The assist menu", "AP saves
     without the client"). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
-    cursor without the logo and the pickup popup's lines centered ("Other players' items").
+    cursor without the logo and the pickup popup's lines centered ("Other players' items"). A
+    second path to ASSIST unlocked, seen on the 1.0.0 RC (the version line locked in its place
+    after Video), fixed since by finding the entry again each frame, run in game 2026-11-03 (the
+    owner: "seems to work"; "The assist menu").
   - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
     stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
     matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
@@ -1336,7 +1361,8 @@ unload.
   after the transition and the stepper: the routine's frame drawn black, then the fade in, and the
   wrapper never left as the transition (unload, a routine not as traced, none in the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
-  released widgets, the ASSIST lock's look and cursor order).
+  released widgets, the ASSIST lock's look and cursor order, the options menu built again after
+  Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
 - `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each

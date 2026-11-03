@@ -77,7 +77,9 @@ public:
     // ...then, after event 0xF (the fill), the entry rewritten.
     void on_event(const GameAddresses& addresses, void* widget, intptr_t event);
 
-    // Game thread: every wrapped handler put back, in menus still open (before an unload).
+    // Game thread: every wrapped handler put back, in menus still open (before an unload), and
+    // the entry's glyphs as the game left them; only into an entry still holding the hook (one
+    // built again in its place is forgotten unwritten).
     void restore(const GameAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 

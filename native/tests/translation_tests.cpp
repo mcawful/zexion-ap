@@ -567,6 +567,72 @@ void test_assist_in_a_translation(bool on = true) {
     pixel.restore(a);
 }
 
+// The options menu built again after Video in English(HD), as the owner saw on the 1.0.0 RC: the
+// new menu's VERSION 1.20 in the locked ASSIST's freed place is left as the game built it (its
+// pixel glyphs and its translated text), and the new ASSIST's text is built with the padlock.
+void test_assist_in_a_translation_after_the_menu_is_built_again() {
+    reset_translation();
+    load_translation("English(HD)", true);
+    OptionsMenu options(reinterpret_cast<void*>(&widget_handler),
+                        reinterpret_cast<void*>(&assist_menu));
+    OptionsMenu fresh(reinterpret_cast<void*>(&widget_handler),
+                      reinterpret_cast<void*>(&assist_menu));
+    zap::GameAddresses a = options.addresses();
+    with_translation(a);
+    HdGlyphs<3 * zap::kAssistLength> hd(options.label), hd_fresh(fresh.label);
+    for (OptionsMenu* o : {&options, &fresh}) {
+        for (BYTE* g : o->glyph_list) g[0x120] = 0;  // hidden, as the attach left them
+        built(o->label, 136.0, 171.0);
+    }
+    BYTE piece[0x80] = {};  // the options box's top right piece
+    put<BYTE*>(options.second, 0x228, piece);
+    put<double>(piece, 0x40, 193.0);
+    zap::AssistLock lock;
+    check(lock.install(a), "locked");
+
+    // Built again where it was: VERSION 1.20 (no callback, in its own panel, its text built by
+    // the game) in the old ASSIST's place, the new ASSIST sixth of the selectable eight.
+    const char version[] = "VERSION 1.20";
+    for (int i = 0; i < zap::kAssistLength; ++i) {
+        BYTE* g = options.glyph_list[i];
+        put<int32_t>(g, 0x1C4, version[i]);
+        put<BYTE*>(g, 0x1B0, options.table.data() + version[i] * 0x38);
+        put<int32_t>(g, 0x1D0, 0x15);
+    }
+    built(options.label, 8.0, 8.0);
+    put<int32_t>(options.label, 0x248, 11);
+    for (BYTE* g : hd.list) {
+        put<int32_t>(g, 0x1D0, 0x15);
+        put<float>(g, 0x84, 1.0f);
+    }
+    BYTE* version_list[1] = {options.child};
+    put<BYTE**>(options.first, 0x1E0, version_list);
+    put<int32_t>(options.first, 0x1E8, 1);
+    for (int i = 0; i < 7; ++i) options.children[i < 6 ? i : 7] = options.others[i];
+    options.children[6] = fresh.child;
+    for (int i = 0; i < 8; ++i) put<int32_t>(options.children[i], 0x1E0, i);
+    put<int32_t>(options.second, 0x1EC, 8);
+    g_builds.clear();
+
+    check(lock.install(a), "the new menu's ASSIST locked");
+    bool version_kept = get<int32_t>(options.glyph_list[7], 0x1C4) == ' ' &&
+                        get<int32_t>(options.glyph_list[0], 0x1D0) == 0x15 &&
+                        get<int32_t>(options.label, 0x248) == 11;
+    for (BYTE* g : hd.list) version_kept = version_kept && get<float>(g, 0x84) == 1.0f;
+    for (const BuildCall& b : g_builds) version_kept = version_kept && b.label != options.label;
+    check(version_kept, "VERSION 1.20: its glyphs, its text and its look left as the game built them");
+    check(!g_builds.empty() && g_builds.back().label == fresh.label &&
+              g_builds.back().text == L"Assist\xE03B" &&
+              get<void*>(fresh.child, 0x2C0) == nullptr &&
+              get<float>(hd_fresh.glyphs[0], 0x84) == 0.45f,
+          "the new ASSIST: its text with the padlock, dimmed, its callback cleared");
+    check(lock.restore(a) && g_builds.back().label == fresh.label &&
+              g_builds.back().text == L"Assist" &&
+              get<void*>(fresh.child, 0x2C0) == reinterpret_cast<void*>(&assist_menu) &&
+              get<int32_t>(options.label, 0x248) == 11,
+          "unlocked: the new ASSIST's text and callback back, VERSION untouched");
+}
+
 // The popups' layout in a translation's font: lines measured as the builder lays them out (a
 // stand-in pixel font, every character 6 wide, a space 3), wrapped at the cap, a popup's lines
 // centered with spaces, a notice's left as they wrap; without metrics, wrapped by characters.
@@ -929,5 +995,6 @@ int main() {
     test_archipelago_built_again_and_back();
     test_assist_in_a_translation();
     test_assist_in_a_translation(false);
+    test_assist_in_a_translation_after_the_menu_is_built_again();
     return report("translation tests");
 }

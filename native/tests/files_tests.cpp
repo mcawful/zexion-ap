@@ -252,6 +252,26 @@ void test_an_entry_not_wrapped_is_not_written() {
     check(cells(s.e[0], {0, 0, 0, 0, 0, 0}) && s.e[0].y(114) == 48, "not wrapped: untouched");
 }
 
+// The file select closed and built again at the same address, a new entry (holding the game's
+// handler) where the wrapped one was: the put-back writes nothing into it, even where its
+// block reads as the helper left the old one's (blank, for no disk).
+void test_an_entry_built_again_in_its_place_is_not_written() {
+    Screen s;
+    zap::GameAddresses a = s.addresses();
+    s.e[0].fill(true);  // the KEYS header and keys, no disk yet: blanked
+    zap::FileEntries f;
+    f.set_counts({{4, 0}});
+    f.watch(a);
+    check(cells(s.e[0], {0, 0, 0, 0, 0, 0}) && f.holds_hook(), "blanked, wrapped");
+    at<void*>(s.e[0].widget, 0x2C8) = reinterpret_cast<void*>(&file_entry);
+    s.e[0].fill(false);  // a save with no keys
+    f.restore(a);
+    check(cells(s.e[0], {0, 0, 0, 0, 0, 0}) &&
+              at<void*>(s.e[0].widget, 0x2C8) == reinterpret_cast<void*>(&file_entry) &&
+              !f.holds_hook(),
+          "the new entry left as the game built it, the old one forgotten");
+}
+
 void test_no_disk_shows_nothing() {
     Screen s;
     s.e[0].fill(true);  // the KEYS header (flag 39), no disk yet
@@ -454,6 +474,7 @@ int main() {
     test_copy_and_delete_entries();
     test_only_what_it_moved_goes_back();
     test_an_entry_not_wrapped_is_not_written();
+    test_an_entry_built_again_in_its_place_is_not_written();
     test_no_disk_shows_nothing();
     test_anything_else_is_left_alone();
     test_ap_saves_show_the_logo();
