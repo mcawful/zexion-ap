@@ -13,8 +13,8 @@ namespace {
 
 constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
 // The helper's look for them: palette 26 (no shader, glColor from the style) at style 34, which
-// every rewrite of the style table sets to color 3, white (docs/re/memory.md, "Other players'
-// items").
+// every rewrite of the style table sets to color 3: white, or cream with the fourth PALETTE
+// display option (docs/re/memory.md, "Other players' items").
 constexpr int kOwnPalette = 26;
 constexpr int32_t kOwnStyle = 34;
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64

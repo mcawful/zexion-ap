@@ -528,8 +528,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   width from 1 to 24.
 - **Colors:** every live stand-in not dressed as a Zexion item draws in palette 26 at style 34
   while they are restyled (`src/looks.cpp`, `ItemLooks::own_colors`): palette 26 draws the
-  texture's own colors, under white, where the game's palette 8 follows the suit, the weapon and
-  the room, so the logo kept changing colors (`docs/re/memory.md`, "Other players' items"). An
+  texture's own colors, under white (cream with the fourth PALETTE display option), where the
+  game's palette 8 follows the suit, the weapon and the room, so the logo kept changing colors
+  (`docs/re/memory.md`, "Other players' items"). An
   object is colored only with the template's frame list and palette 8 or 26; its style is kept,
   and palette 8 and that style are put back when the stand-ins are, and on an unload. An
   item-pool stand-in draws in palette 8, its colors wrong, for its first frame (the game's spawn)

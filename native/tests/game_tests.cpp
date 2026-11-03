@@ -869,6 +869,35 @@ void test_flipped_items_show_as_themselves() {
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 }
 
+// Labels naming a Zexion item that arrive after a stand-in is drawn in palette 26: it is dressed
+// all the same, in both pools (the helper's palette is a stand-in's).
+void test_colored_stand_ins_dressed_later() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    animated_missile_box();
+    g_frame_clock = 1000;  // the Missile Box's frame 41
+    put_object(4, 78, 47, 6, 2);
+    put_flipped(12, 501, 63, 6, 2);
+    std::map<int, zap::Label> plain;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", plain);
+    game.set_labels(plain);
+    player_cell(6, 2);
+    game.watch_ap_items();
+    check(object_palette(4) == g_palette_table[26] && general_ptr(12, 0x198) == g_palette_table[26],
+          "both colored first");
+    std::map<int, zap::Label> box;
+    zap::parse_labels("ap_labels\nlabel 6 2 4033360a464f52205a4558494f4e32", box);  // "@36"
+    game.set_labels(box);
+    game.watch_ap_items();
+    check(object_base(4) == g_frames + (41 - 63) * 0x38 && object_palette(4) == g_palette_table[1],
+          "an item-pool stand-in in palette 26 dressed as the Missile Box");
+    check(general_ptr(12, 0x1B0) == g_frames + 41 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[1],
+          "and a general-pool one");
+    game.restore_ap_items();
+}
+
 // While the stand-ins are restyled, every live stand-in not dressed as a Zexion item draws in
 // palette 26 at style 34 (the logo in its own colors), its first style kept; one dressed, one
 // not as expected, this world's own items and the marker are left alone. Put back (palette 8,
@@ -2148,6 +2177,7 @@ int main() {
     test_flipped_items_show_as_themselves();
     test_the_marker_hidden();
     test_stand_ins_in_their_own_colors();
+    test_colored_stand_ins_dressed_later();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_shield();
