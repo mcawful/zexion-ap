@@ -462,14 +462,19 @@ void test_the_icon_sheets() {
           "frames 0x96 to 0x98: 64 x 64 cells in the HD sheet, 10 x 9 in the pixel one");
     check(gl_fake::g_bound == 3 && gl_fake::g_row_length == 5, "the game's binding put back");
     check(!gl_fake::all_blank(up), "painted, not blank");
-    // The HD disk: its hole clear, its ring white and opaque.
+    // The HD disk (D2), centered at (32, 28): its hub hole and its two shine cuts clear (up
+    // right and down left of the hub), the disc around them white and opaque.
     const std::vector<uint8_t> disk = zap::IconSheets::art(0, 64, 64);
     auto alpha = [&](const std::vector<uint8_t>& a, int w, int x, int y) {
         return a[(static_cast<size_t>(y) * w + x) * 4 + 3];
     };
-    check(alpha(disk, 64, 32, 32) == 0 && alpha(disk, 64, 32, 10) == 255 &&
-              disk[(10 * 64 + 32) * 4] == 255,
-          "the HD disk: a hole in a white disc");
+    check(alpha(disk, 64, 32, 28) == 0 && alpha(disk, 64, 43, 16) == 0 &&
+              alpha(disk, 64, 21, 39) == 0,
+          "the HD disk: its hub hole and its shine cuts clear");
+    check(alpha(disk, 64, 32, 12) == 255 && alpha(disk, 64, 32, 44) == 255 &&
+              alpha(disk, 64, 18, 28) == 255 && alpha(disk, 64, 46, 28) == 255 &&
+              disk[(12 * 64 + 32) * 4] == 255,
+          "the HD disk: a solid white disc");
     // Each HD icon's opaque box in its cell: left, top, right, bottom.
     auto box = [&](int k) {
         const std::vector<uint8_t> art = zap::IconSheets::art(k, 64, 64);
@@ -485,7 +490,7 @@ void test_the_icon_sheets() {
                std::to_string(b[2]) + "," + std::to_string(b[3]);
     };
     // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a gap in; the disk
-    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50 (D1, L1).
+    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50 (D2, L1).
     check(box(1) == "16,6 to 49,45", "the HD padlock on the text's line", box(1));
     check(box(0) == "10,6 to 53,49", "the HD disk the game's icons' size", box(0));
     check(box(2) == "12,6 to 51,49", "the HD logo the game's icons' size", box(2));

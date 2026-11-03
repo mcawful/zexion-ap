@@ -1159,8 +1159,9 @@ lands, not only the place passed.
     ASSIST with no space (measured on the 2026-11-02 retest's shot; not run in game yet). The
     disk and the logo, which lead their text, are drawn in x 10 to 54, y 6 to 50 of the cell, a
     square chosen to match the game's own icons (their boxes' medians x 9 to 53, y 7 to 50:
-    `docs/re/memory.md`, "The assist menu"): the owner's picks D1 and L1 of the 2026-11-02
-    mockups, the same ring and dots, smaller (not run in game yet). `hd_icon` names the helper's glyphs (0xFB,
+    `docs/re/memory.md`, "The assist menu"): the owner's picks D2 and L1 of the 2026-11-02
+    mockups: a solid disc with a hub hole, a thin groove and two shine cuts, and the pixel
+    glyph's dots, smaller (not run in game yet). `hd_icon` names the helper's glyphs (0xFB,
     0xEF, 0xEE) as these characters, so popups, names and labels carry them.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
     clear (`0x168AE9`), only for the Feats screen's title when its HD text cannot be built

@@ -518,7 +518,7 @@ bool in_circle(double x, double y, double cx, double cy, double r) {
 constexpr double kLockBox[4] = {16, 6, 50, 46};
 // Where the disk and the AP logo sit, which lead their text: the game's own HD icons' box (their
 // boxes' medians are x 9 to 53, y 7 to 50 in BigFontIcons.png), from the cap height to a
-// little under the baseline, the owner's pick (D1, L1 of the 2026-11-02 mockups).
+// little under the baseline, the owner's picks (D2, L1 of the 2026-11-02 mockups).
 constexpr double kLeadBox[4] = {10, 6, 54, 50};
 
 // (x, y) in `box` as the point of a shape drawn in `drawn` (both left, top, right, bottom), the
@@ -532,10 +532,17 @@ void fit(double& x, double& y, const double (&box)[4], const double (&drawn)[4])
 // The HD icons' shapes in a 64 x 64 cell, each drawn in its own box and fitted into its place.
 bool hd_shape(int k, double x, double y) {
     switch (k) {
-        case 0: {  // a disc with its hole and a groove, drawn in x 6 to 58, y 6 to 58
-            fit(x, y, kLeadBox, {6, 6, 58, 58});
-            const double d = std::hypot(x - 32, y - 32);
-            return d <= 26 && d >= 7 && !(d >= 14.5 && d <= 17);
+        case 0: {  // a solid disc: its hub hole, a thin groove and two shine cuts, drawn in
+                   // x 14 to 54, y 6 to 46
+            fit(x, y, kLeadBox, {14, 6, 54, 46});
+            const double d = std::hypot(x - 34, y - 26);
+            if (d > 20 || d < 3.5 || (d >= 6.5 && d <= 8)) return false;
+            // The angle counterclockwise from the right, in degrees (y runs down).
+            double a = std::atan2(-(y - 26), x - 34) * 180.0 / 3.14159265358979;
+            if (a < 0) a += 360;
+            const bool shine = d >= 11.5 && d <= 17.5 && ((a >= 40 && a <= 52) ||
+                                                           (a >= 220 && a <= 232));
+            return !shine;
         }
         case 1: {  // a padlock: its shackle, its body, the keyhole out of it
             // Drawn in x 12 to 52, y 11 to 58 below, and fitted into kLockBox: from the font's
