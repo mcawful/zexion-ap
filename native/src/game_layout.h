@@ -144,6 +144,10 @@ constexpr size_t kItemSize = 0x3B0;
 constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;
 constexpr size_t kGeneralSize = 0x5C8;
 constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211;
+// A general object's first script state (16-bit): its type's +0x144, which the spawn copies
+// (0x4521E to 0x45226); R'Talva X34 Y51's marker, type 1146, has 8210 (docs/re/memory.md,
+// "Other players' items", "A marker on frame 63").
+constexpr ptrdiff_t kFirstState = 0x32E;
 }  // namespace obj
 
 // Item records: 51 of 100 bytes behind [item_records] (docs/re/memory.md, "Other players'

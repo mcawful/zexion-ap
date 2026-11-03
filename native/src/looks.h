@@ -13,13 +13,13 @@
 // a scan finds any live one drawing a logo frame from the item sprites' list, and dresses it by
 // its frame shown and palette only, leaving its frame list as the game's.
 //
-// A general object drawing a logo frame in a palette other than the stand-ins' is not a stand-in:
-// the game draws such a frame empty (its art is blank there), so the helper's logo would show
-// where the game shows nothing (R'Talva X34 Y51's marker, docs/re/memory.md, "Other players'
-// items"). While the stand-ins are restyled, each such object is hidden every frame (its shown
-// byte cleared, which the draw loop skips and its own update leaves), and shown again while it
-// still draws a logo frame, when the stand-ins are put back or the helper unloads. One that
-// stops drawing a logo frame is left as the game has it.
+// R'Talva X34 Y51's marker (type 1146, its first state 8210) draws the logo frame 63 in its own
+// palette while it waits for the boss (flag 154 clear): empty in the game's art, it would show the
+// helper's logo (docs/re/memory.md, "Other players' items"). After the boss it becomes location
+// 81's reward display. While the stand-ins are restyled and flag 154 is clear, it is hidden every
+// frame (its shown byte cleared, which the draw loop skips and its own update leaves); it is shown
+// again, on whatever frame, as soon as it no longer is such a marker (the flag set, another
+// frame), and when the stand-ins are put back or the helper unloads.
 #pragma once
 
 #include <windows.h>
@@ -57,9 +57,10 @@ public:
     // A live object drawing from the item sprites' frame list (`base`, item_frame_base) at a
     // logo frame, empty in the game's own art: a stand-in, or a marker (is_marker).
     static bool shows_stand_in(const BYTE* object, const BYTE* base);
-    // General object `slot` (`object`: a copy holding its palette) draws a logo frame
-    // (shows_stand_in) as no stand-in does: in a palette other than the stand-ins'
-    // (`standin_palette`), and not dressed by this helper.
+    // General object `slot` (`object`: a copy up to its first state, obj::kFirstState) is the
+    // marker, not a stand-in: type 1146's first state, in a palette other than the stand-ins'
+    // (`standin_palette`), not dressed by this helper. A marker on a logo frame (shows_stand_in)
+    // is the one to hide while flag 154 is clear.
     bool is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const;
     // Markers this helper has hidden, still to be put back (tests).
     int hidden_markers() const;
@@ -92,12 +93,14 @@ private:
     // among them hidden.
     void apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                        int64_t clock, const bool (&ours)[2]);
+    // Flag 154 (set by R'Talva X34 Y51's boss) is clear: the marker still waits, empty.
+    static bool marker_waits(const GameAddresses& at);
     // A marker hidden: its spawn, so it is put back only while it is the same object.
     struct Hidden {
         int32_t spawn = 0;  // 0 for none
     };
-    // Shows marker `object` (`seen`: its copy) again if it is still the spawn `h` hid, still
-    // hidden and still on a logo frame (empty then, as the game's art has it); forgets it.
+    // Shows marker `object` (`seen`: its copy) again if it is still the spawn `h` hid and still
+    // hidden, whatever frame it is on (after the boss, its reward); forgets it.
     static void unhide(BYTE* object, const BYTE* seen, Hidden& h);
     static void unhide_live(BYTE* object, Hidden& h);
 

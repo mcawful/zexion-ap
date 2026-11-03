@@ -1430,7 +1430,8 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
         }
     }
     if (at_.object_pool != nullptr && base != nullptr) {
-        BYTE o[obj::kGeneralRow + 2];
+        BYTE o[obj::kFirstState + 2];  // through the cell (+0x210) and the first state
+        static_assert(obj::kFirstState > obj::kGeneralColumn);
         BYTE* standin_palette = ItemLooks::stand_ins_palette(at_);
         for (int slot : looks_.flipped_slots()) {
             // Checked again: the list is from the last scan, up to 30 frames ago. A marker is no
