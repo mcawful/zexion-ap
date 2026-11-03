@@ -174,10 +174,11 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
   `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
-  the later keys, marked `later_key` (`options_back_fn`, newer than caches already written),
-  may be missing too: the helper configures without them, every part as usual but for what one
-  serves (without `options_back_fn` the pause row is turned on OPTION MENU's way back a frame
-  late, as before it: below), until a client's `config` gives them (stand-in tests only:
+  the later keys, marked `later_key` (`options_back_fn` and `pickup_list`, newer than caches
+  already written), may be missing too: the helper configures without them, every part as usual
+  but for what one serves (without `options_back_fn` the pause row is turned on OPTION MENU's way
+  back a frame late, as before it: below; without `pickup_list` an AP save's major-item list is
+  not filled: "Grants"), until a client's `config` gives them (stand-in tests only:
   `tests/offline_tests.cpp`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
@@ -308,6 +309,16 @@ An `apply` (`src/game_calls.cpp`):
 It leaves out what only a real pickup should do: the map cell, the pickup counter, the
 major-item list, achievements, switching to a new weapon, and a key's area event (which only
 hides the key's map marker: `docs/re/memory.md`, "Keys, the gates and the key markers").
+
+**The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
+frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
+item the game's pickup would list (`pickups::listed`, `src/game_layout.h`) whose icon is not in
+it yet, by item ID, as the game stops, at 26. So an AP save's row fills as items arrive, and an
+older one's the first time it is played with this helper; it shows on the file select once the
+game saves. It runs without a client too, once the client has written `pickup_list` into the
+offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
+the game's own data, so an unload leaves it. Not run in game yet (`docs/re/memory.md`, "The
+pickup record holds the major-item list").
 
 Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a live game").
 

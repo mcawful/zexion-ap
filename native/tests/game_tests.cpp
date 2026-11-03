@@ -1177,6 +1177,82 @@ bool seen_marker_games() {
     return std::memcmp(g_seen_marker_code, kSeenMarkerGame, sizeof(kSeenMarkerGame)) == 0;
 }
 
+// The game's rule for listing a pickup (0x1F761 to 0x1F7A2), on the B1 records' icons.
+static_assert(zap::pickups::listed(3, 0x77) && zap::pickups::listed(24, 0xC7) &&
+              zap::pickups::listed(26, 0xE3) && zap::pickups::listed(32, 0xD2) &&
+              zap::pickups::listed(44, 0xC0));
+static_assert(!zap::pickups::listed(0, 0xE7) && !zap::pickups::listed(2, 0xC0) &&
+              !zap::pickups::listed(27, 0xE4) && !zap::pickups::listed(31, 0xC0) &&
+              !zap::pickups::listed(45, 0xE6) && !zap::pickups::listed(36, 0xE8) &&
+              !zap::pickups::listed(37, 0x6E) && !zap::pickups::listed(35, 0));
+
+// In play in an AP save, each owned item the game lists goes into the save's major-item list
+// once, by item ID, below the game's 26; a new one joins the end. Nothing in a plain randomizer
+// save, with a menu open, or with a count the game would not have written.
+void test_pickup_list() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    for (int i = 0; i < 6; ++i) g_section[0x310 + i] = static_cast<uint8_t>(0x40 + i);
+    auto icon = [](int item, uint8_t code) { g_records[item * 100 + 0x08] = code; };
+    icon(24, 0xC7);  // Gravity Harness
+    icon(16, 0xC0);  // Slide Mod
+    icon(28, 0xE5);  // Beta Key: not listed
+    icon(37, 0x6E);  // Bomb Box: not listed
+    icon(36, 0xE8);  // Missile Box: not listed (reset_game gives it 0xC5)
+    g_inventory[24] = 1;
+    g_inventory[16] = 1;
+    g_inventory[28] = 1;
+    g_inventory[37] = 1;
+    g_inventory[36] = 1;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 0, "a randomizer save of no known seed: untouched");
+
+    game.add_known_seeds({zap::offline_seed_of(g_section)});
+    g_menu = 1;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 0, "a menu open: not yet");
+    g_menu = 0;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 2 && g_pickups[0] == 0xC0 && g_pickups[1] == 0xC7,
+          "the owned listed items, by item ID");
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 2, "each once");
+
+    icon(20, 0xC3);  // Phaser, received
+    g_inventory[20] = 1;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 3 && g_pickups[2] == 0xC3, "a new one at the end");
+
+    // A list the game filled: its codes kept, the missing one after them.
+    std::memset(g_pickups, 0, sizeof(g_pickups));
+    g_pickups[0] = 0xC7;
+    g_pickups[1] = 0xD2;
+    g_pickups[zap::pickups::kCount] = 2;
+    game.watch_all(&chosen);
+    check(g_pickups[0] == 0xC7 && g_pickups[1] == 0xD2 && g_pickups[2] == 0xC0 &&
+              g_pickups[3] == 0xC3 && g_pickups[zap::pickups::kCount] == 4,
+          "the game's own entries kept, in their order");
+
+    // Full at 26: nothing more, as the game's pickup.
+    std::memset(g_pickups, 0x77, zap::pickups::kMax);
+    g_pickups[zap::pickups::kCount] = zap::pickups::kMax;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == zap::pickups::kMax, "a full list stays full");
+    g_pickups[zap::pickups::kCount] = 30;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 30, "a count out of range: not touched");
+    g_pickups[zap::pickups::kCount] = static_cast<BYTE>(-1);
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 0xFF, "nor a negative one");
+
+    // A normal save.
+    std::memset(g_pickups, 0, sizeof(g_pickups));
+    g_rando_marker = 0;
+    game.watch_all(&chosen);
+    check(g_pickups[zap::pickups::kCount] == 0, "a normal save: untouched");
+}
+
 // The map's important squares are raised in the labels' seed's save with a menu open too (the
 // player may pause and open the map at once), once two looks in a row (every 16th frame) have
 // read that seed loaded, and not in another seed's save. The on-screen marker write is the
@@ -1883,6 +1959,7 @@ int main() {
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
+    test_pickup_list();
     test_popups_wait_for_their_save();
     test_refused_unload_rearms();
     test_refused_unload_keeps_a_start();

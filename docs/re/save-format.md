@@ -226,7 +226,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 
 | Field | |
 |---|---|
-| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; the owner's slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; the owner's slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. How codes map to item IDs, apart from `0xC7` = 24, is not known. The list is a record of pickups, not the inventory: adding a code to the live list grants nothing (`memory.md`, "The pickup record holds the major-item list", which also gives its live address). |
+| Value | `0x9333` to `0x934C` hold up to 26 one-byte codes, in pickup order; `0x934D` is the number of entries. The Gravity Harness (item 24) is code `0xC7`. Scrap is not listed. Seen: slot 28 after the Gravity Harness: `C7`, length 1; the control run: `C7 E1`, length 2; the owner's slot 2: 10 codes (`C2 C1 CC C4 C0 CA C5 C6 CB E1`), length 10; the owner's slot 1: 26 distinct codes between `0xC0` and `0xE3`, length 26. A code is the item record's popup icon (`memory.md`, "The pickup record holds the major-item list", which also says which items are listed). The list is a record of pickups, not the inventory: adding a code to the live list grants nothing (`memory.md`, "The pickup record holds the major-item list", which also gives its live address). |
 | Status | measured (layout, the code for one item, and that the list does not grant) |
 | Method | comparing `0x9300` to `0x935F` across six saves, and against the live recording of the Gravity Harness pickup |
 | Build | B1 |

@@ -374,6 +374,12 @@ private:
     void watch_title();
     void watch_map_names();
     void watch_map_marks();
+    // In play in an AP save: each owned item the game lists (pickups::listed) appended to the
+    // save's major-item list, as the game's pickup would have, unless its icon is there already
+    // or the list is full. The grants only set the inventory byte, and the stand-ins have no
+    // icon, so without this an AP save's list stays empty (docs/re/memory.md, "The pickup
+    // record holds the major-item list").
+    void watch_pickups();
     // With a translation on: the names and the scanner's line the helper writes into its tables
     // (EntryWriter), and the popup areas emptied once their messages have gone (translation.h).
     void watch_translation();

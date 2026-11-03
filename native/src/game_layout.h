@@ -63,6 +63,22 @@ constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;
 constexpr ptrdiff_t kSelf = 0x24;
 }  // namespace event
 
+// The loaded save's major-item list, [pickup_list] (docs/re/memory.md, "The pickup record holds
+// the major-item list"): up to 26 icon codes in pickup order, then their count, a signed byte.
+// The game saves it (file 0x9333 and 0x934D), and the file select's ITEMS row draws it.
+namespace pickups {
+constexpr int kMax = 26;
+constexpr ptrdiff_t kCount = 0x1A;
+constexpr size_t kSize = kCount + 1;
+// Whether the pickup lists an item (record = item ID) with this icon (its record's +0x08), as at
+// 0x1F761 to 0x1F7A2: not items 0 to 2, 27 to 31 or above 44, nor icon 0, 0x6E (the Mega Bomb's
+// and the Bomb Box's) or 0xE8 (the Missile Container's and the Missile Box's).
+constexpr bool listed(int item, uint8_t icon) {
+    if (icon == 0 || icon == 0x6E || icon == 0xE8 || item <= 2) return false;
+    return item <= 26 || (item >= 32 && item <= 44);
+}
+}  // namespace pickups
+
 // The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408, each a
 // save file from its offset 2, so file offset F is at F - 2 (empty: 0xFF at the file's 0x9360;
 // the map at 0x877F); the randomizer marker at +0x9400. A copy of each slot's randomizer section

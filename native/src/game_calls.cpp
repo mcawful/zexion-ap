@@ -188,6 +188,8 @@ constexpr ConfigKey kConfigKeys[] = {
     translation_key(data("large_count", &G::large_count)),
     // OPTION MENU's way back to the pause screen (pause.h).
     later_key(code("options_back_fn", &G::options_back_fn)),
+    // The loaded save's major-item list (watch_pickups).
+    later_key(data("pickup_list", &G::pickup_list, pickups::kSize)),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -731,7 +733,26 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_names();
     watch_ap_items();
     watch_map_marks();
+    watch_pickups();
     watch_translation();
+}
+
+void Game::watch_pickups() {
+    BYTE* list = at_.pickup_list;
+    if (list == nullptr || !in_play() || !ap_save_loaded()) return;
+    BYTE* records = at<BYTE*>(at_.item_records, 0);
+    if (records == nullptr) return;
+    int8_t& count = at<int8_t>(list, pickups::kCount);
+    // The game appends only below 26; a count out of range is not one it wrote.
+    if (count < 0 || count > pickups::kMax) return;
+    for (int item = 0; item < record::kCount && count < pickups::kMax; ++item) {
+        if (at_.inventory[item] == 0) continue;
+        const uint8_t icon = at<uint8_t>(records + record::kSize * item, record::kIcon);
+        if (!pickups::listed(item, icon)) continue;
+        if (std::find(list, list + count, icon) != list + count) continue;
+        list[count] = icon;
+        ++count;
+    }
 }
 
 void Game::watch_translation() {
