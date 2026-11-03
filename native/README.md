@@ -109,7 +109,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> case=1 build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only or translation keys, ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> case=1 build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only, translation or later keys, ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
@@ -141,7 +141,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   (not configured, the translation keys missing, or nothing readable; and with no frame). The
   client warns in any translation but English(HD) (`client/ticks.py`, `language_tick`).
 - `reads`: the reads a frame has taken, and the seeds the last one found.
-- `cache_missing`: the client-only and translation keys (below) the offline cache lacked,
+- `cache_missing`: the client-only, translation and later keys (below) the offline cache lacked,
   comma-separated. With a client-only one among them, `configured=1` means the offline look runs
   while the client's parts still refuse; with translation keys, the translation parts stand down
   ("Translations").
@@ -174,6 +174,11 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
   `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
+  the later keys, marked `later_key` (`options_back_fn`, newer than caches already written),
+  may be missing too: the helper configures without them, every part as usual but for what one
+  serves (without `options_back_fn` the pause row is turned on OPTION MENU's way back a frame
+  late, as before it: below), until a client's `config` gives them (stand-in tests only:
+  `tests/offline_tests.cpp`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -229,8 +234,8 @@ the pause screen open, the client keeping the helper and the screen unchanged, t
 play, `lab/ap/live34/client1.log` at 11:35:53 and 11:36:02). It also refuses (`error
 <why>; not unloading`) while the game may still call into the helper, or hold something of the
 helper's.
-That is an open menu's panel or entry, the open map or the game's transition routine holding one
-of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
+That is an open menu's panel or entry, the pause menu's way back from OPTION MENU, the open map or
+the game's transition routine holding one of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
 ending's patch or the map's on-screen marker write still the helper's; or, in a translation, a
 popup still showing the text the helper wrote into a borrowed entry (until that message ends: 3
 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when no
@@ -577,7 +582,15 @@ the helper:
   row only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons
   hidden. As soon as a save of a known disk seed (one the client left a file for) is loaded, in
   play or not, the row shows the count from that file until the client's arrives, so a pause
-  screen opened at once shows the disks, not KEYS;
+  screen opened at once shows the disks, not KEYS. OPTION MENU opens over the pause screen, which
+  stays open under it, and the game calls the pause menu's way back (`options_back_fn`, which
+  OPTION MENU's opener puts at the menu's `+0x68`) as it closes, before it draws that frame;
+  while the row is on, that pointer is the helper's wrapper, which calls the game's and then
+  turns the row in the same call (in a translation the game builds KEYS's translated text there
+  again, which the 1.0.0 release candidate showed for one frame before the count: the owner's
+  report, 2026-11-03; fixed in stand-in tests, not yet run in game). The game's way back sets the
+  pointer to its own again; the helper puts it back when the row turns off and before an unload,
+  while its menu is open and still holds the wrapper;
 - while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
   1008) in the sprite texture (blank there in the game's art, checked as the glyphs are), and
   points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
@@ -706,13 +719,15 @@ shows each save's count on the file select, COPY FILE and DELETE FILE in place o
 for a save with no disk; the client's count wins for its seed's slots.
 
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
-the scanner's text or the pause screen's branch is still the helper's.
+the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
+back from OPTION MENU is still its wrapper.
 
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
 screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
 built again in the translation's font; the pause row's count is KEYS's translated text built
 again ("2 of 15", centered on the row as the game centers a prompt's line, built again
-whenever the game builds KEYS again), the key slots' characters hidden; the disk count
+whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
+next frame call otherwise), the key slots' characters hidden; the disk count
 popups carry the HD disk icon. Run in game 2026-11-02 in
 English(HD) (B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): the received disks' count popups
 and the reminder in the HD font; the pause row's count in the pixel font with no Keys over it;
@@ -1379,7 +1394,7 @@ unload.
   client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
   came and went, a seed put with a client, the AP saves' slots, and the file select's logo
   through the frame call: painted, whitened through a new game's fade, and cleared by
-  `restore_files`, and a cache without the translation keys).
+  `restore_files`, and a cache without the translation keys or the later keys).
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
@@ -1429,7 +1444,7 @@ unload.
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
-| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only and translation ones null after an offline cache lacking them) |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only, translation and later ones null after an offline cache lacking them) |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout |

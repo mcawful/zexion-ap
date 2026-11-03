@@ -75,10 +75,13 @@ constexpr uint8_t kEmptyMark = 0xFF;
 }  // namespace slot
 
 // The open menus: the top one at [current_menu], each one's next below at +0x78; a menu's panel
-// list at +0 and their count at +8 (docs/re/memory.md, "The game-mode panel").
+// list at +0 and their count at +8 (docs/re/memory.md, "The game-mode panel"). +0x68 is what the
+// game calls, with the menu, when the menu above it closes and it is on top again (the pause
+// menu's: "The pause screen's KEYS row").
 namespace menu {
 constexpr ptrdiff_t kPanels = 0x00;
 constexpr ptrdiff_t kPanelCount = 0x08;  // 32-bit
+constexpr ptrdiff_t kOnReturn = 0x68;
 constexpr ptrdiff_t kBelow = 0x78;
 }  // namespace menu
 

@@ -21,6 +21,7 @@ struct Hooks {
     void* mission_end = nullptr;      // the ending after YES, no arguments (mission.h)
     void* file_entry = nullptr;       // a save entry's handler (files.h)
     void* map = nullptr;              // the map's per-frame handler (mapmarks.h)
+    void* options_back = nullptr;     // the pause menu's way back from OPTION MENU (pause.h)
 };
 
 struct GameAddresses {
@@ -88,6 +89,9 @@ struct GameAddresses {
     BYTE* fade = nullptr;             // the global level's fade (mission.h, fade_state)
     BYTE* fade_level = nullptr;       // the global level, a signed byte
     BYTE* keys_branch = nullptr;      // the `jne` (75 2E) that skips the pause screen's KEYS
+    // OPTION MENU's way back to the pause screen (0x168910), which its opener puts in the pause
+    // menu's +0x68 (pause.h); an offline cache may lack it (the row is then turned a frame late).
+    BYTE* options_back_fn = nullptr;
     BYTE* file_panel_fn = nullptr;    // the save entries' panel handler
     // The save entries' handlers: the file select's, COPY FILE's and DELETE FILE's.
     BYTE* file_entry_fn = nullptr;

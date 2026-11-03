@@ -1315,6 +1315,14 @@ void test_refused_unload_keeps_a_start() {
           "the queued new game gets the plan, the mode check skipped as before");
 }
 
+// The pause menu's way back from OPTION MENU wrapped, as dllmain.cpp's wrapper: the game's, then
+// options_returned.
+zap::Game* g_back_game = nullptr;
+void options_back(void* menu) {
+    reinterpret_cast<void (*)(void*)>(g_back_game->options_back_fn())(menu);
+    g_back_game->options_returned(menu);
+}
+
 // A known disk seed's save loaded before the client has set its count: the pause row is
 // prepared from the seed's file (its count with the map as it is), so a pause screen opened at
 // once shows it; a save of no known seed gets no row.
@@ -1338,8 +1346,36 @@ void test_pause_row_from_the_seed_file() {
     check(p.frame(p.sprite[1]) == '3' && p.frame(p.sprite[2]) == '?' &&
               p.frame(p.sprite[4]) == 829,
           "the file's count on the pause screen at once (\" 3 OF ? \")");
+    // OPTION MENU over it: the pause menu's way back wrapped, which an unload must wait for; its
+    // way back runs the game's; put_back_all gives the game's back to one still open.
+    zap::Hooks hooks;
+    hooks.options_back = reinterpret_cast<void*>(&options_back);
+    game.set_hooks(hooks);
+    g_back_game = &game;
+    void* const game_back = reinterpret_cast<void*>(&options_back_fn);
+    BYTE options[0x80] = {};
+    put<BYTE*>(options, 0x78, p.menu);
+    put<void*>(p.menu, 0x68, game_back);
+    g_current_menu = options;
+    game.watch_all(&chosen);
+    check(game.menu_installed() && game.unload_blocker() != nullptr &&
+              get<void*>(p.menu, 0x68) == hooks.options_back,
+          "OPTION MENU open: the pause menu's way back is the helper's, an unload waits");
+    const int backs = g_options_backs;
+    g_current_menu = p.menu;
+    reinterpret_cast<void (*)(void*)>(get<void*>(p.menu, 0x68))(p.menu);
+    check(g_options_backs == backs + 1 && !game.menu_installed() &&
+              p.frame(p.sprite[1]) == '3' && p.frame(p.glyph[1]) == 'O',
+          "closed: the game's way back ran, the row as it was, nothing left to put back");
+    put<void*>(p.menu, 0x68, game_back);
+    g_current_menu = options;
+    game.watch_all(&chosen);
+    check(game.menu_installed(), "opened again: wrapped again");
     game.put_back_all(&chosen);
-    check(!game.keys_branch_patched(), "put back");
+    check(!game.keys_branch_patched() && !game.menu_installed() &&
+              get<void*>(p.menu, 0x68) == game_back,
+          "put back: the branch and the way back");
+    g_current_menu = p.menu;
 
     g_section[0x26D] ^= 1;  // another seed's save
     stand_in::PauseScreen q(reinterpret_cast<void*>(&equipment_fn), nullptr,

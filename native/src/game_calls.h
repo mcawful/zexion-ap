@@ -140,11 +140,12 @@ public:
     // Whether the game may still hold one of the helper's functions, which unload must take
     // back first: ARCHIPELAGO's callback or the game-mode panel's handler, EQUIPMENT's callback
     // or the Energy Tank panel's handler, the mission prompt's opener, YES or ending wrapper, a
-    // file entry's handler or the map's. The locked ASSIST holds none.
+    // file entry's handler, the map's or the pause menu's way back from OPTION MENU. The locked
+    // ASSIST holds none.
     bool menu_installed() const {
         return choice_.installed() || choice_.holds_hook() || equip_.installed() ||
                equip_screen_.holds_hook() || mission_.holds_hook() || files_.holds_hook() ||
-               map_names_.holds_hook();
+               map_names_.holds_hook() || pause_row_.holds_hook();
     }
     // The game's own handler for the game-mode panel, for the wrapper to call; null before
     // configure.
@@ -189,6 +190,11 @@ public:
     // calls the game's (equip_panel_fn), then equipment_event.
     void* equip_panel_fn() const { return at_.equip_panel_fn; }
     void equipment_event(void* widget, intptr_t event);
+    // The pause menu's way back from OPTION MENU while the disk row is on (pause.h): the helper's
+    // wrapper calls the game's (options_back_fn), then options_returned turns the row before the
+    // frame is drawn.
+    void* options_back_fn() const { return at_.options_back_fn; }
+    void options_returned(void* menu);
     // RETURN HOME WITH THE DISKS? (mission.h): the `mission_prompt` request asks for it, with
     // home's save point in tiles (`column`, `row`: the Landing Pod's, whichever room the seed
     // starts in); the watch runs every frame, and drops a request not yet opened once the player
@@ -399,7 +405,7 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
-    std::string left_out_;  // the client-only and translation keys configure left null
+    std::string left_out_;  // the client-only, translation and later keys configure left null
     bool client_keys_ = false;  // every client-only key set (client_ready)
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image

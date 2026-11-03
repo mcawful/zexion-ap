@@ -775,6 +775,16 @@ bool is_translation_key(const std::string& key) {
     return false;
 }
 
+// The keys newer than caches already written (game_calls.cpp, later_key).
+const char* const kLaterKeys[] = {"options_back_fn"};
+
+bool is_later_key(const std::string& key) {
+    for (const char* k : kLaterKeys) {
+        if (key == k) return true;
+    }
+    return false;
+}
+
 // The cache of a client from before a release that added client-only keys (here: all of them).
 // The helper configures from it, inactive, with those members null: every part the offline look
 // uses runs (a null one read would fault here), and the client's parts refuse until a client's
@@ -788,7 +798,7 @@ void test_a_cache_without_the_client_only_keys() {
         named += (named.empty() ? "" : ",") + std::string(key);
     }
     for (const auto& [key, rva] : partial) {
-        if (is_translation_key(key)) continue;  // left out too (below)
+        if (is_translation_key(key) || is_later_key(key)) continue;  // left out too (below)
         auto older = partial;
         older.erase(key);
         zap::Game refused;
@@ -937,6 +947,41 @@ void test_a_cache_without_the_translation_keys() {
     g_rando_marker = 0;
 }
 
+// The cache of a client from before the later keys: the helper configures from it, every part
+// ready, those members null (the pause row is then turned on OPTION MENU's way back a frame late,
+// pause.h); a client's config needs them.
+void test_a_cache_without_the_later_keys() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto partial = stand_in_config();
+    std::string named;
+    for (const char* key : kLaterKeys) {
+        check(partial.erase(key) == 1, "a later key of the stand-in's config");
+        named += (named.empty() ? "" : ",") + std::string(key);
+    }
+    {
+        zap::Game client;
+        check(client.configure(self, partial) == "missing options_back_fn" &&
+                  !client.configured(),
+              "a client's config needs them");
+    }
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, partial, false).empty() && game.configured() &&
+              game.client_ready() && game.left_out() == named && game.options_back_fn() == nullptr,
+          "the cache without them configures, every client part ready, and says which it lacks");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+    load_seed();
+    g_menu = 1;
+    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
+    g_menu = 0;
+    check(!game.menu_installed(), "nothing wrapped");
+    game.put_back_all(&no_callback);
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
 }  // namespace
 
 int main() {
@@ -953,5 +998,6 @@ int main() {
     test_the_logo_through_the_frame_call();
     test_a_cache_without_the_client_only_keys();
     test_a_cache_without_the_translation_keys();
+    test_a_cache_without_the_later_keys();
     return report("offline tests");
 }

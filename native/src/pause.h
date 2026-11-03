@@ -17,6 +17,16 @@
 // sprite still pointing at the entry after an unload points at live memory. Whenever the image is
 // not painted (the row off, before an unload, a texture it could not paint into), the entry shows
 // frame 829's rectangle instead, so an open pause screen shows the game's disc, enlarged.
+//
+// OPTION MENU opens over the pause screen, which stays open under it, and its opener sets the
+// pause menu's way back (+0x68) to 0x168910 (options_back_fn), which the game calls as OPTION MENU
+// closes, before it draws that frame. In a translation it builds KEYS's translated text again
+// (0x168AC6), so the count would show only from the helper's next frame call, after one frame of
+// the game's Keys. While the row is on, the open pause menu holding options_back_fn has it
+// replaced by the helper's wrapper (hooks.options_back), which calls the game's and then turns the
+// row (`returned`) in the same call; the game's way back sets +0x68 to its own again. The field is
+// put back when the row is off and before an unload, while its menu is open and still holds the
+// wrapper (docs/re/memory.md, "The pause screen's KEYS row").
 #pragma once
 
 #include <windows.h>
@@ -60,15 +70,26 @@ public:
     // on a pause screen that has not been. `disc`: the helper's disc is painted now.
     void watch(const GameAddresses& addresses, bool disc);
 
-    // Game thread: the branch put back, and the disc's entry showing frame 829 (before an unload,
-    // before the image is cleared).
+    // Game thread: the branch and the pause menu's way back put back, and the disc's entry
+    // showing frame 829 (before an unload, before the image is cleared).
     void restore(const GameAddresses& addresses);
 
+    // Game thread, from the wrapper right after the game's way back from OPTION MENU has run on
+    // `menu` (before the frame is drawn): the row turned on it, if it is open and on.
+    void returned(const GameAddresses& addresses, BYTE* menu, bool disc);
+
     bool patched() const { return patched_; }
+    // Whether an open menu may still hold the wrapper (unload must put it back first).
+    bool holds_hook() const { return hooked_ != nullptr; }
     const BYTE* disc_entry() const { return entry_; }  // tests
 
 private:
+    const std::string& shown() const { return text_.empty() ? prepared_ : text_; }
     void turn(const GameAddresses& addresses, BYTE* menu, const std::string& text, bool disc);
+    // The pause menu's way back pointed at the wrapper while on; put back (or forgotten, its
+    // menu closed or the game's way back run) otherwise.
+    void hook_return(const GameAddresses& addresses);
+    void unhook_return(const GameAddresses& addresses);
     // Sprite `s` pointed at the helper's disc entry (made from its frame 829 the first time).
     bool show_disc(BYTE* s);
     // The entry's texture rectangle: the helper's image, or frame 829's.
@@ -83,6 +104,7 @@ private:
     BYTE* hd_label_ = nullptr;
     BuiltMark hd_mark_;
     bool slots_hidden_ = false;  // the key slots' characters hidden for a translation
+    BYTE* hooked_ = nullptr;     // the pause menu whose way back is the wrapper
 };
 
 }  // namespace zap

@@ -339,6 +339,14 @@ TARGETS = (
         # B1), the branch 0xad into it
         rip("4C 8D 0D ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? 4C 8B 05 ?? ?? ?? ?? 48 89 B4 24 A0 00 00 00", 3, 7, 0xAD),
     )),
+    Target("options_back_fn", "OPTION MENU's way back to the pause screen, which its opener puts in the pause menu's +0x68", {"B1": 0x168910}, (
+        # from OPTION MENU's opener (0x161f00): its save-loaded test, the load of current_menu
+        # and the store into the menu's +0x68 (the lea at RVA 0x162076 on B1); every menu opener
+        # stores its way back the same way, so the test before it makes this one unique
+        rip("80 3D ?? ?? ?? ?? FF BE 04 00 00 00 74 ?? 48 8B 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? 48 89 48 68", 24, 28),
+        # from the function's start on B1
+        at("40 53 48 83 EC 30 48 8B D9 E8 ?? ?? ?? ?? BA 11 00 00 00 C6 05 ?? ?? ?? ?? 00 B1 07 E8"),
+    )),
     Target("rando_slots", "every slot's copy of its randomizer section, 0x908 bytes each (the section's layout)", {"B1": 0x347830}, (
         # from the instruction at RVA 0xa2b63 on B1
         rip("48 8D 05 ?? ?? ?? ?? 41 B8 08 09 00 00 48 03 D0 48 8B CB FF 15 ?? ?? ?? ?? 48 8B CB FF 15 ?? ?? ?? ?? 48 8B 8C 24 E8 01 00 00", 3, 7),

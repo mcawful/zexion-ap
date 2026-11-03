@@ -489,6 +489,36 @@ struct TranslatedText {
     }
 };
 
+// OPTION MENU's way back to the pause screen (0x168910, pause.h), called with the pause menu: its
+// own way back set again (0x168986), and KEYS's label shown again as the game does (0x168A04 to
+// 0x168B2F): with the flag set its translated text built again (0x168AC6: "Keys", 4 glyphs, the
+// pixel ones hidden), with it clear its first four pixel glyphs shown and the translated ones
+// hidden. The pause menu's own way back (0xA5820) does nothing here.
+inline int g_options_backs = 0;
+inline void pause_on_return_fn(void*) {}
+inline void options_back_fn(void* menu) {
+    g_options_backs += 1;
+    auto* m = static_cast<BYTE*>(menu);
+    put<void*>(m, 0x68, reinterpret_cast<void*>(&pause_on_return_fn));
+    BYTE* row = get<BYTE**>(m, 0)[1];
+    BYTE* label = get<BYTE*>(get<BYTE**>(row, 0x1E0)[0], 0x1F0);
+    BYTE** pixel = get<BYTE**>(label, 0x228);
+    BYTE** translated = get<BYTE**>(label, 0x238);
+    if (g_translation[0x91] != 0) {
+        built(label, 143.0, 207.0);
+        put<int32_t>(label, 0x248, 4);
+        for (int i = 0; i < 4; ++i) pixel[i][0x120] = 0;
+        for (int i = 0; translated != nullptr && i < get<int32_t>(label, 0x240); ++i) {
+            translated[i][0x120] = i < 4 ? 1 : 0;
+        }
+    } else {
+        for (int i = 0; i < 4; ++i) pixel[i][0x120] = 1;
+        for (int i = 0; translated != nullptr && i < get<int32_t>(label, 0x248); ++i) {
+            translated[i][0x120] = 0;
+        }
+    }
+}
+
 // No translation: the flag clear, nothing loaded, no call made.
 inline void reset_translation() {
     std::memset(g_translation, 0, sizeof(g_translation));
@@ -687,6 +717,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"fade", rva(g_fade)},
         {"fade_level", rva(&g_fade_level)},
         {"keys_branch", rva(g_keys_branch)},
+        {"options_back_fn", rva(reinterpret_cast<void*>(&options_back_fn))},
         {"file_panel_fn", rva(reinterpret_cast<void*>(&file_panel_fn))},
         {"file_entry_fn", rva(reinterpret_cast<void*>(&file_entry_fn))},
         {"copy_entry_fn", rva(reinterpret_cast<void*>(&copy_entry_fn))},

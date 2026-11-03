@@ -93,7 +93,7 @@ std::string pause_row_text(int count, int required) {
 }
 
 void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
-    const std::string& text = text_.empty() ? prepared_ : text_;
+    const std::string& text = shown();
     if (text.empty()) {
         restore(a);
         return;
@@ -104,12 +104,54 @@ void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
         patched_ = true;
     }
     if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text, disc);
+    hook_return(a);
 }
 
 void PauseDiskRow::restore(const GameAddresses& a) {
+    unhook_return(a);
     entry_shows(false);  // the image is cleared next: a sprite still on the entry shows 829's
     // Only where it still reads as written; still held while it does (put back failed).
     if (patched_ && put_back_code(a.keys_branch, kOurBranch, kGameBranch, 2)) patched_ = false;
+}
+
+void PauseDiskRow::returned(const GameAddresses& a, BYTE* menu, bool disc) {
+    // The game's way back has set its own (0x168986): the wrapper is no longer there to put back.
+    if (menu == hooked_ && pointer_at(menu, menu::kOnReturn) != a.hooks.options_back) {
+        hooked_ = nullptr;
+    }
+    const std::string& text = shown();
+    if (!text.empty() && menu != nullptr && is_open(a.current_menu, menu)) {
+        turn(a, menu, text, disc);
+    }
+}
+
+void PauseDiskRow::hook_return(const GameAddresses& a) {
+    void* hook = a.hooks.options_back;
+    if (a.options_back_fn == nullptr || hook == nullptr) return;
+    if (hooked_ != nullptr) {
+        if (is_open(a.current_menu, hooked_) && pointer_at(hooked_, menu::kOnReturn) == hook) {
+            return;  // still the wrapper
+        }
+        hooked_ = nullptr;  // its menu closed (freed with it), or the game's way back has run
+    }
+    // The open menu OPTION MENU's opener gave its way back: the pause menu, two panels.
+    BYTE* menu = pointer_at(a.current_menu);
+    for (int i = 0; i < kMaxMenus && menu != nullptr; ++i, menu = pointer_at(menu, menu::kBelow)) {
+        if (pointer_at(menu, menu::kOnReturn) != a.options_back_fn) continue;
+        if (panel_count(menu) == kPausePanels &&
+            swap_pointer(menu, menu::kOnReturn, a.options_back_fn, hook)) {
+            hooked_ = menu;
+        }
+        return;
+    }
+}
+
+void PauseDiskRow::unhook_return(const GameAddresses& a) {
+    if (hooked_ == nullptr) return;
+    if (is_open(a.current_menu, hooked_)) {
+        swap_pointer(hooked_, menu::kOnReturn, a.hooks.options_back, a.options_back_fn);
+    }
+    hooked_ = nullptr;
 }
 
 void PauseDiskRow::entry_shows(bool disc) {
@@ -246,6 +288,9 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         *(sprite[4] + sprite::kVisible) = 0;
     }
     for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + sprite::kVisible) = 0;
+    // A fresh pause screen: its label is the game's, even at the address and with the mark of
+    // the last one the helper built.
+    hd_label_ = nullptr;
     keep_row();
 }
 

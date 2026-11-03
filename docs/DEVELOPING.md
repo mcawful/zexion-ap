@@ -277,7 +277,9 @@ line says.
   its notices, the client's hints, the disks' popups and reminder and the scanner's line; the
   HD disk and logo redrawn at the game's icon size, not run in game yet; and the Feats screen's
   HD title, its two lines starting at the same x (a bug, seen 2026-11-03 on `12f090c6…`), its
-  shorter line centered since, stand-in tests only, not run in game yet.
+  shorter line centered since, stand-in tests only, not run in game yet. Found since on the release candidate: the pause row showing the
+  game's Keys for one frame after OPTION MENU closes (the owner, 2026-11-03); fixed since,
+  stand-in tests only, not run in game yet.
 
 ## Platforms
 
