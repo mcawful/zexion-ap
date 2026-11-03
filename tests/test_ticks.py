@@ -382,13 +382,14 @@ def enough_disks() -> types.SimpleNamespace:
     return types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=set())
 
 
-def at_the_pod(time: int, ended: bool) -> session.Step:
-    """This seed's save in play in the pod's cell, last saved at the pod at ``time``."""
-    stamp = struct.pack("<iHHHHH", 3, time, 0, 0, discs.HOME[1], discs.HOME[0])
+def at_the_pod(time: int, ended: bool, deaths: int = 0, state: str = game.IN_PLAY) -> session.Step:
+    """This seed's save in the pod's cell (in play unless ``state`` says otherwise), its block
+    last written at ``time`` with the pod as continue point, ``deaths`` its death count."""
+    stamp = struct.pack("<iHHHHHI", 3, time, 0, 0, discs.HOME[1], discs.HOME[0], deaths)
     return session.Step(
         goal=ended,
         seed_matches=True,
-        state=game.IN_PLAY,
+        state=state,
         ended=ended,
         save_stamp=stamp,
         at_home=True,
@@ -409,6 +410,35 @@ def test_a_save_past_its_ending_is_offered_return_home_after_a_save_at_the_pod()
         run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, ended)))
         assert prompts(ctx) == 1  # saved there
         assert ctx.load.replay == ended  # its YES plays the ending again
+
+
+def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -> None:
+    # The owner's report on the 1.0.0 RC: a death wrote the block's play time (and death
+    # count), then the player respawned at the pod, the continue point. A save there afterwards
+    # is still offered, on a save past the ending too.
+    for ended in (False, True):
+        ctx = homing_ctx()
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, ended)))
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, ended, 1, game.DEAD)))
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, ended, 1)))
+        assert prompts(ctx) == 0
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(300, ended, 1)))
+        assert prompts(ctx) == 1
+        assert ctx.load.replay == ended
+
+
+def test_a_teleport_or_reload_from_save_to_the_pod_is_not_offered_return_home() -> None:
+    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100: a guard
+    # only, which develop's rule passes too); RELOAD FROM SAVE writes its play time behind its
+    # menu (200, which develop's rule offered): the first look back in play is no save.
+    ctx = homing_ctx()
+    run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, False)))
+    for time in (100, 200):
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(time, False, state=game.MENU)))
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(time, False)))
+    assert prompts(ctx) == 0
+    run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(300, False)))
+    assert prompts(ctx) == 1
 
 
 def test_return_home_is_not_offered_while_an_ending_runs_in_this_load() -> None:

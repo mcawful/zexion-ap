@@ -149,8 +149,9 @@ MISSION_STATUS = "mission_status"
 ENDING_STARTED = "ending started"
 
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
-# which the continue point's row is at 6 and its column at 8.
+# which the continue point's row is at 6 and its column at 8, then the block's death count.
 STAMP_ROW_AT = 4 + 6
+STAMP_DEATHS_AT = 4 + 10
 
 
 def saved_at_home(stamp: bytes) -> bool:
@@ -160,6 +161,15 @@ def saved_at_home(stamp: bytes) -> bool:
         return False
     row, column = struct.unpack_from("<2H", stamp, STAMP_ROW_AT)
     return (column, row) == HOME
+
+
+def deaths(stamp: bytes) -> int | None:
+    """The loaded save's death count as its block holds it (None in a stamp without one): a
+    death raises it as it rewrites the block's play time, so the stamp changes with no save
+    (docs/re/memory.md, "A save at the Landing Pod")."""
+    if len(stamp) < STAMP_DEATHS_AT + 4:
+        return None
+    return struct.unpack_from("<I", stamp, STAMP_DEATHS_AT)[0]
 
 
 def popups_handed(queued: int | None, received: int) -> bool:
@@ -174,19 +184,37 @@ def popups_handed(queued: int | None, received: int) -> bool:
 class ReturnHome:
     """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,
     and RETURN HOME WITH THE DISKS? after each save at the Landing Pod. A save shows as a new
-    stamp in the same slot; it counts only with the pod as continue point and the player in the
-    pod's cell (the escape saves too, keeping the old continue point), and the offer lapses when
-    the player leaves that cell."""
+    stamp in the same slot, between two looks in play; it counts only with the pod as continue
+    point and the player in the pod's cell (the escape saves too, keeping the old continue
+    point), and the offer lapses when the player leaves that cell in play, or dies.
+
+    The game also rewrites the stamp without a save: a death writes the block's play time and
+    death count (then respawns the player at the continue point, the pod after a save there),
+    and the pause menu's RELOAD FROM SAVE and RELOAD FROM CHECKPOINT (the latter raising the
+    death count), leaving to the title, some story events and the ending write its play time
+    (docs/re/memory.md, "A save at the Landing Pod"). So a new stamp is no save when a look
+    between it and the last one was not in play (the death screen, a menu), or when the death
+    count rose (a death no poll caught)."""
 
     reminded: bool = False
     stamp: bytes | None = None
+    in_play: bool = False  # the last look was in play
     offer: bool = False  # a save at the pod, the prompt not yet queued
 
-    def see(self, stamp: bytes, at_home: bool, enough: bool, in_home_cell: bool) -> None:
-        same_slot = self.stamp is not None and stamp[:4] == self.stamp[:4]
-        saved = same_slot and stamp != self.stamp
-        self.stamp = stamp
+    def see(
+        self, stamp: bytes, in_play: bool, at_home: bool, enough: bool, in_home_cell: bool
+    ) -> None:
+        """One look at this seed's save, in play or not (dead, a menu)."""
+        before, played = self.stamp, self.in_play
+        self.stamp, self.in_play = stamp, in_play
+        if before is None or stamp[:4] != before[:4]:
+            self.offer = False  # a first look, or another slot of the seed loaded: no save
+            return
+        died = (deaths(before) or 0) < (deaths(stamp) or 0)
+        if died:
+            self.offer = False
+        saved = stamp != before and in_play and played and not died
         if saved:
             self.offer = enough and at_home and in_home_cell
-        if not in_home_cell:
+        if in_play and not in_home_cell:
             self.offer = False

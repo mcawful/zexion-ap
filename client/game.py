@@ -29,8 +29,11 @@ from .save_patch import OPTIONS_AT, TABLE_AT
 SLOTS = 30  # save slots
 SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
 # The loaded slot's block from +0x9354: a stamp that changes with each save (play time,
-# assumed), then the continue point's row and column (docs/re/save-format.md).
+# assumed), then the continue point's row and column (docs/re/save-format.md); and the block's
+# death count at +0x93D8, which a death raises as it rewrites the block's play time without a
+# save (docs/re/memory.md, "A save at the Landing Pod").
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
+DEATHS_AT = 0x93D8
 PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo's y, then x)
 
 PROCESS = "Zexion.exe"
@@ -457,13 +460,17 @@ class Game:
         return out
 
     def save_stamp(self) -> bytes:
-        """The loaded slot (``current_slot``, 0-based, 4 bytes) and its block's bytes from
-        SAVE_STAMP_AT: new after every save, its continue point the save point last used."""
+        """The loaded slot (``current_slot``, 0-based, 4 bytes), its block's SAVE_STAMP_SIZE
+        bytes from SAVE_STAMP_AT, then its death count (4 bytes at DEATHS_AT): new after every
+        save, its continue point the save point last used, but new after a death too."""
         raw = self._read("current_slot", 0, 4)
         slot = struct.unpack("<i", raw)[0]
         if not 0 <= slot < SLOTS:
             raise GameError(f"the current slot reads {slot}")
-        return raw + self._read("slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, SAVE_STAMP_SIZE)
+        block = self._read(
+            "slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, DEATHS_AT + 4 - SAVE_STAMP_AT
+        )
+        return raw + block[:SAVE_STAMP_SIZE] + block[DEATHS_AT - SAVE_STAMP_AT :]
 
     def rando_slot_copies(self) -> bytes:
         """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in

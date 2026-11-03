@@ -717,14 +717,14 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
     and its YES plays the ending again (replay_tick). Not while an ending runs in this load
     (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
-    a save at the pod."""
+    a save at the pod. Every look at the save counts, in play or not: a death or a menu between
+    two looks makes a new stamp no save (discs.ReturnHome)."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     home = ctx.load.return_home
     if (
         conn is None
         or conn.hunt is None
         or not step.seed_matches
-        or step.state != game.IN_PLAY
         or conn.session.holding
         or not conn.items_listed
         or not step.save_stamp
@@ -732,8 +732,9 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
         return
     hunt = conn.hunt
     enough = discs.owned(hunt, p.codes, p.found) >= hunt.required
-    home.see(step.save_stamp, step.at_home, enough, step.in_home_cell)
-    if not enough or not told.client_back_sent:
+    in_play = step.state == game.IN_PLAY
+    home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell)
+    if not in_play or not enough or not told.client_back_sent:
         return
     # After the found disks' count popups (followups_tick), so the reminder comes last.
     done = popped(ctx)

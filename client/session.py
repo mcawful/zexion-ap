@@ -124,8 +124,9 @@ class Step:
     ended: bool = False  # this seed's save has reached the game's ending (flag 250)
     # A randomizer save of another seed is loaded (left_seed too), in play (state).
     other_seed: bool = False
-    # This seed's save: its slot's save stamp (new after each save), and whether its last save
-    # point is home, the Landing Pod's (discs.saved_at_home), whichever room the seed starts in.
+    # This seed's save: its slot's save stamp (new after each save, and after a death or a
+    # reload: discs.ReturnHome), and whether its last save point is home, the Landing Pod's
+    # (discs.saved_at_home), whichever room the seed starts in.
     save_stamp: bytes = b""
     at_home: bool = False
     in_home_cell: bool = False  # the player is in the Landing Pod's cell now

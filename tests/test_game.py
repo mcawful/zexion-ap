@@ -336,16 +336,20 @@ def slots_game() -> FakeGame:
     for n in range(game.SLOTS):  # each block's stamp bytes tell its slot
         at = 0x100 + n * 0x9408 + 0x9354
         g.pm.memory[at : at + 10] = bytes([n]) * 10
+        at = 0x100 + n * 0x9408 + 0x93D8
+        g.pm.memory[at : at + 4] = bytes([0x80 + n]) * 4
     return g
 
 
 @pytest.mark.parametrize("slot", [0, 4, 29])
 def test_the_save_stamp_is_the_loaded_slots_own(slot) -> None:
     # The slot (current_slot, from 0), then its block's 10 bytes from +0x9354 (memory.md, "The
-    # file select"; discs.saved_at_home reads the continue point there).
+    # file select"; discs.saved_at_home reads the continue point there), then its death count
+    # at +0x93D8 (memory.md, "A save at the Landing Pod"; discs.deaths).
     g = slots_game()
     g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
-    assert g.save_stamp() == struct.pack("<i", slot) + bytes([slot]) * 10
+    stamp = g.save_stamp()
+    assert stamp == struct.pack("<i", slot) + bytes([slot]) * 10 + bytes([0x80 + slot]) * 4
 
 
 @pytest.mark.parametrize("slot", [-1, 30])
