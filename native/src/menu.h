@@ -76,7 +76,9 @@ private:
 // the helper draws its label like STYLE: AUTO (style 5, palette 0, its gray tint; re-applied
 // while its menu is up, as the menu changes palette after some screens) and puts a padlock in
 // its eighth glyph; in a translation its translated text is built again with the padlock
-// after it (apitem.h IconSheets), in the same gray (translation.h). It clears the callback, which the generic widget handler then skips
+// after it (apitem.h IconSheets), each glyph in the options entries' style (0x15) at alpha
+// 0.45 (a translated glyph's color is its style's, through a table the screens rewrite). It
+// clears the callback, which the generic widget handler then skips
 // (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
 // panel's selectable ones (+0x1EC), so the cursor skips it. Unlocking puts all of it back,
 // under the same rules as the ARCHIPELAGO choice (a 12-glyph label reading ASSIST and six
@@ -111,7 +113,8 @@ private:
     bool still_locked(const GameAddresses& addresses) const;
     // In a translation: the label's translated text the entry's (SmallText 137) with the
     // padlock after it, built again whenever it is not the helper's, the padlock left out
-    // where it would pass the box's right edge; every glyph in the locked style.
+    // where it would pass the box's right edge (no space before it in English(HD)); every
+    // glyph at style 0x15 and alpha 0.45, set again each call.
     void lock_translated(const GameAddresses& addresses, BYTE* label);
     // Its translated text the entry's again, if it is still the helper's.
     void unlock_translated(const GameAddresses& addresses, BYTE* label);

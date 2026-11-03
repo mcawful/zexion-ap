@@ -420,6 +420,7 @@ private:
     int offline_index_ = -1;  // the seed whose save is loaded
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
+    bool offline_settled_ = false;  // the loaded save in play since it loaded
     // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();

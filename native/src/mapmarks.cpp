@@ -269,8 +269,9 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
     // In a translation the cursor shows the text the game just built from ItemNames 47 or 48,
-    // built again as the label's first line (translation.h).
-    rebuild_label(a, text, hd_label(it->second, width == widths.end() ? 0 : width->second, true));
+    // built again as the label's first line, without its icon (translation.h).
+    rebuild_label(a, text,
+                  hd_label(it->second, width == widths.end() ? 0 : width->second, true, false));
 }
 
 void MapCursorNames::restore(const GameAddresses& a) {

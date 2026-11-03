@@ -470,6 +470,21 @@ void test_the_icon_sheets() {
     check(alpha(disk, 64, 32, 32) == 0 && alpha(disk, 64, 32, 10) == 255 &&
               disk[(10 * 64 + 32) * 4] == 255,
           "the HD disk: a hole in a white disc");
+    // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a letter's gap in.
+    const std::vector<uint8_t> hd_lock = zap::IconSheets::art(1, 64, 64);
+    int left = 64, top = 64, right = -1, bottom = -1;
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            if (alpha(hd_lock, 64, x, y) < 128) continue;
+            left = (std::min)(left, x), right = (std::max)(right, x);
+            top = (std::min)(top, y), bottom = (std::max)(bottom, y);
+        }
+    }
+    check(left >= 15 && left <= 17 && right <= 50 && top >= 5 && top <= 7 && bottom >= 44 &&
+              bottom <= 46,
+          "the HD padlock on the text's line",
+          std::to_string(left) + "," + std::to_string(top) + " to " + std::to_string(right) +
+              "," + std::to_string(bottom));
     const std::vector<uint8_t> lock = zap::IconSheets::art(1, 10, 9);
     check(alpha(lock, 10, 1 + 3, 0) == 255 && alpha(lock, 10, 0, 0) == 0,
           "the pixel padlock: the 8 x 8 glyph a column in");

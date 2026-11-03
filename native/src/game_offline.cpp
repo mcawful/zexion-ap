@@ -23,8 +23,32 @@ constexpr char kOtherSeedNotice[] =
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
     add_known_seeds(seeds);
-    leave_offline();
+    // The files are read again each time a pipe client goes (a client, `helper.py status`): a
+    // dressed seed they still hold stays dressed, its record as it is (as merge_offline keeps
+    // it). Undressed, the save's look would wait for play, ASSIST unlocked in a menu meanwhile.
+    int kept = -1;
+    // The seed played offline this load (client_back) found again by its record: the files come
+    // newest first, so its place may change.
+    int played = -1;
+    if (offline_played_ >= 0 && static_cast<size_t>(offline_played_) < offline_seeds_.size()) {
+        const OfflineSeed& was = offline_seeds_[static_cast<size_t>(offline_played_)];
+        auto same = [&](const OfflineSeed& k) { return offline_matches(k, was); };
+        auto it = std::find_if(seeds.begin(), seeds.end(), same);
+        if (it != seeds.end()) played = static_cast<int>(it - seeds.begin());
+    }
+    offline_played_ = played;
+    if (offline_index_ >= 0) {
+        OfflineSeed& dressed = offline_seeds_[static_cast<size_t>(offline_index_)];
+        auto same = [&](const OfflineSeed& k) { return offline_matches(k, dressed); };
+        auto it = std::find_if(seeds.begin(), seeds.end(), same);
+        if (it != seeds.end()) {
+            *it = std::move(dressed);
+            kept = static_cast<int>(it - seeds.begin());
+        }
+    }
+    if (kept < 0) leave_offline();
     offline_seeds_ = std::move(seeds);
+    offline_index_ = kept;
 }
 
 void Game::merge_offline(std::vector<OfflineSeed> seeds) {
@@ -75,6 +99,7 @@ void Game::leave_offline_seed() {
 
 void Game::leave_offline() {
     leave_offline_seed();
+    offline_frames_ = 0;  // looked at again the next watch (a client gone: dressed at once)
     if (!offline_file_counts_.empty()) {
         offline_file_counts_.clear();
         apply_file_counts();
@@ -123,6 +148,9 @@ void Game::watch_offline() {
         drop_client_notices();
         offline_warned_ = false;
         offline_played_ = -1;
+        offline_settled_ = false;
+    } else if (in_play()) {
+        offline_settled_ = true;  // this load is past its loading: its marker and section read
     }
     if (offline_seeds_.empty()) {
         leave_offline();
@@ -136,9 +164,13 @@ void Game::watch_offline() {
     const bool dress = !active_ || other;
     // Which known seed's save is loaded.
     const int seed = dress ? loaded_seed() : -1;
-    // A save is dressed once it is in play (not while it loads, when the marker and section may
-    // still be another save's), and undressed at once.
-    if (seed != offline_index_ && (seed < 0 || in_play())) {
+    // A save is dressed once it has been in play since it loaded (not while it loads, when the
+    // marker and section may still be another save's: a menu or a death later keeps the same
+    // save), and undressed at once with no save, a client's look, or in play. A save in play
+    // since its load that reads as no known seed with a menu up is held as it is until play:
+    // the lock must not lift for a read in the options menu (no such read is known).
+    const bool undress = !dress || !offline_settled_ || in_play();
+    if (seed != offline_index_ && (seed >= 0 ? offline_settled_ : undress)) {
         leave_offline_seed();
         offline_index_ = seed;
         if (seed >= 0) {  // the look itself: below
@@ -150,7 +182,7 @@ void Game::watch_offline() {
             }
             if (!other) offline_played_ = seed;
         }
-    } else if (seed != offline_index_ && offline_index_ >= 0) {
+    } else if (seed >= 0 && seed != offline_index_ && offline_index_ >= 0) {
         leave_offline_seed();  // another seed's save, not in play yet: dressed once it is
     }
     if (offline_index_ >= 0) {

@@ -512,6 +512,11 @@ bool in_circle(double x, double y, double cx, double cy, double r) {
     return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
 }
 
+// Where the HD padlock sits in its 64 x 64 cell (left, top, right, bottom): the text it follows
+// spans y 6 to 46 there, from the cap height to the baseline (measured on the retest's shot of
+// ASSIST in English(HD), 2026-11-02: the cell drawn 1.74 units a screen pixel at 3x).
+constexpr double kLockBox[4] = {16, 6, 50, 46};
+
 // The HD icons' shapes in a 64 x 64 cell, a little inside it as the game's are.
 bool hd_shape(int k, double x, double y) {
     switch (k) {
@@ -520,6 +525,12 @@ bool hd_shape(int k, double x, double y) {
             return d <= 26 && d >= 7 && !(d >= 14.5 && d <= 17);
         }
         case 1: {  // a padlock: its shackle, its body, the keyhole out of it
+            // Drawn in x 12 to 52, y 11 to 58 below, and fitted into kLockBox: from the font's
+            // cap height to its baseline, 16 units (about 3 pixels of the game's 320) from its
+            // left as its gap (ASSIST's padlock has no space before it in English(HD)).
+            const double s = (kLockBox[3] - kLockBox[1]) / 47.0;
+            x = 12 + (x - kLockBox[0]) / s;
+            y = 11 + (y - kLockBox[1]) / s;
             const double d = std::hypot(x - 32, y - 26);
             if (y <= 30 && d >= 9 && d <= 15) return true;
             const bool body = x >= 12 && x <= 52 && y >= 28 && y <= 58 &&

@@ -80,19 +80,22 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 ## Languages
 
 The mod is made for the game's default English and for **English(HD)** (OPTION, Video,
-Language). In English(HD) its popups and its menu text (RETURN HOME WITH THE DISKS?, OS
-Install Disk, the names of other players' items) show in the game's HD font. In this version
-the locked ASSIST, the disk count on the pause screen and the note on the Feats screen should
-too, with HD versions of the mod's disk, padlock and Archipelago icons, and a received item's
-sender as "from Bob" (not yet tried in the game).
-Known problems in English(HD) in the release candidate, fixed in this version but not yet
-checked in the game: ARCHIPELAGO did not show on the game-mode panel (the blank space where it
-belongs, right of Normal, still started the seed, and the word could show in the file select's
-top-left corner); after the client closed, Randomizer could show there too, out of its place
-on the panel, while the mod was loaded; RETURN HOME WITH THE DISKS? sat left of center; the OS
-Install Disk's description ran past its box; the locked ASSIST's padlock ran past the options
-box. If something shows wrong or not at all, switch to the default English and please report
-it.
+Language). In English(HD) its popups and its menu text (RETURN HOME WITH THE DISKS?, OS Install
+Disk, the names of other players' items) show in the game's HD font. In this version the locked
+ASSIST, the disk count on the pause screen and the note on the Feats screen should too, with HD
+versions of the mod's disk, padlock and Archipelago icons, and a received item's sender as
+"from Bob" (not yet tried in the game). Known problems in English(HD) in the release candidate,
+fixed in this version but not yet checked in the game: ARCHIPELAGO did not show on the
+game-mode panel (the blank space where it belongs, right of Normal, still started the seed, and
+the word could show in the file select's top-left corner); after the client closed, Randomizer
+could show there too, out of its place on the panel, while the mod was loaded; RETURN HOME WITH
+THE DISKS? sat left of center; the OS Install Disk's description ran past its box; the locked
+ASSIST's padlock ran past the options box, then sat low and near its edge; the locked ASSIST
+could take the selection's colors after you came back to the options from another menu (Video,
+the map), and, played without the client, could come unlocked while a menu was open; the map's
+cursor showed the Archipelago icon before AP ITEM; and the lines of another player's item you
+pick up were not centered. Much of the mod's own text is still in capitals. If something shows
+wrong or not at all, switch to the default English and please report it.
 
 In the other languages the mod does the same, but its text is in English, and some of it may
 not show (a font without Latin letters, say); the client says so when it sees one. Received
