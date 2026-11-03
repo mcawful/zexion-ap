@@ -148,7 +148,8 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
 // In a translation the title shows its translated text (LargeText 220, Feats of Natu!, or 219,
 // the hint) over the pixel glyphs that hold the note (or the title the helper wrote over the
 // hint). While the helper's text is there, the translated title is built again as LargeText
-// 220's with the note under it, wrapped, centered and kept at its middle as the game lays out the
+// 220's with the note under it, wrapped, each line centered on the longer with leading spaces (as
+// the stand-ins' names are), the two centered and kept at their middle as the game lays out the
 // title (0x179A8E to 0x179AC7); once it is not, the game's own entry again, if it is still the
 // helper's text. Without LargeText (a cache lacking large_count), the pixel glyphs are shown in
 // its place instead, as before (translation.h). Only on the label being looked at, which
@@ -168,7 +169,12 @@ void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
             title.erase(0, title.find_first_not_of(L" \r\n"));
             title.erase(title.find_last_not_of(L" \r\n") + 1);
             g_hd_label = nullptr;
-            hd = rebuild_label(a, label, title + L"\n" + kFeatsNoteHd, kTitleLayout);
+            // Each line centered on the longer with leading spaces, as the game's pixel title
+            // centers them; the rebuild then centers the two as one block.
+            FontMetrics metrics;
+            const std::wstring text = centered_lines(title + L"\n" + kFeatsNoteHd,
+                                                     metrics.load(a) ? &metrics : nullptr);
+            hd = rebuild_label(a, label, text, kTitleLayout);
             if (hd) {
                 g_hd_label = label;
                 g_hd_mark = built_mark(label);
