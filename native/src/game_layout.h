@@ -46,7 +46,7 @@ constexpr uint64_t kFlagCount = 0x9C4;
 
 // The flags the helper reads, one byte each: 39, set once the scanner has said how many disks
 // there are (docs/re/memory.md, "The scanner"); 250, set only by the ending ("The ending: flag
-// 250").
+// 250"). looks.cpp also reads 154, set by R'Talva X34 Y51's boss (its own kMarkerFlag).
 namespace flag {
 constexpr int kScannerTold = 39;
 constexpr int kEnding = 250;

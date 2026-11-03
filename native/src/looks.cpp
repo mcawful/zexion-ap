@@ -67,7 +67,8 @@ bool ItemLooks::is_marker(int slot, const BYTE* object, const BYTE* standin_pale
 
 bool ItemLooks::marker_waits(const GameAddresses& at) {
     uint8_t flag = 1;
-    return read(at.flags, kMarkerFlag, flag) && flag == 0;
+    // The game's branch reads the flag as a signed byte and goes on when it is above 0.
+    return read(at.flags, kMarkerFlag, flag) && static_cast<int8_t>(flag) <= 0;
 }
 
 int ItemLooks::hidden_markers() const {
