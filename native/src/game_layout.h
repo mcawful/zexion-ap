@@ -32,6 +32,22 @@ constexpr int kTextureSize = 2048;
 namespace rando {
 constexpr ptrdiff_t kItemTable = 0x26C, kStart = 0x310, kSettings = 0x87B;
 constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37, kStartSize = 6;
+// The start-with array: one byte per item, 1 for an item the new game starts with, in the order
+// of the menu's Starting Items (docs/re/randocells.md, "Starting Items and Item Pool"; the
+// placement writes it, docs/re/memory.md, "Starting a new game"; client/newgame.py,
+// START_WITH_ORDER).
+constexpr ptrdiff_t kStartWith = 0x689;
+constexpr int kStartWithOrder[] = {16, 19, 21, 32, 3,  4,  5,  6,  7,  11, 22, 20, 17, 9,
+                                   14, 15, 10, 12, 34, 24, 26, 25, 13, 33, 8,  23, 18};
+constexpr int kStartWithCount = sizeof(kStartWithOrder) / sizeof(kStartWithOrder[0]);
+static_assert(kStartWithCount == 27 && kStartWith + kStartWithCount <= kSettings, "in this order");
+// Whether the loaded section's new game started with `item`.
+inline bool started_with(const uint8_t* section, int item) {
+    for (int i = 0; i < kStartWithCount; ++i) {
+        if (kStartWithOrder[i] == item) return section[kStartWith + i] != 0;
+    }
+    return false;
+}
 static_assert(kItemTable + kMaxLocations <= kStart && kStart + kStartSize <= kSettings,
               "in this order");
 inline int locations(const uint8_t* section) {
@@ -77,6 +93,9 @@ constexpr bool listed(int item, uint8_t icon) {
     if (icon == 0 || icon == 0x6E || icon == 0xE8 || item <= 2) return false;
     return item <= 26 || (item >= 32 && item <= 44);
 }
+// A count the game can have written (it appends only below kMax): 0 to kMax. Another means
+// the list is not the game's, and nothing is read or written by it.
+constexpr bool count_ok(int count) { return count >= 0 && count <= kMax; }
 }  // namespace pickups
 
 // The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408, each a

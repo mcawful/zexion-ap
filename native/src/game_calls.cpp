@@ -743,10 +743,10 @@ void Game::watch_pickups() {
     BYTE* records = pointer_at(at_.item_records);
     if (records == nullptr) return;
     int8_t& count = at<int8_t>(list, pickups::kCount);
-    // The game appends only below 26; a count out of range is not one it wrote.
-    if (count < 0 || count > pickups::kMax) return;
+    if (!pickups::count_ok(count)) return;
     for (int item = 0; item < record::kCount && count < pickups::kMax; ++item) {
-        if (at_.inventory[item] == 0) continue;
+        // The new game's own starting items: the game never picks them up, so never lists them.
+        if (at_.inventory[item] == 0 || rando::started_with(at_.rando_blob, item)) continue;
         uint8_t icon = 0;
         if (!read(records, record::kSize * item + record::kIcon, icon)) return;
         if (!pickups::listed(item, icon)) continue;

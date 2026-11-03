@@ -1181,6 +1181,11 @@ bool seen_marker_games() {
 static_assert(zap::pickups::listed(3, 0x77) && zap::pickups::listed(24, 0xC7) &&
               zap::pickups::listed(26, 0xE3) && zap::pickups::listed(32, 0xD2) &&
               zap::pickups::listed(44, 0xC0));
+// The counts the list is read and written by: the game's, 0 to 26.
+static_assert(zap::pickups::count_ok(0) && zap::pickups::count_ok(25) &&
+              zap::pickups::count_ok(26));
+static_assert(!zap::pickups::count_ok(-1) && !zap::pickups::count_ok(-128) &&
+              !zap::pickups::count_ok(27) && !zap::pickups::count_ok(127));
 static_assert(!zap::pickups::listed(0, 0xE7) && !zap::pickups::listed(2, 0xC0) &&
               !zap::pickups::listed(27, 0xE4) && !zap::pickups::listed(31, 0xC0) &&
               !zap::pickups::listed(45, 0xE6) && !zap::pickups::listed(36, 0xE8) &&
@@ -1205,6 +1210,10 @@ void test_pickup_list() {
     g_inventory[28] = 1;
     g_inventory[37] = 1;
     g_inventory[36] = 1;
+    icon(3, 0x77);  // Machine Gun, which this new game started with (start-with entry 4)
+    g_inventory[3] = 1;
+    std::memset(g_section + 0x689, 0, 27);
+    g_section[0x689 + 4] = 1;
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 0, "a randomizer save of no known seed: untouched");
 
@@ -1215,7 +1224,7 @@ void test_pickup_list() {
     g_menu = 0;
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 2 && g_pickups[0] == 0xC0 && g_pickups[1] == 0xC7,
-          "the owned listed items, by item ID");
+          "the owned listed items, by item ID, but the started-with Machine Gun");
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 2, "each once");
 

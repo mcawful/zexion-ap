@@ -314,9 +314,10 @@ hides the key's map marker: `docs/re/memory.md`, "Keys, the gates and the key ma
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
 item the game's pickup would list (`pickups::listed`, `src/game_layout.h`) whose icon is not in
 it yet, by item ID, stopping at 26 as the game does (it reads the records' icons with
-`safe_read`). It lists starting items too, which the game never picks up (Standard's Machine
-Gun, icon `0x77`); and an older save's items, owned before this helper, go in by item ID, not
-in the order they came. So an AP save's row fills as items arrive, and an
+`safe_read`). The game's pickup lists this world's own items found in it; the received items
+are what the helper adds. It leaves out what the new game started with (the section's
+start-with array, `rando::started_with`), as the game does (Standard's Machine Gun); and an
+older save's items, owned before this helper, go in by item ID, not in the order they came. So an AP save's row fills as items arrive, and an
 older one's the first time it is played with this helper; it shows on the file select once the
 game saves. It runs without a client too, once the client has written `pickup_list` into the
 offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
