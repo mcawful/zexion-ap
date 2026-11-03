@@ -849,11 +849,10 @@ class CustomDoubleTeleportRandomStart(ZexionTestBase):
 
 class EveryStartFills(ZexionTestBase):
     """Every room the world takes for Easy, for Standard with each gun it draws, and for OHKO
-    fills and can be beaten, those whose starting items reach one location among them: a smoke
-    test, one fixed seed per room, named in its subtest so a failure can be run again. These
-    seeds fill without the world opening the start too; the seeds that need it are
-    test_world.py's, TestTheStartIsOpened (docs/re/locations.md, "Which start rooms the world
-    offers")."""
+    fills and can be beaten, the rooms whose starting items reach one location included: a
+    smoke test, one fixed seed per room, named in its subtest so a failure can be run again.
+    The seeds pinned because they fail without the world opening the start are test_world.py's,
+    TestTheStartIsOpened (docs/re/locations.md, "Which start rooms the world offers")."""
 
     auto_construct = False
     run_default_tests = False
