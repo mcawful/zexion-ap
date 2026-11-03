@@ -71,7 +71,7 @@ constexpr int kMax = 26;
 constexpr ptrdiff_t kCount = 0x1A;
 constexpr size_t kSize = kCount + 1;
 // Whether the pickup lists an item (record = item ID) with this icon (its record's +0x08), as at
-// 0x1F761 to 0x1F7A2: not items 0 to 2, 27 to 31 or above 44, nor icon 0, 0x6E (the Mega Bomb's
+// 0x1F761 to 0x1F7AC: not items 0 to 2, 27 to 31 or above 44, nor icon 0, 0x6E (the Mega Bomb's
 // and the Bomb Box's) or 0xE8 (the Missile Container's and the Missile Box's).
 constexpr bool listed(int item, uint8_t icon) {
     if (icon == 0 || icon == 0x6E || icon == 0xE8 || item <= 2) return false;

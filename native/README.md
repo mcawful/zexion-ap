@@ -313,14 +313,15 @@ hides the key's map marker: `docs/re/memory.md`, "Keys, the gates and the key ma
 **The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
 item the game's pickup would list (`pickups::listed`, `src/game_layout.h`) whose icon is not in
-it yet, by item ID, as the game stops, at 26. So an AP save's row fills as items arrive, and an
+it yet, by item ID, stopping at 26 as the game does. So an AP save's row fills as items arrive, and an
 older one's the first time it is played with this helper; it shows on the file select once the
 game saves. It runs without a client too, once the client has written `pickup_list` into the
 offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
-the game's own data, so an unload leaves it. Not run in game yet (`docs/re/memory.md`, "The
-pickup record holds the major-item list").
+the game's own data, so a client going away or an unload leaves it. Not run in game yet
+(`docs/re/memory.md`, "The pickup record holds the major-item list").
 
-Working in game: 2026-10-22 ("Game functions the helper calls", "The client in a live game").
+Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
+calls", "The client in a live game").
 
 ### Popups
 
@@ -1369,7 +1370,8 @@ unload.
   (page by page, a guard page left armed), a sprite's frame bounds and the code patches' put-back
   (one that fails held), the build check and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the popup queue, the
+- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
+  (an AP save's only, each icon once, by item ID, up to 26), the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
