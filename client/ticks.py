@@ -379,7 +379,13 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         return
     # Looked for from here: a reply lost with the pipe leaves it pending, not spawned again.
     sh.asking(key, time.monotonic())
-    reply = await asyncio.to_thread(helper.request, "shield")
+    try:
+        reply = await asyncio.to_thread(helper.request, "shield")
+    except native.ReplyLost:
+        raise  # it may have spawned: looked for (side_tick drops the helper)
+    except Exception:  # a cancellation, whose thread may still deliver it, stays pending
+        sh.not_sent(time.monotonic())  # never reached the helper, or an error reply
+        raise
     if ctx.conn is not None and ctx.conn.shield_key != key:
         return  # another slot now: the spawn is that game's, not this seed's
     if reply == "spawned":
@@ -417,11 +423,12 @@ async def confirm_shield(
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
     if outcome == shields.STOP:
         logger.warning(
-            f"A received Energy Shield was spawned {shields.MISSES} times in a row without "
-            "being seen in the game, so no more are spawned until the client is started again "
-            f"(each one more could be a shield given twice). Please report it at {state.REPORT}."
+            f"The game was asked {shields.MISSES} times in a row for a received Energy Shield "
+            "and none was seen, so no more are asked for until you leave this save (for the "
+            "title or another save) and load it again, or restart Zexion (each one more could "
+            f"be a shield given twice). Please report it at {state.REPORT}."
         )
-        log.warning(f"Energy Shields stopped after {shields.MISSES} spawns not seen up.")
+        log.warning(f"Energy Shields stopped after {shields.MISSES} requests not seen up.")
     elif outcome == shields.AGAIN:
         detail("A received Energy Shield was not seen in the game; spawning it again.")
     elif outcome == shields.UP:

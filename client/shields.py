@@ -6,9 +6,12 @@ one at a time, and counts each in the server's data storage once the game shows 
 play. One not seen within SEEN_SECONDS, or whose player died or whose save was unloaded first,
 is spawned again (shield_outcome). A spawn not seen in play may have worked unseen, and then
 each one more is a shield given twice, so after MISSES of those in a row the client spawns none
-until it is started again (STOP); one taken back by a death or unload is not a miss. A shield
-counts as asked for from the moment the request goes out (Shields.asking), so one whose
-``spawned`` reply was lost is looked for, not spawned again unseen.
+until the save is left (for the title, another save or a closed game), or the client connects
+to another slot (STOP, Shields.restart); one taken back by a death or unload is not a
+miss. A shield counts as asked for from the moment the request goes out (Shields.asking), so
+one whose ``spawned`` reply was lost is looked for, not spawned again unseen; one whose request
+never reached the helper, or that it answered with an error, is dropped (Shields.not_sent), so
+that a shield already up is not counted for it.
 
 Pure logic and the game read; client/ticks.py talks to the helper and the server.
 """
@@ -21,7 +24,7 @@ from . import game
 
 GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
 SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
-MISSES = 3  # spawns in a row not seen before spawning stops for this client run
+MISSES = 3  # spawns in a row not seen before spawning stops (until Shields.restart)
 
 # What a look at a spawned shield led to (shield_outcome, Shields.looked).
 WAIT, AGAIN, STOP, UP = "wait", "again", "stop", "up"
@@ -59,7 +62,8 @@ class Pending:
 class Shields:
     pending: Pending | None = None
     misses: int = 0  # spawns in a row not seen
-    stopped: bool = False  # MISSES in a row not seen: no more spawns in this client run
+    stopped: bool = False  # MISSES in a row not seen: no more spawns until restart()
+    slot: str = ""  # the data storage key current() last served
     # Shields counted as given that the server may not hold yet: (key, count), and when the
     # count was last sent.
     given: tuple[str, int] | None = None
@@ -94,8 +98,16 @@ class Shields:
         """The spawned shield waiting to be seen, if it was spawned for this slot."""
         if self.pending is not None and self.pending.key != key:
             self.pending = None  # spawned for another slot's seed: not counted
-            self.misses = 0  # its misses are not this slot's
+        if key != self.slot:
+            self.slot = key
+            self.restart()  # the last slot's misses, and a stop they led to, are not this one's
         return self.pending
+
+    def restart(self) -> None:
+        """The save was left, the game closed, or another slot connected: spawning starts over
+        (its misses and a stop were the last one's). A reconnect to the same load does not."""
+        self.misses = 0
+        self.stopped = False
 
     def may_spawn(self, now: float) -> bool:
         """Whether to ask the helper for another shield now."""
@@ -105,6 +117,13 @@ class Shields:
         """The helper is about to be asked to spawn one: from here it is looked for, whatever
         becomes of the reply."""
         self.pending = Pending(key, now)
+
+    def not_sent(self, now: float) -> None:
+        """The request never reached the helper, or the helper answered with an error: nothing
+        was spawned, so nothing to look for and no miss. (A shield already up must not be
+        counted for it.)"""
+        self.pending = None
+        self.retry_at = now + GAP_SECONDS
 
     def spawned(self, key: str, now: float) -> None:
         self.pending = Pending(key, now)
@@ -122,7 +141,7 @@ class Shields:
     def looked(self, pending: Pending, state: str, up: bool, key: str, stored: int, now: float):
         """One look at the game for ``pending``: its settled ``state`` and whether a shield is
         up. WAIT; AGAIN (spawned again after GAP_SECONDS); STOP (MISSES in a row not seen: none
-        spawned again in this client run); or UP, counted as given (``given``, to send to the
+        spawned again until restart); or UP, counted as given (``given``, to send to the
         server)."""
         if state in (game.DEAD, game.NO_SAVE):
             pending.left_play = True

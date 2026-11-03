@@ -149,3 +149,23 @@ def test_another_slots_misses_are_not_this_ones() -> None:
     sh = shields.Shields(misses=shields.MISSES - 1)
     sh.spawned(OTHER, 0.0)
     assert sh.current(KEY) is None and sh.misses == 0
+
+
+def test_a_stop_is_not_another_slots() -> None:
+    sh = shields.Shields(stopped=True)
+    sh.spawned(OTHER, 0.0)
+    assert sh.current(KEY) is None and not sh.stopped and sh.may_spawn(0.0)
+
+
+def test_a_request_that_never_reached_the_helper_is_dropped_not_missed() -> None:
+    sh = shields.Shields()
+    sh.asking(KEY, 0.0)
+    sh.not_sent(0.5)
+    assert sh.pending is None and sh.misses == 0 and not sh.may_spawn(1.0)
+    assert sh.may_spawn(0.5 + shields.GAP_SECONDS)
+
+
+def test_a_stop_ends_with_its_slot_even_with_nothing_pending() -> None:
+    sh = shields.Shields(stopped=True, slot=OTHER)
+    assert sh.current(OTHER) is None and sh.stopped, "the same slot: still stopped"
+    assert sh.current(KEY) is None and not sh.stopped

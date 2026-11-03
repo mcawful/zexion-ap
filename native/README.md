@@ -345,8 +345,9 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
   asks for each received shield not yet given, again for one not seen up within a few seconds,
-  and counts it once it sees the shield up; after three spawns in a row not seen up it asks for
-  none until it is started again (`client/shields.py`).
+  and counts it once it sees the shield up; after three requests in a row not seen up it asks
+  for none until the save is left or the game closes, or another slot connects
+  (`client/shields.py`).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23, the spawn; the client's read of the shield changed on 2026-11-02

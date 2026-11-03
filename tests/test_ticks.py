@@ -519,9 +519,13 @@ def play_for(ctx: Ctx, seconds: float, monkeypatch) -> None:
     """shields_tick each half second of ``seconds`` of the stand-in clock."""
     clock = types.SimpleNamespace(now=1000.0)
     monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
-    while clock.now < 1000.0 + seconds:
-        run(ticks.shields_tick(ctx, ctx.received))
-        clock.now += 0.5
+
+    async def ticks_for() -> None:  # one event loop: each new one opens a socket pair
+        while clock.now < 1000.0 + seconds:
+            await ticks.shields_tick(ctx, ctx.received)
+            clock.now += 0.5
+
+    run(ticks_for())
 
 
 def counts_sent(ctx: Ctx) -> list[int]:
@@ -544,7 +548,7 @@ class LostReply(ShieldHelper):
 
     def request(self, text: str, seconds: float = 2.0) -> str:
         super().request(text, seconds)
-        raise native.HelperError("the helper's pipe closed")
+        raise native.ReplyLost("the helper's pipe closed: 109")
 
 
 def test_a_spawn_whose_reply_was_lost_is_looked_for_not_spawned_again(monkeypatch) -> None:
@@ -553,7 +557,7 @@ def test_a_spawn_whose_reply_was_lost_is_looked_for_not_spawned_again(monkeypatc
     ctx.helper = LostReply(world)
     clock = types.SimpleNamespace(now=1000.0)
     monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
-    with pytest.raises(native.HelperError):  # side_tick then drops the helper
+    with pytest.raises(native.ReplyLost):  # side_tick then drops the helper
         run(ticks.shields_tick(ctx, ctx.received))
     asked = ctx.helper.requests
     ctx.helper = None
@@ -580,4 +584,76 @@ def test_a_shield_never_seen_up_stops_being_spawned(monkeypatch, caplog) -> None
         play_for(ctx, 3600.0, monkeypatch)
     assert ctx.helper.requests == ["shield"] * shields.MISSES
     assert counts_sent(ctx) == []
-    assert sum("no more are spawned" in r.getMessage() for r in caplog.records) == 1
+    assert sum("no more are asked for" in r.getMessage() for r in caplog.records) == 1
+
+
+# Requests that never reached the helper, or that it answered with an error: nothing spawned.
+UNSENT = {
+    "pipe closed at the write": native.HelperError("the helper's pipe closed: 232"),
+    "error reply": native.HelperError("the game is not settled"),
+    "another build": native.ModMismatch("both are version 1.0.0, but from different builds"),
+}
+
+
+class NotSent(ShieldHelper):
+    def __init__(self, world: ShieldWorld, error: Exception) -> None:
+        super().__init__(world)
+        self.error = error
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "shield":
+            self.requests.append(text)
+            raise self.error
+        return super().request(text, seconds)
+
+
+def failed_rounds(ctx: Ctx, world: ShieldWorld, error: Exception, rounds: int, monkeypatch):
+    """``rounds`` of: a request that fails with ``error``, the helper dropped (side_tick), the
+    next ticks without it, then the helper back."""
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+
+    async def rounds_of() -> None:  # one event loop: each new one opens a socket pair
+        for _ in range(rounds):
+            ctx.helper = NotSent(world, error)
+            with pytest.raises(type(error)):
+                await ticks.shields_tick(ctx, ctx.received)
+            ctx.helper = None
+            for _ in range(int(shields.SEEN_SECONDS * 2) + 2):
+                clock.now += 0.5
+                await ticks.shields_tick(ctx, ctx.received)
+            clock.now += shields.GAP_SECONDS
+
+    run(rounds_of())
+
+
+@pytest.mark.parametrize("why", list(UNSENT))
+def test_a_request_that_never_reached_the_helper_counts_no_shield_up(why, monkeypatch) -> None:
+    # A shield already up (the save's, or one picked up) must not be counted for a received
+    # one that nothing spawned: the received one is still owed.
+    world = ShieldWorld()
+    world.spawn()
+    ctx = shield_ctx(world)
+    failed_rounds(ctx, world, UNSENT[why], 1, monkeypatch)
+    assert ctx.shields.pending is None and counts_sent(ctx) == []
+
+
+@pytest.mark.parametrize("why", list(UNSENT))
+def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    failed_rounds(ctx, world, UNSENT[why], shields.MISSES + 2, monkeypatch)
+    assert not ctx.shields.stopped and ctx.shields.misses == 0
+    ctx.helper = ShieldHelper(world)  # the helper back: the shield is still spawned
+    play_for(ctx, 120.0, monkeypatch)  # the stand-in clock starts again at 1000
+    assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
+
+
+def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
+    # Its thread may still deliver it: dropping it would ask for it twice.
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = NotSent(world, asyncio.CancelledError())
+    with pytest.raises(asyncio.CancelledError):
+        run(ticks.shields_tick(ctx, ctx.received))
+    assert ctx.shields.pending is not None
