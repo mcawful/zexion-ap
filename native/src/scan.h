@@ -18,7 +18,7 @@ constexpr char kScanTextOriginal[] = "ENERGY KEYS DETECTED!";
 class ScanText {
 public:
     // Game thread. `table_holder` holds the pointer to the loaded Text table. Writes `line`
-    // (must pass scan_line_ok) over entry 12 if it reads as the game's or the helper's last
+    // (must pass scan_line_ok, in capitals) over entry 12 if it reads as the game's or the helper's last
     // line; returns whether it reads `line` now.
     bool apply(BYTE* table_holder, const std::string& line);
 
@@ -34,7 +34,10 @@ private:
     std::string line_;  // what entry_ was given
 };
 
-// Whether `line` can stand in the entry: 1 to 31 characters of the game's 8 x 8 font.
+// Whether `line` can stand in the entry: 1 to 31 characters of the game's 8 x 8 font, a letter
+// in either case (sent in mixed case for English(HD); written in capitals: scan_line_upper).
 bool scan_line_ok(const std::string& line);
+// `line` with its letters in capitals, as the 8 x 8 font draws them.
+std::string scan_line_upper(std::string line);
 
 }  // namespace zap

@@ -367,7 +367,10 @@ std::string hello() {
     AcquireSRWLockShared(&g_offline_lock);
     std::string error = g_offline_error;
     ReleaseSRWLockShared(&g_offline_lock);
-    return std::string("zexion-ap ") + kVersion + " build=" + (g_build ? g_build : "unknown") +
+    // case=1: the client's text is taken in mixed case (English(HD)), its scanner's line
+    // too; a client refuses a helper of its version without it (client/native.py).
+    return std::string("zexion-ap ") + kVersion + " case=1 build=" +
+           (g_build ? g_build : "unknown") +
            " hooked=" + (g_slot ? "1" : "0") + game +
            " folder=" + (g_from_game_folder ? "1" : "0") + look +
            " reads=" + std::to_string(g_offline_reads.load()) + "/" +

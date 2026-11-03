@@ -37,9 +37,12 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   it answers `error unknown request` or `error unknown line …`, refuses `config` with
   `error missing NAME` (it ignores names it does not know), reads `build=unknown` for a game
   build the client knows, or has no `lang` in its `hello` (1.0.0's release candidate, from
-  before the translations: it would take the translation keys and ignore them; with a build of
-  the client's own loaded in its place, as for another version; `tests/test_native.py` only,
-  not seen in game). Found while attaching, it is refused like
+  before the translations: it would take the translation keys and ignore them) or no `case` (a
+  build from before the mixed case: it would refuse the client's scanner line, and with it every
+  `discs` request and the offline file), with a build of the client's own loaded in its place,
+  as for another version (a build of its own that loads as such an earlier one is refused and
+  not loaded again until the file changes, as a stale one is; `tests/test_native.py` only, not
+  seen in game). Found while attaching, it is refused like
   another version; found in a later request (a side task's, or giving items), the client stops
   using it until the game restarts.
 - Each of these, in the client's window: "The Zexion mod and this client don't match", with
@@ -106,7 +109,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only or translation keys, ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> case=1 build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only or translation keys, ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
@@ -130,6 +133,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
 - `offline`: the seeds known to the offline look (read from the folder, and any a client put or
   that were read while it was connected), and the file of the one dressed.
+- `case`: always 1: the helper takes the client's text in mixed case (English(HD), "Translations").
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `lang`: the language the game shows: `-` its default English, the loaded translation's folder
@@ -348,7 +352,9 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   cell (`spawn_shield`, which checks the record, the event and its handler first).
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
-  asks once per received shield not yet given, and counts it once it sees the shield up
+  asks for each received shield not yet given, again for one not seen up within a few seconds,
+  and counts it once it sees the shield up; after three requests in a row not seen up it asks
+  for none until the save is left or the game closes, or another slot connects
   (`client/shields.py`).
 - **Put back:** nothing to put back.
 
@@ -356,8 +362,10 @@ Working in game: 2026-10-23 ("Received Energy Shields"). A bug, 2026-11-02 (B1, 
 `946b08a1…`, `lab/ap/live50/client-r3.log`): with a client attached to a save already in play
 (slot 8, past its ending), a received shield came up (seen around the player in the owner's
 screenshot) but the client never read it as up, so it spawned it again three times a round,
-a round about every minute, until the save was left; after the next load it read a shield up at
-once.
+a round about every minute, until the save was left; it still missed after the next load, and
+read a shield up at once on the load after the ending replayed. Fixed since in the client
+(its read of the shield, and the stop above); the fix has not run in game
+(`docs/re/memory.md`, "Received Energy Shields").
 
 ### DeathLink
 
@@ -391,16 +399,23 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   still open only, and the order only if the panel is as the helper left it. An unload no frame
   comes for leaves it locked until the options menu closes, harmlessly.
 - **In a translation:** while locked, the entry's translated text (SmallText 137) is built
-  again with the HD padlock after it ("Translations", the helper's icons), every glyph in
-  the locked style (a translated glyph's color is its style's); the padlock left out where it
+  again with the HD padlock after it ("Translations", the helper's icons; in English(HD) with
+  no space before it, the padlock's cell holding its own gap), the padlock left out where it
   would pass the options box's right edge (its border's top right piece), since a translation
   sizes the box from its own texts; the entry's text again when unlocked. Built again whenever
-  the game builds the label again. (Seen in game 2026-11-02 in English(HD) as the pixel look
-  it replaced, its padlock past the box. This: run in game later that day, `zexion_ap.dll`
-  `946b08a1…`: the entry in the HD font, gray, its padlock inside the box but low and against
-  its border; after coming back from another menu (Video, the map) it took the selection's
-  colors (a bug); once it showed unlocked after going through menus, not reproduced (a bug):
-  "Translations", "Run in game again".)
+  the game builds the label again. Each frame call with the menu on top, every translated
+  glyph gets the style the options menu gives its entries (`0x15`) and alpha 0.45, a gray on
+  the black screen: a translated glyph's color is its style's through a table the screens
+  rewrite, so the locked style 5, gray on a first open, took the cursor's colors after the
+  video options or the map (`docs/re/memory.md`, "The assist menu"); building it again gives
+  alpha 1.0 back. (Seen in game 2026-11-02 in English(HD) as the pixel look it replaced, its
+  padlock past the box. Then run in game later that day, `zexion_ap.dll` `946b08a1…`: the entry
+  in the HD font, gray, its padlock inside the box but low and against its border; after coming
+  back from another menu (Video, the map) it took the selection's colors (a bug); once it showed
+  unlocked after going through menus, not reproduced (a bug): "Translations", "Run in game
+  again". Fixed since, stand-in tests only, not run in game yet: the look above, the padlock
+  on the text's line with no space before it, and the offline look held through menus ("AP
+  saves without the client").)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -465,8 +480,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of
   its kind within 96 pixels of the player (chosen, not measured), else the player's cell's, else
   the nearest loaded one's (or AP ITEM). The game's pickup popup then shows the logo glyph, then
-  PROGRESSION ITEM (or AP ITEM) over FOR ALICE. The map cursor shows the label's first line
-  only: what the item is, not whom it is for.
+  PROGRESSION ITEM (or AP ITEM) over FOR ALICE (in English(HD), Progression Item or AP Item
+  over for Alice, as the client writes them: "Translations", mixed case). The map cursor shows
+  the label's first line only: what the item is, not whom it is for.
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
@@ -481,10 +497,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
   working in game 2026-11-02 in English(HD): the pickup popup AP ITEM over FOR BOB, with no logo
   glyph, and the map cursor AP ITEM). The label's logo glyph is now the helper's HD logo
-  (U+E03C, "Translations"), so both show it (working in game later that day, `zexion_ap.dll`
+  (U+E03C, "Translations"), so both showed it (working in game later that day, `zexion_ap.dll`
   `946b08a1…`: the logo before AP ITEM over FOR BOB, and before AP ITEM on the map cursor; bugs:
   the popup's two lines start at the same x, not centered, and the map cursor's logo, where the
-  game's own names carry no icon: "Translations", "Run in game again").
+  game's own names carry no icon: "Translations", "Run in game again"). Fixed since, stand-in
+  tests only, not run in game yet: the pickup popup's lines centered with leading spaces (where
+  they fit the name's room), and the map cursor showing the first line without the logo.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -525,8 +543,9 @@ While the client has sent `discs` (the count, the number needed, the scanner's l
 TOLD: 1 once flag 39 says the player has been told the number, else 0 and "OF ?"; left out, 1),
 the helper:
 
-- writes the scanner's message (Text entry 12) as the client's line (`src/scan.cpp`), only over
-  the game's text or its own;
+- writes the scanner's message (Text entry 12) as the client's line (`src/scan.cpp`), in
+  capitals (the client sends it in mixed case for English(HD): "Translations"), only over the
+  game's text or its own;
 - paints the disk glyph into font glyph `0xFB`;
 - with a disk or more, wraps the pause screen's EQUIPMENT callback (`src/equip.cpp`): after the
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
@@ -735,8 +754,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   `seeds\<NAME>.txt`; an absolute `LOCALAPPDATA` only), never the game's folder. The helper
   writes them, not the client: a client run from a packaged app has its AppData writes
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
-- **Reading:** when it starts and each time a client goes away, at most 256 seed files, newest
-  first. Seed files read with no client replace the last ones; those read while a client is
+- **Reading:** when it starts and each time a client goes away (anything that used the pipe,
+  `tools/helper.py status` too), at most 256 seed files, newest first. Seed files read with no
+  client replace the last ones, a dressed save's seed kept dressed if they still hold it (its
+  record as it was); those read while a client is
   connected, and any seed file a client puts, are added to them from the next frame call
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
@@ -746,8 +767,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   pipe"). So the offline
   look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
-  (`other_save`), every 16th frame call a save of one of the seeds is dressed once in play as the
-  client would: the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
+  (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client
+  would, once it has been in play since it loaded (a menu or a death later keeps the same save,
+  so it is dressed at once when a client goes away with a menu up): the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
   received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
   (the file's, plus each own disk the map shows collected) and the scanner's line, with a
   notice that the client is not connected (or, for `other_save`, is for another seed; only for a
@@ -772,7 +794,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   Disconnect, and an armed new game kept at the title during a drop.
   The file select shows each such save's count, from its map in the game's copy of the slot,
   and the AP logo ("AP saves on the file select").
-- **Put back:** leaving the save undresses it. A client's `config` takes the offline look off
+- **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known
+  seed. With a menu up, a save in play since its load that reads as no known seed is held as it
+  is until play, so the lock never lifts in the options menu for one read (none such is known;
+  stand-in tests, `tests/offline_tests.cpp`). A client's `config` takes the offline look off
   first and withdraws the notices not yet shown (the not-connected warning, and the last
   client's other-seed notice and CLIENT CONNECTED.); the client then asks `client_back`, which
   pops up ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. Each notice is for the
@@ -811,7 +836,9 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
   or SCRAP CHUNK after the game writes the cursor's name, in the same frame; in a translation it
   builds the cursor's translated text again as the label's first line ("Translations";
-  working in game 2026-11-02 in English(HD): AP ITEM).
+  working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
+  English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
+  for another Zexion player's item, the translation's own name for it (not run in game yet).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
@@ -843,9 +870,19 @@ side), no flash ("Map markers").
   SEED (`src/title.cpp`). It makes them with the game's own text functions in that line's
   palette and style, and the game frees them with the title.
 - **When:** while configured (by a client or from the cache) and no save is loaded, every 9th
-  frame call it looks through the game's draw list for the copyright line without the helper's
-  lines. One that failed is tried again on the next title.
+  frame call (every one in English(HD), and at once when the language changes) it looks through
+  the game's draw list for the copyright line without the helper's lines. One that failed is
+  tried again on the next title. In English(HD) a menu opening on the title hides every glyph
+  of the HD list, the lines' too (its builder: `docs/re/memory.md`, "Where a rebuilt label
+  goes"), so they are shown again at the next frame call (stand-in tests only).
 - **Put back:** a client going away leaves them; an unload hides them (stand-in tests only).
+- **In English(HD):** the version's line and the hint in the translation's font and in mixed
+  case (Archipelago Mod 1.0.0, Start the AP client to play a seed): each line's translated text
+  built by the game's builder on the helper's text object (the room `0x92300` gives every
+  label), centered on the screen, its pixel glyphs hidden, and shown and hidden in their place;
+  ©2026 MCAWFUL stays in pixels, as the game's own copyright line does. In another language the
+  pixel lines show again. The game's text destructor frees the translated glyphs with the
+  title (`docs/re/memory.md`, "The title screen"). Stand-in tests only, not run in game yet.
 
 Working in game: 2026-10-25, the two lines under the copyright, with a client and from the cache
 ("The title screen"). The client line: working in game 2026-10-27 (0.30.0, the owner's
@@ -1046,7 +1083,8 @@ lands, not only the place passed.
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
     on the next line: in English(HD) in the case the client sent it, its FROM as "from" ("from
     Bob"), in any other translation in capitals as in the default English ("FROM BOB"; the
-    owner's choice, 2026-11-02); a notice's text as it is. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
+    owner's choice, 2026-11-02); a notice's text likewise, the client's and the helper's own
+    (NOT CONNECTED, CLIENT CONNECTED, the other seed's) in mixed case in English(HD) only. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
     builder's advances, read from the font as loaded): no line wider than a pixel popup's 192
     pixels, words whole; a popup's lines centered on the widest with leading spaces (the game
     starts every line at the same x); a notice's left as they wrap; without the font's metrics,
@@ -1055,9 +1093,20 @@ lands, not only the place passed.
     unreadable with the flag set, or from an unload's put-back on) shows the helper's pixel
     text, with the mark the game's last translated message left in its slot cleared (told by
     the HD object's serial), so it shows, in its box.
+  - **Mixed case** (English(HD) only, the owner's choice, 2026-11-02; `Game::mixed_case`, by
+    the language's name): the client writes its text in mixed case (hints, the disks' popups and
+    reminder, the scanner's line, the labels: `client/hints.py`, `client/discs.py`,
+    `client/aplabels.py`), and the helper keeps each in its own case beside the capitals the
+    8 x 8 font draws (`Popup::as_sent`, `Label::own_first` and `own_who`; the scanner's line
+    written into the game's pixel Text table in capitals, `scan_line_upper`). English(HD) shows
+    the case as sent, with the helper's own notices in mixed case; every other translation and
+    the default English show capitals, as before (their fonts may draw no lower case). Stand-in
+    tests only, not run in game yet.
   - **Names the game reads while they show,** written into the tables in place and cut to each
-    entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines) while their
-    records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
+    entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
+    wider with leading spaces as a received item's popup's, since the pickup popup starts each
+    line at one x, where those spaces fit the entry's room, else as they are so no name is cut)
+    while their records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
     Map's record is INTEL CHIP; the scanner's line into SmallText 12 (its message event's entry)
     while the Text table's entry is the helper's.
   - **Menu labels built again** with the game's builder (`hd_build_fn`, the string from
@@ -1069,8 +1118,8 @@ lands, not only the place passed.
     then centered as the game centers its own; the equipment screen's OS Install Disk and its
     description (no icon) where the game built them for the selection, the description wrapped
     at the box's columns; the map cursor on a labeled stand-in's square (the label's first
-    line); ASSIST while locked, with the padlock, in the locked style; the pause row's count,
-    centered on the row; and the Feats of Natu screen's title with the note under it (LargeText
+    line, without the logo: the game's map names carry no icon); ASSIST while locked, with the
+    padlock, in the locked look; the pause row's count, centered on the row; and the Feats of Natu screen's title with the note under it (LargeText
     220, read through the translation object and bounded by `large_count`), its middle kept as
     the game keeps its title's. One built again whenever the game builds its label again (told
     by the glyph count and the place the build was given). A text with more glyphs than the
@@ -1085,7 +1134,13 @@ lands, not only the place passed.
     blank (or already the helper's) and the game's art is where the PNG has it (a sheet not so
     read three times at most, each read being the whole sheet), now and then while a translation
     shows, and cleared when none does or before an unload. White, as the
-    game's icons are: the text's color tints them. `hd_icon` names the helper's glyphs (0xFB,
+    game's icons are: the text's color tints them. The HD padlock is drawn from the text's cap
+    height to its baseline (y 6 to 46 of its cell), its left 16 units in as its gap: it follows
+    ASSIST with no space (measured on the 2026-11-02 retest's shot; not run in game yet). The
+    disk and the logo, which lead their text, are drawn in x 10 to 54, y 6 to 50 of the cell, a
+    square chosen to match the game's own icons (their boxes' medians x 9 to 53, y 7 to 50:
+    `docs/re/memory.md`, "The assist menu"): the owner's picks D1 and L1 of the 2026-11-02
+    mockups, the same ring and dots, smaller (not run in game yet). `hd_icon` names the helper's glyphs (0xFB,
     0xEF, 0xEE) as these characters, so popups, names and labels carry them.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
     clear (`0x168AE9`), only for the Feats screen's title when its HD text cannot be built
@@ -1172,7 +1227,13 @@ lands, not only the place passed.
     reproduced; whether it opened was not tried). ASSIST's padlock sits below the text's
     baseline, against the box's right border. The map cursor shows the AP logo before AP ITEM,
     where the game's own names carry no icon. A stand-in's pickup popup (AP ITEM over FOR BOB)
-    starts both lines at the same x, not centered.
+    starts both lines at the same x, not centered. All four fixed since, stand-in tests only,
+    not run in game yet: the locked look in the options entries' style at alpha 0.45, and the
+    offline look kept through menus (a re-read of the offline files, done whenever anything
+    left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
+    up); the padlock on the text's line with no space before it; the map cursor without the
+    logo; the pickup popup's lines centered ("The assist menu", "AP saves without the client",
+    "Other players' items").
   - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
     stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
     matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
@@ -1240,9 +1301,11 @@ unload.
   translations' icon sheets painted and cleared (and left alone where not as traced; each
   sheet's icons made once), the label parser.
 - `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
-  that name (`files`: the disk count and the AP logo; `offline`: the seed file, its match and
+  that name (`files`: the disk count and the AP logo; `title`: also its two lines built in
+  English(HD)'s font and back to pixels; `offline`: the seed file, its match and
   disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, a notice withdrawn with its save, the not-connected warning again after a client
+  undressed, the look held through a menu (the files read again, a read of no known seed, a
+  client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
   came and went, a seed put with a client, the AP saves' slots, and the file select's logo
   through the frame call: painted, whitened through a new game's fade, and cleared by
   `restore_files`, and a cache without the translation keys).
@@ -1252,16 +1315,22 @@ unload.
   slot's mark cleared; the same with the tables unreadable and while unloading), a language
   change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
   panel (not where the game first built it), a label with no first pixel glyph or too little
-  room left alone, the locked ASSIST's translated text with its padlock (left out at a narrow
-  box, built again over the game's, back when unlocked), the helper's icons as characters and
+  room left alone, the locked ASSIST's translated text with its padlock (no space before it in
+  English(HD), one in a pixel font; left out at a narrow box, built again over the game's, its
+  style 0x15 and alpha 0.45 pinned, back when unlocked at full alpha), the map cursor's name
+  without the logo, the helper's icons as characters and
   through the game (painted while a translation shows, cleared when the default English is
   picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
-  widths, centering, the cap, the fallback, the suffix's case; a popup through the game measured
+  widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's lines
+  centered, and through the game into ItemNames, not where the spaces would pass its room;
+  the mixed case in English(HD) and capitals in French and the default English for a client's
+  notice, the helper's own, a label and the scanner's line; a popup through the game measured
   with its icon's width, a long notice wrapped), and
   the default English (the flag clear, or nothing loaded) left as it was (`mission`, `equip`,
   `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the equipment
   screen's disk, its description wrapped, the pause row's count and the Feats title with the
-  note in a translation; `apitem` the icon sheets' painting).
+  note in a translation; `apitem` the icon sheets' painting and the HD padlock's place in its
+  cell).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without

@@ -60,6 +60,10 @@ constexpr ptrdiff_t kOn = 0x91;
 // from its uses: the builder's scale, 0x88498, and the rounding in 0x85BCA), else an HD font.
 constexpr ptrdiff_t kFontStyle = 0xA8;
 constexpr int32_t kPixelFont = 1;
+// 32-bit: 1 for the icons from the pixel icon sheet (Config.txt's "Icon Style" 1), as the builder
+// takes them (0x885BF): every translation but English(HD) has both styles at 1, it both at 0.
+constexpr ptrdiff_t kIconStyle = 0xA4;
+constexpr int32_t kPixelIcons = 1;
 // The font the builder is given (its address; the template its glyphs are made from, the pointer
 // held there).
 constexpr ptrdiff_t kFont = 0xD0;
@@ -122,6 +126,9 @@ bool translation_keys(const GameAddresses& a);
 std::optional<Loaded> loaded_translation(const GameAddresses& a);
 // Game thread: the flag is set (with the keys there).
 bool translation_on(const GameAddresses& a);
+// Game thread: the translation shows (translation_on) in an HD font with the HD icons, as
+// English(HD) does; the other translations draw their text and icons as pixels.
+bool hd_font_on(const GameAddresses& a);
 // For `hello`: "-" the default English (the flag clear), the loaded translation's name while it
 // is on (spaces as underscores), or "?" (no translation keys, or nothing readable).
 std::string language_name(const GameAddresses& a);
@@ -157,8 +164,10 @@ std::wstring hd_text(std::string_view font_text);
 std::wstring hd_icon(uint8_t icon);
 // A stand-in's label as laid out (`width` characters a line, its first character the item's
 // glyph; text.h, Label) as translated text: each line trimmed, joined by line breaks, the glyph
-// as hd_icon; the first line alone with `first_line`, as the map cursor names it.
-std::wstring hd_label(const std::string& name, int width, bool first_line = false);
+// as hd_icon (left out without `icon`); the first line alone with `first_line`, as the map
+// cursor names it (with no icon, as the game's map names and the pixel font's map_name).
+std::wstring hd_label(const std::string& name, int width, bool first_line = false,
+                      bool icon = true);
 
 // How rebuild_label places and lays out a label's text (docs/re/memory.md, "Translated menus and
 // the prompt").
@@ -180,6 +189,9 @@ struct Rebuild {
     // Its middle kept where the text it replaces has it, as 0x86660 centers a text on a y
     // (the Feats screen's title, 0x179AC7).
     bool keep_middle = false;
+    // Built even if the game never built the label's translated text (a text object the helper
+    // made, as the title's lines, whose label has its room from 0x92511 all the same).
+    bool first = false;
 };
 // How wide the game's builder lays a line out in the translation's font as loaded now (0x88760
 // on; docs/re/memory.md, "Laying out the helper's popups"): a space by the font's space advance,
@@ -210,6 +222,9 @@ private:
 // wrap. Without metrics (null), wrapped at `fallback` characters and not centered.
 std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
                           const FontMetrics* metrics, double cap, size_t fallback);
+// `text`'s lines centered on its widest with leading spaces, as layout_popup centers a popup's
+// (the stand-ins' names, which the pickup popup shows from ItemNames); as it is without metrics.
+std::wstring centered_lines(const std::wstring& text, const FontMetrics* metrics);
 // A suffix in the translation's font, as the client sent it: "FROM Bob" as "from Bob".
 std::wstring hd_suffix(const std::string& as_sent);
 

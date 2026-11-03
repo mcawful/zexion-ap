@@ -475,6 +475,56 @@ bool Game::own_popup_up() const {
            popup_frames_left() > 0;
 }
 
+bool Game::mixed_case() const { return language_name(at_) == kMixedCaseLanguage; }
+
+std::wstring Game::hd_label_text(int cell, bool first_line, bool icon) const {
+    auto named = ap_items_.labels().find(cell);
+    if (named == ap_items_.labels().end()) return L"";
+    auto width = label_widths_.find(cell);
+    const std::wstring upper =
+        hd_label(named->second, width == label_widths_.end() ? 0 : width->second, first_line, icon);
+    auto label = labels_.find(cell);
+    if (!mixed_case() || label == labels_.end()) return upper;
+    // In English(HD), each line the client sent in its own case where it sent one.
+    std::vector<std::wstring> lines;
+    for (size_t at = 0; at <= upper.size();) {
+        size_t end = upper.find(L'\n', at);
+        if (end == std::wstring::npos) end = upper.size();
+        lines.push_back(upper.substr(at, end - at));
+        at = end + 1;
+    }
+    const Label& own = label->second;
+    // Another Zexion player's item with no name of the client's: the translation's own name
+    // for it (ItemNames, as the game's pickup popup shows its items), as for a received item.
+    std::wstring first = own.own_first.empty() ? std::wstring() : hd_text(own.own_first);
+    if (first.empty() && own.item >= 0) {
+        // The game's own name, not a label the helper wrote over it (a stand-in's: 47, 48), as
+        // hd_popup_text takes it.
+        std::optional<std::wstring> held = tr_entries_.original({Table::kItems, own.item});
+        const std::optional<Loaded> now = loaded_translation(at_);
+        if (held) {
+            first = *held;
+        } else if (now && now->on) {
+            read_entry(now->items, own.item, first, kNameRoom);
+        }
+    }
+    if (!first.empty()) {
+        const size_t glyph_at = named->second.find_first_not_of(' ');
+        const std::wstring head =
+            icon && glyph_at != std::string::npos
+                ? hd_icon(static_cast<uint8_t>(named->second[glyph_at]))
+                : std::wstring();
+        lines[0] = head + first;
+    }
+    if (lines.size() > 1 && !own.own_who.empty()) lines[1] = hd_text(own.own_who);
+    std::wstring out;
+    for (const std::wstring& line : lines) {
+        if (!out.empty()) out += L'\n';
+        out += line;
+    }
+    return out;
+}
+
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
     // Laid out as the font draws it: no line wider than a pixel popup's (kGamePopupWidth
     // characters of 8 pixels), a popup's lines centered (translation.h layout_popup).
@@ -482,7 +532,13 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     const FontMetrics* m = metrics.load(at_) ? &metrics : nullptr;
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
-    if (popup.bare) return layout_popup(L"", hd_text(popup.suffix), m, kCap, kCapCharacters);
+    // Text in its own case in English(HD) only, the owner's choice; every other translation
+    // keeps it in capitals, as the default English's pixel text has it.
+    const bool own_case = !popup.as_sent.empty() && mixed_case();
+    if (popup.bare) {
+        return layout_popup(L"", hd_text(own_case ? popup.as_sent : popup.suffix), m, kCap,
+                            kCapCharacters);
+    }
     const int stand_in = stand_in_index(popup.item);
     std::wstring name;
     std::optional<std::wstring> held = tr_entries_.original({Table::kItems, popup.item});
@@ -496,9 +552,6 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
                                      : std::string(record_name(rec)));
     }
     std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
-    // The suffix in its own case in English(HD) only, the owner's choice; every other translation
-    // keeps it in capitals, as the default English's pixel text has it.
-    const bool own_case = !popup.as_sent.empty() && language_name(at_) == kMixedCaseLanguage;
     const std::wstring suffix = own_case ? hd_suffix(popup.as_sent) : hd_text(popup.suffix);
     return layout_popup(head, suffix, m, kCap, kCapCharacters);
 }
@@ -658,7 +711,6 @@ void Game::watch_all(WidgetCallback callback) {
     if (!configured_) return;
     watch_feats();
     watch_menu(callback);
-    watch_assists();
     watch_discs();
     watch_equipment();
     watch_mission();
@@ -666,6 +718,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_intel();
     watch_title();
     watch_offline();
+    watch_assists();  // after the offline look: a save dressed again is locked the same frame
     watch_map_names();
     watch_ap_items();
     watch_map_marks();
@@ -694,7 +747,8 @@ void Game::watch_translation() {
             }
         }
         if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
-        if (scan_.written()) want[{Table::kSmall, kScanEntry}] = hd_text(scan_line_);
+        if (scan_.written()) want[{Table::kSmall, kScanEntry}] =
+                hd_text(mixed_case() ? scan_line_ : scan_line_upper(scan_line_));
     }
     tr_entries_.watch(now, want);
 }
@@ -855,7 +909,7 @@ void Game::watch_discs() {
     if (scan_frames_-- > 0) return;
     scan_frames_ = kScanFrames;
     if (!scan_line_.empty()) {
-        scan_.apply(at_.text_table, scan_line_);
+        scan_.apply(at_.text_table, scan_line_upper(scan_line_));
     } else if (scan_.written()) {
         scan_.restore(at_.text_table);
     }
@@ -1078,7 +1132,9 @@ void Game::watch_map_names() {
 }
 
 void Game::map_after() {
-    if (configured_) map_names_.after(at_, ap_items_.labels(), label_widths_);
+    if (!configured_) return;
+    map_names_.after(at_, ap_items_.labels(), label_widths_,
+                     [this](int cell) { return hd_label_text(cell, true, false); });
 }
 
 void* Game::map_original(void* child) const {
@@ -1121,7 +1177,7 @@ void Game::watch_map_marks() {
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
     if (*at_.save_loaded != kNoSaveLoaded) return;
-    std::string why = title_.watch(at_, active_);
+    std::string why = title_.watch(at_, active_, mixed_case());
     if (!why.empty()) title_error_ = why;
     if (title_.shown()) title_error_.clear();
 }
@@ -1290,14 +1346,24 @@ void Game::watch_ap_items() {
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
         if (touching >= 0) width_cell = cells[touching];
         ap_items_.watch(at_.item_records, cells);
-        // Each record's name as translated text, for the translation's table (watch_translation).
+        // Each record's name as translated text, for the translation's table (watch_translation),
+        // its lines centered as a received item's popup's (the pickup popup starts each at one x),
+        // where the spaces that center them fit the entry's room; else as they are, so no name
+        // is cut (EntryWriter cuts a text to its room).
+        FontMetrics metrics;
+        const FontMetrics* m = translation_on(at_) && metrics.load(at_) ? &metrics : nullptr;
+        const std::optional<Loaded> now = loaded_translation(at_);
         for (int i = 0; i < kStandInCount; ++i) {
             auto label = ap_items_.labels().find(cells[i]);
-            auto width = label_widths_.find(cells[i]);
-            stand_in_hd_[i] =
-                label == ap_items_.labels().end()
-                    ? std::wstring(L"AP ITEM")
-                    : hd_label(label->second, width == label_widths_.end() ? 0 : width->second);
+            if (label == ap_items_.labels().end()) {
+                stand_in_hd_[i] = mixed_case() ? L"AP Item" : L"AP ITEM";
+                continue;
+            }
+            std::wstring name = hd_label_text(cells[i], false, true);
+            std::wstring centered = centered_lines(name, m);
+            const int32_t room = now ? entry_room(now->items, kStandInRecords[i]) : 0;
+            const bool fits = room > 0 && centered.size() + 1 <= static_cast<size_t>(room);
+            stand_in_hd_[i] = fits ? std::move(centered) : std::move(name);
         }
     } else {
         ap_items_.release(at_.item_records);

@@ -348,6 +348,14 @@ public:
     const EntryWriter& tr_entries() const { return tr_entries_; }
     const PopupAreas& popup_areas() const { return popup_areas_; }
 
+    // English(HD) shows: the mod's own text in mixed case, the owner's choice (every other
+    // language keeps capitals: their fonts may draw no lower case).
+    bool mixed_case() const;
+    // A labeled cell's name in a translation's font (translation.h hd_label): its first line
+    // alone with `first_line`, its icon with `icon`; in English(HD) the lines in the case the
+    // client sent them (Label::own_first, own_who). Empty for a cell with no label.
+    std::wstring hd_label_text(int cell, bool first_line, bool icon) const;
+
 private:
     // The watches only watch_all calls (it checks the configuration): the equipment screen and
     // the pause screen's row, the mission prompt, the file select, the Intel Chip, the title
@@ -424,6 +432,7 @@ private:
     int offline_index_ = -1;  // the seed whose save is loaded
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
+    bool offline_settled_ = false;  // the loaded save in play since it loaded
     // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();

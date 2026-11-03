@@ -420,6 +420,7 @@ inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, c
                 put<double>(g, 0x98, 0);
                 put<double>(g, 0xA8, kHdWidth);
                 put<void*>(g, 0x30, *static_cast<void**>(font));
+                put<float>(g, 0x84, 1.0f);  // its tint and alpha 1.0 (0x89CC1 to 0x89CD9)
                 g[0x120] = 1;
             }
             at = end;

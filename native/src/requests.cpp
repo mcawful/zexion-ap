@@ -38,6 +38,27 @@ void keep_font_char(std::string& out, unsigned char c, const char* kept) {
     }
 }
 
+// keep_font_char into `out`, and the same character in its own case into `own` (a label's
+// text for English(HD), Label::own_first).
+void keep_both(std::string& out, std::string& own, unsigned char c, const char* kept) {
+    const size_t before = out.size();
+    keep_font_char(out, c, kept);
+    if (out.size() > before) own += static_cast<char>(c);
+}
+
+// The first line `wrap_words` makes of `upper`, and the same characters of `own`.
+void first_wrapped(const std::string& upper, const std::string& own, size_t width,
+                   std::string& line, std::string& own_line) {
+    std::vector<std::string> wrapped = wrap_words(upper, width);
+    std::vector<std::string> own_wrapped = wrap_words(own, width);
+    line = wrapped.empty() ? std::string() : wrapped.front();
+    // The same breaks (case does not change a word's length); else none of its own.
+    own_line = own_wrapped.size() == wrapped.size() && !own_wrapped.empty() &&
+                       own_wrapped.front().size() == line.size()
+                   ? own_wrapped.front()
+                   : std::string();
+}
+
 }  // namespace
 
 bool parse_hex(const std::string& text, std::vector<uint8_t>& out) {
@@ -267,10 +288,10 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
         // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
         // it this name instead of the record's (this player's own OS Install Disk).
-        std::vector<std::string> parts{std::string()};
+        std::vector<std::string> parts{std::string()}, own{std::string()};
         int item = -1;
         size_t from = 0;
-        std::string item_name;
+        std::string item_name, own_item_name;
         if (!raw.empty() && raw[0] == '@') {
             int n = 0;
             size_t i = 1;
@@ -278,7 +299,7 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             size_t end = i;
             if (i > 1 && i < raw.size() && raw[i] == ' ') {
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_font_char(item_name, raw[end], kFontPunctuation);
+                    keep_both(item_name, own_item_name, raw[end], kFontPunctuation);
                 }
             }
             if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
@@ -286,27 +307,25 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
                 from = end;
             } else {
                 item_name.clear();
+                own_item_name.clear();
             }
         }
         for (size_t k = from; k < raw.size(); ++k) {
             if (raw[k] == '\n') {
                 if (parts.size() == 2) break;
                 parts.emplace_back();
+                own.emplace_back();
                 continue;
             }
-            keep_font_char(parts.back(), raw[k], kFontPunctuation);
+            keep_both(parts.back(), own.back(), raw[k], kFontPunctuation);
         }
-        std::string first, who;
-        {
-            std::vector<std::string> wrapped =
-                wrap_words(parts[0], static_cast<size_t>(kGamePopupWidth) - 1);
-            first = wrapped.empty() ? std::string(kApItemName) : wrapped.front();
-            first.insert(first.begin(), static_cast<char>(kApItemGlyph));
-        }
+        std::string first, who, own_first, own_who;
+        first_wrapped(parts[0], own[0], static_cast<size_t>(kGamePopupWidth) - 1, first,
+                      own_first);
+        if (first.empty()) first = kApItemName;
+        first.insert(first.begin(), static_cast<char>(kApItemGlyph));
         if (parts.size() > 1) {
-            std::vector<std::string> wrapped =
-                wrap_words(parts[1], static_cast<size_t>(kGamePopupWidth));
-            if (!wrapped.empty()) who = wrapped.front();
+            first_wrapped(parts[1], own[1], static_cast<size_t>(kGamePopupWidth), who, own_who);
         }
         Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
                                                    kApItemName
@@ -315,6 +334,9 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         label.item = item;
         label.who = who;
         label.item_name = item_name;
+        // For English(HD): the lines in the case they were sent in, an @N item's own name.
+        label.own_first = item >= 0 ? own_item_name : own_first;
+        label.own_who = own_who;
         out[static_cast<int>(y * kMapSide + x)] = label;
     }
     return "";

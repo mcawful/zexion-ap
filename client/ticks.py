@@ -367,7 +367,7 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         await confirm_shield(ctx, game_conn, pending, key)
         return
     helper = ctx.helper
-    if helper is None or time.monotonic() < sh.retry_at:
+    if helper is None or not sh.may_spawn(time.monotonic()):
         return
     if conn.session.holding:
         return  # the ending began in this load: on the next load, as other items (session.py)
@@ -377,7 +377,15 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     given = sh.given_count(key, stored)
     if reconcile.shields_owed(received, given) <= 0:
         return
-    reply = await asyncio.to_thread(helper.request, "shield")
+    # Looked for from here: a reply lost with the pipe leaves it pending, not spawned again.
+    sh.asking(key, time.monotonic())
+    try:
+        reply = await asyncio.to_thread(helper.request, "shield")
+    except native.ReplyLost:
+        raise  # it may have spawned: looked for (side_tick drops the helper)
+    except Exception:  # a cancellation, whose thread may still deliver it, stays pending
+        sh.not_sent(time.monotonic())  # never reached the helper, or an error reply
+        raise
     if ctx.conn is not None and ctx.conn.shield_key != key:
         return  # another slot now: the spawn is that game's, not this seed's
     if reply == "spawned":
@@ -389,9 +397,9 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
 async def confirm_shield(
     ctx: ZexionContext, game_conn: game.Game, pending: shields.Pending, key: str
 ) -> None:
-    """One look for a spawned shield: count it, wait, or spawn it again. The state is settled
-    again here: the step's may be stale after the helper requests, and a death since would
-    count a lost shield."""
+    """One look for a spawned shield: count it, wait, spawn it again, or stop spawning. The
+    state is settled again here: the step's may be stale after the helper requests, and a
+    death since would count a lost shield."""
     sh = ctx.shields
 
     def look() -> tuple[str, bool, str]:
@@ -413,11 +421,14 @@ async def confirm_shield(
     if stored is None:
         return  # looked at again once the count is a number
     outcome = sh.looked(pending, state_now, up, key, stored, time.monotonic())
-    if outcome == shields.BACKOFF:
+    if outcome == shields.STOP:
         logger.warning(
-            f"{shields.MISSES} received Energy Shields in a row were not seen in the game; "
-            f"trying again in {shields.BACKOFF_SECONDS:.0f} seconds."
+            f"The game was asked {shields.MISSES} times in a row for a received Energy Shield "
+            "and none was seen, so no more are asked for until you leave this save (for the "
+            "title or another save) and load it again, or restart Zexion (each one more could "
+            f"be a shield given twice). Please report it at {state.REPORT}."
         )
+        log.warning(f"Energy Shields stopped after {shields.MISSES} requests not seen up.")
     elif outcome == shields.AGAIN:
         detail("A received Energy Shield was not seen in the game; spawning it again.")
     elif outcome == shields.UP:

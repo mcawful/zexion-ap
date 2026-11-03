@@ -4,11 +4,13 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "translation.h"
 
 namespace zap {
 
 const char kTitleCredit[] = "C2026 MCAWFUL";
 const char kTitleHint[] = "START THE AP CLIENT TO PLAY A SEED";
+const char kTitleHintHd[] = "Start the AP client to play a seed";
 
 namespace {
 
@@ -91,7 +93,51 @@ Look look(BYTE* draw_layer, const std::string (&texts)[kLines]) {
     return l;
 }
 
+// Whether the line shows its translated text (built, its pixel glyphs hidden).
+bool shows_translated(BYTE* object) {
+    uint8_t built = 0;
+    int32_t count = 0;
+    return read(object, hdlabel::kBuilt, built) && built != 0 &&
+           read(object, hdlabel::kCount, count) && count > 0 && !pixel_glyphs_shown(object);
+}
+
+// Each of the line's translated glyphs shown or hidden.
+void show_translated(BYTE* object, bool visible) {
+    int32_t count = 0, capacity = 0;
+    BYTE** list = nullptr;
+    if (!read(object, hdlabel::kCount, count) || !read(object, hdlabel::kCapacity, capacity) ||
+        !read(object, hdlabel::kGlyphs, list) || count < 0 || count > capacity) {
+        return;
+    }
+    for (int32_t i = 0; i < count; ++i) {
+        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        uint8_t now = 0;
+        if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
+            writable(g, sprite::kSize)) {
+            *(g + sprite::kVisible) = visible ? 1 : 0;
+        }
+    }
+}
+
+// The line in the translation's font (`hd`: built each time it is not shown so, as with the
+// translation loaded now, its pixel glyphs hidden), or in pixels again.
+void use_font(const GameAddresses& a, BYTE* object, const std::string& text, bool hd) {
+    if (hd) {
+        if (shows_translated(object)) return;
+        if (rebuild_label(a, object, hd_text(text),
+                          {.attached = true, .center = true, .first = true})) {
+            show_translated_glyphs(object);
+        }
+    } else if (shows_translated(object)) {
+        show_pixel_glyphs(object);
+    }
+}
+
 void show(BYTE* object, size_t length, bool visible) {
+    if (shows_translated(object)) {
+        show_translated(object, visible);
+        return;
+    }
     BYTE* g[kMaxGlyphs] = {};
     if (!glyphs_of(object, static_cast<int32_t>(length), g)) return;
     for (size_t i = 0; i < length; ++i) {
@@ -172,9 +218,16 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
 
 }  // namespace
 
-std::string TitleLines::watch(const GameAddresses& a, bool client) {
+std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
+    // A change of language looked at in the same frame call: no glyph built in a translation
+    // no longer loaded stays shown.
+    if (hd != hd_) frames_ = 0;
+    hd_ = hd;
     if (mod_line_.empty() || frames_-- > 0) return "";
-    frames_ = kLookFrames;
+    // In English(HD) every frame call: a menu opening on the title hides every glyph of the HD
+    // list (its builder, docs/re/memory.md "Where a rebuilt label goes"), the lines' too, which
+    // are shown again at once (the title's draw list is short).
+    frames_ = hd ? 0 : kLookFrames;
     const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
     Look l = look(a.draw_layer, texts);
     if (l.game_line == nullptr) {
@@ -190,6 +243,11 @@ std::string TitleLines::watch(const GameAddresses& a, bool client) {
         }
     }
     last_error_ = why;
+    // In English(HD), the version's line and the hint in its font; the credit in pixels.
+    const std::string hd_texts[kLines] = {mod_line_hd_, "", kTitleHintHd};
+    for (int k : {kModLine, kHint}) {
+        if (l.made[k] != nullptr) use_font(a, l.made[k], hd_texts[k], hd);
+    }
     shown_ = l.made[kModLine] != nullptr && l.made[kCredit] != nullptr && l.made[kHint] != nullptr;
     // Shown while the game's © is (and again after a refused unload hid them); the hint only
     // while no client is connected.

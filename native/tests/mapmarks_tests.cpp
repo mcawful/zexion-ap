@@ -10,6 +10,8 @@
 
 #include "check.h"
 #include "mapmarks.h"
+#include "stand_in.h"
+#include "translation.h"
 
 namespace {
 
@@ -434,6 +436,33 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     g_set_target = nullptr;
 }
 
+// In English(HD) the cursor's name is the label's first line built again in the translation's
+// font, without the logo the pickup popup shows first: the game's map names carry no icon (the
+// 2026-11-02 retest saw the logo there).
+void test_the_cursor_name_in_a_translation() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    MapMenu m(40.0);
+    zap::GameAddresses a = m.addresses();
+    stand_in::with_translation(a);
+    stand_in::HdGlyphs<3 * 17> hd(m.text.data());
+    stand_in::built(m.text.data());
+    const std::map<int, std::string> labels = {
+        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM    FOR ALICE"}};
+    const std::map<int, int> widths = {{17 * 54 + 14, 17}};
+    zap::MapCursorNames names;
+    names.watch(a, true);
+    g_set_target = &m;
+    m.at(165, 108);
+    m.show("SCRAP CHUNK");
+    names.after(a, labels, widths);
+    check(!stand_in::g_builds.empty() && stand_in::g_builds.back().text == L"PROGRESSION ITEM",
+          "built again as the first line, no logo");
+    names.restore(a);
+    g_set_target = nullptr;
+    stand_in::reset_translation();
+}
+
 // The item update's write of an on-screen item's square as on B1 (mapmarks.h).
 constexpr BYTE kSeenGame[zap::kSeenMarkerSize] = ZAP_SEEN_MARKER_GAME;
 
@@ -568,6 +597,7 @@ int main() {
     test_the_stand_in_names();
     test_the_cursor_square();
     test_the_handler_wrapped_and_the_name_rewritten();
+    test_the_cursor_name_in_a_translation();
     test_no_stand_in_wraps_nothing();
     test_one_slot_and_a_read_only_child();
     test_the_values();

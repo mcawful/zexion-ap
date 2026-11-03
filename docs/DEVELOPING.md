@@ -144,6 +144,8 @@ line says.
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
   A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
   and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
+  Fixed since in the client's read and with a stop on spawns not seen; not yet run in game
+  (`docs/re/memory.md`, "Received Energy Shields").
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.
@@ -208,7 +210,8 @@ line says.
 - What the helper changed put back when the client goes away (item records, ASSIST):
   2026-10-25.
 - Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
-  CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27.
+  CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27. In English(HD),
+  the version's line and the hint in its font and in mixed case: not run in game yet.
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
   SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
   2026-10-26, with the client connected; again 2026-10-27, `GameUnlocks.sav` unchanged by the
@@ -258,11 +261,16 @@ line says.
   label, the question's place, the equipment description's width and ASSIST's padlock are bugs,
   fixed since and working in game later that day (`zexion_ap.dll` `946b08a1…`, with the HD
   icons, the pause row's count, the locked ASSIST and the Feats note in the HD font; new bugs
-  then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, the logo on
-  the map cursor), and the scanner's line was not run (`native/README.md`, "Translations", "Run
+  then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, its padlock
+  low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since,
+  stand-in tests only, not run in game yet), and the scanner's line was not run (`native/README.md`, "Translations", "Run
   in game" and "Run in game again"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
-  not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations").
+  not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations"). Since the
+  2026-11-02 retest, not run in game yet: the mod's own text in mixed case in English(HD) (its
+  notices, the client's hints, the disks' popups and reminder, the scanner's line, the
+  stand-ins' names and the map cursor), and the HD disk and logo redrawn at the game's icon
+  size.
 
 ## Platforms
 
