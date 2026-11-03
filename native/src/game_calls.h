@@ -307,6 +307,7 @@ public:
     // The live stand-in objects in both pools, with their cells and positions (name_cells), from
     // this frame's copy of the item pool (null: not read) and the item sprites' frame list.
     std::vector<StandInSeen> stand_ins_seen(const BYTE* pool, BYTE* base) const;
+    const ItemLooks& looks() const { return looks_; }  // tests
     void restore_ap_items();
     // Game thread, every frame: notes how long the player has been in play in one cell.
     void note_play(uint64_t now_ms);

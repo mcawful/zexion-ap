@@ -868,6 +868,70 @@ void test_flipped_items_show_as_themselves() {
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 }
 
+// A general object drawing a logo frame in a palette not the stand-ins' (R'Talva X34 Y51's
+// marker, type 1146: frame 63, palette 4) is drawn blank: the font's space glyph, every frame
+// while the stand-ins are restyled. It is put back on its own frame when it no longer draws a
+// logo frame and on restore, and it is no stand-in for naming them. A stand-in beside it keeps
+// the logo.
+void test_markers_drawn_blank() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    static BYTE font_template[0x1D8] = {};
+    static BYTE font_frames[256 * 0x38] = {};
+    put(font_template, 0x1A8, static_cast<BYTE*>(font_frames));
+    put<int32_t>(font_template, 0x1BC, 256);
+    g_template_list[1] = font_template;
+    BYTE* const blank = font_frames + 0x20 * 0x38;
+    put_flipped(20, 601, 63, 34, 51);  // the marker
+    put(general_slot(20), 0x198, g_palette_table[4]);
+    put<int16_t>(general_slot(20), 0x1A0, 4);
+    put_flipped(21, 602, 63, 6, 2);  // a stand-in for another game's item
+    std::map<int, zap::Label> labels;
+    zap::parse_labels(kBoxAndApItem, labels);
+    game.set_labels(labels);
+    player_cell(34, 51);
+    game.watch_ap_items();
+    check(general_ptr(20, 0x1B0) == blank && general_ptr(20, 0x1A8) == g_frames &&
+              general_ptr(20, 0x198) == g_palette_table[4],
+          "the marker drawn blank, its frame list and palette the game's");
+    check(general_ptr(21, 0x1B0) == g_frames + 63 * 0x38 &&
+              general_ptr(21, 0x198) == g_palette_table[8],
+          "a stand-in keeps the logo");
+    check(game.looks().hidden_markers() == 1, "one marker hidden");
+    const std::vector<zap::StandInSeen> seen = game.stand_ins_seen(g_item_pool, g_frames);
+    check(seen.size() == 1 && seen[0].cell == 2 * 54 + 6, "the marker is no stand-in for names");
+
+    put(general_slot(20), 0x1B0, g_frames + 63 * 0x38);  // the game sets its frame again
+    game.watch_ap_items();
+    check(general_ptr(20, 0x1B0) == blank, "blank again the next frame, not at the next scan");
+
+    // Its own code moves it to a frame that is not a logo's: its own frame at the next scan.
+    put<int32_t>(general_slot(20), 0x1C4, 40);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(general_ptr(20, 0x1B0) == g_frames + 40 * 0x38 && game.looks().hidden_markers() == 0,
+          "put back on its own frame");
+
+    put<int32_t>(general_slot(20), 0x1C4, 63);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(general_ptr(20, 0x1B0) == blank, "hidden again");
+    // Another object in its slot: not put back.
+    put_flipped(20, 603, 40, 34, 51);
+    put(general_slot(20), 0x1B0, blank);
+    game.restore_ap_items();
+    check(general_ptr(20, 0x1B0) == blank, "another spawn's frame is not written");
+
+    put_flipped(20, 604, 63, 34, 51);
+    put(general_slot(20), 0x198, g_palette_table[4]);
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(general_ptr(20, 0x1B0) == blank, "hidden");
+    game.restore_ap_items();
+    check(general_ptr(20, 0x1B0) == g_frames + 63 * 0x38 && game.looks().hidden_markers() == 0,
+          "restore puts it back on its own frame");
+    g_template_list[1] = nullptr;
+}
+
 void test_zexion_items_show_as_themselves() {
     zap::Game game;
     ready(game);
@@ -1895,6 +1959,7 @@ int main() {
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
+    test_markers_drawn_blank();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_shield();

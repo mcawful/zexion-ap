@@ -547,6 +547,16 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   dressed (the same spawn).
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way.
+- **Markers:** an object there drawing a logo frame in a palette other than the stand-ins' (8),
+  not dressed by the helper, is no stand-in: the game's art leaves those frames empty, so it is
+  meant to show nothing (R'Talva X34 Y51's marker, which showed the logo swaying in the gate's
+  center: `docs/re/memory.md`, "Other players' items"). While the stand-ins are restyled, every
+  frame call points its frame shown at the font's space glyph, blank too, leaving its frame list,
+  frame number and palette the game's; it is not counted as a stand-in for naming them. It is put
+  back on its own frame once it draws another frame, when the stand-ins are put back, and on an
+  unload, if it is still that spawn on the space. A marker that comes into view can show the logo
+  until the next scan, up to 30 frame calls. The space is the game's own frame, so a marker left
+  on it shows nothing either way. Stand-in tests only; not run in game yet.
 - **Put back:** when the label goes, and with the rest.
 
 Working in game: 2026-10-23 ("Live item objects").

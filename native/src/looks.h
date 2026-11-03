@@ -12,6 +12,13 @@
 // Some rooms show an item through an object in the general pool instead. Every 31st frame call
 // a scan finds any live one drawing a logo frame from the item sprites' list, and dresses it by
 // its frame shown and palette only, leaving its frame list as the game's.
+//
+// A general object drawing a logo frame in a palette other than the stand-ins' is not a stand-in:
+// the game draws such a frame empty (its art is blank there), so the helper's logo would show
+// where the game shows nothing (R'Talva X34 Y51's marker, docs/re/memory.md, "Other players'
+// items"). While the stand-ins are restyled, each such object is pointed at the font's space
+// glyph, blank too, every frame, and put back on its own frame when it no longer draws a logo
+// frame, the stand-ins are put back, or the helper unloads.
 #pragma once
 
 #include <windows.h>
@@ -47,8 +54,18 @@ public:
     // still to be checked with shows_stand_in, as the list can be 30 frames old.
     const std::vector<int>& flipped_slots() const { return flipped_slots_; }
     // A live object drawing from the item sprites' frame list (`base`, item_frame_base) at a
-    // logo frame, empty in the game's own art: a stand-in.
+    // logo frame, empty in the game's own art: a stand-in, or a marker (is_marker).
     static bool shows_stand_in(const BYTE* object, const BYTE* base);
+    // General object `slot` (`object`: a copy holding its palette) draws a logo frame
+    // (shows_stand_in) as no stand-in does: in a palette other than the stand-ins'
+    // (`standin_palette`), and not dressed by this helper.
+    bool is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const;
+    // Markers this helper has hidden, still to be put back (tests).
+    int hidden_markers() const;
+    // The stand-ins' palette object, or null.
+    static BYTE* stand_ins_palette(const GameAddresses& at);
+    // The blank frame markers are pointed at: the font's space glyph, or null.
+    static BYTE* blank_frame(const GameAddresses& at);
     // The item sprites' frame list (every item object's base, the template's), or null.
     static BYTE* item_frame_base(const GameAddresses& at);
 
@@ -72,13 +89,23 @@ private:
     static void undress_live(BYTE* object, size_t size, Dressed& d, BYTE* base,
                              BYTE* standin_palette, bool frame_shown);
 
-    // General objects showing a stand-in's logo (found by scan), dressed every frame.
+    // General objects showing a stand-in's logo (found by scan), dressed every frame; markers
+    // among them hidden.
     void apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin_palette, BYTE* records,
                        int64_t clock, const bool (&ours)[2]);
+    // A marker hidden: its spawn, so it is put back only while it is the same object.
+    struct Hidden {
+        int32_t spawn = 0;  // 0 for none
+    };
+    // Puts marker `object` (`seen`: its copy) back on its own frame (its frame list's entry at
+    // its frame index) if it is still the spawn `h` hid and still on the blank frame; forgets it.
+    static void unhide(BYTE* object, const BYTE* seen, Hidden& h, const BYTE* blank);
+    static void unhide_live(BYTE* object, Hidden& h, const BYTE* blank);
 
     std::map<int, int> items_;
     Dressed dressed_[kSlots] = {};
     std::vector<Dressed> flipped_dressed_ = std::vector<Dressed>(kObjectSlots);
+    std::vector<Hidden> hidden_ = std::vector<Hidden>(kObjectSlots);
     std::vector<int> flipped_slots_;  // general objects showing a logo at the last scan
     int frames_to_scan_ = 0;
     std::vector<BYTE> objects_;  // the last scan's copy of the general pool
