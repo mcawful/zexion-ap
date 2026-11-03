@@ -13,6 +13,7 @@
 #include "game_calls.h"
 #include "offline.h"
 #include "stand_in.h"
+#include "stand_in_menu.h"
 #include "fake_gl.h"
 
 using namespace stand_in;
@@ -373,6 +374,94 @@ void test_a_save_of_the_seed_dressed_offline() {
     other.set_disk_slots({});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
           "the client's taken back: the offline one stays");
+}
+
+// A dressed save stays dressed, ASSIST locked, through a menu: the files read again (each time a
+// pipe client goes), a read of no known seed for a check, and a client going away all with a
+// menu up. The 2026-11-02 retest once saw ASSIST unlocked in the options menu with no client:
+// each of these used to undress the save until play.
+// A client going away with the options menu up: the save dressed again and ASSIST locked in the
+// same frame call (watch_assists runs after watch_offline), so the cursor never finds it open.
+void test_assist_locked_again_in_the_same_frame() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    dress_offline(game, s);
+    g_menu = 2;  // the pause menu, then the options
+    OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                        reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "dressed offline: ASSIST locked");
+    configure(game);  // a client of this seed, its own look (no lock sent yet)
+    game.watch_all(&no_callback);
+    check(options.callback() == &assist_menu_fn, "the client's look: ASSIST free");
+    game.client_gone(&no_callback);
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "the client gone: locked again in the same frame call");
+    game.put_back_all(&no_callback);
+    g_current_menu = nullptr;
+}
+
+void test_the_look_held_in_a_menu() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    dress_offline(game, s);
+    check(game.assists_locked() && game.offline_state() == "1:", "dressed in play");
+    g_menu = 2;  // the pause menu up
+    game.set_offline({s});  // `helper.py status` has come and gone
+    check(game.assists_locked() && game.intel_on() && game.offline_state() == "1:",
+          "the files read again: still dressed");
+    for (int i = 0; i < 32; ++i) game.watch_offline();
+    check(game.assists_locked(), "and kept");
+    check(game.queued_popups() == 1, "no second not-connected warning");
+    g_rando_marker = 0;  // a read of no known seed in the menu
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "held with the menu up");
+    g_rando_marker = 1;
+    configure(game);  // a client of this seed: its own look
+    check(!game.assists_locked(), "the client's look");
+    game.client_gone(&no_callback);
+    game.watch_offline();
+    check(game.assists_locked() && game.intel_on(), "the client gone in the menu: dressed at once");
+    zap::OfflineSeed other = s;
+    other.table[0] ^= 1;
+    game.set_offline({other});
+    check(!game.assists_locked() && game.offline_state() == "1",
+          "files without the seed: undressed");
+    game.set_offline({s});
+    g_rando_marker = 0;  // in play, no known seed: another save
+    g_menu = 0;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.assists_locked(), "in play as no known seed: undressed");
+    g_rando_marker = 1;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "dressed again");
+    g_save_loaded = 0xFF;
+    game.watch_offline();
+    check(!game.assists_locked(), "no save: undressed at once");
+    g_save_loaded = 3;
+    g_menu = 2;  // the next load, not in play yet
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.assists_locked(), "a new load waits for play");
+    g_menu = 0;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "then dressed");
+
+    // The files read again in another order (newest first): the save played offline is still
+    // the one CLIENT CONNECTED. is told for.
+    zap::Game order;
+    configure(order, false);
+    order.set_offline({other, s});
+    load_seed();
+    for (int i = 0; i < 16; ++i) order.watch_offline();
+    order.set_offline({s, other});
+    check(order.assists_locked() && order.offline_state() == "2:", "dressed, its place moved");
+    configure(order);
+    check(order.client_back(), "CLIENT CONNECTED. for the save played offline");
 }
 
 // The helper's notices are each for the load they were queued in: one the player leaves before
@@ -857,6 +946,8 @@ int main() {
     test_the_helper_writes_what_the_client_sends();
     test_a_save_of_the_seed_dressed_offline();
     test_a_notice_not_shown_goes_with_its_save();
+    test_the_look_held_in_a_menu();
+    test_assist_locked_again_in_the_same_frame();
     test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();

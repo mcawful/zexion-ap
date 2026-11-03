@@ -636,7 +636,6 @@ void Game::watch_all(WidgetCallback callback) {
     if (!configured_) return;
     watch_feats();
     watch_menu(callback);
-    watch_assists();
     watch_discs();
     watch_equipment();
     watch_mission();
@@ -644,6 +643,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_intel();
     watch_title();
     watch_offline();
+    watch_assists();  // after the offline look: a save dressed again is locked the same frame
     watch_map_names();
     watch_ap_items();
     watch_map_marks();
@@ -1265,14 +1265,26 @@ void Game::watch_ap_items() {
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
         if (touching >= 0) width_cell = cells[touching];
         ap_items_.watch(at_.item_records, cells);
-        // Each record's name as translated text, for the translation's table (watch_translation).
+        // Each record's name as translated text, for the translation's table (watch_translation),
+        // its lines centered as a received item's popup's (the pickup popup starts each at one x),
+        // where the spaces that center them fit the entry's room; else as they are, so no name
+        // is cut (EntryWriter cuts a text to its room).
+        FontMetrics metrics;
+        const FontMetrics* m = translation_on(at_) && metrics.load(at_) ? &metrics : nullptr;
+        const std::optional<Loaded> now = loaded_translation(at_);
         for (int i = 0; i < kStandInCount; ++i) {
             auto label = ap_items_.labels().find(cells[i]);
             auto width = label_widths_.find(cells[i]);
-            stand_in_hd_[i] =
-                label == ap_items_.labels().end()
-                    ? std::wstring(L"AP ITEM")
-                    : hd_label(label->second, width == label_widths_.end() ? 0 : width->second);
+            if (label == ap_items_.labels().end()) {
+                stand_in_hd_[i] = L"AP ITEM";
+                continue;
+            }
+            std::wstring name =
+                hd_label(label->second, width == label_widths_.end() ? 0 : width->second);
+            std::wstring centered = centered_lines(name, m);
+            const int32_t room = now ? entry_room(now->items, kStandInRecords[i]) : 0;
+            const bool fits = room > 0 && centered.size() + 1 <= static_cast<size_t>(room);
+            stand_in_hd_[i] = fits ? std::move(centered) : std::move(name);
         }
     } else {
         ap_items_.release(at_.item_records);

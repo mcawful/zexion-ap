@@ -72,6 +72,8 @@ void test_the_text_helpers() {
           "a label's lines, the logo first");
     check(zap::hd_label(label.name, label.width, true) == L"\xE03C" L"MASTER SWORD",
           "its first line");
+    check(zap::hd_label(label.name, label.width, true, false) == L"MASTER SWORD",
+          "the map cursor's: no logo");
     const zap::Label own = zap::layout_label("\xC5" "MISSILE BOX", "FOR BOB");
     check(zap::hd_label(own.name, own.width) == L"\xE029MISSILE BOX\nFOR BOB",
           "another Zexion player's item with its icon");
@@ -504,9 +506,13 @@ void test_assist_in_a_translation(bool on = true) {
     zap::AssistLock lock;
     auto frame = [&](int i) { return get<int32_t>(options.glyph_list[i], 0x1C4); };
     auto count = [&] { return get<int32_t>(options.label, 0x248); };
+    // The options entries' style, dimmed: style 5's color is the cursor's on some screens.
     auto all_locked_style = [&] {
         for (int i = 0; i < count(); ++i) {
-            if (get<int32_t>(hd.glyphs[i], 0x1D0) != 5) return false;
+            if (get<int32_t>(hd.glyphs[i], 0x1D0) != 0x15 ||
+                get<float>(hd.glyphs[i], 0x84) != 0.45f) {
+                return false;
+            }
         }
         return count() > 0;
     };
@@ -517,22 +523,25 @@ void test_assist_in_a_translation(bool on = true) {
               "the flag clear: nothing built");
         return;
     }
-    check(!g_builds.empty() && g_builds.back().text == L"Assist \xE03B" &&
+    // In English(HD) the padlock's cell holds its own gap: no space before it.
+    check(!g_builds.empty() && g_builds.back().text == L"Assist\xE03B" &&
               g_builds.back().x == 136.0f && g_builds.back().y == 171.0f && count() == 7 &&
               all_locked_style() && !zap::pixel_glyphs_shown(options.label),
           "its translated text with the padlock, in the locked style, its pixel glyphs hidden");
     // Kept while locked; the game building the label again is noticed and built over.
     const size_t builds = g_builds.size();
-    put<int32_t>(hd.glyphs[0], 0x1D0, 0x15);  // the menu restyles it
+    put<int32_t>(hd.glyphs[0], 0x1D0, 5);  // the menu restyles it
+    put<float>(hd.glyphs[1], 0x84, 1.0f);
     check(!lock.install(a) && g_builds.size() == builds && all_locked_style(),
-          "kept, its style pinned");
+          "kept, its style and alpha pinned");
     built(options.label, 136.0, 171.0);
     put<int32_t>(options.label, 0x248, 6);  // the game's Assist again
     check(!lock.install(a) && g_builds.size() == builds + 1 &&
-              g_builds.back().text == L"Assist \xE03B",
+              g_builds.back().text == L"Assist\xE03B",
           "built again over the game's");
-    check(lock.restore(a) && g_builds.back().text == L"Assist" && count() == 6,
-          "unlocked: the entry's text again");
+    check(lock.restore(a) && g_builds.back().text == L"Assist" && count() == 6 &&
+              get<float>(hd.glyphs[0], 0x84) == 1.0f,
+          "unlocked: the entry's text again, at full alpha");
 
     // A box too narrow for the padlock: the text alone.
     g_builds.clear();
@@ -542,6 +551,17 @@ void test_assist_in_a_translation(bool on = true) {
               all_locked_style(),
           "the padlock left out where it would pass the box");
     narrow.restore(a);
+
+    // A translation drawn as pixels (Font Style and Icon Style 1, as French): a space before the
+    // pixel padlock, as before.
+    g_builds.clear();
+    put<double>(piece, 0x40, 193.0);
+    put<int32_t>(g_translation, 0xA8, 1);
+    put<int32_t>(g_translation, 0xA4, 1);
+    zap::AssistLock pixel;
+    check(pixel.install(a) && !g_builds.empty() && g_builds.back().text == L"Assist \xE03B",
+          "a pixel font: the space kept");
+    pixel.restore(a);
 }
 
 // The popups' layout in a translation's font: lines measured as the builder lays them out (a
@@ -578,6 +598,11 @@ void test_the_popup_layout() {
           "a notice wrapped, left as it wraps");
     check(zap::layout_popup(L"", L"line one\nline two", &m, 192, 30) == L"line one\nline two",
           "a notice's own line breaks kept");
+    check(zap::centered_lines(L"Energy Tank\nfrom Bob", &m) == L"Energy Tank\n   from Bob" &&
+              zap::centered_lines(L"AP ITEM\nFOR ALICE", &m) == L"  AP ITEM\nFOR ALICE",
+          "a stand-in's name centered as a popup's lines");
+    check(zap::centered_lines(L"AP ITEM\nFOR ALICE", nullptr) == L"AP ITEM\nFOR ALICE",
+          "no metrics: as it is");
     check(zap::layout_popup(L"Energy Tank", L"from Bob", nullptr, 0, 8) ==
               L"Energy\nTank\nfrom Bob",
           "no metrics: wrapped by characters, not centered");
@@ -692,6 +717,47 @@ void test_a_popup_laid_out_by_the_font() {
     reset_translation();
 }
 
+// A stand-in's name written into ItemNames through the game: its lines centered with leading
+// spaces as a received item's popup's, unless the spaces would not fit the entry's room (33
+// characters for entry 47 here), when it is written as it is, so no name is cut.
+void test_a_stand_in_name_centered_through_the_game() {
+    zap::Game game;
+    start(game);
+    BYTE* font = g_translation + 0xD0;
+    BYTE glyph[0x20] = {};
+    put<int32_t>(glyph, 0x10, 6 * 64);  // every character 6 wide, a space 3
+    put<BYTE*>(font, 0x08, glyph);
+    put<float>(font, 0x40040, 3.0f);
+    put<double>(font, 0x40060, 1.0);
+    put<int32_t>(g_translation, 0xA8, 1);  // a pixel font: definition 104's icons, 8 wide
+    std::vector<BYTE> frames_list(256 * 0x38);
+    for (int f = 0; f < 256; ++f) put<int16_t>(frames_list.data() + f * 0x38, 0x28, 8);
+    BYTE sheet[0x1D8] = {};
+    put<int32_t>(sheet, 0x1BC, 256);
+    put<BYTE*>(sheet, 0x1A8, frames_list.data());
+    g_template_list[104] = sheet;
+    own_stand_ins(g_records);
+    field<uint8_t>(0x107A) = 2;  // the player in cell (5, 2)
+    field<uint8_t>(0x107B) = 5;
+    auto label = [&](const std::string& text) {
+        std::map<int, zap::Label> labels;
+        zap::parse_labels("ap_labels\nlabel 5 2 " + hex(text), labels);
+        game.set_labels(labels);
+        frames(game, 1);
+        return entry_text(g_items, 47);
+    };
+    // The logo 8 and AP ITEM 39 wide, FOR BOB 39: half of 8 over a space of 3, one space.
+    check(label("AP ITEM\nFOR BOB") == L"\xE03C" L"AP ITEM\n FOR BOB",
+          "centered with a leading space");
+    // A long first line over a short second: 20 spaces would pass the room; written as it is.
+    check(label("ABCDEFGHIJKLMNOPQRSTUVW\nFOR B") ==
+              L"\xE03C" L"ABCDEFGHIJKLMNOPQRSTUVW\nFOR B",
+          "not centered where the spaces would not fit, nothing cut");
+    g_template_list[104] = nullptr;
+    game.put_back_all(&no_callback);
+    reset_translation();
+}
+
 // The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
 // capitals in any other translation, as in the default English's pixel text.
 void test_the_suffix_case() {
@@ -730,6 +796,7 @@ int main() {
     test_the_icons_through_the_game();
     test_a_popup_laid_out_by_the_font();
     test_the_suffix_case();
+    test_a_stand_in_name_centered_through_the_game();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();

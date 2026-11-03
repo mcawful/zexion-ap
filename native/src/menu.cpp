@@ -49,6 +49,12 @@ constexpr int16_t kLockedPalette = 0;  // as the controls screen's STYLE: AUTO
 constexpr ptrdiff_t kGlyphTint[6] = {0x68, 0x6C, 0x70, 0x78, 0x7C, 0x80};
 constexpr float kLockedTint[6] = {0.412f, 0.439f, 0.494f, 0.412f, 0.439f, 0.494f};
 constexpr int32_t kLockedStyle = 5;  // as the controls screen's STYLE: AUTO
+// A translated glyph's lock: the options entries' own style (0x1628B0 to 0x1628F2), at an alpha
+// (+0x84, what the translated glyphs' draw 0x2D890 takes besides its style's color) near the
+// pixel lock's gray on the black options screen.
+constexpr int32_t kLockedHdStyle = 0x15;
+constexpr ptrdiff_t kGlyphAlpha = 0x84;
+constexpr float kLockedHdAlpha = 0.45f;
 constexpr int kLockAt = 7;  // ASSIST, a blank, the padlock
 // In a translation: ASSIST's entry, and the options box's border (laid out by 0xAB4D0 from the
 // panel's +0x200, its eight pieces from +0x218, the top right third): the box is sized from
@@ -383,7 +389,10 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
         hd_label_ = nullptr;
         // Built after the pixel glyphs took the locked style: the builder gives each glyph the
         // first pixel glyph's (0x8AAB5), the padlock too (an icon past frame 0x70).
-        if (!rebuild_label(a, label, own + L" " + kHdLockIcon, {.attached = true})) return;
+        // In the HD icons the padlock's cell has its own gap on its left (IconSheets): no space
+        // there, so it sits clear of the box's border.
+        const std::wstring gap = hd_font_on(a) ? L"" : L" ";
+        if (!rebuild_label(a, label, own + gap + kHdLockIcon, {.attached = true})) return;
         float left = 0, right = 0;
         double edge = 0;
         if (!box_right(panel_, edge) || !translated_extent(a, label, left, right) ||
@@ -393,7 +402,12 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
         hd_label_ = label;
         hd_mark_ = built_mark(label);
     }
-    // The style again each time (the menu may restyle its entries).
+    // The locked look again each time (the menu may restyle its entries). A translated glyph is
+    // drawn in its style's color through a table the screens rewrite (0x2D890), so style 5's
+    // gray on the first open was the cursor's colors after the video options or the map: the
+    // glyphs take the style the options menu gives its other entries, white on every screen
+    // seen, dimmed through their alpha, which the menus never change (docs/re/memory.md, "The
+    // assist menu"). Built again, a label's glyphs get alpha 1.0 back (0x89CD9).
     int32_t n = 0;
     BYTE** list = nullptr;
     if (!read(label, hdlabel::kCount, n) || !read(label, hdlabel::kGlyphs, list) || n < 0 ||
@@ -402,8 +416,9 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
     }
     for (int32_t i = 0; i < n; ++i) {
         BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
-        if (g != nullptr && writable(g + sprite::kStyle, sizeof(int32_t))) {
-            at<int32_t>(g, sprite::kStyle) = kLockedStyle;
+        if (g != nullptr && writable(g, sprite::kStyle + sizeof(int32_t))) {
+            at<int32_t>(g, sprite::kStyle) = kLockedHdStyle;
+            at<float>(g, kGlyphAlpha) = kLockedHdAlpha;
         }
     }
 }
