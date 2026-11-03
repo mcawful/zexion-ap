@@ -12,6 +12,11 @@ namespace zap {
 namespace {
 
 constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
+// The helper's look for them: palette 26 (no shader, glColor from the style) at style 34, which
+// every rewrite of the style table sets to color 3, white (docs/re/memory.md, "Other players'
+// items").
+constexpr int kOwnPalette = 26;
+constexpr int32_t kOwnStyle = 34;
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
 constexpr int16_t kMarkerFirstState = 8210;  // type 1146's first state (Enemies, B1)
@@ -46,6 +51,18 @@ bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t c
     return true;
 }
 
+// Which stand-ins' records the helper has restyled now (one logo frame each): their logos are
+// painted, and their objects may be dressed and colored.
+void restyled_stand_ins(const BYTE* records, bool (&ours)[kStandInCount]) {
+    for (int i = 0; i < kStandInCount; ++i) {
+        BYTE r[record::kSize];
+        ours[i] = records != nullptr &&
+                  safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
+                  field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
+                  field<int16_t>(r, record::kFrames) == 1;
+    }
+}
+
 // The object drawn in the look's palette, if it is not already (`seen`: its copy).
 void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
     if (field<BYTE*>(seen, sprite::kPalette) == look.palette_object) return;
@@ -57,6 +74,105 @@ void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
 
 BYTE* ItemLooks::stand_ins_palette(const GameAddresses& at) {
     return pointer_at(at.palette_table, kStandInPalette * 8);
+}
+
+BYTE* ItemLooks::own_palette(const GameAddresses& at) {
+    return pointer_at(at.palette_table, kOwnPalette * 8);
+}
+
+bool ItemLooks::stand_in_palette(const GameAddresses& at, const BYTE* palette) {
+    return palette != nullptr &&
+           (palette == stand_ins_palette(at) || palette == own_palette(at));
+}
+
+void ItemLooks::color(BYTE* object, const BYTE* seen, Colored& c, BYTE* own) {
+    const int32_t spawn = field<int32_t>(seen, obj::kSpawn);
+    if (c.spawn != spawn) c = {spawn, field<int32_t>(seen, sprite::kStyle)};
+    if (field<BYTE*>(seen, sprite::kPalette) != own) {
+        put(object, sprite::kPalette, own);
+        put<int16_t>(object, sprite::kPaletteNumber, kOwnPalette);
+    }
+    if (field<int32_t>(seen, sprite::kStyle) != kOwnStyle) {
+        put<int32_t>(object, sprite::kStyle, kOwnStyle);
+    }
+}
+
+void ItemLooks::uncolor(BYTE* object, const BYTE* seen, Colored& c, BYTE* game, const BYTE* own) {
+    if (c.spawn == 0) return;
+    if (field<int32_t>(seen, obj::kSpawn) == c.spawn && game != nullptr) {
+        if (field<BYTE*>(seen, sprite::kPalette) == own) {
+            put(object, sprite::kPalette, game);
+            put<int16_t>(object, sprite::kPaletteNumber, kStandInPalette);
+        }
+        if (field<int32_t>(seen, sprite::kStyle) == kOwnStyle) {
+            put<int32_t>(object, sprite::kStyle, c.style);
+        }
+    }
+    c = {};
+}
+
+void ItemLooks::uncolor_live(BYTE* object, size_t size, Colored& c, BYTE* game,
+                             const BYTE* own) {
+    if (c.spawn == 0) return;
+    BYTE seen[obj::kGeneralSize];
+    if (size > sizeof(seen) || !safe_read(object, seen, size)) {
+        c = {};
+        return;
+    }
+    uncolor(object, seen, c, game, own);
+}
+
+int ItemLooks::colored() const {
+    int n = 0;
+    for (const Colored& c : colored_items_) n += c.spawn != 0;
+    for (const Colored& c : colored_flipped_) n += c.spawn != 0;
+    return n;
+}
+
+void ItemLooks::own_colors(const GameAddresses& at, const BYTE* pool, BYTE* base) {
+    BYTE* game = stand_ins_palette(at);
+    BYTE* own = own_palette(at);
+    BYTE* records = pointer_at(at.item_records);
+    if (game == nullptr || own == nullptr || records == nullptr || base == nullptr) return;
+    bool ours[kStandInCount];
+    restyled_stand_ins(records, ours);
+    if (at.item_pool != nullptr && pool != nullptr) {
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const BYTE* seen = pool + slot * obj::kItemSize;
+            BYTE* object = at.item_pool + slot * obj::kItemSize;
+            Colored& c = colored_items_[slot];
+            const int32_t spawn = field<int32_t>(seen, obj::kSpawn);
+            if (c.spawn != 0 && c.spawn != spawn) c = {};  // another object now
+            const int stand_in = stand_in_index(field<int16_t>(seen, obj::kRecord));
+            if (spawn == 0 || stand_in < 0) continue;
+            if (!ours[stand_in]) {
+                uncolor(object, seen, c, game, own);
+            } else if (dressed_[slot].spawn != spawn &&
+                       field<BYTE*>(seen, sprite::kFrameList) == base &&
+                       stand_in_palette(at, field<BYTE*>(seen, sprite::kPalette))) {
+                color(object, seen, c, own);
+            }
+        }
+    }
+    if (at.object_pool == nullptr) return;
+    for (int slot : flipped_slots_) {
+        BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+        BYTE seen[obj::kGeneralSize];
+        Colored& c = colored_flipped_[slot];
+        if (!safe_read(object, seen, sizeof(seen))) {
+            c = {};
+            continue;
+        }
+        const int32_t spawn = field<int32_t>(seen, obj::kSpawn);
+        if (c.spawn != 0 && c.spawn != spawn) c = {};
+        const int stand_in = logo_index(field<int32_t>(seen, sprite::kFrameIndex));
+        if (!shows_stand_in(seen, base) || stand_in < 0 || !ours[stand_in]) {
+            uncolor(object, seen, c, game, own);
+        } else if (flipped_dressed_[slot].spawn != spawn &&
+                   stand_in_palette(at, field<BYTE*>(seen, sprite::kPalette))) {
+            color(object, seen, c, own);
+        }
+    }
 }
 
 bool ItemLooks::is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const {
@@ -158,13 +274,8 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
     // The stand-ins' records as they are now: an object is dressed only while its record shows
     // the one logo frame the shift is worked out from (restyled by apitem.h), so the game's
     // frame plus the shift always stays in the frame list.
-    auto restyled = [&](int i) {
-        BYTE r[record::kSize];
-        return safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
-               field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
-               field<int16_t>(r, record::kFrames) == 1;
-    };
-    const bool ours[kStandInCount] = {restyled(0), restyled(1)};
+    bool ours[kStandInCount];
+    restyled_stand_ins(records, ours);
     for (int slot = 0; slot < kSlots; ++slot) {
         const BYTE* seen = pool + slot * obj::kItemSize;
         BYTE* object = at.item_pool + slot * obj::kItemSize;
@@ -186,8 +297,9 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
         // Not dressed: it must hold the template's base and the stand-ins' palette. Dressed (this
         // spawn): the base it was given, or the template's if the game set it back.
         BYTE* now_palette = field<BYTE*>(seen, sprite::kPalette);
-        const bool expected = d.spawn == 0 ? now_base == base && now_palette == standin_palette
-                                           : now_base == d.base || now_base == base;
+        const bool expected = d.spawn == 0
+                                  ? now_base == base && stand_in_palette(at, now_palette)
+                                  : now_base == d.base || now_base == base;
         Look look;
         if (!expected || !look_of(at.palette_table, records, item, clock,
                                   field<int32_t>(seen, sprite::kFrameCount), look)) {
@@ -225,8 +337,14 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
             }
         }
     }
-    // Any dressed or hidden earlier and not found now is put back if it is still ours.
+    // Any dressed, hidden or colored earlier and not found now is put back if it is still ours.
+    BYTE* own = own_palette(at);
     for (int slot = 0; slot < kObjectSlots; ++slot) {
+        if (colored_flipped_[slot].spawn != 0 &&
+            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
+            uncolor_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
+                         colored_flipped_[slot], standin_palette, own);
+        }
         if (hidden_[slot].spawn != 0 &&
             std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
             unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
@@ -279,7 +397,7 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         // Its frame list is left as the game's (the template's); only the frame shown and the
         // palette are written, so whatever frame its own code sets, nothing points outside the
         // list.
-        if (d.spawn == 0 && field<BYTE*>(seen, sprite::kPalette) != standin_palette) continue;
+        if (d.spawn == 0 && !stand_in_palette(at, field<BYTE*>(seen, sprite::kPalette))) continue;
         int32_t count = field<int32_t>(seen, sprite::kFrameCount);
         Look look;
         if (frame < 0 || frame >= count ||
@@ -293,6 +411,28 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
 }
 
 void ItemLooks::restore(const GameAddresses& at) {
+    // The colors first: an object dressed as a Zexion item keeps its style until it is undressed
+    // below, and its palette is then the game's already.
+    if (colored() > 0) {
+        BYTE* game = stand_ins_palette(at);
+        BYTE* own = own_palette(at);
+        for (int slot = 0; slot < kSlots; ++slot) {
+            if (at.item_pool == nullptr) {
+                colored_items_[slot] = {};
+            } else {
+                uncolor_live(at.item_pool + slot * obj::kItemSize, obj::kItemSize,
+                             colored_items_[slot], game, own);
+            }
+        }
+        for (int slot = 0; slot < kObjectSlots; ++slot) {
+            if (at.object_pool == nullptr) {
+                colored_flipped_[slot] = {};
+            } else {
+                uncolor_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
+                             colored_flipped_[slot], game, own);
+            }
+        }
+    }
     flipped_slots_.clear();  // found again by the next scan
     frames_to_scan_ = 0;
     if (hidden_markers() > 0) {

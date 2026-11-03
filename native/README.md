@@ -510,6 +510,15 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
+- **Colors:** every live stand-in not dressed as a Zexion item draws in palette 26 at style 34
+  while they are restyled (`src/looks.cpp`, `ItemLooks::own_colors`): palette 26 draws the
+  texture's own colors, under white, where the game's palette 8 follows the suit, the weapon and
+  the room, so the logo kept changing colors (`docs/re/memory.md`, "Other players' items"). An
+  object is colored only with the template's frame list and palette 8 or 26; its style is kept,
+  and palette 8 and that style are put back when the stand-ins are, and on an unload. A stand-in
+  draws in palette 8 for its first frame (the game's spawn), and for one frame after its Zexion
+  item look comes off. Palette 26 on a stand-in, written by hand, worked in game (2026-11-03);
+  the helper's own colors: stand-in tests only, not run in game yet.
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x
   2048 sprite sheet. It leaves the game's texture binding, pixel-store state and GL errors as it
@@ -543,9 +552,10 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   objects there, in the game's pool of live item objects, as item N: N's palette, and the
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
-- **Safety:** it writes only stand-ins with the template's base and palette 8, or ones it
-  dressed (the same spawn); and, for R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared
-  and set again, only while it is the spawn it hid.
+- **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
+  helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
+  R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
+  while it is the spawn it hid.
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way
   (R'Talva X34 Y51's marker, below, is hidden instead).

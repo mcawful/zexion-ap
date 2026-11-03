@@ -1393,6 +1393,7 @@ void Game::watch_ap_items() {
     if (ap_items_.restyled()) {
         looks_.scan(at_, base);
         looks_.apply(at_, pool, base);
+        looks_.own_colors(at_, pool, base);
     } else {
         looks_.restore(at_);
     }

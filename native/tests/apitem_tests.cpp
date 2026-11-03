@@ -170,11 +170,11 @@ void test_painting() {
     bool any_opaque = false;
     for (size_t i = 3; i < g_uploads[0].pixels.size(); i += 4) any_opaque |= g_uploads[0].pixels[i] != 0;
     check(any_opaque, "the logo has pixels");
-    // Each of the logo's letters in its entry of Scrap Energy's palette: k 0, g 1, b 2, r 3, p 5,
-    // o 8, y 9.
+    // Each of the logo's letters in its own color (the stand-ins draw in palette 26, which shows
+    // the texture's colors): the AP logo's.
     const std::map<char, std::vector<uint8_t>> colors = {
-        {'k', {0, 0, 0}},     {'g', {128, 0, 0}},   {'b', {212, 0, 0}},   {'r', {255, 21, 0}},
-        {'p', {255, 106, 0}}, {'o', {255, 234, 0}}, {'y', {255, 255, 14}}};
+        {'k', {0, 0, 0}},       {'g', {22, 113, 41}}, {'b', {53, 181, 255}}, {'r', {246, 26, 46}},
+        {'p', {249, 47, 237}},  {'o', {212, 82, 19}}, {'y', {251, 213, 127}}};
     bool in_colors = true;
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
@@ -198,6 +198,13 @@ void test_painting() {
     check(g_uploads.size() == 1 && g_uploads[0].x == 240 && g_uploads[0].y == 816,
           "then only the arrow's frame is repainted");
     std::vector<uint8_t> second = g_uploads.empty() ? std::vector<uint8_t>() : g_uploads[0].pixels;
+    auto has_white = [](const std::vector<uint8_t>& p) {
+        for (size_t i = 0; i + 3 < p.size(); i += 4) {
+            if (p[i] == 255 && p[i + 1] == 255 && p[i + 2] == 255 && p[i + 3] == 0xFF) return true;
+        }
+        return false;
+    };
+    check(has_white(second), "the arrow white in its second color");
     g_uploads.clear();
     items.paint(sprites(), gl, items_check, 450);
     check(g_uploads.empty(), "not again until the color changes");

@@ -141,6 +141,10 @@ line says.
   Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
   stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
   helper patches the game's write of an on-screen item's square): 2026-10-28.
+- Other players' items draw in the AP logo's own colors in every area (palette 26; the owner saw
+  them change by area on the 1.0.0 RC, 2026-11-03: `native/README.md`, "Other players' items").
+  Palette 26 on a stand-in worked in game written by hand, 2026-11-03; the helper's own colors:
+  stand-in tests only, not run in game yet.
 - The helper hides R'Talva X34 Y51's marker (an object the game draws on the logo's empty
   frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) by its shown byte
   (`native/README.md`, "Other Zexion players' items, as themselves"). The byte, written by hand,

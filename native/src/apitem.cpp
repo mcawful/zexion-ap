@@ -44,8 +44,7 @@ constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture obj
 constexpr int kRepaintFrames = 300;
 // The progression arrow flashes: the helper repaints it in one color, then the other.
 constexpr uint64_t kFlashMs = 300;
-constexpr int8_t kArrow = 19;  // in a logo: the arrow, in the color of the moment
-constexpr int8_t kArrowColors[2] = {9, 6};  // palette 8's yellow and white
+constexpr int kArrowPhases = 2;  // the arrow's colors, by phase: yellow, then white
 
 // GL enums (GL 1.1, and the buffer bindings from 2.1).
 constexpr unsigned kTexture2D = 0x0DE1, kTextureBinding2D = 0x8069;
@@ -57,7 +56,7 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
-// flashes itself (palette entries 13 to 15 did not animate when watched).
+// flashes itself between yellow and white.
 constexpr char kLogoArrow[16][17] = {
     ".....krrrrk.....",
     ".....rrrrrr.....",
@@ -76,19 +75,17 @@ constexpr char kLogoArrow[16][17] = {
     ".....oooook^^^k.",
     ".....kooook^^^k.",
 };
-// A logo pixel as an entry of Scrap Energy's palette (kEntryLetters[i] is entry i's letter), or
-// -1 (transparent): items are drawn with Files/tileFragment.glfs, which shows entry int(red * 3 +
-// green * 6 + blue * 9) of the item's 19-color palette (docs/re/memory.md, "Other players'
-// items").
-constexpr char kEntryLetters[] = "kgbr-p--oy";
-int8_t logo_entry(char c) {
-    if (c == '^') return kArrow;
-    const char* at = c == '-' ? nullptr : std::strchr(kEntryLetters, c);
-    return at == nullptr ? -1 : static_cast<int8_t>(at - kEntryLetters);
+// A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent). The
+// stand-ins draw in palette 26, which shows the texture's own colors (ItemLooks::own_colors), so
+// the logo is painted in the colors it shows.
+bool logo_rgb(char c, int arrow_phase, uint8_t (&rgb)[3]) {
+    if (c == '^') return glyph_rgb(arrow_phase == 0 ? 'y' : '#', rgb);
+    return glyph_rgb(c, rgb);
 }
 
 // The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
-// items. Both are filler the game counts as Scrap Metal, and both draw in palette 8.
+// items. Both are filler the game counts as Scrap Metal; the game draws both in palette 8, the
+// helper's look in palette 26 (looks.h).
 struct StandIn {
     int item;
     int16_t own_frame, own_event;
@@ -99,14 +96,6 @@ struct StandIn {
 constexpr StandIn kStandIns[kStandInCount] = {
     {kStandInItem, 134, 3549, kStandInNames[0], kStandInFrame, kApLogoRows},
     {kStandInProgression, 142, 3550, kStandInNames[1], kStandInProgressionFrame, kLogoArrow},
-};
-
-// A color for each palette entry, in the middle of its range of int(r * 3 + g * 6 + b * 9).
-constexpr uint8_t kEntryRgb[19][3] = {
-    {0, 0, 0},       {128, 0, 0},     {212, 0, 0},     {255, 21, 0},    {255, 64, 0},
-    {255, 106, 0},   {255, 149, 0},   {255, 191, 0},   {255, 234, 0},   {255, 255, 14},
-    {255, 255, 42},  {255, 255, 71},  {255, 255, 99},  {255, 255, 128}, {255, 255, 156},
-    {255, 255, 184}, {255, 255, 212}, {255, 255, 241}, {255, 255, 255},
 };
 
 bool is_own(const BYTE* r, const StandIn& s) {
@@ -269,10 +258,9 @@ void logo_pixels(const StandIn& s, int arrow_phase, bool clear, uint8_t (&rgba)[
     std::memset(rgba, 0, sizeof(rgba));
     for (int y = 0; y < 16 && !clear; ++y) {
         for (int x = 0; x < 16; ++x) {
-            int8_t entry = logo_entry(s.logo[y][x]);
-            if (entry < 0) continue;
-            if (entry == kArrow) entry = kArrowColors[arrow_phase];
-            std::memcpy(rgba[y][x], kEntryRgb[entry], 3);
+            uint8_t rgb[3];
+            if (!logo_rgb(s.logo[y][x], arrow_phase, rgb)) continue;
+            std::memcpy(rgba[y][x], rgb, 3);
             rgba[y][x][3] = 0xFF;
         }
     }
@@ -334,9 +322,9 @@ bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& g
 }
 
 bool glyph_rgb(char c, uint8_t (&rgb)[3]) {
-    // The logo's colors as the world's AP items show them (palette 8's entries in the logos: 1, 2,
-    // 3, 5, 8, 9, from the Palettes file; docs/re/memory.md, "Other players' items"), and its
-    // outline.
+    // The logo's colors, and its outline: Kresezoa's colors for palette 8's entries 1, 2, 3, 5, 8
+    // and 9 (the Palettes file; docs/re/memory.md, "Other players' items"), which the world's AP
+    // items showed before they drew in palette 26.
     struct Color {
         char c;
         uint8_t rgb[3];
@@ -414,7 +402,10 @@ bool ApItems::upload(unsigned texture, const GlFunctions& gl, TextureCheck& chec
     auto fits = [&] {
         for (const StandIn& s : kStandIns) {
             if (!check.place_ok(texture, gl, frame_x(s.frame), frame_y(s.frame), 16, 16,
-                                [&](int px, int py) { return logo_entry(s.logo[py][px]) >= 0; })) {
+                                [&](int px, int py) {
+                                    uint8_t rgb[3];
+                                    return logo_rgb(s.logo[py][px], 0, rgb);
+                                })) {
                 return false;
             }
         }
@@ -442,7 +433,7 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
         clear(holder, gl, check);
         return;
     }
-    int phase = static_cast<int>((now_ms / kFlashMs) % 2);
+    int phase = static_cast<int>((now_ms / kFlashMs) % kArrowPhases);
     if (frames_to_paint_-- <= 0) {
         frames_to_paint_ = kRepaintFrames;
         arrow_phase_ = phase;
