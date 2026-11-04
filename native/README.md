@@ -669,8 +669,8 @@ the helper:
   points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
   Disc's (frame 829) with the image's place, drawn 24 x 24 at (160, 184) (`kIconY`): 4 above
   the middle of the game's four key icons, (160, 188) (`docs/re/memory.md`, "The pause screen's
-  KEYS row"). What 184 itself was read from is not recorded beyond the code's "read live on B1,
-  2026-10-24"; the disc there looked right in game (2026-10-26). The entry is allocated once and
+  KEYS row"). What 184 itself was read from is not recorded (the code called it read live on B1,
+  2026-10-24); the disc there looked right in game (2026-10-26). The entry is allocated once and
   kept for good, never freed, so a pause screen still holding it after an unload points at live
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
