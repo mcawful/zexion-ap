@@ -574,7 +574,7 @@ void test_assist_in_a_translation(bool on = true) {
     narrow.restore(a);
 
     // A translation drawn as pixels (Font Style and Icon Style 1, as French): a space before the
-    // pixel padlock, as before.
+    // pixel padlock.
     g_builds.clear();
     put<double>(piece, 0x40, 193.0);
     put<int32_t>(g_translation, 0xA8, 1);
@@ -585,9 +585,9 @@ void test_assist_in_a_translation(bool on = true) {
     pixel.restore(a);
 }
 
-// The options menu built again after Video in English(HD), as the owner saw on the 1.0.0 RC: the
-// new menu's VERSION 1.20 in the locked ASSIST's freed place is left as the game built it (its
-// pixel glyphs and its translated text), and the new ASSIST's text is built with the padlock.
+// The options menu built again after Video in English(HD): the new menu's VERSION 1.20 in the
+// locked ASSIST's freed place is left as the game built it (its pixel glyphs and its translated
+// text), and the new ASSIST's text is built with the padlock.
 void test_assist_in_a_translation_after_the_menu_is_built_again() {
     reset_translation();
     load_translation("English(HD)", true);
@@ -952,8 +952,8 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     reset_translation();
 }
 
-// The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
-// capitals in any other translation, as in the default English's pixel text.
+// The suffix's case: in its own case in English(HD) only ("from Bob"); in capitals in any other
+// translation, as in the default English's pixel text.
 void test_the_suffix_case() {
     zap::Game hd;
     start(hd);
@@ -982,9 +982,9 @@ void test_the_suffix_case() {
     reset_translation();
 }
 
-// The mod's own text in mixed case in English(HD) only (the owner's choice, 2026-11-02): a
-// client's notice, the helper's own, a label and the scanner's line in the case they were
-// written in; in capitals in French and in the default English's pixel text.
+// The mod's own text in mixed case in English(HD) only: a client's notice, the helper's own, a
+// label and the scanner's line in the case they were written in; in capitals in French and in
+// the default English's pixel text.
 void test_the_mixed_case() {
     struct Language {
         const char* name;

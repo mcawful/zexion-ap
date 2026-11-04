@@ -10,8 +10,8 @@ const char kIntelName[] = "INTEL CHIP";
 
 namespace {
 
-// The Area Map's record (game_layout.h for its fields) as B1's Objects file holds it (read from
-// the file, 2026-10-25): the fields the helper never changes, then its name and event.
+// The Area Map's record (game_layout.h for its fields) as B1's Objects file holds it: the
+// fields the helper never changes, then its name and event.
 constexpr RecordShape kAreaMap = {.kind = 34, .frame = 25, .ticks = 6, .frames = 2, .icon = 0,
                                   .palette = 3, .inventory = 46, .redirect = 0, .pickup_class = 1};
 constexpr char kOwnName[] = "AREA MAP";

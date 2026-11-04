@@ -79,7 +79,7 @@ constexpr int32_t kTitleChildren = 3, kExitPanel = 1;  // panel 0: title, name, 
 // COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!), named by its second line; and what
 // the helper writes over it: FEATS OF NATU! and the note on two lines that clear the top row of
 // Feats (a line's glyphs span its y to 7 below it, the row's icons start 6 above the row's y:
-// measured on the owner's screenshots, docs/re/memory.md).
+// docs/re/memory.md, "Feats and achievements").
 constexpr char kHintName[] = "EXPANDED ENDING";
 constexpr char kScreenTitle[] = "FEATS OF NATU!";
 constexpr double kRoom = 16;
@@ -150,10 +150,10 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
 // hint). While the helper's text is there, the translated title is built again as LargeText
 // 220's with the note under it, wrapped, each line centered on the longer with leading spaces (as
 // the stand-ins' names are), the two centered and kept at their middle as the game lays out the
-// title (0x179A8E to 0x179AC7); once it is not, the game's own entry again, if it is still the
-// helper's text. Without LargeText (a cache lacking large_count), the pixel glyphs are shown in
-// its place instead, as before (translation.h). Only on the label being looked at, which
-// feats_screen_note has found live.
+// title (docs/re/memory.md, "The translations' icons"); once it is not, the game's own entry
+// again, if it is still the helper's text. Without LargeText (a cache lacking large_count), the
+// pixel glyphs are shown in its place instead (translation.h). Only on the label being looked
+// at, which feats_screen_note has found live.
 constexpr int kTitleEntry = 220, kHintEntry = 219;
 constexpr wchar_t kFeatsNoteHd[] = L"Archipelago save: no Feats earned";
 constexpr Rebuild kTitleLayout = {.wrap = true, .center = true, .keep_middle = true};

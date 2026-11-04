@@ -161,7 +161,7 @@ void test_the_helpers_disc() {
 }
 
 // The disc not painted, or a sprite without its template (whose list the game would free): the
-// game's frame 829, 16 x 16, as before; a sprite with no frame 829: no disc at all.
+// game's frame 829, 16 x 16; a sprite with no frame 829: no disc at all.
 void test_the_games_disc_otherwise() {
     zap::PauseDiskRow row;
     {
@@ -280,10 +280,10 @@ zap::GameAddresses hooked_addresses(Pause& p, zap::PauseDiskRow& row) {
 
 }  // namespace
 
-// The flash the owner saw in English(HD) (2026-11-03): OPTION MENU opened from the pause screen
-// and backed out of; the game's way back builds KEYS's translated text again before it draws the
-// frame. With the pause menu's way back wrapped, the count is built again in the same call, so the
-// frame drawn after it shows the count, never Keys.
+// In English(HD), OPTION MENU opened from the pause screen and backed out of: the game's way
+// back builds KEYS's translated text again before it draws the frame. With the pause menu's way
+// back wrapped, the count is built again in the same call, so the frame drawn after it shows the
+// count, never Keys.
 void test_back_from_options_in_a_translation() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);

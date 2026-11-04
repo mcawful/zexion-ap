@@ -3,18 +3,15 @@
 // puts both back as soon as it does not, and before an unload (Steam's slot stays hooked, passing
 // calls through, while the load test below is set):
 //
-// - The ending. Its routine (0x94A30 on B1) sets 14Victory, the ending's database entries, this
-//   run's Feat bytes and flag 251 in one stretch, from its first Steam call (ending_unlocks, the
-//   6-byte `call [SteamInternal_ContextInit]`) to just before it sets flag 250 (ending_join).
-//   The helper writes 12 bytes over that call: `mov byte [flag 251], 0` and `jmp ending_join`.
-//   Every callee-saved register is stored before the call, the stretch leaves the stack as it
-//   found it, and what the code at the join reads is either rbx (set before the stretch, never
-//   changed in it) or set afresh there, so jumping over it is as if each test in it had failed.
-//   Flag 251 is cleared because the code after the join reads it too (database entry 218, with a
-//   Steam call), as do the tests that lead to the Feats of Natu screen (0x948B7, 0x18A5F2); a
-//   save that already holds it, from an ending before this guard, has it cleared too. Flag 250,
-//   the save that follows and the client's goal are untouched. Nothing jumps into the bytes written
-//   past the call (checked over the whole of B1's code).
+// - The ending. Its routine sets 14Victory, the ending's database entries, this run's Feat bytes
+//   and flag 251 in one stretch, from its first Steam call (ending_unlocks, the 6-byte
+//   `call [SteamInternal_ContextInit]`) to just before it sets flag 250 (ending_join). The helper
+//   writes 12 bytes over that call: `mov byte [flag 251], 0` and `jmp ending_join`, which leaves
+//   the routine as if each test in the stretch had failed, and nothing jumps into the bytes
+//   written past the call (by disassembly: docs/re/memory.md, "Feats and achievements"). Flag
+//   251 is cleared, also in a save that already holds it, because the code after the join and
+//   the tests that lead to the Feats of Natu screen read it too. Flag 250, the save that follows
+//   and the client's goal are untouched.
 //
 // - Steam. Every achievement call goes `SteamInternal_ContextInit(stats_context)` through the
 //   import slot context_init_slot, then a call through the interface's vtable (SetAchievement,
@@ -24,16 +21,12 @@
 //   call (the SteamUtils context, any other) to steam_api64.
 //
 //   The stub decides at call time: it blocks while the guard is on, and also while an AP save is
-//   being loaded. The load routine (0x9C630 on B1) reads current_slot, sets the live randomizer
-//   marker from the slot and save_loaded, and ends by jumping to the map's 15Explorer check
-//   (0x204B70), which sets that achievement when every room is explored: all in one game call,
-//   before any frame call can see the save. So, while the slots hold AP saves (the `loading`
-//   watch argument: Game keeps it with no save loaded, and drops it once two frame calls in a row
-//   find a save loaded that is not one), the stub also blocks when save_loaded is not 0xFF (the
-//   load sets it before its tail jump; the title keeps the last save's marker and current_slot),
-//   the marker word is 1 and the table entry for the slot in current_slot is set, and the slot
-//   stays hooked for it. That test needs current_slot, rando_marker and save_loaded; without
-//   them it is not made.
+//   being loaded, as the load routine ends in the map's 15Explorer check within the same game
+//   call, before any frame call can see the save. While the slots hold AP saves (the `loading`
+//   watch argument), it also blocks when save_loaded is not 0xFF, the marker word is 1 and the
+//   table entry for the slot in current_slot is set, and the slot stays hooked for it
+//   (native/README.md, "Feats and achievements in AP saves"). Without current_slot, rando_marker
+//   or save_loaded that test is not made.
 //
 // The stub, the stand-in and its vtable are in two pages allocated once and never freed: a call
 // that read the slot, or holds the stand-in, just before an unload still lands in live memory,
@@ -41,15 +34,13 @@
 // load test off (and after release_steam), the stub passes everything through, so a slot
 // something else has hooked over the stub since stays safe.
 //
-// The Feats of Natu screen follows MISSION COMPLETE (whose builder always leads on to it, by
-// disassembly), with nothing flashing after such an ending. On it the helper writes kFeatsNote
-// into the blank last line of its title label, under FEATS OF NATU! (feats_screen_note). In a
-// game that has never reached Ending B, which an AP ending does not reach, the title is a hint
-// instead (COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!): the helper writes FEATS OF
-// NATU! and the note over it (working in game, 2026-10-28), and puts the hint back on an unload.
-// The screen's shape (its panels and rows, the secret row, the title's lines, MISSION
-// COMPLETE's statistics under it), read live on B1 and by disassembly: docs/re/memory.md, "Feats
-// and achievements".
+// The Feats of Natu screen follows MISSION COMPLETE, with nothing flashing after such an ending.
+// On it the helper writes kFeatsNote into the blank last line of its title label, under FEATS OF
+// NATU! (feats_screen_note). In a game that has never reached Ending B, which an AP ending does
+// not reach, the title is a hint instead (COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED
+// ENDING!): the helper writes FEATS OF NATU! and the note over it, and puts the hint back on an
+// unload. The screen's shape (its panels and rows, the secret row, the title's lines, MISSION
+// COMPLETE's statistics under it): docs/re/memory.md, "Feats and achievements".
 #pragma once
 
 #include <windows.h>

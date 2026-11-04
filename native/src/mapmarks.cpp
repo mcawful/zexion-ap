@@ -33,10 +33,8 @@ uint8_t important_value(uint8_t value, Obscure obscure, bool ended) {
     switch (value % 12) {
         case kMinorShown: {
             // Shown as a minor: shown as a major too, except under Majors on with Minors and
-            // Class off, where the game's reveal (0x7EECE) obscured a major unless its mode was
-            // 3. The value does not hold the mode, so a square a hint or map revealed (base
-            // 0xC: modes 1 and 2) is obscured, and one seen directly (base 0x18: the player's
-            // room's reveal, 0x1D07E5, never obscures) shown; memory.md lists what this misses.
+            // Class off, where the game obscures a major a hint or map revealed (base 0xC) and
+            // shows one seen directly (base 0x18); memory.md lists what this misses.
             const bool majors_only = obscure.majors && !obscure.minors && !obscure.by_class;
             return as_major(majors_only && !ended && base == kRevealed);
         }
@@ -142,9 +140,9 @@ void SeenMarker::restore() {
 
 namespace {
 
-// The map child's two handler slots: the game's per-frame loop calls +0x168 (0x7ABF3, the child
-// its argument), and 0x46B4F calls +0x178; the map's builder puts its handler in both (0x16E951),
-// read live holding 0x169E50 in both, 2026-10-25.
+// The map child's two handler slots: the game's per-frame loop calls +0x168 (the child its
+// argument), and 0x46B4F calls +0x178; the map's builder puts its handler in both
+// (docs/re/memory.md, "Map markers").
 constexpr ptrdiff_t kChildHandlers[2] = {0x168, 0x178};
 constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8;
 constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabel)
@@ -170,8 +168,8 @@ bool map_menu(BYTE* current_menu, void* handler, BYTE*& menu, BYTE*& panel, BYTE
     return holds(child, handler);
 }
 
-// The panel holding the scale and the cursor's name: [[[panel + 0x300]] + 8], as 0x16B843 to
-// 0x16B85F and 0x169EF1 to 0x169F3B read it.
+// The panel holding the scale and the cursor's name: [[[panel + 0x300]] + 8]
+// (docs/re/memory.md, "Map markers").
 BYTE* info_panel(BYTE* panel) {
     return pointer_at(pointer_at(pointer_at(panel, kInfoPanel)), kInfoChild);
 }

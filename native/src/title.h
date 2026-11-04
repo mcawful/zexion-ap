@@ -2,18 +2,15 @@
 // black band at the bottom, while the helper is loaded, and above them, while no client is
 // connected, START THE AP CLIENT TO PLAY A SEED.
 //
-// The game's title routine (0x93680, from disassembly; docs/re/memory.md, "The title screen")
-// makes the copyright line once the title animation ends: a text object from 0x92300
-// (characters, length, 32; each glyph's frame is its character), placed by 0xA79E0 at (88, 120),
-// added at the tail of the draw list [draw_layer] (head +0x18, tail +0x20; an object's next
-// +0x10, previous +0x18, list +0), its glyphs put right after it by 0xA8620, each glyph shown
-// (+0x120) and given the title's palette and style, glyph 0 the © frame (0xA9). Leaving the
-// title clears the list, which frees them.
+// The game's title routine makes its copyright line, a text object in the draw list
+// [draw_layer], once the title animation ends, and leaving the title clears the list, which
+// frees it (docs/re/memory.md, "The title screen").
 //
 // Every 9th frame call (every one in English(HD)), the helper looks through the draw list for
 // that line (© then "GALLANT LEAF"); when it is there and the helper's lines are not, it makes
-// them the same way, in the same list, with the line's own palette, style and tag. Nothing is kept between looks:
-// both are found again in the list each time, so the game freeing them is never a problem.
+// them the same way, in the same list, with the line's own palette, style and tag. Nothing is
+// kept between looks: both are found again in the list each time, so the game freeing them is
+// never a problem.
 // Before an unload, the helper's lines are hidden (the game frees them with the title).
 //
 // In English(HD) the version's line and the hint are shown in the translation's font, in mixed
@@ -50,9 +47,9 @@ public:
 
     // Game thread, every frame call (looks every 9th, every one with `hd`): adds the lines when
     // the copyright line is up without them, and shows them as the game shows its line's © (in
-    // English(HD), the translated ones only with no menu open).
-    // Returns "" or why the lines could not be made on this title. `client`: a client is connected (the hint is
-    // hidden). `hd`: English(HD) shows (its two lines in the translation's font).
+    // English(HD), the translated ones only with no menu open). Returns "" or why the lines could
+    // not be made on this title. `client`: a client is connected (the hint is hidden). `hd`:
+    // English(HD) shows (its two lines in the translation's font).
     std::string watch(const GameAddresses& a, bool client, bool hd = false);
     // Game thread: the lines hidden, if up (before an unload).
     void hide(const GameAddresses& a);

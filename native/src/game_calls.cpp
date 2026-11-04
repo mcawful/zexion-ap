@@ -65,9 +65,9 @@ using DeathFn = void (*)(void* player, char kind);
 // GameAddresses it fills. Each lies in the image with kKeyBytes there (the offline cache checks a
 // function's first 16 bytes): functions in code, data in writable data, the CRT's import slots
 // (only read) outside code. room and before: the bytes after and before it that must also lie
-// in its section. A client's config needs every key; in the offline cache (inactive) a
-// client_only one missing or not fitting is left null (Game::client_ready). A key is needed
-// offline unless marked so.
+// in its section. A client's config needs every key; the offline cache (inactive) needs every
+// key not marked client_only or newer, and leaves those null when missing or not fitting
+// (Game::client_ready).
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -94,15 +94,14 @@ constexpr ConfigKey client_only(ConfigKey key) {
     key.client_only = true;
     return key;
 }
-// The translations' (translation.h): an offline cache from before them lacks these, and the
-// translation parts then stand down (translation_keys) while everything else runs; read only by
-// translation.cpp.
+// The translations' (translation.h), read only by translation.cpp: an older offline cache lacks
+// them, and the translation parts then stand down (translation_keys) while everything else runs.
 constexpr ConfigKey translation_key(ConfigKey key) {
     key.newer = true;
     return key;
 }
-// Added after offline caches were already written: a cache from before it lacks it, and its part
-// then does without it (addresses.h says how) until a client's config gives it.
+// A key an older offline cache lacks: its part does without it (addresses.h says how) until a
+// client's config gives it.
 constexpr ConfigKey later_key(ConfigKey key) {
     key.newer = true;
     return key;
@@ -110,8 +109,8 @@ constexpr ConfigKey later_key(ConfigKey key) {
 // transition_fn is data: it holds the address of the routine the game runs next.
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
-    // The player state the helper touches, all in the inventory's section.
-    // The player state, which starts kInventoryInPlayer bytes before the inventory.
+    // The player state the helper touches, from kInventoryInPlayer bytes before the inventory,
+    // all in the inventory's section.
     data("inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, kInventoryInPlayer),
     data("save_loaded", &G::save_loaded), data("menu_state", &G::menu_state),
     data("item_records", &G::item_records), data("last_message", &G::last_message),
@@ -181,8 +180,8 @@ constexpr ConfigKey kConfigKeys[] = {
     translation_key(code("hd_text_fn", &G::hd_text_fn)),
     translation_key(code("hd_build_fn", &G::hd_build_fn)),
     translation_key(code("wstring_new_fn", &G::wstring_new_fn)),
-    // LargeText's count, for the Feats screen's title (feats.h): without it (a cache from
-    // before it) that title alone stays in the pixel font.
+    // LargeText's count, for the Feats screen's title (feats.h): without it (an older cache)
+    // that title alone stays in the pixel font.
     translation_key(data("large_count", &G::large_count)),
     // OPTION MENU's way back to the pause screen (pause.h).
     later_key(code("options_back_fn", &G::options_back_fn)),
@@ -463,8 +462,9 @@ void Game::pump_popups() {
     }
     popups_.erase(next);
     frames_since_popup_ = 0;
-    // The game made it its last message (0x182CEB to 0x182CFF), with a new sequence number:
-    // kept to tell it apart later. A last message this call did not change is not taken for it.
+    // The game made it its last message, with a new sequence number (docs/re/memory.md, "Game
+    // functions the helper calls"): kept to tell it apart later. A last message this call did
+    // not change is not taken for it.
     BYTE* last = nullptr;
     int32_t sequence = 0;
     own_message_ = nullptr;
@@ -533,8 +533,8 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     const FontMetrics* m = metrics.load(at_) ? &metrics : nullptr;
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
-    // Text in its own case in English(HD) only, the owner's choice; every other translation
-    // keeps it in capitals, as the default English's pixel text has it.
+    // Text in its own case in English(HD) only; every other translation keeps it in capitals,
+    // as the default English's pixel text has it.
     const bool own_case = !popup.as_sent.empty() && mixed_case();
     if (popup.bare) {
         return layout_popup(L"", hd_text(own_case ? popup.as_sent : popup.suffix), m, kCap,
@@ -583,10 +583,10 @@ std::string Game::spawn_shield(uint64_t now_ms) {
 }
 
 std::string Game::kill(uint64_t now_ms) {
-    // As the damage code does (calls at 0x1B9D3A, 0x1F07A, 0x4771B): energy 0, then death_fn.
-    // It returns at once while the halt flag is set (leaving the player alive at 0), and writes
-    // unchecked through the message it posts (0x1DA6E7, 0x1DA6EF), NULL with all four slots
-    // busy: so refuse while halted or a message shows.
+    // As the damage code does: energy 0, then death_fn (docs/re/memory.md, "DeathLink"). It
+    // returns at once while the halt flag is set (leaving the player alive at 0), and writes
+    // unchecked through the message it posts, NULL with all four slots busy: so refuse while
+    // halted or a message shows.
     if (!client_ready()) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
@@ -605,7 +605,7 @@ std::string Game::kill(uint64_t now_ms) {
 
 std::string Game::run_item_event(uint8_t item) {
     // The Energy Shield's pickup event (3553, type 11, spawns object 2018), run as the pickup
-    // does (0x1FE85): the type's handler with the player's cell; every field checked first
+    // does: the type's handler with the player's cell; every field checked first
     // (docs/re/memory.md, "Received Energy Shields").
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
@@ -659,10 +659,8 @@ void Game::watch_newgame() {
     if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
     if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
     // ARCHIPELAGO started it (starting_): placed and checked already, the plan written over it.
-    // Otherwise the player started it from RANDOMIZER: it must be this seed (its seed text),
-    // and is then placed again as the seed, as ARCHIPELAGO places it, or without menu lines
-    // checked for the seed's location list, amounts and settings as the player's placement
-    // made it.
+    // Otherwise the player started it from RANDOMIZER: it must be this seed (its seed text), and
+    // is then placed again as the seed, or without menu lines checked against `expect`.
     if (!starting_) {
         int differs = first_difference(at_.rando_blob, newgame_.identify);
         if (differs >= 0) {
@@ -999,13 +997,12 @@ void Game::watch_mission() {
     // last one kPopupGapFrames ago, and the game's last message down to kFadeMessageLeft
     // frames; one of the helper's own popups (the game's last message still) is never cut short.
     // After YES the ending waits for no message of the game's (GAME SAVED): the ending routine
-    // ends every message itself (0x1F9CE0, at 0x95103 on both its paths: the last message cleared
-    // and each slot's frames left 0, 0x1F9ED3 to 0x1F9F41), so the screen stays black only a
-    // frame or two, not the rest of GAME SAVED with the player in play under it.
+    // ends every message itself (docs/re/memory.md, "The mission prompt"), so the screen stays
+    // black only a frame or two, not the rest of GAME SAVED with the player in play under it.
     bool waiting = std::any_of(popups_.begin(), popups_.end(),
                                [this](const Popup& p) { return showable(p); });
-    // Kept black after YES: a popup waiting is shown first, so the screen fades back in for it
-    // (as before the black), and the ending follows the popups.
+    // Kept black after YES: a popup waiting is shown first, so the screen fades back in for it,
+    // and the ending follows the popups.
     if (waiting && mission_.dark()) mission_.end_dark(at_);
     const bool own = own_popup_up();
     int32_t left = own ? 1 : mission_.ending() ? INT32_MAX : kFadeMessageLeft;
@@ -1197,13 +1194,9 @@ void Game::watch_map_marks() {
     if (map_frames_-- > 0) return;
     map_frames_ = kMapFrames;
     // Only in the labels' seed's save (a plain randomizer game has the game's own Scrap Chunks),
-    // in play or in a menu, once it has read so on two passes in a row. A precaution: the load
-    // routine writes the section, the marker and the grid in one game call (docs/re/memory.md,
-    // "The loaded save's randomizer section is at +0xCDD6D0"; the file select's own grid merge
-    // around it is not traced). The count and the write go back together above, in every frame
-    // call that finds the seed's save not loaded, so the write is the helper's only after two
-    // passes in a row. A player who pauses at once and opens the map sees them raised within
-    // ~32 frames.
+    // in play or in a menu, once two passes in a row have read it so (a precaution:
+    // native/README.md, "The map"); the count and the write go back above in any frame call
+    // that does not.
     if (!seed) return;
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;

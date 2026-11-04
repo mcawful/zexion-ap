@@ -56,9 +56,10 @@ constexpr int32_t kLockedHdStyle = 0x15;
 constexpr ptrdiff_t kGlyphAlpha = 0x84;
 constexpr float kLockedHdAlpha = 0.45f;
 constexpr int kLockAt = 7;  // ASSIST, a blank, the padlock
-// In a translation: ASSIST's entry, and the options box's border (laid out by 0xAB4D0 from the
-// panel's +0x200, its eight pieces from +0x218, the top right third): the box is sized from
-// the translated texts (0x1634AB to 0x163561), so the padlock goes only where it stays inside.
+// In a translation: ASSIST's entry, and the options box's top right piece (the border's third,
+// the panel's +0x228), where the box's right edge starts: the box is sized from the translated
+// texts, so the padlock goes only where it stays inside (docs/re/memory.md, "Where a rebuilt
+// label goes").
 constexpr int kAssistEntry = 137;
 constexpr ptrdiff_t kBoxTopRight = 0x228;
 constexpr int32_t kMaxTranslatedGlyphs = 3 * kAssistLength;  // the label's capacity
@@ -420,11 +421,10 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
         hd_.take(label);
     }
     // The locked look again each time (the menu may restyle its entries). A translated glyph is
-    // drawn in its style's color through a table the screens rewrite (0x2D890), so style 5's
-    // gray on the first open was the cursor's colors after the video options or the map: the
-    // glyphs take the style the options menu gives its other entries, white on every screen
-    // seen, dimmed through their alpha, which the menus never change (docs/re/memory.md, "The
-    // assist menu"). Built again, a label's glyphs get alpha 1.0 back (0x89CD9).
+    // drawn in its style's color through a table the screens rewrite, so the glyphs take the
+    // options entries' own style, dimmed through their alpha, which the menus never change
+    // (docs/re/memory.md, "The assist menu"). Built again, a label's glyphs get alpha 1.0 back
+    // (0x89CD9).
     int32_t n = 0;
     BYTE** list = nullptr;
     if (!translated_list(label, kMaxTranslatedGlyphs, n, list)) return;

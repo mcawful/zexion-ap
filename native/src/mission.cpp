@@ -47,8 +47,8 @@ bool fade_bytes(const GameAddresses& a, int8_t& target, int8_t& step, int8_t& co
 
 // Event 3667's fade as the stepper (0x1F7900, once each pass of the main loop) runs it: from
 // level 4 (the record's), the countdown from 8 (its step) down; at 0 the level one lower and the
-// countdown 8 again, until the level is the target, -1, and the stepper turns the step off
-// (0x1F7BFF): 40 frames. How many of them it has run, or -1 if the fade holds anything else.
+// countdown 8 again, until the level is the target, -1, and the stepper turns the step off: 40
+// frames. How many of them it has run, or -1 if the fade holds anything else.
 constexpr int8_t kFadeFrom = static_cast<int8_t>(kFadeRecord[kFadeLevel]);
 constexpr int8_t kFadeTo = static_cast<int8_t>(kFadeRecord[kFadeTarget]);
 constexpr int8_t kFadeEvery = static_cast<int8_t>(kFadeRecord[kFadeStep]);
@@ -136,9 +136,8 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
     if (queued_ && fn != a.hooks.mission_end) {
         // The ending's wrapper set last frame is no longer the transition, and has not run (end
         // clears queued_): another transition took its place before it ran (a save at the save
-        // point sets the pause opener back and leaves the fade alone, 0x1FC8F1; a door sets its
-        // own routine with timer 70, 0x1D93E3; a death). Asked again, the black kept while it
-        // is still the helper's.
+        // point sets the pause opener back and leaves the fade alone; a door sets its own routine
+        // with timer 70; a death). Asked again, the black kept while it is still the helper's.
         queued_ = false;
         started_ = false;
         ending_ = true;
@@ -330,8 +329,8 @@ void* MissionPrompt::yes() {
 
 void MissionPrompt::after_no(const GameAddresses& a) {
     if (!ending_ || dark_) return;
-    // NO's close (0x92A60) has put back what the builder saved (0x92EEF to 0x92F1B): the level
-    // -1 (0x166913) and the fade toward 4, a step and countdown of 6 (0x16692C to 0x16693A).
+    // NO's close has put back what the builder saved: the level -1 and the fade toward 4, a step
+    // and countdown of 6 (docs/re/memory.md, "The mission prompt").
     int8_t target = 0, step = 0, countdown = 0, level = 0;
     if (!fade_bytes(a, target, step, countdown, level) || target != kNormalLevel ||
         step != kBackStep || countdown != kBackStep || level != kFadeTo ||
@@ -357,7 +356,7 @@ void MissionPrompt::end(const GameAddresses& a) {
         // after a swap below failed: only taken off, never the ending a second time.
     } else if (ending == nullptr) {
         // Gone from the table since it was set: asked again once idle (the black, if kept,
-        // ends after kDarkFrames as before).
+        // ends after kDarkFrames).
         started_ = false;
         ending_ = true;
         status_ = "yes: ending when idle (no ending routine)";
@@ -375,10 +374,10 @@ void MissionPrompt::end(const GameAddresses& a) {
     end_set_ = !read(a.transition_fn, 0, fn) ||
                (fn == a.hooks.mission_end &&
                 !swap_pointer(a.transition_fn, 0, a.hooks.mission_end, routine(a, kIdleRoutine)));
-    // It sets the level to 4 (0x95230) and warps the player to the ending's first scene
-    // (0x1D2850); the frame is drawn after this returns, before the helper's frame call. With no
-    // menu open (0x92A60 then returns at once, 0x92A8C) nothing puts a level back after it, and
-    // its frames run the stepper (0x7BA35): so black again now, and in from there.
+    // The routine sets the level to 4 as it warps the player to the ending's first scene, drawn
+    // after this returns, before the helper's frame call; with no menu open nothing puts a level
+    // back after it, and its frames run the stepper (docs/re/memory.md, "The mission prompt"):
+    // so black again now, and in from there.
     if (black) {
         black_ = at_normal_level(a) && writable(a.fade, fade_state::kSize) &&
                          fade(a, Fade::kIn).empty()

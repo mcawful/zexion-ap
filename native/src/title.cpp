@@ -22,7 +22,7 @@ constexpr int kModLine = 0, kCredit = 1, kHint = 2;
 constexpr int kLineY[kLines] = {202, 214, 190};
 int line_x(size_t length) { return 160 - 4 * static_cast<int>(length); }
 
-// The draw list (from disassembly, B1: 0x93885, 0xA8620).
+// The draw list (docs/re/memory.md, "The title screen").
 constexpr ptrdiff_t kListHead = 0x18, kListTail = 0x20;
 constexpr ptrdiff_t kOwner = 0x00, kNext = 0x10, kPrevious = 0x18;
 constexpr int kMaxObjects = 4096;
@@ -165,8 +165,8 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
     using New = BYTE* (*)(const char*, int, int);
     using Place = void (*)(void*, int, int);
     using Link = void (*)(void*);
-    // One row: the game's 32 columns, or the line's length if longer (a 32-column row wraps a
-    // longer line, seen in game).
+    // One row: the game's 32 columns, or the line's length if longer (the row wraps at its
+    // columns: docs/re/memory.md, "The title screen").
     const int32_t columns = (std::max)(length, kTextColumnsAll);
     BYTE* t = reinterpret_cast<New>(a.text_new_fn)(text.c_str(), length, columns);
     BYTE* g[kMaxGlyphs] = {};

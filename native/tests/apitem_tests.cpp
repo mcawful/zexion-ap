@@ -42,12 +42,10 @@ void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
     items.watch(records_holder, cells);
 }
 
-// Whether a painted 16 x 16 logo (RGBA) has the owner's outline: a pixel that is not a color is
+// Whether a painted 16 x 16 logo (RGBA) has the side-on outline: a pixel that is not a color is
 // black exactly where it touches a colored one side-on (left, right, up or down) or is shut in by
 // black on all four sides (the arrow logo's pixel left of the tip), and transparent elsewhere: no
 // black from a diagonal alone, the plain logo's middle open, nothing outside the frame's edge.
-// The stand-ins draw the texture as painted (palette 26), so a transparent pixel beside a circle
-// shows the room behind: the sky, in a sky room.
 bool outlined(const std::vector<uint8_t>& rgba) {
     if (rgba.size() != 16 * 16 * 4) return false;
     auto at = [&](int x, int y) { return &rgba[(y * 16 + x) * 4]; };
@@ -501,7 +499,7 @@ void test_the_icon_sheets() {
           "frames 0x96 to 0x98: 64 x 64 cells in the HD sheet, 10 x 9 in the pixel one");
     check(gl_fake::g_bound == 3 && gl_fake::g_row_length == 5, "the game's binding put back");
     check(!gl_fake::all_blank(up), "painted, not blank");
-    // The HD disk (D2), centered at (32, 28): its hub hole and its two shine cuts clear (up
+    // The HD disk, centered at (32, 28): its hub hole and its two shine cuts clear (up
     // right and down left of the hub), the disc around them white and opaque.
     const std::vector<uint8_t> disk = zap::IconSheets::art(0, 64, 64);
     auto alpha = [&](const std::vector<uint8_t>& a, int w, int x, int y) {
@@ -529,7 +527,7 @@ void test_the_icon_sheets() {
                std::to_string(b[2]) + "," + std::to_string(b[3]);
     };
     // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a gap in; the disk
-    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50 (D2, L1).
+    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50.
     check(box(1) == "16,6 to 49,45", "the HD padlock on the text's line", box(1));
     check(box(0) == "10,6 to 53,49", "the HD disk the game's icons' size", box(0));
     check(box(2) == "12,6 to 51,49", "the HD logo the game's icons' size", box(2));

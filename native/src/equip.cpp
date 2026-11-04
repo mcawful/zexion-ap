@@ -34,10 +34,9 @@ namespace {
 constexpr ptrdiff_t kPanelIndex = 0x2E4, kPanelColumns = 0x2C6;
 constexpr ptrdiff_t kChildRecord = 0x1F8, kChildDy = 0x1E4;
 constexpr ptrdiff_t kChildRect = 0x1E8;
-// The color code a selected item takes when its record's palette is not 1, 2 or 14 to 19
-// (0xB465A to 0xB4D85; the builder gives each such item one, 0x12C91E on). The Data Disc's
-// palette is 5, so without one the disk turns black when selected. 0x6E is Navcore's, chosen by
-// eye.
+// The color code a selected item takes when its record's palette is not 1, 2 or 14 to 19, as
+// the Data Disc's is not (docs/re/memory.md, "The equipment screen"): without one the disk turns
+// black when selected. The Navcore's.
 constexpr ptrdiff_t kChildColor = 0x230;
 constexpr int32_t kDiskColor = 0x6E;
 constexpr int kMaxEntries = 16;

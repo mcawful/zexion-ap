@@ -375,21 +375,20 @@ BYTE* glyph_at(BYTE** list, int32_t i) {
 
 namespace {
 
-// The builder's advances (0x88480; docs/re/memory.md, "Laying out the helper's popups"): the
-// font's glyph table by character (+0x30, 4 bytes each, -1 for none: the character is skipped),
-// its glyph entries (+0x08, 0x20 bytes each: advance from +0x08 to +0x10 in 1/64 pixel at the
-// font's size), its space advance (+0x40040, a float) and its scale (+0x40060, a double); the
-// HD font's size divisor (0x217B40) and the HD icons' (0x217690).
+// The builder's advances (docs/re/memory.md, "The translations' icons"): the font's glyph table
+// by character (+0x30, 4 bytes each, -1 for none: the character is skipped), its glyph entries
+// (+0x08, 0x20 bytes each: advance from +0x08 to +0x10 in 1/64 pixel at the font's size), its
+// space advance (+0x40040, a float) and its scale (+0x40060, a double); the HD font's size
+// divisor and the HD icons'.
 constexpr ptrdiff_t kFontGlyphTable = 0x30, kFontGlyphs = 0x08, kFontSpace = 0x40040;
 constexpr ptrdiff_t kFontScale = 0x40060;
 constexpr ptrdiff_t kGlyphFrom = 0x08, kGlyphTo = 0x10;
 constexpr size_t kGlyphEntry = 0x20;
 constexpr float kHdFontDivisor = 4.8214f;
 constexpr double kHdIconDivisor = 4.8214;
-// The icon sheets (apitem.h IconSheets): the builder takes an icon's advance from its frame's
-// entry, +0x28 with a pixel font, +0x26 over kHdIconDivisor with an HD one (0x8911D); U+E024 to
-// U+E04E are frames 0x80 to 0xAA, U+E04F frame 0xBD, U+E050 frame 0xC6; definition 104's sheet
-// with a pixel font or icon style 1 (tr::kIconStyle), else 101's (0x885BF).
+// The icon sheets (apitem.h IconSheets): an icon's advance is its frame entry's +0x28 with a
+// pixel font, +0x26 over kHdIconDivisor with an HD one; from definition 104's sheet with a pixel
+// font or icon style 1 (tr::kIconStyle), else 101's.
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
 // Bounds on what a loaded font reads (the HD font's scale and space are near 1 and 15 to 20),
 // and on the spaces one line is padded with.
@@ -593,10 +592,9 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
     float top = 0, bottom = 0;
     const bool middle_known = how.keep_middle && vertical_extent(a, label, top, bottom);
     const float middle = (top + bottom) * 0.5f;
-    // Hidden as its text was, if it was: the builder shows every glyph it builds (0x89F51),
-    // while a hidden widget's are hidden with its count kept, for the widget handler to show
-    // that many on event 0xF (0xD0290 to 0xD02EA), as the game-mode panel's are on the file
-    // select before an empty slot is picked.
+    // Hidden again if its text was (a hidden widget's, as the game-mode panel's on the file
+    // select): the builder shows every glyph it builds, and a hidden widget keeps its count for
+    // event 0xF to show (docs/re/memory.md, "Where a rebuilt label goes").
     const bool hidden = translated_hidden(label);
     build(a, label, text, x, y, how.wrap);
     int32_t style = 0;
@@ -756,11 +754,10 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message) {
 void clear_mark(const GameAddresses& a, BYTE* message) {
     if (!translation_on(a)) return;
     BYTE* object = hd_object(a, message);
-    // Only an object not bound to this message: the mark is the last translated message's in
-    // that slot. A slot's messages are the slot itself, so its object's message (+0x220) is the
-    // same pointer whatever it was bound for; what tells them apart is the serial it was bound
-    // with (+0x228, the slot's +0x1D8 then), and the message routine gives each message a new
-    // one and binds none (docs/re/memory.md, "Translated messages").
+    // Only an object not bound to this message: the mark is then the last translated message's
+    // in that slot. Its message (+0x220) is the slot itself whatever it was bound for, so the
+    // serial it was bound with (+0x228) tells them apart (docs/re/memory.md, "Translated
+    // messages").
     int32_t bound = 0, serial = 0;
     if (object != nullptr && read(object, hd::kSerial, bound) &&
         read(message, message::kSerial, serial) && bound != serial) {

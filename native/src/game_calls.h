@@ -163,10 +163,9 @@ public:
     void watch_assists();
     void restore_assists();
 
-    // Game thread, from ARCHIPELAGO's callback: places the seed (place_seed) and queues the
-    // new game
-    // (watch_newgame reports "applied slot N" next frame). Anything off: "refused <why>", the
-    // plan dropped, nothing queued.
+    // Game thread, from ARCHIPELAGO's callback: places the seed (place_seed) and queues the new
+    // game (watch_newgame reports "applied slot N" next frame). Anything off: "refused <why>",
+    // the plan dropped, nothing queued.
     void start_archipelago(WidgetCallback callback);
 
     // The OS Install Disks goal (scan.h; the `discs` request): set_discs gives the count to show
@@ -355,8 +354,8 @@ public:
     const EntryWriter& tr_entries() const { return tr_entries_; }
     const PopupAreas& popup_areas() const { return popup_areas_; }
 
-    // English(HD) shows: the mod's own text in mixed case, the owner's choice (every other
-    // language keeps capitals: their fonts may draw no lower case).
+    // English(HD) shows: the mod's own text in mixed case (every other language keeps capitals:
+    // their fonts may draw no lower case).
     bool mixed_case() const;
     // A labeled cell's name in a translation's font (translation.h hd_label): its first line
     // alone with `first_line`, its icon with `icon`; in English(HD) the lines in the case the
@@ -378,11 +377,10 @@ private:
     void watch_map_names();
     void watch_map_marks();
     // In play in an AP save: each owned item the game lists (pickups::listed), but those the new
-    // game started with, appended to the save's major-item list, as the game's pickup would have,
-    // unless its icon is there already or the list is full. The game's pickup lists this world's
-    // own items found in it, but the grants set the inventory byte alone, so without this an AP
-    // save's list misses every received item (docs/re/memory.md, "The pickup record holds the
-    // major-item list").
+    // game started with, appended to the save's major-item list as the game's pickup would,
+    // unless its icon is there already or the list is full: grants set the inventory byte alone,
+    // so without this the list misses every received item (docs/re/memory.md, "The pickup record
+    // holds the major-item list").
     void watch_pickups();
     // With a translation on: the names and the scanner's line the helper writes into its tables
     // (EntryWriter), and the popup areas emptied once their messages have gone (translation.h).
@@ -457,8 +455,8 @@ private:
     // game frames on a fast monitor, and the next popup also waits for the game's message to
     // end, popup_busy).
     int frames_since_popup_ = 1 << 20;
-    // The helper's last popup as the game's last message holds it (0x182670 makes each new one
-    // the last, 0x182CEB): whether it is still up is read there, in game frames (own_popup_up).
+    // The helper's last popup as the game's last message holds it (message_fn makes each new one
+    // the last): whether it is still up is read there, in game frames (own_popup_up).
     BYTE* own_message_ = nullptr;
     int32_t own_sequence_ = 0;
     bool own_popup_up() const;

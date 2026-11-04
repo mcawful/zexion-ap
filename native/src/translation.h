@@ -5,17 +5,14 @@
 // hidden by the mark the game's last translated message left in their slot. This is how the
 // helper's text shows in a translation:
 //
-// - Received items' popups and notices (PopupAreas): the text is written into a run of SmallText
-//   entries the game never shows (66 to 72, split in two by moving entry 70's offset), and the
-//   message given it as the game gives GAME SAVED its text (hd_text_fn), since the game reads the
-//   entry again every frame while the message shows. Emptied once the message has gone.
+// - Received items' popups and notices (PopupAreas): the text is written into SmallText entries
+//   the game never shows, and the message given it as the game gives GAME SAVED its text
+//   (hd_text_fn). Emptied once the message has gone.
 // - Names the game reads from the tables while they show (EntryWriter): the stand-ins' names
 //   (ItemNames 47 and 48) for the pickup popup, INTEL CHIP (49), the scanner's line (SmallText
 //   12), written in place, within the room the entry has, and put back.
 // - Menu labels the helper rewrites (rebuild_label): their translated text built again with the
-//   game's own builder (hd_build_fn) from a string made by the game's own std::wstring code
-//   (wstring_new_fn), where the game's own text is now, wrapped and centered as the game does
-//   for that label.
+//   game's own builder (hd_build_fn), placed, wrapped and centered as the game does that label.
 // - The Feats screen's title where its translated text cannot be built (no large_count, or too
 //   little room): the game's own swap back to the pixel glyphs (show_pixel_glyphs, as 0x168AE9
 //   does), which hold the note.
@@ -27,9 +24,9 @@
 // only into the tables as they are now, checked against the pointers and count read when its
 // state was made, and an entry is put back only while it still reads as the helper wrote it.
 //
-// Every part stands down without the translation's keys (an offline cache from before them,
-// game_calls.cpp: kConfigKeys, `translation_key`) or with the flag clear: the default English is
-// as before. Game thread only; every read is fault-safe and every write checked first.
+// Every part stands down without the translation's keys (an offline cache may lack them:
+// game_calls.cpp, kConfigKeys, `translation_key`) or with the flag clear, which leaves the
+// default English alone. Game thread only; every read is fault-safe and every write checked first.
 #pragma once
 
 #include <windows.h>
@@ -49,7 +46,7 @@ namespace zap {
 
 // The translation object (`translation`, docs/re/memory.md, "Translation tables"): the loaded
 // folder's name, the tables' pointers, the flag (the byte `tr_flag` is), and the font the
-// translated text is built in (0x8ACAC, 0xB2D05, 0x16B8F4 pass its address to hd_build_fn).
+// translated text is built in ("The helper's calls in a translation").
 namespace tr {
 constexpr ptrdiff_t kName = 0x00;
 constexpr size_t kNameSize = 32;
@@ -57,8 +54,8 @@ constexpr ptrdiff_t kSmallText = 0x30, kLargeText = 0x38, kItemNames = 0x48;
 constexpr ptrdiff_t kLargeOffsets = 0x60;  // LargeText's (0x8AE21, 0x8AE35)
 constexpr ptrdiff_t kSmallOffsets = 0x58, kItemNameOffsets = 0x78;
 constexpr ptrdiff_t kOn = 0x91;
-// 32-bit: 1 for a translation whose font is drawn as pixels (Config.txt's "Font Style" 1; inferred
-// from its uses: the builder's scale, 0x88498, and the rounding in 0x85BCA), else an HD font.
+// 32-bit: 1 for a translation whose font is drawn as pixels (Config.txt's "Font Style" 1,
+// inferred from its uses: docs/re/memory.md, "Where a rebuilt label goes"), else an HD font.
 constexpr ptrdiff_t kFontStyle = 0xA8;
 constexpr int32_t kPixelFont = 1;
 // 32-bit: 1 for the icons from the pixel icon sheet (Config.txt's "Icon Style" 1), as the builder
@@ -160,9 +157,9 @@ bool write_text(const TextTable& t, int32_t offset, int32_t room, std::wstring_v
 // start the game's markup in a translated text (0x88897), as parentheses.
 std::wstring hd_text(std::string_view font_text);
 // A record's icon byte as the private-use character the translations' fonts draw it as, as the
-// pickup does (0x1F89B to 0x1F8CE: 0xC0 to 0xEA as U+E024 to U+E04E, 0x6E as U+E04F, 0x77 as
-// U+E050), and the helper's own glyphs (the disk, the padlock, the AP logo) as the characters it
-// paints them into the icon sheets as (apitem.h IconSheets); "" for none or any other.
+// pickup does (docs/re/memory.md, "Translated messages"), and the helper's own glyphs (the disk,
+// the padlock, the AP logo) as the characters it paints them into the icon sheets as (apitem.h
+// IconSheets); "" for none or any other.
 std::wstring hd_icon(uint8_t icon);
 // A stand-in's label as laid out (`width` characters a line, its first character the item's
 // glyph; text.h, Label) as translated text: each line trimmed, joined by line breaks, the glyph
@@ -172,33 +169,30 @@ std::wstring hd_label(const std::string& name, int width, bool first_line = fals
                       bool icon = true);
 
 // How rebuild_label places and lays out a label's text (docs/re/memory.md, "Translated menus and
-// the prompt").
+// the prompt", "Where a rebuilt label goes").
 struct Rebuild {
-    // Where the game's attach (0x8AC30) builds a menu label's text, as of now: the label's first
-    // pixel glyph's place less 1.0 each way, what the game-mode panel and the prompt pass it
-    // (0x217D98). The game moves a label after that build by moving its translated glyphs, never
-    // the place the build was given (0xA79E0), and the panel's label is built before the panel is
-    // placed. Else at the place of the label's last build: for a label the game has just built
-    // where it stays (the equipment screen's, per selection).
+    // Where the game's attach (text_attach_fn) would build a menu label's text now: the label's
+    // first pixel glyph's place less 1.0 each way. The game moves a label after its build without
+    // moving the place the build was given. Else at the place of the label's last build: for a
+    // label the game has just built where it stays (the equipment screen's, per selection).
     bool attached = false;
-    // Wrapped at the label's columns, as the equipment screen asks of LargeText's attach
-    // (0xB3268); else at 320 pixels from its first pixel glyph (0x885EF to 0x8862B).
+    // Wrapped at the label's columns, as the equipment screen's description; else at 320 pixels
+    // from its first pixel glyph.
     bool wrap = false;
-    // Centered on x 160 plus `center_by`, as the prompt has 0x85B00 center its question
-    // (0x166EFA, -4).
+    // Centered on x 160 plus `center_by`, as 0x85B00 centers the prompt's question (-4).
     bool center = false;
     float center_by = 0;
-    // Its middle kept where the text it replaces has it, as 0x86660 centers a text on a y
-    // (the Feats screen's title, 0x179AC7).
+    // Its middle kept where the text it replaces has it, as 0x86660 centers the Feats screen's
+    // title on a y.
     bool keep_middle = false;
     // Built even if the game never built the label's translated text (a text object the helper
-    // made, as the title's lines, whose label has its room from 0x92511 all the same).
+    // made, as the title's lines, whose label has its room all the same).
     bool first = false;
 };
-// How wide the game's builder lays a line out in the translation's font as loaded now (0x88760
-// on; docs/re/memory.md, "Laying out the helper's popups"): a space by the font's space advance,
-// an icon by its frame's advance in the icon sheet, any other character by its glyph's advance,
-// one with no glyph (-1 in the font's table) not at all. For the popups' layout (layout_popup).
+// How wide the game's builder lays a line out in the translation's font as loaded now
+// (docs/re/memory.md, "The translations' icons"): a space by the font's space advance, an icon
+// by its frame's advance in the icon sheet, any other character by its glyph's advance, one with
+// no glyph (-1 in the font's table) not at all. For the popups' layout (layout_popup).
 class FontMetrics {
 public:
     // Game thread: reads the font's scale, space and glyph table; false if they do not read.
@@ -235,12 +229,13 @@ std::wstring centered_lines(const std::wstring& text, const FontMetrics* metrics
 std::wstring hd_suffix(const std::string& as_sent);
 
 // Game thread, the flag set: builds `label`'s translated text again as `text`, with the game's
-// builder, as `how` says, hidden if the text it replaces was (a hidden widget's). False, nothing done, without the keys, with the flag clear, for a label
-// whose translated text was never built, or for a text with more glyphs than the label holds.
+// builder, as `how` says, hidden if the text it replaces was (a hidden widget's). False, nothing
+// done, without the keys, with the flag clear, for a label whose translated text was never built
+// (unless `how.first`), or for a text with more glyphs than the label holds.
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
                    const Rebuild& how = {});
 // What tells a label's translated text built by the helper from one the game built again since:
-// its glyph count and the place its build was given (both the builder's, 0x8869F, 0x8AA97).
+// its glyph count and the place its build was given, both written by the builder.
 struct BuiltMark {
     int32_t count = -1;
     double x = 0, y = 0;

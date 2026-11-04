@@ -1,12 +1,10 @@
 // How other players' items look (docs/re/memory.md, "Other players' items"). The world puts
 // Scrap Energy (47) at locations holding another player's item and Scrap Chunk (48) at their
-// progression items. While labels are set, the helper restyles both records: one frame each (63
-// and 95, transparent in the game's art), no pickup area event (3549, 3550), and a name from the
-// label (the logo glyph 0xEE, then e.g. MASTER SWORD FOR ALICE) or AP ITEM. It paints the logos
-// into those frames and the glyph into the font through OpenGL, in the frame call. Records are
-// written only over the game's own values or the helper's, and the texture only where
-// TextureCheck finds the place blank or already the helper's. Unload restores the records and
-// clears the pixels.
+// progression items. While labels are set, the helper restyles both records (one empty frame
+// each, no pickup area event, a name from the label or AP ITEM) and paints the logos and the
+// logo glyph into the sprite texture through OpenGL, in the frame call. Records are written only
+// over the game's own values or the helper's, and the texture only where TextureCheck finds the
+// place blank or already the helper's. Unload restores the records and clears the pixels.
 #pragma once
 
 #include <windows.h>
@@ -174,23 +172,19 @@ private:
 
 // The logo glyph's ring of dots (kApItemGlyph).
 extern const char kApItemRows[8][9];
-// The AP logo, 16 x 16: Archipelago's six circles, each cutting a gap into the one drawn before,
-// as in its logo (data/icon.png in Archipelago), in glyph_rgb's letters (k the outline, then the
-// circles, r y g b p o). Outlined side-on, the owner's pick: a pixel that is not a circle's is
-// black where it touches a circle left, right, above or below, and transparent elsewhere (no
-// black from a diagonal alone, the middle open, a circle on the frame's edge not outlined past
-// it). The stand-ins draw it as painted, with no black background behind it (palette 26;
-// docs/re/memory.md, "Other players' items"), so a gap left transparent beside a circle would
-// show the room behind, as a sky room did. The world's AP items show it, and the file select
-// marks AP saves with it (files.h).
+// The AP logo, 16 x 16: Archipelago's six circles, each cutting a gap into the one drawn before
+// (data/icon.png in Archipelago), in glyph_rgb's letters (k the outline, then the circles,
+// r y g b p o). Outlined side-on: a pixel that is not a circle's is black where it touches a
+// circle left, right, above or below, and transparent elsewhere. The stand-ins draw it as
+// painted, with no background (palette 26), so a transparent gap beside a circle would show the
+// room behind (native/README.md, "Other players' items"). The file select marks AP saves with it
+// too (files.h).
 extern const char kApLogoRows[16][17];
 
-// The helper's icons in the translations' fonts (docs/re/memory.md, "The translations' icons").
-// A translation draws a record's icon from an icon sheet (definition 101, BigFontIcons.png, 16 x 16
-// cells of 64 x 64, for English(HD)'s HD icons; 104, PixelFontIcons.png, cells of 10 x 9, for the
-// rest), the characters U+E024 to U+E04E as its frames 0x80 to 0xAA (0x8911D). Frames 0x96 to 0x9F
-// are blank in both sheets and no record's icon reaches them, so the helper paints its disk,
-// padlock and AP logo into 0x96 to 0x98, and its text uses these characters for them.
+// The helper's icons in the translations' fonts: its disk, padlock and AP logo, painted into the
+// free frames 0x96 to 0x98 of both icon sheets (definition 101, BigFontIcons.png, cells of
+// 64 x 64; 104, PixelFontIcons.png, cells of 10 x 9) and drawn as these characters
+// (docs/re/memory.md, "The translations' icons").
 constexpr wchar_t kHdDiskIcon = 0xE03A, kHdLockIcon = 0xE03B, kHdLogoIcon = 0xE03C;
 constexpr int kHdIconCount = 3;
 constexpr int kHdIconSheet = 101, kPixelIconSheet = 104;  // the sheets' definitions

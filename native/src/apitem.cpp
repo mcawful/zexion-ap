@@ -36,8 +36,7 @@ constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
 constexpr char kDefaultName[] = "\xEE" "AP ITEM";
 static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
-// The sprite texture: frame k of the item sprites at (128 + (k % 8) * 16, 640 + (k / 8) * 16),
-// glyph c of the 8 x 8 font at ((c % 16) * 8, 976 + (c / 16) * 8); kTextureSize square.
+// Frame k of the item sprites in the sprite texture (kTextureSize square; the font: font_x).
 constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
 constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
@@ -57,8 +56,7 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
 // flashes itself between yellow and white. Outlined like kApLogoRows, the arrow counted as a
-// circle, and the one pixel left of the arrow's tip, shut in by black, black too (the owner's
-// pick).
+// circle, and the one pixel left of the arrow's tip, shut in by black, black too.
 constexpr char kLogoArrow[16][17] = {
     ".....krrrrk.....",
     "..kkkrrrrrrkk...",
@@ -326,9 +324,8 @@ bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& g
 }
 
 bool glyph_rgb(char c, uint8_t (&rgb)[3]) {
-    // The logo's colors, and its outline: Kresezoa's colors for palette 8's entries 1, 2, 3, 5, 8
-    // and 9 (the Palettes file; docs/re/memory.md, "Other players' items"), which the world's AP
-    // items showed before they drew in palette 26.
+    // The logo's colors, and its outline: palette 8's entries 1, 2, 3, 5, 8 and 9 as Kresezoa
+    // shows them (docs/re/memory.md, "Other players' items").
     struct Color {
         char c;
         uint8_t rgb[3];
@@ -488,8 +485,8 @@ namespace {
 // is never blank (the first item icon's).
 constexpr int kFirstIconFrame = 0x96, kKnownFrame = 0x80;
 constexpr int32_t kSheetFrames = 256;
-// A definition's template keeps its texture's GL name where a sprite keeps its style (0x1DF2D5 to
-// 0x1DF2DC: [the texture object] copied to +0x1D0).
+// A definition's template keeps its texture's GL name where a sprite keeps its style, +0x1D0
+// (docs/re/memory.md, "The translations' icons").
 constexpr ptrdiff_t kTemplateTexture = sprite::kStyle;
 
 // The texture of definition `definition`'s sheet, or 0 (no template, or not a sheet of 256).
@@ -514,12 +511,12 @@ bool in_circle(double x, double y, double cx, double cy, double r) {
 }
 
 // Where the HD padlock sits in its 64 x 64 cell (left, top, right, bottom): the text it follows
-// spans y 6 to 46 there, from the cap height to the baseline (measured on the retest's shot of
-// ASSIST in English(HD), 2026-11-02: the cell drawn 1.74 units a screen pixel at 3x).
+// spans y 6 to 46 there, from the cap height to the baseline (docs/re/memory.md, "The assist
+// menu").
 constexpr double kLockBox[4] = {16, 6, 50, 46};
-// Where the disk and the AP logo sit, which lead their text: the game's own HD icons' box (their
-// boxes' medians are x 9 to 53, y 7 to 50 in BigFontIcons.png), from the cap height to a
-// little under the baseline, the owner's picks (D2, L1 of the 2026-11-02 mockups).
+// Where the disk and the AP logo sit, which lead their text: chosen near the game's own HD
+// icons' box (their boxes' medians x 9 to 53, y 7 to 50: docs/re/memory.md, "The assist menu"),
+// from the cap height to a little under the baseline.
 constexpr double kLeadBox[4] = {10, 6, 54, 50};
 
 // (x, y) in `box` as the point of a shape drawn in `drawn` (both left, top, right, bottom), the

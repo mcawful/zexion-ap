@@ -34,21 +34,14 @@ struct Obscure {
 Obscure obscure_settings(const BYTE* section);
 
 // One square's value raised from the minor class to the major one, as the game would have set
-// it for a major item under `obscure`; any other value unchanged. In a randomizer game the
-// game's reveal (0x7EECE) obscures a major under Obscure Majors or Obscure Class, and a minor
-// under Obscure Minors (Class sends a minor down the major's path), both only with flag 250
-// clear and a reveal mode other than 3. So an obscured minor becomes an obscured major unless
-// majors are shown, and a shown minor a shown major, except under Majors on with Minors and
-// Class off: there a square a hint, a map room or Hints Revealed revealed (base 0xC) becomes an
-// obscured major and one seen directly (base 0x18) a shown one (docs/re/memory.md, "Map
-// markers").
+// it for a major item under `obscure`; any other value unchanged (the rule, square by square:
+// docs/re/memory.md, "Map markers").
 uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
 
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5
 // to 0x19E5D7 on B1, in 0x19E2E0, each frame the item is in view): a revealed square (base 0xC
-// or 0x18, not collected) gets base + 2 for IDs 3 to 35 and base + 1 for any other, so item 48
-// went back to a minor every frame against mark_important's raise, and its minimap dot was seen
-// to flash (assumed to be this: docs/re/memory.md, "Map markers").
+// or 0x18, not collected) gets base + 2 for IDs 3 to 35 and base + 1 for any other, which would
+// undo mark_important's raise of item 48 (docs/re/memory.md, "Map markers").
 constexpr size_t kSeenMarkerSize = 50;
 
 // That write with ID 48 a major too, built from the game's bytes `game` (its store copied as it

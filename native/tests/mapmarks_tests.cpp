@@ -437,8 +437,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
 }
 
 // In English(HD) the cursor's name is the label's first line built again in the translation's
-// font, without the logo the pickup popup shows first: the game's map names carry no icon (the
-// 2026-11-02 retest saw the logo there).
+// font, without the logo the pickup popup shows first: the game's map names carry no icon.
 void test_the_cursor_name_in_a_translation() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);

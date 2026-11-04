@@ -376,7 +376,7 @@ void test_cancel_drops_it_for_another_save() {
     check(g_fn == kIdle, "no ending in another save");
 }
 
-// Event 3667 not as traced, or its handler not the game's code: the prompt at once, as before.
+// Event 3667 not as traced, or its handler not the game's code: the prompt at once, no fade.
 void test_no_fade_unless_as_traced() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -570,7 +570,7 @@ void test_yes_keeps_the_screen_black() {
                   m.status() == zap::kEndingStarted,
               "run, nothing held");
     }
-    // Not as NO leaves it: left to fade back in as before.
+    // Not as NO leaves it: left to fade back in.
     struct Case {
         const char* what;
         void (*change)();
@@ -613,9 +613,8 @@ void test_yes_keeps_the_screen_black() {
 
 // The ending out of the black: the routine sets the level to 4 itself (0x95230), and the game
 // draws that frame before the helper's frame call. Run through the helper's wrapper, the
-// routine's frame and the ones after it are drawn black, then fade in to the normal level. (As
-// the game's routine itself, the 1.0.0 release candidate's way, the routine's frame was drawn at
-// level 4, possibly still at the Landing Pod.)
+// routine's frame and the ones after it are drawn black, then fade in to the normal level (run
+// as the game's routine itself, its frame would be drawn at level 4).
 void test_the_ending_comes_out_of_the_black() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -734,9 +733,8 @@ void test_the_endings_wrapper_is_never_left_behind() {
 }
 
 // The black's limit in game frames (frame_clock), not frame calls: at 165 Hz the helper's frame
-// call came 166 times a second against the game's 60 (docs/re/memory.md, "The per-frame call"),
-// so 180 calls ended the black about 1.1 s in, before GAME SAVED (and so the ending) had: play
-// faded back in at the pod first, as the release candidate's retest saw (2026-11-02).
+// call comes 166 times a second against the game's 60 (docs/re/memory.md, "The per-frame call"),
+// so a limit in frame calls would end the black early.
 void test_the_black_lasts_in_game_frames() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -746,7 +744,7 @@ void test_the_black_lasts_in_game_frames() {
     m.after_no(a);
     check(m.black() == "kept black", m.black().c_str());
     // 11 frame calls each 4 game frames (about 166 to 60): GAME SAVED's 90 frames left run out
-    // after about 250 calls, past the 180 the limit used to count.
+    // after about 250 calls.
     int calls = 0;
     for (int frames = 0; frames < 90; ++calls) {
         if (calls % 11 < 4) {

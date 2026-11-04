@@ -378,10 +378,9 @@ void test_a_save_of_the_seed_dressed_offline() {
 
 // A dressed save stays dressed, ASSIST locked, through a menu: the files read again (each time a
 // pipe client goes), a read of no known seed for a check, and a client going away all with a
-// menu up. The 2026-11-02 retest once saw ASSIST unlocked in the options menu with no client:
-// each of these used to undress the save until play.
-// A client going away with the options menu up: the save dressed again and ASSIST locked in the
-// same frame call (watch_assists runs after watch_offline), so the cursor never finds it open.
+// menu up. A client going away with the options menu up: the save dressed again and ASSIST
+// locked in the same frame call (watch_assists runs after watch_offline), so the cursor never
+// finds it open.
 void test_assist_locked_again_in_the_same_frame() {
     reset_game();
     zap::Game game;
@@ -775,7 +774,7 @@ bool is_translation_key(const std::string& key) {
     return false;
 }
 
-// The keys newer than caches already written (game_calls.cpp, later_key).
+// The keys an older cache lacks (game_calls.cpp, later_key).
 const char* const kLaterKeys[] = {"options_back_fn", "pickup_list"};
 
 bool is_later_key(const std::string& key) {
@@ -785,10 +784,10 @@ bool is_later_key(const std::string& key) {
     return false;
 }
 
-// The cache of a client from before a release that added client-only keys (here: all of them).
-// The helper configures from it, inactive, with those members null: every part the offline look
-// uses runs (a null one read would fault here), and the client's parts refuse until a client's
-// config sets every key. A cache missing any other key still refuses.
+// A cache without the client-only keys (here: all of them). The helper configures from it,
+// inactive, with those members null: every part the offline look uses runs (a null one read
+// would fault here), and the client's parts refuse until a client's config sets every key. A
+// cache missing any other key still refuses.
 void test_a_cache_without_the_client_only_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();
@@ -904,10 +903,9 @@ void test_a_cache_without_the_client_only_keys() {
     g_rando_marker = 0;
 }
 
-// The cache of a client from before the translations' keys (1.0.0's release candidate): the
-// helper configures from it with every client-only key, so its parts are ready, and the
-// translation parts stand down. In English(HD) its notices show in the pixel font, as before, and
-// nothing is written into the translation's tables.
+// A cache without the translations' keys: the helper configures from it with every client-only
+// key, so its parts are ready, and the translation parts stand down. In English(HD) its notices
+// show in the pixel font, and nothing is written into the translation's tables.
 void test_a_cache_without_the_translation_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();
@@ -947,9 +945,9 @@ void test_a_cache_without_the_translation_keys() {
     g_rando_marker = 0;
 }
 
-// The cache of a client from before the later keys: the helper configures from it, every part
-// ready, those members null (the pause row is then turned on OPTION MENU's way back a frame late,
-// pause.h); a client's config needs them.
+// A cache without the later keys: the helper configures from it, every part ready, those members
+// null (the pause row is then turned on OPTION MENU's way back a frame late, pause.h); a client's
+// config needs them.
 void test_a_cache_without_the_later_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();

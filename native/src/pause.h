@@ -1,8 +1,7 @@
-// The pause screen's disk row (the OS Install Disks goal), in place of KEYS. The pause screen
-// (built by 0x168BD0 each time it opens) has a KEYS panel under its entries: a 4-glyph KEYS label
-// at (144, 208) and nine sprites (key slots 0-3, key icons 4-7 at frames 384-387, Zexion's icon
-// 8). The game builds it only once flag 39 is set or a key is owned (the `jne` at 0x168C7D)
-// (docs/re/memory.md, "The pause screen's KEYS row").
+// The pause screen's disk row (the OS Install Disks goal), in place of KEYS (docs/re/memory.md,
+// "The pause screen's KEYS row"). The game builds the KEYS row (a 4-glyph label and nine
+// sprites: key slots 0-3, key icons 4-7, Zexion's icon 8) only once flag 39 is set or a key is
+// owned (keys_branch, a `jne`).
 //
 // While a count is set, that `jne` becomes `jmp` and, on a pause screen whose shape checks out,
 // the row shows a disc and the count ("2 OF ?", or "2 OF 15" once told) across the label's 4
@@ -11,22 +10,17 @@
 // it is painted, else the game's small Data Disc (frame 829). A row already turned is left alone.
 // The branch is put back when off and before an unload, only where it still reads `jmp`.
 //
-// The helper's disc is one frame-list entry the helper owns: a copy of frame 829's (0x38 bytes)
-// with the image's texture rectangle, in a page allocated once and never freed. The pause
-// sprites keep their template (+0x30), so the game never frees their list (0x745C0), and a
-// sprite still pointing at the entry after an unload points at live memory. Whenever the image is
-// not painted (the row off, before an unload, a texture it could not paint into), the entry shows
-// frame 829's rectangle instead, so an open pause screen shows the game's disc, enlarged.
+// The helper's disc is one frame-list entry the helper owns: a copy of frame 829's with the
+// image's texture rectangle, in a page allocated once and never freed. The pause sprites keep
+// their template, so the game never frees their list, and a sprite still pointing at the entry
+// after an unload points at live memory. Whenever the image is not painted (the row off, before
+// an unload, a texture it could not paint into), the entry shows frame 829's rectangle instead.
 //
-// OPTION MENU opens over the pause screen, which stays open under it, and its opener sets the
-// pause menu's way back (+0x68) to 0x168910 (options_back_fn), which the game calls as OPTION MENU
-// closes, before it draws that frame. In a translation it builds KEYS's translated text again
-// (0x168AC6), so the count would show only from the helper's next frame call, after one frame of
-// the game's Keys. While the row is on, the open pause menu holding options_back_fn has it
-// replaced by the helper's wrapper (hooks.options_back), which calls the game's and then turns the
-// row (`returned`) in the same call; the game's way back sets +0x68 to its own again. The field is
-// put back when the row is off and before an unload, while its menu is open and still holds the
-// wrapper (docs/re/memory.md, "The pause screen's KEYS row").
+// OPTION MENU, closing over the pause screen, calls the pause menu's way back (options_back_fn),
+// which in a translation builds KEYS's text again before that frame is drawn. While the row is
+// on, that way back is the helper's wrapper (hooks.options_back): the game's, then the row turned
+// (`returned`) in the same call. Put back when the row is off and before an unload, while its
+// menu is open and still holds the wrapper.
 #pragma once
 
 #include <windows.h>

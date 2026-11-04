@@ -1,29 +1,14 @@
 // RETURN HOME WITH THE DISKS?: offers the game's ending once the player has enough OS Install
-// Disks (docs/re/memory.md, "The mission prompt"). The prompt is the game's own SKIP ESCAPE AND
-// FINAL BATTLE? (built by routine 15, 0x1668A0), relabeled. When idle in play (timer 0, routine
-// table entry 2 the pause opener, no menu; the game's last message far enough in,
-// kFadeMessageLeft), the helper opens it as the game's event 3666 does: that event sets the
-// transition routine (the helper's opener here, routine 15 there) with timer 60, and runs event
-// 3667, the game's fade to black, through the area-event handlers.
-// If event 3667 is not as traced, the opener comes with timer 1 and no fade. The opener runs the
-// builder, relabels the question and points YES at the helper; YES runs the game's NO (which
-// closes the prompt and puts back the fade the builder saved: black, then back in) and then,
-// once idle, starts routine 4 (0x94A30, which records the ending only with no menu open). Right
-// after NO, YES turns that fade off with the screen still black (after_no), so play does not
-// fade back in before the ending; it fades back in as before when popups of the helper's wait
-// (they would show on black), or after kDarkFrames with no ending, or when cancelled. The ending
-// routine sets the global level back to 4 itself (0x95230) as it warps the player to the
-// ending's first scene (0x1D2850), and the game draws that frame before the helper's frame call:
-// so the helper sets its own wrapper as the transition (end), which runs the routine and, while
-// the black is still the helper's, sets the level back to black before that frame is drawn and
-// fades in from it (kEndingFadeStep), as the game's own fades do. Once the ending is started, the
-// prompt is not offered again while that save stays loaded (its cutscenes read as play, and the
-// ending's own save reads as a save at the pod). An opener the helper takes back before it runs
-// (cancel, unload) becomes the idle routine, and its fade is turned back to the normal level; one
-// another transition took the place of (a save sets the pause opener back) has its fade turned
-// back only while the game's fade is still event 3667's (fade_state); on unload a wrapped YES
-// points at NO (never the game's own YES, which skips the escape and final battle), and the
-// ending's wrapper not run yet becomes the game's ending routine.
+// Disks, through the game's own SKIP ESCAPE AND FINAL BATTLE? prompt (routine 15), relabeled
+// (docs/re/memory.md, "The mission prompt"; native/README.md, "The OS Install Disks goal").
+// When idle in play the helper opens it as the game's event 3666 does: its opener as the
+// transition, timer 60, and event 3667's fade to black (or timer 1 and no fade if 3667 is not as
+// traced). The opener runs the builder, relabels the question and points YES at the helper. YES
+// runs the game's NO, keeps the screen black (after_no) and, once idle, starts the ending
+// (routine 4) through the helper's wrapper (end), which fades in from black. Once the ending is
+// started, the prompt is not offered again while that save stays loaded. What the helper set and
+// the game has not run is put back on cancel and unload (restore): a wrapped YES never becomes
+// the game's own YES, which skips the escape and final battle.
 #pragma once
 
 #include <windows.h>
@@ -41,23 +26,18 @@ constexpr int kIdleRoutine = 2, kEndingRoutine = 4, kPromptRoutine = 15;
 constexpr int kFadeEvent = 3667;
 constexpr int32_t kFadeDelay = 60;
 // The fade starts with this many frames of the game's last message (GAME SAVED, 180 frames,
-// 0x1FC876) left: 30 frames (half a second) after it appears, the owner's pick in game
-// (2026-10-27). Before that it was 70 left, as far in as Zexion's popup is when the game's own
-// prompt fades in after the grab (docs/re/memory.md, "The mission prompt"), which felt slow
-// after a save.
+// 0x1FC876) left: half a second after it appears, chosen in game.
 constexpr int32_t kFadeMessageLeft = 150;
 // The most game frames the screen stays black after YES with no ending started (after_no), as a
 // safety: after YES the ending waits only for a menu to close and the gap after the helper's
 // last popup (one waiting ends the black first; game_calls.cpp, watch_mission), so 240 errs
-// long (it was GAME SAVED's 180, 0x1FC876, when the ending also waited for that). Then it fades
-// back in. Counted in game frames (GameFrames, game_mem.h): until 1.0.0's release candidate it
-// counted the helper's frame calls, 180 of them, about 1.1 s at 165 Hz, which could end the
-// black before GAME SAVED did, when the ending still waited for it.
+// long. Then it fades back in. Counted in game frames (GameFrames, game_mem.h), not the helper's
+// frame calls, which run faster on a fast monitor.
 constexpr int kDarkFrames = 240;
 // The ending after YES fades in from black, a level each this many frames (event 3667's step,
-// run back up): black for its first 8 frames, then the normal level 40 frames in. Before, the
-// routine's own frame was drawn at the normal level, possibly still at the Landing Pod (by
-// disassembly; not compared in game: docs/re/memory.md, "The mission prompt").
+// run back up): black for its first 8 frames, then the normal level 40 frames in. Without it the
+// routine's own first frame is drawn at the normal level (docs/re/memory.md, "The mission
+// prompt").
 constexpr int8_t kEndingFadeStep = 8;
 extern const char kMissionQuestion[];
 // The status from the frame the helper sets the ending routine until another save is loaded
@@ -83,12 +63,11 @@ public:
     // Game thread, each frame. `idle_in_play`: a save loaded, the player alive, no game menu
     // state, no popup of the helper's to show, and the game's last message down to its last
     // kFadeMessageLeft frames (game_calls.cpp; for the ending, any message of the game's, but a
-    // popup of the helper's ended). `away`: the player in
-    // play outside home's cell (the Landing Pod's, given with the request). Sets the opener (or,
-    // after YES, the ending) once the game is idle, and gives up on an opener another transition
-    // took the place of (asked again; taken_over). A request not yet opened lapses while `away`
-    // (popups held it until the player had left the Landing Pod): the client asks again after
-    // the next save there.
+    // popup of the helper's ended). `away`: the player in play outside home's cell (the Landing
+    // Pod's, given with the request). Sets the opener (or, after YES, the ending) once the game is
+    // idle, and gives up on an opener another transition took the place of (asked again;
+    // taken_over). A request not yet opened lapses while `away` (popups held it until the player
+    // had left the Landing Pod): the client asks again after the next save there.
     void watch(const GameAddresses& addresses, bool idle_in_play, bool away = false);
 
     // Game thread, from the opener: runs the game's prompt builder, then relabels the question
@@ -111,13 +90,12 @@ public:
     // stays black until the ending. Else left to fade back in.
     void after_no(const GameAddresses& addresses);
 
-    // Game thread, from the ending's wrapper (hooks.mission_end), which the helper sets as the
-    // transition in the ending routine's place once idle after YES: runs the game's ending
-    // routine, as the main loop would have (only once per wrapper set: called again, or after
-    // the save was left, it only takes the wrapper off); then, if the screen was the helper's
-    // black, the level back to black at once (the routine set it to 4) and the game's fade toward
-    // 4 a step every kEndingFadeStep frames, before the game draws the frame. A wrapper left as the
-    // transition after it (the routine not as traced) becomes the idle routine.
+    // Game thread, from the ending's wrapper (hooks.mission_end), set as the transition in the
+    // ending routine's place once idle after YES: runs the game's ending routine once per wrapper
+    // set (called again, or after the save was left, it only takes the wrapper off); then, if the
+    // screen was the helper's black, the level back to black before the game draws the frame and
+    // the fade in (kEndingFadeStep). A wrapper left as the transition after it (the routine not as
+    // traced) becomes the idle routine.
     void end(const GameAddresses& addresses);
 
     // Game thread: the screen kept black after YES, the ending not started yet: popups and
@@ -180,8 +158,8 @@ private:
     bool fade_back(const GameAddresses& addresses);
     // Whether the game's fade is still the one the opener ran: on event 3667's way (fade_frames)
     // and no further back than when last seen with the opener in place, nor the transition timer
-    // higher (a save leaves it counting). The same values from another transition's fade
-    // (0x1D93DE: the level back to 4, then 3667's, and a timer of 70) start it over.
+    // higher (a save leaves it counting). Another transition's fade with 3667's values (and a
+    // timer of 70: docs/re/memory.md, "The mission prompt") starts it over.
     bool fade_still_ours(const GameAddresses& addresses) const;
     // Gives up the opener another transition took the place of, and turns the fade back if it
     // is still the opener's (a save sets the pause opener back and brings no fade of its own):

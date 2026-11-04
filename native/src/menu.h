@@ -73,17 +73,13 @@ private:
 };
 
 // The options menu's ASSIST entry, locked (docs/re/memory.md, "The assist menu"). While locked,
-// the helper draws its label like STYLE: AUTO (style 5, palette 0, its gray tint; re-applied
-// while its menu is up, as the menu changes palette after some screens) and puts a padlock in
-// its eighth glyph; in a translation its translated text is built again with the padlock
-// after it (apitem.h IconSheets), each glyph in the options entries' style (0x15) at alpha
-// 0.45 (a translated glyph's color is its style's, through a table the screens rewrite). It
-// clears the callback, which the generic widget handler then skips
-// (0xD0270), so nothing in the menu points into the helper, and moves the entry past the
-// panel's selectable ones (+0x1EC), so the cursor skips it. It finds ASSIST (a 12-glyph label
-// reading ASSIST and six blanks, 0x16285A) by its label and callback, and each later frame finds
-// the locked entry again (still_locked) before writing to it; unlocking puts all of it back,
-// only into that entry.
+// its label is drawn like STYLE: AUTO (style 5, palette 0, its gray tint) with a padlock in its
+// eighth glyph (in a translation, after its translated text: lock_translated). It clears the
+// callback, which the generic widget handler then skips, so nothing in the menu points into the
+// helper, and moves the entry past the panel's selectable ones (+0x1EC), so the cursor skips
+// it. It finds ASSIST (a 12-glyph label reading ASSIST and six blanks) by its label and
+// callback, and each later frame finds the locked entry again (still_locked) before writing to
+// it; unlocking puts all of it back, only into that entry.
 constexpr int kAssistLength = 12;
 // The padlock drawn after ASSIST while locked: font glyph 0xEF, empty in the game's art (the
 // helper paints it, apitem.h FontGlyph), with a blank before it.

@@ -14,20 +14,16 @@
 // its frame shown and palette only, leaving its frame list as the game's.
 //
 // Every live stand-in not dressed as a Zexion item draws in palette 26 at style 34 while the
-// stand-ins are restyled: palette 26 draws without a shader, the texture as it is under the color
-// of style 34 (white), so the logo shows its own colors in every room, where palette 8's entries
-// follow the suit, the weapon and the room (docs/re/memory.md, "Other players' items"). The game
-// gives a stand-in palette 8 at its spawn; the helper puts that and its own style back when the
-// stand-ins are put back.
+// stand-ins are restyled, so the logo shows its own colors in every room; palette 8 (the game's,
+// from the spawn) and its own style go back when the stand-ins do (docs/re/memory.md, "Other
+// players' items").
 //
-// R'Talva X34 Y51's marker (type 1146, its first state 8210) draws the logo frame 63 in its own
-// palette while it waits for the boss (flag 154 clear): empty in the game's art, it would show the
-// helper's logo (docs/re/memory.md, "Other players' items"). After the boss it becomes location
-// 81's reward display. While the stand-ins are restyled (whatever the labels: the logo is
-// painted for any) and flag 154 is clear, it is hidden every
-// frame (its shown byte cleared, which the draw loop skips and its own update leaves); it is shown
-// again, on whatever frame, as soon as it no longer is such a marker (the flag set, another
-// frame), and when the stand-ins are put back or the helper unloads.
+// R'Talva X34 Y51's marker (type 1146, its first state 8210) draws logo frame 63 in its own
+// palette while it waits for the boss (flag 154 clear), so it would show the helper's logo; after
+// the boss it is location 81's reward display. While the stand-ins are restyled (whatever the
+// labels) and flag 154 is clear, it is hidden every frame (its shown byte cleared); it is shown
+// again, on whatever frame, as soon as it is no longer such a marker, and when the stand-ins are
+// put back or the helper unloads (docs/re/memory.md, "Other players' items").
 #pragma once
 
 #include <windows.h>

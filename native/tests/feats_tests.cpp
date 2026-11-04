@@ -449,7 +449,7 @@ void test_refusals() {
 
 // The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, and the
 // title label, three lines of 38 glyphs with the title on the middle one. with_secret_row: a
-// fifth panel, the 5 secret Feats (read live, 2026-10-28).
+// fifth panel, the 5 secret Feats.
 struct FeatsScreen {
     static constexpr int kColumns = 38, kLength = 3 * kColumns;
     BYTE menu[0x80] = {};
@@ -571,7 +571,7 @@ void test_the_screen_note_in_a_translation() {
 // built again as LargeText 220's with the note under it, in the translation's font, wrapped and
 // centered across and kept at the middle the game's title had; the game's own entry again once
 // the note goes, and 219's for a hint the helper replaced. Without LargeText's count, the pixel
-// glyphs as before.
+// glyphs.
 void test_the_title_in_a_translations_font() {
     reset_translation();
     load_translation();
@@ -617,7 +617,7 @@ void test_the_title_in_a_translations_font() {
     check(zap::feats_screen_note(a, false) && g_builds.back().text == L"Feats of Natu!",
           "blanked: LargeText 220's own text again");
 
-    // No LargeText count (a cache from before it): the pixel glyphs, as before.
+    // No LargeText count (a cache lacking it): the pixel glyphs.
     g_builds.clear();
     a.large_count = nullptr;
     check(zap::feats_screen_note(a, true) && g_builds.empty() &&
@@ -668,7 +668,7 @@ void test_the_screen_note() {
     }
 
     {
-        // The secret row, as read live (2026-10-28): a fifth panel of 5, ASSISTS USED under it.
+        // The secret row, as read live: a fifth panel of 5, ASSISTS USED under it.
         FeatsScreen secret("FEATS OF NATU!", true, true);
         current = secret.menu;
         check(zap::feats_screen_note(a, true) && secret.line(2) == noted_line(),
