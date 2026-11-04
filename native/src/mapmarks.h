@@ -13,6 +13,7 @@
 #include <string>
 
 #include "addresses.h"
+#include "text.h"  // Label
 
 namespace zap {
 
@@ -59,10 +60,10 @@ private:
     std::string error_;
 };
 
-// A label (apitem.h: a glyph and up to two lines of `width` characters) as the map cursor's
-// name: its first line only (what the item is), the font's characters only, cut at kMapNameMax.
+// A label (text.h) as the map cursor's name: its first line's text only (what the item is),
+// in capitals, cut at kMapNameMax.
 constexpr size_t kMapNameMax = 17;  // the cursor's name text: 17 glyphs, cut (0xA61C0)
-std::string map_name(const std::string& label, int width);
+std::string map_name(const Label& label);
 
 // Whether the cursor's 17 name glyphs (their frames) spell SCRAP ENERGY or SCRAP CHUNK, then
 // blanks: what the map's handler writes for a square of item 47 or 48 shown or collected.
@@ -78,11 +79,9 @@ public:
     void watch(const GameAddresses& a, bool on);
     // The game's handler for `child`, if this wrapped it.
     void* original(void* child) const { return child == child_ ? original_ : nullptr; }
-    // In a translation the cursor's name is `hd_name(cell)` if given and not empty, else the
-    // label's first line (translation.h hd_label) without its icon.
-    void after(const GameAddresses& a, const std::map<int, std::string>& labels,
-               const std::map<int, int>& widths,
-               const std::function<std::wstring(int)>& hd_name = {});
+    // In a translation the cursor's name is `hd_name(label)` (Game::hd_label_text's first line).
+    void after(const GameAddresses& a, const std::map<int, Label>& labels,
+               const std::function<std::wstring(const Label&)>& hd_name);
     void restore(const GameAddresses& a);
     bool holds_hook() const { return child_ != nullptr; }
     // Whether the map is the top menu, its first child holding the game's handler or the wrapper.

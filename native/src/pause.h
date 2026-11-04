@@ -27,11 +27,10 @@ constexpr int kRowCells = 8;  // the characters the row can show: "41 OF 41"
 constexpr int kDiscX = 128, kDiscY = 1008, kDiscSize = 24;
 extern const char kDiscRows[kDiscSize][kDiscSize + 1];
 
-// The row's text, centered on its 8 cells: "2 OF ?" before the player has been told how many
-// disks are needed (`required` 0), "2 OF 15" after.
+// The row's text, centered on its 8 cells: "2 of ?" before the player has been told how many
+// disks are needed (`required` 0), "2 of 15" after; in capitals in the cells, and in a
+// translation trimmed, as hd_case shows it.
 std::string pause_row_text(int count, int required);
-// The row's text as a translation shows it: trimmed, "2 of 15".
-std::wstring hd_row_text(const std::string& text);
 
 class PauseDiskRow {
 public:

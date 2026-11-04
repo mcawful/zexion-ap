@@ -95,9 +95,7 @@ class Connection:
                 plan=plan,
                 session=session.Session(plan),
                 kept=kept,
-                foreign=aplabels.foreign_locations(
-                    slot_data["location_items"], kept, aplabels.stand_ins(slot_data)
-                ),
+                foreign=aplabels.foreign_locations(slot_data["location_items"], kept),
                 hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
                 lock_assists=not slot_data["allow_assists"],
                 intel_chip=bool(slot_data["intel_chip"]),

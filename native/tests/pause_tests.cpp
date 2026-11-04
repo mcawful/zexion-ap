@@ -230,9 +230,9 @@ void test_anything_else_is_left_alone() {
 }
 
 void test_the_text() {
-    check(zap::pause_row_text(2, 0) == " 2 OF ? ", "before the scanner");
-    check(zap::pause_row_text(12, 15) == "12 OF 15", "after");
-    check(zap::pause_row_text(3, 9) == " 3 OF 9 ", "centered");
+    check(zap::pause_row_text(2, 0) == " 2 of ? ", "before the scanner");
+    check(zap::pause_row_text(12, 15) == "12 of 15", "after");
+    check(zap::pause_row_text(3, 9) == " 3 of 9 ", "centered");
 }
 
 // The pause menu's way back from OPTION MENU wrapped as dllmain.cpp wraps it.
@@ -505,8 +505,6 @@ void test_the_row_in_a_translation() {
         row.watch(a, false);
     }
     stand_in::reset_translation();
-    check(zap::hd_row_text(" 2 OF ? ") == L"2 of ?" && zap::hd_row_text("12 OF 15") == L"12 of 15",
-          "the row's text as a translation shows it");
 }
 
 int main() {

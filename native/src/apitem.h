@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "text.h"  // Label, kApItemGlyph, kApItemName
+
 namespace zap {
 
 constexpr int kStandInItem = 47;         // Scrap Energy: other players' items
@@ -31,10 +33,6 @@ constexpr int kStandInFrames[kStandInCount] = {kStandInFrame, kStandInProgressio
 // Their own names, as the game loads their records (47's, then 48's).
 constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHUNK"};
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
-// The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
-// shows the name as written and it can be centered), and the name where no label is.
-constexpr uint8_t kApItemGlyph = 0xEE;
-constexpr char kApItemName[] = "AP ITEM";
 
 // Font glyph `code`'s place in the sprite texture: 16 a row of 8 x 8, from (0, 976).
 constexpr int font_x(uint8_t code) { return (code % 16) * 8; }
@@ -76,7 +74,7 @@ constexpr double kStandInReach = 96;
 // wherever it is; else `player_cell`. Returns the index (0 or 1) whose object is nearest within
 // reach (the one a pickup is about to take) or -1; and, given `in_reach`, each one's reach.
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
-               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2],
+               int player_cell, const std::map<int, Label>& labels, int (&cells)[2],
                bool* in_reach = nullptr);
 
 // From opengl32.dll if the process has loaded it; otherwise all null.
@@ -207,9 +205,10 @@ private:
 
 class ApItems {
 public:
-    // Game thread. The labels by map cell (index y * 54 + x), already filtered to the font.
-    void set_labels(std::map<int, std::string> labels) { labels_ = std::move(labels); }
-    const std::map<int, std::string>& labels() const { return labels_; }
+    // Game thread. The labels by map cell (index y * 54 + x), each laid out (Label::lay_out).
+    void set_labels(std::map<int, Label> labels) { labels_ = std::move(labels); }
+    const std::map<int, Label>& labels() const { return labels_; }
+    std::map<int, Label>& labels() { return labels_; }
     bool active() const { return !labels_.empty(); }
 
     // Game thread, every frame while active: restyles the records if they read as the game's
@@ -244,7 +243,7 @@ private:
     // The logos and the glyph cleared, if painted into the texture there now.
     void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
 
-    std::map<int, std::string> labels_;
+    std::map<int, Label> labels_;
     BYTE* records_[kStandInCount] = {};
     FontGlyph glyph_{kApItemGlyph, kApItemRows};
     unsigned painted_ = 0;

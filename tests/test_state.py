@@ -40,7 +40,7 @@ def test_the_options_off_set_none_of_them() -> None:
     assert conn.hunt is None
 
 
-@pytest.mark.parametrize("key", ["hints", "intel_chip", "stand_in", "menu", "goal", "mode"])
+@pytest.mark.parametrize("key", ["hints", "intel_chip", "location_items", "menu", "goal", "mode"])
 def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
     slot = slot_data()
     del slot[key]

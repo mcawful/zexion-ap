@@ -365,7 +365,7 @@ class Session:
             if note:
                 popups.append((item, note, True))  # a notice: the hint alone
             else:
-                popups.append((item, f"FROM {sender}" if sender else ""))
+                popups.append((item, f"from {sender}" if sender else ""))
         if not owed and not popups:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:

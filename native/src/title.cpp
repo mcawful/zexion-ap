@@ -4,13 +4,13 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "text.h"  // in_capitals
 #include "translation.h"
 
 namespace zap {
 
 const char kTitleCredit[] = "C2026 MCAWFUL";
-const char kTitleHint[] = "START THE AP CLIENT TO PLAY A SEED";
-constexpr char kTitleHintHd[] = "Start the AP client to play a seed";
+const char kTitleHint[] = "Start the AP client to play a seed";
 
 namespace {
 
@@ -220,7 +220,8 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     // In English(HD) every frame call: a menu's builder hides the HD list's glyphs, the lines'
     // too (docs/re/memory.md, "Where a rebuilt label goes"); the title's draw list is short.
     frames_ = hd ? 0 : kLookFrames;
-    const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
+    const std::string texts[kLines] = {in_capitals(mod_line_), kTitleCredit,
+                                       in_capitals(kTitleHint)};
     Look l = look(a.draw_layer, texts);
     if (l.game_line == nullptr) {
         // Any of the helper's lines still in the list hidden (the game frees them with its line).
@@ -244,7 +245,7 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     }
     last_error_ = why;
     // In English(HD), the version's line and the hint in its font; the credit in pixels.
-    const std::string hd_texts[kLines] = {mod_line_hd_, "", kTitleHintHd};
+    const std::string hd_texts[kLines] = {mod_line_, "", kTitleHint};
     for (int k : {kModLine, kHint}) {
         if (l.made[k] != nullptr) use_font(a, l.made[k], hd_texts[k], hd);
     }
@@ -267,7 +268,8 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
 }
 
 void TitleLines::hide(const GameAddresses& a) {
-    const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
+    const std::string texts[kLines] = {in_capitals(mod_line_), kTitleCredit,
+                                       in_capitals(kTitleHint)};
     Look l = look(a.draw_layer, texts);
     for (int k = 0; k < kLines; ++k) {
         if (l.made[k] != nullptr) show(l.made[k], texts[k].size(), false);

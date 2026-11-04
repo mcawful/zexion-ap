@@ -81,7 +81,8 @@ The mod supports the game's default English and **English(HD)** (OPTION, Video, 
 English(HD) the mod's text (its popups, notices and menu text, the names of other players'
 items) shows in the game's HD font, in mixed case, and its disk, padlock and Archipelago icons
 in HD art. In the other languages the mod's text shows in that language's font, but in English
-and in capitals, and some of it may not show (a font without Latin letters, say); the client
+and in capitals (another Zexion player's items by that language's own names), and some of it
+may not show (a font without Latin letters, say); the client
 says so when it sees one. Received items were seen working in French and Japanese. If something
 shows wrong or not at all, switch to the default English and please report it (below).
 

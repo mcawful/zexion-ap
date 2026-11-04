@@ -504,7 +504,7 @@ std::string centered_line(const std::string& text) {
     return out;
 }
 
-std::string noted_line() { return centered_line(zap::kFeatsNote); }
+std::string noted_line() { return centered_line(zap::in_capitals(zap::kFeatsNote)); }
 
 // In a translation the note's pixel glyphs show in place of the translated title while the note
 // is there.

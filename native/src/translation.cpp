@@ -10,6 +10,7 @@
 #include "game_layout.h"
 #include "game_mem.h"
 #include "menu.h"  // kLockGlyph
+#include "text.h"  // in_capitals
 
 namespace zap {
 
@@ -118,6 +119,8 @@ std::string language_name(const GameAddresses& a) {
     return out.empty() ? "?" : out;
 }
 
+bool mixed_case(const GameAddresses& a) { return language_name(a) == "English(HD)"; }
+
 namespace {
 
 // Entry k's offset, or -1 (none, or unreadable).
@@ -187,31 +190,8 @@ std::wstring hd_icon(uint8_t icon) {
     return L"";
 }
 
-std::wstring hd_label(const std::string& name, int width, bool first_line, bool icon) {
-    const size_t w = width > 0 ? static_cast<size_t>(width) : name.size();
-    std::wstring out;
-    for (size_t at = 0, line = 0; at < name.size() && w > 0; at += w, ++line) {
-        std::string part = name.substr(at, w);
-        const size_t start = part.find_first_not_of(' ');
-        if (start == std::string::npos) continue;
-        part.erase(0, start);
-        part.erase(part.find_last_not_of(' ') + 1);
-        std::wstring text;
-        // The first line's first character is the item's glyph (resolve_item_labels, apitem.h).
-        const auto glyph = static_cast<uint8_t>(part[0]);
-        if (line == 0 && (glyph >= 0x80 || glyph == 0x6E || glyph == 0x77)) {
-            if (icon) text = hd_icon(glyph);
-            part.erase(0, 1);
-            const size_t rest = part.find_first_not_of(' ');
-            part.erase(0, rest == std::string::npos ? part.size() : rest);
-        }
-        text += hd_text(part);
-        if (text.empty()) continue;
-        if (!out.empty()) out += L'\n';
-        out += text;
-        if (first_line) break;
-    }
-    return out;
+std::wstring hd_case(const GameAddresses& a, std::string_view text) {
+    return hd_text(mixed_case(a) ? std::string(text) : in_capitals(std::string(text)));
 }
 
 namespace {
@@ -531,13 +511,6 @@ std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
     }
     if (!head.empty() && metrics != nullptr) center(lines, *metrics);
     return join_lines(lines);
-}
-
-std::wstring hd_suffix(const std::string& as_sent) {
-    std::wstring out = hd_text(as_sent);
-    // The client's "FROM <sender>" (client/session.py), its word in the sentence's case.
-    if (out.rfind(L"FROM ", 0) == 0) out.replace(0, 4, L"from");
-    return out;
 }
 
 bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,

@@ -78,8 +78,8 @@ def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
 
 
 def test_the_slots_request() -> None:
-    assert discs.slots_request(3, 15, [4, 5]) == "disk_slots 3 15 4,5"
-    assert discs.slots_request(3, 15, []) == "disk_slots 3 15 -"
+    assert discs.slots_request(3, [4, 5]) == "disk_slots 3 4,5"
+    assert discs.slots_request(3, []) == "disk_slots 3 -"
     assert discs.SLOTS_OFF == "disk_slots"
 
 

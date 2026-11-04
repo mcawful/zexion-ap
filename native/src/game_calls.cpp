@@ -33,12 +33,9 @@ constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
 constexpr int kScanFrames = 30;  // frames between looks at the scanner's text
 constexpr int kNoteFrames = 7;   // frames between looks for the Feats of Natu screen
-// The Area Map's name while it is an Intel Chip, in a translation (intel.h's, as text reads).
-constexpr wchar_t kIntelHdName[] = L"Intel Chip";
+
 // The most characters of a translated item name read for a popup when its room is not known.
 constexpr int32_t kNameRoom = 64;
-// The translation whose popups keep the client's case ("from Bob"), as language_name names it.
-constexpr char kMixedCaseLanguage[] = "English(HD)";
 
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
@@ -362,7 +359,7 @@ void Game::pump_popups() {
     int per_line = kGamePopupWidth;
     std::string text;
     if (popup.bare) {
-        text = notice_text(popup.suffix, kGamePopupWidth, &per_line);
+        text = notice_text(in_capitals(popup.text), kGamePopupWidth, &per_line);
     } else {
         std::string head;
         const int stand_in = stand_in_index(popup.item);
@@ -373,7 +370,7 @@ void Game::pump_popups() {
             if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
             head += record_name(rec);
         }
-        text = popup_text(head, popup.suffix, kGamePopupWidth, &per_line);
+        text = popup_text(head, in_capitals(popup.text), kGamePopupWidth, &per_line);
     }
     BYTE* last_before = nullptr;
     int32_t seq_before = 0;
@@ -420,41 +417,27 @@ bool Game::last_message(BYTE*& last, int32_t& sequence) const {
     return read(at_.last_message, kLastSequence, sequence) && pointer;
 }
 
-bool Game::mixed_case() const { return language_name(at_) == kMixedCaseLanguage; }
+std::wstring Game::translated_name(int item, bool own, const std::optional<Loaded>& now) const {
+    std::optional<std::wstring> held = tr_entries_.original({Table::kItems, item});
+    if (own && held) return *held;
+    std::wstring name;
+    if (now && now->on) read_entry(now->items, item, name, kNameRoom);
+    return name;
+}
 
-std::wstring Game::hd_label_text(int cell, bool first_line, bool icon) const {
-    auto named = ap_items_.labels().find(cell);
-    if (named == ap_items_.labels().end()) return L"";
-    auto width = label_widths_.find(cell);
-    const std::wstring upper =
-        hd_label(named->second, width == label_widths_.end() ? 0 : width->second, first_line, icon);
-    auto label = labels_.find(cell);
-    if (!mixed_case() || label == labels_.end()) return upper;
-    // In English(HD), each line the client sent in its own case where it sent one.
-    std::vector<std::wstring> lines = split_lines(upper);
-    const Label& own = label->second;
-    // Another Zexion player's item with no name of the client's: the translation's (ItemNames).
-    std::wstring first = own.own_first.empty() ? std::wstring() : hd_text(own.own_first);
-    if (first.empty() && own.item >= 0) {
-        // The game's own name, not a label the helper wrote over a stand-in's (as hd_popup_text).
-        std::optional<std::wstring> held = tr_entries_.original({Table::kItems, own.item});
-        const std::optional<Loaded> now = loaded_translation(at_);
-        if (held) {
-            first = *held;
-        } else if (now && now->on) {
-            read_entry(now->items, own.item, first, kNameRoom);
-        }
+std::wstring Game::hd_label_text(const Label& label, bool first_line, bool icon) const {
+    // Another Zexion player's item with no name of the client's: the translation's (ItemNames),
+    // the game's own, not a label the helper wrote over a stand-in's (as hd_popup_text).
+    std::wstring first;
+    if (label.item >= 0 && label.item_name.empty()) {
+        first = translated_name(label.item, true, loaded_translation(at_));
     }
-    if (!first.empty()) {
-        const size_t glyph_at = named->second.find_first_not_of(' ');
-        const std::wstring head =
-            icon && glyph_at != std::string::npos
-                ? hd_icon(static_cast<uint8_t>(named->second[glyph_at]))
-                : std::wstring();
-        lines[0] = head + first;
+    if (first.empty()) {
+        first = hd_case(at_, label.item_name.empty() ? label.first_text() : label.item_name);
     }
-    if (lines.size() > 1 && !own.own_who.empty()) lines[1] = hd_text(own.own_who);
-    return join_lines(lines);
+    std::wstring out = (icon ? hd_icon(label.glyph) : std::wstring()) + first;
+    if (!first_line && !label.who.empty()) out += L'\n' + hd_case(at_, label.who);
+    return out;
 }
 
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
@@ -463,27 +446,16 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     const FontMetrics* m = metrics.load(at_) ? &metrics : nullptr;
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
-    // Its own case in English(HD) only; other translations keep capitals, as the pixel text.
-    const bool own_case = !popup.as_sent.empty() && mixed_case();
-    if (popup.bare) {
-        return layout_popup(L"", hd_text(own_case ? popup.as_sent : popup.suffix), m, kCap,
-                            kCapCharacters);
-    }
+    if (popup.bare) return layout_popup(L"", hd_case(at_, popup.text), m, kCap, kCapCharacters);
     const int stand_in = stand_in_index(popup.item);
-    std::wstring name;
-    std::optional<std::wstring> held = tr_entries_.original({Table::kItems, popup.item});
-    if (stand_in >= 0 && held) {
-        name = *held;  // its own name, under the label the helper wrote
-    } else {
-        read_entry(now.items, popup.item, name, kNameRoom);
-    }
+    // A stand-in's own name, under the label the helper wrote.
+    std::wstring name = translated_name(popup.item, stand_in >= 0, now);
     if (name.empty()) {
         name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
                                      : std::string(record_name(rec)));
     }
     std::wstring head = (stand_in >= 0 ? std::wstring() : hd_icon(rec[record::kIcon])) + name;
-    const std::wstring suffix = own_case ? hd_suffix(popup.as_sent) : hd_text(popup.suffix);
-    return layout_popup(head, suffix, m, kCap, kCapCharacters);
+    return layout_popup(head, hd_case(at_, popup.text), m, kCap, kCapCharacters);
 }
 
 void Game::note_play(uint64_t now_ms) {
@@ -584,7 +556,7 @@ void Game::watch_newgame() {
     if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
     if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
     // From ARCHIPELAGO (starting_): placed and checked already. From RANDOMIZER: it must hold
-    // the seed text, then is placed again as the seed (or checked against `expect`).
+    // the seed text, then is placed again as the seed.
     if (!starting_) {
         int differs = first_difference(at_.rando_blob, newgame_.identify);
         if (differs >= 0) {
@@ -593,22 +565,18 @@ void Game::watch_newgame() {
             disarm_newgame();
             return;
         }
+        // The player's own placement, put back if the seed's is refused (or throws).
+        std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
         std::string why;
-        if (!newgame_.menu.empty()) {
-            // The player's own placement, put back if the seed's is refused (or throws).
-            std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
-            try {
-                why = place_seed();
-            } catch (...) {
-                std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-                disarm_newgame();
-                throw;
-            }
-            if (!why.empty()) std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-        } else if ((differs = first_difference(at_.rando_blob, newgame_.expect)) >= 0) {
-            why = "the new game is not the seed's (section +" + hex_offset(differs) + " differs)";
+        try {
+            why = place_seed();
+        } catch (...) {
+            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
+            disarm_newgame();
+            throw;
         }
         if (!why.empty()) {
+            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
             newgame_status_ = "refused " + why;
             disarm_newgame();
             return;
@@ -621,7 +589,7 @@ void Game::watch_newgame() {
 
 void Game::watch_menu(WidgetCallback callback) {
     if (!configured_) return;
-    if (newgame_armed_ && newgame_.choice && !newgame_.menu.empty() && !starting_) {
+    if (newgame_armed_ && newgame_.choice && !starting_) {
         choice_.install(at_, callback);
         if (choice_.installed()) choice_.fit_border(at_);
     } else if (choice_.installed() || choice_.holds_hook()) {
@@ -688,11 +656,10 @@ void Game::watch_translation() {
                 }
             }
         }
-        if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
+        if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = hd_case(at_, kIntelName);
         // SmallText 12 matches the Text table's entry 12 (docs/re/memory.md, "The helper's calls
         // in a translation").
-        if (scan_.written()) want[{Table::kSmall, kScanTextEntry}] =
-                hd_text(mixed_case() ? scan_line_ : scan_line_upper(scan_line_));
+        if (scan_.written()) want[{Table::kSmall, kScanTextEntry}] = hd_case(at_, scan_line_);
         hold_stand_in_names(want);
     }
     tr_entries_.watch(now, want);
@@ -795,7 +762,7 @@ std::string Game::ensure_start_table() {
 
 void Game::start_archipelago(WidgetCallback callback) {
     // Once per press; nothing after the plan was dropped or while a new game is queued.
-    if (!configured_ || !newgame_armed_ || !newgame_.choice || newgame_.menu.empty() || starting_) {
+    if (!configured_ || !newgame_armed_ || !newgame_.choice || starting_) {
         return;
     }
     if (newgame_queued()) return;
@@ -870,7 +837,7 @@ void Game::watch_discs() {
     if (scan_frames_-- > 0) return;
     scan_frames_ = kScanFrames;
     if (!scan_line_.empty()) {
-        scan_.apply(at_.text_table, scan_line_upper(scan_line_));
+        scan_.apply(at_.text_table, in_capitals(scan_line_));
     } else if (scan_.written()) {
         scan_.restore(at_.text_table);
     }
@@ -1075,8 +1042,8 @@ void Game::watch_map_names() {
 
 void Game::map_after() {
     if (!configured_) return;
-    map_names_.after(at_, ap_items_.labels(), label_widths_,
-                     [this](int cell) { return hd_label_text(cell, true, false); });
+    map_names_.after(at_, ap_items_.labels(),
+                     [this](const Label& label) { return hd_label_text(label, true, false); });
 }
 
 void* Game::map_original(void* child) const {
@@ -1110,7 +1077,7 @@ void Game::watch_map_marks() {
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
     if (*at_.save_loaded != kNoSaveLoaded) return;
-    std::string why = title_.watch(at_, active_, mixed_case());
+    std::string why = title_.watch(at_, active_, mixed_case(at_));
     if (!why.empty()) title_error_ = why;
     if (title_.shown()) title_error_.clear();
 }
@@ -1177,40 +1144,33 @@ void Game::set_labels(std::map<int, Label> labels) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;
     }
-    labels_ = labels;
-    std::map<int, std::string> names;
     std::map<int, int> items;
-    label_widths_.clear();
-    item_labels_.clear();
-    for (auto& [cell, label] : labels) {
-        label_widths_[cell] = label.width;
-        if (label.item >= 0) {
-            item_labels_[cell] = label;
-            items[cell] = label.item;
-        }
-        names[cell] = std::move(label.name);
+    for (const auto& [cell, label] : labels) {
+        if (label.item >= 0) items[cell] = label.item;
     }
     looks_.set_items(std::move(items));
-    ap_items_.set_labels(std::move(names));
+    ap_items_.set_labels(std::move(labels));
     resolve_item_labels();
 }
 
 void Game::resolve_item_labels() {
     // Another Zexion player's item: its icon and the game's name, once the records are loaded.
-    if (item_labels_.empty() || !configured_) return;
-    BYTE* records = pointer_at(at_.item_records);
-    if (records == nullptr) return;
-    std::map<int, std::string> names = ap_items_.labels();
-    for (auto it = item_labels_.begin(); it != item_labels_.end();) {
-        const Label& pending = it->second;
+    if (!configured_) return;
+    BYTE* records = nullptr;
+    for (auto& [cell, label] : ap_items_.labels()) {
+        if (!label.pending()) continue;
+        if (records == nullptr) records = pointer_at(at_.item_records);
         BYTE record[record::kSize];
-        if (!safe_read(records + pending.item * record::kSize, record, sizeof(record))) break;
+        if (records == nullptr ||
+            !safe_read(records + label.item * record::kSize, record, sizeof(record))) {
+            return;
+        }
         std::string name;
-        if (!pending.item_name.empty()) {
-            name = pending.item_name;  // this player's own, named by the client
-        } else if (stand_in_index(pending.item) >= 0) {
+        if (!label.item_name.empty()) {
+            name = label.item_name;  // this player's own, named by the client
+        } else if (stand_in_index(label.item) >= 0) {
             // The stand-ins' records are restyled: their own names, as the game loads them.
-            name = kStandInNames[stand_in_index(pending.item)];
+            name = kStandInNames[stand_in_index(label.item)];
             record[record::kIcon] = 0;
         } else {
             name = record_name(record);
@@ -1218,15 +1178,12 @@ void Game::resolve_item_labels() {
         const size_t room = static_cast<size_t>(kGamePopupWidth) - 1;  // after the icon
         if (name.size() > room) name.resize(room);
         if (name.empty()) name = kApItemName;  // a record with no name
-        uint8_t icon = record[record::kIcon] != 0 ? record[record::kIcon]
-                       : pending.item == kDiskItem ? kDiskGlyph  // the helper's (equip.h)
-                                                   : kApItemGlyph;
-        Label done = layout_label(std::string(1, static_cast<char>(icon)) + name, pending.who);
-        names[it->first] = done.name;
-        label_widths_[it->first] = done.width;
-        it = item_labels_.erase(it);
+        label.glyph = record[record::kIcon] != 0 ? record[record::kIcon]
+                      : label.item == kDiskItem  ? kDiskGlyph  // the helper's (equip.h)
+                                                 : kApItemGlyph;
+        label.first = std::move(name);
+        label.lay_out();
     }
-    ap_items_.set_labels(std::move(names));
 }
 
 void Game::set_popup_width(int width) {
@@ -1282,10 +1239,10 @@ void Game::watch_ap_items() {
         for (int i = 0; i < kStandInCount; ++i) {
             auto label = ap_items_.labels().find(cells[i]);
             if (label == ap_items_.labels().end()) {
-                stand_in_hd_[i] = mixed_case() ? L"AP Item" : L"AP ITEM";
+                stand_in_hd_[i] = hd_case(at_, kApItemName);
                 continue;
             }
-            std::wstring name = hd_label_text(cells[i], false, true);
+            std::wstring name = hd_label_text(label->second, false, true);
             std::wstring centered = centered_lines(name, m);
             const int32_t room = now ? entry_room(now->items, kStandInRecords[i]) : 0;
             const bool fits = room > 0 && centered.size() + 1 <= static_cast<size_t>(room);
@@ -1298,9 +1255,9 @@ void Game::watch_ap_items() {
     ap_items_.paint(at_.sprite_texture, gl_, texture_check_, GetTickCount64(), world);
     // The pickup popup as wide as width_cell's label while the stand-ins are ours, else 24; from
     // the frame call, so the game is not running the instruction while it changes.
-    auto it = label_widths_.find(width_cell);
-    set_popup_width(ap_items_.restyled() && it != label_widths_.end() ? it->second
-                                                                      : kGamePopupWidth);
+    auto it = ap_items_.labels().find(width_cell);
+    set_popup_width(ap_items_.restyled() && it != ap_items_.labels().end() ? it->second.width
+                                                                           : kGamePopupWidth);
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
         looks_.scan(at_, base);
@@ -1372,9 +1329,6 @@ void Game::restore_ap_items() {
     put_back_ap_items();
     looks_.set_items({});
     ap_items_.set_labels({});
-    label_widths_.clear();
-    item_labels_.clear();
-    labels_.clear();
 }
 
 void Game::put_back_save_look() {

@@ -35,16 +35,10 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   the same file.
 - A helper of the client's version that disagrees with it is another build of that version:
   it answers `error unknown request` or `error unknown line …`, refuses `config` with
-  `error missing NAME` (it ignores names it does not know), reads `build=unknown` for a game
-  build the client knows, or has no `lang` in its `hello` (1.0.0's release candidate, from
-  before the translations: it would take the translation keys and ignore them) or no `case` (a
-  build from before the mixed case: it would refuse the client's scanner line, and with it every
-  `discs` request and the offline file), with a build of the client's own loaded in its place,
-  as for another version (a build of its own that loads as such an earlier one is refused and
-  not loaded again until the file changes, as a stale one is; `tests/test_native.py` only, not
-  seen in game). Found while attaching, it is refused like
-  another version; found in a later request (a side task's, or giving items), the client stops
-  using it until the game restarts.
+  `error missing NAME` (it ignores names it does not know), or reads `build=unknown` for a game
+  build the client knows. Found while attaching, it is refused like another version; found in a
+  later request (a side task's, or giving items), the client stops using it until the game
+  restarts.
 - Each of these, in the client's window: "The Zexion mod and this client don't match", with
   both versions (or "different builds") and what to do (`state.helper_failed`).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
@@ -109,18 +103,18 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> case=1 build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
-| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; `menu` lines need `identify` lines, `choice` needs `menu` lines) | `armed`, `refused <why>`, `error <why>` | New games |
+| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; a plan needs `write`, `menu` and `identify` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
-| `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
+| `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
@@ -133,7 +127,6 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
 - `offline`: the seeds known to the offline look (read from the folder, and any a client put or
   that were read while it was connected), and the file of the one dressed.
-- `case`: always 1: the helper takes the client's text in mixed case (English(HD), "Translations").
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `lang`: the language the game shows: `-` its default English, the loaded translation's folder
@@ -438,10 +431,9 @@ While a plan is armed (`ap_newgame`), each frame call:
   writes nothing and drops the plan; if the seed's placement is refused (or throws), the
   player's own placement is put back first, so the queued game is the one they made. Over a
   RANDOMIZER game the game's own start table is used, not the plan's (the client's fallback
-  when the two differ), and the seed's second start must be one of its rooms. A plan without `menu` lines is only checked against
-  `expect` as the player's placement made it (the client always sends them). Working in
+  when the two differ), and the seed's second start must be one of its rooms. Working in
   game: 2026-10-27 (`docs/re/memory.md`, "Starting a new game").
-- **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
+- **ARCHIPELAGO:** with `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
@@ -487,7 +479,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   the nearest loaded one's (or AP ITEM). The game's pickup popup then shows the logo glyph, then
   PROGRESSION ITEM (or AP ITEM) over FOR ALICE (in English(HD), Progression Item or AP Item
   over for Alice, as the client writes them: "Translations", mixed case). The map cursor shows
-  the label's first line only: what the item is, not whom it is for.
+  the label's first line only: what the item is, not whom it is for. A label is kept as its
+  parts (`Label`, `src/text.h`: the glyph, the two lines, the `@N` item and its name), from which
+  the record's name is laid out in capitals and the translated texts are made.
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
@@ -576,8 +570,9 @@ Working in game: 2026-10-23 ("Live item objects").
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
-- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip is written there while
-  the record is INTEL CHIP ("Translations"; not run in game yet).
+- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
+  English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
+  ("Translations"; not run in game yet).
 
 Working in game: 2026-10-25 ("Intel Chips").
 
@@ -730,7 +725,8 @@ back from OPTION MENU is still its wrapper.
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
 screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
 built again in the translation's font; the pause row's count is KEYS's translated text built
-again ("2 of 15", centered on the row as the game centers a prompt's line, built again
+again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
+row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
 next frame call otherwise), the key slots' characters hidden; the disk count
 popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
@@ -884,8 +880,8 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
   shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
   names, the owner's look; Progression Item and OS Install Disk not looked at
-  on the map). Labels in capitals, as a client from before the mixed case (31d9203) writes them
-  and a seed's offline file may still hold them, show in capitals.
+  on the map). Since 2026-11-04 another Zexion player's item takes the translation's own name
+  in every translation, not only English(HD) (stand-in tests only, not run in game yet).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
@@ -1004,8 +1000,8 @@ closed, gone with it open.
     whole line or nothing, only over a line that is blank or already its note, and only if every
     glyph of it is writable and has the font's frames. In a translation, while the note (or the
     title written over the hint) is there, the title's translated text is built again as
-    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
-    it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
+    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" (in
+    capitals outside English(HD): "Translations", mixed case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
     and kept at the title's middle as the game lays out its title ("Translations"); the game's
     own entry (220, or 219 for the hint) again when the note goes.
     Without LargeText's count, or with too little room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
@@ -1127,10 +1123,9 @@ lands, not only the place passed.
     whose area is taken waits a frame, at most 240. Its text: the item's icon as the
     private-use character the translations' fonts draw (as the pickup does), the translation's
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
-    on the next line: in English(HD) in the case the client sent it, its FROM as "from" ("from
-    Bob"), in any other translation in capitals as in the default English ("FROM BOB"; the
-    owner's choice, 2026-11-02); a notice's text likewise, the client's and the helper's own
-    (NOT CONNECTED, CLIENT CONNECTED, the other seed's) in mixed case in English(HD) only. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
+    on the next line, as mixed case below has it: "from Bob" in English(HD), "FROM BOB" in any
+    other translation, as in the default English; a notice's text likewise, the client's and the
+    helper's own (NOT CONNECTED, CLIENT CONNECTED, the other seed's). Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
     builder's advances, read from the font as loaded): no line wider than a pixel popup's 192
     pixels, words whole; a popup's lines centered on the widest with leading spaces (the game
     starts every line at the same x); a notice's left as they wrap; without the font's metrics,
@@ -1139,19 +1134,22 @@ lands, not only the place passed.
     unreadable with the flag set, or from an unload's put-back on) shows the helper's pixel
     text, with the mark the game's last translated message left in its slot cleared (told by
     the HD object's serial), so it shows, in its box.
-  - **Mixed case** (English(HD) only, the owner's choice, 2026-11-02; `Game::mixed_case`, by
-    the language's name): the client writes its text in mixed case (hints, the disks' popups and
-    reminder, the scanner's line, the labels: `client/hints.py`, `client/discs.py`,
-    `client/aplabels.py`), and the helper keeps each in its own case beside the capitals the
-    8 x 8 font draws (`Popup::as_sent`, `Label::own_first` and `own_who`; the scanner's line
-    written into the game's pixel Text table in capitals, `scan_line_upper`). English(HD) shows
-    the case as sent, with the helper's own notices in mixed case; every other translation and
-    the default English show capitals, as before (their fonts may draw no lower case). Labels
-    sent in capitals (a client from before this, or a seed's offline file it wrote) show in
-    capitals. The labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the
-    pickup popup's Progression Item over for AneziaDS2, the map cursor's AP Item ("Other
-    players' items", "Map markers"); the hints, the disks' popups and reminder, the scanner's
-    line and the notices: stand-in tests only, not run in game yet.
+  - **Mixed case** (English(HD) only, the owner's rule, 2026-11-02; `mixed_case`, by the
+    language's name): the client writes its text in mixed case (hints, the disks' popups and
+    reminder, the scanner's line, the labels, "from Bob": `client/hints.py`, `client/discs.py`,
+    `client/aplabels.py`, `client/session.py`), and the helper writes its own in mixed case too
+    (the notices, the title lines, Archipelago, Intel Chip, Return home with the disks?, OS
+    Install Disk and its description, the pause row's "2 of 15", the Feats note). Each is kept
+    once, in that case, and put in capitals only where it is drawn so: in the 8 x 8 font
+    (`in_capitals`, and `Capitals` for the fixed texts, `src/text.h`), and in every translation
+    but English(HD) (`hd_case`), whose fonts may draw no lower case. Only letters change: a
+    record's icon byte (0x6E and 0x77 lie in the lower-case range) goes before the text, never
+    through it. Until 2026-11-04 the helper's fixed texts showed in mixed case in every
+    translation; they follow the rule since (stand-in tests only, not run in game yet). The
+    labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the pickup popup's
+    Progression Item over for AneziaDS2, the map cursor's AP Item ("Other players' items", "Map
+    markers"); the hints, the disks' popups and reminder, the scanner's line and the notices:
+    stand-in tests only, not run in game yet.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
@@ -1171,7 +1169,8 @@ lands, not only the place passed.
     `wstring_new_fn`), laid out as the game lays out that label's own (`Rebuild`;
     `docs/re/memory.md`, "Where a rebuilt label goes"): ARCHIPELAGO (Archipelago; SmallText
     354's text again when RANDOMIZER goes back, not through the new game's fade) and Return home
-    with the disks? where the game's attach would build them now (the label's first pixel glyph
+    with the disks? (each as mixed case above has it, as are the rest of the helper's texts below)
+    where the game's attach would build them now (the label's first pixel glyph
     less 1: the game moves a label without updating the place its build was given), the question
     then centered as the game centers its own; the equipment screen's OS Install Disk and its
     description (no icon) where the game built them for the selection, the description wrapped
@@ -1438,7 +1437,7 @@ unload.
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
-| `text.cpp` | the popups' text layout |
+| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |

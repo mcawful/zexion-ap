@@ -31,8 +31,6 @@ constexpr RecordShape kOwnShape = {.kind = 34, .ticks = 6, .frames = 2, .icon = 
 // What they become: one frame each and no area event at pickup; their names start with the logo
 // glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
-constexpr char kDefaultName[] = "\xEE" "AP ITEM";
-static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
 // Frame k of the item sprites in the sprite texture (kTextureSize square; the font: font_x).
 constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
@@ -124,7 +122,7 @@ GlFunctions load_gl() {
 }
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
-               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2],
+               int player_cell, const std::map<int, Label>& labels, int (&cells)[2],
                bool* in_reach_out) {
     const bool player_labeled = labels.count(player_cell) != 0;
     int touching = -1;
@@ -161,9 +159,11 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
 
 void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
     if (!active()) return;
+    Label unlabeled;  // the logo and AP ITEM
+    unlabeled.lay_out();
     for (int i = 0; i < kStandInCount; ++i) {
         auto it = labels_.find(cells[i]);
-        const std::string& name = it != labels_.end() ? it->second : std::string(kDefaultName);
+        const std::string& name = it != labels_.end() ? it->second.name : unlabeled.name;
         const StandIn& s = kStandIns[i];
         BYTE copy[record::kSize];
         BYTE* r = writable_record(holder, s.item, copy);

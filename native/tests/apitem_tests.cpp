@@ -23,6 +23,13 @@ using namespace gl_fake;
 
 namespace {
 
+// One label whose stand-in name, as laid out, is `name`.
+std::map<int, zap::Label> named(int cell, std::string name) {
+    zap::Label label;
+    label.name = std::move(name);
+    return {{cell, label}};
+}
+
 // --- the stand-in game's item table, records 47 and 48 as the game loads them
 
 BYTE* const g_scrap = stand_in::g_records + 47 * 100;
@@ -82,7 +89,7 @@ void test_restyle_and_names() {
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "nothing happens before the labels arrive");
 
-    items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
+    items.set_labels(named(2 * 54 + 5, "MASTER SWORD FOR ALICE"));
     watch(items, holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
     check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 &&
@@ -101,7 +108,7 @@ void test_restyle_and_names() {
     check(stand_in::record_name(47) == "\xEE" "AP ITEM",
           "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
-    items.set_labels({{7, long_name}});
+    items.set_labels(named(7, long_name));
     watch(items, holder(), 7);
     check(stand_in::record_name(47) == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
           "a name is cut to 49 bytes and stays terminated");
@@ -119,7 +126,7 @@ void test_one_record_not_as_expected_leaves_the_other_restyled() {
     std::memcpy(before_chunk, g_chunk, 100);
     zap::ApItems items;
     zap::TextureCheck items_check;
-    items.set_labels({{1, "X"}});
+    items.set_labels(named(1, "X"));
     watch(items, holder(), 1);
     check(items.restyled() && get<int16_t>(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
@@ -134,14 +141,14 @@ void test_records_not_as_expected_are_left_alone() {
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
+    items.set_labels(named(1, "X"));
     watch(items, holder(), 1);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "a record not as traced is not written");
 
     BYTE* none = nullptr;
     zap::ApItems no_table;
-    no_table.set_labels({{1, "X"}});
+    no_table.set_labels(named(1, "X"));
     watch(no_table, reinterpret_cast<BYTE*>(&none), 1);
     check(!no_table.restyled(), "no records loaded: nothing");
 }
@@ -151,11 +158,11 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems earlier;
-    earlier.set_labels({{1, "OLD NAME"}});
+    earlier.set_labels(named(1, "OLD NAME"));
     watch(earlier, holder(), 1);  // and then unloaded with no frame to restore it
     zap::ApItems later;
     zap::TextureCheck later_check;
-    later.set_labels({{1, "NEW NAME"}});
+    later.set_labels(named(1, "NEW NAME"));
     watch(later, holder(), 1);
     check(later.restyled() && stand_in::record_name(47) == "NEW NAME",
           "a later helper takes it over and renames it");
@@ -166,7 +173,7 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
 void test_a_reload_is_restyled_again() {
     reset_records();
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
+    items.set_labels(named(1, "X"));
     watch(items, holder(), 1);
     reset_records();  // the game reloaded its records
     watch(items, holder(), 1);
@@ -182,7 +189,7 @@ void test_painting() {
     zap::TextureCheck items_check;
     items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.empty(), "nothing painted before the labels arrive");
-    items.set_labels({{1, "X"}});
+    items.set_labels(named(1, "X"));
     items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.size() == 3, "two frames and the glyph");
     if (g_uploads.size() != 3) return;
@@ -258,7 +265,7 @@ void test_painting() {
         c.spoil();
         zap::ApItems spoiled;
         zap::TextureCheck spoiled_check;
-        spoiled.set_labels({{1, "X"}});
+        spoiled.set_labels(named(1, "X"));
         spoiled.paint(sprites(), gl, spoiled_check, 0);
         check(g_uploads.empty() && spoiled.painted_texture() == 0, c.what);
     }
@@ -267,7 +274,7 @@ void test_painting() {
     reset_gl();
     zap::ApItems menu;
     zap::TextureCheck menu_check;
-    menu.set_labels({{1, "X"}});
+    menu.set_labels(named(1, "X"));
     menu.paint(sprites(), gl, menu_check, 0);
     g_uploads.clear();
     menu.paint(sprites(), gl, menu_check, 10, false);
@@ -282,7 +289,7 @@ void test_painting() {
     reset_gl();
     zap::ApItems painted;
     zap::TextureCheck painted_check;
-    painted.set_labels({{1, "X"}});
+    painted.set_labels(named(1, "X"));
     painted.paint(sprites(), gl, painted_check, 0);
     g_uploads.clear();
     painted.restore(holder(), sprites(), gl, painted_check);
@@ -293,9 +300,9 @@ void test_painting() {
 void test_label_parser() {
     std::map<int, zap::Label> out;
     check(zap::parse_labels("ap_labels\nlabel 5 2 4d617374657220537764", out).empty(), "parses");
-    check(out.size() == 1 && out[2 * 54 + 5].name == "\xEE" "MASTER SWD" &&
-              out[2 * 54 + 5].width == 11,
-          "upper-cased, by cell, after the glyph; one line as it is");
+    check(out.size() == 1 && out[2 * 54 + 5].first == "Master Swd" &&
+              out[2 * 54 + 5].name == "\xEE" "MASTER SWD" && out[2 * 54 + 5].width == 11,
+          "by cell, kept as sent, laid out in capitals after the glyph; one line as it is");
     out.clear();
     zap::parse_labels("ap_labels\nlabel 5 2 " + std::string("4d61702057696474682626") + "0a" +
                           "466f722046696e646572",
@@ -441,7 +448,7 @@ void test_one_readback_for_every_painter() {
     zap::GlFunctions gl = fake_gl();
     zap::TextureCheck shared;
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
+    items.set_labels(named(1, "X"));
     zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
     zap::FontGlyph disk(zap::kDiskGlyph, zap::kDiskRows);
     items.paint(sprites(), gl, shared, 0);
@@ -459,7 +466,7 @@ void test_one_readback_for_every_painter() {
     g_frame95_used = true;
     zap::TextureCheck taken;
     zap::ApItems blocked;
-    blocked.set_labels({{1, "X"}});
+    blocked.set_labels(named(1, "X"));
     zap::FontGlyph padlock(zap::kLockGlyph, zap::kLockRows);
     blocked.paint(sprites(), gl, taken, 0);
     padlock.paint(sprites(), gl, taken);

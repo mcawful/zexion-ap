@@ -227,7 +227,7 @@ void test_popups() {
           "three lines or more end with a blank line, so the game's window shows the last");
     zap::Batch long_notice;
     zap::parse_batch("apply\nnotice 49 " + std::string(300, 'a'), long_notice);
-    check(long_notice.popups[0].suffix.size() == 200, "a notice is capped at 200 characters");
+    check(long_notice.popups[0].text.size() == 200, "a notice is capped at 200 characters");
 
     reset_game();
     apply(game, "apply\npopup 36 X");
@@ -254,9 +254,11 @@ void test_newgame_watch() {
     zap::Game game;
     ready(game);
     std::memset(g_section, 0, sizeof(g_section));
-    g_section[0x6C0] = 3;  // the mode's starting Energy
+    std::memcpy(g_section + 0x658, "AB", 2);  // the seed's text
     zap::NewGamePlan plan;
-    zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\nwrite 0x310 110022", plan);
+    zap::parse_newgame("ap_newgame\nidentify 0x658 4142\nexpect 0x6C0 0300\nwrite 0x26C 2E1B\n"
+                       "write 0x310 110022\nmenu 0x88 0300",
+                       plan);
 
     game.watch_newgame();
     check(game.newgame_status() == "idle", "nothing armed");
@@ -282,11 +284,11 @@ void test_newgame_watch() {
     check(g_section[0x26C] == 0, "applied once only");
 
     std::memset(g_section, 0, sizeof(g_section));
-    g_section[0x6C0] = 5;  // another mode's starting Energy
+    std::memcpy(g_section + 0x658, "XY", 2);  // another seed's text
     game.arm_newgame(plan);
     queue_new_game(1, 39);
     game.watch_newgame();
-    check(g_section[0x26C] == 0, "another mode: nothing written");
+    check(g_section[0x26C] == 0, "another seed: nothing written");
     check(game.newgame_status().rfind("refused", 0) == 0, "and reported refused");
     game.watch_newgame();
     check(game.newgame_status().rfind("refused", 0) == 0, "and the plan is dropped");
@@ -435,12 +437,6 @@ void test_archipelago_choice() {
     stand_in::ModePanel& panel = screen.panel;
     g_randomizer_menu[0x88] = 5;  // the player's own menu: Easy's starting Energy
 
-    zap::NewGamePlan without_menu;
-    zap::parse_newgame("ap_newgame\nwrite 0x310 110022", without_menu);
-    game.arm_newgame(without_menu);
-    game.watch_menu(&chosen);
-    check(!game.menu_installed() && panel.text() == "RANDOMIZER ",
-          "a plan without menu lines offers no ARCHIPELAGO");
     zap::NewGamePlan without_choice;
     zap::parse_newgame("ap_newgame\nwrite 0x310 110022\nmenu 0x88 0300\nidentify 0x658 41",
                        without_choice);
@@ -521,7 +517,9 @@ void test_archipelago_choice() {
 void test_start_table() {
     auto refused = [](const char* table) {
         zap::NewGamePlan bad;
-        return !zap::parse_newgame(std::string("ap_newgame\nwrite 0x10 00\nstart_table ") + table,
+        return !zap::parse_newgame(std::string("ap_newgame\nidentify 0x658 41\nwrite 0x10 00\n"
+                                               "menu 0x88 00\nstart_table ") +
+                                       table,
                                    bad)
                     .empty();
     };
@@ -635,7 +633,7 @@ void test_scanner_line() {
     check(!parses("discs 3 15 434f4c4c454354 2"), "told is 0 or 1");
     // Lower case is kept as sent (English(HD) shows it), written in capitals for the font.
     check(parses("discs 3 15 436f6c6c656374") && line == "Collect" &&
-              zap::scan_line_upper(line) == "COLLECT",
+              zap::in_capitals(line) == "COLLECT",
           "a line in mixed case");
     check(!parses("discs 3 15 43c3a9"), "a letter the font lacks is not");
     check(!parses("discs 3 0 41"), "none required");
@@ -735,7 +733,7 @@ void test_zexion_item_labels() {
     // "@36 OS INSTALL DISK", for no one: the item's icon, the client's name for it.
     std::map<int, zap::Label> own;
     check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@36 os install disk"), own).empty() &&
-              own[2 * 54 + 8].item == 36 && own[2 * 54 + 8].item_name == "OS INSTALL DISK" &&
+              own[2 * 54 + 8].item == 36 && own[2 * 54 + 8].item_name == "os install disk" &&
               own[2 * 54 + 8].who.empty(),
           "an own item's label: the item and its name");
     game.set_labels(own);
@@ -751,6 +749,29 @@ void test_zexion_item_labels() {
     std::map<int, zap::Label> bad;
     zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
     check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
+    game.restore_ap_items();
+}
+
+// The record icons 0x6E and 0x77 lie in the lower-case range: the text is put in capitals for
+// the 8 x 8 font, never the icon before it (text.h, in_capitals).
+void test_lower_case_icons() {
+    zap::Game game;
+    ready(game);
+    g_records[36 * 100 + 0x08] = 0x6E;
+    apply(game, "apply\npopup 36 from alice");
+    game.pump_popups();
+    check(g_text == "\x6E" "MISSILE BOX FROM ALICE",
+          "a popup: the icon 0x6E kept, the sender in capitals", g_text);
+    own_stand_ins(g_records);
+    g_records[36 * 100 + 0x08] = 0x77;
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 " + hex("@36\nfor bob"), labels);
+    game.set_labels(labels);
+    player_cell(5, 2);
+    game.watch_ap_items();
+    check(record_name(47) == "\x77" "MISSILE BOX  FOR BOB",
+          "another Zexion player's item: the icon 0x77 kept, whom it is for in capitals",
+          record_name(47));
     game.restore_ap_items();
 }
 
@@ -1527,7 +1548,7 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
               game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
               game.scan_line() == "COLLECT 15 OS INSTALL DISKS!" &&
               game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}} &&
-              game.label_names().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
+              game.labels().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
           "what the client asked for kept: the new game, ASSIST, INTEL CHIP, the disks, the "
           "file select's counts, the labels, RETURN HOME WITH THE DISKS?");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
@@ -1536,7 +1557,7 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     game.client_gone(&chosen);
     check(games() && game.newgame_status() == "idle" && !game.assists_locked() &&
               !game.intel_on() && game.scan_line().empty() && game.files().counts().empty() &&
-              game.label_names().empty() && game.mission_status() == "not asked",
+              game.labels().empty() && game.mission_status() == "not asked",
           "a client gone: put back and dropped");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
     check(games(), "and not applied again");
@@ -2149,6 +2170,7 @@ int main() {
     test_popups();
     test_pickup_popup_width();
     test_zexion_item_labels();
+    test_lower_case_icons();
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
     test_the_marker_hidden();
