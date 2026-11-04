@@ -780,8 +780,40 @@ void Game::watch_translation() {
         if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
         if (scan_.written()) want[{Table::kSmall, kScanEntry}] =
                 hd_text(mixed_case() ? scan_line_ : scan_line_upper(scan_line_));
+        hold_stand_in_names(want);
     }
     tr_entries_.watch(now, want);
+}
+
+void Game::hold_stand_in_names(std::map<EntryKey, std::wstring>& want) {
+    // A stand-in's name held as it was picked up while its pickup message shows in the AP save,
+    // since the message reads it every frame: neither the next cell's name nor, paused, the
+    // game's own. Not while another of that record is within reach: the next pickup reads the
+    // entry as it is, and the newest pickup's name wins (the game cuts the last message short).
+    // A message of that record not seen coming (a stand-in no scan had found yet) is named as
+    // the frame names it, then held. With the map open the game's own name is back, for the map
+    // cursor's squares, and the held one again once it closes.
+    const bool in_save = *at_.save_loaded != kNoSaveLoaded && ap_save_loaded();
+    for (int i = 0; i < kStandInCount; ++i) {
+        const EntryKey key{Table::kItems, kStandInRecords[i]};
+        NameHold& h = name_holds_[i];
+        const std::vector<int32_t> serials = item_name_serials(at_, key.second);
+        if (!in_save || stand_in_near_[i] || serials.empty()) {
+            h = {};
+            continue;
+        }
+        // The message routine counts its serials up (0x18284F to 0x18285A): the newest is the
+        // latest pickup's.
+        const int32_t newest = *std::max_element(serials.begin(), serials.end());
+        if (h.serial != 0 && newest != h.serial) {
+            h = {newest, L""};  // another pickup's: named this frame, held from the next
+            continue;
+        }
+        h.serial = newest;
+        if (MapCursorNames::open(at_)) continue;  // the map open: its squares read the game's
+        if (h.name.empty()) h.name = tr_entries_.written(key).value_or(L"");
+        if (!h.name.empty()) want[key] = h.name;
+    }
 }
 
 void Game::show_glyph(FontGlyph& glyph, bool wanted) {
@@ -1357,6 +1389,7 @@ void Game::set_popup_width(int width) {
 }
 
 void Game::watch_ap_items() {
+    std::fill(std::begin(stand_in_near_), std::end(stand_in_near_), false);
     if (!configured_ || !ap_items_.active()) return;
     resolve_item_labels();
     // The player's map cell, as the player update keeps it: the row then the column, the
@@ -1378,7 +1411,8 @@ void Game::watch_ap_items() {
         // apitem.h). The general objects among them as of the last scan, below.
         int cells[kStandInCount];
         int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),
-                                  at<double>(player(), kY), cell, ap_items_.labels(), cells);
+                                  at<double>(player(), kY), cell, ap_items_.labels(), cells,
+                                  stand_in_near_);
         if (touching >= 0) width_cell = cells[touching];
         ap_items_.watch(at_.item_records, cells);
         // Each record's name as translated text, for the translation's table (watch_translation),
@@ -1509,6 +1543,7 @@ void Game::put_back_all(WidgetCallback callback) {
         // undone when none is in use: an unload waits for the one in use).
         const std::optional<Loaded> now = loaded_translation(at_);
         tr_entries_.restore(now);
+        for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
         popup_areas_.restore(now);
         icon_sheets_.clear(at_.sprite_templates, gl_);
     }

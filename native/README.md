@@ -1264,7 +1264,15 @@ lands, not only the place passed.
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
     line at one x, where those spaces fit the entry's room, else as they are so no name is cut)
-    while their records are restyled in play, for their pickup popup; Intel Chip into 49 while the Area
+    while their records are restyled in play, for their pickup popup, each held as it is while
+    a pickup message bound to it shows in the AP save (the HD message reads it again every frame:
+    `docs/re/memory.md`, "Translated messages"), so walking into another cell or pausing during
+    the popup leaves its name, unless another stand-in of that record is within reach, whose
+    name the next pickup needs. A newer pickup message of that record (one no scan had found
+    within reach: the message routine counts its serials up, `0x18284F` to `0x18285A`) gets the
+    frame's name, then that is held. While the map is open the game's own name is back, for the
+    map cursor's squares of the player's own Scrap Energy and Scrap Chunk, and the held one again
+    once it closes (stand-in tests only, not run in game); Intel Chip into 49 while the Area
     Map's record is INTEL CHIP; the scanner's line into SmallText 12 (its message event's entry)
     while the Text table's entry is the helper's.
   - **Menu labels built again** with the game's builder (`hd_build_fn`, the string from
@@ -1501,7 +1509,8 @@ unload.
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
-  slot's mark cleared; the same with the tables unreadable and while unloading), a language
+  slot's mark cleared; the same with the tables unreadable, while unloading and with text in
+  the run's entry 68: no split), a language
   change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
   panel (not where the game first built it), a label with no first pixel glyph or too little
   room left alone, the locked ASSIST's translated text with its padlock (no space before it in
@@ -1511,7 +1520,11 @@ unload.
   through the game (painted while a translation shows, cleared when the default English is
   picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
   widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's lines
-  centered, and through the game into ItemNames, not where the spaces would pass its room;
+  centered, and through the game into ItemNames, not where the spaces would pass its room, and
+  held while its pickup message shows (another cell, paused; not with no save loaded; another
+  of its record within reach takes it, even with one of the other nearer; a newer message of
+  its record named, then held; the game's name while the map is open; a language change keeps
+  it);
   the mixed case in English(HD) and capitals in French and the default English for a client's
   notice, the helper's own, a label and the scanner's line; a popup through the game measured
   with its icon's width, a long notice wrapped), and

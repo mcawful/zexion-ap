@@ -41,6 +41,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "addresses.h"
 
@@ -77,6 +78,7 @@ namespace hd {
 constexpr size_t kSize = 0x238;
 constexpr int kSlots = 4;
 constexpr ptrdiff_t kEntry = 0x20C, kKind = 0x210;  // 32-bit each
+constexpr int32_t kItemNameKind = 3;  // the entry an ItemNames record, as the pickup's
 constexpr ptrdiff_t kMessage = 0x220, kSerial = 0x228;
 constexpr ptrdiff_t kHasText = 0x22C;  // byte: the mark that hides a message's pixel glyphs
 }  // namespace hd
@@ -268,6 +270,8 @@ public:
     void restore(const std::optional<Loaded>& now);
     // The entry's text as the translation loaded it, if the helper holds it written.
     std::optional<std::wstring> original(EntryKey key) const;
+    // The text the helper wrote there, if it holds it written.
+    std::optional<std::wstring> written(EntryKey key) const;
     size_t held() const { return held_.size(); }
 
 private:
@@ -339,5 +343,10 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message);
 // Game thread, the flag set: the mark the game's last translated message left in `message`'s
 // slot cleared, so its pixel glyphs and box show (docs/re/memory.md, "Translated messages").
 void clear_mark(const GameAddresses& a, BYTE* message);
+// Game thread: the serials of the messages showing ItemNames entry `record` (the pickup's), none
+// if none does: each an HD object still bound to its slot's message (its serial the slot's) with
+// that entry, kind 3. The game reads the entry again every frame while it shows
+// (docs/re/memory.md, "Translated messages").
+std::vector<int32_t> item_name_serials(const GameAddresses& a, int record);
 
 }  // namespace zap

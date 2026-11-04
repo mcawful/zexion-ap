@@ -214,6 +214,12 @@ bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
     return text == kStandInNames[0] || text == kStandInNames[1];
 }
 
+bool MapCursorNames::open(const GameAddresses& a) {
+    BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
+    return map_menu(a.current_menu, pointer_at(a.map_handler), menu, panel, child) ||
+           map_menu(a.current_menu, a.hooks.map, menu, panel, child);
+}
+
 void MapCursorNames::watch(const GameAddresses& a, bool on) {
     void* handler = nullptr;
     if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;

@@ -79,9 +79,11 @@ constexpr double kStandInReach = 96;
 // For each stand-in record (47, then 48), the map cell to name it after: the cell of the nearest
 // object of that record with a labeled cell, if within kStandInReach; else `player_cell`, if it
 // has a label; else that nearest object's cell, wherever it is; else `player_cell`. Returns the
-// record (0 or 1) whose object is nearest within reach, the one a pickup is about to take, or -1.
+// record (0 or 1) whose object is nearest within reach, the one a pickup is about to take, or -1;
+// and, given `in_reach`, whether each record's object is within reach.
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
-               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]);
+               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2],
+               bool* in_reach = nullptr);
 
 // From opengl32.dll if the process has loaded it; otherwise all null.
 GlFunctions load_gl();

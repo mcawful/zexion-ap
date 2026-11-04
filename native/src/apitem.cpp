@@ -134,7 +134,8 @@ GlFunctions load_gl() {
 }
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
-               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2]) {
+               int player_cell, const std::map<int, std::string>& labels, int (&cells)[2],
+               bool* in_reach_out) {
     const bool player_labeled = labels.count(player_cell) != 0;
     int touching = -1;
     double touching_d = 0;
@@ -152,6 +153,7 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
             }
         }
         const bool in_reach = best_cell >= 0 && best <= kStandInReach * kStandInReach;
+        if (in_reach_out != nullptr) in_reach_out[i] = in_reach;
         if (in_reach) {
             cells[i] = best_cell;
             if (touching < 0 || best < touching_d) {
