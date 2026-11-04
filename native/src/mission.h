@@ -192,6 +192,11 @@ private:
     void take_back(const GameAddresses& addresses);
     // Whether the fade still reads as after_no left it: black, off.
     bool dark_still_ours(const GameAddresses& addresses) const;
+    // The black no longer held, and why.
+    void stop_dark(const std::string& why) {
+        dark_ = undark_ = false;
+        black_ = why;
+    }
 
     HMODULE image_ = nullptr;
     bool requested_ = false;  // to offer when idle

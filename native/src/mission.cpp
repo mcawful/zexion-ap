@@ -37,6 +37,14 @@ constexpr ptrdiff_t kFadeSide = 0xC;
 constexpr int16_t kNoSide = 1;
 using EventFn = void (*)(char, char, BYTE*);
 
+// The fade's three bytes for the global level, as the stepper reads them; false if one can't be
+// read.
+bool fade_bytes(const GameAddresses& a, int8_t& target, int8_t& step, int8_t& countdown,
+                int8_t& level) {
+    return read(a.fade, fade_state::kTarget, target) && read(a.fade, fade_state::kStep, step) &&
+           read(a.fade, fade_state::kCountdown, countdown) && read(a.fade_level, 0, level);
+}
+
 // Event 3667's fade as the stepper (0x1F7900, once each pass of the main loop) runs it: from
 // level 4 (the record's), the countdown from 8 (its step) down; at 0 the level one lower and the
 // countdown 8 again, until the level is the target, -1, and the stepper turns the step off
@@ -48,25 +56,13 @@ static_assert(kFadeFrom == kNormalLevel && kFadeTo == -1 && kFadeEvery == 8, "as
 constexpr int kFadeFrames = (kFadeFrom - kFadeTo) * kFadeEvery;
 int fade_frames(const GameAddresses& a) {
     int8_t target = 0, step = 0, countdown = 0, level = 0;
-    if (!read(a.fade, fade_state::kTarget, target) || !read(a.fade, fade_state::kStep, step) ||
-        !read(a.fade, fade_state::kCountdown, countdown) || !read(a.fade_level, 0, level) ||
-        target != kFadeTo) {
-        return -1;
-    }
+    if (!fade_bytes(a, target, step, countdown, level) || target != kFadeTo) return -1;
     if (step == 0) return countdown == 0 && level == kFadeTo ? kFadeFrames : -1;
     if (step != kFadeEvery || level < 0 || level > kFadeFrom || countdown < 1 ||
         countdown > kFadeEvery) {
         return -1;
     }
     return (kFadeFrom - level) * kFadeEvery + (kFadeEvery - countdown);
-}
-
-// The fade's three bytes for the global level, as the stepper reads them; false if one can't be
-// read.
-bool fade_bytes(const GameAddresses& a, int8_t& target, int8_t& step, int8_t& countdown,
-                int8_t& level) {
-    return read(a.fade, fade_state::kTarget, target) && read(a.fade, fade_state::kStep, step) &&
-           read(a.fade, fade_state::kCountdown, countdown) && read(a.fade_level, 0, level);
 }
 
 // Whether the global level reads as the normal one, as the ending routine leaves it (0x95230).
@@ -147,9 +143,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
         started_ = false;
         ending_ = true;
         if (dark_ && !dark_still_ours(a)) {
-            dark_ = false;  // the other transition's fade: left alone
-            undark_ = false;
-            black_ = "ended: another transition's fade, left alone";
+            stop_dark("ended: another transition's fade, left alone");
         }
         status_ = "yes: ending when idle (another transition came first)";
     }
@@ -159,9 +153,7 @@ void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) 
     // The limit counts game frames (GameFrames), not the helper's frame calls.
     if (dark_ && top == nullptr) {
         if (!dark_still_ours(a)) {
-            dark_ = false;  // another fade since (a death's, say): left alone
-            undark_ = false;
-            black_ = "ended: another fade, left alone";
+            stop_dark("ended: another fade, left alone");  // a death's, say
         } else if (undark_) {
             end_dark(a, undark_why_);
         } else if ((dark_frames_ += ran) > kDarkFrames) {
@@ -411,9 +403,7 @@ void MissionPrompt::end_dark(const GameAddresses& a, const char* why) {
         undark_why_ = why;
         return;
     }
-    dark_ = false;
-    undark_ = false;
-    black_ = why;
+    stop_dark(why);
     // Back as NO's close left it: from black toward 4, a step every 6 frames.
     if (dark_still_ours(a) && writable(a.fade, fade_state::kSize)) {
         set_fade_bytes(a, kNormalLevel, kBackStep);
