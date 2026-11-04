@@ -248,7 +248,8 @@ public:
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
     void mission_after_no();  // YES, once the game's NO has closed the prompt (mission.h)
-    // The ending's wrapper (mission.h, end): the game's ending runs, configured or not.
+    // The ending's wrapper (mission.h, end): the game's ending runs, configured or not
+    // (configure's addresses, kept until the next one).
     void mission_end() { mission_.end(at_); }
     std::string mission_status() const { return mission_.status(); }
     std::string mission_black() const { return mission_.black(); }

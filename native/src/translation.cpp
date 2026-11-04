@@ -15,7 +15,8 @@ namespace zap {
 
 namespace {
 
-// Most entries a table is taken to have (SmallText 448, ItemNames 51: "Translation live reads").
+// Most entries a table is taken to have (SmallText 448, ItemNames 51: "Translation live reads"):
+// a count past it is not a table as traced.
 constexpr int kMaxEntries = 4096;
 // The most glyphs a label is taken to have, either kind.
 constexpr int32_t kMaxGlyphs = 4096;

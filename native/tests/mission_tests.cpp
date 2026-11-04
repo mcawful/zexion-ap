@@ -820,7 +820,7 @@ void test_the_black_after_yes_ends() {
         check(g_fn == kIdle, "and no ending");
     }
     {
-        // Cancelled with the pause open: its close puts the black back, so the fade back waits.
+        // Canceled with the pause open: its close puts the black back, so the fade back waits.
         Prompt prompt;
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);

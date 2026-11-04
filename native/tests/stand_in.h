@@ -363,7 +363,8 @@ inline std::vector<BuildCall> g_builds;
 constexpr double kHdAdvance = 6, kHdWidth = 5, kHdSpace = 3, kHdLine = 10;
 // As 0x88480: keeps the place, marks the label built, and lays its translated glyphs out from
 // (x, y) in the stand-in font, each at the pen and the line less 1 (0x88CCA to 0x88CFD), the
-// rest hidden; `flag` wraps at the label's columns, else 320 past its first pixel glyph.
+// rest hidden, and their count at +0x244 and +0x248. With `flag` it wraps at the label's columns
+// from its first pixel glyph, else 320 past it (0x885EF to 0x8862B).
 inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, char flag) {
     std::wstring* s = nullptr;
     std::memcpy(&s, text, sizeof(s));
@@ -453,6 +454,7 @@ inline void built(BYTE* label, double x = 0, double y = 0) {
     // Room for the helper's texts (three per pixel glyph, 0x92511), unless HdGlyphs gave it some.
     if (get<int32_t>(label, 0x240) == 0) put<int32_t>(label, 0x240, 3 * get<int32_t>(label, 0x1D8));
 }
+// Three translated glyphs shown, its pixel glyphs hidden; `glyphs` stay the test's for its life.
 struct TranslatedText {
     BYTE glyphs[3][0x1D8] = {};
     BYTE* list[3] = {glyphs[0], glyphs[1], glyphs[2]};

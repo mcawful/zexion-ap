@@ -12,7 +12,9 @@ namespace zap {
 namespace {
 
 // The ending's call and the code around its join, as traced on B1 (docs/re/memory.md, "Feats and
-// achievements"): flag 251's store just before the join, flag 250's 0x11 bytes after it.
+// achievements"): `call [rip+slot]` then `mov rdx, [rip+...]` at the call; `mov byte [rip+flag
+// 251], 1` just before the join, `movsxd rdx, [rip+...]` at it, and `mov byte [rip+flag 250], 1`
+// 0x11 bytes after it.
 constexpr ptrdiff_t kMaxStretch = 0x1000;  // the join lies after the call, within the routine
 constexpr BYTE kCallIndirect[] = {0xFF, 0x15};  // call [rip+rel32]: 6 bytes
 constexpr ptrdiff_t kCallSize = 6;
@@ -48,7 +50,8 @@ bool fits_rel32(const BYTE* from_next, const BYTE* to) {
     return d >= INT32_MIN && d <= INT32_MAX;
 }
 
-// Where `mov byte [rip+rel32], value` at `where` (read into `bytes`) stores; null if not one.
+// Where `mov byte [rip+rel32], value` at `where` (7 bytes, read into `bytes`) stores, if it is one
+// storing `value`; null otherwise.
 const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
     if (std::memcmp(bytes, kStoreByte, sizeof(kStoreByte)) != 0 || bytes[6] != value) {
         return nullptr;

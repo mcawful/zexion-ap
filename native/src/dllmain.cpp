@@ -110,7 +110,8 @@ void guarded(Work&& work) {
 void publish_blocker() { g_blocker.store(g_game.unload_blocker()); }
 
 // ARCHIPELAGO's callback, on the game's thread but outside the trampoline's count, so InCallback
-// counts it; the other game-called functions below do the same.
+// counts it, and unload first takes it off the menu (via the mailbox) and refuses while it may
+// remain. The other game-called functions below follow the same rule.
 void archipelago_chosen(void*, int) {
     InCallback in;
     guarded([] { g_game.start_archipelago(&archipelago_chosen); });
@@ -205,7 +206,8 @@ void take_files(zap::OfflineFiles files) {
     if (!g_game.configured() && !files.config.empty()) {
         std::string why = zap::check_offline_cache(GetModuleHandleW(nullptr), files);
         if (why.empty()) why = g_game.configure(GetModuleHandleW(nullptr), files.config, false);
-        // The game's thread never waits for the lock: an error it cannot record now is dropped.
+        // The game's thread never waits for the lock (the pipe thread holds it only to swap the
+        // files in): an error it cannot record now is dropped.
         if (!why.empty() && TryAcquireSRWLockExclusive(&g_offline_lock)) {
             g_offline_error = "cache: " + why;
             ReleaseSRWLockExclusive(&g_offline_lock);

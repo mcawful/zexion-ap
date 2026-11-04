@@ -2011,7 +2011,7 @@ void test_the_black_after_yes() {
               game.mission_status() == zap::kEndingStarted,
           "then the ending");
 
-    // Cancelled (`discs` off) under a menu that is not the game's menu state.
+    // Canceled (`discs` off) under a menu that is not the game's menu state.
     m.again();
     game.mission_yes();
     set_fade(4, -1, 6);

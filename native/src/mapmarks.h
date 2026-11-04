@@ -36,7 +36,8 @@ uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
 constexpr size_t kSeenMarkerSize = 50;
 
 // That write with ID 48 a major too, built from the game's bytes `game` (its store copied as is):
-// false if they are not the write as traced on B1. Same registers as the game's; calls nothing.
+// false if they are not the write as traced on B1. It reads only the registers the game's does,
+// leaves them as the game's does, and calls nothing.
 bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMarkerSize]);
 
 // The write patched while the labels' seed's save is loaded. Game thread only. The patch uses
