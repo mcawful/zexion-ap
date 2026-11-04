@@ -43,8 +43,9 @@ void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
 }
 
 // Whether a painted 16 x 16 logo (RGBA) has the owner's outline: a pixel that is not a color is
-// black exactly where it touches a colored one side-on (left, right, up or down), and transparent
-// elsewhere: no black from a diagonal alone, the middle open, and nothing outside the frame's edge.
+// black exactly where it touches a colored one side-on (left, right, up or down) or is shut in by
+// black on all four sides (the arrow logo's pixel left of the tip), and transparent elsewhere: no
+// black from a diagonal alone, the plain logo's middle open, nothing outside the frame's edge.
 // The stand-ins draw the texture as painted (palette 26), so a transparent pixel beside a circle
 // shows the room behind: the sky, in a sky room.
 bool outlined(const std::vector<uint8_t>& rgba) {
@@ -55,15 +56,17 @@ bool outlined(const std::vector<uint8_t>& rgba) {
         const uint8_t* p = at(x, y);
         return p[3] == 0xFF && p[0] == 0 && p[1] == 0 && p[2] == 0;
     };
-    auto colored = [&](int x, int y) {
-        return x >= 0 && x < 16 && y >= 0 && y < 16 && !clear(x, y) && !black(x, y);
-    };
+    auto in = [](int x, int y) { return x >= 0 && x < 16 && y >= 0 && y < 16; };
+    auto colored = [&](int x, int y) { return in(x, y) && !clear(x, y) && !black(x, y); };
+    auto walled = [&](int x, int y) { return in(x, y) && black(x, y); };
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
             if (colored(x, y)) continue;
             const bool beside = colored(x - 1, y) || colored(x + 1, y) || colored(x, y - 1) ||
                                 colored(x, y + 1);
-            if (beside ? !black(x, y) : !clear(x, y)) return false;
+            const bool shut_in = walled(x - 1, y) && walled(x + 1, y) && walled(x, y - 1) &&
+                                 walled(x, y + 1);
+            if (beside || shut_in ? !black(x, y) : !clear(x, y)) return false;
         }
     }
     return true;

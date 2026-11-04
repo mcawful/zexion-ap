@@ -146,8 +146,8 @@ line says.
   Palette 26 on a stand-in worked in game written by hand, 2026-11-03; the helper's own colors:
   stand-in tests only, not run in game yet. The logo's black borders showed the sky in a sky
   room (the owner, 1.0.0 RC, 2026-11-03): the gaps between its circles were transparent; now
-  outlined black side-on (the owner's pick, the middle open), stand-in tests only, not run in
-  game yet.
+  outlined black side-on (the owner's pick, the plain logo's middle open, the arrow's one shut-in
+  pixel black), stand-in tests only, not run in game yet.
 - The helper hides R'Talva X34 Y51's marker (an object the game draws on the logo's empty
   frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) by its shown byte
   (`native/README.md`, "Other Zexion players' items, as themselves"). The byte, written by hand,

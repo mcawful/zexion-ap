@@ -57,7 +57,8 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
 // flashes itself between yellow and white. Outlined like kApLogoRows, the arrow counted as a
-// circle.
+// circle, and the one pixel left of the arrow's tip, shut in by black, black too (the owner's
+// pick).
 constexpr char kLogoArrow[16][17] = {
     ".....krrrrk.....",
     "..kkkrrrrrrkk...",
@@ -68,7 +69,7 @@ constexpr char kLogoArrow[16][17] = {
     "yykkkykkkkgkkkkg",
     "kkbbkk....kpppkk",
     "kbbbbbk..kpkkkpk",
-    "bbbbbbkkk.kk^kkp",
+    "bbbbbbkkkkkk^kkp",
     "bbbbbkoookk^^^kk",
     "bbbbkoookk^^^^^k",
     "kbbbkoook^^^^^^^",
