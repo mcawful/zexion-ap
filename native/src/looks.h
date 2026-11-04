@@ -86,12 +86,6 @@ public:
     bool is_marker(int slot, const BYTE* object, const GameAddresses& at) const;
     // Markers this helper has hidden, still to be put back (tests).
     int hidden_markers() const;
-    // The stand-ins' palette object as the game gives it (8), or null.
-    static BYTE* stand_ins_palette(const GameAddresses& at);
-    // The palette object the helper draws them in (26), or null.
-    static BYTE* own_palette(const GameAddresses& at);
-    // `palette` is a stand-in's: the game's (8) or the helper's (26).
-    static bool stand_in_palette(const GameAddresses& at, const BYTE* palette);
     // The item sprites' frame list (every item object's base, the template's), or null.
     static BYTE* item_frame_base(const GameAddresses& at);
 

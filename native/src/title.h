@@ -39,7 +39,6 @@ namespace zap {
 // as the game's own line's), and, while no client is connected, what to do to play.
 extern const char kTitleCredit[];
 extern const char kTitleHint[];
-extern const char kTitleHintHd[];
 
 class TitleLines {
 public:

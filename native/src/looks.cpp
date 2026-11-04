@@ -70,20 +70,21 @@ void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
     put(object, sprite::kPaletteNumber, look.palette);
 }
 
-}  // namespace
-
-BYTE* ItemLooks::stand_ins_palette(const GameAddresses& at) {
+// The stand-ins' palette object as the game gives it (8), or null.
+BYTE* stand_ins_palette(const GameAddresses& at) {
     return pointer_at(at.palette_table, kStandInPalette * 8);
 }
 
-BYTE* ItemLooks::own_palette(const GameAddresses& at) {
-    return pointer_at(at.palette_table, kOwnPalette * 8);
-}
+// The palette object the helper draws them in (26), or null.
+BYTE* own_palette(const GameAddresses& at) { return pointer_at(at.palette_table, kOwnPalette * 8); }
 
-bool ItemLooks::stand_in_palette(const GameAddresses& at, const BYTE* palette) {
+// `palette` is a stand-in's: the game's (8) or the helper's (26).
+bool stand_in_palette(const GameAddresses& at, const BYTE* palette) {
     return palette != nullptr &&
            (palette == stand_ins_palette(at) || palette == own_palette(at));
 }
+
+}  // namespace
 
 void ItemLooks::color(BYTE* object, const BYTE* seen, Colored& c, BYTE* own) {
     const int32_t spawn = field<int32_t>(seen, obj::kSpawn);

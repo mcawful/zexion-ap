@@ -10,7 +10,7 @@ namespace zap {
 
 const char kTitleCredit[] = "C2026 MCAWFUL";
 const char kTitleHint[] = "START THE AP CLIENT TO PLAY A SEED";
-const char kTitleHintHd[] = "Start the AP client to play a seed";
+constexpr char kTitleHintHd[] = "Start the AP client to play a seed";
 
 namespace {
 
@@ -105,12 +105,12 @@ bool shows_translated(BYTE* object) {
 void show_translated(BYTE* object, bool visible) {
     int32_t count = 0, capacity = 0;
     BYTE** list = nullptr;
-    if (!read(object, hdlabel::kCount, count) || !read(object, hdlabel::kCapacity, capacity) ||
-        !read(object, hdlabel::kGlyphs, list) || count < 0 || count > capacity) {
+    if (!read(object, hdlabel::kCapacity, capacity) ||
+        !translated_list(object, capacity, count, list)) {
         return;
     }
     for (int32_t i = 0; i < count; ++i) {
-        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        BYTE* g = glyph_at(list, i);
         uint8_t now = 0;
         if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
             writable(g, sprite::kSize)) {

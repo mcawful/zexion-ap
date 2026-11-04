@@ -138,8 +138,6 @@ std::string language_name(const GameAddresses& a);
 // false without that key, with the flag clear, or if it does not read.
 bool read_large_entry(const GameAddresses& addresses, int k, std::wstring& out);
 
-// Entry k's offset, or -1 (none, or unreadable).
-int32_t entry_offset(const TextTable& t, int k);
 // The characters entry k may hold in place, its ending 0 included: from its offset to the next
 // higher offset of any entry, less the line break before that one (docs/re/memory.md,
 // "Translation tables"; the parser never reads the lines between two texts again). 0 if it has
@@ -246,6 +244,10 @@ BuiltMark built_mark(const BYTE* label);
 // The left and right of a label's translated text, as the game's centering takes them (0x85B00):
 // false if it has none or it does not read.
 bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right);
+// A label's translated glyphs: their count `n` and list, if they read and 0 <= n <= `most`.
+bool translated_list(const BYTE* label, int32_t most, int32_t& n, BYTE**& list);
+// Glyph `i` of a glyph list, or null.
+BYTE* glyph_at(BYTE** list, int32_t i);
 
 // Game thread: a label's pixel glyphs shown and its translated ones hidden, as the game does when
 // the flag is clear (0x168AE9); and the other way back, for a label the game built translated.
@@ -337,8 +339,6 @@ private:
     int waited_ = 0;
 };
 
-// Game thread: the HD object of `message`, one of the four message slots; null if it is not one.
-BYTE* hd_object(const GameAddresses& a, BYTE* message);
 // Game thread, the flag set: the mark the game's last translated message left in `message`'s
 // slot cleared, so its pixel glyphs and box show (docs/re/memory.md, "Translated messages").
 void clear_mark(const GameAddresses& a, BYTE* message);

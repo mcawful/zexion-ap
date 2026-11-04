@@ -431,12 +431,9 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
     // assist menu"). Built again, a label's glyphs get alpha 1.0 back (0x89CD9).
     int32_t n = 0;
     BYTE** list = nullptr;
-    if (!read(label, hdlabel::kCount, n) || !read(label, hdlabel::kGlyphs, list) || n < 0 ||
-        n > kMaxTranslatedGlyphs) {
-        return;
-    }
+    if (!translated_list(label, kMaxTranslatedGlyphs, n, list)) return;
     for (int32_t i = 0; i < n; ++i) {
-        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
+        BYTE* g = glyph_at(list, i);
         if (g != nullptr && writable(g, sprite::kStyle + sizeof(int32_t))) {
             at<int32_t>(g, sprite::kStyle) = kLockedHdStyle;
             at<float>(g, kGlyphAlpha) = kLockedHdAlpha;
