@@ -810,7 +810,7 @@ void Game::hold_stand_in_names(std::map<EntryKey, std::wstring>& want) {
             continue;
         }
         h.serial = newest;
-        if (map_names_.holds_hook()) continue;  // the map open: its squares read the game's
+        if (MapCursorNames::open(at_)) continue;  // the map open: its squares read the game's
         if (h.name.empty()) h.name = tr_entries_.written(key).value_or(L"");
         if (!h.name.empty()) want[key] = h.name;
     }
@@ -1543,6 +1543,7 @@ void Game::put_back_all(WidgetCallback callback) {
         // undone when none is in use: an unload waits for the one in use).
         const std::optional<Loaded> now = loaded_translation(at_);
         tr_entries_.restore(now);
+        for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
         popup_areas_.restore(now);
         icon_sheets_.clear(at_.sprite_templates, gl_);
     }
