@@ -35,11 +35,12 @@ SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
 DEATHS_AT = 0x93D8
 PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo's y, then x)
-# The game's last message (last_message: its slot, then its sequence number at +8). The slot
-# keeps its text as glyphs: their count at +0x200, pointers from +0x220, each glyph's character
-# at +0x1C4. Only a save at a save point shows GAME SAVED, in the frame it writes the block
-# (docs/re/memory.md, "A save at the Landing Pod").
-MESSAGE_SEQUENCE = 8
+# The game's last message (last_message: its slot, then its sequence number at +8), current
+# while the slot holds that sequence number at +0x1D8. The slot keeps its text as glyphs: their
+# count at +0x200, pointers from +0x220, each glyph's character at +0x1C4. Only a save at a
+# save point shows GAME SAVED, in the frame it writes the block (docs/re/memory.md, "The
+# mission prompt", "A save at the Landing Pod").
+MESSAGE_SEQUENCE = 0x1D8
 MESSAGE_GLYPH_COUNT, MESSAGE_GLYPHS, GLYPH_CHARACTER = 0x200, 0x220, 0x1C4
 GAME_SAVED = b"GAME SAVED"
 
@@ -486,6 +487,9 @@ class Game:
         pointer, sequence = struct.unpack("<Qi", self._read("last_message", 0, 12))
         if pointer == 0:
             return None
+        own = struct.unpack("<i", self._read_pointer(pointer + MESSAGE_SEQUENCE, 4))[0]
+        if own != sequence:
+            return None  # not the current message (one event puts an older pointer back)
         count = struct.unpack("<i", self._read_pointer(pointer + MESSAGE_GLYPH_COUNT, 4))[0]
         if count != len(GAME_SAVED):
             return None

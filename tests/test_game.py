@@ -310,6 +310,8 @@ def put_message(g: FakeGame, text: bytes, sequence: int = 41) -> None:
     """The game's last message, a slot holding ``text`` as glyphs, as the message routine
     builds them (0x92690)."""
     g.pm.memory[0x10:0x1C] = struct.pack("<Qi", MESSAGE_AT, sequence)
+    at = MESSAGE_AT + game.MESSAGE_SEQUENCE
+    g.pm.memory[at : at + 4] = struct.pack("<i", sequence)
     at = MESSAGE_AT + game.MESSAGE_GLYPH_COUNT
     g.pm.memory[at : at + 4] = struct.pack("<i", len(text))
     for i, character in enumerate(text):
@@ -325,6 +327,8 @@ def test_game_saved_is_the_sequence_of_a_last_message_reading_game_saved() -> No
     assert g.game_saved() is None  # no message yet
     put_message(g, b"GAME SAVED")
     assert g.game_saved() == 41
+    g.pm.memory[0x18:0x1C] = struct.pack("<i", 45)  # a newer message's, the pointer put back
+    assert g.game_saved() is None
     put_message(g, b"GAME SAVES", 42)
     assert g.game_saved() is None
     put_message(g, b"\xc9MISSILE BOX", 43)  # a pickup's popup
