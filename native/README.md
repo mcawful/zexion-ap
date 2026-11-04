@@ -158,10 +158,9 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   not configured` until a client's `config` sets every key. A cache lacking any other key is
   refused (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds
   a key only the client's parts read keeps working offline with the older cache (working in game
-  2026-10-27, B1, the helper built at f838028: a cache without `fade` and `fade_level`, no
-  client, `cache_missing=fade,fade_level`; the title line, the file select's AP logos and a
-  dressed AP save played as usual, where #11's helper refused the same cache with
-  `read_error=cache:_missing_fade`; a client-only key that does not fit: stand-in tests only);
+  2026-10-27, B1, the helper built at f838028, a cache without `fade` and `fade_level` and no
+  client: `docs/re/memory.md`, "AP saves without the client"; a client-only key that does not
+  fit: stand-in tests only);
   one that adds a key the offline look reads does not, until the client has run once.
   `tests/test_cross_checks.py` checks that only the client's parts read a client-only key, and
   that each way a client's state comes in waits for every key. The translation keys, marked
@@ -173,7 +172,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   after: without it only the Feats screen's title keeps its pixel look in a translation (stand-in tests:
   `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
   the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
-  `cache_missing`, none missing after the client's first run, `lab/ap/live50`). Only `src/translation.cpp` reads them (`tests/test_cross_checks.py`);
+  `cache_missing`, none missing after the client's first run). Only `src/translation.cpp` reads
+  them (`tests/test_cross_checks.py`);
   the later keys, marked `later_key` (`options_back_fn` and `pickup_list`, newer than caches
   already written), may be missing too: the helper configures without them, every part as usual
   but for what one serves (without `options_back_fn` the pause row is turned on OPTION MENU's way
@@ -182,8 +182,8 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   `tests/offline_tests.cpp`; working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, the
   1.0.0 RC at develop 76df074, over a cache from before `options_back_fn`, no client:
   `cache_missing=options_back_fn` in `tools/helper.py status` and Keys for a frame on the way back
-  from Option, as above; after a client's run the cache rewritten, no `cache_missing`,
-  `lab/ap/live50/client-r5.log`);
+  from Option, as above; after a client's run the cache rewritten, no `cache_missing`:
+  `docs/re/memory.md`, "The pause screen's KEYS row");
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -215,10 +215,9 @@ client's popups not shown yet stay queued and still show ("Popups"): their items
 given. The offline look then applies again (AP saves without the client). The helper stays
 loaded and hooked.
 
-The client's popups staying queued, and showing: working in game 2026-10-26 (0.30.0).
-
 Working in game: 2026-10-25, the client stopped with helper 0.20.0 loaded by the proxy
-("The escape skip", "Other players' items"). Not looked at: ARCHIPELAGO and the OS Install
+("The escape skip", "Other players' items"); the client's popups staying queued, and showing,
+2026-10-26 (0.30.0, "The client in a live game"). Not looked at: ARCHIPELAGO and the OS Install
 Disks goal's screens.
 
 ### Unloading
@@ -229,39 +228,37 @@ frame call, puts back what a client going away puts back and hides the title scr
 It refuses (`error a menu is open; not unloading`) while a save is loaded with a menu open
 (the pause, map or equipment screen, the quit menu), before putting anything back: an open
 screen keeps what it was built from (the pause row's disc, an item record's name), which it
-would show wrong until reopened (seen in game 2026-10-26, before this check; the refusal with
-the pause screen open: working in game 2026-10-26, the Launcher's client log
-`ZexionClient_2026_10_26_19_56_35.txt` at 20:10:47, with the client of that run; the client
-after it, from 5681ed6, took any refusal for a failed request and dropped the helper, which by
-the code then put things back under the open screen as for a client going away, not seen in
-game; fixed since, `native.Helper.unload`: working in game 2026-10-27, 0.30.0, the refusal with
+would show wrong until reopened (seen in game 2026-10-26, before this check). The refusal with
 the pause screen open, the client keeping the helper and the screen unchanged, then a reload in
-play, `lab/ap/live34/client1.log` at 11:35:53 and 11:36:02). It also refuses (`error
-<why>; not unloading`) while the game may still call into the helper, or hold something of the
-helper's.
-That is an open menu's panel or entry, the pause menu's way back from OPTION MENU, the open map or
-the game's transition routine holding one of its wrappers, or the scanner's text, the pause screen's branch, an item record, the
-ending's patch or the map's on-screen marker write still the helper's; or, in a translation, a
-popup still showing the text the helper wrote into a borrowed entry (until that message ends: 3
-seconds in play), or a translated name or the popups' moved entry 70 still the helper's when no
-frame came ("Translations"). It refuses (`error the ending RETURN HOME WITH THE DISKS?
-started is on its way; not unloading`), before putting anything back, from RETURN HOME WITH
-THE DISKS?'s YES until the helper has started the ending (and while the screen is still kept
-black after it, until the helper's wrapper has run the ending routine), and while the ending
-routine or that wrapper is the game's transition with the ending's patch in place: an unload
-would drop the ending, or put
-the patch back before the ending runs ("Feats and achievements in AP saves"). That window is
-a few frames, longer while received items' popups (the helper's own) hold the ending after YES.
-Working in game 2026-10-27 (575edbf, 0.30.0, `lab/ap/live35/client1.log` and
-`reload_spam.txt`): `/reload_mod` sent every half second from the open prompt through YES,
-refused as a menu open while the prompt showed, then twice as the ending on its way while five
-received items' popups held it; the helper stayed, and the ending ran and sent the goal. That
+play: working in game 2026-10-27 (0.30.0, `native.Helper.unload`; `docs/re/memory.md`, "The
+client in a live game").
+
+It also refuses (`error <why>; not unloading`) while the game may still call into the helper, or
+hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
+from OPTION MENU, the open map or the game's transition routine holding one of its wrappers, or
+the scanner's text, the pause screen's branch, an item record, the ending's patch or the map's
+on-screen marker write still the helper's; or, in a translation, a popup still showing the text
+the helper wrote into a borrowed entry (until that message ends: 3 seconds in play), or a
+translated name or the popups' moved entry 70 still the helper's when no frame came
+("Translations").
+
+It refuses (`error the ending RETURN HOME WITH THE DISKS? started is on its way; not
+unloading`), before putting anything back, from RETURN HOME WITH THE DISKS?'s YES until the
+helper has started the ending (and while the screen is still kept black after it, until the
+helper's wrapper has run the ending routine), and while the ending routine or that wrapper is
+the game's transition with the ending's patch in place: an unload would drop the ending, or put
+the patch back before the ending runs ("Feats and achievements in AP saves"). That window is a
+few frames, longer while received items' popups (the helper's own) hold the ending after YES.
+Working in game 2026-10-27 (575edbf, 0.30.0): `/reload_mod` sent every half second was refused as
+a menu open while the prompt showed, then as the ending on its way while received items' popups
+held it, and the ending ran and sent the goal (`docs/re/memory.md`, "The mission prompt"). That
 run was before the ending's wrapper: its refusal and its put back on unload are stand-in tests
 only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
+
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
-refused unload sets again, in the next frame call and before any
-request, what clients had set (`zap::ClientState`), since a client would not know to resend it.
+refused unload sets again, in the next frame call and before any request, what clients had set
+(`zap::ClientState`), since a client would not know to resend it.
 
 Then it points the slot back at SDL, only if the slot still holds the trampoline (otherwise
 `error the frame hook was replaced by something else; not unloading`, and it stays loaded),
@@ -285,15 +282,13 @@ Each part: what it does, when it runs, how it is put back, and when it was worki
 Every part is put back when a client goes away and on unload, unless it says otherwise. "Every
 16th frame call" means a countdown reset to 15.
 
-- **Limits:** "working in game" below is in the game's default English. With a translation on
-  the game draws the translation's text, in its own font, in place of the pixel-font glyphs the
-  helper rewrites; how each part's text shows there is under "Translations" (the helper's fix,
-  run in game 2026-11-02 with the results and bugs listed there). Seen in English(HD), French and Japanese on 2026-11-01 (B1, helper 1.0.0, the release
-  candidate), before that: what a part changes in what an entry does worked, but what it changed
-  in the text did not show (the ASSIST padlock, OS INSTALL DISK, the disk row's count,
-  ARCHIPELAGO, RETURN HOME WITH THE DISKS?, a stand-in's name in its pickup popup), and many
-  received items' popups showed nothing; the title lines, the file select's logo and disk count,
-  and the stand-ins' logo worked (`docs/re/memory.md`, "Translations").
+- **Limits:** "working in game" below is in the game's default English. With a translation on the
+  game draws the translation's text, in its own font, in place of the pixel-font glyphs the helper
+  rewrites; how each part's text shows there is under "Translations" (run in game 2026-11-02).
+  Before the helper's fix, on 2026-11-01 (B1, helper 1.0.0, the release candidate), what a part
+  changes in what an entry does worked in a translation, but the text it wrote did not show (the
+  title lines, the file select's logo and disk count and the stand-ins' logo did), nor did many
+  received items' popups (`docs/re/memory.md`, "Translations").
 
 ### Grants
 
@@ -361,7 +356,7 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
   players' items"). Stand-in tests (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
-  `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`), each sent from the server's console: Scrap
+  `zexion_ap.dll` `1c286c57…`), each sent from the server's console: Scrap
   Energy away from any stand-in and Scrap Chunk in a labeled stand-in's room, in English(HD),
   read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
   FROM ARCHIPELAGO.
@@ -386,18 +381,11 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   (`client/shields.py`).
 - **Put back:** nothing to put back.
 
-Working in game: 2026-10-23 ("Received Energy Shields"). A bug, 2026-11-02 (B1, `zexion_ap.dll`
-`946b08a1…`, `lab/ap/live50/client-r3.log`): with a client attached to a save already in play
-(slot 8, past its ending), a received shield came up (seen around the player in the owner's
-screenshot) but the client never read it as up, so it spawned it again three times a round,
-a round about every minute, until the save was left; it still missed after the next load, and
-read a shield up at once on the load after the ending replayed. Fixed since in the client
-(its read of the shield, and the stop above): working in game 2026-11-03 (B1, `zexion_ap.dll`
-`fce9e73b…`, the 1.0.0 RC at develop 76df074, `lab/ap/live50` slot 4, `server-r6.log`,
-`client-r6.log`, `client-r7.log`): the client attached to the save in play, a shield sent, one
-spawn, read as up at the first look; nothing more over three minutes and a leave and reload; three
-more shields, the last refreshing the one up (the owner's report), each spawned once and read as
-up, none spawned again. The stop was not reached (`docs/re/memory.md`, "Received Energy Shields").
+Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
+client attached to a save already in play, each shield spawned once and read as up and none spawned
+again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074). The stop after
+three not seen up: stand-in tests only, not reached in game (`docs/re/memory.md`, "Received Energy
+Shields").
 
 ### DeathLink
 
@@ -414,9 +402,9 @@ up, none spawned again. The stop was not reached (`docs/re/memory.md`, "Received
   ended deals them as any save does until its ending is played again (stand-in tests only).
 - **Put back:** nothing to put back.
 
-Working in game: 2026-10-23 ("DeathLink"); 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`,
-`lab/ap/live52/carol.log`), a death received during an ending that began in that load (RETURN
-HOME's YES on a disks seed) dropped, and none dealt on the next load.
+Working in game: 2026-10-23; 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`), a death received
+during an ending that began in that load (RETURN HOME's YES on a disks seed) dropped, and none
+dealt on the next load ("DeathLink").
 
 ### The assist menu
 
@@ -427,19 +415,18 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
   that disallows assists has its save loaded, until the slot receives Assist Unlock.
-- **Found again each frame:** never taken on the pointer kept from the frame it was locked.
-  Leaving Video, GENERAL (which holds the language) or the assist menu closes the options menu
-  and builds another (`0x124D30`), whose widgets may take
-  the freed ones' places: its VERSION 1.20, 12 glyphs with no callback like the locked ASSIST,
-  in ASSIST's (`docs/re/memory.md`, "The assist menu"). Each frame call the helper finds the
-  entry again in the menu open now: a live widget with the generic handler, its callback
-  cleared, its glyphs reading ASSIST and the padlock, in the panel it was locked in. It writes
-  only into one that passes; any other is forgotten unwritten, and the new menu's ASSIST is
-  locked. One the game relabeled stays shut until its menu is built again. (Stand-in tests,
-  and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…` from PR #89, in English(HD):
-  Option, Video and back several times, the map and back, then the default English; the
-  owner: "seems to work". The bug it fixes showed only sometimes, so a clean run is weaker
-  evidence than a repro. GENERAL and the assist menu: stand-in tests only, not run in game.)
+- **Found again each frame:** never taken on the pointer kept from the frame it was locked. Leaving
+  Video, GENERAL (which holds the language) or the assist menu closes the options menu and builds
+  another (`0x124D30`), whose widgets may take the freed ones' places: its VERSION 1.20, 12 glyphs
+  with no callback like the locked ASSIST, in ASSIST's (`docs/re/memory.md`, "The assist menu").
+  Each frame call the helper finds the entry again in the menu open now: a live widget with the
+  generic handler, its callback cleared, its glyphs reading ASSIST and the padlock, in the panel it
+  was locked in. It writes only into one that passes; any other is forgotten unwritten, and the new
+  menu's ASSIST is locked. One the game relabeled stays shut until its menu is built again.
+  (Stand-in tests, and run in game 2026-11-03, B1, `zexion_ap.dll` `7a72e4de…`, in English(HD): the
+  owner, "seems to work", a weaker check than a repro since the bug showed only sometimes:
+  `docs/re/memory.md`, "The assist menu". After GENERAL and the assist menu: stand-in tests only,
+  not run in game.)
 - **Put back:** `assists free`, the menu closing, a client going away or an unload, only into
   the entry found again as above, and the order only if the panel is as the helper left it. An
   unload no frame comes for leaves it locked until the options menu closes, harmlessly.
@@ -453,20 +440,13 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   the black screen: a translated glyph's color is its style's through a table the screens
   rewrite, so the locked style 5, gray on a first open, took the cursor's colors after the
   video options or the map (`docs/re/memory.md`, "The assist menu"); building it again gives
-  alpha 1.0 back. (Seen in game 2026-11-02 in English(HD) as the pixel look it replaced, its
-  padlock past the box. Then run in game later that day, `zexion_ap.dll` `946b08a1…`: the entry
-  in the HD font, gray, its padlock inside the box but low and against its border; after coming
-  back from another menu (Video, the map) it took the selection's colors (a bug); once it showed
-  unlocked after going through menus, not reproduced (a bug): "Translations", "Run in game
-  again". Fixed since, stand-in tests only, not run in game yet: the look above, the padlock
-  on the text's line with no space before it, and the offline look held through menus ("AP
-  saves without the client"). On the 1.0.0 RC (develop `78320a6`) the owner then saw, sometimes,
-  after Video and back in English(HD): the version line gray with the padlock in place of its
-  blank and ASSIST open, white with no padlock; that is the reused place above, fixed since by
-  finding the entry again each frame, run in game 2026-11-03 as above. On the RC itself, B1,
-  `zexion_ap.dll` `fce9e73b…` (develop 76df074), the owner's own check the same day: the assist
-  lock in English(HD) working, by the owner's report, which did not single out the look's parts
-  above, nor GENERAL or the assist menu.)
+  alpha 1.0 back. (Run in game 2026-11-02 in English(HD), `zexion_ap.dll` `946b08a1…`: the entry in
+  the HD font, gray, its padlock inside the box; the bugs that run found are fixed since
+  ("Translations", "Run in game again"). Stand-in tests only, not run in game yet: the look above,
+  the padlock on the text's line with no space before it, and the offline look held through menus
+  ("AP saves without the client"). The lock in English(HD): working in game on the 1.0.0 RC,
+  2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, develop 76df074, by the owner's report, which did not
+  single out the look's parts above, nor GENERAL or the assist menu.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -494,10 +474,8 @@ While a plan is armed (`ap_newgame`), each frame call:
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
   sizes that border itself), and from SmallText 354 again when RANDOMIZER goes back, where the
-  game's attach would build it now ("Translations"; run in game 2026-11-02 in English(HD): the
-  label built where the game first built it, at the window's corner, a bug listed there, since
-  fixed and working in game later that day, `946b08a1…`: "Translations", "Run in game
-  again"). Choosing it sets the menu's
+  game's attach would build it now ("Translations"; working in game 2026-11-02 in English(HD),
+  `zexion_ap.dll` `946b08a1…`: "Run in game again"). Choosing it sets the menu's
   state to the seed's settings, writes the edits, runs the game's placement, checks the `expect`
   bytes, writes the edits over the placement, puts the player's menu state back and queues the
   new game (a Custom seed's settings too: working in game, 2026-10-27). For
@@ -518,7 +496,7 @@ Working in game: 2026-10-22, Standard and Easy; 2026-10-23, OHKO and the label t
 ("Starting a new game", "The game-mode panel"); 2026-10-29, a Custom seed with Secret Shuffle
 by ARCHIPELAGO and by RANDOMIZER with its text, each passing the client's `expect` on the
 section's 155 cells, the two sections equal byte for byte (develop e088773, the helper loaded by
-the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
+the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
 
 ### Other players' items
 
@@ -568,18 +546,13 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   pixels. Unload refuses (`error an item record is still restyled (no frame came)`) if no frame
   came to do it.
 - **In a translation:** the pickup popup and the map cursor read the translation's names
-  (ItemNames 47 and 48), not the records: the label is written there too ("Translations";
-  working in game 2026-11-02 in English(HD): the pickup popup AP ITEM over FOR BOB, with no logo
-  glyph, and the map cursor AP ITEM). The label's logo glyph is now the helper's HD logo
-  (U+E03C, "Translations"), so both showed it (working in game later that day, `zexion_ap.dll`
-  `946b08a1…`: the logo before AP ITEM over FOR BOB, and before AP ITEM on the map cursor; bugs:
-  the popup's two lines start at the same x, not centered, and the map cursor's logo, where the
-  game's own names carry no icon: "Translations", "Run in game again"). Fixed since: the pickup
-  popup's lines centered with leading spaces (where they fit the name's room), and the map cursor
-  showing the first line without the logo (working in game 2026-11-03, B1, `zexion_ap.dll`
-  `12f090c6…`: the owner's screenshot of the pickup popup, not kept in `lab/`, the logo, then
-  Progression Item over for AneziaDS2, both lines centered; the map cursor's AP Item read back,
-  below).
+  (ItemNames 47 and 48), not the records: the label is written there too ("Translations"; working in
+  game 2026-11-02 in English(HD), `zexion_ap.dll` `946b08a1…`, with the helper's HD logo, U+E03C, as
+  the label's logo glyph). The pickup popup's lines are centered with leading spaces (where they fit
+  the name's room), and the map cursor shows the first line without the logo, as the game's own
+  names carry no icon: working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`: the owner's
+  screenshot of the pickup popup, not kept in `lab/`, the logo, then Progression Item over for
+  AneziaDS2, both lines centered; the map cursor's AP Item, "The map").
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
@@ -649,22 +622,20 @@ the helper:
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
   frees it with the menu;
-- makes the pause screen's KEYS row the disk row (`src/pause.cpp`): the `jne` that builds the
-  row only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons
-  hidden. As soon as a save of a known disk seed (one the client left a file for) is loaded, in
-  play or not, the row shows the count from that file until the client's arrives, so a pause
-  screen opened at once shows the disks, not KEYS. OPTION MENU opens over the pause screen, which
-  stays open under it, and the game calls the pause menu's way back (`options_back_fn`, which
-  OPTION MENU's opener puts at the menu's `+0x68`) as it closes, before it draws that frame;
-  while the row is on, that pointer is the helper's wrapper, which calls the game's and then
-  turns the row in the same call (in a translation the game builds KEYS's translated text there
-  again, which the 1.0.0 release candidate showed for one frame before the count: the owner's
-  report, 2026-11-03; fixed since, working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`,
-  the 1.0.0 RC at develop 76df074, English(HD), the client connected, `lab/ap/live50/client-r5.log`:
-  no Keys frame after Option, the owner's report; `options_back_fn` matched once live,
-  `tools/check_patterns.py --live`). The game's way back sets the
-  pointer to its own again; the helper puts it back when the row turns off and before an unload,
-  while its menu is open and still holds the wrapper;
+- makes the pause screen's KEYS row the disk row (`src/pause.cpp`): the `jne` that builds the row
+  only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons hidden.
+  As soon as a save of a known disk seed (one the client left a file for) is loaded, in play or not,
+  the row shows the count from that file until the client's arrives, so a pause screen opened at
+  once shows the disks, not KEYS. OPTION MENU opens over the pause screen, which stays open under
+  it, and the game calls the pause menu's way back (`options_back_fn`, which OPTION MENU's opener
+  puts at the menu's `+0x68`) as it closes, before it draws that frame; while the row is on, that
+  pointer is the helper's wrapper, which calls the game's and then turns the row in the same call
+  (in a translation the game builds KEYS's translated text there again, so turning it in that call
+  leaves no frame of Keys: working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, English(HD),
+  `docs/re/memory.md`, "The pause screen's KEYS row"; `options_back_fn` matched once live,
+  `tools/check_patterns.py --live`). The game's way back sets the pointer to its own again; the
+  helper puts it back when the row turns off and before an unload, while its menu is open and still
+  holds the wrapper;
 - while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
   1008) in the sprite texture (blank there in the game's art, checked as the glyphs are), and
   points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
@@ -676,120 +647,100 @@ the helper:
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
   screen is closed. A pause screen opened before the image is painted shows frame 829 as is;
-- on `mission_prompt COLUMN ROW` (sent after each save at the Landing Pod with enough disks,
-  in a save past its ending too, with home: the Landing Pod's save point in tiles, 191 329,
-  whichever room the seed starts in; the column below 54 × 14 and the row below 54 × 20, or `error bad mission_prompt request`), once idle in play
-  with no popup of its own to show and the game's last message (GAME SAVED, 180 frames) down to
-  its last 150 frames, half a second in (`kFadeMessageLeft`, the owner's pick in game, 2026-10-27;
-  until then 70, as far into it as the game's escape skip fade is into Zexion's popup:
-  `docs/re/memory.md`, "The mission prompt"; a popup of the helper's own is never cut short:
-  while the game's last message is still the helper's, the prompt waits for its end, read from
-  that message's frames left, so in game frames),
-  opens the game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way the
-  game opens it as SKIP ESCAPE AND FINAL BATTLE?: it runs the game's fade to black (area event
-  3667, checked byte for byte, through the game's handler for its type) and sets its opener as the transition 60 frames away (the
-  pause is blocked while that counts; popups and received deaths wait). Its YES closes the prompt
-  through the game's NO and then starts the ending once no popup of the helper's shows (one up
-  is never cut short; a message of the game's, GAME SAVED, does not hold it: the ending routine
-  ends every message itself as it starts, `docs/re/memory.md`, "The mission prompt"; until then
-  the ending also waited for GAME SAVED, up to about 1.5 s of black in which the player could
-  still move and pause, the owner's report, 2026-11-02); NO fades the screen back
-  in, as the game's NO does there. NO's close puts back, inside its call, the fade the prompt's
-  builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`, "The
-  mission prompt"), so right after it YES turns that fade off with the screen still black (the
-  fade's step, countdown and target set as event 3667's fade ends): no fade back into play
-  between YES and the ending. Only a fade that reads as NO's close leaves it is turned off
-  (`mission_status` then says `yes: ending when idle, the screen kept black`); anything else
-  fades back in as before. While it is
-  black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`); a popup
-  of the helper's waiting brings the screen back in for it (as NO's close would have), and the
-  ending follows the popups as before; so does the ending not starting within 240 game frames in
-  play (`kDarkFrames`: a safety that errs long, as after YES the ending waits only for a menu
-  to close and the gap after the helper's last popup, and no popup of the helper's shows in the
-  black, a waiting one ending it first; counted from the game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so
-  frames with a menu open, the pause, which saves the fade and puts it back, don't count; until the release
-  candidate it counted 180 of the helper's frame calls, which a 165 Hz monitor would run out in
-  about 1.1 s, before GAME SAVED ends, by disassembly: below), and the prompt cancelled (the save
-  left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its saved
-  black back. Another fade since (a death's) is left alone, and an unload is refused while the
-  screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade)
-  drops it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended:
-  the ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
-  `ended: a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …`
-  note: another fade, the ending not faded in or with the fade no longer the helper's), for a
-  live check. In the release candidate the owner saw the screen fade back into play at the pod
-  for a moment before the ending (its retest, 2026-11-02): the limit above running out first is
-  the cause the numbers fit (by disassembly; the run with this fix, 2026-11-02, measured 90 game
-  frames, about 230 frame calls, and no fade back; the release candidate was not run again:
-  `docs/re/memory.md`, "The mission prompt"); the other one found is the ending routine itself,
-  which sets the level to 4 as it warps the player to the ending's first scene, in a frame the
-  game draws before the helper's frame call (not seen in game: the wrapper hides it).
-  For that one the helper starts the ending through a wrapper of its own, set as
-  the transition with timer 1 in the routine's place: the game runs it, it runs the game's
-  routine, and, while the black is still the helper's, it sets the level back to black at once
-  (event 3667 aimed from −1 to 4, a step every 8 frames, `kEndingFadeStep`) before that frame is
-  drawn: the ending fades in from black, at the normal level 40 frames in. The black ends there.
-  A wrapper still the transition after the routine (not as traced) becomes the idle routine; one
-  an unload finds not yet run becomes the game's routine (the ending then comes without the fade
-  in). Anything else in the wrapper's place before it ran (a save at the save point, which sets
-  the pause opener back and leaves the fade alone; a door, timer 70; a death): the ending is
-  asked for again, the black kept while it is still the helper's (with its 240 game frames), else the
-  other transition's fade left alone. From the frame the helper sets the ending's wrapper until
-  another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its
-  place as above, `mission_status` says `ending started`, a `mission_prompt` is ignored (the
-  ending's cutscenes read as play and its own save as a save at the pod), `apply`, `shield` and
-  `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client gives them in the save's
-  next load), and popups already queued wait for the seed's next load. Stand-in tests
-  (`native/tests/mission_tests.cpp`, `game_tests.cpp`); run in game 2026-11-02 (B1,
-  `zexion_ap.dll` `946b08a1…`, English(HD), `lab/ap/live50` slot 8, past its ending, and
-  `lab/ap/live52` slot 9, before it): after YES the screen went black, then faded back into play
-  at the pod for a moment before the ending began, on both saves (a bug, the causes above; fixed
-  since, working in game 2026-11-02, B1, `zexion_ap.dll` `d179d32d…`, `lab/ap/live52`, a new
-  game in lab slot 11, its first ending and a replay: black until the ending, then straight into
-  it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
-  SAVED up, since, working in game the same day, `zexion_ap.dll` `28ab9954…`, slot 11, a replay:
-  black for a frame or two after YES, then the ending fading in from it; on a first ending,
-  working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074,
-  English(HD), the owner's report: YES, black, then the ending at once). Working: the ending played again on the save past it, with nothing new sent and the
-  Feats note shown; the goal sent on the save before it; items received during either (a
-  Missile Container sent during the replay; the items collected at the goal) held, their popups
-  shown on the next load; a death received during the first ending dropped; the pause opened
-  in the black after YES and EXIT GAME going to the title with no black left, and
-  `/reload_mod` not refused after that. Not run in game: a door or a death right after YES, and
-  the prompt asked for again. If event 3667 or its
-  handler is not as traced, the prompt opens at once with no fade, as before. A request not yet
-  opened lapses (`lapsed: the player left the landing pod`) once the player is in play outside home's cell (the request's row / 20 and column
-  / 14 against the player state's cell, as the client tests a save at the pod: `docs/re/memory.md`,
-  "The mission prompt"; a cell off the map, as the raw cell reads for a moment, counts as not
-  known), as when popups held it while the player walked on; the client offers it again after the
-  next save there. Until 1.0.0 home was the seed's start cell, read from the loaded section's start
-  record; the in-game runs from 2026-10-27 and earlier all started at the Landing Pod, where the
-  two are the same. Home
-  given by the request, from a seed started elsewhere: working in game 2026-11-02 (an OHKO seed
-  started at Open Cave, B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): no prompt after a save
-  in the start room; after a save at the pod, the prompt after the fade, NO, a request lapsing
-  while received items' popups held it and the player left the pod's room, the offer again after
-  the next save there, and YES to the goal. Once its opener is set, it opens
-  where the player is when its 60 frames are up. An opener the helper takes back before it runs (the
-  save left, `discs` off, an unload) turns the fade back to the normal level; so does one the game
-  runs with the player not in play (a death during the fade: asked again), but only while the fade
-  is still event 3667's, as below, not a fade the death set. One another transition took the place
-  of (a save at the save point again, which sets the pause opener back and brings no fade; a door; a
+- on `mission_prompt COLUMN ROW` (sent after each save at the Landing Pod with enough disks, in a
+  save past its ending too, with home: the Landing Pod's save point in tiles, 191 329, whichever
+  room the seed starts in; the column below 54 × 14 and the row below 54 × 20, or `error bad
+  mission_prompt request`), once idle in play with no popup of its own to show and the game's last
+  message (GAME SAVED, 180 frames) down to its last 150 frames, half a second in
+  (`kFadeMessageLeft`, chosen in game, 2026-10-27: `docs/re/memory.md`, "The mission prompt"; a
+  popup of the helper's own is never cut short: while the game's last message is still the helper's,
+  the prompt waits for its end, read from that message's frames left, so in game frames), opens the
+  game's YES/NO prompt as RETURN HOME WITH THE DISKS? (`src/mission.cpp`) the way the game opens it
+  as SKIP ESCAPE AND FINAL BATTLE?: it runs the game's fade to black (area event 3667, checked byte
+  for byte, through the game's handler for its type) and sets its opener as the transition 60 frames
+  away (the pause is blocked while that counts; popups and received deaths wait). Its YES closes the
+  prompt through the game's NO and then starts the ending once no popup of the helper's shows (one
+  up is never cut short; a message of the game's, GAME SAVED, does not hold it: the ending routine
+  ends every message itself as it starts, `docs/re/memory.md`, "The mission prompt"); NO fades the
+  screen back in, as the game's NO does there. NO's close puts back, inside its call, the fade the
+  prompt's builder saved (the level −1, then toward 4 a step every 6 frames: `docs/re/memory.md`,
+  "The mission prompt"), so right after it YES turns that fade off with the screen still black (the
+  fade's step, countdown and target set as event 3667's fade ends): no fade back into play between
+  YES and the ending. Only a fade that reads as NO's close leaves it is turned off (`mission_status`
+  then says `yes: ending when idle, the screen kept black`); anything else fades back in as before.
+  While it is black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`);
+  a popup of the helper's waiting brings the screen back in for it (as NO's close would have), and
+  the ending follows the popups as before; so does the ending not starting within 240 game frames in
+  play (`kDarkFrames`: a safety that errs long, as after YES the ending waits only for a menu to
+  close and the gap after the helper's last popup, and no popup of the helper's shows in the black,
+  a waiting one ending it first; counted from the game's frame clock, `frame_clock`, which stands
+  still while a menu has the game paused, so frames with a menu open, the pause, which saves the
+  fade and puts it back, don't count), and the prompt cancelled (the save left, `discs` off, the
+  client gone); asked for with a menu open, the fade back waits until it has closed and put its
+  saved black back. Another fade since (a death's) is left alone, and an unload is refused while the
+  screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade) drops
+  it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended: the
+  ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`, `ended:
+  a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …` note:
+  another fade, the ending not faded in or with the fade no longer the helper's), for a live check.
+  Two things could end the black before the ending, by disassembly: the limit above (when it counted
+  the helper's frame calls, which a fast monitor runs out first, a run's numbers fit that as the
+  cause: `docs/re/memory.md`, "The mission prompt"), and the ending routine itself, which sets the
+  level to 4 as it warps the player to the ending's first scene, in a frame the game draws before
+  the helper's frame call (not seen in game: the wrapper hides it). For that one the helper starts
+  the ending through a wrapper of its own, set as the transition with timer 1 in the routine's
+  place: the game runs it, it runs the game's routine, and, while the black is still the helper's,
+  it sets the level back to black at once (event 3667 aimed from −1 to 4, a step every 8 frames,
+  `kEndingFadeStep`) before that frame is drawn: the ending fades in from black, at the normal level
+  40 frames in. The black ends there. A wrapper still the transition after the routine (not as
+  traced) becomes the idle routine; one an unload finds not yet run becomes the game's routine (the
+  ending then comes without the fade in). Anything else in the wrapper's place before it ran (a save
+  at the save point, which sets the pause opener back and leaves the fade alone; a door, timer 70; a
+  death): the ending is asked for again, the black kept while it is still the helper's (with its 240
+  game frames), else the other transition's fade left alone. From the frame the helper sets the
+  ending's wrapper until another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or
+  another transition takes its place as above, `mission_status` says `ending started`, a
+  `mission_prompt` is ignored (the ending's cutscenes read as play and its own save as a save at the
+  pod), `apply`, `shield` and `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client
+  gives them in the save's next load), and popups already queued wait for the seed's next load.
+  Stand-in tests (`native/tests/mission_tests.cpp`, `game_tests.cpp`). Working in game: black from
+  YES until the ending, which fades in from it, 2026-11-02 (B1, `zexion_ap.dll` `d179d32d…` on a
+  first ending and a replay, then `28ab9954…` with the ending starting under GAME SAVED, on a
+  replay), and on a first ending on the 1.0.0 RC, 2026-11-03 (`fce9e73b…`, develop 76df074,
+  English(HD), the owner's report); the ending played again on a save past it, with nothing new sent
+  and the Feats note shown, the goal sent on a save before it, items received during either held and
+  their popups shown on the next load, a death received during the first ending dropped, and the
+  pause opened in the black after YES with EXIT GAME going to the title with no black left and
+  `/reload_mod` not refused after that, 2026-11-02 (`946b08a1…`) (`docs/re/memory.md`, "The mission
+  prompt"). Not run in game: a door or a death right after YES, and the prompt asked for again. If
+  event 3667 or its handler is not as traced, the prompt opens at once with no fade, as before. A
+  request not yet opened lapses (`lapsed: the player left the landing pod`) once the player is in
+  play outside home's cell (the request's row / 20 and column / 14 against the player state's cell,
+  as the client tests a save at the pod: `docs/re/memory.md`, "The mission prompt"; a cell off the
+  map, as the raw cell reads for a moment, counts as not known), as when popups held it while the
+  player walked on; the client offers it again after the next save there. Until 1.0.0 home was the
+  seed's start cell, read from the loaded section's start record; the in-game runs from 2026-10-27
+  and earlier all started at the Landing Pod, where the two are the same. Home given by the request,
+  from a seed started elsewhere: working in game 2026-11-02 (an OHKO seed started at Open Cave, B1,
+  `zexion_ap.dll` `1c286c57…`: "The mission prompt"). Once its opener is set, it opens where the
+  player is when its 60 frames are up. An opener the helper takes back before it runs (the save
+  left, `discs` off, an unload) turns the fade back to the normal level; so does one the game runs
+  with the player not in play (a death during the fade: asked again), but only while the fade is
+  still event 3667's, as below, not a fade the death set. One another transition took the place of
+  (a save at the save point again, which sets the pause opener back and brings no fade; a door; a
   death) is asked again once idle (and lapses if the player is then outside home's cell), and its
   fade is turned back only while the game's fade (the `fade` and `fade_level` targets) is still
   event 3667's: target −1, a step every 8 frames from level 4, or done at −1, and no further back
   than the helper last saw it with its opener in place, nor the transition timer higher (a save
   leaves it counting). Anything else, another transition's fade even with 3667's own values (it
   starts again from level 4, its timer at 70), is left alone. The same when `discs` turns off after
-  such a save. Working in game: the fade turned back after saves at the pod during it, 2026-10-27
-  (the owner's report). A request lapsing outside the pod's cell (a seed started there), 2026-10-27 (0.30.0, the owner's
-  report, `lab/ap/live34/client1.log`): saved at the pod with twelve received items' popups
-  still to show, then walked a few rooms away during them, and left during GAME SAVED with no
-  popup queued; no prompt either time, and offered again after the next save there. The ending
-  after YES waiting for the popups of five items received while the prompt was open, then
-  starting, 2026-10-27 (575edbf, the owner's report, `lab/ap/live35/`). Stand-in tests only: the
-  fade turned back when the helper takes its opener back, another transition's fade left alone, a
-  death's own fade left alone, and `discs` turned off after such a save.
+  such a save. Working in game, 2026-10-27 (0.30.0, the owner's reports: "The mission prompt"): the
+  fade turned back after saves at the pod during it; a request lapsing once the player left the
+  pod's cell while twelve received items' popups held it, and one left during GAME SAVED alone, each
+  offered again after the next save there; the ending after YES waiting for five received items'
+  popups, then starting. Stand-in tests only: the fade turned back when the helper takes its opener
+  back, another transition's fade left alone, a death's own fade left alone, and `discs` turned off
+  after such a save.
 
 With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it shows
 each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -808,18 +759,11 @@ built again in the translation's font; the pause row's count is KEYS's translate
 again ("2 of 15", centered on the row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
 next frame call otherwise), the key slots' characters hidden; the disk count
-popups carry the HD disk icon. Run in game 2026-11-02 in
-English(HD) (B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): the received disks' count popups
-and the reminder in the HD font; the pause row's count in the pixel font with no Keys over it;
-the equipment screen's OS Install Disk and its description in the HD font, the description's
-first line running past the box's right edge (a bug); the question in the HD font, left of
-center (a bug); NO, and YES sending the goal. The scanner's line: not run in game yet. Since
-then the description is wrapped at the box's columns and the question centered, as the game
-does its own, and the pause row's count and the icons are in the translation's font: working in
-game later that day (`zexion_ap.dll` `946b08a1…`, `lab/ap/live50`), the description wrapped
-inside its box, the question centered, the count "4 of ?" in the HD font, and the equipment
-screen's name after the HD disk icon (whose look the owner wants drawn again). The scanner's
-line: still not run in game.
+popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
+in game" and "Run in game again"): the received disks' count popups and the reminder in the HD font,
+NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
+after the HD disk icon and its description wrapped inside its box, the question centered, and the
+pause row's count ("4 of ?") in the HD font (`946b08a1…`). The scanner's line: not run in game yet.
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -892,33 +836,32 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   pipe"). So the offline
   look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
-  (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client
-  would, once it has been in play since it loaded (a menu or a death later keeps the same save,
-  so it is dressed at once when a client goes away with a menu up): the item labels, INTEL CHIP, the ASSIST lock (the file free once the slot has
-  received Assist Unlock: `client/ticks.py`, `offline_seed`; stand-in tests only), the disk count
-  (the file's, plus each own disk the map shows collected) and the scanner's line, with a
-  notice that the client is not connected (or, for `other_save`, is for another seed; only for a
-  save of a seed it has a file for, so a plain randomizer game gets no notice): once a load, and
-  again each time a client that configured during the load goes away (working in game
-  2026-10-29, 1.0.0 (b790be9), `lab/ap/live47`).
+  (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
+  once it has been in play since it loaded (a menu or a death later keeps the same save, so it is
+  dressed at once when a client goes away with a menu up): the item labels, INTEL CHIP, the ASSIST
+  lock (the file free once the slot has received Assist Unlock: `client/ticks.py`, `offline_seed`;
+  stand-in tests only), the disk count (the file's, plus each own disk the map shows collected) and
+  the scanner's line, with a notice that the client is not connected (or, for `other_save`, is for
+  another seed; only for a save of a seed it has a file for, so a plain randomizer game gets no
+  notice): once a load, and again each time a client that configured during the load goes away
+  (working in game 2026-10-29, 1.0.0 (b790be9): `docs/re/memory.md`, "AP saves without the client").
   While the save stays dressed, each look sets that look again where it was changed: a client of
-  another seed, attaching with the save in play, takes its own look back, which is not this
-  save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26).
-  A client with no server connection (the server down, say) lets the helper go, as if it had
-  closed, while a save it has not dressed is loaded: one loaded after a drop's save was left, or
-  the one in play when the player disconnects. Such a save then gets this look and its notice
-  too. The client keeps the helper for a save it dressed before a drop (its look stays), in the
-  ending (its hold), and at the title, where after a drop an armed new game stays armed until a
-  save is loaded. It attaches again on connecting, before it gives any item; an attach that
-  fails holds the items back for up to 30 s, then they are given as with no helper
-  (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
-  `tests/test_zexion_client.py`). Working in game 2026-10-29 (`lab/ap/live47`, the Launcher's
+  another seed, attaching with the save in play, takes its own look back, which is not this save's
+  (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client with no server
+  connection (the server down, say) lets the helper go, as if it had closed, while a save it has not
+  dressed is loaded: one loaded after a drop's save was left, or the one in play when the player
+  disconnects. Such a save then gets this look and its notice too. The client keeps the helper for a
+  save it dressed before a drop (its look stays), in the ending (its hold), and at the title, where
+  after a drop an armed new game stays armed until a save is loaded. It attaches again on
+  connecting, before it gives any item; an attach that fails holds the items back for up to 30 s,
+  then they are given as with no helper (`client/zexion_client.py`, `leave_helper_tick` and `poll`;
+  stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's
   client): a save loaded during a drop and a Disconnect in play, each given this look and its
-  notice, then the client's again on connecting, with CLIENT CONNECTED and received items'
-  popups. Not seen in game: a failed attach on connecting, an ending during a drop or after a
-  Disconnect, and an armed new game kept at the title during a drop.
-  The file select shows each such save's count, from its map in the game's copy of the slot,
-  and the AP logo ("AP saves on the file select").
+  notice, then the client's again on connecting, with CLIENT CONNECTED and received items' popups.
+  Not seen in game: a failed attach on connecting, an ending during a drop or after a Disconnect,
+  and an armed new game kept at the title during a drop. The file select shows each such save's
+  count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the file
+  select").
 - **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known
   seed. With a menu up, a save in play since its load that reads as no known seed is held as it
   is until play, so the lock never lifts in the options menu for one read (none such is known;
@@ -938,7 +881,7 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 Working in game: 2026-10-25 ("AP saves without the client"); 2026-10-29, a Secret Shuffle
 seed's file (a 155-byte table, one `table` line): the save dressed with the client closed, its
 notice shown, the map's unseen squares named as the game names its own (develop e088773,
-`9b609b92…`; `lab/ap/live46`).
+`9b609b92…`; "AP saves without the client").
 
 ### The map
 
@@ -964,15 +907,12 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
   English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
   for another Zexion player's item, the translation's own name for it (working in game
-  2026-11-03, B1, `zexion_ap.dll` `12f090c6…`, `lab/ap/live50`: AP Item on a DLCQuest
+  2026-11-03, B1, `zexion_ap.dll` `12f090c6…` ("Map markers"): AP Item on a DLCQuest
   player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
   shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
-  names, the owner's look, `lab/ap/live52`; Progression Item and OS Install Disk not looked at
+  names, the owner's look; Progression Item and OS Install Disk not looked at
   on the map). Labels in capitals, as a client from before the mixed case (31d9203) writes them
-  and a seed's offline file may still hold them, show in capitals: the owner's report of AP ITEM
-  and PROGRESSION ITEM on the map cursor with `12f090c6…` (develop 97a6f25's build; a report,
-  no run recorded) came, in the owner's word, from such a client (the client's version was not
-  read; the capitals are that client's `client/aplabels.py`).
+  and a seed's offline file may still hold them, show in capitals.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
@@ -989,14 +929,13 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   handler goes back when the names stop and before an unload, which refuses while an open map
   holds the wrapper.
 
-Working in game: 2026-10-25 ("Map markers"); 2026-10-26, a three-game seed, the markers raised
-in a pause right after loading; 2026-10-26, a second three-game seed (`live30`) with the
-two-look check, the unseen squares named as the game names its own and the markers still raised
-after a save, a return to the title and a load; 2026-10-27, two Custom seeds under Obscure
-Majors on and Minors off, Class off and on (`live40`, `live41`), the stand-ins marked as the
-game's own majors, a stand-in's minimap dot flashing while on screen; 2026-10-28, with the
-on-screen write's patch (`tests/mapmarks_tests.cpp` runs the game's bytes and the patch side by
-side), no flash ("Map markers").
+Working in game (B1; "Map markers"): 2026-10-25; 2026-10-26, two three-game seeds, the markers
+raised in a pause right after loading, and with the two-look check the unseen squares named as the
+game names its own and the markers still raised after a save, a return to the title and a load;
+2026-10-27, two Custom seeds under Obscure Majors on and Minors off, Class off and on, the stand-ins
+marked as the game's own majors, a stand-in's minimap dot flashing while on screen; 2026-10-28, with
+the on-screen write's patch (`tests/mapmarks_tests.cpp` runs the game's bytes and the patch side by
+side), no flash.
 
 ### The title screen's lines
 
@@ -1033,11 +972,7 @@ side), no flash ("Map markers").
   label), centered on the screen, its pixel glyphs hidden, and shown and hidden in their place;
   ©2026 MCAWFUL stays in pixels, as the game's own copyright line does. In another language the
   pixel lines show again. The game's text destructor frees the translated glyphs with the
-  title (`docs/re/memory.md`, "The title screen"). Seen in game 2026-11-02 (B1, the 1.0.0 RC,
-  develop d484024, `zexion_ap.dll` `6e5dcb1b…`, the owner's screenshots): the two lines stayed
-  on screen after the title, over the Option menu, below the Option box and over the file
-  select's bottom buttons (a bug, fixed since as under "Shown"; working in game 2026-11-03, as
-  there).
+  title (`docs/re/memory.md`, "The title screen"). Working in game 2026-11-03, as under "Shown".
 
 Working in game: 2026-10-25, the two lines under the copyright, with a client and from the cache
 ("The title screen"). The client line: working in game 2026-10-27 (0.30.0, the owner's
@@ -1104,15 +1039,10 @@ closed, gone with it open.
     own entry (220, or 219 for the hint) again when the note goes.
     Without LargeText's count (a cache from before the `large_count` key), or with too little
     room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
-    font. (Seen in game 2026-11-02 in English(HD), `lab/ap/live50`, as that pixel title and
-    note; the HD title: working in game later that day, `zexion_ap.dll` `946b08a1…`, after RETURN
-    HOME's YES on a save past its ending: Feats of Natu! over "Archipelago save: no Feats
-    earned", both in the HD font, the two lines starting at the same x, as again on
-    `12f090c6…` on 2026-11-03: a bug, the title not centered over the note. Since, the title's
-    line centered with leading spaces: working in game 2026-11-03, B1, `zexion_ap.dll`
-    `fce9e73b…`, the 1.0.0 RC at develop 76df074, English(HD), `lab/ap/live50/client-r5.log`
-    (slot 4, RETURN HOME's YES on a save past its ending): both lines centered, the owner's
-    screenshot, not kept in `lab/`.)
+    font. (Working in game in English(HD): the title and the note in the HD font, 2026-11-02, B1,
+    `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03, `fce9e73b…`, the 1.0.0
+    RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`, "Where a rebuilt label
+    goes".)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -1175,51 +1105,36 @@ closed, gone with it open.
   `GameUnlocks.sav`. They can complete the database and give 16CompleteReport later, in a
   normal game.
 
-Working in game: 2026-10-26 ("Feats and achievements"), two AP endings with the guard (a third,
-earlier, is inconclusive: which helper ran is not known), both of the OS Install Disks goal
-through RETURN HOME WITH THE DISKS? with the client connected, and a normal ending. In the AP
-endings the ending was jumped over, the goal was sent, no Feat was earned and `GameUnlocks.sav`
-was unchanged; the second showed the note. In the normal ending the Feats were earned as usual.
-The guard also went on in an AP save with no client connected, before the client connected.
-Those runs had the Steam stub as it was before the load test (feats.h).
+Working in game (B1; `docs/re/memory.md`, "Feats and achievements"):
 
-Working in game 2026-10-27 (0.30.0, the stub as it is now; `lab/ap/live34`, "Feats and
-achievements" in `docs/re/memory.md`):
-- an AP ending through RETURN HOME WITH THE DISKS?, the client disconnected and connected again
-  during its cutscenes: the note shown, `GameUnlocks.sav` rewritten and unchanged;
-- after an AP save was quit to the title, with AP saves in their slots, an achievement reaching
-  Steam (13SecretCode, typed at the title; Steam's record), Steam's slot read on the stub at that
-  title just after;
-- a plain randomizer save in play with a client connected: Steam's slot back on steam_api64 and
-  the ending's call the game's own (read from memory), no notice and no look.
-
-Working in game 2026-10-27 (575edbf's 0.30.0, then the note's fix in d451e6b; `lab/ap/live35` and
-`lab/ap/live36`, "Feats and achievements" in `docs/re/memory.md`):
-- with 575edbf, an AP ending through RETURN HOME WITH THE DISKS? with the client connected: the
-  goal sent, nothing lit on the screen, the note shown, `GameUnlocks.sav` rewritten and
-  unchanged;
-- with 575edbf, an AP ending through the escape skip with no client (the helper's offer, retired
-  since; a core-goal seed with Allow Assists on): flag 251 left clear and `GameUnlocks.sav` unchanged, but no note.
-  MISSION COMPLETE had ASSISTS USED under it as a second panel, which the screen check refused;
-  fixed in d451e6b;
-- with d451e6b, the same save's ending through the escape skip with a client of another seed
-  connected: flag 251 clear, `GameUnlocks.sav` unchanged, nothing lit, and the note shown over
-  ASSISTS USED;
-- 2026-10-28, with the secret row's change (an Abridged Finale AP save, no client): the note
-  shown over the secret row, and, after a restart with no code typed, in the usual layout;
-  flag 251 clear and `GameUnlocks.sav` unchanged both times;
-- 2026-10-28, with the hint's change, in a fresh save folder (no Ending B, no Feats on record)
-  and the same save: FEATS OF NATU! and the note in place of the hint, over rows of 6 and 5,
-  and again with the code typed, on the upper two lines over the secret row; flag 251 clear,
-  and `GameUnlocks.sav` given no Feat, no Ending A or B entry and no `+0xCE00A8`; an unload with
-  that screen up put the game's hint back.
+- 2026-10-26: two AP endings through RETURN HOME WITH THE DISKS? with the client connected (the
+  ending jumped over, the goal sent, no Feat earned, `GameUnlocks.sav` unchanged, the note on the
+  second), a normal ending earning its Feats as usual, and the guard on in an AP save before a
+  client connected; with the Steam stub as it was before the load test.
+- 2026-10-27 (0.30.0, the stub as it is now): AP endings through RETURN HOME WITH THE DISKS?, one
+  with the client disconnected and connected again during its cutscenes; an achievement reaching
+  Steam at the title after an AP save was quit (13SecretCode, typed at the title; Steam's record),
+  Steam's slot on the stub at that title; a plain randomizer save in play with a client connected
+  left alone (Steam's slot on steam_api64, the ending's call the game's own, no notice, no look); an
+  AP ending through the escape skip (the helper's offer then, retired since) with no client, flag
+  251 left clear and `GameUnlocks.sav` unchanged, and, from d451e6b, one with a client of another
+  seed connected, the same and the note shown over ASSISTS USED's panel.
+- 2026-10-28: the note over the secret row, and after a restart with no code typed in the usual
+  layout; in a fresh save folder (no Ending B, no Feats on record), FEATS OF NATU! and the note in
+  place of the hint, over rows of 6 and 5 and, with the code typed, on the upper two lines over the
+  secret row, and the game's hint put back on an unload with that screen up; each time flag 251
+  clear and `GameUnlocks.sav` given no Feat (in the fresh folder, no Ending A or B entry and no
+  `+0xCE00A8` either).
 
 Not seen in game:
 - Steam's stand-in stopping an achievement. No achievement the owner has left is cheap to earn in
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over a bottom row of 6 (by disassembly and stand-in tests only).
+- the note over a bottom row of 6 (by disassembly and stand-in tests only);
+- the client's warnings (`state.FeatsCheck`, `ticks.feats_tick`): their decisions on stand-in
+  tests, the asking itself not under test. They could not be arranged on 2026-10-27: a connected
+  client gives the helper its seed's file, so the guard is on in this seed's save.
 
 ### Translations
 
@@ -1349,34 +1264,26 @@ lands, not only the place passed.
   moved. Menu labels need nothing: the game frees them with their menu.
 - **Run in game:** 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` and `version.dll` `1b4e35e9…`
   (develop 2e3b94e) loaded by the proxy, the client from source, an OHKO seed with the disks goal
-  and a DLC Quest player (`lab/ap/live50`: logs and screenshots).
+  and a DLC Quest player (`docs/re/memory.md`, "Translations" and the sections after it).
   - Working in English(HD): the title lines; received popups in the HD font with their box, icon,
     the HD name and the suffix on the next line, singly after a save's GAME SAVED, in batches of
-    5 and 8 (every one shown), and after a language change; notices (an
-    Intel Chip's hint, long ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a
-    stand-in's pickup popup and the map cursor on its square ("Other players' items"); the pause
-    row's count and the locked ASSIST in the pixel font (in the translation's font since: the run
-    after, below); the equipment screen's name; the question's text, NO and YES; the Feats
-    of Natu screen's note (likewise); `/reload_mod` (the unload and
-    the load again; its refusal while a popup shows was not tried).
+    5 and 8 (every one shown), and after a language change; notices (an Intel Chip's hint, long
+    ones too; NOT CONNECTED; CLIENT CONNECTED; the disk reminder); a stand-in's pickup popup and
+    the map cursor on its square ("Other players' items"); the pause row's count and the locked
+    ASSIST in the pixel font (in the translation's font since: the run after, below); the
+    equipment screen's name; the question's text, NO and YES; the Feats of Natu screen's note
+    (likewise); `/reload_mod` (the unload and the load again; its refusal while a popup shows
+    was not tried).
   - A language change mid-play, with popups showing: English(HD) to French and back, then
     Japanese, then the default English, with no crash; the popups after each change shown, in
     French and Japanese with the translation's name and FROM … in English. The client's warning
     once, for French, and none in English(HD) or the default English; `lang=-` in the default
     English and `English(HD)` in English(HD) (`tools/helper.py status`).
-  - Bugs (English(HD)): ARCHIPELAGO's label does not show on the game-mode panel: the entry is
-    blank (choosing it starts the seed), its hover border is drawn further left, and the label
-    shows instead at the window's top-left corner on the file select until an empty slot is
-    picked; RANDOMIZER's label built again when the client went away showed at that corner too,
-    and on an empty slot's panel after that the game's own Randomizer entry showed at the
-    panel's left edge, away from Normal, while the helper stayed loaded. The question sits left of center (about 90 pixels left of where the game's own line
-    starts). The equipment screen's description is one line with no break and runs past the
-    box's right edge. ASSIST's padlock is drawn past the options box's right edge. Fixed
-    since, working in the run after (below): the panel's label and the question built where the
-    game's attach would build them now, the question centered and the description wrapped as the
-    game does its own, and the locked ASSIST built again in the translation's font with its
-    padlock only where it stays in the box ("The assist menu"; `docs/re/memory.md`, "Where a
-    rebuilt label goes").
+  - Bugs (English(HD)), fixed since and working in the run after (below): ARCHIPELAGO's label
+    not on the game-mode panel (built at the window's top-left corner instead, and RANDOMIZER's
+    likewise when the client went away); the question left of center; the equipment screen's
+    description past the box's right edge; ASSIST's padlock past the options box's right edge
+    ("The assist menu"; `docs/re/memory.md`, "Where a rebuilt label goes").
   - The default English, the same run: received popups singly and in a batch of 5, NOT
     CONNECTED and CLIENT CONNECTED, ARCHIPELAGO on the panel, the locked ASSIST, the pause row,
     the equipment screen's disk, RETURN HOME's question (centered) and NO, the map cursor and a
@@ -1384,9 +1291,9 @@ lands, not only the place passed.
   - Not run in game: the scanner's line, an Intel Chip picked up in the world (ItemNames 49),
     the unload's refusal while a popup shows, Assist Unlock in a translation, a save-state load.
 - **Run in game again:** 2026-11-02, later that day, B1, `zexion_ap.dll` `946b08a1…` and
-  `version.dll` `7a1b2b40…` (develop ea1a801) loaded by the proxy, the client from source,
-  `lab/ap/live50` again and a disks seed `lab/ap/live52` (logs; the owner's screenshots in
-  `lab/ap/live50/shots-r2/` and `lab/ap/live52/shots/`).
+  `version.dll` `7a1b2b40…` (develop ea1a801) loaded by the proxy, the client from source, the
+  same seed again and a disks seed (`docs/re/memory.md`, "Where a rebuilt label goes" and "The
+  translations' icons": the owner's screenshots).
   - Working in English(HD): ARCHIPELAGO on the game-mode panel in its place, in the HD font,
     with its hover border around it; the file select with nothing stray, before an empty slot is
     picked and after the client went away; Randomizer back in its place after the client went
@@ -1398,33 +1305,24 @@ lands, not only the place passed.
     hint on two, its lines left as they wrap); a received popup's name centered over "from
     Archipelago", and "from Bob" (the owner's reading); the Feats of Natu screen's title and
     note in the HD font. No stutter noticed (the owner, through the run's play in HD).
-  - Bugs (English(HD)): after coming back from another menu (Video, the map) the locked ASSIST
-    takes the selection's colors, as the default English once did; once, after going through
-    menus, ASSIST showed unlocked (white, selectable, no padlock) in a seed that locks it (not
-    reproduced; whether it opened was not tried). ASSIST's padlock sits below the text's
-    baseline, against the box's right border. The map cursor shows the AP logo before AP ITEM,
-    where the game's own names carry no icon. A stand-in's pickup popup (AP ITEM over FOR BOB)
-    starts both lines at the same x, not centered. All five fixed since. Stand-in tests only,
-    not run in game yet: the locked look in the options entries' style at alpha 0.45, and the
-    offline look kept through menus (a re-read of the offline files, done whenever anything
-    left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
-    up); the padlock on the text's line with no space before it ("The assist menu", "AP saves
-    without the client"; the ASSIST lock in English(HD) working on the 1.0.0 RC since, run
-    below, no part of it singled out). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
-    cursor without the logo and the pickup popup's lines centered ("Other players' items"). A
-    second path to ASSIST unlocked, seen on the 1.0.0 RC (the version line locked in its place
-    after Video), fixed since by finding the entry again each frame, run in game 2026-11-03 (the
-    owner: "seems to work"; "The assist menu").
-  - The owner's requests: the helper's text in mixed case in English(HD) (the notices, the
-    stand-ins' labels, the title lines); the title lines in the HD font but ©2026 MCAWFUL, which
-    matches the game's pixel ©2025 GALLANT LEAF; the HD disk icon (and the padlock) drawn again.
+  - Bugs (English(HD)), all fixed since: the locked ASSIST taking the selection's colors after
+    another menu (Video, the map), and once showing unlocked (white, selectable, no padlock)
+    after going through menus, not reproduced; its padlock below the text's baseline, against
+    the box's right border; the AP logo before AP ITEM on the map cursor, where the game's own
+    names carry no icon; a stand-in's pickup popup (AP ITEM over FOR BOB) with both lines at the
+    same x. The last two: working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`, "Other
+    players' items"). The rest: stand-in tests only, not run in game yet (the locked look in the
+    options entries' style at alpha 0.45, the padlock on the text's line with no space before
+    it, the offline look kept through menus: "The assist menu", "AP saves without the client");
+    the ASSIST lock in English(HD) working on the 1.0.0 RC since (below), no part of it singled
+    out.
   - The default English: the title, ARCHIPELAGO on the panel with its hover border, a received
     popup (FROM ARCHIPELAGO in capitals), RETURN HOME's question centered and NO, as before.
   - Not run in game: as in the run before, and French and Japanese since the HD icons (their
     FROM … in capitals).
 - **Run on the 1.0.0 RC:** 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…` and `version.dll`
-  `2a640209…` (develop 76df074) loaded by the proxy, English(HD): the client from source on
-  `lab/ap/live50` slot 4 (`client-r5.log`, `server-r5.log`), then the owner's own checks.
+  `2a640209…` (develop 76df074) loaded by the proxy, English(HD): the client from source, then
+  the owner's own checks.
   - Working in English(HD): the Feats of Natu screen's title and note both centered
     (the owner's screenshot); no Keys frame on the pause row after Option with the client
     connected, and the documented frame of Keys before it, over a cache without
