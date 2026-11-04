@@ -55,7 +55,10 @@ worlds/zexion/ → generation → slot data → client
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
   thread only serves the pipe. Without a helper in use, items are written directly with no
   popup, no seed can start, and the client tries the helper again within 30 seconds (one
-  found not to match the client after attaching is left alone until the game restarts).
+  that doesn't match the client is left alone until the game restarts, unless the client has
+  a build of its own or the old helper may unload on a later try). A helper lost while the
+  client runs is attached again before items are given, for up to 30 seconds, so they keep
+  their popups.
 - **The proxy** is a `version.dll` the player puts in the game's folder beside the helper. The
   game loads it as it starts; it passes every call on to Windows' own `version.dll` and loads
   the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither

@@ -130,6 +130,9 @@ class ZexionContext(CommonContext):
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
         self.helper_left = False
+        # A side tick lost it: attached again before the next step, as after helper_left, so
+        # the items owed get their popups.
+        self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
         # /reload_mod: the game loop unloads it and loads it again (poll).
         self.reload_mod_pending = False
@@ -322,8 +325,8 @@ class Poll:
 
 async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
     """Run a tick that the items, the checks and the goal must not wait on: a helper that fails
-    is dropped, to be tried again later, and any other failure is logged, once for each
-    distinct one, and the poll goes on."""
+    is dropped, and attached again before the next step (helper_lost), and any other failure
+    is logged, once for each distinct one, and the poll goes on."""
     try:
         await tick()
     except native.ModMismatch as exc:
@@ -331,6 +334,7 @@ async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[
     except native.HelperError as exc:
         log.warning(f"The in-game helper failed ({exc}); trying it again later.")
         ctx.lose_helper()
+        ctx.helper_lost = True
     except Exception as exc:
         if ctx.said(f"tick {name}", repr(exc)):
             logger.warning(
@@ -377,7 +381,8 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
     ctx.drop_helper()
-    ctx.helper_left, ctx.helper_back_by = False, 0.0  # the next game's is attached with it
+    # The next game's is attached with it.
+    ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
 
@@ -470,12 +475,13 @@ async def poll(ctx: ZexionContext) -> None:
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
         await attach_helper(ctx)
-    elif ctx.helper is None and ctx.helper_left:
-        # Let go while no connection stepped (leave_helper_tick): attached again before any
-        # step, as a step with no helper writes the items received meanwhile with no popup. An
-        # attach that fails (no frame comes while the game is in the background, say) is tried
-        # again each BACK_RETRY_SECONDS for HELPER_RETRY_SECONDS before the step goes on without
-        # it, as after any failed attach; not for a mod that doesn't match, or a closed game.
+    elif ctx.helper is None and (ctx.helper_left or ctx.helper_lost):
+        # Let go while no connection stepped (leave_helper_tick), or lost in a side tick:
+        # attached again before any step, as a step with no helper writes the items owed with
+        # no popup. An attach that fails (no frame comes while the game is in the background,
+        # say) is tried again each BACK_RETRY_SECONDS for HELPER_RETRY_SECONDS before the step
+        # goes on without it, as after any failed attach; not for a mod that doesn't match, or
+        # a closed game.
         now = time.monotonic()
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
@@ -483,7 +489,7 @@ async def poll(ctx: ZexionContext) -> None:
         if ctx.helper is None and waiting and game_alive(ctx):
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return
-        ctx.helper_left, ctx.helper_back_by = False, 0.0
+        ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
