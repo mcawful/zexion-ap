@@ -643,7 +643,7 @@ the helper:
   they show at the save's next load, as those arriving during the ending do (their items are given
   already). The screen is brought back in (as NO's close would have) if the ending has not started
   within 240 game frames in play (`kDarkFrames`: a safety that errs long, as after YES the ending
-  waits only for a menu to close and for a popup of the helper's already up; counted from the
+  waits only for a menu to close, a popup of the helper's already up and the gap after it; counted from the
   game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so frames
   with a menu open, the pause, which saves the fade and puts it back, don't count), and when the
   prompt is cancelled (the save left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its
@@ -1060,7 +1060,7 @@ closed, gone with it open.
   stand-in, so lands in live memory that runs no helper code, and an unload need not wait for it. If
   something hooked over the stub since, the stub stays in its chain and passes everything through.
   The screen's note is blanked again before an unload; the game frees it with the screen otherwise.
-- **An unload leaves a gap:** from the unload to the next helper's second frame call (the
+- **An unload leaves a gap:** from the unload to the next helper's first frame call (the
   client's `/reload_mod` waits 3 s before loading it again), an AP save in play has no guard, so
   a pickup's achievement (a weapon, 10Burst, 11Armor and the like) then reaches Steam, and so
   would an ending the game itself starts then (the escape's). RETURN HOME WITH THE DISKS?'s

@@ -921,17 +921,17 @@ void Game::watch_mission() {
         mission_save_ = save;
     }
     // Idle: no showable popup waiting, the helper's last one kPopupGapFrames ago, the game's
-    // message down to kFadeMessageLeft frames, the helper's own never cut short. After YES only
-    // the helper's own popup up is waited for: the ending ends the game's messages
-    // (docs/re/memory.md, "The mission prompt"), and queued popups wait for the save's next load
-    // (pump_popups), as once the ending has started.
+    // message down to kFadeMessageLeft frames, the helper's own never cut short. After YES no
+    // game message is waited for: the ending ends them (docs/re/memory.md, "The mission prompt");
+    // nor queued popups, which wait for the save's next load (pump_popups), as once the ending
+    // has started.
     const bool yes = mission_.ending();
     const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(),
                                              [this](const Popup& p) { return showable(p); });
     const bool own = own_popup_up();
     const int32_t left = own ? 1 : yes ? INT32_MAX : kFadeMessageLeft;
     const bool idle = in_play() && !waiting && popup_frames_left() <= left &&
-                      (yes || frames_since_popup_ >= kPopupGapFrames);
+                      frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle, away_from_home());
 }
 
