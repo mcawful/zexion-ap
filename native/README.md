@@ -539,7 +539,11 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   the helper's own colors: stand-in tests only, not run in game yet.
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x
-  2048 sprite sheet. It leaves the game's texture binding, pixel-store state and GL errors as it
+  2048 sprite sheet. The gaps between the logo's circles, and a one-pixel border round them
+  where the 16 x 16 frame has room, are painted black: palette 26 draws what is painted over
+  the room as it is, so a gap left transparent showed the sky through the logo's black borders
+  in a sky room (`docs/re/memory.md`, "Other players' items"; stand-in tests only, not run in
+  game yet). It leaves the game's texture binding, pixel-store state and GL errors as it
   found them, and paints nothing while a pixel buffer is bound.
 - **Put back:** the records (and any an earlier helper left restyled), the width (24) and the
   pixels. Unload refuses (`error an item record is still restyled (no frame came)`) if no frame

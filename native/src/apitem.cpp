@@ -18,10 +18,10 @@ const char kApItemRows[8][9] = {
     "........", ".#...#..", "...#....", "........",
 };
 const char kApLogoRows[16][17] = {
-    ".....krrrrk.....", ".....rrrrrr.....", ".kyyk.rrrr.kgkk.", "kyyyyy.rr.gggggk",
-    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yy...yk..kg....g", ".kbbkk....kpppk.",
-    "kbbbbb....pppppk", "bbbbbb.kk.pppppp", "bbbbbkooookppppp", "bbbb.oooooo.pppp",
-    "kbbbkooooookpppk", ".kkkkooooookkkk.", ".....oooooo.....", ".....kooook.....",
+    "....kkrrrrkk....", ".kkkkrrrrrrkkk..", "kkyykkrrrrkkgkkk", "kyyyyykrrkgggggk",
+    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yykkkykkkkgkkkkg", "kkbbkkkkkkkpppkk",
+    "kbbbbbkkkkpppppk", "bbbbbbkkkkpppppp", "bbbbbkooookppppp", "bbbbkooooookpppp",
+    "kbbbkooooookpppk", "kkkkkooooookkkkk", "....kooooook....", "....kkooookk....",
 };
 
 namespace {
@@ -56,24 +56,24 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
-// flashes itself between yellow and white.
+// flashes itself between yellow and white. Outlined like kApLogoRows.
 constexpr char kLogoArrow[16][17] = {
-    ".....krrrrk.....",
-    ".....rrrrrr.....",
-    ".kyyk.rrrr.kgkk.",
-    "kyyyyy.rr.gggggk",
+    "....kkrrrrkk....",
+    ".kkkkrrrrrrkkk..",
+    "kkyykkrrrrkkgkkk",
+    "kyyyyykrrkgggggk",
     "yyyyyykrrkgggggg",
     "yyyyyykrrkgggggg",
-    "yy...yk..kg....g",
-    ".kbbkk....kpppk.",
-    "kbbbbb....pkkkpk",
-    "bbbbbb.kk.kk^kkp",
+    "yykkkykkkkgkkkkg",
+    "kkbbkkkkkkkpppkk",
+    "kbbbbbkkkkpkkkpk",
+    "bbbbbbkkkkkk^kkp",
     "bbbbbkoookk^^^kk",
-    "bbbb.oookk^^^^^k",
+    "bbbbkoookk^^^^^k",
     "kbbbkoook^^^^^^^",
-    ".kkkkoookkk^^^kk",
-    ".....oooook^^^k.",
-    ".....kooook^^^k.",
+    "kkkkkoookkk^^^kk",
+    "....koooook^^^k.",
+    "....kkooook^^^k.",
 };
 // A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent). The
 // stand-ins draw in palette 26, which shows the texture's own colors (ItemLooks::own_colors), so
