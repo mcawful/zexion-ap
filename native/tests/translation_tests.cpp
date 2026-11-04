@@ -215,6 +215,26 @@ void test_the_pixel_text_when_the_tables_cannot_be_used() {
     game.put_back_all(&no_callback);
 }
 
+// A translation whose borrowed run holds text (here entry 68): no split, nothing written, and
+// the popup in its pixel text (PopupAreas::prepare takes the run only with every entry empty).
+void test_the_run_not_borrowed_when_an_entry_holds_text() {
+    zap::Game game;
+    start(game);
+    std::map<int, std::wstring> texts = hd_small_texts();
+    texts[68] = L"Taken";
+    g_small = make_table(448, texts);
+    put<wchar_t*>(g_translation, 0x30, g_small->text.data());
+    put<int32_t*>(g_translation, 0x58, g_small->offsets.data());
+    const std::vector<wchar_t> text = g_small->text;
+    const std::vector<int32_t> offsets = g_small->offsets;
+    queue(game, "apply\npopup 36 FROM ALICE");
+    frames(game, 1);
+    check(g_messages == 1 && g_hd_texts.empty(), "the popup in its pixel text");
+    check(!game.popup_areas().split() && g_small->offsets == offsets && g_small->text == text,
+          "no split, the table as it was");
+    game.put_back_all(&no_callback);
+}
+
 void test_a_whole_notice() {
     zap::Game game;
     start(game);
@@ -827,6 +847,83 @@ void test_a_stand_in_name_centered_through_the_game() {
     reset_translation();
 }
 
+// A stand-in's name stays as it was picked up while its pickup message shows (the HD message
+// reads ItemNames 47 again every frame): walking into the next cell or pausing leaves it, and
+// it follows the player again once the message ends. A stand-in of that record within reach
+// takes it, for the next pickup.
+void test_a_stand_in_name_held_while_its_popup_shows() {
+    zap::Game game;
+    start(game);
+    own_stand_ins(g_records);
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 " + hex(std::string("MASTER SWORD\nFOR BOB")) +
+                          "\nlabel 8 2 " + hex(std::string("BOOMERANG\nFOR CAROL")),
+                      labels);
+    game.set_labels(labels);
+    auto in_cell = [](int column) {
+        field<uint8_t>(0x107A) = 2;
+        field<uint8_t>(0x107B) = static_cast<uint8_t>(column);
+    };
+    in_cell(5);
+    frames(game, 1);
+    const std::wstring picked = entry_text(g_items, 47);
+    check(picked.find(L"MASTER SWORD") != std::wstring::npos, "named for the player's cell");
+    // The pickup's message (0x1F985): slot 0 bound to entry `entry`, kind 3, with its serial.
+    auto pick_up = [](int32_t serial, int32_t entry) {
+        put<int32_t>(slot(0), 0x1D8, serial);
+        put<int32_t>(slot(0), 0x1E0, 0);
+        put<BYTE*>(hd_object(0), 0x220, slot(0));
+        put<int32_t>(hd_object(0), 0x228, serial);
+        put<int32_t>(hd_object(0), 0x20C, entry);
+        put<int32_t>(hd_object(0), 0x210, 3);
+    };
+    pick_up(41, 47);
+    in_cell(6);  // no label there: AP Item
+    frames(game, 2);
+    check(entry_text(g_items, 47) == picked, "the next cell: the name picked up held");
+    g_menu = 1;  // paused
+    frames(game, 1);
+    check(entry_text(g_items, 47) == picked, "paused: not put back while it shows");
+    g_menu = 0;
+    pick_up(42, 48);  // a message of the other record's: not this one's
+    frames(game, 1);
+    check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos,
+          "a message of another entry holds nothing");
+    end_message(0);
+    in_cell(5);
+    frames(game, 1);
+    pick_up(43, 47);
+    in_cell(6);
+    frames(game, 1);
+    check(entry_text(g_items, 47) == picked, "held again for the next pickup");
+    // Another Scrap Energy stand-in, for (8, 2), within reach: its name, for the next pickup.
+    field<double>(0x1100) = 1000;
+    field<double>(0x1108) = 600;
+    BYTE* o = g_item_pool;
+    std::memset(o, 0, 0x3B0);
+    put<int32_t>(o, 0x1D8, 77);
+    put<int16_t>(o, 0x1E8, 47);
+    o[0x3AC] = 2;
+    o[0x3AD] = 8;
+    put<double>(o, 0x40, 1010.0);
+    put<double>(o, 0x48, 610.0);
+    frames(game, 1);
+    check(entry_text(g_items, 47).find(L"BOOMERANG") != std::wstring::npos,
+          "one of that record within reach: named for it");
+    std::memset(o, 0, 0x3B0);
+    end_message(0);
+    frames(game, 1);
+    check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos &&
+              entry_text(g_items, 47).find(L"BOOMERANG") == std::wstring::npos,
+          "the message ended: named for the player's cell again");
+    g_menu = 1;
+    frames(game, 1);
+    check(entry_text(g_items, 47) == L"Scrap Energy", "paused with the message ended: put back");
+    g_menu = 0;
+    game.put_back_all(&no_callback);
+    reset_translation();
+}
+
 // The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
 // capitals in any other translation, as in the default English's pixel text.
 void test_the_suffix_case() {
@@ -981,10 +1078,12 @@ int main() {
     test_a_popup_laid_out_by_the_font();
     test_the_suffix_case();
     test_a_stand_in_name_centered_through_the_game();
+    test_a_stand_in_name_held_while_its_popup_shows();
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_notice_too_long_shows_its_pixel_text();
     test_the_pixel_text_when_the_tables_cannot_be_used();
+    test_the_run_not_borrowed_when_an_entry_holds_text();
     test_a_whole_notice();
     test_the_last_item_name();
     test_a_language_change_mid_popup();

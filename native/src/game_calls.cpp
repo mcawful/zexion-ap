@@ -780,6 +780,20 @@ void Game::watch_translation() {
         if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
         if (scan_.written()) want[{Table::kSmall, kScanEntry}] =
                 hd_text(mixed_case() ? scan_line_ : scan_line_upper(scan_line_));
+        // A stand-in's name held as it is while its pickup message shows, since the message
+        // reads it every frame: neither the next cell's name nor, paused, the game's own. Not
+        // while another of that record is within reach: the next pickup reads the entry as it
+        // is, and the newest pickup's name wins (the game cuts the last message short).
+        for (int i = 0; i < kStandInCount; ++i) {
+            const int record = kStandInRecords[i];
+            if (stand_in_near_ == i || !item_name_shown(at_, record)) continue;
+            const EntryKey key{Table::kItems, record};
+            if (auto held = tr_entries_.written(key)) {
+                want[key] = std::move(*held);
+            } else {
+                want.erase(key);
+            }
+        }
     }
     tr_entries_.watch(now, want);
 }
@@ -1357,6 +1371,7 @@ void Game::set_popup_width(int width) {
 }
 
 void Game::watch_ap_items() {
+    stand_in_near_ = -1;
     if (!configured_ || !ap_items_.active()) return;
     resolve_item_labels();
     // The player's map cell, as the player update keeps it: the row then the column, the
@@ -1380,6 +1395,7 @@ void Game::watch_ap_items() {
         int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells);
         if (touching >= 0) width_cell = cells[touching];
+        stand_in_near_ = touching;
         ap_items_.watch(at_.item_records, cells);
         // Each record's name as translated text, for the translation's table (watch_translation),
         // its lines centered as a received item's popup's (the pickup popup starts each at one x),

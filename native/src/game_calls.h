@@ -528,6 +528,7 @@ private:
     PopupAreas popup_areas_;
     bool translated_popups_ = true;  // hold_translated_popups
     std::wstring stand_in_hd_[kStandInCount];
+    int stand_in_near_ = -1;  // the stand-in record (0 or 1) within reach this frame, or -1
     // The item pool copied into pool_copy_, once a frame; null if it could not be read.
     const BYTE* read_item_pool();
     std::vector<BYTE> pool_copy_;

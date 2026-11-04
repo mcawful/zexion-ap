@@ -738,6 +738,12 @@ std::optional<std::wstring> EntryWriter::original(EntryKey key) const {
     return it->second.original;
 }
 
+std::optional<std::wstring> EntryWriter::written(EntryKey key) const {
+    auto it = held_.find(key);
+    if (it == held_.end()) return std::nullopt;
+    return it->second.written;
+}
+
 BYTE* hd_object(const GameAddresses& a, BYTE* message) {
     int32_t slot = -1;
     if (a.hd_messages == nullptr || a.message_slots == nullptr ||
@@ -762,6 +768,24 @@ void clear_mark(const GameAddresses& a, BYTE* message) {
         read(message, message::kSerial, serial) && bound != serial) {
         object[hd::kHasText] = 0;
     }
+}
+
+bool item_name_shown(const GameAddresses& a, int record) {
+    if (a.hd_messages == nullptr || a.message_slots == nullptr) return false;
+    for (int slot = 0; slot < hd::kSlots; ++slot) {
+        BYTE* message = a.message_slots + static_cast<ptrdiff_t>(message::kSize) * slot;
+        const BYTE* object = a.hd_messages + static_cast<ptrdiff_t>(hd::kSize) * slot;
+        BYTE* bound = nullptr;
+        int32_t serial = 0, bound_serial = 0, entry = -1, kind = -1;
+        if (read(message, message::kSerial, serial) && serial != 0 &&
+            read(object, hd::kMessage, bound) && bound == message &&
+            read(object, hd::kSerial, bound_serial) && bound_serial == serial &&
+            read(object, hd::kEntry, entry) && entry == record &&
+            read(object, hd::kKind, kind) && kind == hd::kItemNameKind) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void PopupAreas::forget() {
