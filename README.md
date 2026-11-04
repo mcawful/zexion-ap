@@ -14,9 +14,9 @@ Get the latest release from the [Releases page](https://github.com/mcawful/zexio
 It has `zexion.apworld`, `zexion_ap.dll`, `version.dll`, the two player guides and a sample
 YAML for each mode (Easy, Standard, OHKO and Custom).
 
-This is still in development: seeds have been played start to finish in testing. It supports
-one version of Zexion, Steam build 23943567; if Steam updates the game, the client tells you
-when your version isn't supported.
+This is version 1.0.0, the first release: seeds have been played start to finish in testing.
+It supports one version of Zexion, Steam build 23943567; if Steam updates the game, the client
+tells you when your version isn't supported.
 
 ## Features
 
