@@ -1,26 +1,13 @@
-// The pause screen's disk row (the OS Install Disks goal), in place of KEYS (docs/re/memory.md,
-// "The pause screen's KEYS row"). The game builds the KEYS row (a 4-glyph label and nine
-// sprites: key slots 0-3, key icons 4-7, Zexion's icon 8) only once flag 39 is set or a key is
-// owned (keys_branch, a `jne`).
-//
-// While a count is set, that `jne` becomes `jmp` and, on a pause screen whose shape checks out,
-// the row shows a disc and the count ("2 OF ?", or "2 OF 15" once told) across the label's 4
-// glyphs and the 4 key slots; the other sprites are hidden. The disc is the helper's own 24 x 24
-// image (kDiscRows, painted at (kDiscX, kDiscY) in the sprite texture while the row is on) when
-// it is painted, else the game's small Data Disc (frame 829). A row already turned is left alone.
-// The branch is put back when off and before an unload, only where it still reads `jmp`.
-//
-// The helper's disc is one frame-list entry the helper owns: a copy of frame 829's with the
-// image's texture rectangle, in a page allocated once and never freed. The pause sprites keep
-// their template, so the game never frees their list, and a sprite still pointing at the entry
-// after an unload points at live memory. Whenever the image is not painted (the row off, before
-// an unload, a texture it could not paint into), the entry shows frame 829's rectangle instead.
-//
-// OPTION MENU, closing over the pause screen, calls the pause menu's way back (options_back_fn),
-// which in a translation builds KEYS's text again before that frame is drawn. While the row is
-// on, that way back is the helper's wrapper (hooks.options_back): the game's, then the row turned
-// (`returned`) in the same call. Put back when the row is off and before an unload, while its
-// menu is open and still holds the wrapper.
+// The pause screen's disk row (the OS Install Disks goal), in place of KEYS. The game builds the
+// KEYS row only once flag 39 is set or a key is owned (keys_branch, a `jne`); while a count is
+// set, that `jne` becomes `jmp`, and on a pause screen whose shape checks out the row shows a
+// disc and the count across KEYS's 4 glyphs and the 4 key slots, the other sprites hidden. The
+// disc is the helper's image (kDiscRows) when painted, else the game's frame 829, through one
+// frame-list entry in a page never freed: a sprite still on it after an unload points at live
+// memory. While on, the pause menu's way back from OPTION MENU (options_back_fn) is the helper's
+// wrapper, which turns the row again in the same call. Both are put back when off and before an
+// unload, only where they still read as the helper wrote them (docs/re/memory.md, "The pause
+// screen's KEYS row"; native/README.md, "The OS Install Disks goal").
 #pragma once
 
 #include <windows.h>
@@ -35,9 +22,8 @@ namespace zap {
 
 constexpr int kRowCells = 8;  // the characters the row can show: "41 OF 41"
 
-// The helper's disc: 24 x 24, white, at (kDiscX, kDiscY) in the 2048 x 2048 sprite texture, a
-// place transparent in the game's art that no sprite definition uses (docs/re/memory.md, "The
-// pause screen's KEYS row").
+// The helper's disc: 24 x 24, white, at a free place in the sprite texture (docs/re/memory.md,
+// "The pause screen's KEYS row").
 constexpr int kDiscX = 128, kDiscY = 1008, kDiscSize = 24;
 extern const char kDiscRows[kDiscSize][kDiscSize + 1];
 
@@ -52,9 +38,8 @@ public:
     // Game thread: the text to show ("" turns it off, the branch then put back).
     void set(std::string text) { text_ = std::move(text); }
 
-    // Game thread: a save of a disk seed is loaded and `text` is its count from the seed's file
-    // ("" for none): shown until `set` gives the client's, so a pause screen opened at once has
-    // the row with no flash of the game's KEYS.
+    // Game thread: a save of a disk seed is loaded, `text` its count from the seed's file ("" for
+    // none): shown until `set` gives the client's, so the game's KEYS never flashes.
     void prepare(std::string text) { prepared_ = std::move(text); }
 
     // Whether the row is on (a text set or prepared): the helper's disc is then painted.
@@ -80,8 +65,6 @@ public:
 private:
     const std::string& shown() const { return text_.empty() ? prepared_ : text_; }
     void turn(const GameAddresses& addresses, BYTE* menu, const std::string& text, bool disc);
-    // The pause menu's way back pointed at the wrapper while on; put back (or forgotten, its
-    // menu closed or the game's way back run) otherwise.
     void hook_return(const GameAddresses& addresses);
     void unhook_return(const GameAddresses& addresses);
     // Sprite `s` pointed at the helper's disc entry (made from its frame 829 the first time).

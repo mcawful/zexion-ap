@@ -1,10 +1,6 @@
-// The layouts of the game's objects that several modules read: menus, panels, widgets, text
-// labels, the sprite fields every drawn object shares, live item objects and item records, as
-// traced on B1. Fields only one module reads stay in that module.
-//
-// The same offset can mean different things on different objects, which the namespaces keep
-// apart: +0x1E0 is a panel's children but a widget's index, +0x1F0 a widget's label but a
-// panel's sprites (pause.cpp), and +0x1D8 a label's length but a live object's spawn.
+// The layouts of the game's objects that several modules read, as traced on B1; fields only one
+// module reads stay in that module. One offset can mean different things on different objects
+// (+0x1E0 a panel's children but a widget's index): the namespaces keep them apart.
 #pragma once
 
 #include <cstddef>
@@ -16,26 +12,22 @@ namespace zap {
 // flips at the moment of pickup").
 constexpr int kMapSide = 54;
 constexpr int kMapCells = kMapSide * kMapSide;
-// A map cell is 14 tiles along this repo's x (the tile column) and 20 along its y (the tile row)
-// (docs/re/save-format.md, "The continue point and the seed's start").
+// A map cell in tiles, along this repo's x and y (docs/re/save-format.md, "The continue point and
+// the seed's start").
 constexpr int kCellColumns = 14, kCellRows = 20;
-// The sprite texture (sprite_texture): Sprites.png, 2048 x 2048 RGBA (docs/re/memory.md, "The
-// pause screen's KEYS row").
+// Sprites.png, 2048 x 2048 RGBA (docs/re/memory.md, "The pause screen's KEYS row").
 constexpr int kTextureSize = 2048;
 
-// The loaded randomizer section: its location cells at +0, x then y, 16-bit each, in the game's
-// list order; its item table at +0x26C; its start record at +0x310 (the start candidate's index,
-// then its tile column and row, 16-bit each); its settings at +0x87B + t
-// (docs/re/save-format.md). The list holds 154 locations, or 155 with Secret Shuffle (t37), its
-// 155th filling the four zero bytes the others leave before the table (docs/re/randocells.md,
-// "The pool").
+// The loaded randomizer section (docs/re/save-format.md): location cells at +0 (x then y, 16-bit
+// each, in list order), then the item table, the start record (the start candidate's index, then
+// its tile column and row, 16-bit each) and setting t at kSettings + t. 155 locations with Secret
+// Shuffle (t37) (docs/re/randocells.md, "The pool").
 namespace rando {
 constexpr ptrdiff_t kItemTable = 0x26C, kStart = 0x310, kSettings = 0x87B;
 constexpr int kLocations = 154, kMaxLocations = 155, kSecretShuffle = 37, kStartSize = 6;
-// The start-with array: one byte per item, 1 for an item the new game starts with, in the order
-// of the menu's Starting Items (docs/re/randocells.md, "Starting Items and Item Pool"; the
-// placement writes it, docs/re/memory.md, "Starting a new game"; client/newgame.py,
-// START_WITH_ORDER).
+// The start-with array: 1 for each item the new game starts with, in the order of the menu's
+// Starting Items (docs/re/randocells.md, "The randomizer menu's first screen: items and
+// amounts"; client/newgame.py, START_WITH_ORDER).
 constexpr ptrdiff_t kStartWith = 0x689;
 constexpr int kStartWithOrder[] = {16, 19, 21, 32, 3,  4,  5,  6,  7,  11, 22, 20, 17, 9,
                                    14, 15, 10, 12, 34, 24, 26, 25, 13, 33, 8,  23, 18};
@@ -55,53 +47,47 @@ inline int locations(const uint8_t* section) {
 }
 }  // namespace rando
 
-// save_loaded: 0xFF with no save loaded, 0 in one (docs/re/memory.md, "Telling play from menus,
-// the title screen and death"). The flags: 0x9C4 bytes (client/game.py, FLAGS).
+// save_loaded with no save loaded (docs/re/memory.md, "Telling play from menus, the title screen
+// and death"); the flags' size (client/game.py, FLAGS).
 constexpr uint8_t kNoSaveLoaded = 0xFF;
 constexpr uint64_t kFlagCount = 0x9C4;
 
-// The flags the helper reads, one byte each: 39, set once the scanner has said how many disks
-// there are (docs/re/memory.md, "The scanner"); 250, set only by the ending ("The ending: flag
-// 250"). looks.cpp also reads 154, set by R'Talva X34 Y51's boss (its own kMarkerFlag).
+// Flags the helper reads, one byte each (docs/re/memory.md, "The scanner", "The ending: flag
+// 250"); looks.cpp has its own kMarkerFlag.
 namespace flag {
-constexpr int kScannerTold = 39;
-constexpr int kEnding = 250;
+constexpr int kScannerTold = 39;  // the scanner has said how many disks there are
+constexpr int kEnding = 250;      // set only by the ending
 constexpr int kFeat = 251;  // set with each Feat the ending gives (feats.h)
 }  // namespace flag
 
-// An area event in the loaded table, [event_table] + event * 0x28 (docs/re/memory.md, "The
-// escape skip", "Received Energy Shields"): its type at +0 (the byte after it 0), 16-bit
-// arguments from +2 whose meaning depends on the type, and the event's own number at +0x24.
+// An area event in the loaded table, [event_table] + event * kSize (docs/re/memory.md, "The
+// escape skip" and "Received Energy Shields").
 namespace event {
 constexpr size_t kSize = 0x28;
-constexpr ptrdiff_t kType = 0, kTypeHigh = 1;
-constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;
-constexpr ptrdiff_t kSelf = 0x24;
+constexpr ptrdiff_t kType = 0, kTypeHigh = 1;  // the type, and the byte after it (0)
+constexpr ptrdiff_t kArg0 = 2, kArg1 = 4, kArg2 = 6, kArg3 = 8;  // 16-bit, by the type
+constexpr ptrdiff_t kSelf = 0x24;  // the event's own number
 }  // namespace event
 
-// The loaded save's major-item list, [pickup_list] (docs/re/memory.md, "The pickup record holds
-// the major-item list"): up to 26 icon codes in pickup order, then their count, a signed byte.
-// The game saves it (file 0x9333 and 0x934D), and the file select's ITEMS row draws it.
+// The loaded save's major-item list, [pickup_list]: up to 26 icon codes in pickup order, then
+// their count, a signed byte (docs/re/memory.md, "The pickup record holds the major-item list").
 namespace pickups {
 constexpr int kMax = 26;
 constexpr ptrdiff_t kCount = 0x1A;
 constexpr size_t kSize = kCount + 1;
 // Whether the pickup lists an item (record = item ID) with this icon (its record's +0x08), as at
-// 0x1F761 to 0x1F7AC: not items 0 to 2, 27 to 31 or above 44, nor icon 0, 0x6E (the Mega Bomb's
-// and the Bomb Box's) or 0xE8 (the Missile Container's and the Missile Box's).
+// 0x1F761 to 0x1F7AC.
 constexpr bool listed(int item, uint8_t icon) {
     if (icon == 0 || icon == 0x6E || icon == 0xE8 || item <= 2) return false;
     return item <= 26 || (item >= 32 && item <= 44);
 }
-// A count the game can have written (it appends only below kMax): 0 to kMax. Another means
-// the list is not the game's, and nothing is read or written by it.
+// A count the game can have written (it appends only below kMax): another means the list is not
+// the game's, and nothing is read or written by it.
 constexpr bool count_ok(int count) { return count >= 0 && count <= kMax; }
 }  // namespace pickups
 
-// The save slots in memory (docs/re/memory.md, "The file select"): 30 blocks of 0x9408, each a
-// save file from its offset 2, so file offset F is at F - 2 (empty: 0xFF at the file's 0x9360;
-// the map at 0x877F); the randomizer marker at +0x9400. A copy of each slot's randomizer section
-// (kSectionSize, requests.h) is in the slots' table.
+// The save slots in memory, each block a save file from its offset 2, so file offset F is at
+// F - 2 (docs/re/memory.md, "Save data lives in Zexion.exe's static data", "The file select").
 namespace slot {
 constexpr int kCount = 30;
 constexpr ptrdiff_t kStride = 0x9408, kEmpty = 0x935E, kRandoMarker = 0x9400;
@@ -109,48 +95,43 @@ constexpr ptrdiff_t kMap = 0x877F - 2;
 constexpr uint8_t kEmptyMark = 0xFF;
 }  // namespace slot
 
-// The open menus: the top one at [current_menu], each one's next below at +0x78; a menu's panel
-// list at +0 and their count at +8 (docs/re/memory.md, "The game-mode panel"). +0x68 is what the
-// game calls, with the menu, when the menu above it closes and it is on top again (the pause
-// menu's: "The pause screen's KEYS row").
+// The open menus, the top one at [current_menu] (docs/re/memory.md, "The game-mode panel").
 namespace menu {
 constexpr ptrdiff_t kPanels = 0x00;
 constexpr ptrdiff_t kPanelCount = 0x08;  // 32-bit
+// Called with the menu when the one above it closes ("The pause screen's KEYS row").
 constexpr ptrdiff_t kOnReturn = 0x68;
-constexpr ptrdiff_t kBelow = 0x78;
+constexpr ptrdiff_t kBelow = 0x78;  // the next menu down
 }  // namespace menu
 
-// A panel: its place, its children (widgets), their count, the first so many the cursor reaches,
-// and its handler (docs/re/memory.md, "The game-mode panel", "The assist menu", "Feats and
+// A panel (docs/re/memory.md, "The game-mode panel", "The assist menu", "Feats and
 // achievements").
 namespace panel {
 constexpr ptrdiff_t kY = 0x1D8, kX = 0x1DA;  // 16-bit, pixels
 constexpr ptrdiff_t kChildren = 0x1E0;
 constexpr ptrdiff_t kCapacity = 0x1E8;    // 32-bit; the child count, read and written as such
-constexpr ptrdiff_t kSelectable = 0x1EC;  // 32-bit
+constexpr ptrdiff_t kSelectable = 0x1EC;  // 32-bit: the first so many the cursor reaches
 constexpr ptrdiff_t kHandler = 0x2F8;
 }  // namespace panel
 
-// A widget, a panel's child: its place among the panel's children, its label, the callback the
-// generic widget handler calls and its handler (docs/re/memory.md, "The game-mode panel").
+// A widget, a panel's child (docs/re/memory.md, "The game-mode panel").
 namespace widget {
-constexpr ptrdiff_t kIndex = 0x1E0;  // 32-bit
+constexpr ptrdiff_t kIndex = 0x1E0;  // 32-bit: its place among the panel's children
 constexpr ptrdiff_t kLabel = 0x1F0;
-constexpr ptrdiff_t kCallback = 0x2C0;
+constexpr ptrdiff_t kCallback = 0x2C0;  // called by the generic widget handler
 constexpr ptrdiff_t kHandler = 0x2C8;
 }  // namespace widget
 
-// A text label (a widget's, or a text object on its own): its glyph count, its columns and its
-// glyph list (docs/re/memory.md, "The game-mode panel", "The title screen").
+// A text label, a widget's or on its own (docs/re/memory.md, "The game-mode panel", "The title
+// screen").
 namespace label {
-constexpr ptrdiff_t kLength = 0x1D8;   // 32-bit
+constexpr ptrdiff_t kLength = 0x1D8;   // 32-bit: the glyph count
 constexpr ptrdiff_t kColumns = 0x1DC;  // 32-bit
 constexpr ptrdiff_t kGlyphs = 0x228;
 }  // namespace label
 
-// The fields every drawn object shares (glyphs, widgets, item objects): its place, color tint,
-// whether shown, palette, frame list and the frame shown (docs/re/memory.md, "The game-mode
-// panel", "Live item objects").
+// The fields every drawn object shares: glyphs, widgets, item objects (docs/re/memory.md, "The
+// game-mode panel", "Live item objects").
 namespace sprite {
 constexpr ptrdiff_t kTemplate = 0x30;  // the definition's template, null for none
 constexpr ptrdiff_t kX = 0x40, kY = 0x48;  // doubles, pixels
@@ -169,24 +150,21 @@ constexpr size_t kSize = 0x1D8;         // a glyph, through its last field
 constexpr ptrdiff_t kFontTemplate = 1 * 8, kItemTemplate = 34 * 8;
 }  // namespace sprite
 
-// Live objects past their sprite fields: the item pool's (128 of 0x3B0 bytes), and the general
-// pool's (1000 of 0x5C8) that show items in some rooms; each with its spawn (0 when free) and
-// record, and its map cell, the row then the column (docs/re/memory.md, "Live item objects").
+// Live objects past their sprite fields, of the item pool and of the general pool, which shows
+// items in some rooms (docs/re/memory.md, "Live item objects").
 namespace obj {
-constexpr ptrdiff_t kSpawn = 0x1D8;   // 32-bit
+constexpr ptrdiff_t kSpawn = 0x1D8;   // 32-bit, 0 when free
 constexpr ptrdiff_t kRecord = 0x1E8;  // 16-bit
 constexpr size_t kItemSize = 0x3B0;
-constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;
+constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;  // its map cell
 constexpr size_t kGeneralSize = 0x5C8;
 constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211;
-// A general object's first script state (16-bit): its type's +0x144, which the spawn copies
-// (0x4521E to 0x45226); R'Talva X34 Y51's marker, type 1146, has 8210 (docs/re/memory.md,
-// "Other players' items", "A marker on frame 63").
+// A general object's first script state, 16-bit (docs/re/memory.md, "Other players' items").
 constexpr ptrdiff_t kFirstState = 0x32E;
 }  // namespace obj
 
-// Item records: 51 of 100 bytes behind [item_records] (docs/re/memory.md, "Other players'
-// items", "Game functions the helper calls").
+// Item records behind [item_records] (docs/re/memory.md, "Other players' items", "Game functions
+// the helper calls").
 namespace record {
 constexpr ptrdiff_t kSize = 100;
 constexpr int kCount = 51;

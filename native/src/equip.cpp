@@ -18,10 +18,9 @@ const char kDiskDescription[] =
     " THESE FEW DISKS HOLD AN OLD BUT  "
     "SECURE OS INSTALL THAT MY PLANET  "
     "NEEDS TO RUN ITS DEFENSE NETWORK.";
-// In a translation the box shows the translated texts the game built for the Data Disc's record
-// (ItemNames 44) and panel 3 (LargeText 87, the Energy Tank's), built again as these. The
-// description is one line with a blank first, as the game's own (English(HD)'s 342), and the
-// builder wraps it at the box's columns, as the game asks for its descriptions (0xB3268).
+// In a translation the box shows the texts the game built for the Data Disc's record (ItemNames
+// 44) and panel 3 (LargeText 87), built again as these: the description one line with a blank
+// first, as English(HD)'s own (342), wrapped at the box's columns as the game asks (0xB3268).
 const wchar_t kDiskNameHd[] = L"\xE03A" L"OS Install Disk";  // the disk icon first (IconSheets)
 const wchar_t kDiskDescriptionHd[] =
     L" These few disks hold an old but secure OS install that my planet needs to run its "
@@ -34,9 +33,8 @@ namespace {
 constexpr ptrdiff_t kPanelIndex = 0x2E4, kPanelColumns = 0x2C6;
 constexpr ptrdiff_t kChildRecord = 0x1F8, kChildDy = 0x1E4;
 constexpr ptrdiff_t kChildRect = 0x1E8;
-// The color code a selected item takes when its record's palette is not 1, 2 or 14 to 19, as
-// the Data Disc's is not (docs/re/memory.md, "The equipment screen"): without one the disk turns
-// black when selected. The Navcore's.
+// A selected item's color code where its record's palette is not 1, 2 or 14 to 19 (the Data
+// Disc's), else it turns black: the Navcore's (docs/re/memory.md, "The equipment screen").
 constexpr ptrdiff_t kChildColor = 0x230;
 constexpr int32_t kDiskColor = 0x6E;
 constexpr int kMaxEntries = 16;
@@ -112,7 +110,6 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
         glyphs != kEnergyGlyphs || !writable(panel, 0x300)) {
         return "not the equipment screen as traced";
     }
-    // What the disk's widget is made from and given.
     BYTE* item_template = pointer_at(pointer_at(a.sprite_templates), sprite::kItemTemplate);
     BYTE* palette = pointer_at(energy, sprite::kPalette);
     int16_t palette_number = 0, disk_frame = -1, dy = 0;
@@ -173,8 +170,7 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     array[0] = energy;
     array[1] = disk;
     put(panel, panel::kChildren, array);
-    // `old` came from the game's malloc (docs/re/memory.md, "The equipment screen"), so the
-    // game's free releases it.
+    // `old` came from the game's malloc (docs/re/memory.md, "The equipment screen").
     game_free(old);
     put<int32_t>(panel, panel::kCapacity, 2);
     put<int32_t>(panel, panel::kSelectable, 2);
@@ -216,8 +212,7 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     set(description_label, kDiskDescription, 0, kDescriptionGlyphs);
     set(name_label, kDiskName, 1, kNameGlyphs);
     // In a translation the pixel glyphs stay hidden, as the game left them: the translated texts
-    // are built again instead (translation.h), the name after the disk icon in the translation's
-    // font (apitem.h IconSheets), as the game puts a record's icon before its name.
+    // are built again instead (translation.h), the name after the disk icon (apitem.h IconSheets).
     if (translation_on(a)) {
         rebuild_label(a, name_label, kDiskNameHd);
         rebuild_label(a, description_label, kDiskDescriptionHd, {.wrap = true});

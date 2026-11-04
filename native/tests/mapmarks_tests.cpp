@@ -18,7 +18,6 @@ namespace {
 struct Save {
     std::vector<BYTE> section = std::vector<BYTE>(0x908);
     std::vector<BYTE> grid = std::vector<BYTE>(54 * 54);
-    // Location i at (x, y), holding `item`.
     void place(int i, int x, int y, BYTE item) {
         uint16_t xy[2] = {static_cast<uint16_t>(x), static_cast<uint16_t>(y)};
         std::memcpy(section.data() + 4 * i, xy, sizeof(xy));
@@ -137,8 +136,7 @@ void test_all_three_settings_read() {
 }
 
 void test_majors_on_minors_off() {
-    // A hinted stand-in (0xD) and a seen one (0x19): obscured and shown majors, as the game's
-    // majors there.
+    // A hinted stand-in (0xD) and a seen one (0x19), as the game's majors there.
     Save s;
     s.place(0, 1, 1, 48);
     s.place(1, 2, 2, 48);
@@ -158,7 +156,6 @@ void test_majors_on_minors_off() {
         zap::mark_important(t.section.data(), t.grid.data(), false);
         check(t.at(1, 1) == 0x0E, "minors or class on: a shown major");
     }
-    // After the ending nothing is obscured.
     Save e;
     e.place(0, 1, 1, 48);
     e.at(1, 1) = 0x0D;
@@ -211,10 +208,8 @@ struct Page {
 void fake_text_set(void* text, const char* s, int first, int count);
 int g_hook = 0;
 
-// The map menu as the helper walks it (mapmarks.cpp): first panel, its children (first holds
-// the handler, fourth the cursor), the info panel and its scale and name widget, and what the
-// helper's map_handler holds (the map's handler, unless a test says otherwise). Not copyable:
-// it points into itself.
+// The map menu as the helper walks it (mapmarks.cpp): the first child holds the handler, the
+// fourth the cursor; the info panel the scale and name. Not copyable: it points into itself.
 struct MapMenu {
     std::vector<BYTE> cursor = std::vector<BYTE>(0x200);
     Page first;  // the child holding the handler, in both slots
@@ -256,7 +251,6 @@ struct MapMenu {
     }
     MapMenu(const MapMenu&) = delete;
     BYTE* current_menu() { return reinterpret_cast<BYTE*>(&holder); }
-    // The helper's addresses for this map, the map's handler held at map_handler.
     zap::GameAddresses addresses() {
         zap::GameAddresses addresses;
         addresses.current_menu = current_menu();
@@ -358,7 +352,6 @@ void test_one_slot_and_a_read_only_child() {
     zap::MapCursorNames names;
     names.watch(a, true);
     check(m.slot() == &g_hook, "both slots wrapped");
-    // A write over +0x168 only: +0x178 still holds the wrapper, so it stays wrapped.
     int reveal = 0;
     m.set_slot(0x168, &reveal);
     names.watch(a, true);
@@ -367,13 +360,12 @@ void test_one_slot_and_a_read_only_child() {
     names.restore(a);
     check(!names.holds_hook() && m.slot_at(0x168) == &reveal && m.slot_at(0x178) == &m.handler,
           "restored: only the slot holding the wrapper put back");
-    // Only +0x168 the wrapper now.
     m.set_slot(0x168, &m.handler);
     names.watch(a, true);
     m.set_slot(0x178, &reveal);
     names.watch(a, true);
     check(names.holds_hook() && m.slot_at(0x168) == &g_hook, "+0x168 alone: still wrapped");
-    // Read-only: kept as the helper's (so an unload refuses), then put back once writable.
+    // Read-only: kept as the helper's, so an unload refuses.
     m.first.read_only(true);
     names.restore(a);
     check(names.holds_hook() && m.slot_at(0x168) == &g_hook, "a read-only child: kept");
@@ -381,7 +373,6 @@ void test_one_slot_and_a_read_only_child() {
     names.restore(a);
     check(!names.holds_hook() && m.slot_at(0x168) == &m.handler && m.slot_at(0x178) == &reveal,
           "writable again: put back");
-    // And not wrapped while it cannot be written.
     m.first.read_only(true);
     names.watch(a, true);
     check(!names.holds_hook() && m.slot_at(0x168) == &m.handler, "a read-only child not wrapped");
@@ -425,7 +416,7 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     names.restore(a);
     check(m.slot() == &m.handler && !names.holds_hook(), "restored before an unload");
     names.watch(a, true);
-    // The navigation room's reveal puts the game's handlers back in both slots: wrapped again.
+    // The navigation room's reveal puts the game's handlers back in both slots.
     m.set_slot(0x168, &m.handler);
     m.set_slot(0x178, &m.handler);
     names.watch(a, true);
@@ -570,7 +561,6 @@ void test_the_seen_marker_patched_and_put_back() {
     m.restore();
     check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0,
           "restored: the game's");
-    // Something else's bytes there: never patched over, and its own once it rewrites ours.
     BYTE other[zap::kSeenMarkerSize];
     std::memcpy(other, kSeenGame, sizeof(other));
     other[0] = 0xE9;

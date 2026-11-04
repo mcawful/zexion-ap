@@ -1,6 +1,5 @@
-// Host tests for the title screen's mod lines (title.h): a stand-in draw list holding the
-// game's copyright line, and stand-ins for the game's text constructor, layout and glyph link
-// that build and link objects with the fields the helper reads, as traced on B1.
+// Host tests for the title screen's mod lines (title.h): a stand-in draw list with the game's
+// copyright line, and stand-ins of the game's text functions as traced on B1.
 
 #include <windows.h>
 
@@ -211,7 +210,6 @@ void test_lines_are_made_under_the_copyright() {
     check(get<BYTE*>(credit, 0x178) == g_tag && get<int16_t>(credit, 0x180) == 0x79,
           "the game line's tag");
     check(get<int32_t>(mod, 0x1E4) == -1, "as the routine sets +0x1E4");
-    // Every object in the list owned by it, linked both ways.
     std::vector<BYTE*> all = objects();
     bool linked = get<BYTE*>(g_list, 0x20) == all.back();
     for (size_t i = 0; i < all.size(); ++i) {
@@ -356,9 +354,8 @@ void test_the_lines_in_english_hd() {
     stand_in::reset_translation();
 }
 
-// English(HD) off the title: the game's menus open over the title, its line and its © still
-// shown, and the HD list is drawn over them, so the translated lines are hidden while a menu is
-// open (or the game's line is gone), and shown again on the title. Nothing is built again.
+// The game's menus open over the title with its line still shown, and the HD list is drawn over
+// them: the translated lines are hidden while a menu is open, shown again on the title.
 void test_the_hd_lines_off_the_title() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);
@@ -401,8 +398,7 @@ void test_the_hd_lines_off_the_title() {
                all_visible(mod, false) && all_visible(hint, false);
     };
     check(title_shown(true), "on the title: both shown");
-    // The title to Option: the menu's builder hides the HD list, the © stays shown.
-    g_menu = 3;
+    g_menu = 3;  // Option: its builder hides the HD list, the © stays shown
     hide_translated(mod);
     hide_translated(hint);
     bool hidden = true;
@@ -415,12 +411,9 @@ void test_the_hd_lines_off_the_title() {
     g_menu = 0;
     lines.watch(a, g_client, true);
     check(title_shown(true), "back on the title: shown at the next frame call");
-    // The title to the file select: the same, without the builder's hide.
-    g_menu = 3;
+    g_menu = 3;  // the file select: the same, without the builder's hide
     lines.watch(a, g_client, true);
     check(none_shown(), "the file select: hidden at once");
-    // A client connecting while the file select is up: still hidden; the hint stays hidden on
-    // the title after it.
     g_client = true;
     for (int i = 0; i < 9; ++i) lines.watch(a, g_client, true);
     check(none_shown(), "a client connecting on the file select: still hidden");
@@ -431,15 +424,13 @@ void test_the_hd_lines_off_the_title() {
     lines.watch(a, g_client, true);
     check(title_shown(true), "the client gone: the hint again");
     check(stand_in::g_builds.size() == builds, "nothing built again on the way");
-    // menu_state unreadable: the translated lines hidden, the credit following the ©.
     zap::GameAddresses unread = a;
     unread.menu_state = nullptr;
     lines.watch(unread, g_client, true);
     check(none_shown() && all_visible(credit, true), "menu_state unreadable: hidden");
     lines.watch(a, g_client, true);
     check(title_shown(true), "readable again: shown");
-    // The game's line gone from the list while the helper's are still there: hidden.
-    BYTE* before = get<BYTE*>(line, 0x18);
+    BYTE* before = get<BYTE*>(line, 0x18);  // the game's line taken out of the list
     BYTE* after = get<BYTE*>(glyph(line, 17), 0x10);
     put<BYTE*>(before, 0x10, after);
     if (after != nullptr) put<BYTE*>(after, 0x18, before);
@@ -448,8 +439,7 @@ void test_the_hd_lines_off_the_title() {
     stand_in::reset_translation();
 }
 
-// English(HD) picked while a menu is open over the title (Option): the lines built in its font
-// and hidden in the same frame call; shown once the menu closes.
+// English(HD) picked under Option: the lines built and hidden in the same frame call.
 void test_english_hd_picked_under_a_menu() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);
@@ -481,8 +471,8 @@ void test_english_hd_picked_under_a_menu() {
     stand_in::reset_translation();
 }
 
-// The title with a menu already open over it when the helper is first configured (a client
-// connecting with the file select up): no lines made until the menu closes, in either language.
+// A menu already open over the title when the helper is first configured: no lines made until
+// it closes.
 void test_no_lines_made_under_a_menu() {
     for (bool hd : {false, true}) {
         stand_in::reset_translation();

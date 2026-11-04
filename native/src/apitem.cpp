@@ -10,9 +10,8 @@
 
 namespace zap {
 
-// The popup icon: 8 x 8, white like the game's own icon glyphs: a ring of one-pixel dots, seven
-// pixels wide so that, like the font's letters, it leaves its last column empty and does not
-// touch the text after it.
+// The popup icon: 8 x 8, white like the game's own icon glyphs: a ring of dots, seven pixels
+// wide so that, like the font's letters, it leaves its last column empty.
 const char kApItemRows[8][9] = {
     "...#....", ".#...#..", "........", "#.....#.",
     "........", ".#...#..", "...#....", "........",
@@ -26,8 +25,7 @@ const char kApLogoRows[16][17] = {
 
 namespace {
 
-// What Scrap Energy and Scrap Chunk share as the game loads them (B1); the frame is each one's
-// own (StandIn).
+// What Scrap Energy and Scrap Chunk share as the game loads them (B1); their frames: StandIn.
 constexpr RecordShape kOwnShape = {.kind = 34, .ticks = 6, .frames = 2, .icon = 0, .palette = 8,
                                    .inventory = 46, .redirect = 0, .pickup_class = 1};
 // What they become: one frame each and no area event at pickup; their names start with the logo
@@ -41,7 +39,6 @@ constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }
 constexpr int frame_y(int k) { return 640 + (k / 8) * 16; }
 constexpr ptrdiff_t kSpritesTexture = 0x40;  // [holder] + 0x40: the texture object
 constexpr int kRepaintFrames = 300;
-// The progression arrow flashes: the helper repaints it in one color, then the other.
 constexpr uint64_t kFlashMs = 300;
 constexpr int kArrowPhases = 2;  // the arrow's colors, by phase: yellow, then white
 
@@ -53,10 +50,8 @@ constexpr unsigned kUnpackRowLength = 0x0CF2, kUnpackSkipRows = 0x0CF3, kUnpackS
 constexpr unsigned kUnpackBufferBinding = 0x88EF, kPackBufferBinding = 0x88ED;
 constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then skip rows, pixels
 
-// The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
-// as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
-// flashes itself between yellow and white. Outlined like kApLogoRows, the arrow counted as a
-// circle, and the one pixel left of the arrow's tip, shut in by black, black too.
+// The progression logo: kApLogoRows with Archipelago's up arrow over the lower right (Factorio's
+// ap.png in Archipelago); '^' the arrow, flashed between yellow and white, outlined as a circle.
 constexpr char kLogoArrow[16][17] = {
     ".....krrrrk.....",
     "..kkkrrrrrrkk...",
@@ -75,17 +70,14 @@ constexpr char kLogoArrow[16][17] = {
     "....koooook^^^k.",
     ".....kooook^^^k.",
 };
-// A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent). The
-// stand-ins draw in palette 26, which shows the texture's own colors (ItemLooks::own_colors), so
-// the logo is painted in the colors it shows.
+// A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent):
+// palette 26 shows the texture's own colors (ItemLooks::own_colors).
 bool logo_rgb(char c, int arrow_phase, uint8_t (&rgb)[3]) {
     if (c == '^') return glyph_rgb(arrow_phase == 0 ? 'y' : '#', rgb);
     return glyph_rgb(c, rgb);
 }
 
-// The two stand-ins: Scrap Energy for other players' items, Scrap Chunk for their progression
-// items. Both are filler the game counts as Scrap Metal; the game draws both in palette 8, the
-// helper's look in palette 26 (looks.h).
+// The two stand-ins: the game's own frame, event and name, and the helper's frame and logo.
 struct StandIn {
     int item;
     int16_t own_frame, own_event;
@@ -192,9 +184,8 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
 namespace {
 
 constexpr int kMaxErrors = 16;  // a lost context can report an error on every call
-// The texture check (TextureCheck): how often a texture not as expected is read, how far apart,
-// and the rectangle whose alpha is kept, the item frames (x 128 to 256) and the font (x 0 to
-// 128, from y 976) together.
+// TextureCheck's reads of a texture not as expected, how far apart, and the rectangle whose
+// alpha is kept: the item frames (x 128 to 256) and the font (x 0 to 128, from y 976).
 constexpr int kReadTries = 3;
 constexpr uint64_t kRetryMs = 5000;
 constexpr int kKeptX = 0, kKeptY = 640, kKeptWidth = 256, kKeptHeight = 512;
@@ -205,9 +196,8 @@ void drain(const GlFunctions& gl) {
     }
 }
 
-// Binds `texture` with plain pixel stores, runs `work` if `check` passes there, and puts the
-// game's GL state back. False if the texture was not the sprites' as expected, or if pixels
-// would go through a buffer.
+// Binds `texture` with plain pixel stores, runs `work` if `check` passes, and puts the game's GL
+// state back. False for no texture, the wrong size, `check` failing, or a pixel buffer bound.
 template <typename Check, typename Work>
 bool on_texture(unsigned texture, const GlFunctions& gl, int want_width, int want_height,
                 Check&& check, Work&& work) {
@@ -318,7 +308,6 @@ void TextureCheck::read(const GlFunctions& gl) {
 }
 
 bool FontGlyph::fits(TextureCheck& check, unsigned texture, const GlFunctions& gl) const {
-    // The place blank in the game's art, or already this image.
     return check.place_ok(texture, gl, x_, y_, w_, h_,
                           [&](int px, int py) { return opaque(px, py); });
 }
@@ -370,8 +359,7 @@ void FontGlyph::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check) 
     if (!gl.loaded()) return;
     unsigned texture = sprite_texture(holder);
     if (texture == 0) return;
-    // Painted (or found not as expected) at most once every kRepaintFrames frames for the same
-    // texture.
+    // Painted (or found not as expected) at most once every kRepaintFrames frames a texture.
     if ((texture == painted_ || texture == failed_) && white_ == painted_white_ &&
         frames_to_paint_-- > 0) {
         return;
@@ -429,8 +417,7 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
     if (!active() || !gl.loaded()) return;
     if (!world) {
         // Menus draw item frames too (the equipment screen draws frame 95, empty in the game's
-        // art, by the missile count): the logos come off while one is open, and go back on the
-        // first frame after.
+        // art, by the missile count): the logos come off while one is open.
         clear(holder, gl, check);
         return;
     }
@@ -442,8 +429,7 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
         if (texture != 0 && upload(texture, gl, check, false, false)) painted_ = texture;
         return;
     }
-    // Between full paints, only the arrow, when its color changes, into a texture already
-    // checked and painted.
+    // Between full paints, only the arrow on a color change, into a texture already painted.
     if (phase == arrow_phase_ || painted_ == 0 || sprite_texture(holder) != painted_) return;
     arrow_phase_ = phase;
     upload(painted_, gl, check, false, true);
@@ -481,8 +467,7 @@ void ApItems::release(BYTE* records_holder) {
 
 namespace {
 
-// The icon sheets (IconSheets): the frames the helper paints, and a frame of the game's art that
-// is never blank (the first item icon's).
+// IconSheets: the frames the helper paints, and one never blank in the game's art (an item's).
 constexpr int kFirstIconFrame = 0x96, kKnownFrame = 0x80;
 constexpr int32_t kSheetFrames = 256;
 // A definition's template keeps its texture's GL name where a sprite keeps its style, +0x1D0
@@ -511,16 +496,13 @@ bool in_circle(double x, double y, double cx, double cy, double r) {
 }
 
 // Where the HD padlock sits in its 64 x 64 cell (left, top, right, bottom): the text it follows
-// spans y 6 to 46 there, from the cap height to the baseline (docs/re/memory.md, "The assist
-// menu").
+// spans y 6 to 46, cap height to baseline (docs/re/memory.md, "The assist menu").
 constexpr double kLockBox[4] = {16, 6, 50, 46};
-// Where the disk and the AP logo sit, which lead their text: chosen near the game's own HD
-// icons' box (their boxes' medians x 9 to 53, y 7 to 50: docs/re/memory.md, "The assist menu"),
-// from the cap height to a little under the baseline.
+// Where the disk and the AP logo sit, leading their text: chosen near the game's own HD icons'
+// box (docs/re/memory.md, "The assist menu"), cap height to a little under the baseline.
 constexpr double kLeadBox[4] = {10, 6, 54, 50};
 
-// (x, y) in `box` as the point of a shape drawn in `drawn` (both left, top, right, bottom), the
-// same scale both ways.
+// (x, y) in `box` as the point of a shape drawn in `drawn` (left, top, right, bottom), one scale.
 void fit(double& x, double& y, const double (&box)[4], const double (&drawn)[4]) {
     const double s = (box[3] - box[1]) / (drawn[3] - drawn[1]);
     x = drawn[0] + (x - box[0]) / s;

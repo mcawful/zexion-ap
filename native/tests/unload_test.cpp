@@ -1,7 +1,6 @@
-// Loads and unloads the helper many times while two threads call the hooked function nonstop,
-// as the game calls SDL_GL_SwapWindow. The hook-test build of the helper
-// (zexion_ap_hooktest.dll, argv[1]) hooks this program's own import of GetTickCount. If an
-// unload could free code a thread was still running, this crashes.
+// Loads and unloads the hook-test helper (argv[1]) many times while two threads call this
+// program's GetTickCount nonstop, as the game calls SDL_GL_SwapWindow. If an unload could free
+// code a thread was still running, this crashes.
 
 #include <windows.h>
 

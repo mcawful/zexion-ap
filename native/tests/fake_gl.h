@@ -1,6 +1,5 @@
-// A fake OpenGL for the host tests that paint into the sprite texture (apitem.h GlFunctions):
-// every upload kept in g_uploads, the game's binding and unpack state put back checked, and a
-// readback of the known art the texture check looks for.
+// A fake OpenGL for the tests that paint into the sprite texture (apitem.h GlFunctions): uploads
+// kept in g_uploads, the game's state checked as put back, and a readback of the known art.
 #pragma once
 
 #include <windows.h>

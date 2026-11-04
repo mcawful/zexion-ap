@@ -51,8 +51,7 @@ bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t c
     return true;
 }
 
-// Which stand-ins' records the helper has restyled now (one logo frame each): their logos are
-// painted, and their objects may be dressed and colored.
+// Which stand-ins' records are restyled now (one logo frame each): their objects may be dressed.
 void restyled_stand_ins(const BYTE* records, bool (&ours)[kStandInCount]) {
     for (int i = 0; i < kStandInCount; ++i) {
         BYTE r[record::kSize];
@@ -259,8 +258,6 @@ void ItemLooks::undress_live(BYTE* object, size_t size, Dressed& d, BYTE* base,
 
 void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
     if (at.item_pool == nullptr) return;
-    // Without the template's base, the stand-ins' palette, the records or the clock, nothing is
-    // dressed.
     BYTE* standin_palette = stand_ins_palette(at);
     BYTE* records = pointer_at(at.item_records);
     int64_t clock = 0;
@@ -283,8 +280,7 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
         int16_t record = field<int16_t>(seen, obj::kRecord);
         const int stand_in = stand_in_index(record);
         if (d.spawn != 0 && d.spawn != spawn) d = {};  // another object now: none of ours
-        // The item it stands in for, if a live, restyled stand-in; else put back while still
-        // ours (seen is this frame's copy of it).
+        // The item it stands in for, if a live, restyled stand-in; else put back while ours.
         const int item = spawn == 0 || stand_in < 0 || !ours[stand_in]
                              ? -1
                              : item_at(seen[obj::kItemRow], seen[obj::kItemColumn]);
@@ -393,7 +389,6 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         }
         int32_t spawn = field<int32_t>(seen, obj::kSpawn);
         if (d.spawn != 0 && d.spawn != spawn) d = {};
-        // Which stand-in: the logo frame the game computed from its record.
         int32_t frame = field<int32_t>(seen, sprite::kFrameIndex);
         const int stand_in = logo_index(frame);
         // The marker is no stand-in to dress (hide_marker hides it).
@@ -403,9 +398,8 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
             undress(object, seen, d, base, standin_palette, true);
             continue;
         }
-        // Its frame list is left as the game's (the template's); only the frame shown and the
-        // palette are written, so whatever frame its own code sets, nothing points outside the
-        // list.
+        // Its frame list stays the template's; only the frame shown and the palette are written,
+        // so whatever frame its own code sets, nothing points outside the list.
         if (d.spawn == 0 && !stand_in_palette(at, field<BYTE*>(seen, sprite::kPalette))) continue;
         int32_t count = field<int32_t>(seen, sprite::kFrameCount);
         Look look;

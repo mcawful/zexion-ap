@@ -1,8 +1,6 @@
 // version.dll proxy, copied by the player beside Zexion.exe so the helper loads with the game
 // (native/README.md, "The proxy"). SDL2.dll imports version.dll, not a KnownDLL, so this one
-// loads first; every export passes on to the system's. DllMain only starts load_helper, which
-// pins this DLL, loads the real one, and loads zexion_ap.dll from its own folder (host
-// Zexion.exe, no zexion_ap.disabled beside it) under the client's load mutex.
+// loads first; every export passes on to the system's.
 #include <windows.h>
 
 #include <cstdint>

@@ -140,15 +140,13 @@ void SeenMarker::restore() {
 
 namespace {
 
-// The map child's two handler slots: the game's per-frame loop calls +0x168 (the child its
-// argument), and 0x46B4F calls +0x178; the map's builder puts its handler in both
+// The map child's two handler slots, both given the map's handler by its builder
 // (docs/re/memory.md, "Map markers").
 constexpr ptrdiff_t kChildHandlers[2] = {0x168, 0x178};
 constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8;
 constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabel)
-// The cursor widget, the panel's fourth child: its 16-bit +0x1E6 gives the cell's row (y) and
-// +0x1E4 its column (x), as the map's handler computes them. The cursor's name: the info
-// panel's fourth child.
+// The cursor widget is the panel's fourth child (16-bit +0x1E6 the cell's row, +0x1E4 its
+// column); the cursor's name is the info panel's fourth child.
 constexpr int kCursorChild = 3, kNameChild = 3;
 constexpr ptrdiff_t kCursorRow = 0x1E6, kCursorColumn = 0x1E4;
 constexpr double kFineScale = 40.0;
@@ -222,9 +220,8 @@ void MapCursorNames::watch(const GameAddresses& a, bool on) {
     void* handler = nullptr;
     if (!safe_read(a.map_handler, &handler, sizeof(handler))) return;
     if (child_ != nullptr && !still_wrapped(a)) {
-        // No longer the open map's child holding the wrapper (map closed, or the game rewrote
-        // both slots, e.g. the navigation room's reveal): forget it; rewrapped below if it is
-        // still the map.
+        // Map closed, or the game rewrote both slots (the navigation room's reveal): forget it;
+        // rewrapped below if it is still the map.
         child_ = nullptr;
         menu_ = nullptr;
     }

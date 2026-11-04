@@ -14,9 +14,8 @@ constexpr char kTitleHintHd[] = "Start the AP client to play a seed";
 
 namespace {
 
-// The helper's lines (their text: the version's, kTitleCredit, kTitleHint) and where they go:
-// centered on the 320-pixel screen, 8 pixels a character, in the band below the planet, 12
-// pixels apart: the hint, then the version, then the credit.
+// The helper's lines and where they go: centered on the 320-pixel screen, 8 pixels a character,
+// 12 apart in the band below the planet: the hint, then the version, then the credit.
 constexpr int kLines = 3;
 constexpr int kModLine = 0, kCredit = 1, kHint = 2;
 constexpr int kLineY[kLines] = {202, 214, 190};
@@ -109,7 +108,6 @@ void set_shown(BYTE* g, bool visible) {
     }
 }
 
-// Each of the line's translated glyphs shown or hidden.
 void show_translated(BYTE* object, bool visible) {
     int32_t count = 0, capacity = 0;
     BYTE** list = nullptr;
@@ -219,9 +217,8 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     if (hd != hd_) frames_ = 0;
     hd_ = hd;
     if (mod_line_.empty() || frames_-- > 0) return "";
-    // In English(HD) every frame call: a menu's builder hides every glyph of the HD list
-    // (docs/re/memory.md "Where a rebuilt label goes"), the lines' too, which are shown again at
-    // the next frame call the title is up with no menu open (the title's draw list is short).
+    // In English(HD) every frame call: a menu's builder hides the HD list's glyphs, the lines'
+    // too (docs/re/memory.md, "Where a rebuilt label goes"); the title's draw list is short.
     frames_ = hd ? 0 : kLookFrames;
     const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
     Look l = look(a.draw_layer, texts);
@@ -238,8 +235,7 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     uint8_t menu = 0xFF;
     const bool no_menu = read(a.menu_state, 0, menu) && menu == 0;
     // Once a title: a line that failed is not made again until the game's line goes and comes.
-    // Made only with no menu open: made under one (a client configuring the helper with the file
-    // select up), they would join the list after the menu's objects, over them.
+    // Made only with no menu open: made under one, they would join the list over its objects.
     std::string why = last_error_;
     for (int k = 0; k < kLines && why.empty(); ++k) {
         if (l.made[k] == nullptr && no_menu) {
@@ -253,12 +249,9 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
         if (l.made[k] != nullptr) use_font(a, l.made[k], hd_texts[k], hd);
     }
     shown_ = l.made[kModLine] != nullptr && l.made[kCredit] != nullptr && l.made[kHint] != nullptr;
-    // Shown while the game's © is (and again after a refused unload hid them); the hint only
-    // while no client is connected. A line's pixel glyphs are drawn from the title's list, as
-    // the game's line is, so they follow its ©. Its translated glyphs are drawn from the HD list,
-    // not the title's (docs/re/memory.md, "The title screen"), so they are shown only while no
-    // menu is open either: the game's menus open over the title, which stays in the list, and
-    // the HD list is drawn over them.
+    // Shown while the game's © is (and again after a refused unload hid them), the hint only with
+    // no client. Translated glyphs are drawn from the HD list, over any menu opened on the title,
+    // so they show only with no menu open too (docs/re/memory.md, "The title screen").
     BYTE* g[kGameLineLength] = {};
     uint8_t visible = 0;  // the © unreadable: hidden
     if (!glyphs_of(l.game_line, kGameLineLength, g) || !read(g[0], sprite::kVisible, visible)) {

@@ -1,6 +1,5 @@
-// Stand-in menus for the native tests, laid out as traced on B1: the game-mode panel (menu.h:
-// the most recent menu, its panel list, the panel, four children, RANDOMIZER's label and its 11
-// glyphs, each with a frame table), the pause menu's options, and the pause screen (pause.h).
+// Stand-in menus for the native tests, laid out as traced on B1: the game-mode panel and the
+// options (menu.h), and the pause screen (pause.h).
 #pragma once
 
 #include <windows.h>
@@ -18,7 +17,7 @@ namespace stand_in {
 
 constexpr int kFrames = 256;  // the font's 256 glyphs
 
-// One game-mode panel: the menu, its panel list, the panel, four children, RANDOMIZER's label
+// The game-mode panel: the menu, its panel list, the panel, four children, RANDOMIZER's label
 // and its 11 glyphs, each with a frame table.
 struct ModePanel {
     void* const panel_handler_ptr;
@@ -90,9 +89,8 @@ struct ModePanel {
     void* callback() { return at<void*>(child, 0x2C0); }
 };
 
-// The pause menu's options, as built with a save loaded (menu.h, AssistLock): a menu with two
-// panels, the second holding eight entries, ASSIST at 6 with its 12 glyphs (ASSIST and six
-// blanks) styled 0x15, as read live.
+// The pause menu's options with a save loaded, as read live: two panels, the second's eight
+// entries with ASSIST at 6, its 12 glyphs (ASSIST and six blanks) styled 0x15.
 struct OptionsMenu {
     void* const widget_handler_ptr;
     void* const assist_menu_ptr;
@@ -155,9 +153,8 @@ struct OptionsMenu {
         }
     }
 
-    // Built again where it was, as leaving Video builds it (0x124D30): VERSION 1.20 (12 glyphs,
-    // the generic handler, no callback, in its own panel) in the old ASSIST's place, `fresh`'s
-    // ASSIST sixth of the selectable eight. `version_list` is the first panel's list.
+    // Built again in place, as leaving Video builds it (0x124D30): VERSION 1.20 (no callback,
+    // its own panel, `version_list`) where ASSIST was, `fresh`'s ASSIST sixth of eight.
     void rebuild_in_place(OptionsMenu& fresh, BYTE* (&version_list)[1]) {
         at<void*>(child, 0x2C0) = nullptr;
         at<int32_t>(child, 0x1E0) = 0;
@@ -226,9 +223,8 @@ struct OptionsMenu {
     }
 };
 
-// The pause screen (pause.h), laid out as read live on B1: two panels, the first holding
-// EQUIPMENT, the second the KEYS row (a 4-glyph label and nine sprites), drawn from a frame list
-// whose frame 829 is the game's small Data Disc.
+// The pause screen as read live on B1: the first panel holding EQUIPMENT, the second the KEYS
+// row (a 4-glyph label and nine sprites).
 inline BYTE g_pause_frames[1024 * 0x38];
 inline BYTE* const g_disc_frame = g_pause_frames + 829 * 0x38;  // the game's small Data Disc
 // The key icons' quad, as read live.

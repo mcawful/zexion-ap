@@ -1,10 +1,8 @@
-// How other players' items look (docs/re/memory.md, "Other players' items"). The world puts
-// Scrap Energy (47) at locations holding another player's item and Scrap Chunk (48) at their
-// progression items. While labels are set, the helper restyles both records (one empty frame
-// each, no pickup area event, a name from the label or AP ITEM) and paints the logos and the
-// logo glyph into the sprite texture through OpenGL, in the frame call. Records are written only
-// over the game's own values or the helper's, and the texture only where TextureCheck finds the
-// place blank or already the helper's. Unload restores the records and clears the pixels.
+// How other players' items look (native/README.md, "Other players' items"; docs/re/memory.md,
+// "Other players' items"). While labels are set, the stand-in records (47, 48) are restyled and
+// the logos painted into the sprite texture, in the frame call. Records are written only over the
+// game's own values or the helper's, the texture only where TextureCheck finds the place blank or
+// already the helper's. Unload restores the records and clears the pixels.
 #pragma once
 
 #include <windows.h>
@@ -18,11 +16,10 @@ namespace zap {
 
 constexpr int kStandInItem = 47;         // Scrap Energy: other players' items
 constexpr int kStandInProgression = 48;  // Scrap Chunk: other players' progression items
-// The empty item frames their logos are painted into (frames 63 and 95 of the item sprites).
+// The empty item frames their logos are painted into.
 constexpr int kStandInFrame = 63, kStandInProgressionFrame = 95;
 constexpr int kStandInCount = 2;
-// Each stand-in's index (0 for Scrap Energy, 1 for Scrap Chunk) from its record, or from its
-// logo frame; -1 for neither. And the records and logo frames by index.
+// A stand-in's index (0 Scrap Energy, 1 Scrap Chunk) from its record or logo frame, -1 for neither.
 constexpr int stand_in_index(int record) {
     return record == kStandInItem ? 0 : record == kStandInProgression ? 1 : -1;
 }
@@ -74,11 +71,10 @@ struct StandInSeen {
 // Chosen, not measured: past touching range, under half a cell (320 x 224).
 constexpr double kStandInReach = 96;
 
-// For each stand-in record (47, then 48), the map cell to name it after: the cell of the nearest
-// object of that record with a labeled cell, if within kStandInReach; else `player_cell`, if it
-// has a label; else that nearest object's cell, wherever it is; else `player_cell`. Returns the
-// record (0 or 1) whose object is nearest within reach, the one a pickup is about to take, or -1;
-// and, given `in_reach`, whether each record's object is within reach.
+// For each stand-in record (47, then 48), the map cell to name it after: its nearest labeled
+// object's cell if within kStandInReach; else `player_cell` if labeled; else that object's cell
+// wherever it is; else `player_cell`. Returns the index (0 or 1) whose object is nearest within
+// reach (the one a pickup is about to take) or -1; and, given `in_reach`, each one's reach.
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
                int player_cell, const std::map<int, std::string>& labels, int (&cells)[2],
                bool* in_reach = nullptr);
@@ -86,17 +82,14 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
 // From opengl32.dll if the process has loaded it; otherwise all null.
 GlFunctions load_gl();
 
-// The sprite texture as read back (glGetTexImage, 16 MB), once per texture for everything the
-// helper paints into it: whether it holds the game's art where Sprites.png has it, and the alpha
-// of the font's glyphs and the item frames as they were, against which each place is checked
-// before the first paint (FontGlyph, ApItems). A texture that could not be read, or whose art
-// is not where the PNG has it (a sprite mod, say), is read up to 3 times, 5 s apart (it may
-// still be loading), then not until the texture changes.
+// The sprite texture read back (glGetTexImage, 16 MB), once per texture: whether it holds the
+// game's art where Sprites.png has it, and the alpha of the font and the item frames, against
+// which each place is checked before the first paint. One unreadable or not as the PNG is read
+// up to 3 times, 5 s apart (it may still be loading), then not until the texture changes.
 class TextureCheck {
 public:
-    // Game thread, inside on_texture (the texture bound, plain pixel stores). Whether the w x h
-    // place at (x, y), in the font or the item frames, is blank in the texture as read, or
-    // already the helper's: `ours(px, py)` says where the helper's pixels are opaque.
+    // Game thread, inside on_texture: whether the w x h place at (x, y) is blank as read, or
+    // already the helper's (`ours(px, py)`: where the helper's pixels are opaque).
     template <typename Ours>
     bool place_ok(unsigned texture, const GlFunctions& gl, int x, int y, int w, int h,
                   Ours&& ours) {
@@ -123,32 +116,26 @@ private:
     std::vector<uint8_t> alpha_;  // the kept rectangle's alpha, as read
 };
 
-// A pixel's color: '#' white, or the logo's: k its outline, r y g b p o its circles. False for
-// anything else ('.', transparent).
+// A pixel's color: '#' white, or the logo's (k outline; r y g b p o circles); false otherwise.
 bool glyph_rgb(char c, uint8_t (&rgb)[3]);
 
-// One glyph of the game's 8 x 8 font, painted by the helper into a slot that is empty in the
-// game's art (the AP logo glyph, the padlock, the disk glyphs), or any image of its own placed in
-// the texture check's kept rectangle (the pause row's disc, pause.h; the file select's AP logo
-// over four font glyphs, files.h). Painted while wanted, again now and then and whenever the
-// texture changes, and cleared when no longer wanted.
+// An 8 x 8 font glyph painted into a slot empty in the game's art (the logo glyph, the padlock,
+// the disk glyphs), or an image in the texture check's kept rectangle (pause.h, files.h). Painted
+// while wanted, again now and then and on a texture change; cleared when no longer wanted.
 class FontGlyph {
 public:
     // `rows`: 8 strings of 8, '#' for an opaque white pixel.
     FontGlyph(uint8_t code, const char (*rows)[9])
         : x_(font_x(code)), y_(font_y(code)), w_(8), h_(8), rows_(rows[0]) {}
-    // An image of H rows of W - 1 at (x, y) in the sprite texture, each pixel as glyph_rgb reads
-    // it.
+    // H rows of W - 1 at (x, y) in the sprite texture, each pixel as glyph_rgb reads it.
     template <size_t H, size_t W>
     FontGlyph(int x, int y, const char (&rows)[H][W])
         : x_(x), y_(y), w_(static_cast<int>(W - 1)), h_(static_cast<int>(H)), rows_(rows[0]) {}
-    // Game thread (the GL context current). `texture_holder` holds the pointer to the sprite
-    // data.
+    // Game thread (the GL context current); `texture_holder` holds the sprite data's pointer.
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     void clear(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check);
     bool painted() const { return painted_ != 0; }
-    // How far toward white the image is painted: 0 its colors, 255 all white. A change is
-    // painted at once (the file select's logo through a new game's fade to white, files.h).
+    // How far toward white the image is painted (0 to 255); a change is painted at once (files.h).
     void set_white(int level) { white_ = level < 0 ? 0 : level > 255 ? 255 : level; }
 
     // Inside on_texture: whether its place may be painted, and the place painted (or cleared).
@@ -172,19 +159,14 @@ private:
 
 // The logo glyph's ring of dots (kApItemGlyph).
 extern const char kApItemRows[8][9];
-// The AP logo, 16 x 16: Archipelago's six circles, each cutting a gap into the one drawn before
-// (data/icon.png in Archipelago), in glyph_rgb's letters (k the outline, then the circles,
-// r y g b p o). Outlined side-on: a pixel that is not a circle's is black where it touches a
-// circle left, right, above or below, and transparent elsewhere. The stand-ins draw it as
-// painted, with no background (palette 26), so a transparent gap beside a circle would show the
-// room behind (native/README.md, "Other players' items"). The file select marks AP saves with it
-// too (files.h).
+// The AP logo, 16 x 16: Archipelago's six circles (data/icon.png in Archipelago) in glyph_rgb's
+// letters, outlined side-on (native/README.md, "Other players' items"). The file select marks
+// AP saves with it too (files.h).
 extern const char kApLogoRows[16][17];
 
-// The helper's icons in the translations' fonts: its disk, padlock and AP logo, painted into the
-// free frames 0x96 to 0x98 of both icon sheets (definition 101, BigFontIcons.png, cells of
-// 64 x 64; 104, PixelFontIcons.png, cells of 10 x 9) and drawn as these characters
-// (docs/re/memory.md, "The translations' icons").
+// The helper's disk, padlock and AP logo in the translations' fonts, painted into the free frames
+// 0x96 to 0x98 of both icon sheets (101, 64 x 64 cells; 104, 10 x 9) and drawn as these
+// characters (docs/re/memory.md, "The translations' icons").
 constexpr wchar_t kHdDiskIcon = 0xE03A, kHdLockIcon = 0xE03B, kHdLogoIcon = 0xE03C;
 constexpr int kHdIconCount = 3;
 constexpr int kHdIconSheet = 101, kPixelIconSheet = 104;  // the sheets' definitions
@@ -195,12 +177,10 @@ BYTE* icon_sheet(BYTE* holder, int definition);
 class IconSheets {
 public:
     // Game thread (the GL context current), each frame while wanted: paints the icons into each
-    // sheet the game loaded, now and then and whenever its texture changes, only where their
-    // cells are blank in the game's art or already the helper's, with the game's art where the
-    // PNG has it. `templates_holder` holds the pointer to the sprite definitions' templates.
+    // loaded sheet now and then and on a texture change, only where their cells are blank or the
+    // helper's. `templates_holder` holds the pointer to the sprite definitions' templates.
     void paint(BYTE* templates_holder, const GlFunctions& gl);
-    // Game thread: the icons cleared from each sheet painted (when no longer wanted, before an
-    // unload).
+    // Game thread: the icons cleared from each sheet painted (no longer wanted, or an unload).
     void clear(BYTE* templates_holder, const GlFunctions& gl);
     bool painted() const { return sheets_[0].painted != 0 || sheets_[1].painted != 0; }
 
@@ -237,10 +217,8 @@ public:
     // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records.
     void watch(BYTE* records_holder, const int (&cells)[2]);
 
-    // Game thread, every frame while active (from the swap hook, the game's GL context
-    // current): paints the logo into the sprite texture now and then, and whenever the
-    // texture changes. `texture_holder` holds the pointer to the sprite data.
-    // `now_ms` is a millisecond clock (GetTickCount64): the progression arrow's color follows it.
+    // Game thread, every frame while active (the GL context current): paints the logos now and
+    // then and on a texture change. `now_ms` (GetTickCount64) sets the progression arrow's color.
     // `world`: false while a menu is open, when the logos are cleared instead.
     void paint(BYTE* texture_holder, const GlFunctions& gl, TextureCheck& check, uint64_t now_ms,
                bool world = true);
@@ -258,9 +236,8 @@ public:
     unsigned painted_texture() const { return painted_; }
 
 private:
-    // Paints (or clears) the logos and the glyph, only where the texture check finds the three
-    // places blank (or already the helper's) and the game's art where the PNG has it.
-    // `arrow_only`: just the progression logo's frame, for the arrow's next color.
+    // Paints (or clears) the logos and the glyph where the texture check allows. `arrow_only`:
+    // just the progression logo's frame, for the arrow's next color.
     bool upload(unsigned texture, const GlFunctions& gl, TextureCheck& check, bool clear,
                 bool arrow_only);
     // The logos and the glyph cleared, if painted into the texture there now.

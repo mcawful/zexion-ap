@@ -19,13 +19,8 @@ const char kLockRows[8][9] = {
 namespace {
 
 constexpr ptrdiff_t kPanelIndex = 3;  // the game-mode panel, in its menu's panel list
-// The hover border (docs/re/memory.md, "The game-mode panel"): the panel's handler sizes it
-// 11 x 8 + 8 = 96 wide from 8 left of the label (0xAE531 to 0xAE545; width at +0x2B8), out of
-// eight pieces pointed to from +0x278 (top-left, top, top-right, right, bottom-right, bottom,
-// bottom-left, left). Each piece has its x at +0x40 and its drawn rectangle from +0x128 to
-// +0x138; the top and bottom edges also keep their length (+0x114, float), their right (+0x158)
-// and their quad's right corners (+0xA8, +0xB8). Even around RANDOMIZER's ten letters and a
-// blank, it ends on ARCHIPELAGO's last letter.
+// The hover border's width and eight pieces, as the panel's handler lays them out (0xAE531 to
+// 0xAE545; docs/re/memory.md, "The game-mode panel"). It ends on ARCHIPELAGO's last letter.
 constexpr ptrdiff_t kPanelBorderPieces = 0x278, kPanelBorderWidth = 0x2B8;
 constexpr int kBorderPieces = 8;
 constexpr int kTop = 1, kTopRight = 2, kRight = 3, kBottomRight = 4, kBottom = 5;
@@ -37,29 +32,24 @@ constexpr double kEdgeAsLaid = 80.1;  // the top-right piece's x past the label'
 constexpr double kBorderMove = 8.0;   // one character: as far past the label as on its left
 constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
-// In a translation the panel shows SmallText 354's text (0x18027B), which the helper builds
-// again as its own after the game's (translation.h, rebuild_label), and back from the entry.
+// In a translation the panel shows SmallText 354's text (0x18027B).
 constexpr wchar_t kTranslatedLabel[] = L"Archipelago";
 constexpr int kRandomizerEntry = 354;
 constexpr int32_t kMaxPanels = 16, kMaxChildren = 64;
 constexpr ptrdiff_t kPanelSelected = 0x2DC;  // 32-bit: the selected child, -1 for none
 constexpr int16_t kLockedPalette = 0;  // as the controls screen's STYLE: AUTO
-// A glyph's color tint: two RGB sets at +0x68 and +0x78 (their alphas at +0x74 and +0x84 left
-// alone), 1.0 for a white entry; STYLE: AUTO's gray, as read live.
+// A glyph's two RGB tint sets (their alphas left alone), and STYLE: AUTO's gray, as read live.
 constexpr ptrdiff_t kGlyphTint[6] = {0x68, 0x6C, 0x70, 0x78, 0x7C, 0x80};
 constexpr float kLockedTint[6] = {0.412f, 0.439f, 0.494f, 0.412f, 0.439f, 0.494f};
 constexpr int32_t kLockedStyle = 5;  // as the controls screen's STYLE: AUTO
-// A translated glyph's lock: the options entries' own style (0x1628B0 to 0x1628F2), at an alpha
-// (+0x84, what the translated glyphs' draw 0x2D890 takes besides its style's color) near the
+// A translated glyph's lock: the options entries' own style (0x1628B0), at an alpha near the
 // pixel lock's gray on the black options screen.
 constexpr int32_t kLockedHdStyle = 0x15;
 constexpr ptrdiff_t kGlyphAlpha = 0x84;
 constexpr float kLockedHdAlpha = 0.45f;
 constexpr int kLockAt = 7;  // ASSIST, a blank, the padlock
-// In a translation: ASSIST's entry, and the options box's top right piece (the border's third,
-// the panel's +0x228), where the box's right edge starts: the box is sized from the translated
-// texts, so the padlock goes only where it stays inside (docs/re/memory.md, "Where a rebuilt
-// label goes").
+// In a translation: ASSIST's entry, and the options box's top right piece, where its right edge
+// starts (docs/re/memory.md, "Where a rebuilt label goes").
 constexpr int kAssistEntry = 137;
 constexpr ptrdiff_t kBoxTopRight = 0x228;
 constexpr int32_t kMaxTranslatedGlyphs = 3 * kAssistLength;  // the label's capacity
@@ -88,9 +78,8 @@ bool lists_panel(const BYTE* menu, const BYTE* wanted) {
     return false;
 }
 
-// Calls fn(panel, index, child) for each child of each of `menu`'s panels (up to kMaxPanels)
-// whose children read (up to kMaxChildren of them), skipping those that hold none, until fn
-// returns true; returns whether one did.
+// fn(panel, index, child) for each child of `menu`'s panels, within kMaxPanels and kMaxChildren,
+// until fn returns true; returns whether one did.
 template <typename Fn>
 bool for_each_child(const BYTE* menu, Fn&& fn) {
     const int32_t panels = panel_count(menu);
@@ -105,8 +94,8 @@ bool for_each_child(const BYTE* menu, Fn&& fn) {
     return false;
 }
 
-// Children `from` to `to` - 1 of a panel's list into `run`, each live and numbered by its place
-// (widget::kIndex); false if any is not.
+// Children `from` to `to` - 1 of a panel's list into `run`: false unless each is live and at its
+// place (widget::kIndex).
 bool live_run(BYTE** children, int32_t from, int32_t to, BYTE* (&run)[kMaxChildren]) {
     if (to > kMaxChildren) return false;
     for (int32_t k = from; k < to; ++k) {
@@ -196,10 +185,8 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
                              : at<int32_t>(g, sprite::kFrameIndex);
         set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
     }
-    // In a translation the label shows its translated text: built again as ARCHIPELAGO's, where
-    // the game's attach would build it now (the panel's own was built before the panel was
-    // placed, at the window's corner). Its hover border is then sized from that text by the game
-    // itself (0xAE500), so fit_border, which looks for the pixel label's border, leaves it alone.
+    // In a translation, built again where the attach would build it now; the game sizes its
+    // hover border from that text (0xAE500), and fit_border leaves it alone.
     rebuild_label(a, pointer_at(child, widget::kLabel), kTranslatedLabel, {.attached = true});
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
@@ -293,8 +280,7 @@ bool shows_locked(BYTE* (&glyphs)[kAssistLength]) {
 }
 
 // The first live widget of `menu` with the generic handler and `callback` whose glyphs read
-// ASSIST, as the game builds it (`locked` false) or as the lock leaves it (true); with its panel
-// and its place among the panel's children.
+// ASSIST, as the game builds it or (`locked`) as the lock leaves it; with its panel and place.
 BYTE* find_assist(BYTE* menu, const GameAddresses& a, const void* callback, bool locked,
                   BYTE** panel_out, int32_t* index_out) {
     BYTE* found = nullptr;
@@ -322,10 +308,8 @@ BYTE* AssistLock::assist_in(BYTE* menu, const GameAddresses& a, void* expected_c
 }
 
 bool AssistLock::still_locked(const GameAddresses& a) const {
-    // Found afresh in the menu open now, never taken on the kept pointer alone: leaving Video,
-    // GENERAL or the assist menu closes the options menu and builds another (0x124D30), whose
-    // widgets may take the freed ones' places, its VERSION 1.20 (12 glyphs, no callback) in
-    // ASSIST's (docs/re/memory.md, "The assist menu").
+    // Leaving Video, GENERAL or the assist menu builds the options menu again (0x124D30), its
+    // VERSION 1.20 maybe in ASSIST's place (docs/re/memory.md, "The assist menu").
     if (child_ == nullptr || !is_open(a.current_menu, menu_)) return false;
     BYTE* panel = nullptr;
     return find_assist(menu_, a, nullptr, true, &panel, nullptr) == child_ && panel == panel_;
@@ -334,8 +318,7 @@ bool AssistLock::still_locked(const GameAddresses& a) const {
 namespace {
 
 // The locked look: every glyph in the locked style under the locked palette (when the palette
-// table gives it), the padlock in the eighth. (In a translation the pixel glyphs stay hidden:
-// the translated text carries the look, AssistLock::lock_translated.)
+// table gives it), the padlock in the eighth. In a translation, lock_translated carries it.
 void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
     BYTE* palette = pointer_at(a.palette_table, kLockedPalette * 8);
     BYTE probe = 0;
@@ -348,8 +331,7 @@ void draw_locked(BYTE* (&glyphs)[kAssistLength], const GameAddresses& a) {
             at<int16_t>(g, sprite::kPaletteNumber) = kLockedPalette;
         }
     }
-    // The padlock only if the glyph has that many frames, as the game's own text routine
-    // checks a character against +0x1BC.
+    // The padlock only if the glyph has that many frames, as the game's own text routine checks.
     set_frame(glyphs[kLockAt], kLockGlyph);
 }
 
@@ -364,9 +346,8 @@ bool AssistLock::install(const GameAddresses& a) {
     BYTE* top = pointer_at(a.current_menu);
     if (child_ != nullptr) {
         if (still_locked(a)) {
-            // Still locked, with its menu open (on top or under another). The options menu takes
-            // another palette after some screens (the map's 26), so the locked look is pinned
-            // again whenever it is the menu up.
+            // Still locked, its menu open. The menu takes another palette after some screens (the
+            // map's 26), so the locked look is pinned again whenever it is the menu up.
             BYTE* glyphs[kAssistLength] = {};
             if (top == menu_ && glyphs_of(child_, glyphs)) {
                 draw_locked(glyphs, a);
@@ -406,10 +387,8 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
     if (pixel_glyphs_shown(label)) show_translated_glyphs(label);  // as an older helper left it
     if (!hd_.holds(label)) {
         hd_.label = nullptr;
-        // Built after the pixel glyphs took the locked style: the builder gives each glyph the
-        // first pixel glyph's (0x8AAB5), the padlock too (an icon past frame 0x70).
-        // In the HD icons the padlock's cell has its own gap on its left (IconSheets): no space
-        // there, so it sits clear of the box's border.
+        // Built after the pixel glyphs took the locked style, which the builder copies (0x8AAB5).
+        // No space before the HD padlock: its cell has its own gap (apitem.h IconSheets).
         const std::wstring gap = hd_font_on(a) ? L"" : L" ";
         if (!rebuild_label(a, label, own + gap + kHdLockIcon, {.attached = true})) return;
         float left = 0, right = 0;
@@ -420,11 +399,8 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
         }
         hd_.take(label);
     }
-    // The locked look again each time (the menu may restyle its entries). A translated glyph is
-    // drawn in its style's color through a table the screens rewrite, so the glyphs take the
-    // options entries' own style, dimmed through their alpha, which the menus never change
-    // (docs/re/memory.md, "The assist menu"). Built again, a label's glyphs get alpha 1.0 back
-    // (0x89CD9).
+    // The locked look again each time, dimmed through the alpha, which only a build sets back
+    // (docs/re/memory.md, "The assist menu").
     int32_t n = 0;
     BYTE** list = nullptr;
     if (!translated_list(label, kMaxTranslatedGlyphs, n, list)) return;
@@ -515,8 +491,7 @@ bool AssistLock::restore(const GameAddresses& a) {
         if (glyphs_of(child_, glyphs)) {
             for (int i = 0; i < kAssistLength; ++i) {
                 BYTE* g = glyphs[i];
-                // Frames and palettes derived afresh from what the glyph holds now and the
-                // palette table, not the pointers saved at install.
+                // Frames and palettes derived afresh, not from the pointers saved at install.
                 set_frame(g, frames_[i]);
                 at<int32_t>(g, sprite::kStyle) = styles_[i];
                 BYTE* palette = palette_numbers_[i] < 0

@@ -1,8 +1,6 @@
-// The Area Map (item 49) as an Intel Chip, for seeds with Area Map Hints: while on (`intel on`),
-// its record is named INTEL CHIP and its pickup event (3551, the map reveal) set to -1, so the
-// pickup popup says INTEL CHIP and reveals nothing (docs/re/memory.md, "Intel Chips"). Only a
-// record reading as the game's or the helper's is written; put back when off and before an
-// unload.
+// The Area Map (item 49) as an Intel Chip (docs/re/memory.md, "Intel Chips"): while on, its
+// record is named INTEL CHIP and its pickup event (3551, the map reveal) set to -1. Only a record
+// reading as the game's or the helper's is written; put back when off and before an unload.
 #pragma once
 
 #include <windows.h>

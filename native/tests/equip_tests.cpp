@@ -1,6 +1,5 @@
 // Host tests for equip.h: the EQUIPMENT hook and the disk widget, on a stand-in pause menu and
-// equipment screen laid out as read live on B1, with stand-ins for the game functions the
-// helper calls.
+// equipment screen laid out as read live on B1.
 
 #include <windows.h>
 
@@ -323,9 +322,8 @@ void test_the_disk_is_a_second_widget_beside_the_energy_tank() {
     check(screen.add(a, 3) != "", "added once: the panel has two widgets now");
 }
 
-// In a translation the box shows the translated texts the game built for the selection: the
-// disk's built again, the description as the game's own, one line from a blank, wrapped by the
-// builder at the box's 34 columns (0xB3268); the name where the game built it.
+// In a translation the disk's texts are built again as the game's own: the description one line
+// from a blank, wrapped at the box's 34 columns (0xB3268), the name where the game built it.
 void test_the_disk_in_a_translation() {
     namespace si = stand_in;
     si::reset_translation();

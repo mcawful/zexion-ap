@@ -30,8 +30,7 @@ struct Popup {
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
-    // The same characters in the case they were sent in (a received item's "FROM Bob", a
-    // hint's "Hint: Slide Mod is at ..."), or for the helper's own notices their mixed-case
+    // The same characters in the case they were sent in, or the helper's own notices' mixed-case
     // text (game_offline.cpp); English(HD) shows it (Game::hd_popup_text). Empty where none.
     std::string as_sent;
 };
@@ -56,22 +55,21 @@ struct StartRoom {
     uint8_t flag;
 };
 
-// What an AP new game needs. `identify`: what the section of a new game the player started
-// from RANDOMIZER must hold to be this seed (its seed text). `menu` (offsets into the
-// randomizer menu's state) sets the menu up as the seed's settings for the game's placement,
-// which the helper runs itself: for the ARCHIPELAGO choice, offered only with `choice`, and
-// again over a matching RANDOMIZER game's own. After the seed's placement the section must hold
-// `expect` (the seed's location list, amounts and checked settings), and then gets `write` (the
-// AP item table, start, starting items, seed text and hash). Without `menu`, a RANDOMIZER game is
-// checked against `expect` as the player's placement made it.
+// What an AP new game needs. `identify`: what a new RANDOMIZER game's section must hold to be
+// this seed (its seed text). `menu` (offsets into the randomizer menu's state) sets the menu up
+// as the seed's settings for the game's placement, which the helper runs itself: for ARCHIPELAGO
+// (offered only with `choice`), and again over a matching RANDOMIZER game's own. After it the
+// section must hold `expect` (the location list, amounts and checked settings), then gets
+// `write` (the AP item table, start, starting items, seed text and hash). Without `menu`, a
+// RANDOMIZER game is checked against `expect` as the player's placement made it.
 struct NewGamePlan {
     std::vector<SectionBytes> identify;
     std::vector<SectionBytes> expect;
     std::vector<SectionBytes> write;
     std::vector<SectionBytes> menu;
     bool choice = false;
-    // The menu's start table as it builds it when it opens; for a mode with Double Teleport,
-    // whose placement reads it. Filled in before the placement if the menu has not built it.
+    // The menu's start table as it builds it on opening, which Double Teleport's placement
+    // reads; filled in before the placement if the menu has not built it.
     std::vector<StartRoom> start_table;
 };
 

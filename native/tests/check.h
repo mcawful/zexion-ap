@@ -1,7 +1,6 @@
-// What the native tests share: check() and its failure count, report() at the end of main,
-// unaligned field access, code bytes and their writes, the seen marker's bytes, hex, the game's
-// sprite-sheet function and the stand-in items' records as the game loads them. The tests write
-// offsets as raw hex, so they cross-check src/game_layout.h rather than repeat it.
+// What the native tests share: check() and report(), unaligned field access, code bytes, hex and
+// the stand-in items' records. The tests write offsets as raw hex, so they cross-check
+// src/game_layout.h rather than repeat it.
 #pragma once
 
 #include <windows.h>
@@ -49,9 +48,8 @@ void put(BYTE* p, ptrdiff_t offset, T value) {
     std::memcpy(p + offset, &value, sizeof(value));
 }
 
-// Byte `i` of code the helper patches, read and written through volatile (the compiler would
-// otherwise take the array's initial bytes as constants), the page made writable as the
-// helper makes it.
+// Byte `i` of code the helper patches, through volatile: the compiler would otherwise take the
+// array's initial bytes as constants.
 inline unsigned char code_byte(const unsigned char* code, int i) {
     return static_cast<const volatile unsigned char*>(code)[i];
 }
@@ -61,9 +59,8 @@ inline void set_code_byte(unsigned char* code, int i, unsigned char value) {
     static_cast<volatile unsigned char*>(code)[i] = value;
     VirtualProtect(code + i, 1, old, &old);
 }
-// Writes `bytes` over code at `at`, as the helper does. Byte by byte through volatile: the
-// .zapcode section (stand_in.h) packs its arrays more tightly than the compiler assumes when it
-// copies into them with aligned stores. (Read them back with code_byte or through a pointer.)
+// Writes `bytes` over code at `at` as the helper does, byte by byte through volatile: .zapcode
+// (stand_in.h) packs its arrays tighter than aligned stores assume. Read back with code_byte.
 inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) {
     DWORD old = 0;
     VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
