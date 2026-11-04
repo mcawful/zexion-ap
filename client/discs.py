@@ -184,36 +184,48 @@ def popups_handed(queued: int | None, received: int) -> bool:
 class ReturnHome:
     """Per load of this seed's save: the POD_NOTE reminder once the player has enough disks,
     and RETURN HOME WITH THE DISKS? after each save at the Landing Pod. A save shows as a new
-    stamp in the same slot, between two looks in play; it counts only with the pod as continue
-    point and the player in the pod's cell (the escape saves too, keeping the old continue
-    point), and the offer lapses when the player leaves that cell in play, or dies.
+    stamp in the same slot; it counts only with the pod as continue point and the player in the
+    pod's cell (the escape saves too, keeping the old continue point), and the offer lapses
+    when the player leaves that cell in play, or dies.
 
-    The game also rewrites the stamp without a save: a death writes the block's play time and
-    death count (then respawns the player at the continue point, the pod after a save there),
-    and the pause menu's RELOAD FROM SAVE and RELOAD FROM CHECKPOINT (the latter raising the
-    death count), leaving to the title, some story events and the ending write its play time
-    (docs/re/memory.md, "A save at the Landing Pod"). So a new stamp is no save when a look
-    between it and the last one was not in play (the death screen, a menu), or when the death
-    count rose (a death no poll caught)."""
+    The game also rewrites the stamp without a save: a death (raising the death count),
+    RELOAD FROM SAVE and RELOAD FROM CHECKPOINT (raising the count) behind the pause menu,
+    leaving to the title, some story events and the ending (docs/re/memory.md, "A save at the
+    Landing Pod"). So a new stamp is a save, with the death count unchanged, when it came with
+    a GAME SAVED message not seen with an earlier stamp, which only a save shows, or, without
+    one (unread, or another message straight after it), between two looks in play."""
 
     reminded: bool = False
     stamp: bytes | None = None
     in_play: bool = False  # the last look was in play
+    shown: int | None = None  # the GAME SAVED message last seen with a new stamp
     offer: bool = False  # a save at the pod, the prompt not yet queued
 
     def see(
-        self, stamp: bytes, in_play: bool, at_home: bool, enough: bool, in_home_cell: bool
+        self,
+        stamp: bytes,
+        in_play: bool,
+        at_home: bool,
+        enough: bool,
+        in_home_cell: bool,
+        game_saved: int | None = None,
     ) -> None:
-        """One look at this seed's save, in play or not (dead, a menu)."""
-        before, played = self.stamp, self.in_play
+        """One look at this seed's save, in play or not (dead, a menu). ``game_saved`` is
+        game.Game.game_saved, read after the stamp."""
+        before, played, shown = self.stamp, self.in_play, self.shown
         self.stamp, self.in_play = stamp, in_play
         if before is None or stamp[:4] != before[:4]:
             self.offer = False  # a first look, or another slot of the seed loaded: no save
+            self.shown = game_saved  # a message from before is no save of this one
             return
         died = (deaths(before) or 0) < (deaths(stamp) or 0)
         if died:
             self.offer = False
-        saved = stamp != before and in_play and played and not died
+        new = stamp != before
+        if new and game_saved is not None:
+            self.shown = game_saved
+        message = game_saved is not None and game_saved != shown
+        saved = new and not died and (message or (in_play and played))
         if saved:
             self.offer = enough and at_home and in_home_cell
         if in_play and not in_home_cell:

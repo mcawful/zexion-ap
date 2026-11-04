@@ -303,6 +303,37 @@ def test_a_link_pointing_outside_the_game_is_an_error() -> None:
         g.shield_up()
 
 
+MESSAGE_AT, GLYPHS_AT = 0x1400, 0x1800  # the fake's message slot and its glyph objects
+
+
+def put_message(g: FakeGame, text: bytes, sequence: int = 41) -> None:
+    """The game's last message, a slot holding ``text`` as glyphs, as the message routine
+    builds them (0x92690)."""
+    g.pm.memory[0x10:0x1C] = struct.pack("<Qi", MESSAGE_AT, sequence)
+    at = MESSAGE_AT + game.MESSAGE_GLYPH_COUNT
+    g.pm.memory[at : at + 4] = struct.pack("<i", len(text))
+    for i, character in enumerate(text):
+        glyph = GLYPHS_AT + 0x40 * i
+        at = MESSAGE_AT + game.MESSAGE_GLYPHS + 8 * i
+        g.pm.memory[at : at + 8] = struct.pack("<Q", glyph)
+        at = glyph + game.GLYPH_CHARACTER
+        g.pm.memory[at : at + 4] = struct.pack("<i", character)
+
+
+def test_game_saved_is_the_sequence_of_a_last_message_reading_game_saved() -> None:
+    g = fake_game(size=0x3000, last_message=0x10)
+    assert g.game_saved() is None  # no message yet
+    put_message(g, b"GAME SAVED")
+    assert g.game_saved() == 41
+    put_message(g, b"GAME SAVES", 42)
+    assert g.game_saved() is None
+    put_message(g, b"\xc9MISSILE BOX", 43)  # a pickup's popup
+    assert g.game_saved() is None
+    put_message(g, b"GAME SAVED", 44)
+    g.pm.memory[MESSAGE_AT + game.MESSAGE_GLYPHS : MESSAGE_AT + game.MESSAGE_GLYPHS + 8] = bytes(8)
+    assert g.game_saved() is None  # a glyph not made
+
+
 def test_an_exited_game_is_reported_as_not_running() -> None:
     g = fake_game()
     g.alive = False

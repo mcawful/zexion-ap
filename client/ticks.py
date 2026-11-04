@@ -56,6 +56,9 @@ async def attach_helper(ctx: ZexionContext) -> None:
     notes: list[str] = []
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
+    except native.ModMismatch as exc:
+        ctx.mismatched(exc)  # not tried again until Zexion restarts
+        return
     except native.HelperError as exc:
         # Tried every 30 s: each line said again only when it changes.
         line = state.helper_failed(exc)
@@ -276,6 +279,8 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
                 reply = await asyncio.to_thread(
                     helper.request, offline.put_request(kind, text, file)
                 )
+            except (native.ReplyLost, native.ModMismatch):
+                raise  # side_tick drops the helper before this poll's step gives through it
             except native.HelperError as exc:
                 reply = f"error {exc}"
         if reply in ("stored", "unchanged"):
@@ -717,8 +722,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
     and its YES plays the ending again (replay_tick). Not while an ending runs in this load
     (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
-    a save at the pod. Every look at the save counts, in play or not: a death or a menu between
-    two looks makes a new stamp no save (discs.ReturnHome)."""
+    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome)."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     home = ctx.load.return_home
     if (
@@ -733,7 +737,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     hunt = conn.hunt
     enough = discs.owned(hunt, p.codes, p.found) >= hunt.required
     in_play = step.state == game.IN_PLAY
-    home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell)
+    home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell, step.game_saved)
     if not in_play or not enough or not told.client_back_sent:
         return
     # After the found disks' count popups (followups_tick), so the reminder comes last.

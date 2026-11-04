@@ -14,7 +14,7 @@ from unittest import mock
 
 from fakes import connection
 
-from client import game, native, session, state
+from client import game, native, session, state, ticks
 
 
 class CommonContext:
@@ -347,9 +347,21 @@ def test_a_failed_reattach_holds_back_the_step_for_a_while(monkeypatch) -> None:
 
 def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(monkeypatch) -> None:
     ctx, order = failing_reattach(monkeypatch)
-    ctx.helper_retry_at = math.inf  # ZexionContext.mismatched
+    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)  # the real one
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise native.ModMismatch("the mod is another build of this version")
+
+    def step(g, received, **kwargs):
+        order.append(f"step, retry at {ctx.helper_retry_at}")
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(native, "attach", attach)
+    monkeypatch.setattr(native, "default_dll", lambda: None)
+    monkeypatch.setattr(ctx.conn.session, "step", step)
     asyncio.run(zc.poll(ctx))
-    assert order == ["attach", "step"]
+    assert order == ["attach", "step, retry at inf"]  # not tried again until Zexion restarts
 
 
 def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:

@@ -35,6 +35,13 @@ SLOT_STRIDE = 0x9408  # a slot's first block in the slot array
 SAVE_STAMP_AT, SAVE_STAMP_SIZE = 0x9354, 10
 DEATHS_AT = 0x93D8
 PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo's y, then x)
+# The game's last message (last_message: its slot, then its sequence number at +8). The slot
+# keeps its text as glyphs: their count at +0x200, pointers from +0x220, each glyph's character
+# at +0x1C4. Only a save at a save point shows GAME SAVED, in the frame it writes the block
+# (docs/re/memory.md, "A save at the Landing Pod").
+MESSAGE_SEQUENCE = 8
+MESSAGE_GLYPH_COUNT, MESSAGE_GLYPHS, GLYPH_CHARACTER = 0x200, 0x220, 0x1C4
+GAME_SAVED = b"GAME SAVED"
 
 PROCESS = "Zexion.exe"
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
@@ -471,6 +478,27 @@ class Game:
             "slot_array", slot * SLOT_STRIDE + SAVE_STAMP_AT, DEATHS_AT + 4 - SAVE_STAMP_AT
         )
         return raw + block[:SAVE_STAMP_SIZE] + block[DEATHS_AT - SAVE_STAMP_AT :]
+
+    def game_saved(self) -> int | None:
+        """The sequence number of the game's last message if it reads GAME SAVED, else None.
+        Read after save_stamp: the save shows the message before it writes the block, so a
+        stamp read new comes with the message read after it."""
+        pointer, sequence = struct.unpack("<Qi", self._read("last_message", 0, 12))
+        if pointer == 0:
+            return None
+        count = struct.unpack("<i", self._read_pointer(pointer + MESSAGE_GLYPH_COUNT, 4))[0]
+        if count != len(GAME_SAVED):
+            return None
+        glyphs = struct.unpack(
+            f"<{count}Q", self._read_pointer(pointer + MESSAGE_GLYPHS, 8 * count)
+        )
+        for glyph, character in zip(glyphs, GAME_SAVED, strict=True):
+            if glyph == 0:
+                return None
+            read = struct.unpack("<i", self._read_pointer(glyph + GLYPH_CHARACTER, 4))[0]
+            if read != character:
+                return None
+        return sequence
 
     def rando_slot_copies(self) -> bytes:
         """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in

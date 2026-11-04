@@ -63,6 +63,7 @@ class Snapshot:
     scanned: int = 0
     stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
     cell: tuple[int, int] = (-1, -1)  # game.PlayerState.cell
+    game_saved: int | None = None  # game.Game.game_saved, None if it could not be read
 
 
 # The flags a poll reads, in one read from the first.
@@ -77,6 +78,7 @@ def read_once(g: game.Game) -> Snapshot:
         return Snapshot(state)
     first, count = FLAGS_READ
     flags = g.flag_bytes(first, count)
+    stamp = save_stamp(g)
     return Snapshot(
         state,
         g.map_grid(),
@@ -87,8 +89,9 @@ def read_once(g: game.Game) -> Snapshot:
         flags[ENDING_FLAG - first],
         flags[FINALE_FLAG - first],
         flags[SCANNED_FLAG - first],
-        save_stamp(g),
+        stamp,
         player.cell,
+        game_saved(g),  # after the stamp (game.Game.game_saved)
     )
 
 
@@ -100,6 +103,17 @@ def save_stamp(g: game.Game) -> bytes:
         raise
     except game.GameError:
         return b""
+
+
+def game_saved(g: game.Game) -> int | None:
+    """game.Game.game_saved, or None if the message could not be read (a pointer the game
+    left behind)."""
+    try:
+        return g.game_saved()
+    except game.GameNotRunning:
+        raise
+    except game.GameError:
+        return None
 
 
 def read_settled(g: game.Game, gap: float = game.SETTLE_SECONDS) -> Snapshot | None:
@@ -130,6 +144,7 @@ class Step:
     save_stamp: bytes = b""
     at_home: bool = False
     in_home_cell: bool = False  # the player is in the Landing Pod's cell now
+    game_saved: int | None = None  # read after save_stamp (game.Game.game_saved)
 
 
 class Session:
@@ -234,6 +249,7 @@ class Session:
             save_stamp=snap.stamp,
             at_home=discs.saved_at_home(snap.stamp),
             in_home_cell=snap.cell == discs.HOME_CELL,
+            game_saved=snap.game_saved,
         )
         # The ending beginning in this load: what is received from now (as a release or collect
         # on the goal) waits for the next load, not popping up over the ending's cutscenes. A
