@@ -31,8 +31,6 @@ constexpr RecordShape kOwnShape = {.kind = 34, .ticks = 6, .frames = 2, .icon = 
 // What they become: one frame each and no area event at pickup; their names start with the logo
 // glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
-constexpr char kDefaultName[] = "\xEE" "AP ITEM";
-static_assert(sizeof(kDefaultName) == sizeof(kApItemName) + 1);
 
 // Frame k of the item sprites in the sprite texture (kTextureSize square; the font: font_x).
 constexpr int frame_x(int k) { return 128 + (k % 8) * 16; }

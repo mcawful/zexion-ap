@@ -127,7 +127,6 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
 - `offline`: the seeds known to the offline look (read from the folder, and any a client put or
   that were read while it was connected), and the file of the one dressed.
-
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `lang`: the language the game shows: `-` its default English, the loaded translation's folder
@@ -598,8 +597,9 @@ Working in game: 2026-10-23 ("Live item objects").
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
-- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip is written there while
-  the record is INTEL CHIP ("Translations"; not run in game yet).
+- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
+  English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
+  ("Translations"; not run in game yet).
 
 Working in game: 2026-10-25 ("Intel Chips").
 
@@ -901,13 +901,13 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   builds the cursor's translated text again as the label's first line ("Translations";
   working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
   English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
-  for another Zexion player's item, the translation's own name for it, in any translation since
-  2026-11-04 (working in game
+  for another Zexion player's item, the translation's own name for it (working in game
   2026-11-03, B1, `zexion_ap.dll` `12f090c6…` ("Map markers"): AP Item on a DLCQuest
   player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
   shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
   names, the owner's look; Progression Item and OS Install Disk not looked at
-  on the map; the translation's name in French: stand-in tests only, not run in game yet).
+  on the map). Since 2026-11-04 another Zexion player's item takes the translation's own name
+  in every translation, not only English(HD) (stand-in tests only, not run in game yet).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
