@@ -90,11 +90,13 @@ Zexion:
     # ('random' is random_start too). Or one of the game's 34 rooms, by its name in the
     # menu: a room from which your starting items reach no location, or every item does
     # not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is
-    # refused. From a room where they reach only a few, generation can fail, and from some
-    # often: below_machinus about one try in three in Easy and one in ten in Standard,
-    # vulknor_entry and below_arena about one in thirteen in Easy. Generate again, or pick
-    # another room. automatic (the default): landing_pod, or a random start where that room
-    # is refused.
+    # refused. automatic (the default): landing_pod, or a random start where that room is
+    # refused. In any game, alone or in a multiworld, the few items that open your start are
+    # placed in your own world, in the area around your start: each where you can already
+    # reach it. Items your non_local_items keep out of your world are not. If every item
+    # that opens your start (alone, or with another) is, or you exclude or plando every
+    # location your starting items reach, or so many that two items that open it together
+    # no longer fit, the generator warns, naming which, and generation may fail.
     random_start: 0
     exodia: 0
     upper_tower: 0

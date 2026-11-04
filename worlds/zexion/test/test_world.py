@@ -1,3 +1,4 @@
+import contextlib
 import random
 import types
 import unittest
@@ -6,10 +7,19 @@ from collections import Counter
 from typing import Any
 from unittest import mock
 
-from BaseClasses import CollectionState, Item, ItemClassification, LocationProgressType, MultiWorld
-from Fill import distribute_items_restrictive
+from BaseClasses import (
+    CollectionState,
+    Item,
+    ItemClassification,
+    Location,
+    LocationProgressType,
+    MultiWorld,
+)
+from Fill import FillError, distribute_items_restrictive
 from Options import OptionError
+from test.general import gen_steps, setup_multiworld
 from worlds.AutoWorld import call_all
+from worlds.generic.Rules import add_item_rule, exclusion_rules, locality_rules
 
 from .. import data, reach, rules
 from ..items import (
@@ -38,6 +48,7 @@ from ..world import (
     HOME,
     MAX_DISKS,
     NOT_HINTED,
+    START_REACH,
     ZexionWorld,
 )
 from .bases import ZexionTestBase, every_list
@@ -443,56 +454,258 @@ class TestOHKO(ZexionTestBase):
         self.assertEqual({items[i] for i in left_out}, {SCRAP_METAL})
 
 
-class TestAnOpenerIsPlacedEarly(ZexionTestBase):
-    """One item that opens the way out of what the starting items reach is an early item
-    (ZexionWorld.choose_opener). OHKO with the OS Install Disks goal from Tower Gauntlet, seed
-    187, Kresezoa Cave the second teleport target: its starting items reach 7 locations, and
-    without the opener Archipelago's fill put Missile Containers in 6 of them and stopped with
-    "No more spots to place 124 items", as CI run 41698877558 stopped on a seed it did not log
-    (docs/re/locations.md, "Which start rooms the world offers")."""
+def fill_recording(multiworld: MultiWorld) -> list[Location]:
+    """Fill ``multiworld``; the locations the Zexion worlds opened their starts with, in the
+    order they placed them (Archipelago's fill places the rest otherwise)."""
+    order: list[Location] = []
+    place = Location.place_locked_item
+
+    def record(location: Location, item: Item) -> None:
+        if location.address is not None:
+            order.append(location)
+        place(location, item)
+
+    with mock.patch.object(Location, "place_locked_item", record):
+        distribute_items_restrictive(multiworld)
+    return order
+
+
+# The items that open Easy's Below Machinus alone (its starting items reach one location).
+OPENERS = ["Gravity Harness", "Zenith Thrusters", "Progressive Lance", "Jump Booster"]
+
+
+class TestTheStartIsOpened(ZexionTestBase):
+    """In Archipelago's fill, before it places progression, the world places items that open
+    the way out of what the starting items reach until the starting state reaches START_REACH
+    of the player's locations that are not excluded (ZexionWorld.open_the_start, from
+    fill_hook). Without it the fill stops with "No more spots to place" on each of the seeds
+    below, as these tests set the world up (with fill_hook a no-op, 2026-11-03): OHKO with the
+    OS Install Disks goal from Tower Gauntlet, seed 187 (CI run 41698877558 stopped the same
+    way on a seed it did not log), and the rooms that failed most with one early opener (PR
+    #93): Below Machinus in Easy with either goal and in Standard, Vulknor Entry and Below Arena
+    in Easy (docs/re/locations.md, "Which start rooms the world offers")."""
 
     auto_construct = False
     run_default_tests = False
 
-    def test_the_seed_that_failed_fills(self) -> None:
-        self.options = {"mode": "ohko", "goal": "os_install_disks", "start_room": "tower_gauntlet"}
-        self.world_setup(187)
-        w = self.world
-        # The draws it failed with: the opener is drawn after them.
-        self.assertEqual((w.start["index"], w.second["index"]), (4, 12))
-        early = self.multiworld.early_items[self.player]
-        self.assertEqual(list(early.values()), [1])
-        (name,) = early
-        self.assertIn(code_of[name], reach.openers(w.seed_reach, w.start, w.second, w.pool_codes))
-        distribute_items_restrictive(self.multiworld)
-        self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
-        reached = {location_name(i) for i in w.seed_reach.sphere0_from(w.start, w.second).locations}
-        placed = [
-            loc.name
-            for loc in self.multiworld.get_filled_locations(self.player)
-            if loc.item.player == self.player and loc.item.name == name
-        ]
-        self.assertTrue(set(placed) & reached, placed)
+    def mine(self) -> list:
+        return [loc for loc in self.multiworld.get_locations(self.player) if loc.address]
 
-    def test_not_one_the_player_starts_with_from_the_pool(self) -> None:
-        # Archipelago takes start_inventory_from_pool's items out of the pool; an early item
-        # it took would never be placed. OHKO's pool holds one Gravity Harness and one Zenith
-        # Thrusters, both openers from Tower Gauntlet.
-        taken = {"Gravity Harness": 1, "Zenith Thrusters": 1}
-        self.options = {
-            "mode": "ohko",
-            "start_room": "tower_gauntlet",
-            "start_inventory_from_pool": taken,
-        }
-        with mock.patch.object(reach, "openers", wraps=reach.openers) as openers:
-            self.world_setup(1)
-        offered = openers.call_args.args[3]
-        self.assertTrue(offered)
-        for name in taken:
-            self.assertIn(code_of[name], self.world.pool_codes)
-            self.assertNotIn(code_of[name], offered)
-        (name,) = self.multiworld.early_items[self.player]
-        self.assertIn(code_of[name], offered)
+    def fill_in_order(self, seed: int) -> list[Location]:
+        self.world_setup(seed)
+        return fill_recording(self.multiworld)
+
+    def assert_filled(self, multiworld: MultiWorld) -> None:
+        # Each item in one location: none the world placed is placed again.
+        for location in multiworld.get_filled_locations():
+            self.assertIs(location.item.location, location)
+        self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+        self.assertTrue(multiworld.fulfills_accessibility())
+
+    def test_the_seeds_that_failed_fill(self) -> None:
+        disks = "os_install_disks"
+        cases = (
+            ({"mode": "ohko", "goal": disks, "start_room": "tower_gauntlet"}, 187),
+            ({"mode": "easy", "start_room": "below_machinus"}, 2),
+            ({"mode": "easy", "goal": disks, "start_room": "below_machinus"}, 3),
+            ({"mode": "standard", "start_room": "below_machinus"}, 3),
+            ({"mode": "easy", "start_room": "vulknor_entry"}, 46),
+            ({"mode": "easy", "start_room": "below_arena"}, 25),
+        )
+        for options, seed in cases:
+            with self.subTest(**options, seed=seed):
+                self.options = options
+                order = self.fill_in_order(seed)
+                self.assertTrue(order)
+                self.assert_filled(self.multiworld)
+                # Each where the starting items and the items placed before it reach it.
+                state = CollectionState(self.multiworld)
+                for location in order:
+                    self.assertTrue(location.can_reach(state), location)
+                    self.assertTrue(location.locked)
+                    self.assertEqual(location.item.player, self.player)
+                    state.collect(location.item, True, location)
+                reached = [loc for loc in self.mine() if loc.can_reach(state)]
+                self.assertGreaterEqual(len(reached), START_REACH)
+
+    def step_without(self, room: str, alone: tuple[str, ...]) -> tuple[list, int, list, object]:
+        """The opening step from Easy's ``room`` on seed 1 with the items in ``alone`` taken out
+        of the pool, with how many locations the start reaches and which of them are empty."""
+        self.options = {"mode": "easy", "start_room": room}
+        self.world_setup(1)
+        mine = self.mine()
+        pool = [item for item in self.multiworld.itempool if item.name not in alone]
+        state = self.multiworld.state.copy()
+        state.sweep_for_advancements()
+        empty = [loc for loc in mine if loc.can_reach(state)]
+        step = self.world.opening_step(state, mine, len(empty), pool, empty)
+        return step, len(empty), empty, state
+
+    def test_a_pair_where_no_item_opens_alone(self) -> None:
+        # Easy's Jungle Entry (room 10): its starting items reach 2 locations; six items each
+        # reach more alone. Without them in the pool, only pairs do (Slide Mod with the Jump
+        # Booster): one in each location. No preset's start lacks one that does alone; Custom's
+        # items can.
+        alone = (
+            "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser",
+            "Gravity Harness", "Zenith Thrusters",
+        )  # fmt: skip
+        step, reached, empty, state = self.step_without("jungle_entry", alone)
+        self.assertEqual(reached, 2)
+        self.assertEqual(len(step), 2)
+        mine = self.mine()
+
+        def reach_with(items: list) -> int:
+            more = state.copy()
+            for item in items:
+                more.collect(item, True)
+            return sum(1 for loc in mine if loc.can_reach(more))
+
+        items = [item for item, _ in step]
+        self.assertGreater(reach_with(items), reached)
+        for item in items:
+            self.assertEqual(reach_with([item]), reached)
+        self.assertEqual({loc.name for _, loc in step}, {loc.name for loc in empty})
+
+    def test_no_pair_in_one_location(self) -> None:
+        # Easy's Guardia Lab (room 7) reaches one location: without its four single openers, a
+        # pair would need two. Such a start cannot be won; the world places nothing.
+        alone = ("Gravity Harness", "Jump Booster", "Progressive Lance", "Zenith Thrusters")
+        step, reached, _, _ = self.step_without("guardia_lab", alone)
+        self.assertEqual(reached, 1)
+        self.assertEqual(step, [])
+        # The warning names that cause.
+        pool = [i for i in self.multiworld.itempool if i.advancement and i.name not in alone]
+        spots = list(self.multiworld.get_unfilled_locations())
+        with self.assertLogs(level="WARNING") as logs:
+            self.world.open_the_start(pool, spots)
+        self.assertTrue(any("too few of those locations" in line for line in logs.output))
+        self.assertFalse([loc for loc in self.mine() if loc.locked])
+
+    def test_pairs_kept_out_warn_so(self) -> None:
+        # Easy's Jungle Entry without its six single openers in the pool, and its two start
+        # locations taking no progression (an item rule): the pairs that open it together are
+        # kept out, and the warning says so, not that too few locations are free.
+        alone = (
+            "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser",
+            "Gravity Harness", "Zenith Thrusters",
+        )  # fmt: skip
+        _, reached, empty, _ = self.step_without("jungle_entry", alone)
+        self.assertEqual(reached, 2)
+        for location in empty:
+            add_item_rule(location, lambda item: not item.advancement)
+        pool = [i for i in self.multiworld.itempool if i.advancement and i.name not in alone]
+        spots = list(self.multiworld.get_unfilled_locations())
+        with self.assertLogs(level="WARNING") as logs:
+            self.world.open_the_start(pool, spots)
+        self.assertTrue(any("every two that do together are kept" in line for line in logs.output))
+        self.assertFalse([loc for loc in self.mine() if loc.locked])
+
+    def test_not_in_excluded_locations(self) -> None:
+        # Easy from Landing Pod: its starting items reach 3 locations; with 2 excluded, which
+        # take no progression, the start is opened through the third.
+        self.options = {"mode": "easy"}
+        self.world_setup(1)
+        excluded = {"Kresezoa 25,25", "Machinus 27,24"}
+        exclusion_rules(self.multiworld, self.player, excluded)
+        order = fill_recording(self.multiworld)
+        self.assertTrue(order)
+        self.assertFalse({loc.name for loc in order} & excluded)
+        self.assertIn("Machinus 24,29", {loc.name for loc in order})
+        self.assert_filled(self.multiworld)
+
+    def reached_with(self, order: list[Location]) -> set[str]:
+        """This player's locations the starting items and the items placed in ``order`` reach."""
+        state = CollectionState(self.multiworld)
+        for location in order:
+            state.collect(location.item, True, location)
+        return {loc.name for loc in self.mine() if loc.can_reach(state)}
+
+    def test_excluded_locations_do_not_count(self) -> None:
+        # Exclude 8 of the locations the opened start reaches: it opens on until 20 that are
+        # not excluded are reached, since excluded locations take no progression. On seed 5
+        # (Easy, Landing Pod) the opened start reaches exactly 20, so counting the excluded ones
+        # would stop it at 12 that are not.
+        self.options = {"mode": "easy"}
+        self.world_setup(5)
+        order = fill_recording(self.multiworld)
+        self.assertEqual(len(self.reached_with(order)), START_REACH)
+        placed = {loc.name for loc in order}
+        excluded = set(sorted(self.reached_with(order) - placed)[:8])
+        self.world_setup(5)
+        exclusion_rules(self.multiworld, self.player, excluded)
+        order = fill_recording(self.multiworld)
+        self.assertGreaterEqual(len(self.reached_with(order) - excluded), START_REACH)
+        self.assert_filled(self.multiworld)
+
+    def test_a_start_left_with_nothing_to_take_warns(self) -> None:
+        # Every location Landing Pod's starting items reach (Easy: 3) excluded.
+        self.options = {"mode": "easy"}
+        self.world_setup(1)
+        excluded = {"Kresezoa 25,25", "Machinus 27,24", "Machinus 24,29"}
+        exclusion_rules(self.multiworld, self.player, excluded)
+        with self.assertLogs(level="WARNING") as logs, contextlib.suppress(FillError):
+            distribute_items_restrictive(self.multiworld)
+        self.assertTrue(
+            any("excluded or already filled" in line for line in logs.output), logs.output
+        )
+
+    def linked(self, seed: int, **options: Any) -> MultiWorld:
+        """Two Easy players from Below Machinus, with these options, through Archipelago's item
+        link steps (Main.py: set_item_links, then link_items before the fill)."""
+        options = {"mode": "easy", "start_room": "below_machinus", **options}
+        multiworld = setup_multiworld([ZexionWorld] * 2, steps=(), seed=seed, options=options)
+        multiworld.set_item_links()
+        multiworld.state = CollectionState(multiworld)
+        for step in gen_steps:
+            call_all(multiworld, step)
+        locality_rules(multiworld)
+        multiworld.link_items()
+        return multiworld
+
+    def test_items_an_item_link_shares(self) -> None:
+        # The four items that open Below Machinus alone, linked: the link's copy is placed, in
+        # one of the players' own locations. Seed 4 fails without the link's items counted.
+        link = {"name": "Openers", "item_pool": OPENERS, "replacement_item": None}
+        multiworld = self.linked(4, item_links=[{**link, "link_replacement": False}])
+        group = next(iter(multiworld.groups))
+        order = fill_recording(multiworld)
+        self.assertIn(group, {loc.item.player for loc in order})
+        self.assertLessEqual({loc.player for loc in order}, {1, 2})
+        self.assert_filled(multiworld)
+
+    def test_openers_kept_out_by_non_local_items_warn(self) -> None:
+        # The same four in both players' non_local_items: no item a start location can take
+        # opens it, alone or with another.
+        multiworld = self.linked(1, non_local_items=OPENERS)
+        with self.assertLogs(level="WARNING") as logs, contextlib.suppress(FillError):
+            distribute_items_restrictive(multiworld)
+        self.assertTrue(
+            any("item that reaches more alone is kept out" in line for line in logs.output),
+            logs.output,
+        )
+        for location in multiworld.get_filled_locations():
+            if location.locked and location.address is not None:
+                self.assertNotIn(location.item.name, OPENERS)
+
+    def test_in_a_multiworld_each_opens_its_own(self) -> None:
+        options = [
+            {"mode": "easy", "start_room": "below_machinus"},
+            {"mode": "ohko", "goal": "os_install_disks", "start_room": "tower_gauntlet"},
+        ]
+        multiworld = setup_multiworld([ZexionWorld, ZexionWorld], seed=1, options=options)
+        order = fill_recording(multiworld)
+        self.assertEqual({loc.player for loc in order}, {1, 2})
+        for location in order:
+            self.assertEqual(location.item.player, location.player)
+        self.assert_filled(multiworld)
+
+    def test_nothing_is_placed_where_the_start_reaches_enough(self) -> None:
+        # Custom on Easy's base, starting with the Zenith Thrusters and the Gravity Harness: 48
+        # locations from Landing Pod.
+        starts = {"Zenith Thrusters": "start", "Gravity Harness": "start"}
+        self.options = {"mode": "custom", "custom_items": starts}
+        self.assertEqual(self.fill_in_order(1), [])
 
 
 class TestSlotDataForTheClient(ZexionTestBase):

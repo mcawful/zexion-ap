@@ -66,35 +66,6 @@ class TestStartRooms(unittest.TestCase):
                 self.assertEqual(rooms, others)
 
 
-class TestOpeners(unittest.TestCase):
-    def test_the_items_that_open_a_one_location_room(self) -> None:
-        # Standard's Below Machinus (room 25): its starting items, the Force Blaster among them,
-        # reach one location; the Lance, the Gravity Harness or the Zenith Thrusters reach more.
-        seed, room = preset("standard"), data.START_ROOMS[25]
-        self.assertEqual(len(seed.sphere0_from(room).locations), 1)
-        found = reach.openers(seed, room, None, data.MODES["standard"]["pool"])
-        self.assertEqual(found, [6, 24, 26])
-
-    def test_openers_with_a_second_teleport_target(self) -> None:
-        # OHKO from Tower Gauntlet with Kresezoa Cave as the second target: 7 locations, and
-        # each opener reaches more; the Missile Container, of which there are many, does not.
-        seed, rooms = preset("ohko"), data.START_ROOMS
-        start, second = rooms[4], rooms[12]
-        base = seed.sphere0_from(start, second).locations
-        self.assertEqual(len(base), 7)
-        pool = data.MODES["ohko"]["pool"]
-        found = reach.openers(seed, start, second, pool)
-        self.assertTrue(found)
-        self.assertNotIn(logic.MISSILE_CONTAINER, found)
-        for code in sorted(set(pool)):
-            have = dict(seed.start_items)
-            logic.collect(have, code, seed.settings.guns_first)
-            more = reach.reach(
-                seed.settings, reach.inventory(have), (start["cell"], second["cell"])
-            )
-            self.assertEqual(code in found, len(more.locations) > len(base), code)
-
-
 class TestTheCache(unittest.TestCase):
     def test_seeds_that_drew_other_filler_share_their_inventory(self) -> None:
         # No rule reads the filler (reach.UNREAD), so it is left out and the floods are shared.

@@ -848,13 +848,11 @@ class CustomDoubleTeleportRandomStart(ZexionTestBase):
 
 
 class EveryStartFills(ZexionTestBase):
-    """Every room the world takes for Standard, with each gun it draws, and for OHKO fills and
-    can be beaten, but those from which the starting items reach fewer than 3 locations (in
-    OHKO, with the second teleport target drawn, counted as the logic counts it): Archipelago's
-    fill can fail there, as the owner accepted (docs/re/locations.md, "Which start rooms the
-    world offers"), so a test of them would fail at random. Each generation's seed is fixed and
-    named in its subtest: the fill can fail, rarely, from a room that reaches more (the same
-    section), and a failure must be one that can be run again."""
+    """Every room the world takes for Easy, for Standard with each gun it draws, and for OHKO
+    fills and can be beaten, the rooms whose starting items reach one location included: a
+    smoke test, one fixed seed per room, named in its subtest so a failure can be run again.
+    The seeds pinned because they fail without the world opening the start are test_world.py's,
+    TestTheStartIsOpened (docs/re/locations.md, "Which start rooms the world offers")."""
 
     auto_construct = False
     run_default_tests = False
@@ -869,33 +867,23 @@ class EveryStartFills(ZexionTestBase):
                 return seed
         raise AssertionError(f"no seed drew the {gun}")
 
-    def reaches_three(self) -> bool:
-        w = self.world
-        return len(w.seed_reach.sphere0_from(w.start, w.second).locations) >= 3
-
     def test_every_room(self) -> None:
-        cases = [("standard", gun) for gun in STANDARD_GUNS] + [("ohko", None)]
+        cases = [("easy", None)] + [("standard", gun) for gun in STANDARD_GUNS] + [("ohko", None)]
         for mode, gun in cases:
             probe = drawing(gun) if gun else fake_world(mode=mode)
             if not gun:
                 probe.generate_early()
             rooms = [r for r in data.START_ROOMS if probe.passes(r)]
-            # OHKO's second target is drawn: the first of these seeds whose pair reaches 3
-            # locations or more.
-            seeds = [self.seed_drawing(gun)] if gun else range(1, 11)
+            seed = self.seed_drawing(gun) if gun else 1
             for room in rooms:
-                for seed in seeds:
+                with self.subTest(mode=mode, gun=gun, room=room["index"], seed=seed):
                     self.options = {"mode": mode, "start_room": room["index"] + 1}
                     self.world_setup(seed)
-                    if self.reaches_three():
-                        break
-                else:
-                    continue
-                with self.subTest(mode=mode, gun=gun, room=room["index"], seed=seed):
                     if gun:
                         self.assertEqual(drawn_gun(self.world), gun)
                     distribute_items_restrictive(self.multiworld)
                     self.assertTrue(self.multiworld.can_beat_game(self.multiworld.state))
+                    self.assertTrue(self.multiworld.fulfills_accessibility())
 
 
 class TestTheLogicReviewsFindings(unittest.TestCase):
