@@ -63,6 +63,11 @@ class ModMismatch(ModFixable):
     another build. The message, a clause for the player, says which is which and what to do."""
 
 
+class NotUnloaded(ModMismatch):
+    """A helper of another version that didn't unload to make way for the client's (a menu
+    open, say): a later try may unload it."""
+
+
 class UnreadableHello(ModMismatch):
     """A hello this client can't read: a helper too old or too new for this client."""
 
@@ -552,7 +557,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                 if stale is not None:  # the same file again: refused, the helper left alone
                     raise _wrong_version(dll, stale[1], own_build)
                 if not _unloaded(old, handle):
-                    raise ModMismatch(
+                    raise NotUnloaded(
                         f"the mod loaded in Zexion is {_shown(version)}, this client "
                         f"{VERSION}, and it didn't unload to make way for the client's build; "
                         "the client tries again, and if it keeps failing, restart Zexion"

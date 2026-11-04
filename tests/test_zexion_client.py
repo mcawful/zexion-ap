@@ -346,15 +346,17 @@ def test_a_failed_reattach_holds_back_the_step_for_a_while(monkeypatch) -> None:
     assert order[-2:] == ["attach", "step"] and not ctx.helper_left
 
 
-def mismatched_reattach(monkeypatch, dll) -> tuple[zc.ZexionContext, list[str]]:
-    """failing_reattach through the real attach_helper, the mod not matching, ``dll`` the
-    client's own build."""
+def mismatched_reattach(
+    monkeypatch, dll, error: type[native.ModMismatch] = native.ModMismatch
+) -> tuple[zc.ZexionContext, list[str]]:
+    """failing_reattach through the real attach_helper, the mod not matching (``error``),
+    ``dll`` the client's own build."""
     ctx, order = failing_reattach(monkeypatch)
     monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
 
     def attach(*args) -> None:
         order.append("attach")
-        raise native.ModMismatch("the mod is another build of this version")
+        raise error("the mod is another build of this version")
 
     def step(g, received, **kwargs):
         order.append(f"step, retry at {ctx.helper_retry_at}")
@@ -383,6 +385,15 @@ def test_a_mismatch_a_rebuild_can_fix_is_tried_again_without_holding_the_step(
     asyncio.run(zc.poll(ctx))
     assert len(order) == 2 and order[1].startswith("step, retry at ")
     assert order[1] != "step, retry at inf"
+
+
+def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
+    monkeypatch, tmp_path
+) -> None:
+    # A menu open, say: a later try may unload it and load the game folder's copy.
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 2 and order[1] != "step, retry at inf"
 
 
 def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:
