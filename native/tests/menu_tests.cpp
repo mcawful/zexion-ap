@@ -425,20 +425,6 @@ void test_a_relabeled_assist_is_forgotten_unwritten() {
     check(!lock.restore(a) && options.callback() == nullptr, "nothing to unlock");
 }
 
-// Glyph i of `o`'s label shows `text[i]`, each glyph as the game builds an options entry.
-void build_label(stand_in::OptionsMenu& o, const char (&text)[zap::kAssistLength + 1]) {
-    for (int i = 0; i < zap::kAssistLength; ++i) {
-        BYTE* g = o.glyph_list[i];
-        const int32_t c = static_cast<unsigned char>(text[i]);
-        at<int32_t>(g, 0x1C4) = c;
-        at<BYTE*>(g, 0x1B0) = o.table.data() + c * 0x38;
-        at<int32_t>(g, 0x1D0) = 0x15;
-        for (ptrdiff_t t : {0x68, 0x6C, 0x70, 0x74, 0x78, 0x7C, 0x80, 0x84}) at<float>(g, t) = 1.0f;
-        at<void*>(g, 0x198) = o.palette_objects[1];
-        at<int16_t>(g, 0x1A0) = 26;
-    }
-}
-
 // The whole label, if each glyph's frame matches its character.
 std::string whole_label(stand_in::OptionsMenu& o) {
     std::string s;
@@ -451,32 +437,15 @@ std::string whole_label(stand_in::OptionsMenu& o) {
 
 constexpr char kVersion[zap::kAssistLength + 1] = "VERSION 1.20";
 
-// Leaving Video closes the options menu and builds another (0x124D30), which may come back at the
-// same address, the new menu's VERSION 1.20 (12 glyphs, the generic handler, no callback) in the
-// locked ASSIST's freed place and the new ASSIST elsewhere: on the 1.0.0 RC the lock then grayed
-// the version line, put the padlock in its eighth glyph and left the new ASSIST open.
+// Leaving Video builds the options menu again, maybe at the same address, the new VERSION 1.20
+// in the locked ASSIST's freed place and the new ASSIST elsewhere: the lock must take the new
+// ASSIST and leave VERSION as the game built it.
 struct RebuiltOptions {
     Options options;  // the menu, rebuilt in place: its old ASSIST widget now VERSION
     Options fresh;    // the new ASSIST widget, its label and glyphs
     BYTE* version_list[1] = {};
 
-    // Builds the options menu again where it was, after `lock` locked its ASSIST.
-    void rebuild() {
-        BYTE* version = options.child;
-        at<void*>(version, 0x2C0) = nullptr;
-        at<int32_t>(version, 0x1E0) = 0;
-        build_label(options, kVersion);
-        version_list[0] = version;  // in its own panel, as 0x163AF7 builds it
-        at<BYTE**>(options.first, 0x1E0) = version_list;
-        at<int32_t>(options.first, 0x1E8) = 1;
-        for (int i = 0; i < 7; ++i) options.children[i < 6 ? i : 7] = options.others[i];
-        options.children[6] = fresh.child;
-        for (int i = 0; i < 8; ++i) at<int32_t>(options.children[i], 0x1E0) = i;
-        at<int32_t>(options.second, 0x1EC) = 8;
-        at<int32_t>(options.second, 0x2DC) = -1;
-        options.current = options.menu;
-    }
-
+    void rebuild() { options.rebuild_in_place(fresh, version_list); }
     void* fresh_callback() { return at<void*>(fresh.child, 0x2C0); }
 };
 
@@ -601,7 +570,7 @@ void test_assist_lock_when_the_new_assist_takes_the_old_place() {
     }
     at<int32_t>(options.second, 0x1EC) = 8;
     at<void*>(options.child, 0x2C0) = reinterpret_cast<void*>(&assist_menu);
-    build_label(options, "ASSIST\0\0\0\0\0\0");  // and six blanks
+    options.build_label("ASSIST\0\0\0\0\0\0");  // and six blanks
     check(lock.install(a) && options.callback() == nullptr &&
               options.code(7) == zap::kLockGlyph && options.children[7] == options.child,
           "taken as a new ASSIST, and locked");

@@ -130,20 +130,46 @@ struct OptionsMenu {
         at<BYTE*>(child, 0x1F0) = label;
         at<int32_t>(label, 0x1D8) = zap::kAssistLength;
         at<BYTE**>(label, 0x228) = glyph_list;
-        const char text[zap::kAssistLength + 1] = "ASSIST\0\0\0\0\0";  // six blanks
         for (int i = 0; i < zap::kAssistLength; ++i) {
-            BYTE* g = glyphs[i];
-            glyph_list[i] = g;
-            at<BYTE*>(g, 0x1A8) = table.data();
-            at<int32_t>(g, 0x1BC) = kFrames;
-            at<int32_t>(g, 0x1C4) = text[i];
-            at<BYTE*>(g, 0x1B0) = table.data() + text[i] * 0x38;
+            glyph_list[i] = glyphs[i];
+            at<BYTE*>(glyphs[i], 0x1A8) = table.data();
+            at<int32_t>(glyphs[i], 0x1BC) = kFrames;
+        }
+        build_label("ASSIST\0\0\0\0\0\0");  // six blanks
+        palettes[26] = palette_objects[1];
+        current = menu;
+    }
+
+    // Glyph i of the label shows `text[i]`, each glyph as the game builds an options entry, in
+    // the menu's own palette (number 26, say).
+    void build_label(const char (&text)[zap::kAssistLength + 1]) {
+        for (int i = 0; i < zap::kAssistLength; ++i) {
+            BYTE* g = glyph_list[i];
+            const int32_t c = static_cast<unsigned char>(text[i]);
+            at<int32_t>(g, 0x1C4) = c;
+            at<BYTE*>(g, 0x1B0) = table.data() + c * 0x38;
             at<int32_t>(g, 0x1D0) = 0x15;
             for (ptrdiff_t t : {0x68, 0x6C, 0x70, 0x74, 0x78, 0x7C, 0x80, 0x84}) at<float>(g, t) = 1.0f;
-            at<void*>(g, 0x198) = palette_objects[1];  // the menu's own palette: number 26, say
+            at<void*>(g, 0x198) = palette_objects[1];
             at<int16_t>(g, 0x1A0) = 26;
         }
-        palettes[26] = palette_objects[1];
+    }
+
+    // Built again where it was, as leaving Video builds it (0x124D30): VERSION 1.20 (12 glyphs,
+    // the generic handler, no callback, in its own panel) in the old ASSIST's place, `fresh`'s
+    // ASSIST sixth of the selectable eight. `version_list` is the first panel's list.
+    void rebuild_in_place(OptionsMenu& fresh, BYTE* (&version_list)[1]) {
+        at<void*>(child, 0x2C0) = nullptr;
+        at<int32_t>(child, 0x1E0) = 0;
+        build_label("VERSION 1.20");
+        version_list[0] = child;
+        at<BYTE**>(first, 0x1E0) = version_list;
+        at<int32_t>(first, 0x1E8) = 1;
+        for (int i = 0; i < 7; ++i) children[i < 6 ? i : 7] = others[i];
+        children[6] = fresh.child;
+        for (int i = 0; i < 8; ++i) at<int32_t>(children[i], 0x1E0) = i;
+        at<int32_t>(second, 0x1EC) = 8;
+        at<int32_t>(second, 0x2DC) = -1;
         current = menu;
     }
 
