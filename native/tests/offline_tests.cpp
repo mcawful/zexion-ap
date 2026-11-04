@@ -324,18 +324,11 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.scan_line() == "COLLECT",
           "a client's look taken back: the dressed save's own again");
-    {
-        // A refused unload: the look is the offline one's, not set again from the client's.
-        zap::ClientState saved = other.snapshot();
-        check(!saved.intel && !saved.assists_locked && saved.labels.empty() &&
-                  saved.scan_line.empty(),
-              "a dressed save's look is left out of the snapshot");
-        other.put_back_all(nullptr);
-        other.rearm(saved);
-        check(!other.intel_on() && !other.assists_locked(), "so rearm does not set it");
-        for (int i = 0; i < 16; ++i) other.watch_offline();
-        check(other.intel_on() && other.assists_locked(), "the watch dresses it again");
-    }
+    // A refused unload: the offline look left by the put back, dressed again by its watch.
+    other.put_back_game(nullptr);
+    check(!other.intel_on() && !other.assists_locked(), "put back: the offline look left");
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.intel_on() && other.assists_locked(), "the watch dresses it again");
     g_save_loaded = 0xFF;
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(!other.intel_on() && !other.assists_locked(), "the save gone: undressed");
@@ -385,7 +378,7 @@ void test_assist_locked_again_in_the_same_frame() {
     game.client_gone(&no_callback);
     game.watch_all(&no_callback);
     check(options.callback() == nullptr, "the client gone: locked again in the same frame call");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     g_current_menu = nullptr;
 }
 
@@ -478,7 +471,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         g_save_loaded = 3;
         frames(game, 40);
         check(g_messages == 0, "not shown in the client's own seed's save", g_text);
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         // A client going away before its notice shows.
@@ -499,7 +492,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
               "only the not-connected warning shown", g_text);
         configure(game);
         check(game.other_save() == "told", "the next client is told again");
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         // Warned, paused before it showed, a client of another seed come and gone meanwhile.
@@ -517,7 +510,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         frames(game, 200);
         check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
               "the not-connected warning given again", g_text);
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         // Warned and shown; a client comes back, then goes again in the same load.
@@ -538,7 +531,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
               "warned again when it goes", g_text);
         frames(game, 200);
         check(g_messages == 3, "once for that loss");
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         zap::Game game;  // CLIENT CONNECTED. not shown yet when its client goes
@@ -548,7 +541,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
         game.client_gone(nullptr);
         check(game.queued_popups() == 0, "withdrawn as its client goes");
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         zap::Game game;  // or when a client configures again
@@ -558,7 +551,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
         configure(game);
         check(game.queued_popups() == 0, "withdrawn as a client configures again");
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     {
         // CLIENT CONNECTED, for a save played offline, likewise.
@@ -574,7 +567,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         g_save_loaded = 3;
         frames(game, 40);
         check(g_messages == 0, "not shown in the next save", g_text);
-        game.put_back_all(nullptr);
+        game.put_back_game(nullptr);
     }
     g_save_loaded = 0xFF;
     g_rando_marker = 0;
@@ -616,7 +609,7 @@ void test_a_seed_put_with_a_client_reaches_the_look() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(!game.intel_on() && game.assists_locked() && game.offline_state() == "2:b2",
           "dressed with the newer record");
-    game.put_back_all(nullptr);
+    game.put_back_game(nullptr);
     g_save_loaded = 0xFF;
     g_rando_marker = 0;
 }
@@ -652,7 +645,7 @@ void test_the_ap_saves_slots() {
     check(game.files().ap_slots().empty(), "not before a frame");
     game.watch_all(&no_callback);
     check(game.files().ap_slots() == std::set<int>{3, 7}, "the first frame sets them");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(game.files().ap_slots().empty() && !game.files().holds_hook(), "put back: none");
 
     // A seed known only as the labels' (the loaded save's when a client set them).
@@ -718,232 +711,27 @@ void test_the_logo_through_the_frame_call() {
     g_transition_fn = nullptr;
     g_transition_timer = 0;
     gl_fake::g_uploads.clear();
-    game.restore_files();
+    game.put_back_files();
     logos = logo_uploads();
     check(logos.size() == 1 && gl_fake::all_blank(logos),
-          "restore_files clears the logo from the texture");
-    game.put_back_all(&no_callback);
+          "put_back_files clears the logo from the texture");
+    game.put_back_game(&no_callback);
     clear_slots();
     g_save_loaded = 3;
 }
 
-// The keys only the client's parts read (game_calls.cpp, client_only), in the table's order.
-const char* const kClientOnly[] = {
-    "weapon_strip_gate", "hud_number_fn",   "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn",
-    "suit_color_fn",     "current_slot",    "randomizer_menu", "panel_handler_fn",
-    "rando_menu_fn",     "placement_fn",    "rando_newgame_fn", "start_count", "start_cells",
-    "start_flags",       "event_handlers",  "death_fn",      "halt_flag",     "routine_table",
-    "fade",              "fade_level",
-};
-
-// The translations' keys (game_calls.cpp, translation_key), in the table's order.
-const char* const kTranslationKeys[] = {
-    "translation",       "tr_flag",     "small_text",      "small_offsets", "item_names",
-    "item_name_offsets", "small_count", "item_name_count", "hd_messages",   "message_slots",
-    "hd_text_fn",        "hd_build_fn", "wstring_new_fn", "large_count",
-};
-
-bool is_translation_key(const std::string& key) {
-    for (const char* k : kTranslationKeys) {
-        if (key == k) return true;
-    }
-    return false;
-}
-
-// The keys an older cache lacks (game_calls.cpp, later_key).
-const char* const kLaterKeys[] = {"options_back_fn", "pickup_list"};
-
-bool is_later_key(const std::string& key) {
-    for (const char* k : kLaterKeys) {
-        if (key == k) return true;
-    }
-    return false;
-}
-
-// A cache without the client-only keys configures, inactive, those members null: the offline
-// look runs (a null read would fault here), the client's parts refuse until a client configures.
-void test_a_cache_without_the_client_only_keys() {
+// The cache needs every key, as a client's config does: one missing refuses.
+void test_a_cache_needs_every_key() {
     HMODULE self = GetModuleHandleW(nullptr);
-    auto partial = stand_in_config();
-    std::string named;
-    for (const char* key : kClientOnly) {
-        check(partial.erase(key) == 1, "a client-only key of the stand-in's config");
-        named += (named.empty() ? "" : ",") + std::string(key);
-    }
-    for (const auto& [key, rva] : partial) {
-        if (is_translation_key(key) || is_later_key(key)) continue;  // left out too (below)
-        auto older = partial;
+    const auto full = stand_in_config();
+    for (const auto& [key, rva] : full) {
+        auto older = full;
         older.erase(key);
         zap::Game refused;
         if (refused.configure(self, older, false) != "missing " + key || refused.configured()) {
-            check(false, ("a cache missing " + key + " (needed offline) refuses").c_str());
+            check(false, ("a cache missing " + key + " refuses").c_str());
         }
     }
-    {
-        zap::Game client;
-        check(client.configure(self, partial) == "missing weapon_strip_gate" &&
-                  !client.configured(),
-              "a client's config needs every key");
-        auto misplaced = stand_in_config();
-        misplaced["fade"] = misplaced["message_fn"];
-        zap::Game cached;
-        check(cached.configure(self, misplaced, false).empty() && cached.left_out() == "fade",
-              "a cache's client-only key that does not fit: left out");
-        check(!client.configure(self, misplaced).empty(), "but not from a client");
-    }
-
-    reset_game();
-    zap::Game game;
-    check(game.configure(self, partial, false).empty() && game.configured() && !game.active(),
-          "the cache without them configures, inactive");
-    check(!game.client_ready() && game.left_out() == named, "and says which it lacks");
-    zap::OfflineSeed s;
-    zap::parse_offline_seed(seed_text(), s);
-    game.set_offline({s});
-
-    // The title and the file select: slot 3 holds the seed's save.
-    clear_slots();
-    slot_block(3)[0x935E] = 0;
-    put<uint16_t>(slot_block(3), 0x9400, 1);
-    put_seed(rando_copy(3));
-    g_save_loaded = 0xFF;
-    g_rando_marker = 1;
-    std::memset(g_section, 0, sizeof(g_section));
-    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
-    check(game.files().ap_slots() == std::set<int>{3} && game.files().counts().at(3) == 3,
-          "the file select: the AP save's mark and its count");
-
-    zap::NewGamePlan plan;
-    zap::parse_newgame("ap_newgame\nidentify 0x658 41\nwrite 0x26C 2E1B\nmenu 0x88 0300", plan);
-    check(!game.arm_newgame(plan) && game.newgame_status() != "armed", "no new game armed");
-    for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
-    check(!game.menu_installed(), "no ARCHIPELAGO choice");
-
-    // The seed's save in play: dressed, the warning shown.
-    load_seed();
-    g_flags[39] = 0;
-    std::memset(g_map_grid, 0, sizeof(g_map_grid));
-    for (int i = 0; i < 64; ++i) {
-        game.watch_all(&no_callback);
-        game.pump_popups();
-    }
-    check(game.intel_on() && game.assists_locked() && game.scan_line() == "COLLECT" &&
-              game.disc_count() == 3 && !game.labels().empty(),
-          "the save dressed: INTEL CHIP, ASSIST locked, the disks, the labels");
-    check(g_messages == 1 && game.queued_popups() == 0, "the not-connected warning shown");
-    g_menu = 1;  // paused: the map's marks, the pause row
-    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
-    g_menu = 0;
-
-    game.note_play(1000);
-    zap::Batch batch;
-    zap::parse_batch("apply\ncas 1 3 4", batch);
-    check(game.apply(batch) == "refused not configured" && g_inventory[1] == 3, "no grant");
-    check(game.kill(5000) == "refused not configured", "no DeathLink death");
-    check(game.spawn_shield(5000) == "refused not configured", "no Energy Shield");
-    check(!game.request_mission(191, 329), "no RETURN HOME asked");
-    for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
-    check(game.mission_status() == "not asked" && g_fade_calls == 0, "none shown");
-    {
-        // A refused unload's state taken back: still no new game or prompt.
-        zap::ClientState state = game.snapshot();
-        state.newgame_armed = true;
-        state.newgame = plan;
-        state.mission_asked = true;
-        game.rearm(state);
-        check(game.newgame_status() != "armed" && game.mission_status() == "not asked",
-              "rearm sets neither");
-    }
-
-    // A client going away, or an unload: everything put back with those members null.
-    game.client_gone(&no_callback);
-    check(game.configured() && !game.client_ready() && !game.intel_on() &&
-              !game.menu_installed(),
-          "put back, still the cache's config");
-    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
-    check(game.intel_on() && game.assists_locked(), "and the save dressed again");
-
-    check(configure(game).empty() && game.client_ready() && game.left_out().empty(),
-          "a client's config: every key");
-    check(game.apply(batch) == "applied" && g_inventory[1] == 4, "a grant");
-    game.put_back_all(&no_callback);
-    g_save_loaded = 0xFF;
-    g_rando_marker = 0;
-}
-
-// A cache without the translations' keys: the client's parts ready, the translation parts
-// standing down (the pixel font, nothing written into the tables).
-void test_a_cache_without_the_translation_keys() {
-    HMODULE self = GetModuleHandleW(nullptr);
-    auto partial = stand_in_config();
-    std::string named;
-    for (const char* key : kTranslationKeys) {
-        check(partial.erase(key) == 1, "a translation key of the stand-in's config");
-        named += (named.empty() ? "" : ",") + std::string(key);
-    }
-    {
-        zap::Game client;
-        check(client.configure(self, partial) == "missing translation" && !client.configured(),
-              "a client's config needs them");
-    }
-    reset_game();
-    reset_translation();
-    load_translation();
-    zap::Game game;
-    check(game.configure(self, partial, false).empty() && game.configured() &&
-              game.client_ready() && game.left_out() == named,
-          "the cache without them configures, every client part ready, and says which it lacks");
-    check(game.language() == "?", "the language not known");
-    zap::OfflineSeed s;
-    zap::parse_offline_seed(seed_text(), s);
-    game.set_offline({s});
-    load_seed();
-    const std::vector<wchar_t> small = g_small->text, items = g_items->text;
-    for (int i = 0; i < 64; ++i) {
-        game.watch_all(&no_callback);
-        game.pump_popups();
-    }
-    check(g_messages == 1 && g_hd_texts.empty(), "the not-connected warning, in the pixel font");
-    check(g_small->text == small && g_items->text == items, "the tables as loaded");
-    check(game.tr_entries().held() == 0 && !game.popup_areas().split(), "nothing held");
-    game.put_back_all(&no_callback);
-    reset_translation();
-    g_save_loaded = 0xFF;
-    g_rando_marker = 0;
-}
-
-// A cache without the later keys configures, those members null (the pause row then a frame late
-// on OPTION MENU's way back, pause.h); a client's config needs them.
-void test_a_cache_without_the_later_keys() {
-    HMODULE self = GetModuleHandleW(nullptr);
-    auto partial = stand_in_config();
-    std::string named;
-    for (const char* key : kLaterKeys) {
-        check(partial.erase(key) == 1, "a later key of the stand-in's config");
-        named += (named.empty() ? "" : ",") + std::string(key);
-    }
-    {
-        zap::Game client;
-        check(client.configure(self, partial) == "missing options_back_fn" &&
-                  !client.configured(),
-              "a client's config needs them");
-    }
-    reset_game();
-    zap::Game game;
-    check(game.configure(self, partial, false).empty() && game.configured() &&
-              game.client_ready() && game.left_out() == named && game.options_back_fn() == nullptr,
-          "the cache without them configures, every client part ready, and says which it lacks");
-    zap::OfflineSeed s;
-    zap::parse_offline_seed(seed_text(), s);
-    game.set_offline({s});
-    load_seed();
-    g_menu = 1;
-    for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
-    g_menu = 0;
-    check(!game.menu_installed(), "nothing wrapped");
-    game.put_back_all(&no_callback);
-    g_save_loaded = 0xFF;
-    g_rando_marker = 0;
 }
 
 }  // namespace
@@ -960,8 +748,6 @@ int main() {
     test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();
-    test_a_cache_without_the_client_only_keys();
-    test_a_cache_without_the_translation_keys();
-    test_a_cache_without_the_later_keys();
+    test_a_cache_needs_every_key();
     return report("offline tests");
 }

@@ -1474,7 +1474,7 @@ void test_map_marks_with_a_menu_open() {
     for (int i = 0; i < 16; ++i) game.watch_all(&chosen);
     check(g_map_grid[4 * 54 + 3] == 0x1A, "then the second look raises them");
     check(!seen_marker_games(), "and patches the write again");
-    game.put_back_all(&chosen);
+    game.client_gone(&chosen);
     check(seen_marker_games() && game.unload_blocker() == nullptr,
           "a client going away: the game's write");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
@@ -1484,14 +1484,35 @@ void test_map_marks_with_a_menu_open() {
     g_map_grid[4 * 54 + 3] = 0;
 }
 
-// After a refused unload, rearm sets again all that put_back_all dropped: the client does not
-// know to resend it.
-void test_refused_unload_rearms() {
+// Item 49 as the game loads it: AREA MAP, its event the map reveal (as intel_tests.cpp).
+void area_map_as_loaded() {
+    BYTE* r = g_records + 49 * 100;
+    put<int16_t>(r, 0x00, 34);
+    put<int16_t>(r, 0x02, 25);
+    put<int16_t>(r, 0x04, 6);
+    put<int16_t>(r, 0x06, 2);
+    r[0x08] = 0;
+    r[0x09] = 3;
+    std::memcpy(r + 0x0A, "AREA MAP", 9);
+    put<int16_t>(r, 0x3C, 46);
+    put<int16_t>(r, 0x40, 3551);
+    put<int16_t>(r, 0x58, 1);
+}
+
+// An unload's put back leaves the game's memory as the game's but keeps what the client asked
+// for, so a refused unload's watches apply it all again (the client does not know to resend it);
+// a client gone drops it.
+void test_a_refused_unload_keeps_what_the_client_asked() {
     zap::Game game;
     ready(game);
     reset_sprites();
     reset_texts();
     reset_events();
+    own_stand_ins(g_records);
+    area_map_as_loaded();
+    stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                  reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
     g_rando_marker = 1;
     g_section[0x26C] = 0x2F;  // the loaded seed the labels are for
     std::map<int, zap::Label> labels;
@@ -1505,37 +1526,47 @@ void test_refused_unload_rearms() {
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
     game.set_disk_slots({{2, 3}, {5, 3}});
-    game.request_mission(kPodColumn, kPodRow);
+    player_cell(3, 4);  // the label's cell
+    // The stand-ins and INTEL CHIP restyled, ASSIST locked, the scanner's line written.
+    auto applied = [&] {
+        return game.ap_items_restyled() && record_name(49) == "INTEL CHIP" &&
+               options.callback() == nullptr && game.scan_written();
+    };
+    auto games = [&] {
+        return !game.ap_items_restyled() && record_name(47) == "SCRAP ENERGY" &&
+               record_name(48) == "SCRAP CHUNK" && record_name(49) == "AREA MAP" &&
+               options.callback() == &assist_menu_fn && !game.scan_written();
+    };
+    game.watch_all(&chosen);
+    check(applied(), "in play: applied");
+    game.request_mission(kPodColumn, kPodRow);  // asked for, not yet opened
 
-    zap::ClientState saved = game.snapshot();
-    game.put_back_all(&chosen);
-    check(game.newgame_status() == "idle" && !game.assists_locked() && !game.intel_on() &&
-              game.scan_line().empty() && game.files().counts().empty() &&
+    game.put_back_game(&chosen);
+    check(games() && game.unload_blocker() == nullptr,
+          "put back: the game's records, ASSIST and scanner line, nothing left to wait for");
+    check(game.newgame_status() == "armed" && game.assists_locked() && game.intel_on() &&
+              game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
+              game.scan_line() == "COLLECT 15 OS INSTALL DISKS!" &&
+              game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}} &&
+              game.labels().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
+          "what the client asked for kept: the new game, ASSIST, INTEL CHIP, the disks, the "
+          "file select's counts, the labels, RETURN HOME WITH THE DISKS?");
+    for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
+    check(applied(), "the unload refused: the watches apply it all again");
+
+    game.client_gone(&chosen);
+    check(games() && game.newgame_status() == "idle" && !game.assists_locked() &&
+              !game.intel_on() && game.scan_line().empty() && game.files().counts().empty() &&
               game.labels().empty() && game.mission_status() == "not asked",
-          "put_back_all drops what the client set");
-    check(game.snapshot().labels.empty(), "the labels too");
-
-    game.rearm(saved);
-    zap::ClientState again = game.snapshot();
-    check(game.newgame_status() == "armed" && again.newgame.write.size() == 1 &&
-              again.newgame.menu.size() == 1,
-          "the new-game plan armed again, its menu lines too (ARCHIPELAGO offered again)");
-    check(game.assists_locked() && game.intel_on(), "ASSIST locked and INTEL CHIP again");
-    check(game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
-              game.scan_line() == "COLLECT 15 OS INSTALL DISKS!",
-          "the disk count and the scanner's line again");
-    check(game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}}, "the file select's counts");
-    check(game.labels().count(4 * 54 + 3) == 1 && again.labels.size() == 1 &&
-              saved.labels_seed && again.labels_seed &&
-              zap::offline_matches(*again.labels_seed, *saved.labels_seed),
-          "the labels again, for the seed they were set for (the map names follow them)");
-    check(game.mission_status() == "asked", "RETURN HOME WITH THE DISKS? asked for again");
-    game.put_back_all(&chosen);
+          "a client gone: put back and dropped");
+    for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
+    check(games(), "and not applied again");
+    g_current_menu = nullptr;
     g_rando_marker = 0;
 }
 
-// A refused unload after ARCHIPELAGO's new game was queued: rearm keeps it started, so the plan
-// is applied without the mode check and ARCHIPELAGO is not offered again.
+// An unload refused after ARCHIPELAGO's new game was queued: still started, so the plan is
+// applied without the mode check and ARCHIPELAGO is not offered again.
 void test_refused_unload_keeps_a_start() {
     zap::Game game;
     ModeScreen screen(game);
@@ -1547,13 +1578,9 @@ void test_refused_unload_keeps_a_start() {
     screen.start(plan);
     check(g_steps == "placement queue ", "ARCHIPELAGO pressed: the new game queued");
 
-    zap::ClientState saved = game.snapshot();
-    check(saved.newgame_armed && saved.starting, "the snapshot holds the start");
-    game.put_back_all(&chosen);
-    check(game.newgame_status() == "idle", "put_back_all drops it");
-    game.rearm(saved);
+    game.put_back_game(&chosen);
     game.watch_menu(&chosen);
-    check(!game.menu_installed(), "set again as started: ARCHIPELAGO not offered again");
+    check(!game.menu_installed(), "kept as started: ARCHIPELAGO not offered again");
     game.watch_newgame();
     check(game.newgame_status() == "applied slot 3" && g_section[0x6C0] == 5,
           "the queued new game gets the plan, the mode check skipped as before");
@@ -1613,7 +1640,7 @@ void test_pause_row_from_the_seed_file() {
     g_current_menu = options;
     game.watch_all(&chosen);
     check(game.menu_installed(), "opened again: wrapped again");
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
     check(!game.keys_branch_patched() && !game.menu_installed() &&
               get<void*>(p.menu, 0x68) == game_back,
           "put back: the branch and the way back");
@@ -1626,7 +1653,7 @@ void test_pause_row_from_the_seed_file() {
     game.watch_all(&chosen);
     check(!game.keys_branch_patched() && q.frame(q.glyph[0]) == 'K', "no known seed: KEYS");
     g_section[0x26D] ^= 1;
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
     g_current_menu = nullptr;
     g_template_list[1] = nullptr;
     g_map_grid[4 * 54 + 3] = 0;
@@ -1746,7 +1773,7 @@ struct MissionGame {
     }
     // All of it put back, then the events fresh, idle again and the hooks set again.
     void again() {
-        game.put_back_all(&chosen);
+        game.put_back_game(&chosen);
         reset_events();
         idle();
         game.set_hooks(hooks);
@@ -1815,7 +1842,7 @@ void test_popups_wait_for_the_mission_fade() {
     field<int16_t>(0xCEA) = 48;  // respawned
     game.watch_all(&chosen);
     check(g_fade_calls == 3 && g_transition_timer == zap::kFadeDelay, "then offered again");
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
 }
 
 // A save during the fade puts the pause opener back: the fade turned back and the prompt asked
@@ -1847,7 +1874,7 @@ void test_a_save_during_the_mission_fade() {
             check(g_fade[zap::fade_state::kTarget] == 4 && g_fade[zap::fade_state::kStep] == 6,
                   "toward the normal level, a step every 6 frames");
         }
-        game.put_back_all(&chosen);
+        game.put_back_game(&chosen);
     }
 }
 
@@ -1977,7 +2004,7 @@ void test_return_home_lapses_away_from_the_pod() {
     check(!game.ending_pending() && game.unload_refusal() == nullptr,
           "started, with no ending patch: nothing an unload would undo");
 
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
 }
 
 // A last message the helper's call did not make new (the game makes each new message the last
@@ -1997,11 +2024,11 @@ void test_own_popup_needs_a_new_last_message() {
     game.watch_all(&chosen);
     check(g_transition_fn == m.hooks.mission_end,
           "not the helper's popup: the ending at once after YES");
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
 }
 
-// After YES the screen stays black past NO's close, refusing deaths and holding popups until the
-// ending; once started, not offered again until another save is loaded.
+// After YES the screen stays black past NO's close into the ending, refusing deaths, popups held
+// for the next load; once started, not offered again until another save is loaded.
 void test_the_black_after_yes() {
     MissionGame m;
     zap::Game& game = m.game;
@@ -2020,17 +2047,45 @@ void test_the_black_after_yes() {
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 0 && game.queued_popups() == 1, "a popup waits in the black");
     game.watch_all(&chosen);
-    check(at<int8_t>(g_fade, zap::fade_state::kTarget) == 4 &&
-              g_fade[zap::fade_state::kStep] == 6 &&
-              g_transition_fn == g_routine_table[zap::kIdleRoutine],
-          "then the screen back in for it, the ending waiting");
+    check(g_fade_level == -1 && g_fade[zap::fade_state::kStep] == 0 &&
+              g_transition_fn == m.hooks.mission_end &&
+              game.mission_status() == zap::kEndingStarted,
+          "the ending at once, from black, the popup still waiting");
+    g_transition_timer = 0;
+    game.mission_end();  // the game runs the wrapper
+    g_transition_fn = nullptr;
+    g_save_loaded = 0xFF;  // MISSION COMPLETE: no save loaded
+    game.watch_all(&chosen);
+    g_save_loaded = 3;  // loaded again
+    game.watch_all(&chosen);
     for (int i = 0; i < 30; ++i) game.pump_popups();
-    check(g_messages == 1, "shown");
+    check(g_messages == 1 && game.queued_popups() == 0, "the popup at the next load");
+
+    // YES with the fade not as NO's close leaves it: not kept black, the popup still kept for
+    // the next load and the ending at once.
+    m.again();
     message_showing(1);
+    game.mission_yes();
+    set_fade(4, -1, 12);  // not NO's fade
+    game.mission_after_no();
+    check(g_fade[zap::fade_state::kStep] == 12 && game.mission_black() != "kept black",
+          "not kept black: the fade left as it is");
+    apply(game, "apply\npopup 36 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 1 && game.queued_popups() == 1, "the popup waits after YES");
     game.watch_all(&chosen);
     check(g_transition_fn == m.hooks.mission_end &&
               game.mission_status() == zap::kEndingStarted,
-          "then the ending");
+          "the ending at once, the popup still waiting");
+    g_transition_timer = 0;
+    game.mission_end();
+    g_transition_fn = nullptr;
+    g_save_loaded = 0xFF;
+    game.watch_all(&chosen);
+    g_save_loaded = 3;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_messages == 2 && game.queued_popups() == 0, "shown at the next load");
 
     // Canceled (`discs` off) under a menu that is not the game's menu state.
     m.again();
@@ -2091,7 +2146,7 @@ void test_the_black_after_yes() {
     game.request_mission(kPodColumn, kPodRow);
     game.watch_all(&chosen);
     check(g_transition_fn == reinterpret_cast<void*>(&opener), "offered again");
-    game.put_back_all(&chosen);
+    game.put_back_game(&chosen);
 }
 
 }  // namespace
@@ -2106,7 +2161,7 @@ int main() {
     test_map_marks_with_a_menu_open();
     test_pickup_list();
     test_popups_wait_for_their_save();
-    test_refused_unload_rearms();
+    test_a_refused_unload_keeps_what_the_client_asked();
     test_refused_unload_keeps_a_start();
     test_queued_popups();
     test_pause_row_from_the_seed_file();

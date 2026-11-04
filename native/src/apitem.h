@@ -223,7 +223,8 @@ public:
                bool world = true);
 
     // Game thread: the records back to the game's own values (also ones an earlier helper left
-    // restyled), the pixels cleared if this helper painted them, the labels dropped.
+    // restyled), the pixels cleared if this helper painted them; the labels kept (the next watch
+    // restyles them again; set_labels({}) drops them).
     void restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,
                  TextureCheck& check);
 

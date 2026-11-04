@@ -116,7 +116,7 @@ void test_restyle_and_names() {
     items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "restore puts the whole record back");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and Scrap Chunk's");
-    check(!items.restyled() && !items.active(), "and forgets them");
+    check(!items.restyled() && items.active(), "and keeps the labels");
 }
 
 void test_one_record_not_as_expected_leaves_the_other_restyled() {

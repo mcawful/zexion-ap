@@ -305,7 +305,7 @@ class SeedState:
 
 FEATS_ASK_SECONDS = 5.0  # between asks whether the Feats guard is on for this load
 # This seed's save in play this long with the guard still off: it is not coming (the helper
-# turns it on two frame calls into an AP save's load).
+# turns it on in the first frame call that finds an AP save loaded).
 FEATS_OFF_SECONDS = 10.0
 
 

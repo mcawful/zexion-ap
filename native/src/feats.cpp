@@ -290,8 +290,7 @@ void FeatsGuard::watch(const GameAddresses& a, bool on, const std::set<int>& loa
         ending_error_.clear();
     }
     // Hooked while on, or while the load test can block (a slot holds an AP save).
-    const bool test = !loading.empty() && a.rando_marker != nullptr &&
-                      a.current_slot != nullptr && a.save_loaded != nullptr;
+    const bool test = !loading.empty();
     if (!on && !test) {
         release_steam();
         steam_slot_error_.clear();

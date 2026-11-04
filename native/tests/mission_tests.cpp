@@ -326,6 +326,17 @@ void test_unload_puts_back() {
           "a prompt up: YES is NO, never the game's own YES");
     check(!m.holds_hook(), "nothing held");
     check(g_fades.size() == 1, "no fade back once the prompt is up: NO's close does that");
+
+    // Not on its way once shown, nor once NO has closed it (YES still wrapped until the next
+    // watch): a refused unload in that frame does not ask for it again (Game::put_back_game).
+    reset();
+    m.request();
+    m.watch(a, true);
+    m.open(a);
+    check(!m.on_its_way(), "a prompt up: not on its way");
+    g_current = nullptr;  // NO: the prompt closed
+    check(m.holds_hook() && !m.on_its_way(), "closed by NO, before the next watch: nor then");
+    m.watch(a, true);
 }
 
 void test_an_unexpected_prompt_never_keeps_the_games_yes() {
@@ -495,7 +506,7 @@ void test_cancel_after_a_save_turns_the_fade_back() {
     run_fade(1);
     g_fn = kIdle;  // saved
     m.cancel(a);
-    check(!m.holds_hook() && !m.asked() && m.status() == "not asked", m.status().c_str());
+    check(!m.holds_hook() && !m.on_its_way() && m.status() == "not asked", m.status().c_str());
     check(g_fades.size() == 2 && g_fades[1] == fade_back(), "faded back");
     g_timer = 0;
     m.watch(a, true);
@@ -760,8 +771,8 @@ void test_the_black_lasts_in_game_frames() {
     clock += 100000;
     j.watch(a, false);
     check(j.dark(), "a jump: still black");
-    j.end_dark(a);
-    check(j.black() == "ended: a popup waiting, faded back in", j.black().c_str());
+    j.end_dark(a, "ended: by hand");
+    check(j.black() == "ended: by hand", j.black().c_str());
 }
 
 // No ending for kDarkFrames frames in play: faded back in. Menu frames do not count: the pause
@@ -804,9 +815,9 @@ void test_the_black_after_yes_ends() {
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);
         m.after_no(a);
-        m.end_dark(a);
+        m.end_dark(a, "ended: by hand");
         check(!m.dark() && fading_back_in(), "end_dark: back in");
-        m.end_dark(a);
+        m.end_dark(a, "ended: by hand");
         check(fading_back_in(), "once");
     }
     {
@@ -935,7 +946,7 @@ void test_not_offered_again_after_the_ending() {
     g_timer = 0;
     m.request();
     m.watch(a, true);
-    check(g_fn == kIdle && !m.asked() && m.status() == zap::kEndingStarted,
+    check(g_fn == kIdle && !m.on_its_way() && m.status() == zap::kEndingStarted,
           "asked during the ending: nothing");
     m.cancel(a);
     check(m.status() == zap::kEndingStarted, "cancel (discs off, the client gone): still said");

@@ -57,7 +57,8 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
-// A client's config needs every key; the offline cache may lack client_only and newer ones.
+// Every key is required, from a client's config or the offline cache it wrote; what adding one
+// costs a cache written before it: native/README.md, "The pipe".
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -67,8 +68,6 @@ struct ConfigKey {
     Held held;
     uint64_t room;    // bytes from the address that must lie in its section, if not 0
     uint64_t before;  // and bytes before it
-    bool client_only = false;  // read only by the client's parts: the cache may lack it
-    bool newer = false;  // newer than some offline caches (translation_key, later_key)
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, 0};
@@ -79,68 +78,44 @@ constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uin
 constexpr ConfigKey import_slot(const char* name, Member member) {
     return {name, member, Held::kImportSlot, 0, 0};
 }
-// Read only by the client's parts: grants, new games, DeathLink, Energy Shields and RETURN HOME.
-constexpr ConfigKey client_only(ConfigKey key) {
-    key.client_only = true;
-    return key;
-}
-// The translations' (translation.h): an older offline cache lacks them; those parts stand down.
-constexpr ConfigKey translation_key(ConfigKey key) {
-    key.newer = true;
-    return key;
-}
-// A key an older offline cache lacks: its part does without it (addresses.h says how).
-constexpr ConfigKey later_key(ConfigKey key) {
-    key.newer = true;
-    return key;
-}
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
     // The player state the helper touches, all in the inventory's section.
     data("inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, kInventoryInPlayer),
     data("save_loaded", &G::save_loaded), data("menu_state", &G::menu_state),
     data("item_records", &G::item_records), data("last_message", &G::last_message),
-    client_only(data("weapon_strip_gate", &G::weapon_strip_gate)),
-    data("sound_system", &G::sound_system), code("message_fn", &G::message_fn),
-    code("sound_fn", &G::sound_fn), client_only(code("hud_number_fn", &G::hud_number_fn)),
-    client_only(code("hud_layout_fn", &G::hud_layout_fn)),
-    client_only(code("energy_hud_fn", &G::energy_hud_fn)),
-    client_only(code("weapon_strip_fn", &G::weapon_strip_fn)),
-    client_only(code("suit_color_fn", &G::suit_color_fn)),
-    data("rando_blob", &G::rando_blob, kSectionSize),
+    data("weapon_strip_gate", &G::weapon_strip_gate), data("sound_system", &G::sound_system),
+    code("message_fn", &G::message_fn), code("sound_fn", &G::sound_fn),
+    code("hud_number_fn", &G::hud_number_fn), code("hud_layout_fn", &G::hud_layout_fn),
+    code("energy_hud_fn", &G::energy_hud_fn), code("weapon_strip_fn", &G::weapon_strip_fn),
+    code("suit_color_fn", &G::suit_color_fn), data("rando_blob", &G::rando_blob, kSectionSize),
     data("rando_marker", &G::rando_marker), data("transition_fn", &G::transition_fn),
-    data("transition_timer", &G::transition_timer),
-    client_only(data("current_slot", &G::current_slot)), code("newgame_fn", &G::newgame_fn),
-    data("current_menu", &G::current_menu),
-    client_only(data("randomizer_menu", &G::randomizer_menu, kMenuSize)),
+    data("transition_timer", &G::transition_timer), data("current_slot", &G::current_slot),
+    code("newgame_fn", &G::newgame_fn), data("current_menu", &G::current_menu),
+    data("randomizer_menu", &G::randomizer_menu, kMenuSize),
     code("widget_handler_fn", &G::widget_handler_fn),
-    client_only(code("panel_handler_fn", &G::panel_handler_fn)),
-    client_only(code("rando_menu_fn", &G::rando_menu_fn)),
-    client_only(code("placement_fn", &G::placement_fn)),
-    client_only(code("rando_newgame_fn", &G::rando_newgame_fn)),
+    code("panel_handler_fn", &G::panel_handler_fn), code("rando_menu_fn", &G::rando_menu_fn),
+    code("placement_fn", &G::placement_fn), code("rando_newgame_fn", &G::rando_newgame_fn),
     data("event_table", &G::event_table), data("event_count", &G::event_count),
-    client_only(data("start_count", &G::start_count)),
-    client_only(data("start_cells", &G::start_cells, 4 * kStartTableMax)),
-    client_only(data("start_flags", &G::start_flags, kStartTableMax)),
+    data("start_count", &G::start_count), data("start_cells", &G::start_cells, 4 * kStartTableMax),
+    data("start_flags", &G::start_flags, kStartTableMax),
     data("sprite_texture", &G::sprite_texture), code("popup_width_code", &G::popup_width_code),
     data("item_pool", &G::item_pool), data("palette_table", &G::palette_table),
     data("frame_clock", &G::frame_clock), data("sprite_templates", &G::sprite_templates),
-    client_only(data("event_handlers", &G::event_handlers)),
-    client_only(code("death_fn", &G::death_fn)), client_only(data("halt_flag", &G::halt_flag)),
-    code("assist_menu_fn", &G::assist_menu_fn), data("object_pool", &G::object_pool),
-    data("text_table", &G::text_table), code("equipment_fn", &G::equipment_fn),
-    code("equip_panel_fn", &G::equip_panel_fn), code("widget_move_fn", &G::widget_move_fn),
-    code("text_place_fn", &G::text_place_fn), import_slot("malloc_slot", &G::malloc_slot),
-    import_slot("free_slot", &G::free_slot), code("widget_new_fn", &G::widget_new_fn),
-    code("sprite_sheet_fn", &G::sprite_sheet_fn), code("panel_link_fn", &G::panel_link_fn),
-    code("text_set_fn", &G::text_set_fn), client_only(data("routine_table", &G::routine_table)),
-    client_only(data("fade", &G::fade, fade_state::kSize)),
-    client_only(data("fade_level", &G::fade_level)), code("keys_branch", &G::keys_branch),
+    data("event_handlers", &G::event_handlers), code("death_fn", &G::death_fn),
+    data("halt_flag", &G::halt_flag), code("assist_menu_fn", &G::assist_menu_fn),
+    data("object_pool", &G::object_pool), data("text_table", &G::text_table),
+    code("equipment_fn", &G::equipment_fn), code("equip_panel_fn", &G::equip_panel_fn),
+    code("widget_move_fn", &G::widget_move_fn), code("text_place_fn", &G::text_place_fn),
+    import_slot("malloc_slot", &G::malloc_slot), import_slot("free_slot", &G::free_slot),
+    code("widget_new_fn", &G::widget_new_fn), code("sprite_sheet_fn", &G::sprite_sheet_fn),
+    code("panel_link_fn", &G::panel_link_fn), code("text_set_fn", &G::text_set_fn),
+    data("routine_table", &G::routine_table), data("fade", &G::fade, fade_state::kSize),
+    data("fade_level", &G::fade_level), code("keys_branch", &G::keys_branch),
     code("file_panel_fn", &G::file_panel_fn), code("file_entry_fn", &G::file_entry_fn),
     code("copy_entry_fn", &G::copy_entry_fn), code("delete_entry_fn", &G::delete_entry_fn),
     // What the offline look reads whole (offline.h).
-    data("map_grid", &G::map_grid, kMapCells),
-    data("flags", &G::flags, kFlagCount),
+    data("map_grid", &G::map_grid, kMapCells), data("flags", &G::flags, kFlagCount),
     data("slot_array", &G::slot_array, slot::kCount * slot::kStride),
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
@@ -151,23 +126,17 @@ constexpr ConfigKey kConfigKeys[] = {
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
     import_slot("context_init_slot", &G::context_init_slot),
     // The translations (translation.h).
-    translation_key(data("translation", &G::translation, tr::kSize)),
-    translation_key(data("tr_flag", &G::tr_flag)),
-    translation_key(data("small_text", &G::small_text)),
-    translation_key(data("small_offsets", &G::small_offsets)),
-    translation_key(data("item_names", &G::item_names)),
-    translation_key(data("item_name_offsets", &G::item_name_offsets)),
-    translation_key(data("small_count", &G::small_count)),
-    translation_key(data("item_name_count", &G::item_name_count)),
-    translation_key(data("hd_messages", &G::hd_messages, hd::kSlots * hd::kSize)),
-    translation_key(data("message_slots", &G::message_slots, hd::kSlots * message::kSize)),
-    translation_key(code("hd_text_fn", &G::hd_text_fn)),
-    translation_key(code("hd_build_fn", &G::hd_build_fn)),
-    translation_key(code("wstring_new_fn", &G::wstring_new_fn)),
-    // LargeText's count, for the Feats screen's title (feats.h): without it, pixel text.
-    translation_key(data("large_count", &G::large_count)),
-    later_key(code("options_back_fn", &G::options_back_fn)),
-    later_key(data("pickup_list", &G::pickup_list, pickups::kSize)),
+    data("translation", &G::translation, tr::kSize), data("tr_flag", &G::tr_flag),
+    data("small_text", &G::small_text), data("small_offsets", &G::small_offsets),
+    data("item_names", &G::item_names), data("item_name_offsets", &G::item_name_offsets),
+    data("small_count", &G::small_count), data("item_name_count", &G::item_name_count),
+    data("hd_messages", &G::hd_messages, hd::kSlots * hd::kSize),
+    data("message_slots", &G::message_slots, hd::kSlots * message::kSize),
+    code("hd_text_fn", &G::hd_text_fn), code("hd_build_fn", &G::hd_build_fn),
+    code("wstring_new_fn", &G::wstring_new_fn),
+    // LargeText's count, for the Feats screen's title (feats.h).
+    data("large_count", &G::large_count), code("options_back_fn", &G::options_back_fn),
+    data("pickup_list", &G::pickup_list, pickups::kSize),
 };
 
 // "" if `rva` is where `key` can be in `image` (kConfigKeys), else what is wrong.
@@ -220,19 +189,11 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     const uint64_t image_size = nt->OptionalHeader.SizeOfImage;
     GameAddresses found;
     found.hooks = at_.hooks;
-    // Keys an offline cache lacks, or has where they do not fit: left null.
-    std::string left_out;
-    bool client_left_out = false;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
-        if (!why.empty()) {
-            if (active || !(key.client_only || key.newer)) return why;
-            left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
-            client_left_out = client_left_out || key.client_only;
-            continue;
-        }
+        if (!why.empty()) return why;
         found.*key.member = reinterpret_cast<BYTE*>(image) + it->second;
     }
     base_ = reinterpret_cast<BYTE*>(image);
@@ -258,8 +219,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     gl_ = load_gl();
     configured_ = true;
     active_ = active;
-    left_out_ = left_out;
-    client_keys_ = !client_left_out;
     return "";
 }
 
@@ -305,7 +264,7 @@ void Game::refresh_hud() {
 }
 
 std::string Game::apply(const Batch& batch) {
-    if (!client_ready()) return "refused not configured";
+    if (!configured_) return "refused not configured";
     if (!in_play()) return "refused not in play";
     // The RETURN HOME ending's cutscenes read as play: the client gives the items next load.
     if (mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
@@ -373,9 +332,9 @@ void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
-    // RETURN HOME's fade and prompt, the black after its YES (watch_mission), and the ending,
-    // whose cutscenes read as play: kept for this save's next load.
-    if (mission_.opening() || mission_.dark() || mission_.started()) return;
+    // RETURN HOME's fade and prompt; from its YES (the screen kept black or not: watch_mission)
+    // and through the ending, whose cutscenes read as play, kept for this save's next load.
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     // The first one for this save (or for any): a client's popups for another save wait for it.
     auto next = std::find_if(popups_.begin(), popups_.end(),
                              [this](const Popup& p) { return showable(p); });
@@ -514,7 +473,7 @@ void Game::note_play(uint64_t now_ms) {
 }
 
 std::string Game::spawn_shield(uint64_t now_ms) {
-    if (!client_ready()) return "refused not configured";
+    if (!configured_) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
     }
@@ -527,7 +486,7 @@ std::string Game::kill(uint64_t now_ms) {
     // As the damage code does (docs/re/memory.md, "DeathLink"). death_fn leaves the player alive
     // at 0 while halted, and can fault with every message slot busy: refused while halted or a
     // message shows.
-    if (!client_ready()) return "refused not configured";
+    if (!configured_) return "refused not configured";
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
         return "refused not settled";
     }
@@ -575,7 +534,7 @@ std::string Game::run_item_event(uint8_t item) {
 }
 
 bool Game::arm_newgame(NewGamePlan plan) {
-    if (!client_ready()) return false;
+    if (!configured_) return false;
     newgame_ = std::move(plan);
     newgame_armed_ = true;
     newgame_status_ = "armed";
@@ -640,6 +599,7 @@ void Game::watch_menu(WidgetCallback callback) {
 
 void Game::watch_all(WidgetCallback callback) {
     if (!configured_) return;
+    translated_popups_ = true;  // an unload refused: popups in the translation's font again
     watch_feats();
     watch_menu(callback);
     watch_discs();
@@ -658,8 +618,8 @@ void Game::watch_all(WidgetCallback callback) {
 }
 
 void Game::watch_pickups() {
+    if (!in_play() || !ap_save_loaded()) return;
     BYTE* list = at_.pickup_list;
-    if (list == nullptr || !in_play() || !ap_save_loaded()) return;
     BYTE* records = pointer_at(at_.item_records);
     if (records == nullptr) return;
     int8_t& count = at<int8_t>(list, pickups::kCount);
@@ -930,15 +890,16 @@ void Game::watch_mission() {
     }
     // Idle: no showable popup waiting, the helper's last one kPopupGapFrames ago, the game's
     // message down to kFadeMessageLeft frames, the helper's own never cut short. After YES no
-    // game message is waited for: the ending ends them (docs/re/memory.md, "The mission prompt").
-    bool waiting = std::any_of(popups_.begin(), popups_.end(),
-                               [this](const Popup& p) { return showable(p); });
-    // Black after YES with a popup waiting: faded back in for it; the ending follows.
-    if (waiting && mission_.dark()) mission_.end_dark(at_);
+    // game message is waited for: the ending ends them (docs/re/memory.md, "The mission prompt");
+    // nor queued popups, which wait for the save's next load (pump_popups), as once the ending
+    // has started.
+    const bool yes = mission_.ending();
+    const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(),
+                                             [this](const Popup& p) { return showable(p); });
     const bool own = own_popup_up();
-    int32_t left = own ? 1 : mission_.ending() ? INT32_MAX : kFadeMessageLeft;
-    bool idle = in_play() && !waiting && popup_frames_left() <= left &&
-                frames_since_popup_ >= kPopupGapFrames;
+    const int32_t left = own ? 1 : yes ? INT32_MAX : kFadeMessageLeft;
+    const bool idle = in_play() && !waiting && popup_frames_left() <= left &&
+                      frames_since_popup_ >= kPopupGapFrames;
     mission_.watch(at_, idle, away_from_home());
 }
 
@@ -988,12 +949,9 @@ void Game::file_event(void* widget, intptr_t event) {
     if (configured_) files_.on_event(at_, widget, event);
 }
 
-void Game::restore_files() {
+void Game::put_back_files() {
     if (!configured_) return;
-    client_file_counts_.clear();
-    offline_file_counts_.clear();
-    files_.set_counts({});
-    files_.set_ap_slots({});
+    files_.set_ap_slots({});  // found again by the next look
     files_.restore(at_);
     for (FontGlyph& glyph : disk_header_) glyph.clear(at_.sprite_texture, gl_, texture_check_);
     ap_logo_.clear(at_.sprite_texture, gl_, texture_check_);
@@ -1028,29 +986,21 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
 }
 
 void Game::watch_feats() {
-    // On once two frame calls in a row find one, a precaution (docs/re/memory.md, "The loaded
-    // save's randomizer section is at +0xCDD6D0"); off at once.
-    const bool ap = ap_save_loaded();
-    if (ap) {
-        if (feats_passes_ < 2) ++feats_passes_;
-    } else {
-        feats_passes_ = 0;
-    }
+    // A load writes the section and the marker in one game call, so a frame call sees both or
+    // neither (docs/re/memory.md, "The loaded save's randomizer section is at +0xCDD6D0").
+    const bool on = ap_save_loaded();
     // The AP saves' slots for the stub's load test (feats.h): looked for with no save loaded,
-    // kept while one loads, dropped once two frame calls in a row find another save.
+    // kept while one loads, dropped once a frame call finds another save.
     if (*at_.save_loaded == kNoSaveLoaded) {
-        feats_other_ = 0;
         if (feats_slot_frames_-- <= 0) {
             feats_slot_frames_ = kFileSlotFrames;
             feats_slots_ = ap_file_slots();
         }
     } else {
         feats_slot_frames_ = 0;
-        feats_other_ = ap ? 0 : std::min(feats_other_ + 1, 2);
-        if (feats_other_ >= 2) feats_slots_.clear();
+        if (!on) feats_slots_.clear();
     }
     const bool was_patched = feats_.ending_patched();
-    const bool on = feats_passes_ >= 2;
     feats_.watch(at_, on, feats_slots_);
     // An AP ending jumped over: the save left with the patch in place, flag 250 set, 251 clear.
     // Ended by a save loaded, or the Feats of Natu screen gone once seen.
@@ -1074,8 +1024,6 @@ void Game::watch_feats() {
 }
 
 void Game::restore_feats() {
-    feats_passes_ = 0;
-    feats_other_ = 0;
     feats_slots_.clear();
     feats_slot_frames_ = 0;
     if (!configured_) return;
@@ -1152,7 +1100,7 @@ void Game::restore_intel() {
 }
 
 bool Game::request_mission(int column, int row) {
-    if (!client_ready()) return false;
+    if (!configured_) return false;
     // A home off the map would never lapse: refused (parse_mission refuses it first).
     if (column < 0 || row < 0 || column >= kMapSide * kCellColumns || row >= kMapSide * kCellRows) {
         return false;
@@ -1368,14 +1316,27 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
     return out;
 }
 
-void Game::restore_ap_items() {
+void Game::put_back_ap_items() {
     for (std::wstring& name : stand_in_hd_) name.clear();
     if (!configured_) return;
     looks_.restore(at_);  // the objects first, while their records are still ours
-    looks_.set_items({});
     ap_items_.restore(at_.item_records, at_.sprite_texture, gl_, texture_check_);
-    seen_marker_.restore();  // no labels: no stand-ins
+    seen_marker_.restore();
     set_popup_width(kGamePopupWidth);
+}
+
+void Game::restore_ap_items() {
+    put_back_ap_items();
+    looks_.set_items({});
+    ap_items_.set_labels({});
+}
+
+void Game::put_back_save_look() {
+    put_back_ap_items();
+    if (!configured_) return;
+    intel_.restore(at_.item_records);
+    restore_assists();
+    restore_discs();
 }
 
 void Game::drop_save_look() {
@@ -1387,15 +1348,16 @@ void Game::drop_save_look() {
     restore_discs();
 }
 
-void Game::put_back_all(WidgetCallback callback) {
-    disarm_newgame();
-    drop_save_look();  // `discs` off first: the prompt's request dropped before it is put back
+void Game::put_back_game(WidgetCallback callback) {
+    // A prompt asked for or opening, asked for again once put back (not a NO's closed one).
+    const bool prompt = mission_.on_its_way();
+    put_back_save_look();
     if (configured_) {
         mission_.restore(at_);
         map_names_.restore(at_);
         choice_.restore(at_, callback);
     }
-    restore_files();
+    put_back_files();
     leave_offline();
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
@@ -1404,61 +1366,22 @@ void Game::put_back_all(WidgetCallback callback) {
         for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
         popup_areas_.restore(now);
         icon_sheets_.clear(at_.sprite_templates, gl_);
+        if (prompt) mission_.request();
     }
+}
+
+void Game::forget_client() {
+    disarm_newgame();
+    drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
+    client_file_counts_.clear();
+    apply_file_counts();
 }
 
 void Game::client_gone(WidgetCallback callback) {
-    put_back_all(callback);
+    put_back_game(callback);
+    forget_client();
     drop_client_notices();
     active_ = false;
-}
-
-ClientState Game::snapshot() const {
-    ClientState s;
-    s.file_counts = client_file_counts_;
-    s.newgame_armed = newgame_armed_;
-    s.starting = starting_;
-    s.newgame = newgame_;
-    s.newgame_status = newgame_status_;
-    s.mission_asked = mission_.asked();
-    s.mission_ending = mission_.ending();
-    s.mission_home_row = home_row_;
-    s.mission_home_column = home_column_;
-    if (offline_index_ >= 0) return s;  // the look is the offline one's, set again by its watch
-    s.assists_locked = assists_locked_;
-    s.intel = intel_.on();
-    s.disc_count = disc_count_;
-    s.discs_required = discs_required_;
-    s.discs_told = discs_told_;
-    s.scan_line = scan_line_;
-    s.labels = ap_items_.labels();
-    s.labels_seed = labels_seed_;
-    return s;
-}
-
-void Game::rearm(ClientState s) {
-    translated_popups_ = true;  // the unload refused: popups in the translation's font again
-    if (!configured_) return;
-    set_assists_locked(s.assists_locked);
-    set_intel(s.intel);
-    if (!s.scan_line.empty()) {
-        set_discs(s.disc_count, s.discs_required, std::move(s.scan_line), s.discs_told);
-    }
-    set_disk_slots(std::move(s.file_counts));
-    if (!s.labels.empty()) {
-        set_labels(std::move(s.labels));
-        labels_seed_ = std::move(s.labels_seed);  // the seed they were set for
-    }
-    // The new game and the prompt only with every key, as when asked for.
-    if (s.newgame_armed && client_ready()) {
-        newgame_ = std::move(s.newgame);
-        newgame_armed_ = true;
-        starting_ = s.starting;
-        newgame_status_ = std::move(s.newgame_status);
-    }
-    home_row_ = s.mission_home_row;
-    home_column_ = s.mission_home_column;
-    if (client_ready()) mission_.resume(s.mission_asked, s.mission_ending);
 }
 
 }  // namespace zap
