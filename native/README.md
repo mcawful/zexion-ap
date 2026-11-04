@@ -148,9 +148,11 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - every name is there, from a client's `config` or from the offline cache a client wrote ("AP
   saves without the client"), which holds them all. A cache lacking one is refused
   (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it. A release that
-  adds a key decides for that key alone: accept that, with the offline look, the title lines and
-  the Feats guard off until the player's first client run after updating, or let the helper
-  configure without that key, with a null check where it is read;
+  adds a key decides for that key alone: accept that, with everything the helper does without a
+  client off until the player's first client run after updating (the offline look of AP saves,
+  the file select's AP logo and disk counts, the map markers, the pause row from the seed file,
+  the major-item list, the title lines and the Feats guard), or let the helper configure without
+  that key, with a null check where it is read;
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -303,8 +305,9 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 
 - **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
   and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
-  on its way (its fade, before the game opens it), nor in the black after its YES or the ending
-  it started: the ending does not wait for them, so they show at the save's next load. Each plays
+  on its way (its fade, before the game opens it), nor from its YES (the screen kept black or
+  not) through the ending it started: the ending does not wait for them, so they show at the
+  save's next load. Each plays
   the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
@@ -638,9 +641,9 @@ the helper:
   fade's step, countdown and target set as event 3667's fade ends): no fade back into play between
   YES and the ending. Only a fade that reads as NO's close leaves it is turned off (`mission_status`
   then says `yes: ending when idle, the screen kept black`); anything else fades back in as before.
-  While it is black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`);
-  popups waiting at YES or arriving in the black do not hold the ending, which starts from black:
-  they show at the save's next load, as those arriving during the ending do (their items are given
+  While it is black, received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`). Popups
+  waiting at YES or arriving after it, the screen kept black or not, wait too and do not hold the
+  ending (which starts from black when kept so): they show at the save's next load, as those arriving during the ending do (their items are given
   already). The screen is brought back in (as NO's close would have) if the ending has not started
   within 240 game frames in play (`kDarkFrames`: a safety that errs long, as after YES the ending
   waits only for a menu to close, a popup of the helper's already up and the gap after it; counted from the
@@ -1340,14 +1343,15 @@ unload.
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
   the popup queue, the
-  new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps (and a client gone
-  drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
+  new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
+  (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
   game's last message, however many frame calls pass, the ending after YES
   starting with a message of the game's still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for; the screen
-  kept black after YES into the ending with a popup waiting (shown at the next load), received
+  kept black after YES into the ending with a popup waiting (shown at the next load), and the
+  same popup wait after a YES not kept black, received
   deaths refused (`RETURN
   HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
   until another save is loaded). `mission` covers the black after YES on its own: kept, not

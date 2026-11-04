@@ -60,7 +60,8 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
-// Every key is required, from a client's config or the offline cache it wrote.
+// Every key is required, from a client's config or the offline cache it wrote; what adding one
+// costs a cache written before it: native/README.md, "The pipe".
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -334,9 +335,9 @@ void Game::pump_popups() {
     if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
     if (popups_.empty() || !in_play()) return;
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
-    // RETURN HOME's fade and prompt, the black after its YES (watch_mission), and the ending,
-    // whose cutscenes read as play: kept for this save's next load.
-    if (mission_.opening() || mission_.dark() || mission_.started()) return;
+    // RETURN HOME's fade and prompt; from its YES (the screen kept black or not: watch_mission)
+    // and through the ending, whose cutscenes read as play, kept for this save's next load.
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     // The first one for this save (or for any): a client's popups for another save wait for it.
     auto next = std::find_if(popups_.begin(), popups_.end(),
                              [this](const Popup& p) { return showable(p); });
