@@ -529,6 +529,14 @@ private:
     bool translated_popups_ = true;  // hold_translated_popups
     std::wstring stand_in_hd_[kStandInCount];
     bool stand_in_near_[kStandInCount] = {};  // a stand-in of each record within reach now
+    // Each stand-in record's name held while its pickup message shows (hold_stand_in_names):
+    // the message's serial and the name ("" not yet taken).
+    struct NameHold {
+        int32_t serial = 0;
+        std::wstring name;
+    };
+    NameHold name_holds_[kStandInCount];
+    void hold_stand_in_names(std::map<EntryKey, std::wstring>& want);
     // The item pool copied into pool_copy_, once a frame; null if it could not be read.
     const BYTE* read_item_pool();
     std::vector<BYTE> pool_copy_;

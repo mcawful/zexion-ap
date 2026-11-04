@@ -770,8 +770,9 @@ void clear_mark(const GameAddresses& a, BYTE* message) {
     }
 }
 
-bool item_name_shown(const GameAddresses& a, int record) {
-    if (a.hd_messages == nullptr || a.message_slots == nullptr) return false;
+std::vector<int32_t> item_name_serials(const GameAddresses& a, int record) {
+    std::vector<int32_t> out;
+    if (a.hd_messages == nullptr || a.message_slots == nullptr) return out;
     for (int slot = 0; slot < hd::kSlots; ++slot) {
         BYTE* message = a.message_slots + static_cast<ptrdiff_t>(message::kSize) * slot;
         const BYTE* object = a.hd_messages + static_cast<ptrdiff_t>(hd::kSize) * slot;
@@ -782,10 +783,10 @@ bool item_name_shown(const GameAddresses& a, int record) {
             read(object, hd::kSerial, bound_serial) && bound_serial == serial &&
             read(object, hd::kEntry, entry) && entry == record &&
             read(object, hd::kKind, kind) && kind == hd::kItemNameKind) {
-            return true;
+            out.push_back(serial);
         }
     }
-    return false;
+    return out;
 }
 
 void PopupAreas::forget() {

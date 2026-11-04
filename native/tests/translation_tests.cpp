@@ -869,13 +869,13 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     const std::wstring picked = entry_text(g_items, 47);
     check(picked.find(L"MASTER SWORD") != std::wstring::npos, "named for the player's cell");
     // The pickup's message (0x1F985): slot 0 bound to entry `entry`, kind 3, with its serial.
-    auto pick_up = [](int32_t serial, int32_t entry) {
-        put<int32_t>(slot(0), 0x1D8, serial);
-        put<int32_t>(slot(0), 0x1E0, 0);
-        put<BYTE*>(hd_object(0), 0x220, slot(0));
-        put<int32_t>(hd_object(0), 0x228, serial);
-        put<int32_t>(hd_object(0), 0x20C, entry);
-        put<int32_t>(hd_object(0), 0x210, 3);
+    auto pick_up = [](int32_t serial, int32_t entry, int k = 0) {
+        put<int32_t>(slot(k), 0x1D8, serial);
+        put<int32_t>(slot(k), 0x1E0, k);
+        put<BYTE*>(hd_object(k), 0x220, slot(k));
+        put<int32_t>(hd_object(k), 0x228, serial);
+        put<int32_t>(hd_object(k), 0x20C, entry);
+        put<int32_t>(hd_object(k), 0x210, 3);
     };
     pick_up(41, 47);
     in_cell(6);  // no label there: AP Item
@@ -942,6 +942,58 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     frames(game, 1);
     check(entry_text(g_items, 47) == L"Scrap Energy", "paused with the message ended: put back");
     g_menu = 0;
+
+    // Another pickup of that record no scan had seen (a newer message in slot 1, the first still
+    // closing in slot 0): named as the frame names it, then held.
+    in_cell(5);
+    frames(game, 1);
+    pick_up(50, 47);
+    in_cell(8);
+    frames(game, 1);
+    check(entry_text(g_items, 47) == picked, "held for the first pickup");
+    pick_up(51, 47, 1);
+    frames(game, 1);
+    in_cell(6);
+    frames(game, 2);
+    check(entry_text(g_items, 47).find(L"BOOMERANG") != std::wstring::npos,
+          "a newer message: named for it, then held");
+    end_message(1);
+    end_message(0);
+    frames(game, 1);
+
+    // The map open (its menu current, its first child holding the map's handler, wrapped): the
+    // game's own name for the map cursor's squares, and the held one again once it closes.
+    int map_handler = 0, hook = 0;
+    zap::Hooks hooks;
+    hooks.map = &hook;
+    game.set_hooks(hooks);
+    g_map_handler = &map_handler;
+    BYTE child[0x200] = {};
+    put<void*>(child, 0x168, &map_handler);
+    put<void*>(child, 0x178, &map_handler);
+    BYTE* children[1] = {child};
+    BYTE panel[0x300] = {};
+    put<BYTE**>(panel, 0x1E0, children);
+    BYTE* panels[1] = {panel};
+    BYTE* menu = reinterpret_cast<BYTE*>(panels);
+    in_cell(5);
+    frames(game, 1);
+    pick_up(52, 47);
+    in_cell(6);
+    frames(game, 1);
+    g_current_menu = reinterpret_cast<BYTE*>(&menu);
+    g_menu = 2;
+    frames(game, 1);
+    check(get<void*>(child, 0x168) == &hook && entry_text(g_items, 47) == L"Scrap Energy",
+          "the map open: the game's own name");
+    g_current_menu = nullptr;
+    g_menu = 0;
+    frames(game, 1);
+    check(entry_text(g_items, 47) == picked, "the map closed: the name picked up again");
+    end_message(0);
+    frames(game, 1);
+    g_map_handler = nullptr;
+    game.set_hooks({});
 
     // Back at the title with the message still bound: no save, so nothing held.
     in_cell(5);
