@@ -364,6 +364,8 @@ public:
     std::wstring hd_label_text(int cell, bool first_line, bool icon) const;
 
 private:
+    // The game's last message and its sequence, as the game keeps them: whether both read.
+    bool last_message(BYTE*& last, int32_t& sequence) const;
     // The watches only watch_all calls (it checks the configuration): the equipment screen and
     // the pause screen's row, the mission prompt, the file select, the Intel Chip, the title
     // lines, the map's names, and every 16th frame call item 48's map squares drawn as

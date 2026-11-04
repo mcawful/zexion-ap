@@ -25,9 +25,11 @@ constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
-// A message's sequence number and frames left (the popup's place and time: text.h), and the
-// frames between two of the helper's popups.
-constexpr size_t kMessageSequence = 0x1D8, kMessageFramesLeft = 0x1EC;
+// A message's frames left (its sequence number is message::kSerial, translation.h), where the
+// game keeps its last message's sequence beside the pointer to it, and the frames between two of
+// the helper's popups.
+constexpr size_t kMessageFramesLeft = 0x1EC;
+constexpr ptrdiff_t kLastSequence = 8;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
 // Frames between two looks at the scanner's text.
@@ -387,7 +389,7 @@ bool Game::popup_busy() const { return popup_frames_left() > 1; }
 int32_t Game::popup_frames_left() const {
     BYTE* last = at<BYTE*>(at_.last_message, 0);
     if (last == nullptr ||
-        at<int32_t>(last, kMessageSequence) != at<int32_t>(at_.last_message, 8)) {
+        at<int32_t>(last, message::kSerial) != at<int32_t>(at_.last_message, kLastSequence)) {
         return 0;
     }
     return at<int32_t>(last, kMessageFramesLeft);
@@ -442,8 +444,7 @@ void Game::pump_popups() {
     }
     BYTE* last_before = nullptr;
     int32_t seq_before = 0;
-    read(at_.last_message, 0, last_before);
-    read(at_.last_message, 8, seq_before);
+    last_message(last_before, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
@@ -468,8 +469,8 @@ void Game::pump_popups() {
     BYTE* last = nullptr;
     int32_t sequence = 0;
     own_message_ = nullptr;
-    if (read(at_.last_message, 0, last) && last == message &&
-        read(at_.last_message, 8, sequence) && (last != last_before || sequence != seq_before)) {
+    if (last_message(last, sequence) && last == message &&
+        (last != last_before || sequence != seq_before)) {
         own_message_ = last;
         own_sequence_ = sequence;
     }
@@ -478,9 +479,13 @@ void Game::pump_popups() {
 bool Game::own_popup_up() const {
     BYTE* last = nullptr;
     int32_t sequence = 0;
-    return own_message_ != nullptr && read(at_.last_message, 0, last) && last == own_message_ &&
-           read(at_.last_message, 8, sequence) && sequence == own_sequence_ &&
-           popup_frames_left() > 0;
+    return own_message_ != nullptr && last_message(last, sequence) && last == own_message_ &&
+           sequence == own_sequence_ && popup_frames_left() > 0;
+}
+
+bool Game::last_message(BYTE*& last, int32_t& sequence) const {
+    const bool pointer = read(at_.last_message, 0, last);
+    return read(at_.last_message, kLastSequence, sequence) && pointer;
 }
 
 bool Game::mixed_case() const { return language_name(at_) == kMixedCaseLanguage; }
