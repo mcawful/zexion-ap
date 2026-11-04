@@ -5,8 +5,8 @@ as a test.
 
 ## What you need
 
-- Zexion on Steam (Windows). Each release works with certain versions of the game; the client
-  tells you if yours isn't supported.
+- Zexion on Steam (Windows), Steam build 23943567: the only version of the game this release
+  supports. The client tells you if yours isn't supported.
 - Archipelago 0.6.8 or newer.
 - The latest release of this world, from the
   [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld`,
@@ -80,27 +80,13 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 
 ## Languages
 
-The mod is made for the game's default English and for **English(HD)** (OPTION, Video,
-Language). In English(HD) its popups and its menu text (RETURN HOME WITH THE DISKS?, OS Install
-Disk, the names of other players' items) show in the game's HD font, and so do the locked
-ASSIST, the disk count on the pause screen and the note on the Feats screen, with HD versions
-of the mod's disk, padlock and Archipelago icons, and a received item's sender as "from Bob".
-Fixed in this version but not yet checked in the game: after you came back to the options from
-another menu (Video, the map), the locked ASSIST could show the selection's colors; played
-without the client, it could come unlocked while a menu was open (it was once seen unlocked
-after a trip through the menus); and its padlock sat low and near the options box's edge. In
-this version the mod's own text (its notices, hints, the disks' popups, the names of other
-players' items) is in mixed case in English(HD), the title screen's mod lines are in its HD
-font, and its disk and Archipelago icons are redrawn at the game's icon size (some names of
-other players' items and the disk icon checked in the game; the rest not yet). A client from
-an earlier version names other players' items in capitals. If something shows wrong or not at
-all, switch to the default English and please report it.
-
-In the other languages the mod does the same, but its text is in English, and some of it may
-not show (a font without Latin letters, say); the client says so when it sees one. Received
-items arrived in French and Japanese when they were tried, named in that language with FROM …
-in English (checks there were not tried);
-Simplified Chinese and the other European languages have not been tried.
+The mod supports the game's default English and **English(HD)** (OPTION, Video, Language). In
+English(HD) the mod's text (its popups, notices and menu text, the names of other players'
+items) shows in the game's HD font, in mixed case, and its disk, padlock and Archipelago icons
+in HD art. In the other languages the mod's text shows in that language's font, but in English
+and in capitals, and some of it may not show (a font without Latin letters, say); the client
+says so when it sees one. Received items were seen working in French and Japanese. If something
+shows wrong or not at all, switch to the default English and please report it (below).
 
 ## Playing without the client
 
@@ -146,7 +132,8 @@ play as normal.
 - **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder.
   Your saves of a seed still load, as plain randomizer games (other players' items and OS
   Install Disks look like Scrap), and they can earn Feats and Steam achievements again. To
-  play a seed again, install the mod again.
+  play a seed again, install the mod again. The mod's small files for playing without the
+  client stay in `%LOCALAPPDATA%\ZexionAP`; you can delete that folder.
 
 ## Troubleshooting
 
