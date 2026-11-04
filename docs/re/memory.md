@@ -55,7 +55,7 @@ the heading its facts are under.
 | `large_count` | `+0xEAEE24` | Translation tables |
 | `large_offsets` | `+0xC9CF70` | Translation tables |
 | `large_text` | `+0xC9CF48` | Translation tables |
-| `last_message` | `+0x3E29F0` | Game functions the helper calls |
+| `last_message` | `+0x3E29F0` | Game functions the helper calls; The mission prompt |
 | `malloc_slot` | `+0x2097A0` | Byte patterns |
 | `map_grid` | `+0x3E469D` | The live map grid flips at the moment of pickup; Map markers |
 | `map_handler` | `+0xCDD5E0` | Map markers |
