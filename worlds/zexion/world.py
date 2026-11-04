@@ -305,12 +305,18 @@ class ZexionWorld(World):
                 f"own, start_inventory and start_inventory_from_pool): {'; '.join(first)}"
             )
         goal = "the Landing Pod" if self.disc_hunt else "the core"
-        raise OptionError(
+        tried = ""  # the draws are named only where they differed
+        if len(unsuited) > 1:
+            guns = ", ".join(sorted(unsuited))
+            tried = f" with any of the {DRAWS} draws of its items tried (starting with {guns})"
+        message = (
             f"{who}: start room {StartRoom.name_lookup[self.options.start_room.value]} does not "
-            f"suit {self.mode_name} mode's settings with any of the {DRAWS} draws of its "
-            f"starting items tried (starting with {', '.join(sorted(unsuited))}): from it the "
-            f"starting items reach no location, or every item does not reach {goal}"
+            f"suit {self.mode_name} mode's settings{tried}: from it the starting items reach no "
+            f"location, or every item does not reach {goal}"
         )
+        if first:
+            message += f" (and other draws' starting items the client cannot give: {first[0]})"
+        raise OptionError(message)
 
     @property
     def named_room(self) -> dict | None:

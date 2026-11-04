@@ -323,6 +323,11 @@ class TestStartRooms(unittest.TestCase):
         self.assertIn(f"any of the {DRAWS} draws", message)
         for gun in STANDARD_GUNS:  # every gun was drawn in 64 draws
             self.assertIn(gun, message)
+        # Easy's draws all start alike: the error names no draws.
+        with self.assertRaises(OptionError) as caught:
+            fake_world(mode="easy", start_room=empty[0]["index"] + 1).generate_early()
+        self.assertIn("reach no location", str(caught.exception))
+        self.assertNotIn("draws", str(caught.exception))
 
     def test_a_room_only_some_guns_suit_is_drawn_again_for_one_of_them(self) -> None:
         # Below Junkyard suits Standard's Force Blaster only, White Crysmoon its Lance only and

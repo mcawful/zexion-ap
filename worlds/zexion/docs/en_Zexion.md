@@ -102,7 +102,8 @@ its name in the game's menu, as in `landing_pod`. The default, `automatic`, is L
 where your settings rule Landing Pod out, a random start (as `random_start` below; the
 generator's log warns that it did so). Any room works from which your starting items reach at
 least one location (and from which you can reach Zexion's core with the core goal, or the
-Landing Pod with the OS Install Disks goal); another stops generation with an error. With
+Landing Pod with the OS Install Disks goal); another stops generation with an error (where the
+starting weapon is drawn, as in Standard, only if no weapon suits it). With
 either goal, Easy's items take 17 of the rooms, and OHKO's, with a second room to teleport to,
 all 34. Standard's take 17 to 20, by the weapon the seed draws. These 17 suit all four
 weapons, and Easy's are the same 17: `exodia`, `upper_tower`, `below_arena`, `tower_gauntlet`,
