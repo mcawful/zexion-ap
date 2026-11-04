@@ -346,10 +346,8 @@ class Helper:
 
     def hello(self) -> dict[str, str]:
         """The helper's hello as fields: version, build, hooked, configured, feats, folder,
-        offline, active, title, lang, reads, cache_missing when configured from a cache that
-        lacks client-only, translation or later keys, and read_error after a failed read
-        (native/README.md). One this
-        client can't read: UnreadableHello."""
+        offline, active, title, lang, reads, and read_error after a failed read
+        (native/README.md). One this client can't read: UnreadableHello."""
         try:
             words = self.request("hello").split()
         except ModMismatch:  # "error unknown request": no helper of any version of ours

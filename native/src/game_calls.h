@@ -40,40 +40,14 @@ inline constexpr char kMenuOpenRefusal[] = "a menu is open";
 inline constexpr char kEndingRefusal[] =
     "the ending RETURN HOME WITH THE DISKS? started is on its way";
 
-// What clients set that put_back_all drops, for a refused unload to set again (snapshot,
-// rearm). Not the offline look's: once the unload is refused, watch_offline dresses it again.
-struct ClientState {
-    bool assists_locked = false;
-    bool intel = false;
-    int disc_count = 0, discs_required = 0;
-    bool discs_told = true;
-    std::string scan_line;
-    std::map<int, int> file_counts;  // the client's disk_slots
-    std::map<int, Label> labels;
-    std::optional<OfflineSeed> labels_seed;
-    bool newgame_armed = false;
-    bool starting = false;
-    NewGamePlan newgame;
-    std::string newgame_status;
-    bool mission_asked = false;   // RETURN HOME WITH THE DISKS? on its way
-    int mission_home_row = -1, mission_home_column = -1;  // its home cell (request_mission)
-    bool mission_ending = false;  // its YES pressed, the ending not started yet
-};
-
 class Game {
 public:
     // Game thread. Checks each kConfigKeys entry is present and in the right kind of section,
     // with the room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an
-    // error. `active`: false for the offline cache, whose missing or misplaced client_only and
-    // newer keys are left null (client_ready).
+    // error. `active`: false for the offline cache (no client there yet).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }
-    // Configured with every client-only key (a client's config, or a cache that has them all).
-    // apply, kill, spawn_shield, arm_newgame, request_mission and rearm refuse otherwise.
-    bool client_ready() const { return configured_ && client_keys_; }
-    // The client-only and translation keys the offline cache lacked ("" if none), for `hello`.
-    const std::string& left_out() const { return left_out_; }
     // Game thread: a save loaded with a menu open (pause, map, equipment screen, quit menu).
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
@@ -83,16 +57,18 @@ public:
     // After configure (which loads opengl32's): the OpenGL functions to paint with (tests).
     void set_gl(const GlFunctions& gl) { gl_ = gl; }
 
-    // Game thread: puts back everything the helper changed (unload, a client going away); a
-    // change held by a closed menu is gone with it. `callback`: ARCHIPELAGO's, to recognize it.
-    void put_back_all(WidgetCallback callback);
-    // Game thread: the client went away. put_back_all, its notices withdrawn, and inactive until
-    // a client configures again. Its queued popups stay: their items are already given (the
-    // client counts popups handed over, not shown).
+    // Game thread: puts back everything the helper changed in the game's memory (unload, a
+    // client going away); a change held by a closed menu is gone with it. What the client asked
+    // for is kept, so the watches apply it again (a refused unload); the offline look is left,
+    // and dressed again by its watch. `callback`: ARCHIPELAGO's, to recognize it.
+    void put_back_game(WidgetCallback callback);
+    // Game thread, after put_back_game: what the client asked for dropped (the new game, the
+    // save's look, RETURN HOME's prompt, the file select's counts).
+    void forget_client();
+    // Game thread: the client went away. put_back_game, forget_client, its notices withdrawn, and
+    // inactive until a client configures again. Its queued popups stay: their items are already
+    // given (the client counts popups handed over, not shown).
     void client_gone(WidgetCallback callback);
-    // Game thread: what clients set, kept across put_back_all for an unload refused.
-    ClientState snapshot() const;
-    void rearm(ClientState state);
 
     // Game thread. Only in play; every compare-and-set or none, then what the pickup routine
     // does after (maxima, HUD, Magnus Armor's color) and the popups queued. "applied" or
@@ -106,7 +82,7 @@ public:
     size_t queued_popups() const { return popups_.size(); }
 
     // Game thread. Arms the AP new game: the next randomizer new game queued gets `plan`, once.
-    // False, nothing armed, unless client_ready.
+    // False, nothing armed, unless configured.
     bool arm_newgame(NewGamePlan plan);
     void disarm_newgame();
     // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
@@ -174,7 +150,7 @@ public:
     void options_returned(void* menu);
     // RETURN HOME WITH THE DISKS? (mission.h; `mission_prompt`), with home's save point in tiles
     // (the Landing Pod's); dropped unopened once in play outside home's cell. False, nothing
-    // asked, unless client_ready and home on the map.
+    // asked, unless configured and home on the map.
     bool request_mission(int column, int row);
     // Game thread: an AP save's ending on its way, which an unload would leave unguarded or
     // drop: YES pressed and the ending not started yet (or the screen still black after it), or
@@ -196,7 +172,7 @@ public:
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileEntries& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
-    void restore_files();
+    void put_back_files();  // the entries and glyphs; the counts kept
     // Slots holding a randomizer save in use whose own section copy is a known seed's.
     std::set<int> ap_file_slots() const;
 
@@ -301,7 +277,8 @@ public:
     // The translation (translation.h): `hello`'s `lang`; what the helper holds (tests).
     std::string language() const { return configured_ ? language_name(at_) : "?"; }
     // Game thread, in an unload's frame once all is put back: popups still to show take no
-    // borrowed entry, so none is left the helper's; rearm (the unload refused) takes them back.
+    // borrowed entry, so none is left the helper's; the next watch_all (the unload refused)
+    // takes them back.
     void hold_translated_popups() { translated_popups_ = false; }
     const EntryWriter& tr_entries() const { return tr_entries_; }
     const PopupAreas& popup_areas() const { return popup_areas_; }
@@ -334,8 +311,11 @@ private:
     std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
     // A font glyph painted while wanted, cleared once not (if it was painted).
     void show_glyph(FontGlyph& glyph, bool wanted);
-    // A client's or the offline look put back: stand-ins, INTEL CHIP, the ASSIST lock, the disks.
+    // A client's or the offline look put back and dropped: stand-ins, INTEL CHIP, the ASSIST
+    // lock, the disks. put_back_save_look: the game's memory only, the look kept.
     void drop_save_look();
+    void put_back_save_look();
+    void put_back_ap_items();  // restore_ap_items' put back, the labels kept
     // A randomizer save loaded (its marker set): the loaded section is its own.
     bool rando_save_loaded() const;
     // A new game queued: the game's new-game routine set as the next transition.
@@ -354,8 +334,6 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
-    std::string left_out_;  // the client-only, translation and later keys configure left null
-    bool client_keys_ = false;  // every client-only key set (client_ready)
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
@@ -433,7 +411,7 @@ private:
     int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The labels' seed (the loaded item table and start when set): the map changes only in it.
     std::optional<OfflineSeed> labels_seed_;
-    std::map<int, Label> labels_;  // as set, for snapshot
+    std::map<int, Label> labels_;  // as set
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
     MapCursorNames map_names_;
@@ -479,8 +457,6 @@ private:
     GlFunctions gl_;
     TextureCheck texture_check_;  // for everything painted into the sprite texture
     FeatsGuard feats_;
-    int feats_passes_ = 0;  // frame calls in a row that found an AP save loaded (to 2)
-    int feats_other_ = 0;   // and that found another save loaded (to 2)
     std::set<int> feats_slots_;  // the AP saves' slots, for the stub's load test
     int feats_slot_frames_ = 0;  // frames until the next look for them
     bool feats_ended_ = false;

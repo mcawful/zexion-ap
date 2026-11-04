@@ -89,15 +89,6 @@ void MissionPrompt::request() {
     status_ = "asked";
 }
 
-void MissionPrompt::resume(bool asked, bool ending) {
-    if (ending) {
-        ending_ = true;
-        status_ = "yes: ending when idle";
-    } else if (asked) {
-        request();
-    }
-}
-
 void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) {
     void* fn = nullptr;
     int32_t timer = -1;

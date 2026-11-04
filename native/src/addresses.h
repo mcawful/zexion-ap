@@ -1,6 +1,5 @@
 // Where the game's state and functions are: one member per config key (game_calls.cpp,
-// kConfigKeys, from the RVAs client/patterns.py resolved), and the helper's wrappers. Client-only
-// keys' members may be null after the offline cache's configure (Game::client_ready). Calls as
+// kConfigKeys, from the RVAs client/patterns.py resolved), and the helper's wrappers. Calls as
 // traced in docs/re/memory.md, "Game functions the helper calls"; each part's header says more.
 #pragma once
 
@@ -86,10 +85,8 @@ struct GameAddresses {
     BYTE* fade = nullptr;             // the global level's fade (mission.h, fade_state)
     BYTE* fade_level = nullptr;       // the global level, a signed byte
     BYTE* keys_branch = nullptr;      // the `jne` (75 2E) that skips the pause screen's KEYS
-    // OPTION MENU's way back (pause.h); null in an older cache: the row then turns a frame late.
-    BYTE* options_back_fn = nullptr;
-    // The loaded save's major-item list and its count (game_layout.h, pickups); null in an older
-    // cache, the list then filled only once a client's config gives it.
+    BYTE* options_back_fn = nullptr;  // OPTION MENU's way back (pause.h)
+    // The loaded save's major-item list and its count (game_layout.h, pickups).
     BYTE* pickup_list = nullptr;
     BYTE* file_panel_fn = nullptr;    // the save entries' panel handler
     // The save entries' handlers: the file select's, COPY FILE's and DELETE FILE's.
@@ -112,8 +109,7 @@ struct GameAddresses {
     BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250
     BYTE* stats_context = nullptr;      // ISteamUserStats' accessor context
     BYTE* context_init_slot = nullptr;  // the import slot of SteamInternal_ContextInit
-    // The translations (translation.h), read only by translation.cpp: an older offline cache
-    // may lack them (translation_key), and the translation parts then stand down.
+    // The translations (translation.h), read only by translation.cpp.
     BYTE* translation = nullptr;        // the translation object: its name, tables and flag
     BYTE* tr_flag = nullptr;            // 1 while a translation is on (translation + 0x91)
     BYTE* small_text = nullptr;         // each holds a pointer: SmallText's text, its offsets,
@@ -127,7 +123,7 @@ struct GameAddresses {
     BYTE* hd_text_fn = nullptr;         // gives a message translated text
     BYTE* hd_build_fn = nullptr;        // builds a label's translated text
     BYTE* wstring_new_fn = nullptr;     // the game's std::wstring assign
-    BYTE* large_count = nullptr;        // LargeText's entry count (16-bit); may be null
+    BYTE* large_count = nullptr;        // LargeText's entry count (16-bit)
 
     // Not a key: set before configure (Game::set_hooks); a null hook leaves the game's function.
     Hooks hooks;

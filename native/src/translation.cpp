@@ -69,14 +69,8 @@ bool reads(const TextTable& t, int32_t offset, std::wstring_view text) {
 }  // namespace
 
 bool translation_keys(const GameAddresses& a) {
-    BYTE* const* keys[] = {&a.translation,  &a.tr_flag,     &a.small_text,    &a.small_offsets,
-                           &a.item_names,   &a.item_name_offsets, &a.small_count,
-                           &a.item_name_count, &a.hd_messages, &a.message_slots,
-                           &a.hd_text_fn,   &a.hd_build_fn, &a.wstring_new_fn};
-    for (BYTE* const* key : keys) {
-        if (*key == nullptr) return false;
-    }
     BYTE* t = a.translation;
+    if (t == nullptr) return false;  // not configured
     return a.tr_flag == t + tr::kOn && a.small_text == t + tr::kSmallText &&
            a.small_offsets == t + tr::kSmallOffsets && a.item_names == t + tr::kItemNames &&
            a.item_name_offsets == t + tr::kItemNameOffsets;

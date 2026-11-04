@@ -151,7 +151,7 @@ void test_popups_take_turns_and_empty() {
           "every area empty once its message has gone");
     check(game.unload_blocker() != nullptr, "the split: an unload no frame came for waits");
 
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(g_small->offsets[70] == seventy && !game.popup_areas().split(), "the split undone");
     check(game.unload_blocker() == nullptr, "nothing for an unload to wait for");
 }
@@ -171,7 +171,7 @@ void test_a_notice_too_long_shows_its_pixel_text() {
     check(g_messages == 1 && g_hd_texts.empty(), "past the run: no translated text");
     check(hd_object(0)[0x22C] == 0, "the slot's mark cleared, so its pixel text shows");
     check(entry_text(g_small, 66) == L"\r", "nothing written");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // Unreadable tables (no ItemNames loaded), and an unload's put-back: the pixel text, nothing
@@ -190,19 +190,19 @@ void test_the_pixel_text_when_the_tables_cannot_be_used() {
           "tables not readable: the pixel text, the mark cleared");
     put<wchar_t*>(g_translation, 0x48, g_items->text.data());
 
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     game.hold_translated_popups();
     hd_object(0)[0x22C] = 1;
     queue(game, "apply\npopup 36 FROM BOB");
-    frames(game, 25);
+    for (int i = 0; i < 25; ++i) game.pump_popups();  // no watch while unloading
     check(g_messages == 2 && g_hd_texts.empty() && hd_object(0)[0x22C] == 0 &&
               !game.popup_areas().split() && game.unload_blocker() == nullptr,
           "while unloading: the pixel text, no entry borrowed");
-    game.rearm(game.snapshot());  // the unload refused
+    // The unload refused: the next frame's watches.
     queue(game, "apply\npopup 36 FROM CAROL");
     frames(game, 25);
     check(g_hd_texts.size() == 1, "refused: the translation's font again");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // A borrowed run with text in one entry (68) is not split: PopupAreas::prepare takes the run only
@@ -222,7 +222,7 @@ void test_the_run_not_borrowed_when_an_entry_holds_text() {
     check(g_messages == 1 && g_hd_texts.empty(), "the popup in its pixel text");
     check(!game.popup_areas().split() && g_small->offsets == offsets && g_small->text == text,
           "no split, the table as it was");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 void test_a_whole_notice() {
@@ -250,7 +250,7 @@ void test_a_whole_notice() {
     end_message(1);
     frames(game, 1);
     check(!game.popup_areas().in_use() && entry_text(g_small, 66).empty(), "both free again");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // ItemNames' last entry, whose room the offsets cannot give: the popup still has its name.
@@ -261,7 +261,7 @@ void test_the_last_item_name() {
     frames(game, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nfrom ALICE"),
           "the last entry's name, as the translation has it");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // The same translation reloaded into the same buffers (the allocator may give them): what the
@@ -282,7 +282,7 @@ void test_a_reload_in_place() {
     end_message(0);
     frames(game, 1);
     check(table->text == fresh, "the area not emptied: it no longer reads as written");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(table->offsets[70] == seventy && !game.popup_areas().split(),
           "entry 70 left at the new table's own offset");
 }
@@ -302,12 +302,12 @@ void test_a_language_change_mid_popup() {
     check(!game.popup_areas().split() && !game.popup_areas().in_use(), "the old split forgotten");
     end_message(0);
     queue(game, "apply\npopup 36 FROM BOB");
-    frames(game, 25);
+    for (int i = 0; i < 25; ++i) game.pump_popups();  // no watch while unloading
     check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nFROM BOB" &&
               entry_text(g_small, g_hd_texts[1].entry) == g_hd_texts[1].text &&
               g_small->offsets[70] > g_small->offsets[66],
           "split again in the new table, the new translation's name");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 void test_the_names_written_and_put_back() {
@@ -373,7 +373,7 @@ void test_the_scanner_line() {
     check(entry_text(g_small, 12) == L"Energy Keys detected!", "and back with discs off");
     game.set_discs(3, 12, "COLLECT 12 OS INSTALL DISKS!", true);
     frames(game, 1);
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(entry_text(g_small, 12) == L"Energy Keys detected!" && game.unload_blocker() == nullptr,
           "put back with the rest");
 }
@@ -395,7 +395,7 @@ void test_the_default_english_untouched() {
     check(g_small->text == small && g_items->text == items && g_small->offsets == offsets,
           "the tables as loaded");
     check(game.language() == "-", "hello: the default English");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 
     zap::Game fresh;  // no translation ever loaded: the pointers null
     reset_game();
@@ -405,7 +405,7 @@ void test_the_default_english_untouched() {
     frames(fresh, 1);
     check(g_messages == 1 && g_hd_texts.empty() && fresh.language() == "-",
           "a popup in the pixel font");
-    fresh.put_back_all(&no_callback);
+    fresh.put_back_game(&no_callback);
 }
 
 
@@ -688,7 +688,7 @@ void test_the_icons_through_the_game() {
     frames(game, 1);
     check(gl_fake::g_uploads.size() == 6, "painted again with the translation back");
     gl_fake::g_uploads.clear();
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
           "cleared before an unload");
 
@@ -699,7 +699,7 @@ void test_the_icons_through_the_game() {
     other.set_gl(gl_fake::fake_gl());
     frames(other, 1);
     check(gl_fake::g_uploads.empty(), "a sheet whose cell the game uses: left as the game's");
-    other.put_back_all(&no_callback);
+    other.put_back_game(&no_callback);
     check(gl_fake::g_uploads.empty(), "and nothing to clear");
     g_template_list[101] = g_template_list[104] = nullptr;
     gl_fake::reset_gl();
@@ -753,7 +753,7 @@ void test_a_popup_laid_out_by_the_font() {
     }
     check(narrow && lines >= 3, "a long notice wrapped, no line wider than a pixel popup");
     g_template_list[104] = nullptr;
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -793,7 +793,7 @@ void test_a_stand_in_name_centered_through_the_game() {
               L"\xE03C" L"ABCDEFGHIJKLMNOPQRSTUVW\nFOR B",
           "not centered where the spaces would not fit, nothing cut");
     g_template_list[104] = nullptr;
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -970,7 +970,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     game.client_gone(&no_callback);
     frames(game, 2);
     check(entry_text(g_items, 47) == L"Scrap Energy (FR)", "the client gone: put back for good");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -982,7 +982,7 @@ void test_the_suffix_case() {
     frames(hd, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nfrom Bob"),
           "English(HD): the suffix in the case the client sent it");
-    hd.put_back_all(&no_callback);
+    hd.put_back_game(&no_callback);
 
     zap::Game french;
     start(french);
@@ -991,7 +991,7 @@ void test_the_suffix_case() {
     frames(french, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nFROM BOB"),
           "French: the suffix in capitals");
-    french.put_back_all(&no_callback);
+    french.put_back_game(&no_callback);
 
     zap::Game plain;
     start(plain, false);
@@ -999,7 +999,7 @@ void test_the_suffix_case() {
     frames(plain, 1);
     check(g_hd_texts.empty() && g_text.find("FROM BOB") != std::string::npos,
           "the default English: the pixel text in capitals, as before");
-    plain.put_back_all(&no_callback);
+    plain.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -1078,7 +1078,7 @@ void test_the_mixed_case() {
         check(std::string(reinterpret_cast<const char*>(g_text_table + 12 * 32)) ==
                   "COLLECT 12 OS INSTALL DISKS!",
               "the scanner's pixel line in capitals", where);
-        game.put_back_all(&no_callback);
+        game.put_back_game(&no_callback);
     }
     reset_translation();
 }
@@ -1104,7 +1104,7 @@ void test_the_helpers_notice_case() {
         check(shown.find(hd ? L"Archipelago client not" : L"ARCHIPELAGO CLIENT NOT") !=
                   std::wstring::npos,
               hd ? "English(HD): the helper's notice in mixed case" : "French: in capitals");
-        game.put_back_all(&no_callback);
+        game.put_back_game(&no_callback);
     }
     reset_translation();
 }

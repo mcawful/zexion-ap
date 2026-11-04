@@ -439,7 +439,6 @@ void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFuncti
                       TextureCheck& check) {
     release(records_holder);
     clear(texture_holder, gl, check);
-    labels_.clear();
 }
 
 void ApItems::clear(BYTE* holder, const GlFunctions& gl, TextureCheck& check) {

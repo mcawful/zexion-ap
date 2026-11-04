@@ -3,8 +3,8 @@
 // menu labels built again with the game's builder (rebuild_label), and the pixel glyphs shown
 // where a text cannot be built (show_pixel_glyphs). The tables are heap memory a pick of another
 // translation frees, so each write goes only into the tables as read now, and is put back only
-// while it still reads as written. Every part stands down without the translation's keys
-// (game_calls.cpp, `translation_key`) or with the flag clear. Game thread only; every read is
+// while it still reads as written. Every part stands down unconfigured, with the tables not at
+// their traced places, or with the flag clear. Game thread only; every read is
 // fault-safe and every write checked first. native/README.md, "Translations"; docs/re/memory.md,
 // "Translations" and the sections after it.
 #pragma once
@@ -91,7 +91,7 @@ struct Loaded {
     const TextTable& table(Table t) const { return t == Table::kSmall ? small : items; }
 };
 
-// The translation's keys are all there, the tables and the flag at their traced places.
+// Configured, with the tables and the flag at their traced places.
 bool translation_keys(const GameAddresses& a);
 // Game thread: the translation now, if its keys are there and its pointers read; with `on`
 // clear, the tables may still be loaded (the default English picked) but nothing is written.
