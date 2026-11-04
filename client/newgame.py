@@ -1,42 +1,21 @@
 """The AP seed as edits to the randomizer section of a new game, for the in-game helper.
 
-When the player starts a new randomizer game, the game builds the new game, and writes its
-first save, from the randomizer section in memory (``+0xCDD6D0``): the item table, the start,
-the starting items and amounts (docs/re/memory.md, "Starting a new game"). The helper writes
-the edits built here into that section just before, so the new game holds the AP seed.
+The game builds a new randomizer game, and its first save, from the section in memory
+(``+0xCDD6D0``). The helper first runs the game's own placement with the menu set to the seed's
+settings (the ``menu`` lines), checks the section against the seed (``expect``), then writes
+the edits built here over it, so the new game is the game's own for the seed's text, settings
+and start (docs/re/memory.md, "Starting a new game" and "The game-mode panel"; native/README.md,
+"New games"). Two ways in: ``choice``, ARCHIPELAGO on the game-mode panel (``offer_choice``),
+and ``identify``, a RANDOMIZER game started with the seed's text typed in.
 
-The starting items have to be expressed the way the new-game routine reads them:
-- most upgrades as entries of the 27-byte start-with array (1 = start with it);
-- Energy Tanks as the starting Energy amount;
-- missiles as one amount, Missile Containers + 10 x Missile Boxes, which the game splits back
-  into boxes (tens) and containers, so at most 9 containers;
-- Mega Bombs and Bomb Boxes likewise;
-- keys as a count, the first N keys from the Alpha Key on.
+Starting items are written as the new-game routine reads them: upgrades in the start-with
+array, Energy Tanks as the Energy amount, missiles as Missile Containers + 10 x Missile Boxes
+(at most 9 containers), Mega Bombs and Bomb Boxes likewise, keys as the first N from the Alpha
+Key. Anything else is ``NewGameError``. The world refuses such starting items, and any Mega
+Bombs or Bomb Boxes at all until the game's use of the bomb amount is run in game
+(worlds/zexion/starting.py), so the client meeting one is a bug to report.
 
-Anything else (filler, other key sets, more than 9 containers or Mega Bombs, an amount past
-the section's 16-bit signed numbers) cannot be expressed: ``NewGameError``. The world refuses
-such starting items in generation (worlds/zexion/starting.py, which also holds Energy Tanks to
-40 and the missiles to 999), so the client meeting one is a bug to report.
-
-The helper runs the game's placement itself with the randomizer menu set to the seed's
-settings (its mode's, or Custom's: the ``menu`` lines), checks that the section then holds the
-seed's location list, amounts and logic settings (``expect``, as ``save_patch.check_mode`` does
-for a save file), and writes the AP seed over it. So the new game is the game's own for the
-seed's text, settings and start, down to the Hints' map rectangles, which the placement draws
-from where its random numbers ended (docs/re/randocells.md, "What each setting does in the
-game"). The request also carries what START GAME's skipped first step would write: the second
-target, or for Double Teleport (OHKO, or Custom with it on) the start table the placement
-reads, used only on the build it was measured on (docs/re/memory.md, "The game-mode panel").
-Two ways in:
-
-- with ``offer_choice``, the ``choice`` line: ARCHIPELAGO on the game-mode panel;
-- always, the ``identify`` line: a new game the player starts from RANDOMIZER with the seed's
-  text typed in is placed again as the seed, whatever else the player's menu holds. Its plan
-  carries no start table: the game's own, built when the menu opened, is used, as its START
-  GAME uses it (ARCHIPELAGO falls back to RANDOMIZER when the two differ).
-
-Pure functions; the offsets are file offsets in docs/re/save-format.md minus the section's
-start (``save_patch.SECTION``).
+Pure functions; offsets are file offsets (docs/re/save-format.md) minus ``save_patch.SECTION``.
 """
 
 from __future__ import annotations

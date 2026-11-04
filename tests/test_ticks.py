@@ -473,9 +473,8 @@ def test_a_save_at_the_pod_then_a_pause_is_offered_return_home() -> None:
 
 
 def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -> None:
-    # The owner's report on the 1.0.0 RC: a death wrote the block's play time (and death
-    # count), then the player respawned at the pod, the continue point. A save there afterwards
-    # is still offered, on a save past the ending too.
+    # A death writes the block's play time and death count, then the player respawns at the
+    # pod, the continue point. A save there afterwards is still offered, past the ending too.
     for ended in (False, True):
         ctx = homing_ctx()
         run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, ended)))
@@ -488,9 +487,9 @@ def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -
 
 
 def test_a_teleport_or_reload_from_save_to_the_pod_is_not_offered_return_home() -> None:
-    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100: a guard
-    # only, which develop's rule passes too); RELOAD FROM SAVE writes its play time behind its
-    # menu (200, which develop's rule offered): the first look back in play is no save.
+    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100); RELOAD
+    # FROM SAVE writes its play time behind its menu (200): the first look back in play is no
+    # save.
     ctx = homing_ctx()
     run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, False)))
     for time in (100, 200):
@@ -623,8 +622,8 @@ def counts_sent(ctx: Ctx) -> list[int]:
 
 
 def test_a_shield_received_after_attaching_mid_play_is_spawned_once(monkeypatch) -> None:
-    # The RC retest (2026-11-02): attached to a save already in play, a received shield came up
-    # but was never read up, and was spawned again three times a minute until the save was left.
+    # Attached to a save already in play: a received shield that comes up is read up, not
+    # spawned again.
     world = ShieldWorld()
     ctx = shield_ctx(world)
     ctx.helper = ShieldHelper(world)

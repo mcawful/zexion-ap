@@ -168,8 +168,8 @@ class _Game:
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
-    lang: bool = True  # its hello reports the game's language (1.0.0's release candidate: not)
-    case: bool = True  # it takes mixed case (the RC's retest builds: not)
+    lang: bool = True  # its hello reports the game's language
+    case: bool = True  # it takes mixed case
     file_case: bool = True  # whether the built file takes mixed case
     stays: bool = False  # the helper refuses to unload
     loads: int = 0
@@ -508,8 +508,8 @@ def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monke
 def test_a_mod_of_this_version_without_the_language_is_an_earlier_build(
     tmp_path, monkeypatch
 ) -> None:
-    # 1.0.0's release candidate, in the game folder: the same version, but no translation
-    # support (its hello has no lang), so its config would ignore the translation keys.
+    # The same version without translation support (no lang in its hello): its config would
+    # ignore the translation keys.
     (tmp_path / "zexion_ap.dll").write_bytes(b"")
     monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
     game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", lang=False)
@@ -534,8 +534,8 @@ def test_a_mod_of_this_version_without_the_language_gives_way_to_the_clients_bui
 def test_a_mod_of_this_version_without_mixed_case_is_refused_without_a_build(
     tmp_path, monkeypatch
 ) -> None:
-    # A retest build of 1.0.0's release candidate: it reports the language but would refuse the
-    # client's scanner line in mixed case, and with it the disks goal.
+    # One that reports the language but would refuse the client's scanner line in mixed case,
+    # and with it the disks goal.
     (tmp_path / "zexion_ap.dll").write_bytes(b"")
     monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
     game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", case=False)
