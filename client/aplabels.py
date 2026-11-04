@@ -112,7 +112,7 @@ def own_label(item: int, name: str = "") -> str:
 
 def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
     """Whether the helper should hold the labels after a poll (and the disk count: state.
-    Connection.dressed): while this seed's save is loaded,
+    SeedState.dressed): while this seed's save is loaded,
     and not while another save (or none) is, where Scrap Energy and Scrap Chunk are the game's
     own (their refill drop included). A poll that could not tell keeps what was wanted."""
     if seed_matches:

@@ -129,3 +129,17 @@ def test_a_reconnect_reads_the_count_again_never_below_the_sessions_own() -> Non
     p = types.SimpleNamespace(codes=[16, 17, 18, 19], found=[])
     asyncio.run(storage.announced_tick(ctx, conn, current, p))
     assert current.announced_read and current.announced == 3 and stored(ctx) == [3]
+
+
+def test_a_connection_that_has_ended_neither_reads_nor_stores_the_count() -> None:
+    # A poll that began before a Disconnect and Connect (to this seed, or another room's with
+    # the same team and slot, whose key is the same): the new connection reads its own.
+    old = connection()
+    ctx = FakeContext(old)
+    current = ctx.seed_state.session
+    current.announced = 3
+    ctx.conn = connection()
+    ctx.stored_data[old.announced_key] = 1
+    p = types.SimpleNamespace(codes=[16, 17, 18], found=[])
+    asyncio.run(storage.announced_tick(ctx, old, current, p))
+    assert not current.announced_read and ctx.sent == []

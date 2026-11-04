@@ -131,6 +131,9 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
+        # The last step in play that had a helper found it failing (poll): one failing the step
+        # again is not attached again before the next one.
+        self.step_failed = False
         # /reload_mod: the game loop unloads it and loads it again (poll).
         self.reload_mod_pending = False
         # The game loop, the helper's only user, is asked to disarm an armed new game.
@@ -384,6 +387,7 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     ctx.drop_helper()
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
+    ctx.step_failed = False
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
 
@@ -520,9 +524,6 @@ async def poll(ctx: ZexionContext) -> None:
         step = await asyncio.to_thread(
             current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes, helper=ctx.helper
         )
-    except native.HelperError as exc:  # nothing more this poll: attached again first
-        helper_error(ctx, exc)
-        return
     except game.GameNotRunning:
         game_closed(ctx, seed)
         return
@@ -534,6 +535,17 @@ async def poll(ctx: ZexionContext) -> None:
         await asyncio.sleep(2)
         return
     ctx.said.clear("read", "read detail")
+    if step.helper_error is not None:
+        # Nothing was given (session.py); the checks and the goal go on below. The helper is
+        # attached again before the next step, once: one that fails the step again (a request
+        # it keeps refusing) is left to the usual retry, the items written directly meanwhile,
+        # so nothing it refuses can hold them back for good.
+        again = ctx.step_failed
+        helper_error(ctx, step.helper_error)
+        ctx.helper_lost = ctx.helper_lost and not again
+        ctx.step_failed = True
+    elif ctx.helper is not None and step.state == game.IN_PLAY:
+        ctx.step_failed = False
     if ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)

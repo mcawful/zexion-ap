@@ -388,14 +388,16 @@ def test_a_refused_batch_gives_nothing_and_is_tried_again(with_helper) -> None:
     assert session.step(g, [17], gap=0).granted == {17: 1}
 
 
-def test_a_helper_that_fails_is_raised_with_nothing_written(with_helper) -> None:
+def test_a_helper_that_fails_gives_nothing_and_is_kept_in_the_step(with_helper) -> None:
     # The client attaches it again before the next step (zexion_client's poll), so the items
-    # owed get their popups: none is written directly meanwhile.
+    # owed get their popups: none is written directly meanwhile. The checks still go.
     session, g, helper, writes = with_helper
     helper.fail = True
+    g.collect(5)
     session.step(g, [17], gap=0)
-    with pytest.raises(native.HelperError):
-        session.step(g, [17], gap=0)
+    step = session.step(g, [17], gap=0)
+    assert isinstance(step.helper_error, native.HelperError)
+    assert step.seed_matches and step.checked == {5} and step.granted == {}
     assert writes == [] and g.inv[17] == 0
     assert session.announced == 0, "it never reached the helper: its popup is still to show"
 
@@ -409,13 +411,13 @@ def test_a_lost_reply_counts_its_popups_as_handed_over(with_helper) -> None:
 
     helper.apply = apply
     session.step(g, [17], gap=0, senders=["Bob"])
-    with pytest.raises(native.ReplyLost):
-        session.step(g, [17], gap=0, senders=["Bob"])
+    step = session.step(g, [17], gap=0, senders=["Bob"])
+    assert isinstance(step.helper_error, native.ReplyLost)
     assert writes == [] and helper.popups() == ["popup 17 FROM Bob"]
     assert session.announced == 1, "the helper may have shown it: not shown again"
 
 
-def test_a_helper_that_doesnt_match_is_raised_for_the_poll_to_say(with_helper) -> None:
+def test_a_helper_that_doesnt_match_is_kept_for_the_poll_to_say(with_helper) -> None:
     session, g, helper, writes = with_helper
     mismatch = native.ModMismatch("both are version 0, but from different builds")
 
@@ -424,9 +426,7 @@ def test_a_helper_that_doesnt_match_is_raised_for_the_poll_to_say(with_helper) -
 
     helper.apply = apply
     session.step(g, [17], gap=0)
-    with pytest.raises(native.ModMismatch) as raised:
-        session.step(g, [17], gap=0)
-    assert raised.value is mismatch and writes == []
+    assert session.step(g, [17], gap=0).helper_error is mismatch and writes == []
 
 
 def test_popups_announce_each_received_item_once(with_helper) -> None:

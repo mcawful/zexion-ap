@@ -377,8 +377,8 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
   asks for each received shield not yet given, again for one not seen up within a few seconds,
   and counts it once it sees the shield up; after three requests in a row not seen up it asks
-  for none until the save is left or the game closes, or another slot connects
-  (`client/shields.py`).
+  for none until the save is left or the game closes (another seed or slot has its own count of
+  misses: `client/shields.py`, `client/state.py`'s `SeedState`).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the

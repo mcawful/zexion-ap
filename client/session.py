@@ -25,7 +25,8 @@ Safety, in order:
 With the helper attached (``step``'s ``helper``) the grants go as one batch the helper applies
 between frames, re-checking each byte, with the game's popup for each item not yet
 ``announced`` (nothing goes through the helper until this connection has read that count). A
-helper that fails raises its error, and the client attaches it again before the next step.
+helper that fails gives nothing this poll: the step keeps its checks and goal and names the
+error (``Step.helper_error``), and the client attaches the helper again before the next step.
 """
 
 from __future__ import annotations
@@ -143,6 +144,8 @@ class Step:
     at_home: bool = False
     in_home_cell: bool = False  # the player is in the Landing Pod's cell now
     game_saved: int | None = None  # read after save_stamp (game.Game.game_saved)
+    # The helper failed with this poll's grants: nothing given (zexion_client's helper_error).
+    helper_error: native.HelperError | None = None
 
 
 class Session:
@@ -199,7 +202,7 @@ class Session:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
         replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
         client/hints.py). Grants go through ``helper`` when one is attached, else directly; a
-        HelperError from it is raised (give)."""
+        HelperError from it gives nothing and is kept in the step (``helper_error``)."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -251,7 +254,10 @@ class Session:
             self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
         if snap.state == game.IN_PLAY and not self.holding:
-            step.granted = self.give(g, snap, collected, received, gap, senders, notes, helper)
+            try:
+                step.granted = self.give(g, snap, collected, received, gap, senders, notes, helper)
+            except native.HelperError as exc:
+                step.helper_error = exc
         return step
 
     def hold_ending(self) -> None:

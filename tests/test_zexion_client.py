@@ -422,17 +422,17 @@ async def nothing(*args) -> None:
 
 
 def lost_helper(
-    monkeypatch, attaches: bool, in_step: bool = False
+    monkeypatch, attaches: bool, step_fails: int = 0
 ) -> tuple[zc.ZexionContext, list[str]]:
     """Connected, the game running with a helper, which the offline files' tick loses (a late
-    reply), or with ``in_step`` the poll's first step; attaching it again works if
-    ``attaches``."""
+    reply), or with ``step_fails`` the first that many steps with it; attaching it again works
+    if ``attaches``."""
     ctx = context(connection(), Running(game.IN_PLAY))
     ctx.helper, ctx.told = Helper(), state.HelperState()
     order: list[str] = []
 
     async def late(c, p) -> None:
-        if c.helper is not None and not in_step:  # as offline_tick
+        if c.helper is not None and not step_fails:  # as offline_tick
             raise native.ReplyLost("no reply within 2.0 s")
 
     async def attach(c) -> bool:
@@ -444,8 +444,9 @@ def lost_helper(
     def step(g, received, helper=None, **kwargs):
         assert helper is ctx.helper, "the step gives through the helper attached"
         order.append("step with the helper" if helper is not None else "step without it")
-        if in_step and order == ["step with the helper"]:
-            raise native.ReplyLost("no reply within 3.0 s")  # the batch went out
+        if helper is not None and order.count("step with the helper") <= step_fails:
+            lost = native.ReplyLost("no reply within 3.0 s")  # the batch went out
+            return session.Step(state=game.IN_PLAY, helper_error=lost)  # session.py
         raise game.GameNotRunning("Zexion is not running")
 
     for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
@@ -468,13 +469,23 @@ def test_a_helper_lost_in_a_side_tick_is_attached_again_before_the_step(monkeypa
 
 
 def test_a_helper_lost_in_the_step_is_attached_again_before_the_next(monkeypatch) -> None:
-    # The step raises (session.py): nothing more that poll, and no item written directly.
-    ctx, order = lost_helper(monkeypatch, attaches=True, in_step=True)
+    # The step gives nothing that poll (session.py), and no item is written directly.
+    ctx, order = lost_helper(monkeypatch, attaches=True, step_fails=1)
     asyncio.run(zc.poll(ctx))
     assert order == ["step with the helper"] and ctx.helper is None and ctx.helper_lost
     asyncio.run(zc.poll(ctx))
     assert order == ["step with the helper", "attach", "step with the helper"]
     assert not ctx.helper_lost
+
+
+def test_a_helper_failing_the_step_again_is_left_to_the_usual_retry(monkeypatch) -> None:
+    # A request it keeps refusing: the items are written directly meanwhile, as with no
+    # helper, rather than held back for good.
+    ctx, order = lost_helper(monkeypatch, attaches=True, step_fails=2)
+    for _ in range(3):
+        asyncio.run(zc.poll(ctx))
+    assert order == ["step with the helper", "attach", "step with the helper", "step without it"]
+    assert ctx.helper is None and not ctx.helper_lost and ctx.helper_retry_at > 0
 
 
 def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:

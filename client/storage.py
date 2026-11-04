@@ -129,6 +129,8 @@ async def announced_tick(
     those handed over, once it has been read (a slot with none stored counts every item it
     holds, and stores that at once, so the key exists); and the count is stored again as items
     are handed over (the larger one wins, for two clients of a slot)."""
+    if conn is not ctx.conn:
+        return  # a poll of a connection that has ended: the next one reads and stores its own
     if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
     raw = ctx.stored_data.get(conn.announced_key)
