@@ -137,9 +137,7 @@ std::string parse_batch(const std::string& request, Batch& out) {
             std::getline(words >> std::ws, rest);
             std::string suffix, as_sent;
             for (char c : rest) {
-                const size_t before = suffix.size();
-                keep_font_char(suffix, static_cast<unsigned char>(c), kept);
-                if (suffix.size() > before) as_sent += c;  // the same character, its case
+                keep_both(suffix, as_sent, static_cast<unsigned char>(c), kept);
                 if (suffix.size() >= most) break;
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
