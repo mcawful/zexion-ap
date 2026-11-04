@@ -31,6 +31,7 @@ class FakeGame:
         self.marker = 1
         self.flags = bytearray(0x9C4)
         self.stamp = bytes(14)
+        self.saved: int | None = None  # game_saved
         self.cell = (0, 0)  # the player state's, the game's (X, Y)
 
     def state(self, energy: int | None = None) -> str:
@@ -62,6 +63,9 @@ class FakeGame:
 
     def save_stamp(self) -> bytes:
         return self.stamp
+
+    def game_saved(self) -> int | None:
+        return self.saved
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -308,6 +312,9 @@ def test_home_is_the_landing_pods_save_point_not_the_seeds_start(setup) -> None:
     g.cell = (16, 13)
     step = session.step(g, [], gap=0)
     assert step.at_home and step.in_home_cell
+    assert step.game_saved is None
+    g.saved = 9  # GAME SAVED the last message
+    assert session.step(g, [], gap=0).game_saved == 9
 
 
 def test_a_grant_the_game_changed_first_is_left_for_the_next_poll(setup) -> None:

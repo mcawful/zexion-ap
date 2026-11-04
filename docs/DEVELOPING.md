@@ -55,7 +55,10 @@ worlds/zexion/ → generation → slot data → client
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
   thread only serves the pipe. Without a helper in use, items are written directly with no
   popup, no seed can start, and the client tries the helper again within 30 seconds (one
-  found not to match the client after attaching is left alone until the game restarts).
+  that doesn't match the client is left alone until the game restarts, unless the client has
+  a build of its own or the old helper may unload on a later try). A helper lost while the
+  client runs is attached again before items are given, for up to 30 seconds, so they keep
+  their popups.
 - **The proxy** is a `version.dll` the player puts in the game's folder beside the helper. The
   game loads it as it starts; it passes every call on to Windows' own `version.dll` and loads
   the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither
@@ -188,13 +191,13 @@ line says.
   a death, or by the owner's account after a teleport, offered RETURN HOME. A death rewrites the
   slot's block like a save, and so do the pause menu's RELOAD FROM SAVE and RELOAD FROM CHECKPOINT
   (the "teleport" was RELOAD FROM SAVE, the owner said; a teleport writes neither, by
-  disassembly). Fixed since in the client (a new block is a save only between two looks in play
+  disassembly). Fixed since in the client (a new block is a save between two looks in play
   with no death): working in game 2026-11-03 (B1, `lab/ap/live50` slot 4, past its ending: no
   prompt after a death or RELOAD FROM SAVE at the pod, the prompt after each save there); RELOAD
-  FROM CHECKPOINT and a teleport to the pod not run. A save made within a poll or two (up to about
-  half a second or more) of closing a menu is not offered (the next one there is), and a reload on
-  a button press, if players can reach it, is not covered (`docs/re/memory.md`, "The mission
-  prompt").
+  FROM CHECKPOINT and a teleport to the pod not run. A new block that comes with a new GAME SAVED
+  message counts too, so a save followed at once by a pause or the map, or made just after
+  closing a menu, is offered (stand-in tests, not run in game); a reload on a button press, if
+  players can reach it, is not covered (`docs/re/memory.md`, "The mission prompt").
   The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
   row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
   client opened after the ending began: 2026-10-26. Received items held over the ending's

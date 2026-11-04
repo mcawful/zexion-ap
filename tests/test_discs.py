@@ -241,14 +241,81 @@ def test_reload_from_checkpoint_at_the_pod_is_not_a_save() -> None:
     assert not home.offer
 
 
-def test_a_save_right_after_a_menu_is_not_offered_but_the_next_is() -> None:
-    # The trade-off: a save whose last look before it was not in play reads as a reload.
+def test_a_save_then_a_pause_inside_one_poll_is_offered() -> None:
+    # The first look at the new stamp is in the pause menu (or the map): its GAME SAVED says
+    # it is a save.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)  # an old GAME SAVED
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
+    assert home.offer
+    home.offer = False  # the prompt queued
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert not home.offer  # the same save
+
+
+def test_a_save_just_after_a_menu_is_offered() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)  # the pause menu, closed before the save
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert home.offer
+
+
+def test_without_its_message_a_save_just_after_a_menu_waits_for_the_next() -> None:
+    # No GAME SAVED read (another message came straight after it): it reads as a reload.
     home = discs.ReturnHome()
     home.see(at_pod(100), True, True, True, True)
     home.see(at_pod(100), False, True, True, True)
     home.see(at_pod(200), True, True, True, True)
     assert not home.offer
     home.see(at_pod(300), True, True, True, True)
+    assert home.offer
+
+
+def test_a_game_saved_from_before_the_first_look_is_no_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), False, True, True, True, game_saved=9)  # loaded with it last
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # RELOAD FROM SAVE
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_reload_from_save_after_a_save_is_not_a_save() -> None:
+    # GAME SAVED is still the last message when RELOAD FROM SAVE writes the block.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # saved, then paused
+    home.offer = False  # the prompt queued; NO
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # the pause menu
+    home.see(at_pod(300), True, True, True, True, game_saved=9)  # reloaded
+    assert not home.offer
+
+
+def test_reload_from_checkpoint_after_a_save_is_not_a_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    home.offer = False
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
+    home.see(at_pod(300, deaths=1), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_a_death_with_a_new_game_saved_is_not_a_save() -> None:
+    # Saved, then died inside one poll: the death count says so.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200, deaths=1), False, True, True, True, game_saved=9)
+    home.see(at_pod(200, deaths=1), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_a_game_saved_read_before_its_stamp_counts_with_the_stamp() -> None:
+    # A look reading the stamp the frame before the save and the message the frame after.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(100), False, True, True, True, game_saved=9)
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
     assert home.offer
 
 

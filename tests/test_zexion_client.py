@@ -14,7 +14,7 @@ from unittest import mock
 
 from fakes import connection
 
-from client import game, native, session, state
+from client import game, native, session, state, ticks
 
 
 class CommonContext:
@@ -320,9 +320,10 @@ def failing_reattach(monkeypatch) -> tuple[zc.ZexionContext, list[str]]:
     ctx.helper_left = True
     order: list[str] = []
 
-    async def attach(c) -> None:
+    async def attach(c) -> bool:
         order.append("attach")
-        c.helper_retry_at = math.inf if c.helper_retry_at == math.inf else 30.0  # drop_helper
+        c.helper_retry_at = 30.0  # drop_helper
+        return True  # worth trying again soon
 
     def step(g, received, **kwargs):
         order.append("step")
@@ -345,11 +346,106 @@ def test_a_failed_reattach_holds_back_the_step_for_a_while(monkeypatch) -> None:
     assert order[-2:] == ["attach", "step"] and not ctx.helper_left
 
 
-def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(monkeypatch) -> None:
+def mismatched_reattach(
+    monkeypatch, dll, error: type[native.ModMismatch] = native.ModMismatch
+) -> tuple[zc.ZexionContext, list[str]]:
+    """failing_reattach through the real attach_helper, the mod not matching (``error``),
+    ``dll`` the client's own build."""
     ctx, order = failing_reattach(monkeypatch)
-    ctx.helper_retry_at = math.inf  # ZexionContext.mismatched
+    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise error("the mod is another build of this version")
+
+    def step(g, received, **kwargs):
+        order.append(f"step, retry at {ctx.helper_retry_at}")
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(native, "attach", attach)
+    monkeypatch.setattr(native, "default_dll", lambda: dll)
+    monkeypatch.setattr(ctx.conn.session, "step", step)
+    return ctx, order
+
+
+def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(
+    monkeypatch, tmp_path
+) -> None:
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll")  # no build
     asyncio.run(zc.poll(ctx))
-    assert order == ["attach", "step"]
+    assert order == ["attach", "step, retry at inf"]  # not tried again until Zexion restarts
+
+
+def test_a_mismatch_a_rebuild_can_fix_is_tried_again_without_holding_the_step(
+    monkeypatch, tmp_path
+) -> None:
+    dll = tmp_path / "zexion_ap.dll"
+    dll.write_bytes(b"")  # a build of the client's own
+    ctx, order = mismatched_reattach(monkeypatch, dll)
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 2 and order[1].startswith("step, retry at ")
+    assert order[1] != "step, retry at inf"
+
+
+def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
+    monkeypatch, tmp_path
+) -> None:
+    # A menu open, say: a later try may unload it and load the game folder's copy.
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 2 and order[1] != "step, retry at inf"
+
+
+def lost_in_a_side_tick(monkeypatch, attaches: bool) -> tuple[zc.ZexionContext, list[str]]:
+    """Connected, the game running with a helper, which the offline files' tick loses (a late
+    reply); attaching it again works if ``attaches``."""
+    ctx = context(connection(), Running(game.IN_PLAY))
+    ctx.helper, ctx.told = Helper(), state.HelperState()
+    order: list[str] = []
+
+    async def nothing(*args) -> None:
+        return None
+
+    async def late(c, p) -> None:
+        if c.helper is not None:  # as offline_tick
+            raise native.ReplyLost("no reply within 2.0 s")
+
+    async def attach(c) -> bool:
+        order.append("attach")
+        if attaches:
+            c.helper, c.told = Helper(), state.HelperState()
+        return True  # worth trying again soon
+
+    def step(g, received, **kwargs):
+        order.append("step with the helper" if ctx.helper is not None else "step without it")
+        raise game.GameNotRunning("Zexion is not running")
+
+    for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    for name in ("slots_tick", "language_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    monkeypatch.setattr(zc, "offline_tick", late)
+    monkeypatch.setattr(zc, "attach_helper", attach)
+    monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
+    monkeypatch.setattr(ctx.conn.session, "step", step)
+    return ctx, order
+
+
+def test_a_helper_lost_in_a_side_tick_is_attached_again_before_the_step(monkeypatch) -> None:
+    # Else the step gives the items owed with no helper: written directly, with no popup.
+    ctx, order = lost_in_a_side_tick(monkeypatch, attaches=True)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "step with the helper"]
+    assert not ctx.helper_lost
+
+
+def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:
+    ctx, order = lost_in_a_side_tick(monkeypatch, attaches=False)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"], "no step gives items without their popups"
+    ctx.helper_back_by = 1.0  # long past: given up, as after any failed attach
+    asyncio.run(zc.poll(ctx))
+    assert order[-2:] == ["attach", "step without it"] and not ctx.helper_lost
 
 
 def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:
