@@ -193,6 +193,10 @@ extern const char kApLogoRows[16][17];
 // padlock and AP logo into 0x96 to 0x98, and its text uses these characters for them.
 constexpr wchar_t kHdDiskIcon = 0xE03A, kHdLockIcon = 0xE03B, kHdLogoIcon = 0xE03C;
 constexpr int kHdIconCount = 3;
+constexpr int kHdIconSheet = 101, kPixelIconSheet = 104;  // the sheets' definitions
+// Definition `definition`'s template (`holder` holds the templates' list) if it is a sheet of
+// 256 frames (16 x 16, 0x1DF1C0); else null.
+BYTE* icon_sheet(BYTE* holder, int definition);
 
 class IconSheets {
 public:
@@ -223,7 +227,7 @@ private:
     bool upload(Sheet& s, unsigned texture, const GlFunctions& gl, bool clear);
     // The sheet's icon k, made the first time it is wanted (the HD ones take milliseconds).
     static const std::vector<uint8_t>& icon(Sheet& s, int k);
-    Sheet sheets_[2] = {{101, 1024, 1024, 64, 64}, {104, 160, 144, 10, 9}};
+    Sheet sheets_[2] = {{kHdIconSheet, 1024, 1024, 64, 64}, {kPixelIconSheet, 160, 144, 10, 9}};
     inline static int arts_made_ = 0;
 };
 

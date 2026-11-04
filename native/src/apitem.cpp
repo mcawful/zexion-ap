@@ -484,24 +484,30 @@ void ApItems::release(BYTE* records_holder) {
 
 namespace {
 
-// The icon sheets (IconSheets): the frames the helper paints, a frame of the game's art that is
-// never blank (the first item icon's), and how many frames a sheet has (16 x 16, 0x1DF1C0).
-constexpr int kFirstIconFrame = 0x96, kKnownFrame = 0x80, kSheetFrames = 256;
+// The icon sheets (IconSheets): the frames the helper paints, and a frame of the game's art that
+// is never blank (the first item icon's).
+constexpr int kFirstIconFrame = 0x96, kKnownFrame = 0x80;
+constexpr int32_t kSheetFrames = 256;
 // A definition's template keeps its texture's GL name where a sprite keeps its style (0x1DF2D5 to
 // 0x1DF2DC: [the texture object] copied to +0x1D0).
 constexpr ptrdiff_t kTemplateTexture = sprite::kStyle;
 
 // The texture of definition `definition`'s sheet, or 0 (no template, or not a sheet of 256).
 unsigned sheet_texture(BYTE* holder, int definition) {
+    BYTE* t = icon_sheet(holder, definition);
+    unsigned texture = 0;
+    return t != nullptr && read(t, kTemplateTexture, texture) ? texture : 0;
+}
+
+}  // namespace
+
+BYTE* icon_sheet(BYTE* holder, int definition) {
     BYTE* t = pointer_at(pointer_at(holder), definition * static_cast<ptrdiff_t>(8));
     int32_t frames = 0;
-    unsigned texture = 0;
-    if (t == nullptr || !read(t, sprite::kFrameCount, frames) || frames != kSheetFrames ||
-        !read(t, kTemplateTexture, texture)) {
-        return 0;
-    }
-    return texture;
+    return read(t, sprite::kFrameCount, frames) && frames == kSheetFrames ? t : nullptr;
 }
+
+namespace {
 
 bool in_circle(double x, double y, double cx, double cy, double r) {
     return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;

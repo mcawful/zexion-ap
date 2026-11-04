@@ -234,9 +234,7 @@ constexpr double kAttachOffset = -1.0;
 constexpr float kScreenMiddle = 160.0f;
 constexpr double kIconLeft = 2.0;
 constexpr ptrdiff_t kRightCorner = sprite::kCorners + 0x10;
-// The icon sheets' templates (apitem.h IconSheets), and where 0x86660 takes an icon to sit
-// when it is a text's first glyph (0x217680).
-constexpr ptrdiff_t kHdIconSheet = 101 * 8, kPixelIconSheet = 104 * 8;
+// Where 0x86660 takes an icon to sit when it is a text's first glyph (0x217680).
 constexpr double kIconMiddle = 4.0;
 
 // The glyphs the builder makes for `text`: one per character but spaces, tabs and line breaks
@@ -270,7 +268,8 @@ bool vertical_extent(const GameAddresses& a, const BYTE* label, float& top, floa
         return false;
     }
     BYTE* templates = pointer_at(a.sprite_templates);
-    void* sheets[2] = {pointer_at(templates, kHdIconSheet), pointer_at(templates, kPixelIconSheet)};
+    void* sheets[2] = {pointer_at(templates, kHdIconSheet * 8),
+                       pointer_at(templates, kPixelIconSheet * 8)};
     for (int32_t i = 0; i < n; ++i) {
         BYTE* g = glyph_at(list, i);
         if (g == nullptr) {
@@ -396,7 +395,6 @@ constexpr double kHdIconDivisor = 4.8214;
 // U+E04E are frames 0x80 to 0xAA, U+E04F frame 0xBD, U+E050 frame 0xC6; definition 104's sheet
 // with a pixel font or icon style 1 (tr::kIconStyle), else 101's (0x885BF).
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
-constexpr int32_t kSheetFrames = 256;
 // Bounds on what a loaded font reads (the HD font's scale and space are near 1 and 15 to 20),
 // and on the spaces one line is padded with.
 constexpr double kMostFactor = 1000, kMostSpace = 1000, kMostPad = 64;
@@ -429,13 +427,11 @@ bool FontMetrics::load(const GameAddresses& a) {
     pixel_font_ = style == tr::kPixelFont;
     scale_ = pixel_font_ ? 1.0f : kHdFontDivisor;
     space_ = static_cast<float>(space / static_cast<float>(scale_));
-    const ptrdiff_t sheet = pixel_font_ || icons == 1 ? kPixelIconSheet : kHdIconSheet;
     // The sheet's frames, only if it has its 256 (icon_frame's last is 0xC6).
-    BYTE* sheet_template = pointer_at(pointer_at(a.sprite_templates), sheet);
-    int32_t frames = 0;
-    if (read(sheet_template, sprite::kFrameCount, frames) && frames == kSheetFrames) {
-        icon_frames_ = pointer_at(sheet_template, sprite::kFrameList);
-    }
+    BYTE* sheet = icon_sheet(a.sprite_templates, pixel_font_ || icons == tr::kPixelIcons
+                                                     ? kPixelIconSheet
+                                                     : kHdIconSheet);
+    if (sheet != nullptr) icon_frames_ = pointer_at(sheet, sprite::kFrameList);
     return true;
 }
 
