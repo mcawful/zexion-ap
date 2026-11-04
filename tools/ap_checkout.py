@@ -1,7 +1,7 @@
 """Clone Archipelago at the tag in AP_VERSION into .ap/Archipelago and install its requirements.
 
-Once ``worlds/zexion/`` exists, it is also linked into the checkout's ``worlds/`` folder (a
-directory junction on Windows, a symlink elsewhere), so AP's own tests load the world from this
+It also links ``worlds/zexion/`` into the checkout's ``worlds/`` folder (a directory junction
+on Windows, a symlink elsewhere), so AP's own tests load the world from this
 repo without copying it.
 
     .venv/Scripts/python tools/ap_checkout.py            # clone or verify, link, install deps
@@ -42,9 +42,6 @@ def ensure_checkout(dest: Path, tag: str) -> None:
 def link_world(checkout: Path) -> None:
     world = ROOT / "worlds" / "zexion"
     link = checkout / "worlds" / "zexion"
-    if not world.is_dir():
-        print("worlds/zexion/ does not exist yet; nothing to link")
-        return
     if link.exists():
         if link.resolve() != world.resolve():
             raise RuntimeError(f"{link} exists and does not point at {world}")
