@@ -162,7 +162,7 @@ BuiltLabel g_hd;  // the label whose translated text is the helper's
 int g_hd_entry = -1;  // the game's own entry for it, to put back
 void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
     std::wstring title;
-    if (ours && translation_on(a) && read_large_entry(a, kTitleEntry, title)) {
+    if (ours && read_large_entry(a, kTitleEntry, title)) {
         bool hd = g_hd.holds(label);
         if (!hd) {
             title.erase(0, title.find_first_not_of(L" \r\n"));

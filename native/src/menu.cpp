@@ -151,9 +151,8 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     // otherwise keep pointing into the helper.
     at<void*>(child_, widget::kCallback) = a.rando_menu_fn;
     // In a translation, its text back to the entry's (the label the game built from it).
-    const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
-    if (now && now->on && read_entry(now->small, kRandomizerEntry, own)) {
+    if (read_small_entry(a, kRandomizerEntry, own)) {
         rebuild_label(a, pointer_at(child_, widget::kLabel), own, {.attached = true});
     }
     return true;
@@ -401,10 +400,8 @@ bool AssistLock::install(const GameAddresses& a) {
 }
 
 void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
-    if (!translation_on(a)) return;
-    const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
-    if (!now || !now->on || !read_entry(now->small, kAssistEntry, own)) return;
+    if (!read_small_entry(a, kAssistEntry, own)) return;
     if (pixel_glyphs_shown(label)) show_translated_glyphs(label);  // as an older helper left it
     if (!hd_.holds(label)) {
         hd_.label = nullptr;
@@ -443,10 +440,8 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
 void AssistLock::unlock_translated(const GameAddresses& a, BYTE* label) {
     const bool ours = hd_.holds(label);
     hd_.label = nullptr;
-    if (!ours || !translation_on(a)) return;
-    const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
-    if (now && now->on && read_entry(now->small, kAssistEntry, own)) {
+    if (ours && read_small_entry(a, kAssistEntry, own)) {
         rebuild_label(a, label, own, {.attached = true});  // after the pixel glyphs' style
     }
 }

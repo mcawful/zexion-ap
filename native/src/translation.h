@@ -138,6 +138,8 @@ std::string language_name(const GameAddresses& a);
 // LargeText entry k, as loaded now (the translation object's table, bounded by large_count):
 // false without that key, with the flag clear, or if it does not read.
 bool read_large_entry(const GameAddresses& addresses, int k, std::wstring& out);
+// SmallText entry k, as loaded now: false with the flag clear, or if it does not read.
+bool read_small_entry(const GameAddresses& addresses, int k, std::wstring& out);
 
 // The characters entry k may hold in place, its ending 0 included: from its offset to the next
 // higher offset of any entry, less the line break before that one (docs/re/memory.md,

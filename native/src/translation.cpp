@@ -638,6 +638,11 @@ bool read_large_entry(const GameAddresses& a, int k, std::wstring& out) {
            read_entry(large, k, out, kLargeLastRoom);
 }
 
+bool read_small_entry(const GameAddresses& a, int k, std::wstring& out) {
+    const std::optional<Loaded> now = loaded_translation(a);
+    return now && now->on && read_entry(now->small, k, out);
+}
+
 namespace {
 
 // A label's glyph lists: its translated glyphs (count, and the list) and its pixel ones.
