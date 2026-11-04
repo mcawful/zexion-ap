@@ -767,6 +767,13 @@ inline std::map<std::string, uint64_t> stand_in_config() {
     };
 }
 
+// A batch request parsed and applied: the reply, or why it did not parse.
+inline std::string apply(zap::Game& game, const std::string& request) {
+    zap::Batch batch;
+    std::string error = zap::parse_batch(request, batch);
+    return error.empty() ? game.apply(batch) : "parse: " + error;
+}
+
 // The stand-in game's configuration given to `game` (`active`: a client's, not the offline
 // cache's): "" or why not.
 inline std::string configure(zap::Game& game, bool active = true) {

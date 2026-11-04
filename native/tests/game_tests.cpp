@@ -17,12 +17,6 @@ namespace {
 
 using namespace stand_in;
 
-std::string apply(zap::Game& game, const std::string& request) {
-    zap::Batch batch;
-    std::string error = zap::parse_batch(request, batch);
-    return error.empty() ? game.apply(batch) : "parse: " + error;
-}
-
 // Configured as a client configures it, and the stand-in game as a save in play leaves it.
 void ready(zap::Game& game) {
     check(configure(game).empty(), "configures");

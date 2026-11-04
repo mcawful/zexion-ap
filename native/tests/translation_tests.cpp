@@ -41,9 +41,7 @@ void start(zap::Game& game, bool on = true) {
 }
 
 void queue(zap::Game& game, const char* request) {
-    zap::Batch batch;
-    check(zap::parse_batch(request, batch).empty(), "the batch parses", request);
-    check(game.apply(batch) == "applied", "the batch applied", request);
+    check(apply(game, request) == "applied", "the batch applied", request);
 }
 
 // Frames of the helper's: its watches, then its popups, as the frame call runs them.
