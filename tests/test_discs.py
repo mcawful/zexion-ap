@@ -96,7 +96,7 @@ def stamp(time: int, column: int, row: int, slot: int = 3, deaths: int = 0) -> b
 
 
 def test_saved_at_home_compares_the_continue_point_with_the_landing_pod() -> None:
-    # The live26 save, read 2026-10-25: a save at the pod (191, 329); one at (151, 464) elsewhere.
+    # The live26 save: a save at the pod (191, 329); one at (151, 464) elsewhere.
     assert discs.saved_at_home(stamp(39567, 191, 329))
     assert not discs.saved_at_home(stamp(36589, 151, 464))
     assert not discs.saved_at_home(b"")
@@ -210,8 +210,7 @@ def test_a_death_drops_an_offer_not_queued_yet() -> None:
 
 def test_a_teleport_to_the_pod_is_not_a_save() -> None:
     # TELEPORT TO START (0xA3430) reloads a copy of the play state (0x9FF60), not the slot:
-    # the stamp stays. A guard of that reading, not of the fix: with the stamp unchanged,
-    # develop's rule passes it too.
+    # the stamp stays.
     home = discs.ReturnHome()
     home.see(at_pod(100), True, True, True, False)  # in play away from the pod
     home.see(at_pod(100), False, True, True, False)  # the pause menu

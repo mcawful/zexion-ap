@@ -265,10 +265,9 @@ def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
 
 
 def test_a_shield_is_up_whatever_its_slot_kept_from_the_object_before() -> None:
-    # The RC retest's spawn loop (2026-11-02): the shield's constructor leaves +0x3C8
-    # as the slot's last object left it (its Missiles entry's +0x80 is -1), and the game never
-    # sets the handle's two unused bytes. The client once required +0x3C8 to be the object's
-    # own address and those bytes to match, so such a shield was never read up.
+    # The shield's constructor leaves +0x3C8 as the slot's last object left it, and the game
+    # never sets the handle's two unused bytes (docs/re/memory.md, "Received Energy Shields"):
+    # requiring either made a shield that was up never read up.
     g = fake_game()
     put_shield(g)
     at = SHIELD_AT + OBJECT_LINK

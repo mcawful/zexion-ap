@@ -417,9 +417,8 @@ _EARLIER: dict[str, tuple[int | None, str]] = {}
 
 
 def _earlier(hello: dict[str, str]) -> str | None:
-    """Why a helper of this version is an earlier build of it, or None: no ``lang`` (1.0.0's
-    release candidate, before the translations: it would take the translation keys and ignore
-    them, so its popups would hide in a translation) or no ``case`` (before the mixed case: it
+    """Why a helper of this version is an earlier build of it, or None: no ``lang`` (it would
+    ignore the translation keys, so its popups would hide in a translation) or no ``case`` (it
     would refuse the scanner's line in mixed case, and with it every disks request and the
     offline file, so the disks goal could not be sent)."""
     if "lang" not in hello:

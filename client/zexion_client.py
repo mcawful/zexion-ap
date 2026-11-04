@@ -400,14 +400,11 @@ async def away_tick(ctx: ZexionContext) -> None:
 
 
 async def leave_helper_tick(ctx: ZexionContext) -> None:
-    """While no connection steps a session: while a save is loaded that the client has not
-    dressed (one loaded after a drop's save was left, or the one in play at a disconnect), the
-    client lets the helper go, as if it had closed. With no client, the helper gives an AP save
-    its look itself, from the file the client left, and says the client is not connected
-    (native/README.md, "AP saves without the client"); a client still attached would leave it
-    undressed. A save dressed before a drop stays as the client dressed it (state.carry_over),
-    an ending keeps the helper that holds it, and at the title after a drop the helper keeps an
-    armed new game. The next connection attaches it again before its first step (poll)."""
+    """While no connection steps a session and a save the client has not dressed is loaded, let
+    the helper go, as if the client had closed, so the helper dresses an AP save itself from the
+    client's file (native/README.md, "AP saves without the client"). Kept: a save dressed before
+    a drop (state.carry_over), an ending, and an armed new game at the title. The next
+    connection attaches it again before its first step (poll)."""
     kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
     if ctx.helper is None or ctx.game_conn is None:
         return

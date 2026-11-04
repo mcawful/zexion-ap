@@ -467,12 +467,8 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
             log.warning(f"DeathLink: sending the death failed ({exc}).")
     conn = ctx.conn
     if deaths.owed and conn is not None and conn.session.holding:
-        # The game's own damage never kills the player in the ending, and what a death there
-        # does is not known: dropped, only while the ending that began in this load runs
-        # (Session.holding, also for the ending played again on a save past it: replay_tick). A
-        # save past its ending loaded again later deals them as any load does. A load first
-        # seen during its ending reads the same as that later load, so deaths are dealt there
-        # too (the known gap: docs/re/memory.md, "The ending: flag 250").
+        # What a death in the ending does is not known: dropped while an ending of this load
+        # runs (Session.holding; docs/re/memory.md, "DeathLink").
         deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper

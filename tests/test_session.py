@@ -418,8 +418,7 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
 
 
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
-    # Zenith Thrusters (26) sent again from the console: its byte stays 1 (B1, 2026-10-28, a
-    # console copy left it at 2 before the cap).
+    # Zenith Thrusters (26) sent again from the console: its byte stays 1.
     session, g, helper, _ = with_helper
     assert give(session, g, [26], senders=["Bob"]) == {26: 1}
     assert give(session, g, [26, 26], senders=["Bob", "Bob"]) == {}

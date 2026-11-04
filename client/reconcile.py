@@ -13,25 +13,16 @@ inventory go back to the last save when the player dies or reloads, so the diffe
 right: an item the save lost is given again, and one the game handed out is never given twice.
 An inventory above what the player should own is left alone.
 
-Only the supplies and Scrap Metal are counts (``COUNTED``: Energy Tanks, Missile Containers,
-Mega Bombs, Missile Boxes, Bomb Boxes and Scrap Metal, docs/re/save-format.md, "Inventory: one
-byte per item ID at 0x92F3"). Every other item is held once: its byte is 0 or 1, and the game's
-pools hold one of each at most (docs/re/randocells.md, "The pool": one entry per item set in the
-pool array, one per key). So no other byte is written above 1 (with Guns First, a weapon and its
-upgrade are a byte each): a second copy, which only a plando or a server console's ``/send``
-can make (the world refuses a start_inventory copy of an item the pool holds:
-worlds/zexion/starting.py, ``pool_duplicates``), is not written. The pickup routine itself only
-increments the byte (docs/re/memory.md, "Granting each kind of item, and what keeps it"), and
-what the game does with a 2 in such a byte is not measured: the cap keeps the bytes as the
-game's own seeds leave them.
+Only the supplies and Scrap Metal are counts (``COUNTED``; docs/re/save-format.md, "Inventory:
+one byte per item ID at 0x92F3"). Every other item is held once, as the game's own seeds hold it
+(docs/re/randocells.md, "The pool"), so its byte is never written above 1: a second copy, which
+only a plando or the server console's ``/send`` makes, is not written, as what the game does
+with a 2 there is not measured.
 
 With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
-item: the game turns a second copy into the upgrade (docs/re/randocells.md, "The evaluator works
-on a table of 64 counts": on the item's update by the save's Guns First, at pickup by the
-randomizer menu's; seen for the Machine Gun only); should it not, the upgrade is still owed and
-given. With it off the game redirects nothing in the seed's own items, and each upgrade is an
-item, and a byte, of its own (the same section): every item is counted as itself, a gun and its
-upgrade each at most 1 like any other item held once.
+item, which the game turns into the upgrade on a second copy (docs/re/randocells.md, "The
+evaluator works on a table of 64 counts"); should it not, the upgrade is still owed and given.
+With it off, every item counts as itself.
 
 Pure functions; client/game.py does the reading and writing, in a settled in-play state.
 """
