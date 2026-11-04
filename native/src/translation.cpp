@@ -256,45 +256,55 @@ void build(const GameAddresses& a, BYTE* label, std::wstring_view text, double x
                                              a.translation + tr::kFont, label, wrap ? 1 : 0);
 }
 
-// The top and bottom of a label's translated text as 0x86660 takes them: its first glyph (its
-// quad's top right and bottom right corners about its place, or its place plus 4 for an icon),
-// and every shown one after it from the font or an icon sheet, up to the first missing.
-bool vertical_extent(const GameAddresses& a, const BYTE* label, float& top, float& bottom) {
+// Each of a label's translated glyphs, from the first up to the first missing, to `each(i, glyph,
+// shown, its template)`, with `font` (the translation's font template) read first: false if the
+// first is missing or anything does not read (`each` returns false for its own reads).
+template <typename Each>
+bool each_glyph(const GameAddresses& a, const BYTE* label, void*& font, Each&& each) {
     int32_t n = 0;
     BYTE** list = nullptr;
-    void* font = nullptr;
     if (!translated_list(label, kMaxGlyphs, n, list) || n < 1 ||
         !read(a.translation, tr::kFont, font)) {
         return false;
     }
+    for (int32_t i = 0; i < n; ++i) {
+        BYTE* g = glyph_at(list, i);
+        if (g == nullptr) return i != 0;
+        uint8_t shown = 0;
+        void* made_from = nullptr;
+        if (!read(g, sprite::kVisible, shown) || !read(g, sprite::kTemplate, made_from) ||
+            !each(i, g, shown != 0, made_from)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The top and bottom of a label's translated text as 0x86660 takes them: its first glyph (its
+// quad's top right and bottom right corners about its place, or its place plus 4 for an icon),
+// and every shown one after it from the font or an icon sheet, up to the first missing.
+bool vertical_extent(const GameAddresses& a, const BYTE* label, float& top, float& bottom) {
     BYTE* templates = pointer_at(a.sprite_templates);
     void* sheets[2] = {pointer_at(templates, kHdIconSheet * 8),
                        pointer_at(templates, kPixelIconSheet * 8)};
-    for (int32_t i = 0; i < n; ++i) {
-        BYTE* g = glyph_at(list, i);
-        if (g == nullptr) {
-            if (i == 0) return false;
-            break;
-        }
-        uint8_t shown = 0;
+    void* font = nullptr;
+    return each_glyph(a, label, font, [&](int32_t i, BYTE* g, bool shown, void* made_from) {
         double y = 0, upper = 0, lower = 0;
-        void* made_from = nullptr;
-        if (!read(g, sprite::kVisible, shown) || !read(g, sprite::kY, y) ||
-            !read(g, sprite::kCorners + 0x08, upper) || !read(g, sprite::kCorners + 0x28, lower) ||
-            !read(g, sprite::kTemplate, made_from)) {
+        if (!read(g, sprite::kY, y) || !read(g, sprite::kCorners + 0x08, upper) ||
+            !read(g, sprite::kCorners + 0x28, lower)) {
             return false;
         }
         if (i == 0) {
             const bool of_font = made_from == font;
             top = static_cast<float>(y + (of_font ? upper : kIconMiddle));
             bottom = static_cast<float>(y + (of_font ? lower : kIconMiddle));
-        } else if (shown != 0 &&
+        } else if (shown &&
                    (made_from == font || made_from == sheets[0] || made_from == sheets[1])) {
             top = std::min(top, static_cast<float>(y + upper));
             bottom = std::max(bottom, static_cast<float>(y + lower));
         }
-    }
-    return true;
+        return true;
+    });
 }
 
 // Each of a list's first `n` glyphs shown or hidden, those that can be written.
@@ -336,36 +346,22 @@ BuiltMark built_mark(const BYTE* label) {
 // The left and right of a label's translated text as 0x85B00 takes them: its first glyph (shown
 // or not, two further right for an icon) and every shown one after it up to the first missing.
 bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right) {
-    int32_t n = 0;
-    BYTE** list = nullptr;
     void* font = nullptr;
-    if (!translated_list(label, kMaxGlyphs, n, list) || n < 1 ||
-        !read(a.translation, tr::kFont, font)) {
-        return false;
-    }
-    for (int32_t i = 0; i < n; ++i) {
-        BYTE* g = glyph_at(list, i);
-        if (g == nullptr) {
-            if (i == 0) return false;
-            break;
-        }
-        uint8_t shown = 0;
+    return each_glyph(a, label, font, [&](int32_t i, BYTE* g, bool shown, void* made_from) {
         double x = 0, l = 0, r = 0;
-        void* made_from = nullptr;
-        if (!read(g, sprite::kVisible, shown) || !read(g, sprite::kX, x) ||
-            !read(g, sprite::kCorners, l) || !read(g, kRightCorner, r) ||
-            !read(g, sprite::kTemplate, made_from)) {
+        if (!read(g, sprite::kX, x) || !read(g, sprite::kCorners, l) ||
+            !read(g, kRightCorner, r)) {
             return false;
         }
         if (i == 0) {
             left = static_cast<float>(x + l + (made_from != font ? kIconLeft : 0.0));
             right = static_cast<float>(x + r);
-        } else if (shown != 0) {
+        } else if (shown) {
             left = std::min(left, static_cast<float>(x + l));
             right = std::max(right, static_cast<float>(x + r));
         }
-    }
-    return true;
+        return true;
+    });
 }
 
 bool translated_list(const BYTE* label, int32_t most, int32_t& n, BYTE**& list) {
