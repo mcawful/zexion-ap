@@ -429,8 +429,8 @@ class ZexionWorld(World):
             return [(first[key][0], self.random.choice(spots[key]))], ""
         if not empty:
             return [], "every one of those locations is excluded or already filled (plando)"
-        # Every two that reach more together; those two locations can take, in the same order
-        # as among the kinds that have a location alone (pairs_of keeps the order of its keys).
+        # Every two that reach more together, then those that two locations can take: the same
+        # pairs in the same order as pairs_of over the kinds with a location alone would give.
         together = [(a, b, items) for a, b, items in pairs_of(first, sorted(first)) if opens(items)]
         pairs = [
             (a, b, items)
