@@ -445,7 +445,8 @@ def build(
         ],
         # The randomizer menu's start table, as it builds it when it opens: every candidate
         # room in order, with its flag (the room holds object 25), checked against the game's
-        # own table (docs/re/memory.md, "Starting a new game" on OHKO).
+        # own table (docs/re/memory.md, "The game-mode panel: NORMAL / RANDOMIZER", "The start
+        # table").
         "start_table": [
             (c["cell"][0], c["cell"][1], int(OBJECT_25 in c["objects"])) for c in candidates
         ],

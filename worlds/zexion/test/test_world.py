@@ -4,6 +4,7 @@ import types
 import unittest
 from argparse import Namespace
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 from unittest import mock
 
@@ -42,6 +43,7 @@ from ..options import AUTOMATIC, AUTOMATIC_ROOM, ROOM_NAMES, Goal, StartRoom
 from ..world import (
     CORE_REGION,
     DISC_REPLACES,
+    DRAWS,
     FILLER_ORDER,
     FOREIGN,
     FOREIGN_PROGRESSION,
@@ -87,20 +89,23 @@ def drawn_gun(world: ZexionWorld) -> str:
     return gun
 
 
-def drawing(gun: str, **options: Any) -> ZexionWorld:
-    """A Standard fake_world with these options whose Random Gun drew ``gun``, generate_early
-    run. The seed is found with the default options: the draw comes before the start room is
-    chosen, so a start_room does not change it (asserted)."""
+def seed_drawing(gun: str) -> int:
+    """The first seed whose Standard draw, with the default options, starts with ``gun``."""
     for seed in range(100):
         probe = fake_world()
         probe.random = random.Random(seed)
         probe.generate_early()
         if drawn_gun(probe) == gun:
-            break
-    else:
-        raise AssertionError(f"no seed drew the {gun}")
+            return seed
+    raise AssertionError(f"no seed drew the {gun}")
+
+
+def drawing(gun: str, **options: Any) -> ZexionWorld:
+    """A Standard fake_world with these options whose Random Gun drew ``gun``, generate_early
+    run. The seed is found with the default options: a start_room that suits the first draw
+    does not change it (asserted)."""
     world = fake_world(**options)
-    world.random = random.Random(seed)
+    world.random = random.Random(seed_drawing(gun))
     world.generate_early()
     assert drawn_gun(world) == gun, (gun, options)
     return world
@@ -303,12 +308,43 @@ class TestStartRooms(unittest.TestCase):
     offers")."""
 
     def test_a_room_the_starting_items_reach_nothing_from_is_refused(self) -> None:
-        world = fake_world()
-        world.generate_early()
-        empty = [r for r in data.START_ROOMS if not world.seed_reach.sphere0(r["cell"]).locations]
+        # With none of Standard's guns: no draw suits it.
+        worlds = [drawing(gun) for gun in STANDARD_GUNS]
+        empty = [
+            r
+            for r in data.START_ROOMS
+            if not any(w.seed_reach.sphere0(r["cell"]).locations for w in worlds)
+        ]
         self.assertTrue(empty)
-        with self.assertRaisesRegex(OptionError, "reach no location"):
+        with self.assertRaises(OptionError) as caught:
             fake_world(start_room=empty[0]["index"] + 1).generate_early()
+        message = str(caught.exception)
+        self.assertIn("reach no location", message)
+        self.assertIn(f"any of the {DRAWS} draws", message)
+        for gun in STANDARD_GUNS:  # every gun was drawn in 64 draws
+            self.assertIn(gun, message)
+
+    def test_a_room_only_some_guns_suit_is_drawn_again_for_one_of_them(self) -> None:
+        # Below Junkyard suits Standard's Force Blaster only, White Crysmoon its Lance only and
+        # Phobyss Entry both (docs/re/locations.md, "Which start rooms the world offers"). A
+        # draw of a gun that suits the room is kept (drawing asserts it); another is drawn again.
+        suits = {
+            "below_junkyard": {"Progressive Force Blaster"},
+            "white_crysmoon": {"Progressive Lance"},
+            "phobyss_entry": {"Progressive Force Blaster", "Progressive Lance"},
+        }
+        for room, guns in suits.items():
+            for gun in STANDARD_GUNS:
+                world = fake_world(start_room=room)
+                world.random = random.Random(seed_drawing(gun))
+                world.generate_early()
+                with self.subTest(room=room, gun=gun):
+                    self.assertEqual(world.start, data.START_ROOMS[ROOM_NAMES.index(room)])
+                    self.assertTrue(world.passes(world.start))
+                    if gun in guns:
+                        self.assertEqual(drawn_gun(world), gun)
+                    else:
+                        self.assertIn(drawn_gun(world), guns)
 
     def test_any_room_the_starting_items_reach_from_is_taken(self) -> None:
         # One location is enough, as in the game (every item reaches the core from each room).
@@ -472,6 +508,11 @@ def fill_recording(multiworld: MultiWorld) -> list[Location]:
 
 # The items that open Easy's Below Machinus alone (its starting items reach one location).
 OPENERS = ["Gravity Harness", "Zenith Thrusters", "Progressive Lance", "Jump Booster"]
+# The items that open Easy's Jungle Entry alone (its starting items reach two locations).
+JUNGLE_OPENERS = (
+    "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser", "Gravity Harness",
+    "Zenith Thrusters",
+)  # fmt: skip
 
 
 class TestTheStartIsOpened(ZexionTestBase):
@@ -494,6 +535,12 @@ class TestTheStartIsOpened(ZexionTestBase):
     def fill_in_order(self, seed: int) -> list[Location]:
         self.world_setup(seed)
         return fill_recording(self.multiworld)
+
+    def assert_warns(self, text: str, call: Callable[[], object]) -> None:
+        """That ``call`` logs a warning holding ``text``, whether or not the fill then fails."""
+        with self.assertLogs(level="WARNING") as logs, contextlib.suppress(FillError):
+            call()
+        self.assertTrue(any(text in line for line in logs.output), logs.output)
 
     def assert_filled(self, multiworld: MultiWorld) -> None:
         # Each item in one location: none the world placed is placed again.
@@ -546,10 +593,7 @@ class TestTheStartIsOpened(ZexionTestBase):
         # reach more alone. Without them in the pool, only pairs do (Slide Mod with the Jump
         # Booster): one in each location. No preset's start lacks one that does alone; Custom's
         # items can.
-        alone = (
-            "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser",
-            "Gravity Harness", "Zenith Thrusters",
-        )  # fmt: skip
+        alone = JUNGLE_OPENERS
         step, reached, empty, state = self.step_without("jungle_entry", alone)
         self.assertEqual(reached, 2)
         self.assertEqual(len(step), 2)
@@ -577,28 +621,25 @@ class TestTheStartIsOpened(ZexionTestBase):
         # The warning names that cause.
         pool = [i for i in self.multiworld.itempool if i.advancement and i.name not in alone]
         spots = list(self.multiworld.get_unfilled_locations())
-        with self.assertLogs(level="WARNING") as logs:
-            self.world.open_the_start(pool, spots)
-        self.assertTrue(any("too few of those locations" in line for line in logs.output))
+        self.assert_warns(
+            "too few of those locations", lambda: self.world.open_the_start(pool, spots)
+        )
         self.assertFalse([loc for loc in self.mine() if loc.locked])
 
     def test_pairs_kept_out_warn_so(self) -> None:
         # Easy's Jungle Entry without its six single openers in the pool, and its two start
         # locations taking no progression (an item rule): the pairs that open it together are
         # kept out, and the warning says so, not that too few locations are free.
-        alone = (
-            "Wall Jump Boots", "Progressive Snake", "Progressive Lance", "Phaser",
-            "Gravity Harness", "Zenith Thrusters",
-        )  # fmt: skip
+        alone = JUNGLE_OPENERS
         _, reached, empty, _ = self.step_without("jungle_entry", alone)
         self.assertEqual(reached, 2)
         for location in empty:
             add_item_rule(location, lambda item: not item.advancement)
         pool = [i for i in self.multiworld.itempool if i.advancement and i.name not in alone]
         spots = list(self.multiworld.get_unfilled_locations())
-        with self.assertLogs(level="WARNING") as logs:
-            self.world.open_the_start(pool, spots)
-        self.assertTrue(any("every two that do together are kept" in line for line in logs.output))
+        self.assert_warns(
+            "every two that do together are kept", lambda: self.world.open_the_start(pool, spots)
+        )
         self.assertFalse([loc for loc in self.mine() if loc.locked])
 
     def test_not_in_excluded_locations(self) -> None:
@@ -644,10 +685,8 @@ class TestTheStartIsOpened(ZexionTestBase):
         self.world_setup(1)
         excluded = {"Kresezoa 25,25", "Machinus 27,24", "Machinus 24,29"}
         exclusion_rules(self.multiworld, self.player, excluded)
-        with self.assertLogs(level="WARNING") as logs, contextlib.suppress(FillError):
-            distribute_items_restrictive(self.multiworld)
-        self.assertTrue(
-            any("excluded or already filled" in line for line in logs.output), logs.output
+        self.assert_warns(
+            "excluded or already filled", lambda: distribute_items_restrictive(self.multiworld)
         )
 
     def linked(self, seed: int, **options: Any) -> MultiWorld:
@@ -678,11 +717,9 @@ class TestTheStartIsOpened(ZexionTestBase):
         # The same four in both players' non_local_items: no item a start location can take
         # opens it, alone or with another.
         multiworld = self.linked(1, non_local_items=OPENERS)
-        with self.assertLogs(level="WARNING") as logs, contextlib.suppress(FillError):
-            distribute_items_restrictive(multiworld)
-        self.assertTrue(
-            any("item that reaches more alone is kept out" in line for line in logs.output),
-            logs.output,
+        self.assert_warns(
+            "item that reaches more alone is kept out",
+            lambda: distribute_items_restrictive(multiworld),
         )
         for location in multiworld.get_filled_locations():
             if location.locked and location.address is not None:

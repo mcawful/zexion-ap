@@ -390,7 +390,8 @@ def _make_start_room() -> type[Choice]:
         "('random' is random_start too). Or one of the game's 34 rooms, by its name in the\n"
         "menu: a room from which your starting items reach no location, or every item does\n"
         "not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is\n"
-        "refused. automatic (the default): landing_pod, or a random start where that room is\n"
+        "refused (in Standard, whose starting weapon is drawn, only if no weapon suits it).\n"
+        "automatic (the default): landing_pod, or a random start where that room is\n"
         "refused. In any game, alone or in a multiworld, the few items that open your start are\n"
         "placed in your own world, in the area around your start: each where you can already\n"
         "reach it. Items your non_local_items keep out of your world are not. If every item\n"
@@ -442,9 +443,8 @@ class Goal(Choice):
     not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
     take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
     start_inventory): the gates then take no keys, only two of them visited (checked in game).
-    The
-    scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
-    how many disks you need."""
+    The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
+    you how many disks you need."""
 
     display_name = "Goal"
     option_core = 0
