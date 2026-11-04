@@ -954,15 +954,14 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     g_save_loaded = 3;
     g_menu = 0;
 
-    // Another translation picked while it shows: its table named for the player's cell, not left
-    // the translation's own.
+    // Another translation picked while it shows: the name picked up, written into its table.
     end_message(0);
     frames(game, 1);
     pick_up(48, 47);
+    in_cell(6);
     load_translation("French", true, L" (FR)");
     frames(game, 1);
-    check(entry_text(g_items, 47) != L"Scrap Energy (FR)" && !entry_text(g_items, 47).empty(),
-          "a language change: the new table named too");
+    check(entry_text(g_items, 47) == picked, "a language change: the name picked up kept");
     game.put_back_all(&no_callback);
     reset_translation();
 }
