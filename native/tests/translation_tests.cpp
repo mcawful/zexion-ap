@@ -1,8 +1,5 @@
 // Host tests for translation.h on a stand-in translation (stand_in.h: English(HD)'s tables as
-// the parser leaves them): the text helpers, the tables' entries, the received items' popups in
-// the translation's font (the two areas taking turns, waiting, emptying), the names written and
-// put back, a language change between a write and its put-back, the menu labels built again and
-// back, the pixel-glyph swap, and the default English left as it was.
+// the parser leaves them; docs/re/memory.md, "Translations").
 
 #include <windows.h>
 
@@ -103,7 +100,6 @@ void test_the_tables() {
     check(game.language() == "Brazilian_Portuguese", "a name with a space, as one word");
     g_translation[0x91] = 0;
     check(game.language() == "-", "the default English");
-    // A layout that differs: the translation parts stand down.
     a.small_text = g_translation + 0x38;
     check(!zap::translation_keys(a) && !zap::loaded_translation(a), "a layout not as traced");
 }
@@ -124,8 +120,7 @@ void test_popups_take_turns_and_empty() {
           "the run split: entry 70 moved to its middle");
     check(hd_object(0)[0x22C] == 1, "the message's HD object marked, as the game marks it");
 
-    // The next while the first still closes: the other area.
-    g_message_slot = 1;
+    g_message_slot = 1;  // the first still closing
     queue(game, "apply\npopup 0 FROM BOB");
     frames(game, 25);
     check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 70 &&
@@ -135,18 +130,16 @@ void test_popups_take_turns_and_empty() {
           "the second in entry 70, the first's kept");
     check(game.unload_blocker() != nullptr, "an unload waits while one is read");
 
-    // Both taken: the third waits, no message made.
     g_message_slot = 2;
     queue(game, "apply\npopup 36 FROM CAROL");
     const int made = g_messages;
     frames(game, 25);
     check(g_messages == made && game.queued_popups() == 1, "the third waits for an area");
 
-    // The first ends: its area emptied, the third takes it.
     end_message(0);
     frames(game, 1);
     check(g_hd_texts.size() == 3 && g_hd_texts[2].entry == 66, "the third in the area freed");
-    // The second's object given a translated message of the game's (GAME SAVED in its slot).
+    // The second's object taken by a translated message of the game's (GAME SAVED in its slot).
     put<void*>(hd_object(1), 0x220, slot(1));  // the slot itself, as the game binds it
     put<int32_t>(hd_object(1), 0x228, 7);  // and its message's serial
     put<int32_t>(hd_object(1), 0x20C, 98);
@@ -158,7 +151,6 @@ void test_popups_take_turns_and_empty() {
           "every area empty once its message has gone");
     check(game.unload_blocker() != nullptr, "the split: an unload no frame came for waits");
 
-    // Put back: entry 70 at its own place again.
     game.put_back_all(&no_callback);
     check(g_small->offsets[70] == seventy && !game.popup_areas().split(), "the split undone");
     check(game.unload_blocker() == nullptr, "nothing for an unload to wait for");
@@ -167,8 +159,8 @@ void test_popups_take_turns_and_empty() {
 void test_a_notice_too_long_shows_its_pixel_text() {
     zap::Game game;
     start(game);
-    // The game's GAME SAVED left slot 0 marked (docs/re/memory.md, "Translated messages").
-    // As GAME SAVED leaves slot 0's object: bound to the slot itself, an older serial.
+    // As GAME SAVED leaves slot 0's object: bound to the slot itself, an older serial, marked
+    // (docs/re/memory.md, "Translated messages").
     put<void*>(hd_object(0), 0x220, slot(0));
     put<int32_t>(hd_object(0), 0x228, 7);
     hd_object(0)[0x22C] = 1;
@@ -182,8 +174,8 @@ void test_a_notice_too_long_shows_its_pixel_text() {
     game.put_back_all(&no_callback);
 }
 
-// With the flag set but the tables not readable (here: no ItemNames loaded), and after an
-// unload's put-back: the pixel text, the slot's mark cleared, nothing borrowed.
+// Unreadable tables (no ItemNames loaded), and an unload's put-back: the pixel text, nothing
+// borrowed.
 void test_the_pixel_text_when_the_tables_cannot_be_used() {
     zap::Game game;
     start(game);
@@ -213,8 +205,8 @@ void test_the_pixel_text_when_the_tables_cannot_be_used() {
     game.put_back_all(&no_callback);
 }
 
-// A translation whose borrowed run holds text (here entry 68): no split, nothing written, and
-// the popup in its pixel text (PopupAreas::prepare takes the run only with every entry empty).
+// A borrowed run with text in one entry (68) is not split: PopupAreas::prepare takes the run only
+// with every entry empty.
 void test_the_run_not_borrowed_when_an_entry_holds_text() {
     zap::Game game;
     start(game);
@@ -236,7 +228,7 @@ void test_the_run_not_borrowed_when_an_entry_holds_text() {
 void test_a_whole_notice() {
     zap::Game game;
     start(game);
-    // Longer than an area, within the run: both free, the whole run.
+    // Longer than an area, within the run.
     std::string notice = "apply\nnotice 44 HINT:";
     for (int i = 0; i < 16; ++i) notice += " MORE";
     queue(game, notice.c_str());
@@ -245,7 +237,6 @@ void test_a_whole_notice() {
               g_hd_texts[0].text.size() > 80,
           "the whole run, by entry 66");
     check(game.popup_areas().in_use(), "both taken");
-    // A popup while the notice shows: it waits, the notice's text left whole.
     const std::wstring shown = entry_text(g_small, 66);
     g_message_slot = 1;
     queue(game, "apply\npopup 36 FROM ALICE");
@@ -273,10 +264,8 @@ void test_the_last_item_name() {
     game.put_back_all(&no_callback);
 }
 
-// The same translation loaded again into the same buffers (same pointers and count, as the
-// allocator may give them), its texts and offsets now another load's: nothing the helper wrote
-// is taken for its own, so neither the area is emptied over the new text nor entry 70 put back
-// over the new table's own offset.
+// The same translation reloaded into the same buffers (the allocator may give them): what the
+// helper wrote is no longer taken for its own, so nothing is emptied or put back over it.
 void test_a_reload_in_place() {
     zap::Game game;
     start(game);
@@ -306,13 +295,11 @@ void test_a_language_change_mid_popup() {
     LoadedTable* old_small = g_small;
     const int32_t moved = old_small->offsets[70];
     const std::wstring shown = entry_text(old_small, 66);
-    // The player picks French: every buffer and table freed, new ones loaded.
-    load_translation("French", true, L" (FR)");
+    load_translation("French", true, L" (FR)");  // every buffer and table new
     frames(game, 1);
     check(entry_text(old_small, 66) == shown && old_small->offsets[70] == moved,
           "nothing written into the old tables");
     check(!game.popup_areas().split() && !game.popup_areas().in_use(), "the old split forgotten");
-    // The next popup: the split made again in the new table.
     end_message(0);
     queue(game, "apply\npopup 36 FROM BOB");
     frames(game, 25);
@@ -338,7 +325,6 @@ void test_the_names_written_and_put_back() {
           "written in place");
     check(names.original({zap::Table::kItems, 47}) == std::wstring(L"Scrap Energy"),
           "the translation's own kept");
-    // A name too long for its room: cut to it.
     const int32_t room = g_items->offsets[49] - g_items->offsets[48] - 1;
     names.watch(zap::loaded_translation(a),
                 {{{zap::Table::kItems, 48}, std::wstring(200, L'X')}});
@@ -361,14 +347,12 @@ void test_the_names_written_and_put_back() {
               entry_text(old_items, 47) == L"MASTER SWORD\nFOR ALICE" && names.held() == 0,
           "put back into the new table only");
 
-    // One the game changed since (reloaded in place) is not put back.
     names.watch(zap::loaded_translation(a), want);
     const int32_t at47 = g_items->offsets[47];
     g_items->text[at47] = L'Z';
     names.restore(zap::loaded_translation(a));
     check(entry_text(g_items, 47)[0] == L'Z', "an entry no longer as written: left alone");
 
-    // The default English picked (the flag clear): put back, nothing written.
     load_translation("English(HD)", true);
     names.watch(zap::loaded_translation(a), want);
     g_translation[0x91] = 0;
@@ -413,8 +397,7 @@ void test_the_default_english_untouched() {
     check(game.language() == "-", "hello: the default English");
     game.put_back_all(&no_callback);
 
-    // No translation ever loaded (the pointers null).
-    zap::Game fresh;
+    zap::Game fresh;  // no translation ever loaded: the pointers null
     reset_game();
     reset_translation();
     check(configure(fresh).empty(), "configured");
@@ -441,9 +424,8 @@ void test_archipelago_built_again_and_back() {
     zap::GameAddresses a = panel.addresses();
     with_translation(a);
     HdGlyphs<3 * zap::kLabelLength> hd(panel.label);
-    // The game attaches the panel's text before it places the panel: built at its first pixel
-    // glyph's place then, less 1 (0x8AC30), the window's corner; the panel then placed, its
-    // pixel glyphs at the label's place and its translated glyphs moved with them (0xA79E0).
+    // The text attached before the panel is placed, at the window's corner (docs/re/memory.md,
+    // "Where a rebuilt label goes").
     built(panel.label, -1.0, -1.0);
     for (BYTE* g : panel.glyph_list) put<double>(g, 0x40, 160.0), put<double>(g, 0x48, 101.0);
     zap::ArchipelagoChoice choice;
@@ -455,8 +437,7 @@ void test_archipelago_built_again_and_back() {
           "its translated text built again where the game's attach would build it now");
     check(hd.x(0) == 159.0 && hd.y(0) == 99.0 && get<int32_t>(panel.label, 0x248) == 11,
           "on the panel, not in the window's corner");
-    // The panel placed elsewhere since (0xA79E0: its pixel glyphs placed, its translated glyphs
-    // moved by as much, the place the build was given left as it was).
+    // The panel placed elsewhere since, the place the build was given left as it was.
     for (BYTE* g : panel.glyph_list) put<double>(g, 0x40, 170.0), put<double>(g, 0x48, 120.0);
     for (int i = 0; i < 11; ++i) {
         put<double>(hd.glyphs[i], 0x40, hd.x(i) + 11.0);
@@ -467,8 +448,7 @@ void test_archipelago_built_again_and_back() {
               g_builds[1].y == 119.0f && hd.x(0) == 169.0,
           "and back to entry 354's, where the panel is now");
 
-    // A hidden panel's label (the file select before an empty slot is picked): built hidden,
-    // its count kept for the game to show when the panel shows.
+    // A hidden panel's label (the file select before an empty slot is picked).
     g_builds.clear();
     for (int i = 0; i < 11; ++i) hd.glyphs[i][0x120] = 0;
     panel.reset_label();
@@ -478,7 +458,6 @@ void test_archipelago_built_again_and_back() {
           "a hidden label built again hidden, its count kept");
     check(choice.restore(a, &archipelago) && hd.glyphs[0][0x120] == 0, "and put back hidden");
 
-    // A label whose pixel glyphs cannot be read is not built again.
     g_builds.clear();
     BYTE** list = get<BYTE**>(panel.label, 0x228);
     put<BYTE**>(panel.label, 0x228, nullptr);
@@ -486,15 +465,13 @@ void test_archipelago_built_again_and_back() {
               g_builds.empty(),
           "no first pixel glyph: nothing built");
     put<BYTE**>(panel.label, 0x228, list);
-    // Nor one with more glyphs than its translated text holds (the builder would lay the rest
-    // over its last glyph).
+    // More glyphs than the translated text holds: the builder would lay the rest over its last.
     check(!zap::rebuild_label(a, panel.label, std::wstring(34, L'A'), {.attached = true}) &&
               zap::rebuild_label(a, panel.label, std::wstring(33, L'A') + L"   ",
                                  {.attached = true}) &&
               g_builds.size() == 1,
           "a text past its capacity refused; spaces take no glyph");
 
-    // The default English: nothing built.
     g_builds.clear();
     g_translation[0x91] = 0;
     panel.reset_label();
@@ -502,10 +479,8 @@ void test_archipelago_built_again_and_back() {
     check(g_builds.empty(), "with the flag clear, no translated text built");
 }
 
-// In a translation the locked ASSIST is its translated text with the padlock after it, in the
-// locked style, built where the game's attach builds it; the padlock left out where it would pass
-// the options box; built again when the game builds the label again; the entry's text back when
-// unlocked. With the flag clear, the pixel look, the padlock eighth.
+// In a translation the locked ASSIST is its translated text and the padlock, in the locked style;
+// with the flag clear, the pixel look alone.
 void test_assist_in_a_translation(bool on = true) {
     reset_translation();
     load_translation("English(HD)", on);
@@ -549,7 +524,6 @@ void test_assist_in_a_translation(bool on = true) {
               g_builds.back().x == 136.0f && g_builds.back().y == 171.0f && count() == 7 &&
               all_locked_style() && !zap::pixel_glyphs_shown(options.label),
           "its translated text with the padlock, in the locked style, its pixel glyphs hidden");
-    // Kept while locked; the game building the label again is noticed and built over.
     const size_t builds = g_builds.size();
     put<int32_t>(hd.glyphs[0], 0x1D0, 5);  // the menu restyles it
     put<float>(hd.glyphs[1], 0x84, 1.0f);
@@ -564,7 +538,6 @@ void test_assist_in_a_translation(bool on = true) {
               get<float>(hd.glyphs[0], 0x84) == 1.0f,
           "unlocked: the entry's text again, at full alpha");
 
-    // A box too narrow for the padlock: the text alone.
     g_builds.clear();
     put<double>(piece, 0x40, 176.0);
     zap::AssistLock narrow;
@@ -573,8 +546,7 @@ void test_assist_in_a_translation(bool on = true) {
           "the padlock left out where it would pass the box");
     narrow.restore(a);
 
-    // A translation drawn as pixels (Font Style and Icon Style 1, as French): a space before the
-    // pixel padlock, as before.
+    // A translation drawn as pixels (Font Style and Icon Style 1, as French).
     g_builds.clear();
     put<double>(piece, 0x40, 193.0);
     put<int32_t>(g_translation, 0xA8, 1);
@@ -585,9 +557,8 @@ void test_assist_in_a_translation(bool on = true) {
     pixel.restore(a);
 }
 
-// The options menu built again after Video in English(HD), as the owner saw on the 1.0.0 RC: the
-// new menu's VERSION 1.20 in the locked ASSIST's freed place is left as the game built it (its
-// pixel glyphs and its translated text), and the new ASSIST's text is built with the padlock.
+// The options menu built again after Video: VERSION 1.20 in the locked ASSIST's old place is left
+// as the game built it, and the new ASSIST gets the padlock.
 void test_assist_in_a_translation_after_the_menu_is_built_again() {
     reset_translation();
     load_translation("English(HD)", true);
@@ -608,8 +579,7 @@ void test_assist_in_a_translation_after_the_menu_is_built_again() {
     zap::AssistLock lock;
     check(lock.install(a), "locked");
 
-    // Built again where it was: VERSION 1.20 (no callback, in its own panel, its text built by
-    // the game) in the old ASSIST's place, the new ASSIST sixth of the selectable eight.
+    // VERSION 1.20 (no callback, its own panel) in the old ASSIST's place; the new ASSIST sixth.
     BYTE* version_list[1] = {};
     options.rebuild_in_place(fresh, version_list);
     built(options.label, 8.0, 8.0);
@@ -639,9 +609,8 @@ void test_assist_in_a_translation_after_the_menu_is_built_again() {
           "unlocked: the new ASSIST's text and callback back, VERSION untouched");
 }
 
-// The popups' layout in a translation's font: lines measured as the builder lays them out (a
-// stand-in pixel font, every character 6 wide, a space 3), wrapped at the cap, a popup's lines
-// centered with spaces, a notice's left as they wrap; without metrics, wrapped by characters.
+// The popups' layout in a translation's font, on a stand-in pixel font: every character 6 wide,
+// a space 3.
 void test_the_popup_layout() {
     reset_translation();
     load_translation();
@@ -691,9 +660,8 @@ void test_the_popup_layout() {
     reset_translation();
 }
 
-// The icon sheets through the game: painted while a translation shows, cleared when the default
-// English is picked and before an unload (put_back_all), and left as the game's where a cell is
-// its.
+// The icon sheets through the game: painted while a translation shows, cleared otherwise and
+// before an unload.
 void test_the_icons_through_the_game() {
     zap::Game game;
     start(game);
@@ -724,7 +692,6 @@ void test_the_icons_through_the_game() {
     check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
           "cleared before an unload");
 
-    // A cell the game's art uses: left as it is.
     zap::Game other;
     start(other);
     gl_fake::reset_gl();
@@ -739,9 +706,8 @@ void test_the_icons_through_the_game() {
     reset_translation();
 }
 
-// A popup measured as the font draws it, through the game: a pixel font (every character 6 wide,
-// a space 3) and its icon sheet (each icon 8 wide), the icon led name over the suffix, each
-// line centered on the widest; a long notice wrapped at 192 pixels.
+// A popup measured as the font draws it, through the game: every character 6 wide, a space 3,
+// each icon 8.
 void test_a_popup_laid_out_by_the_font() {
     zap::Game game;
     start(game);
@@ -765,7 +731,6 @@ void test_a_popup_laid_out_by_the_font() {
               g_hd_texts[0].text == L"\xE029" L"Missile Box\n    from Bob",
           "the icon led name over the suffix, centered with spaces, measured with the icon's "
           "width");
-    // A notice longer than a line: wrapped, no line wider than 192.
     end_message(0);
     frames(game, 200);
     g_hd_texts.clear();
@@ -792,9 +757,8 @@ void test_a_popup_laid_out_by_the_font() {
     reset_translation();
 }
 
-// A stand-in's name written into ItemNames through the game: its lines centered with leading
-// spaces as a received item's popup's, unless the spaces would not fit the entry's room (33
-// characters for entry 47 here), when it is written as it is, so no name is cut.
+// A stand-in's name centered as a popup's lines, unless the spaces would pass the entry's room
+// (33 characters for entry 47 here): then as it is, so no name is cut.
 void test_a_stand_in_name_centered_through_the_game() {
     zap::Game game;
     start(game);
@@ -833,10 +797,8 @@ void test_a_stand_in_name_centered_through_the_game() {
     reset_translation();
 }
 
-// A stand-in's name stays as it was picked up while its pickup message shows (the HD message
-// reads ItemNames 47 again every frame): walking into the next cell or pausing leaves it, and
-// it follows the player again once the message ends. A stand-in of that record within reach
-// takes it, for the next pickup.
+// A stand-in's name is held as picked up while its pickup message shows: the HD message reads
+// ItemNames 47 again every frame.
 void test_a_stand_in_name_held_while_its_popup_shows() {
     zap::Game game;
     start(game);
@@ -875,7 +837,6 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     frames(game, 1);
     check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos,
           "a message of another entry holds nothing");
-    // SmallText 47 (kind 0), and an object bound to an earlier message of the slot: neither holds.
     in_cell(5);
     frames(game, 1);
     pick_up(44, 47);
@@ -899,8 +860,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     in_cell(6);
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "held again for the next pickup");
-    // Another Scrap Energy stand-in, for (8, 2), within reach, a Scrap Chunk one for (5, 2)
-    // nearer: 47 named for its own, for the next pickup.
+    // A Scrap Energy stand-in for (8, 2) within reach, a Scrap Chunk one for (5, 2) nearer.
     field<double>(0x1100) = 1000;
     field<double>(0x1108) = 600;
     auto object = [](int k, int16_t record, int column, double x) {
@@ -929,8 +889,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     check(entry_text(g_items, 47) == L"Scrap Energy", "paused with the message ended: put back");
     g_menu = 0;
 
-    // Another pickup of that record no scan had seen (a newer message in slot 1, the first still
-    // closing in slot 0): named as the frame names it, then held.
+    // A pickup no scan had seen, in slot 1, the first still closing in slot 0.
     in_cell(5);
     frames(game, 1);
     pick_up(50, 47);
@@ -947,8 +906,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     end_message(0);
     frames(game, 1);
 
-    // The map open (its menu current, its first child holding the map's handler, wrapped): the
-    // game's own name for the map cursor's squares, and the held one again once it closes.
+    // The map open: its menu current, its first child holding the map's handler, wrapped.
     int map_handler = 0, hook = 0;
     zap::Hooks hooks;
     hooks.map = &hook;
@@ -976,7 +934,6 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     g_menu = 0;
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "the map closed: the name picked up again");
-    // Open again with no wrap (no map hook): the game's own name all the same.
     game.set_hooks({});
     put<void*>(child, 0x168, &map_handler);
     put<void*>(child, 0x178, &map_handler);
@@ -993,7 +950,6 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     frames(game, 1);
     g_map_handler = nullptr;
 
-    // Back at the title with the message still bound: no save, so nothing held.
     in_cell(5);
     frames(game, 1);
     pick_up(47, 47);
@@ -1004,7 +960,6 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     g_save_loaded = 3;
     g_menu = 0;
 
-    // Another translation picked while it shows: the name picked up, written into its table.
     end_message(0);
     frames(game, 1);
     pick_up(48, 47);
@@ -1012,7 +967,6 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     load_translation("French", true, L" (FR)");
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "a language change: the name picked up kept");
-    // The client gone with the message still bound: put back, and not written again.
     game.client_gone(&no_callback);
     frames(game, 2);
     check(entry_text(g_items, 47) == L"Scrap Energy (FR)", "the client gone: put back for good");
@@ -1020,8 +974,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     reset_translation();
 }
 
-// The suffix's case, the owner's choice: in its own case in English(HD) only ("from Bob"); in
-// capitals in any other translation, as in the default English's pixel text.
+// The suffix in its own case in English(HD) only; in capitals elsewhere.
 void test_the_suffix_case() {
     zap::Game hd;
     start(hd);
@@ -1050,9 +1003,8 @@ void test_the_suffix_case() {
     reset_translation();
 }
 
-// The mod's own text in mixed case in English(HD) only (the owner's choice, 2026-11-02): a
-// client's notice, the helper's own, a label and the scanner's line in the case they were
-// written in; in capitals in French and in the default English's pixel text.
+// The mod's own text in mixed case in English(HD) only; in capitals in French and in the default
+// English's pixel text.
 void test_the_mixed_case() {
     struct Language {
         const char* name;
@@ -1065,7 +1017,6 @@ void test_the_mixed_case() {
         zap::Game game;
         start(game, language.on);
         if (language.on) load_translation(language.name);
-        // A client's notice (an Area Map's hint).
         queue(game, "apply\nnotice 49 Hint: Slide Mod is at Guardia 22,7");
         frames(game, 1);
         const std::wstring hint = g_hd_texts.empty() ? L"" : g_hd_texts.back().text;
@@ -1077,7 +1028,6 @@ void test_the_mixed_case() {
             check(g_hd_texts.empty() && g_text.find("HINT: SLIDE MOD IS AT") != std::string::npos,
                   "a client's notice in pixels", where);
         }
-        // A label sent in mixed case, its lines kept in both cases.
         std::map<int, zap::Label> labels;
         const std::string text = "AP Item\nfor Alice";
         check(zap::parse_labels("ap_labels\nlabel 5 2 " + hex(text), labels).empty() &&
@@ -1094,8 +1044,6 @@ void test_the_mixed_case() {
             check(game.hd_label_text(cell, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
                   "the map cursor's", where);
         }
-        // Another Zexion player's item with no name of the client's: in English(HD), the
-        // translation's own name for it.
         std::map<int, zap::Label> zexion;
         check(zap::parse_labels("ap_labels\nlabel 6 2 " + hex(std::string("@36\nfor Bob")),
                                 zexion)
@@ -1107,9 +1055,8 @@ void test_the_mixed_case() {
             check(!own_name.empty() &&
                       game.hd_label_text(2 * 54 + 6, false, false) == own_name + L"\nfor Bob",
                   "another Zexion player's item by the translation's name");
-            // Another player's Scrap Energy (@47) where the player stands: its name is the
-            // game's own, not the label the helper writes into that same entry, frame after
-            // frame.
+            // @47 where the player stands: the game's own name, not grown from the label the
+            // helper writes into that same entry each frame.
             own_stand_ins(g_records);
             field<uint8_t>(0x107A) = 2;
             field<uint8_t>(0x107B) = 7;
@@ -1121,7 +1068,6 @@ void test_the_mixed_case() {
                   "@47: the game's own name, written once, not grown from the helper's",
                   std::string(entry_text(g_items, 47).size(), '.'));
         }
-        // The scanner's line: in the pixel Text table always in capitals.
         game.set_discs(3, 12, "Collect 12 OS Install Disks!", true);
         frames(game, 1);
         if (language.on) {

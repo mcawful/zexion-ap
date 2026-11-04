@@ -667,7 +667,10 @@ the helper:
 - while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
   1008) in the sprite texture (blank there in the game's art, checked as the glyphs are), and
   points the row's icon sprite at one frame-list entry the helper owns: a copy of the small Data
-  Disc's (frame 829) with the image's place, drawn 24 x 24. The entry is allocated once and
+  Disc's (frame 829) with the image's place, drawn 24 x 24 at (160, 184) (`kIconY`): 4 above
+  the middle of the game's four key icons, (160, 188) (`docs/re/memory.md`, "The pause screen's
+  KEYS row"). What 184 itself was read from is not recorded (the code called it read live on B1,
+  2026-10-24); the disc there looked right in game (2026-10-26). The entry is allocated once and
   kept for good, never freed, so a pause screen still holding it after an unload points at live
   memory; whenever the image is not painted (the row off, before an unload, a texture it could
   not paint into) the entry shows frame 829's place instead, the game's disc enlarged until the
@@ -787,10 +790,12 @@ the helper:
   fade turned back when the helper takes its opener back, another transition's fade left alone, a
   death's own fade left alone, and `discs` turned off after such a save.
 
-With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it
-shows each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
-(`src/files.cpp`, wrapping each entry's handler): DISK over KEYS, and the count. Nothing shows
-for a save with no disk; the client's count wins for its seed's slots.
+With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it shows
+each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
+(`src/files.cpp`, wrapping each entry's handler): DISK over KEYS, and the count. The count's two
+digits sit 5 px below their row (`kCountDrop`), centered on the items bracket beside them (`0xD9`
+over `0xDA`, rows 3 and 4: its middle 7.5 px below row 3's top, a digit's 3, so 4.5; 5 chosen in
+game). Nothing shows for a save with no disk; the client's count wins for its seed's slots.
 
 Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
@@ -969,11 +974,12 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   read; the capitals are that client's `client/aplabels.py`).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
-  marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer
-  section is at +0xCDD6D0"; the file select's own grid merge around it is not traced); the
-  on-screen write's patch from that same look,
-  until the first frame call that finds no labels or another save loaded (bytes there other than
-  the game's write as traced are left alone, and nothing reports it: the stand-in then flips as
+  marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
+  is at +0xCDD6D0"; the file select's own grid merge around it is not traced; a player who pauses at
+  once and opens the map sees the squares raised within about 32 frame calls: two looks, one every
+  16th); the on-screen write's patch from that same look, until the first frame call that finds no
+  labels or another save loaded (bytes there other than the game's write as traced are left alone,
+  and nothing reports it: the stand-in then flips as
   before); the names while the map is open and this seed's save is loaded.
 - **Put back:** the markers are not: the game saves the map grid, and they stay as the game would
   have set them. The on-screen write goes back as above, when a client goes away and before an

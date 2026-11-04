@@ -13,8 +13,7 @@
 
 namespace zap {
 
-// Copies `size` bytes from `from` into `to`, or returns false if they are not committed,
-// readable memory (or reading them faults).
+// Copies `size` bytes from `from` into `to`; false if they are not readable or reading faults.
 bool safe_read(const void* from, void* to, size_t size);
 
 // Whether `size` bytes at `at` are committed memory the game may write (no guard page).
@@ -26,18 +25,15 @@ bool read(const BYTE* base, ptrdiff_t offset, T& out) {
     return base != nullptr && safe_read(base + offset, &out, sizeof(T));
 }
 
-// Game frames, from `frame_clock` (docs/re/memory.md, "The mission prompt"): the 64-bit count
-// the play-frame function (0x7A9E0) adds 1 to once a game update (0x7B8DB), skipped while a menu
-// has the game's layers paused (0x7B4CD). The helper's frame call comes once a swap, which can be more often (166 a second at
-// 165 Hz, against the game's 60: the main loop draws and swaps again with no update, 0x7CC9E,
-// 0x7CDD0 to 0x7CE04), so counts meant in game frames are taken from here.
+// Game frames, from `frame_clock`, which counts game updates (none while a menu pauses the game);
+// the helper's frame call comes once a swap, which can be more often (docs/re/memory.md, "Live
+// item objects", "The mission prompt").
 class GameFrames {
 public:
     // The most one look adds: a clock that jumps (a reload, say) counts as this many.
     static constexpr int kMaxStep = 8;
     // The game frames since the last look: 0 at the first, after the clock went back, or while
-    // it stands still (a menu up); 1 a look while it cannot be read (null in host tests), as a
-    // count of frame calls.
+    // it stands still; 1 while it cannot be read (null in host tests), counting frame calls.
     int step(const BYTE* clock) {
         int64_t now = 0;
         if (!read(clock, 0, now)) return 1;
@@ -102,8 +98,7 @@ bool live_widget(const BYTE* w, const void* handler, const void* callback);
 // and can be written: whether it did.
 bool swap_pointer(BYTE* base, ptrdiff_t offset, const void* from, const void* to);
 
-// An item record's fields the helper checks before it writes one (record::), as the game loads
-// them; matches compares them with a record's copy.
+// An item record's fields as the game loads them, which matches checks before a record is written.
 struct RecordShape {
     int16_t kind = 0, frame = 0, ticks = 0, frames = 0;
     uint8_t icon = 0, palette = 0;
@@ -123,8 +118,8 @@ inline bool record_named(const BYTE* r, std::string_view name) { return record_n
 // Writes `name` as the record's name, cut to fit and NUL-padded, if it is not that already.
 void set_record_name(BYTE* r, std::string_view name);
 
-// Whether `wanted` is still on the list of open menus, from [current_menu] down (menu::kBelow).
-// The walk stops after kMaxMenus, far more than the game ever stacks.
+// Whether `wanted` is still on the list of open menus, from [current_menu] down, within
+// kMaxMenus (far more than the game ever stacks).
 constexpr int kMaxMenus = 64;
 bool is_open(const BYTE* current_menu, const BYTE* wanted);
 
@@ -132,8 +127,7 @@ bool is_open(const BYTE* current_menu, const BYTE* wanted);
 int32_t frame_of(const BYTE* sprite);
 // A sprite's frame list (sprite::kFrameList), if it has frame `frame`; else null.
 BYTE* frame_list(const BYTE* sprite, int32_t frame);
-// Shows frame `frame` of a sprite's frame list (its index and its frame pointer), if the list
-// has that many; false, with nothing written, otherwise.
+// Shows frame `frame` of a sprite's frame list, if it has that many; else false, nothing written.
 bool set_frame(BYTE* sprite, int32_t frame);
 // Whether each of `glyphs` shows its character of `text` (its frame), one glyph a character.
 bool glyphs_show(BYTE* const* glyphs, std::string_view text);
@@ -154,10 +148,9 @@ bool patch_code(BYTE* at, const void* bytes, size_t size);
 // Whether the code at `at` reads `bytes` (`size` of them, up to kMaxCodePatch).
 constexpr size_t kMaxCodePatch = 64;
 bool code_reads(const BYTE* at, const void* bytes, size_t size);
-// Puts `original` back where the code at `at` still reads `written` (patch_code): whether it is
-// no longer the helper's (put back, or changed by something else since). False while it still
-// reads as written, the put-back failed (or `size` is over kMaxCodePatch): the helper then holds
-// it and refuses to unload.
+// Puts `original` back where the code at `at` still reads `written`: true once it is no longer
+// the helper's (put back, or changed since). False while it still reads as written (the put-back
+// failed, or `size` is over kMaxCodePatch): the helper then holds it and refuses to unload.
 bool put_back_code(BYTE* at, const void* written, const void* original, size_t size);
 
 }  // namespace zap

@@ -20,7 +20,7 @@ namespace {
 // An entry's save block (its slot's first block, laid out as slot::) and its slot
 // (docs/re/memory.md, "The file select").
 constexpr ptrdiff_t kChildBlock = 0x1F8, kChildSlot = 0x230;
-// The entry (read live on B1, 2026-10-24): 145 glyphs, 5 rows of 29.
+// The entry: 145 glyphs, 5 rows of 29.
 constexpr int32_t kEntryGlyphs = 145, kEntryColumns = 29, kEntries = 3;
 constexpr int kRow2 = 2 * kEntryColumns;
 // The keys' block, columns 27 and 28 of rows 2 to 4: the header, then the circles.
@@ -34,25 +34,21 @@ constexpr int32_t kBlank = 0, kSpace = 0x20;
 // layout (0xA79E0: each glyph at the label's place plus 8 a column and 8 a row).
 constexpr ptrdiff_t kBoxTop = 0x130, kBoxBottom = 0x140;
 constexpr double kRowHeight = 8.0;
-// The count's glyphs drop 5 px to center on the items bracket beside them (0xD9 over 0xDA, rows
-// 3 and 4: center 7.5 below row 3's top; a digit's 3, so 4.5; 5 chosen in game).
+// The count's glyphs drop kCountDrop to center on the items bracket beside them (rows 3 and 4).
 constexpr int kCountGlyphs[2] = {kKeyCircles[0], kKeyCircles[1]};
 constexpr double kCountDrop = 5.0;
 constexpr intptr_t kFill = 0xF;
-// The logo's cells: right of FILE NN (columns 8 to 14 of row 0), columns 16 and 17 of rows 0
-// and 1, blank in every entry read live (B1, 2026-10-26); glyphs 15 and 44, beside them in rows
-// 0 and 1, which the helper never moves, give the rows. The logo is raised 4 px, so that its 16
-// rows center on FILE NN's 8 and stay 4 px clear of the row below.
+// The logo's cells, columns 16 and 17 of rows 0 and 1, right of FILE NN, blank in every entry;
+// glyphs 15 and 44 beside them, never moved, give the rows. Raised 4 px, so its 16 rows center on
+// FILE NN's 8 and stay 4 px clear of the row below.
 constexpr int kLogoCells[4] = {16, 17, kEntryColumns + 16, kEntryColumns + 17};
 constexpr int kLogoRowGlyphs[2] = {15, kEntryColumns + 15};
 constexpr double kLogoRaise = 4.0;
-// A glyph shows its own colors in palette 26 (0x368A0: the fixed pipeline, the texture times
-// the one color its style picks) at style 0x15 (white); the shader palettes (2, as the keys')
-// would not keep them (docs/re/memory.md, "The file select").
+// A glyph shows its own colors in palette 26 (0x368A0) at style 0x15 (white); the shader
+// palettes (2, as the keys') would not keep them (docs/re/memory.md, "The file select").
 constexpr int16_t kOwnColorsPalette = 26;
 constexpr int32_t kWhiteStyle = 0x15;
 
-// One of the entry handlers: the file select's, COPY FILE's or DELETE FILE's.
 bool is_entry_fn(const GameAddresses& a, void* fn) {
     return fn != nullptr &&
            (fn == a.file_entry_fn || fn == a.copy_entry_fn || fn == a.delete_entry_fn);
@@ -102,9 +98,8 @@ void shift_glyph(BYTE* glyph, double row, double shift, bool moved) {
     put(glyph, kBoxBottom, bottom + (to - from));
 }
 
-// Moves the count's glyphs between their row and kCountDrop below it: down while `dropped`, else
-// back up. Their row is found from the glyphs above and below them (85 and 143), which the helper
-// never moves.
+// Moves the count's glyphs down kCountDrop while `dropped`, else back up; their row is found
+// from the glyphs above and below them (85 and 143), which the helper never moves.
 void place_count(BYTE* (&g)[kEntryGlyphs], bool dropped) {
     double above = 0, below = 0;
     if (!read(g[kKeysHeader[0]], sprite::kY, above) ||
@@ -115,8 +110,7 @@ void place_count(BYTE* (&g)[kEntryGlyphs], bool dropped) {
     for (int i : kCountGlyphs) shift_glyph(g[i], above + kRowHeight, kCountDrop, dropped);
 }
 
-// Moves the logo's glyphs between their rows and kLogoRaise above them: up while `raised`, else
-// back down.
+// Moves the logo's glyphs up kLogoRaise while `raised`, else back down.
 void place_logo(BYTE* (&g)[kEntryGlyphs], bool raised) {
     double row0 = 0, row1 = 0;
     if (!read(g[kLogoRowGlyphs[0]], sprite::kY, row0) ||
@@ -308,8 +302,8 @@ void FileEntries::restore(const GameAddresses& a) {
             continue;
         }
         // Only an entry still holding the helper's handler is the one wrapped: a menu closed and
-        // built again at the same address may put another entry, holding the game's, in its
-        // place (as the options menu does after Video, GENERAL or ASSIST, docs/re/memory.md, "The assist menu").
+        // built again at the same address may put another in its place (docs/re/memory.md, "The
+        // assist menu").
         const bool ours = a.hooks.file_entry != nullptr &&
                           pointer_at(entry, widget::kHandler) == a.hooks.file_entry;
         // The keys' block, the logo's cells and their glyphs' rows as the game left them.

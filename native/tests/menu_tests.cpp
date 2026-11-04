@@ -1,6 +1,5 @@
-// Host tests for menu.h: the ARCHIPELAGO choice on a stand-in game-mode panel and the ASSIST
-// lock on a stand-in options menu, both laid out as traced on B1, and each left alone when
-// anything on the way does not match.
+// Host tests for menu.h: the ARCHIPELAGO choice and the ASSIST lock on stand-in menus laid out as
+// traced on B1, each left alone when anything on the way does not match.
 
 #include <windows.h>
 
@@ -137,28 +136,24 @@ void test_the_panel_handler_goes_back_whatever_became_of_the_choice() {
     a.hooks.panel = reinterpret_cast<void*>(&panel_hook);
     void*& handler = at<void*>(stand.panel, 0x2F8);
     choice.install(a, &archipelago);
-    // The choice no longer looks like the one relabeled: its callback is not the helper's.
-    at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);
+    at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);  // not the helper's
     check(!choice.restore(a, &archipelago), "the choice is not written");
     check(handler == a.panel_handler_fn && !choice.holds_hook(),
           "but the game's handler is back on the panel");
 
-    // Released likewise.
     at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);
     choice.install(a, &archipelago);
     at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);
     check(!choice.release(a, &archipelago) && handler == a.panel_handler_fn && !choice.holds_hook(),
           "released: the game's handler back too");
 
-    // A menu closed: freed with its panel, which is not written; the hook is forgotten.
     choice.install(a, &archipelago);
     BYTE file_screen[0x80] = {};
     stand.current = file_screen;
     check(!choice.restore(a, &archipelago) && handler == a.hooks.panel && !choice.holds_hook(),
           "a closed menu's panel is left as it is, and forgotten");
 
-    // Another panel in the open menu's place: the old one is not known to be alive, so the hook
-    // stays remembered (and the helper loaded) until the menu closes.
+    // Another panel in the open menu's place: the old one may be alive, so the hook stays held.
     stand.current = stand.menu;
     handler = a.panel_handler_fn;
     at<void*>(stand.child, 0x2C0) = reinterpret_cast<void*>(&rando_menu);
@@ -437,9 +432,8 @@ std::string whole_label(stand_in::OptionsMenu& o) {
 
 constexpr char kVersion[zap::kAssistLength + 1] = "VERSION 1.20";
 
-// Leaving Video builds the options menu again, maybe at the same address, the new VERSION 1.20
-// in the locked ASSIST's freed place and the new ASSIST elsewhere: the lock must take the new
-// ASSIST and leave VERSION as the game built it.
+// Leaving Video builds the options menu again, maybe in place, VERSION 1.20 where the locked
+// ASSIST was: the lock must take the new ASSIST and leave VERSION as the game built it.
 struct RebuiltOptions {
     Options options;  // the menu, rebuilt in place: its old ASSIST widget now VERSION
     Options fresh;    // the new ASSIST widget, its label and glyphs
@@ -503,9 +497,8 @@ void test_assist_lock_without_the_padlock_frame() {
           "and unlocked");
 }
 
-// The locked entry found again only as it was left: in the panel it was locked in, with the
-// padlock eighth. Anything else at its address is forgotten, and nothing drawn on it again (the
-// game's restyle stays).
+// The locked entry is found again only as it was left, in its panel with the padlock eighth;
+// anything else at its address is forgotten, not drawn on.
 void test_assist_lock_found_again_only_as_left() {
     struct Case {
         const char* what;

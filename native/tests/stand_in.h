@@ -1,6 +1,5 @@
-// A stand-in "game" for the native tests: this program's own data and functions, laid out
-// as the helper expects the game's (player state, inventory, item records, the popup's last
-// message, and functions with the traced prototypes). Configured by RVA like the real game.
+// A stand-in "game" for the native tests: this program's own data and functions, laid out as
+// the helper expects the game's, with the traced prototypes, configured by RVA like the game.
 #pragma once
 
 #include <windows.h>
@@ -53,16 +52,14 @@ inline void spawn_handler(char row, char column, BYTE* event) {
 // The game's fade (mission.h, fade_state) and the global level it moves.
 inline BYTE g_fade[zap::fade_state::kSize] = {};
 inline int8_t g_fade_level = 4;
-// Sets the fade as 0x1F6C40 does for layer 0: the level, unless 0xFE (left as it is), then the
-// step, the countdown (the step) and the target.
+// As 0x1F6C40 for layer 0: the level (unless 0xFE), the step, the countdown (the step), the target.
 inline void set_fade(int8_t target, int8_t level, int8_t step) {
     if (level != static_cast<int8_t>(0xFE)) g_fade_level = level;
     at<int8_t>(g_fade, zap::fade_state::kStep) = step;
     at<int8_t>(g_fade, zap::fade_state::kCountdown) = step;
     at<int8_t>(g_fade, zap::fade_state::kTarget) = target;
 }
-// Type 1's (the fade, mission.h): counts its calls, keeps each record it was given as it was
-// then (the last one's address too), and sets the fade from it (target, level, step words).
+// Type 1's handler (the fade): counts its calls, copies each record given, sets the fade from it.
 inline int g_fade_calls = 0;
 inline BYTE* g_fade_event = nullptr;
 inline std::vector<std::vector<BYTE>> g_fades;
@@ -109,12 +106,8 @@ inline int32_t g_current_slot = 0;
 inline int g_newgames = 0;
 inline void newgame_fn() { ++g_newgames; }
 
-// The game-mode panel's surroundings: the most recent menu, the randomizer menu's state, the
-// menu functions, and START GAME's steps, which log their order and queue a new game as the
-// game's do (unless the slot is "taken").
-// The loaded area events: 0x28 bytes each, behind a pointer, with their count; event 3667 as
-// the game loads it (the fade to black, type 1: layers 0 to 0, to -1 from 4, a step every 8
-// frames, no sound, no next event).
+// The loaded area events (0x28 bytes each, behind a pointer, with their count); event 3667 as
+// the game loads it: the fade to black, type 1, layer 0, to -1 from 4, a step every 8 frames.
 constexpr int kStandInEvents = 3700;
 inline BYTE g_events[kStandInEvents * 0x28];
 inline BYTE* g_event_table = g_events;
@@ -147,8 +140,7 @@ inline int16_t g_start_count = 0;
 inline int16_t g_start_cells[64 * 2];
 inline uint8_t g_start_flags[64];
 
-// The sprite data: [holder] + 0x40 points at the texture object, whose first dword is the GL
-// texture name.
+// The sprite data: [holder] + 0x40 points at the texture object, its first dword the GL name.
 inline uint32_t g_texture_object[4] = {7, 0, 0, 0};
 inline BYTE g_sprite_data[0x80];
 inline BYTE* g_sprite_holder = g_sprite_data;
@@ -158,14 +150,14 @@ inline void reset_sprites() {
     g_texture_object[0] = 7;
 }
 
+// The game-mode panel's surroundings: the current menu, the randomizer menu, the menu functions.
 inline BYTE* g_current_menu = nullptr;
 inline BYTE g_randomizer_menu[0x114];
 inline void widget_handler_fn() {}
 inline void panel_handler_fn() {}
 inline void rando_menu_fn(void*, int) {}
 inline void assist_menu_fn(void*, int) {}
-// The equipment screen's functions (equip.h), never called by these tests: bodies of their
-// own, so the linker keeps them apart.
+// equip.h's functions, never called here: bodies of their own, so the linker keeps them apart.
 inline int g_equip_calls = 0;
 inline void equipment_fn(void*, int) { g_equip_calls += 1; }
 inline void equip_panel_fn() { g_equip_calls += 2; }
@@ -194,8 +186,8 @@ __declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = Z
 inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
-// The placement: reads the start, copies the menu's amounts into the section, and writes its
-// own item table for the plan to write over.
+// START GAME's steps log their order and queue a new game, unless the slot is "taken". The
+// placement copies the menu's amounts and writes its own item table for the plan to write over.
 inline uint8_t g_start_seen = 0;
 inline void placement_fn() {
     g_steps += "placement ";
@@ -248,12 +240,9 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
     return g_message_fails ? nullptr : message;
 }
 
-// The translation (translation.h): the object (the loaded folder's name at +0, the tables'
-// pointers at +0x30, +0x48, +0x58 and +0x78, the flag at +0x91, the font at +0xD0), the tables
-// as the game's parser leaves them (each entry's header line, its text and a 0, then the
-// separator), their counts, the HD message objects and the game's text functions, which keep
-// what they were given and do to the objects the helper reads what the game's do.
-// Through the font object (+0xD0) and its metrics (+0x40040 to +0x40068 past it).
+// The translation (docs/re/memory.md, "Translation tables"): the folder's name at +0, the tables
+// at +0x30, +0x48, +0x58 and +0x78, the flag at +0x91, the font at +0xD0 (metrics +0x40040 to
+// +0x40068 past it); the tables as the parser leaves them, and the game's text functions.
 inline BYTE g_translation[0xD0 + 0x40070];
 inline int16_t g_small_count = 0, g_item_name_count = 0, g_large_count = 0;
 inline BYTE g_hd_messages[4 * 0x238];
@@ -288,9 +277,8 @@ inline LoadedTable* make_table(int count, const std::map<int, std::wstring>& tex
     g_loaded.push_back(std::move(t));
     return g_loaded.back().get();
 }
-// The English(HD) the tests load: SmallText's entries the helper reads or writes (12, the run
-// 66 to 72 a lone carriage return each as the parser leaves an empty one, then 73, 137, 139,
-// 354, 374) and ItemNames' 44 to 50. `tag` makes another load's texts differ.
+// The English(HD) entries the helper reads or writes; the run 66 to 72 a lone carriage return
+// each, as the parser leaves an empty one. `tag` makes another load's texts differ.
 inline std::map<int, std::wstring> hd_small_texts(const std::wstring& tag = L"") {
     std::map<int, std::wstring> out = {
         {12, L"Energy Keys detected!" + tag}, {65, L"Scanlines"}, {73, L"Off"},
@@ -309,8 +297,7 @@ inline std::map<int, std::wstring> hd_item_texts(const std::wstring& tag = L"") 
             {46, L"Scrap Metal"}, {47, L"Scrap Energy" + tag}, {48, L"Scrap Chunk" + tag},
             {49, L"Area Map" + tag}, {50, L"Energy Shield"}};
 }
-// The translation named `name` loaded (its tables new) and on (`on`), as a pick in the menu
-// does.
+// The translation `name` loaded (its tables new) and on (`on`), as a pick in the menu does.
 inline void load_translation(const char* name = "English(HD)", bool on = true,
                              const std::wstring& tag = L"") {
     g_small = make_table(448, hd_small_texts(tag));
@@ -372,14 +359,12 @@ struct BuildCall {
     char flag;
 };
 inline std::vector<BuildCall> g_builds;
-// The stand-in font: each character 6 wide (its glyph's corners 0 to 5 about its place), a space
-// 3, a line 10 high.
+// The stand-in font: each character 6 wide (its glyph 0 to 5 about its place), a space 3, line 10.
 constexpr double kHdAdvance = 6, kHdWidth = 5, kHdSpace = 3, kHdLine = 10;
-// As 0x88480: frees the string, keeps the place in the label, marks it built; for a label with
-// translated glyphs to build (+0x238, +0x240), lays them out from (x, y) as the stand-in font
-// draws them, each glyph's place the pen's and the line's less 1 (0x88CCA to 0x88CFD), shown,
-// the rest hidden, and their count at +0x244 and +0x248. With `flag` it wraps at the label's
-// columns from its first pixel glyph, else 320 past it (0x885EF to 0x8862B).
+// As 0x88480: keeps the place, marks the label built, and lays its translated glyphs out from
+// (x, y) in the stand-in font, each at the pen and the line less 1 (0x88CCA to 0x88CFD), the
+// rest hidden, and their count at +0x244 and +0x248. With `flag` it wraps at the label's columns
+// from its first pixel glyph, else 320 past it (0x885EF to 0x8862B).
 inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, char flag) {
     std::wstring* s = nullptr;
     std::memcpy(&s, text, sizeof(s));
@@ -430,8 +415,7 @@ inline void hd_build_fn(float x, float y, void* text, void* font, BYTE* label, c
     }
     delete s;
 }
-// A label's translated glyphs for the stand-in builder to lay out: `n` of them, the label's
-// capacity (+0x238, +0x240). `glyphs` stay the test's for its life.
+// A label's N translated glyphs (+0x238, +0x240) for the stand-in builder, kept for the test.
 template <int N>
 struct HdGlyphs {
     BYTE glyphs[N][0x1D8] = {};
@@ -441,12 +425,10 @@ struct HdGlyphs {
         put<BYTE**>(label, 0x238, list);
         put<int32_t>(label, 0x240, N);
     }
-    // Glyph i's place.
     double x(int i) const { return get<double>(glyphs[i], 0x40); }
     double y(int i) const { return get<double>(glyphs[i], 0x48); }
 };
-// The translation's keys in `a`, as configure sets them from stand_in_config, for a part's own
-// addresses (a stand-in menu's).
+// The translation's keys in `a`, as configure sets them, for a stand-in menu's own addresses.
 inline void with_translation(zap::GameAddresses& a) {
     a.translation = g_translation;
     a.tr_flag = g_translation + 0x91;
@@ -463,9 +445,8 @@ inline void with_translation(zap::GameAddresses& a) {
     a.hd_build_fn = reinterpret_cast<BYTE*>(&hd_build_fn);
     a.wstring_new_fn = reinterpret_cast<BYTE*>(&wstring_new_fn);
 }
-// A label as the game builds it with the flag set (0x8AC30, 0x88480): its translated text
-// built at (x, y), three translated glyphs shown, its pixel glyphs hidden. `glyphs` stay the
-// test's for its life.
+// A label as the game builds it with the flag set (0x8AC30, 0x88480): its translated text built
+// at (x, y).
 inline void built(BYTE* label, double x = 0, double y = 0) {
     label[0x230] = 1;
     put<double>(label, 0x258, x);
@@ -473,6 +454,7 @@ inline void built(BYTE* label, double x = 0, double y = 0) {
     // Room for the helper's texts (three per pixel glyph, 0x92511), unless HdGlyphs gave it some.
     if (get<int32_t>(label, 0x240) == 0) put<int32_t>(label, 0x240, 3 * get<int32_t>(label, 0x1D8));
 }
+// Three translated glyphs shown, its pixel glyphs hidden; `glyphs` stay the test's for its life.
 struct TranslatedText {
     BYTE glyphs[3][0x1D8] = {};
     BYTE* list[3] = {glyphs[0], glyphs[1], glyphs[2]};
@@ -489,11 +471,9 @@ struct TranslatedText {
     }
 };
 
-// OPTION MENU's way back to the pause screen (0x168910, pause.h), called with the pause menu: its
-// own way back set again (0x168986), and KEYS's label shown again as the game does (0x168A04 to
-// 0x168B2F): with the flag set its translated text built again (0x168AC6: "Keys", 4 glyphs, the
-// pixel ones hidden), with it clear its first four pixel glyphs shown and the translated ones
-// hidden. The pause menu's own way back (0xA5820) does nothing here.
+// OPTION MENU's way back to the pause screen (0x168910): its own way back set again (0x168986),
+// and KEYS's label shown again (0x168A04 to 0x168B2F): "Keys" built with the flag set (0x168AC6),
+// four pixel glyphs without. The pause menu's own way back (0xA5820) does nothing here.
 inline int g_options_backs = 0;
 inline void pause_on_return_fn(void*) {}
 inline void options_back_fn(void* menu) {
@@ -584,8 +564,7 @@ inline void death_fn(void* player, char kind) {
     std::memcpy(&g_death_energy, static_cast<BYTE*>(player) + 0xCEA, sizeof(g_death_energy));
 }
 
-// Offline (offline.h): the map grid, the flags, the save slots' first blocks and their copies
-// of the randomizer section.
+// Offline (offline.h): the map grid, the flags, the slots' blocks and randomizer sections.
 inline BYTE g_map_grid[54 * 54] = {};
 inline BYTE g_flags[0x9C4] = {};
 inline BYTE g_slot_array[30 * 0x9408] = {};
@@ -594,18 +573,15 @@ inline BYTE g_pickups[zap::pickups::kSize] = {};  // the major-item list and its
 // Save slot `n` (1 to 30) in the slot array, and its copy of the randomizer section.
 inline BYTE* slot_block(int n) { return g_slot_array + (n - 1) * 0x9408; }
 inline BYTE* rando_copy(int n) { return g_rando_slots + (n - 1) * 0x908; }
-// Every slot empty.
 inline void clear_slots() {
     std::memset(g_slot_array, 0, sizeof(g_slot_array));
     std::memset(g_rando_slots, 0, sizeof(g_rando_slots));
     for (int n = 1; n <= 30; ++n) slot_block(n)[0x935E] = 0xFF;
 }
 
-// Feats and achievements (feats.h). Two Steamworks accessor contexts ({init, counter,
-// interface}), each init a `lea rdx, [rip+name]` then `ret` in code: the user stats' and
-// another; the import slot SteamInternal_ContextInit is called through (a plain variable here:
-// the feats tests use their own import's); and a small ending run as the game's runs (laid out
-// by build_ending), whose call through the slot sets one achievement.
+// Feats and achievements (feats.h): two Steamworks accessor contexts ({init, counter, interface},
+// each init a `lea rdx, [rip+name]; ret`), the ContextInit import slot (a plain variable here),
+// and a small ending (build_ending) whose call through the slot sets one achievement.
 inline const char g_stats_name[] = "STEAMUSERSTATS_INTERFACE_VERSION013";
 inline const char g_utils_name[] = "SteamUtils010";
 __declspec(allocate(".zapcode")) inline unsigned char g_stats_init[8] = {0x48, 0x8D, 0x15, 0, 0,

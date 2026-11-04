@@ -1,7 +1,5 @@
-// Host tests for RETURN HOME WITH THE DISKS? (mission.h): a stand-in transition (routine,
-// timer, routine table), a stand-in prompt builder laid out as 0x1668A0 builds the game's
-// SKIP ESCAPE AND FINAL BATTLE? prompt, stand_in.h's event table holding event 3667 (the fade)
-// with its handler, and the game's fade, which that handler sets and a stand-in stepper runs.
+// Host tests for RETURN HOME WITH THE DISKS? (mission.h) on stand-ins of the transition, the
+// prompt builder (0x1668A0), event 3667 (the fade) and its handler, and the fade's stepper.
 
 #include <windows.h>
 
@@ -157,10 +155,8 @@ zap::MissionPrompt fading(const zap::GameAddresses& a) {
     return m;
 }
 
-// One frame of the game's main loop, as far as the transition and the fade go: the timer counted
-// down and the transition run when it reaches 0 (0x7ACA1 to 0x7AE43; the helper's ending wrapper
-// runs end), then the stepper's pass (0x7BA35); then the frame is drawn, before the helper's
-// frame call (the swap): the level it is drawn at. 0x948A0, run, clears the transition.
+// One frame of the game's main loop: the transition run when its timer reaches 0 (0x7ACA1 to
+// 0x7AE43), the stepper's pass (0x7BA35); returns the level the frame is drawn at.
 int8_t frame(zap::MissionPrompt& m, const zap::GameAddresses& a) {
     if (g_timer > 0 && --g_timer == 0 && g_fn != nullptr) {
         if (g_fn == a.hooks.mission_end) {
@@ -218,7 +214,6 @@ void test_offered_when_idle_then_yes_ends() {
           "event 3667 run, the game's own record");
     check(m.status() == "opening after the fade", m.status().c_str());
 
-    // The game runs the opener: the prompt built, the question relabeled, YES the helper's.
     check(m.open(a).empty(), m.status().c_str());
     check(!m.opening() && m.holds_hook(), "opened: popups go on, YES still held");
     check(g_set[prompt.question] == zap::kMissionQuestion, "the question relabeled");
@@ -226,7 +221,6 @@ void test_offered_when_idle_then_yes_ends() {
     check(at<void*>(prompt.child[1], 0x2C0) == reinterpret_cast<void*>(&game_no),
           "NO the game's");
 
-    // YES: the game's NO to close it, then the ending once idle.
     check(m.yes() == reinterpret_cast<void*>(&game_no), "YES calls the game's NO");
     m.watch(a, true);
     check(g_fn == nullptr, "not while the prompt is still up");
@@ -241,9 +235,8 @@ void test_offered_when_idle_then_yes_ends() {
     check(g_fades.size() == 1, "no fade back: NO's own close fades in");
 }
 
-// In a translation the prompt shows SmallText 374's text, built when the prompt is: built again
-// as the helper's question, where the game built it, and centered as the game centers it; with
-// the flag clear, nothing built.
+// In a translation the question is built again where the game built SmallText 374's text, and
+// centered as the game centers it.
 void test_the_question_in_a_translation() {
     reset_translation();
     load_translation();
@@ -251,8 +244,8 @@ void test_the_question_in_a_translation() {
     zap::MissionPrompt m = fading(addresses());
     zap::GameAddresses a = addresses();
     with_translation(a);
-    // The game built its translated text at the question's first pixel glyph less 1 (0x8AC30),
-    // then centered it on x 156 (0x85B00), moving its glyphs and not the place it was given.
+    // As the game builds it: at the first pixel glyph less 1 (0x8AC30), then centered on x 156
+    // (0x85B00), its glyphs moved and not the place it was given.
     HdGlyphs<90> hd(prompt.question);
     BYTE pixel[0x1D8] = {};
     BYTE* pixels[1] = {pixel};
@@ -270,7 +263,6 @@ void test_the_question_in_a_translation() {
     const double left = hd.x(0), right = hd.x(n - 1) + kHdWidth;
     check(n == 23 && (left + right) / 2 == 156.0 && hd.y(0) == 95.0,
           "centered as the game centers its own, on its line");
-    // In a translation drawn as pixels, the move is rounded, as 0x85B00 rounds it.
     m.restore(a);
     g_builds.clear();
     put<int32_t>(g_translation, 0xA8, 1);
@@ -308,7 +300,6 @@ void test_another_transition_first_is_asked_again() {
     check(g_fn == a.hooks.mission_open && g_fades.size() == 2,
           "asked again once idle: fades again");
 
-    // Taken over again, then cancelled: nothing of the door's turned back.
     g_fn = reinterpret_cast<void*>(&door_routine);
     set_fade(-1, static_cast<int8_t>(0xFE), 12);
     m.cancel(a);
@@ -376,7 +367,7 @@ void test_cancel_drops_it_for_another_save() {
     check(g_fn == kIdle, "no ending in another save");
 }
 
-// Event 3667 not as traced, or its handler not the game's code: the prompt at once, as before.
+// Event 3667 not as traced, or its handler not the game's code: the prompt at once, no fade.
 void test_no_fade_unless_as_traced() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -426,8 +417,8 @@ void test_no_builder_after_the_fade() {
 }
 
 
-// A save at the save point during the fade sets the pause opener back in the opener's place and
-// brings no fade (0x1FC8F1): the fade turned back, mid-way or done, and asked again once idle.
+// A save during the fade sets the pause opener back with no fade (0x1FC8F1): the fade turned
+// back, mid-way or done, and asked again once idle.
 void test_a_save_during_the_fade_turns_it_back() {
     for (int passes : {0, 1, 8, 20, 39, 40, 55}) {
         Prompt prompt;
@@ -458,10 +449,8 @@ void test_a_save_during_the_fade_turns_it_back() {
     }
 }
 
-// Another transition with a fade of its own: left alone, even one that sets 3667's own values
-// (0x1D93DE: the level back to 4, then target -1, a step every 8 frames), or a level set since.
-// With the timer lower than when last seen, the fade alone tells; in the first frames, or with
-// the fade's end state set at once, the timer the transition sets (0x1D93DE: 70) does.
+// Another transition's fade is left alone, even one with 3667's own values (0x1D93DE); in the
+// first frames the timer it sets (70) tells it apart.
 void test_another_fade_is_left_alone() {
     struct Case {
         const char* what;
@@ -496,8 +485,7 @@ void test_another_fade_is_left_alone() {
     }
 }
 
-// `discs` turned off (cancel) after a save took the opener's place, before the helper saw it:
-// the fade turned back there too, and nothing asked again.
+// A cancel after a save took the opener's place, before the helper saw it: the fade turned back.
 void test_cancel_after_a_save_turns_the_fade_back() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -544,8 +532,7 @@ zap::MissionPrompt yes_pressed(const zap::GameAddresses& a) {
     return m;
 }
 
-// YES: right after NO's close the fade is turned off with the screen black, so play does not
-// fade back in; the ending routine sets the level itself.
+// After YES, NO's close leaves the screen black, the fade off: the ending routine sets the level.
 void test_yes_keeps_the_screen_black() {
     {
         Prompt prompt;
@@ -570,7 +557,7 @@ void test_yes_keeps_the_screen_black() {
                   m.status() == zap::kEndingStarted,
               "run, nothing held");
     }
-    // Not as NO leaves it: left to fade back in as before.
+    // Not as NO leaves it: left to fade back in.
     struct Case {
         const char* what;
         void (*change)();
@@ -611,11 +598,8 @@ void test_yes_keeps_the_screen_black() {
     }
 }
 
-// The ending out of the black: the routine sets the level to 4 itself (0x95230), and the game
-// draws that frame before the helper's frame call. Run through the helper's wrapper, the
-// routine's frame and the ones after it are drawn black, then fade in to the normal level. (As
-// the game's routine itself, the 1.0.0 release candidate's way, the routine's frame was drawn at
-// level 4, possibly still at the Landing Pod.)
+// The ending sets the level to 4 itself (0x95230), drawn before the helper's frame call; through
+// the helper's wrapper its frames are drawn black, then fade in.
 void test_the_ending_comes_out_of_the_black() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -653,9 +637,8 @@ void test_the_ending_comes_out_of_the_black() {
     check(rising, "black for its first frames, then a level each kEndingFadeStep frames to 4");
 }
 
-// The ending's wrapper as the transition: put back as the game's routine on unload (the ending
-// still comes, without the fade in); left there by a routine not as traced, or with no routine
-// in the table when it runs, the idle routine in its place; replaced before it ran, asked again.
+// The ending's wrapper is never left as the transition: on unload, with no routine or one not as
+// traced, or called again.
 void test_the_endings_wrapper_is_never_left_behind() {
     {
         Prompt prompt;
@@ -670,8 +653,7 @@ void test_the_endings_wrapper_is_never_left_behind() {
         check(g_fn == kEnding && m.started() && !m.ending(), "not asked again: it runs");
     }
     {
-        // A door in the wrapper's place, then an unload (the client gone) in the same frame:
-        // not asked again later.
+        // A door in the wrapper's place, then an unload in the same frame.
         Prompt prompt;
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);
@@ -686,8 +668,7 @@ void test_the_endings_wrapper_is_never_left_behind() {
         check(g_fn == kIdle && !m.ending(), "and no ending asked again");
     }
     {
-        // The wrapper called again (a pause press with it left at timer 0) or after the save
-        // was left: taken off, the routine not run a second time.
+        // Called again (a pause press with it at timer 0), or after the save was left.
         Prompt prompt;
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);
@@ -733,10 +714,8 @@ void test_the_endings_wrapper_is_never_left_behind() {
     }
 }
 
-// The black's limit in game frames (frame_clock), not frame calls: at 165 Hz the helper's frame
-// call came 166 times a second against the game's 60 (docs/re/memory.md, "The per-frame call"),
-// so 180 calls ended the black about 1.1 s in, before GAME SAVED (and so the ending) had: play
-// faded back in at the pod first, as the release candidate's retest saw (2026-11-02).
+// The black's limit is in game frames, not frame calls, which come faster at a high refresh rate
+// (docs/re/memory.md, "The per-frame call: the game's SDL_GL_SwapWindow import").
 void test_the_black_lasts_in_game_frames() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -745,8 +724,7 @@ void test_the_black_lasts_in_game_frames() {
     zap::MissionPrompt m = yes_pressed(a);
     m.after_no(a);
     check(m.black() == "kept black", m.black().c_str());
-    // 11 frame calls each 4 game frames (about 166 to 60): GAME SAVED's 90 frames left run out
-    // after about 250 calls, past the 180 the limit used to count.
+    // 4 game frames to 11 calls (60 to 166 a second): GAME SAVED's 90 frames take about 250.
     int calls = 0;
     for (int frames = 0; frames < 90; ++calls) {
         if (calls % 11 < 4) {
@@ -762,7 +740,6 @@ void test_the_black_lasts_in_game_frames() {
     check(g_endings == 1 && m.black() == "ended: the ending, faded in from black",
           m.black().c_str());
 
-    // With no ending, back in after kDarkFrames game frames, however many calls.
     zap::MissionPrompt n = yes_pressed(a);
     n.after_no(a);
     for (int i = 0; i < zap::kDarkFrames * 3; ++i) n.watch(a, false);  // the clock still
@@ -777,8 +754,7 @@ void test_the_black_lasts_in_game_frames() {
     check(!n.dark() && fading_back_in() &&
               n.black() == "ended: kDarkFrames in play with no ending, faded back in",
           n.black().c_str());
-    // A clock that jumps (a reload) counts as a few frames, not all of them.
-    zap::MissionPrompt j = yes_pressed(a);
+    zap::MissionPrompt j = yes_pressed(a);  // a clock that jumps (a reload)
     j.after_no(a);
     j.watch(a, false);
     clock += 100000;
@@ -788,9 +764,8 @@ void test_the_black_lasts_in_game_frames() {
     check(j.black() == "ended: a popup waiting, faded back in", j.black().c_str());
 }
 
-// No ending for kDarkFrames frames in play: faded back in; frames with a menu open (the pause,
-// which saves the fade and puts it back) don't count; another fade since is left alone; cancel
-// fades back in.
+// No ending for kDarkFrames frames in play: faded back in. Menu frames do not count: the pause
+// saves the fade and puts it back.
 void test_the_black_after_yes_ends() {
     {
         Prompt prompt;
@@ -845,8 +820,7 @@ void test_the_black_after_yes_ends() {
         check(g_fn == kIdle, "and no ending");
     }
     {
-        // Cancelled with the pause open: its close puts the black back, so the fade back waits
-        // for it.
+        // Canceled with the pause open: its close puts the black back, so the fade back waits.
         Prompt prompt;
         zap::GameAddresses a = addresses();
         zap::MissionPrompt m = yes_pressed(a);
@@ -865,8 +839,7 @@ void test_the_black_after_yes_ends() {
     }
 }
 
-// The ending's wrapper set, and a save at the save point in its place before it ran (the pause
-// opener back, timer 0): the ending asked again, the screen still black, nothing held.
+// A save in the ending's wrapper's place before it ran: the ending asked again, still black.
 void test_an_ending_replaced_before_it_ran_is_asked_again() {
     Prompt prompt;
     zap::GameAddresses a = addresses();
@@ -886,8 +859,7 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
     m.watch(a, false);
     check(m.started() && !m.dark() && g_endings == 1, "run");
 
-    // Run: 0x948A0's close then sets the pause opener back with timer 0, as a save would; the
-    // wrapper ran, so it is not taken for one.
+    // Once run, 0x948A0's close sets the pause opener back with timer 0, as a save would.
     zap::MissionPrompt n = yes_pressed(a);
     n.after_no(a);
     n.watch(a, true);
@@ -898,8 +870,7 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
     check(n.started() && !n.ending() && !n.dark() && n.status() == zap::kEndingStarted,
           "the pause opener after the ending ran: not taken for a save");
 
-    // A door's or a death's transition in its place before it ran: asked again, the black kept
-    // while it is the helper's, else the other fade left alone.
+    // A door's or a death's transition first: the black kept only while it is the helper's.
     struct Case {
         const char* what;
         void* fn;
@@ -934,8 +905,8 @@ void test_an_ending_replaced_before_it_ran_is_asked_again() {
     }
 }
 
-// Quit to the title from the pause while black: the fade back waits for the menu, and the save
-// leaving drops the black (the title owns the fade), so nothing holds an unload there.
+// Quitting to the title while black drops the black (the title owns the fade), so nothing holds
+// an unload there.
 void test_leaving_the_save_drops_the_black() {
     Prompt prompt;
     zap::GameAddresses a = addresses();

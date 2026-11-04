@@ -1,6 +1,5 @@
-// Host tests for the file select's entries (files.h), the disk count and the AP logo: a stand-in
-// file screen laid out as read live on B1 (three save entries, each a label of 145 glyphs, 5 rows
-// of 29).
+// Host tests for the file select's entries (files.h) on a stand-in file screen as read live on
+// B1: three save entries, each a label of 145 glyphs, 5 rows of 29.
 
 #include <windows.h>
 
@@ -182,7 +181,6 @@ void test_this_seeds_slots_show_the_disks() {
     f.watch(a);
     check(s.e[0].y(114) == 53, "this seed's again: dropped");
 
-    // A new count: the helper's own cells rewritten.
     f.set_counts({{4, 12}, {5, 12}});
     f.watch(a);
     check(cells(s.e[1], {kDi, kSk, '1', '2', 0, 0}), "a new count: 12");
@@ -198,8 +196,7 @@ void test_this_seeds_slots_show_the_disks() {
           "off: the game's frames back (slot 5's KEYS and keys)");
 }
 
-// COPY FILE's and DELETE FILE's entries: wrapped as the file select's, each with its own handler
-// put back.
+// COPY FILE's and DELETE FILE's entries: wrapped as the file select's, each handler put back.
 void test_copy_and_delete_entries() {
     Screen s;
     zap::GameAddresses a = s.addresses();
@@ -252,9 +249,8 @@ void test_an_entry_not_wrapped_is_not_written() {
     check(cells(s.e[0], {0, 0, 0, 0, 0, 0}) && s.e[0].y(114) == 48, "not wrapped: untouched");
 }
 
-// The file select closed and built again at the same address, a new entry (holding the game's
-// handler) where the wrapped one was: the put-back writes nothing into it, even where its
-// block reads as the helper left the old one's (blank, for no disk).
+// The file select built again at the same address: the put-back writes nothing into the new
+// entry, even where its block reads as the helper left the old one's.
 void test_an_entry_built_again_in_its_place_is_not_written() {
     Screen s;
     zap::GameAddresses a = s.addresses();
@@ -336,12 +332,10 @@ void test_ap_saves_show_the_logo() {
           "the keys as they were");
     check(at<void*>(s.e[1].widget, 0x2C8) == a.hooks.file_entry, "every entry's handler wrapped");
 
-    // A fill (paging): the logo again after event 0xF, its glyphs still raised.
-    s.e[0].fill(true);
+    s.e[0].fill(true);  // paging
     f.on_event(a, s.e[0].widget, 0xF);
     check(logo(s.e[0]) && raised(s.e[0]), "rewritten after the fill");
-    // The entry reused for slot 5: the game's spaces, back in their rows.
-    at<int32_t>(s.e[0].widget, 0x230) = 5;
+    at<int32_t>(s.e[0].widget, 0x230) = 5;  // the entry reused for slot 5
     s.e[0].fill(true);
     f.on_event(a, s.e[0].widget, 0xF);
     check(spaces(s.e[0]) && in_rows(s.e[0]), "another save: the game's cells, in their rows");
@@ -350,7 +344,6 @@ void test_ap_saves_show_the_logo() {
     f.watch(a);  // a fill the handler did not see (a copy)
     check(logo(s.e[0]) && raised(s.e[0]), "an AP save again, from the watch");
 
-    // With the disk count: both, each in its own cells.
     f.set_counts({{4, 3}});
     f.watch(a);
     check(logo(s.e[0]) && s.e[0].frame(85) == zap::kDiskHeaderGlyphs[0] &&
@@ -361,8 +354,7 @@ void test_ap_saves_show_the_logo() {
     check(logo(s.e[0]) && s.e[0].frame(85) == 0x81 && s.e[0].y(114) == 48,
           "the count off: the keys back, the logo kept");
 
-    // A save no longer an AP one (its seed file gone, say): the logo goes at once.
-    f.set_ap_slots({6});
+    f.set_ap_slots({6});  // slot 4 no longer an AP save (its seed file gone, say)
     f.watch(a);
     check(spaces(s.e[0]) && in_rows(s.e[0]) && logo(s.e[2]), "slot 4 no longer marked");
 

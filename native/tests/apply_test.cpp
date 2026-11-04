@@ -1,10 +1,7 @@
 // Grants and popups end to end through the real pipe and hook: the hook-test helper (argv[1])
 // hooks this program's GetTickCount, which two busy threads call as the game's frames, and is
-// configured with the stand-in game (stand_in.h). Covers a batch and its popup, a batch no
-// frame takes, and an unload refused with something hooked over the helper (what the client
-// set is armed again), and a seed file put while a client is connected reaching the offline look
-// from the next frame call, not only the AP-save test (dllmain.cpp, take_offline). LOCALAPPDATA
-// points at a folder of the test's own under %TEMP%, so the real one is neither read nor written.
+// configured with the stand-in game (stand_in.h). LOCALAPPDATA points at a folder of the test's
+// own under %TEMP%, so the real one is neither read nor written.
 
 #include <windows.h>
 

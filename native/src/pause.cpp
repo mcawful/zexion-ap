@@ -8,7 +8,6 @@
 
 namespace zap {
 
-// The disc, as the owner approved it (2026-10-26).
 const char kDiscRows[kDiscSize][kDiscSize + 1] = {
     "..........####..........",
     ".......##########.......",
@@ -48,10 +47,11 @@ constexpr int32_t kPausePanels = 2, kRowSprites = 9, kKeysGlyphs = 4;
 constexpr int kKeyIconFirst = 384, kDiskIcon = 829;
 // A sprite's drawn rectangle (left, top, right, bottom) and its rectangle about its place.
 constexpr ptrdiff_t kWorld = 0x128, kLocal = 0x148;
-// Where things go (read live on B1, 2026-10-24): the label's line, and the middle.
+// Where things go: the label's line (read live, B1), and the disc's place, 4 above the middle
+// of the game's key icons (native/README.md, "The OS Install Disks goal").
 constexpr double kRowY = 208.0, kLabelX = 144.0, kIconX = 160.0, kIconY = 184.0;
-// The helper's disc about its place, as the quad's corners (top left, top right, bottom right,
-// bottom left) and as the rectangle: 24 x 24, centered as the game's 16 x 16 icon is.
+// The helper's disc about its place, as the quad's corners (clockwise from top left) and as the
+// rectangle, centered as the game's icon is.
 constexpr double kHalf = kDiscSize / 2.0;
 constexpr double kDiscCorners[8] = {-kHalf, -kHalf, kHalf, -kHalf, kHalf, kHalf, -kHalf, kHalf};
 constexpr double kDiscLocal[4] = {-kHalf, -kHalf, kHalf, kHalf};
@@ -208,11 +208,10 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         !safe_read(pointer_at(row, kPanelSprites), sprite, sizeof(sprite))) {
         return;
     }
-    // In a translation the game draws KEYS's translated text (SmallText 139) over the row, and
-    // builds it again when OPTION MENU returns (0x168AC6): while the row is turned the count is
-    // that text instead, in the translation's font, centered on the row as the game centers a
-    // prompt's line, built again whenever it is not the helper's; the key slots' characters
-    // hidden. With the flag clear the game shows the label's pixel glyphs itself (0x168AE9).
+    // In a translation the game draws KEYS's translated text (SmallText 139) over the row and
+    // builds it again when OPTION MENU returns (0x168AC6): the count is that text instead, built
+    // again whenever it is not the helper's, the key slots hidden. With the flag clear the game
+    // shows the label's pixel glyphs itself (0x168AE9).
     BYTE* keys_label = pointer_at(keys, widget::kLabel);
     auto keep_row = [&] {
         const bool hd = translation_on(a);

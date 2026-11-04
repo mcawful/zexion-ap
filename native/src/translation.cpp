@@ -15,14 +15,13 @@ namespace zap {
 
 namespace {
 
-// The most entries a table is taken to have (SmallText has 448, ItemNames 51: "Translation live
-// reads"); a count past it is not a table as traced.
+// Most entries a table is taken to have (SmallText 448, ItemNames 51: "Translation live reads"):
+// a count past it is not a table as traced.
 constexpr int kMaxEntries = 4096;
 // The most glyphs a label is taken to have, either kind.
 constexpr int32_t kMaxGlyphs = 4096;
-// The game's builder and its std::wstring (docs/re/memory.md, "Translated menus and the prompt"):
-// 0x88480(x, y, &text, &font, label, 0) takes the string by value and frees it; 0x17BD0(&text,
-// characters, length) assigns it, from the 32 zero bytes the game's callers start it as.
+// The game's builder 0x88480, which takes the string by value and frees it, and the std::wstring
+// assign 0x17BD0 (docs/re/memory.md, "Translated menus and the prompt").
 using BuildFn = void (*)(float x, float y, void* text, void* font, BYTE* label, char flag);
 using WstringFn = void* (*)(void* text, const wchar_t* characters, size_t length);
 constexpr size_t kWstringSize = 32;
@@ -32,8 +31,7 @@ using HdTextFn = void (*)(const wchar_t* text, intptr_t, intptr_t, intptr_t, int
                           intptr_t, intptr_t entry, intptr_t kind, void* message);
 constexpr intptr_t kSmallKind = 0;
 
-// The table's pointers and count as read now through `text`, `offsets` and `count` (the keys:
-// each holds a pointer, the count is 16-bit).
+// The table as read now through the keys `text`, `offsets` and `count` (a 16-bit count).
 bool read_table(const BYTE* text, const BYTE* offsets, const BYTE* count, TextTable& out) {
     int16_t n = 0;
     if (!read(text, 0, out.text) || !read(offsets, 0, out.offsets) || !read(count, 0, n)) {
@@ -78,8 +76,6 @@ bool translation_keys(const GameAddresses& a) {
     for (BYTE* const* key : keys) {
         if (*key == nullptr) return false;
     }
-    // The fields the other keys name are where the object has them: a layout that differs
-    // leaves the translation parts out, as a pattern that differs would.
     BYTE* t = a.translation;
     return a.tr_flag == t + tr::kOn && a.small_text == t + tr::kSmallText &&
            a.small_offsets == t + tr::kSmallOffsets && a.item_names == t + tr::kItemNames &&
@@ -120,8 +116,7 @@ std::string language_name(const GameAddresses& a) {
     if (!safe_read(a.translation + tr::kName, name, sizeof(name))) return "?";
     std::string out;
     for (char c : std::string_view(name, strnlen(name, sizeof(name)))) {
-        // One word of `hello`: anything but letters, digits and the folders' parentheses as an
-        // underscore.
+        // One word of `hello`: anything else as an underscore.
         const bool keep = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                           (c >= '0' && c <= '9') || c == '(' || c == ')' || c == '-';
         out += keep ? c : '_';
@@ -237,8 +232,7 @@ constexpr ptrdiff_t kRightCorner = sprite::kCorners + 0x10;
 // Where 0x86660 takes an icon to sit when it is a text's first glyph (0x217680).
 constexpr double kIconMiddle = 4.0;
 
-// The glyphs the builder makes for `text`: one per character but spaces, tabs and line breaks
-// (0x88781 to 0x88853).
+// The glyphs the builder makes for `text`: all but spaces, tabs and line breaks (0x88781).
 int32_t glyphs_in(std::wstring_view text) {
     int32_t n = 0;
     for (wchar_t c : text) {
@@ -256,9 +250,8 @@ void build(const GameAddresses& a, BYTE* label, std::wstring_view text, double x
                                              a.translation + tr::kFont, label, wrap ? 1 : 0);
 }
 
-// Each of a label's translated glyphs, from the first up to the first missing, to `each(i, glyph,
-// shown, its template)`, with `font` (the translation's font template) read first: false if the
-// first is missing or anything does not read (`each` returns false for its own reads).
+// `each(i, glyph, shown, its template)` for a label's translated glyphs up to the first missing,
+// `font` (the font's template) read first: false if the first is missing or a read fails.
 template <typename Each>
 bool each_glyph(const GameAddresses& a, const BYTE* label, void*& font, Each&& each) {
     int32_t n = 0;
@@ -280,9 +273,8 @@ bool each_glyph(const GameAddresses& a, const BYTE* label, void*& font, Each&& e
     return true;
 }
 
-// The top and bottom of a label's translated text as 0x86660 takes them: its first glyph (its
-// quad's top right and bottom right corners about its place, or its place plus 4 for an icon),
-// and every shown one after it from the font or an icon sheet, up to the first missing.
+// The top and bottom of a label's translated text as 0x86660 takes them (docs/re/memory.md, "The
+// translations' icons").
 bool vertical_extent(const GameAddresses& a, const BYTE* label, float& top, float& bottom) {
     BYTE* templates = pointer_at(a.sprite_templates);
     void* sheets[2] = {pointer_at(templates, kHdIconSheet * 8),
@@ -343,8 +335,7 @@ BuiltMark built_mark(const BYTE* label) {
     return m;
 }
 
-// The left and right of a label's translated text as 0x85B00 takes them: its first glyph (shown
-// or not, two further right for an icon) and every shown one after it up to the first missing.
+// Its first glyph (shown or not, two further right for an icon), then every shown one.
 bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right) {
     void* font = nullptr;
     return each_glyph(a, label, font, [&](int32_t i, BYTE* g, bool shown, void* made_from) {
@@ -375,21 +366,14 @@ BYTE* glyph_at(BYTE** list, int32_t i) {
 
 namespace {
 
-// The builder's advances (0x88480; docs/re/memory.md, "Laying out the helper's popups"): the
-// font's glyph table by character (+0x30, 4 bytes each, -1 for none: the character is skipped),
-// its glyph entries (+0x08, 0x20 bytes each: advance from +0x08 to +0x10 in 1/64 pixel at the
-// font's size), its space advance (+0x40040, a float) and its scale (+0x40060, a double); the
-// HD font's size divisor (0x217B40) and the HD icons' (0x217690).
+// The builder's advances, and the icon sheets' (apitem.h IconSheets): docs/re/memory.md, "The
+// translations' icons".
 constexpr ptrdiff_t kFontGlyphTable = 0x30, kFontGlyphs = 0x08, kFontSpace = 0x40040;
 constexpr ptrdiff_t kFontScale = 0x40060;
 constexpr ptrdiff_t kGlyphFrom = 0x08, kGlyphTo = 0x10;
 constexpr size_t kGlyphEntry = 0x20;
 constexpr float kHdFontDivisor = 4.8214f;
 constexpr double kHdIconDivisor = 4.8214;
-// The icon sheets (apitem.h IconSheets): the builder takes an icon's advance from its frame's
-// entry, +0x28 with a pixel font, +0x26 over kHdIconDivisor with an HD one (0x8911D); U+E024 to
-// U+E04E are frames 0x80 to 0xAA, U+E04F frame 0xBD, U+E050 frame 0xC6; definition 104's sheet
-// with a pixel font or icon style 1 (tr::kIconStyle), else 101's (0x885BF).
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
 // Bounds on what a loaded font reads (the HD font's scale and space are near 1 and 15 to 20),
 // and on the spaces one line is padded with.
@@ -466,8 +450,7 @@ double FontMetrics::width(std::wstring_view line) const {
 
 namespace {
 
-// `text`'s words in lines no wider than `cap` (`fits` says whether a line fits), a word wider than
-// a line alone on its line.
+// `text`'s words in lines that `fits`, a word too wide alone on its line.
 template <typename Fits>
 std::vector<std::wstring> wrap(const std::wstring& text, Fits&& fits) {
     std::vector<std::wstring> lines;
@@ -492,8 +475,7 @@ std::vector<std::wstring> wrap(const std::wstring& text, Fits&& fits) {
     return lines;
 }
 
-// `lines` centered on the widest with leading spaces, as the game starts every line of a
-// popup at the same x (a line whose width does not read left as it is).
+// `lines` centered on the widest with leading spaces (a line whose width does not read: as is).
 void center(std::vector<std::wstring>& lines, const FontMetrics& metrics) {
     if (metrics.space() <= 0) return;
     double widest = 0;
@@ -553,7 +535,6 @@ std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
             for (std::wstring& line : wrap(own, fits)) lines.push_back(std::move(line));
         }
     }
-    // A popup's lines centered on the widest; a notice's left as they wrap.
     if (!head.empty() && metrics != nullptr) center(lines, *metrics);
     return join_lines(lines);
 }
@@ -593,17 +574,15 @@ bool rebuild_label(const GameAddresses& a, BYTE* label, std::wstring_view text,
     float top = 0, bottom = 0;
     const bool middle_known = how.keep_middle && vertical_extent(a, label, top, bottom);
     const float middle = (top + bottom) * 0.5f;
-    // Hidden as its text was, if it was: the builder shows every glyph it builds (0x89F51),
-    // while a hidden widget's are hidden with its count kept, for the widget handler to show
-    // that many on event 0xF (0xD0290 to 0xD02EA), as the game-mode panel's are on the file
-    // select before an empty slot is picked.
+    // Hidden again if its text was: the builder shows every glyph it builds (docs/re/memory.md,
+    // "Where a rebuilt label goes").
     const bool hidden = translated_hidden(label);
     build(a, label, text, x, y, how.wrap);
     int32_t style = 0;
     const bool pixel_font =
         read(a.translation, tr::kFontStyle, style) && style == tr::kPixelFont;
     // 0x85B00's and 0x86660's moves, made by building it there instead (its own place then kept
-    // with it); each rounded for a pixel font (0x85BCA to 0x85BFB, 0x86760 to 0x86785).
+    // with it); each rounded for a pixel font.
     float dx = 0, dy = 0, left = 0, right = 0;
     if (how.center && translated_extent(a, label, left, right)) {
         dx = kScreenMiddle - (right - left) * 0.5f - left + how.center_by;
@@ -756,11 +735,8 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message) {
 void clear_mark(const GameAddresses& a, BYTE* message) {
     if (!translation_on(a)) return;
     BYTE* object = hd_object(a, message);
-    // Only an object not bound to this message: the mark is the last translated message's in
-    // that slot. A slot's messages are the slot itself, so its object's message (+0x220) is the
-    // same pointer whatever it was bound for; what tells them apart is the serial it was bound
-    // with (+0x228, the slot's +0x1D8 then), and the message routine gives each message a new
-    // one and binds none (docs/re/memory.md, "Translated messages").
+    // Only an object not bound to this message, told by its serial (docs/re/memory.md,
+    // "Translated messages"): the mark is then the last translated message's in that slot.
     int32_t bound = 0, serial = 0;
     if (object != nullptr && read(object, hd::kSerial, bound) &&
         read(message, message::kSerial, serial) && bound != serial) {
@@ -848,8 +824,7 @@ int PopupAreas::reserve(const Loaded& now, size_t chars) {
         waited_ = 0;
         return kWhole;
     }
-    // Taken: freed within a frame or two once its message ends (the helper's popups come one at
-    // a time; the one before may still be closing).
+    // Taken: the popup before may still be closing, freed within a frame or two.
     if (++waited_ > kMaxWait) {
         waited_ = 0;
         return kNone;
@@ -903,9 +878,8 @@ bool PopupAreas::area_free(const Area& area) {
 }
 
 void PopupAreas::empty(const Loaded& now, Area& area) {
-    // Zeros over what it wrote, where it still reads so: the run back to empty entries, so a
-    // save-state load that binds a message to it again (0x2007D0) finds none and shows its pixel
-    // text (docs/re/memory.md, "Borrowed entries for popups").
+    // Zeros over what it wrote, where it still reads so, so a save-state load that binds a message
+    // to it again shows its pixel text (docs/re/memory.md, "Borrowed entries for popups").
     if (!area.written.empty() && now.small == at_ && reads(at_, area.offset, area.written)) {
         wchar_t* p = at_.text + area.offset;
         if (writable(p, (area.written.size() + 1) * sizeof(wchar_t))) {

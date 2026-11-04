@@ -124,10 +124,9 @@ std::string notice_text(const std::string& text, int per_line, int* width) {
 }
 
 void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
-    // The game sized the box for the blank line too (half-height 4 per line past the first, plus
-    // 7: 0x182A90). The half-height for the real lines plus one, the center 4 up, leaves about 4
-    // pixels above and below, the least that shows every line (docs/re/memory.md, "Game
-    // functions the helper calls"). Only a box still as the game set it is changed.
+    // The game sized the box for the blank line too (0x182A90); half-height 4 a line plus 4,
+    // centered 4 up, shows every real line (docs/re/memory.md, "Game functions the helper
+    // calls"). Only a box still as the game set it is changed.
     if (message == nullptr || per_line <= 0) return;
     const size_t w = static_cast<size_t>(per_line);
     if (text.size() % w != 1 || text.size() / w < 3) return;
