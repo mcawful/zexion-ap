@@ -24,11 +24,10 @@ share a name in the apworld, no sample YAML, and a sample that requires another 
 world than ``VERSION`` (made before the version was raised: run gen_sample_yamls.py again).
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
-builder adds (CONTAINER_KEYS): without them, AP 0.6.8 logs the manifest as invalid and ignores
-``world_version`` and ``minimum_ap_version``. Reads this repo and writes only into ``--out``,
-which may not be inside the game's or the saves' folder (``tools/protected.py``). Only files
-git tracks are packed: an untracked file in ``worlds/zexion``, ``client`` or ``samples`` stops
-the build.
+builder adds (CONTAINER_KEYS; docs/DEVELOPING.md, "Branches and releases", says why). Reads
+this repo and writes only into ``--out``, which may not be inside the game's or the saves'
+folder (``tools/protected.py``). Only files git tracks are packed: an untracked file in
+``worlds/zexion``, ``client`` or ``samples`` stops the build.
 """
 
 from __future__ import annotations
@@ -61,9 +60,8 @@ GUIDES = {
 }
 SAMPLES = ROOT / "samples"  # the sample YAMLs, copied beside the apworld as they are
 MANIFEST = "zexion/archipelago.json"
-# The keys APWorldContainer.get_manifest() gives in AP 0.6.8 (worlds/Files.py: container_version
-# 7, and an APWorldContainer's compatible_version 7) besides "game", which the world's has,
-# merged as worlds/LauncherComponents.py's Build APWorlds does.
+# The keys APWorldContainer.get_manifest() gives in AP 0.6.8 besides "game", which the world's
+# has, merged as worlds/LauncherComponents.py's Build APWorlds does.
 CONTAINER_KEYS = {"version": 7, "compatible_version": 7}
 
 

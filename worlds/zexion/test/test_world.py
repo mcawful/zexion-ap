@@ -459,7 +459,7 @@ class TestStartRooms(unittest.TestCase):
 
 class TestNames(unittest.TestCase):
     def test_location_names_give_the_area_and_the_games_x_then_y(self) -> None:
-        # Cell (7, 22), where the owner read X22, Y7 in Guardia (docs/re/locations.md).
+        # Cell (7, 22), which the game shows as X22, Y7 in Guardia (docs/re/locations.md).
         self.assertEqual(location_name(data.LOCATIONS.index((7, 22))), "Guardia 22,7")
         self.assertEqual(location_name(data.LOCATIONS.index((1, 22))), "Exodia 22,1")
 
@@ -536,11 +536,10 @@ class TestTheStartIsOpened(ZexionTestBase):
     the way out of what the starting items reach until the starting state reaches START_REACH
     of the player's locations that are not excluded (ZexionWorld.open_the_start, from
     fill_hook). Without it the fill stops with "No more spots to place" on each of the seeds
-    below, as these tests set the world up (with fill_hook a no-op, 2026-11-03): OHKO with the
-    OS Install Disks goal from Tower Gauntlet, seed 187 (CI run 41698877558 stopped the same
-    way on a seed it did not log), and the rooms that failed most with one early opener (PR
-    #93): Below Machinus in Easy with either goal and in Standard, Vulknor Entry and Below Arena
-    in Easy (docs/re/locations.md, "Which start rooms the world offers")."""
+    below, as these tests set the world up: OHKO with the OS Install Disks goal from Tower
+    Gauntlet, seed 187, Below Machinus in Easy with either goal and in Standard, and Vulknor
+    Entry and Below Arena in Easy (docs/re/locations.md, "Which start rooms the world
+    offers")."""
 
     auto_construct = False
     run_default_tests = False

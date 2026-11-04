@@ -20,21 +20,14 @@ Reads (all copies in lab/, never the game folder):
   core goal is Zexion's cell in the core") and the Bomb Box Secret Shuffle makes a location
   (``secret_location``, ``SECRET_LOCATION``).
 
-Cells joined by always-open passages are merged into one region (strongly connected components of
-the open passages); each conditional passage between two regions becomes an entrance carrying the
-requirement list of the cell it leaves from. The map is shared by all modes; a mode's settings only
-change how the rules evaluate. Only the cells every item of a mode reaches from some start room
-with X Crystals and X Blocks on are kept (``opened_cells``; those settings only open more, so these
-hold what the modes reach without them), and then those with Secret Shuffle on too, whose regions
-are numbered after the others (``components_after``). Every start room of a mode must reach the
-same regions and locations with every item, which the mode then holds once; the generator refuses
-data where they differ. With the mode's starting items alone, it lists the locations each start
-room reaches (``sphere0_indices``). The output is a Python module of plain data; worlds/zexion
-turns it into regions and rules with worlds/zexion/logic.py. The world works out each seed's
-reachable regions, locations and start rooms itself when the seed is generated
-(worlds/zexion/reach.py), over the map and the 34 start rooms (``START_ROOMS``) written here; each
-mode's lists here (``regions``, ``location_indices``, ``sphere0_indices``) are what its tests
-compare those results with.
+Cells joined by always-open passages are merged into one region, and each conditional passage
+between two regions becomes an entrance carrying the requirement list of the cell it leaves
+from (docs/re/locations.md, "Regions are cells joined by open passages" and "The region graph
+holds what the settings reach"). The map is shared by all modes. The generator refuses data
+where a mode's start rooms reach different regions or locations with every item. The output is
+a Python module of plain data, which worlds/zexion turns into regions and rules
+(worlds/zexion/logic.py, reach.py); each mode's lists here (``regions``, ``location_indices``,
+``sphere0_indices``) are what its tests compare the world's own results with.
 """
 
 from __future__ import annotations
@@ -205,11 +198,8 @@ def shared(values: list, name: str, what: str) -> list:
 
 
 # The area of each map cell, as the pause screen shows it (docs/re/locations.md, "Location
-# names"; B1): MapData's cell records are 0x9A bytes each, indexed X * 54 + Y as the game
-# displays the cell (this repo's cell (a, b) is X = b, Y = a); MAP_CELLS is record 0's 16-bit
-# area field, 0x48 into the record (the records start at 0x3E5701). The area's region is the
-# second byte of its 2-byte entry at MAP_AREAS, an index into Text (32-byte entries after a
-# 6-byte header).
+# names"; B1): MAP_CELLS is record 0's 16-bit area field in MapData, records indexed X * 54 + Y
+# (this repo's cell (a, b) is X = b, Y = a); MAP_AREAS gives each area's index into Text.
 MAP_DATA_SHA256 = "79a0510f4dbbee0f"
 TEXT_SHA256 = "3bf8cd5e07ede18f"
 MAP_CELLS, MAP_CELL_SIZE, MAP_AREAS = 0x3E5749, 0x9A, 0x45F94D

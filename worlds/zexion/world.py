@@ -97,10 +97,9 @@ GUN_CODES = tuple(custom.MENU_CODES[i] for i in custom.GUNS)  # the five guns' i
 # client can give with the start options' and that the named start room suits. Not a game rule:
 # the game draws once per seed text.
 DRAWS = 64
-# How many of its own locations a Zexion player's starting state must reach before
-# Archipelago places progression; below it, fill_hook places items that open more
-# (open_the_start).
-# Not a game rule: the game's generator repairs its placement instead (docs/re/locations.md).
+# How many of its own locations a Zexion player's starting state must reach before Archipelago
+# places progression; below it, fill_hook places items that open more (open_the_start). Not a
+# game rule: the game's generator repairs its placement instead (docs/re/locations.md).
 START_REACH = 20
 
 
@@ -200,11 +199,10 @@ class ZexionWorld(World):
         """The randomizer menu as this seed's settings: a preset's, with Starting Location and
         Safety the YAML's, or Custom's. Refuses a Custom-only option set with a preset, and a
         state the game's menu cannot hold or would build a broken pool from (custom.problems).
-        With the OS Install Disks goal, Gates Vanilla (OHKO's, or the YAML's) becomes Unlocked:
-        Vanilla's gates take all four keys, which that goal does not place, and Unlocked's take
-        none, only two gates visited (docs/re/memory.md, "Keys, the gates and the key
-        markers"). The logic travels by gate only under Open, so this changes how the player can
-        travel, not what the seed reaches."""
+        With the OS Install Disks goal, Gates Vanilla (OHKO's, or the YAML's) becomes Unlocked,
+        since Vanilla's gates take all four keys, which that goal does not place; the logic
+        travels by gate only under Open, so what the seed reaches is the same
+        (docs/re/locations.md, "The OS Install Disks goal: the disks, then the ending")."""
         o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
         is_custom = name == "custom"
         base = o.custom_base.current_key if is_custom else name
@@ -368,19 +366,14 @@ class ZexionWorld(World):
     def open_the_start(self, progitempool: list[Item], fill_locations: list[Location]) -> None:
         """Place items that open the way out of what the starting items reach, one step at a
         time, until this player's starting state reaches START_REACH of its locations that are
-        not excluded (or all of them; excluded locations take no progression, so they do not
-        count): at each step an item in ``progitempool`` of this player's, or of an item link
-        it is in, that reaches more, drawn at random among those that one of this player's
-        empty locations the state reaches can take (``can_fill``: not an item its
-        non_local_items or an item rule keeps out), or where none does alone, two that do
-        together, each locked in such a location and taken out of ``progitempool`` and
-        ``fill_locations``. Archipelago calls this in its main fill (fill_hook), after plando
-        and early items and before it places progression, which then starts from that reach.
-        From a few locations it could fill them with Missile Containers and fail, with "No more
-        spots to place" (docs/re/locations.md, "Which start rooms the world offers" and "Where
-        the world departs from the game"). Each item goes only where the state already reaches
-        it, so the placed items can always be collected. Where no item can be placed that opens
-        more, it stops short, with a warning naming the cause."""
+        not excluded (or all of them; excluded locations take no progression). Each step draws
+        an item of ``progitempool``, this player's or an item link's it is in, that reaches more
+        alone (``opening_step``), or else two that do together, and locks each in an empty
+        location of this player's that the state already reaches and that can take it
+        (``can_fill``), so the placed items can always be collected. Where none can be placed,
+        it stops short with a warning naming the cause. Archipelago calls this from fill_hook,
+        after plando and early items, before it places progression (docs/re/locations.md,
+        "Where the world departs from the game")."""
         multiworld, player = self.multiworld, self.player
         mine = [
             loc
@@ -544,9 +537,7 @@ class ZexionWorld(World):
         """Whether a start room suits the seed, as the game's START GAME judges one: its
         starting items collect a location from it, and every item reaches the goal (the core
         and Zexion, or with the OS Install Disks goal the Landing Pod); with Double Teleport,
-        the same for the start and a second teleport target (``partners``). From a room with
-        one such location Archipelago's fill failed often until the world opened the start in it
-        (open_the_start; docs/re/locations.md, "Which start rooms the world offers")."""
+        the same for the start and a second teleport target (``partners``)."""
         if self.double_teleport:
             return bool(self.partners(room))
         return bool(self.seed_reach.sphere0(room["cell"]).locations) and self.reaches_the_goal(room)
@@ -872,15 +863,11 @@ class ZexionWorld(World):
         return out
 
     def menu_setup(self) -> dict[str, Any] | None:
-        """The randomizer menu as this seed's settings, for the client's ARCHIPELAGO choice
-        (client/newgame.py): the seed's own menu state (a preset's, or Custom's, its coin-flip
-        items and amounts as the menu holds them), with Starting Location the world's start
-        room, so the pause menu's view of the settings names it (the game's mode check skips
-        Starting Location, so a preset still reads as itself, except OHKO with the OS Install
-        Disks goal, whose Gates read_menu makes Unlocked: Custom), and a seed text of 16 hex
+        """The randomizer menu for the client's ARCHIPELAGO choice (client/newgame.py): the
+        seed's own menu state (a preset's, or Custom's), with Starting Location the world's
+        start room so the pause menu's view of the settings names it, and a seed text of 16 hex
         digits from this seed and player. With Double Teleport, whose placement reads the menu's
-        start table, the table instead of a second target (the seed's second start is
-        written)."""
+        start table, the table in place of a second target."""
         name = f"{self.multiworld.seed_name}:{self.player}".encode()
         menu = self.menu.with_value(custom.START_LOCATION, self.start["index"] + 1)
         double = self.double_teleport
