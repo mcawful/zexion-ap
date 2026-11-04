@@ -41,6 +41,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "addresses.h"
 
@@ -221,6 +222,10 @@ private:
 // wrap. Without metrics (null), wrapped at `fallback` characters and not centered.
 std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
                           const FontMetrics* metrics, double cap, size_t fallback);
+// `text` split at its line breaks ("" is one empty line).
+std::vector<std::wstring> split_lines(const std::wstring& text);
+// `lines` joined by line breaks; empty lines before the first that is not are left out.
+std::wstring join_lines(const std::vector<std::wstring>& lines);
 // `text`'s lines centered on its widest with leading spaces, as layout_popup centers a popup's
 // (the stand-ins' names, which the pickup popup shows from ItemNames); as it is without metrics.
 std::wstring centered_lines(const std::wstring& text, const FontMetrics* metrics);

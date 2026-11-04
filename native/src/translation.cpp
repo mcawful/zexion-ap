@@ -518,7 +518,20 @@ void center(std::vector<std::wstring>& lines, const FontMetrics& metrics) {
     }
 }
 
-std::wstring joined(const std::vector<std::wstring>& lines) {
+}  // namespace
+
+std::vector<std::wstring> split_lines(const std::wstring& text) {
+    std::vector<std::wstring> lines;
+    for (size_t at = 0; at <= text.size();) {
+        size_t end = text.find(L'\n', at);
+        if (end == std::wstring::npos) end = text.size();
+        lines.push_back(text.substr(at, end - at));
+        at = end + 1;
+    }
+    return lines;
+}
+
+std::wstring join_lines(const std::vector<std::wstring>& lines) {
     std::wstring out;
     for (const std::wstring& line : lines) {
         if (!out.empty()) out += L'\n';
@@ -527,19 +540,11 @@ std::wstring joined(const std::vector<std::wstring>& lines) {
     return out;
 }
 
-}  // namespace
-
 std::wstring centered_lines(const std::wstring& text, const FontMetrics* metrics) {
     if (metrics == nullptr) return text;
-    std::vector<std::wstring> lines;
-    for (size_t at = 0; at <= text.size();) {
-        size_t end = text.find(L'\n', at);
-        if (end == std::wstring::npos) end = text.size();
-        lines.push_back(text.substr(at, end - at));
-        at = end + 1;
-    }
+    std::vector<std::wstring> lines = split_lines(text);
     center(lines, *metrics);
-    return joined(lines);
+    return join_lines(lines);
 }
 
 std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
@@ -552,19 +557,13 @@ std::wstring layout_popup(const std::wstring& head, const std::wstring& suffix,
     std::vector<std::wstring> lines;
     for (const std::wstring* part : {&head, &suffix}) {
         // Each part's own lines (a notice may hold line breaks) wrapped at the cap.
-        size_t at = 0;
-        while (at <= part->size() && !part->empty()) {
-            size_t end = part->find(L'\n', at);
-            if (end == std::wstring::npos) end = part->size();
-            for (std::wstring& line : wrap(part->substr(at, end - at), fits)) {
-                lines.push_back(std::move(line));
-            }
-            at = end + 1;
+        for (const std::wstring& own : split_lines(*part)) {
+            for (std::wstring& line : wrap(own, fits)) lines.push_back(std::move(line));
         }
     }
     // A popup's lines centered on the widest; a notice's left as they wrap.
     if (!head.empty() && metrics != nullptr) center(lines, *metrics);
-    return joined(lines);
+    return join_lines(lines);
 }
 
 std::wstring hd_suffix(const std::string& as_sent) {

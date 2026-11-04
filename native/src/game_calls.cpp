@@ -494,13 +494,7 @@ std::wstring Game::hd_label_text(int cell, bool first_line, bool icon) const {
     auto label = labels_.find(cell);
     if (!mixed_case() || label == labels_.end()) return upper;
     // In English(HD), each line the client sent in its own case where it sent one.
-    std::vector<std::wstring> lines;
-    for (size_t at = 0; at <= upper.size();) {
-        size_t end = upper.find(L'\n', at);
-        if (end == std::wstring::npos) end = upper.size();
-        lines.push_back(upper.substr(at, end - at));
-        at = end + 1;
-    }
+    std::vector<std::wstring> lines = split_lines(upper);
     const Label& own = label->second;
     // Another Zexion player's item with no name of the client's: the translation's own name
     // for it (ItemNames, as the game's pickup popup shows its items), as for a received item.
@@ -525,12 +519,7 @@ std::wstring Game::hd_label_text(int cell, bool first_line, bool icon) const {
         lines[0] = head + first;
     }
     if (lines.size() > 1 && !own.own_who.empty()) lines[1] = hd_text(own.own_who);
-    std::wstring out;
-    for (const std::wstring& line : lines) {
-        if (!out.empty()) out += L'\n';
-        out += line;
-    }
-    return out;
+    return join_lines(lines);
 }
 
 std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const {
