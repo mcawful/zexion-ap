@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import types
 
-from fakes import connection
+from fakes import connection, seed_state
 
 from client import state, storage
 
@@ -19,7 +19,7 @@ class FakeContext:
 
     def __init__(self, conn: state.Connection, seed: state.SeedState | None = None) -> None:
         self.conn = conn
-        self.seed_state = seed or state.SeedState()
+        self.seed_state = seed or seed_state(conn)
         self.slot = conn.slot
         self.stored_data: dict = {}
         self.items_received: list = []
@@ -111,8 +111,21 @@ def test_the_popup_count_waits_for_the_items_to_be_listed() -> None:
     ctx = FakeContext(conn)
     ctx.stored_data[conn.announced_key] = None  # read: none stored
     p = types.SimpleNamespace(codes=[16, 17], found=[])
-    asyncio.run(storage.announced_tick(ctx, conn, p))
-    assert conn.session.announced is None and ctx.sent == []
+    current = ctx.seed_state.session
+    asyncio.run(storage.announced_tick(ctx, conn, current, p))
+    assert not current.announced_read and ctx.sent == []
     conn.items_listed = True
-    asyncio.run(storage.announced_tick(ctx, conn, p))
-    assert conn.session.announced == 2 and stored(ctx) == [2]
+    asyncio.run(storage.announced_tick(ctx, conn, current, p))
+    assert current.announced_read and current.announced == 2 and stored(ctx) == [2]
+
+
+def test_a_reconnect_reads_the_count_again_never_below_the_sessions_own() -> None:
+    # The session handed 3 over before the connection dropped; the last count stored was 1.
+    conn = connection()
+    ctx = FakeContext(conn)
+    current = ctx.seed_state.session
+    current.announced, current.announced_read = 3, False  # zexion_client's connected
+    ctx.stored_data[conn.announced_key] = 1
+    p = types.SimpleNamespace(codes=[16, 17, 18, 19], found=[])
+    asyncio.run(storage.announced_tick(ctx, conn, current, p))
+    assert current.announced_read and current.announced == 3 and stored(ctx) == [3]

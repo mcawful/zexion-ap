@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
+import functools
 import struct
 
 import pytest
-from fakes import CELLS, SECRET_CELLS, SECRET_LIST, fresh, plan, secret_plan, secret_section
+from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
 from client import game, native
 from client import save_patch as sp
 from client import session as ss
-
-
-def blob_for(p: sp.SeedPlan) -> bytes:
-    out = sp.patch(bytes(fresh(cells=CELLS)), p)
-    return out[sp.SECTION : sp.SECTION + game.SECTION_SIZE]
 
 
 class FakeGame:
@@ -25,7 +21,7 @@ class FakeGame:
         for item, n in p.start_items.items():
             self.inv[item] = n
         self.sup = [32, 32, 13, 13, 0, 0]
-        self.blob = blob_for(p)
+        self.blob = bytes(section(p))
         self.flicker = False
         self.reads = 0
         self.marker = 1
@@ -89,7 +85,7 @@ class FakeGame:
 # set as its first cutscene begins, and one the finale sets and the ending clears.
 ENDING, FINALE = 250, 211
 # Starts with 2 Energy Tanks, 3 Missile Containers, a Missile Box, Machine Gun.
-PLAN = plan(cells=tuple(CELLS))
+PLAN = plan()
 
 
 def give(
@@ -112,11 +108,11 @@ def look_away(session: ss.Session, g: FakeGame) -> None:
         session.leave()
 
 
-def reconnect(before: ss.Session) -> ss.Session:
-    """The next connection's session, carrying ``before``'s ending (state.carry_over)."""
-    after = ss.Session(PLAN)
-    after.keep_ending(before)
-    return after
+def reconnect(session: ss.Session) -> ss.Session:
+    """The session as the next connection to its seed finds it (zexion_client's connected):
+    the same one, its popup count to read again."""
+    session.announced_read = False
+    return session
 
 
 @pytest.fixture
@@ -135,7 +131,7 @@ def test_collected_cells_are_reported_as_checks(setup) -> None:
 def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
     p = secret_plan()
     session, g = ss.Session(p), FakeGame(PLAN)
-    g.blob = bytes(secret_section(p))
+    g.blob = bytes(section(p))
     x, y = SECRET_LIST[100]  # list position 100: location index 154
     g.grid[y * 54 + x] = 0x1B
     x, y = SECRET_LIST[101]  # list position 101: location index 100
@@ -276,7 +272,7 @@ def test_nothing_happens_while_the_state_is_changing(setup) -> None:
 
 def test_another_seed_gets_nothing(setup) -> None:
     session, g = setup
-    g.blob = blob_for(plan(start=(6, 1, 1)))
+    g.blob = bytes(section(plan(start=(6, 1, 1))))
     g.collect(5)
     step = session.step(g, [17], gap=0)
     # Another seed's save, said so (the helper tells the player: other_save_tick).
@@ -359,12 +355,17 @@ class FakeHelper:
         self.closed = True
 
 
+def through(session: ss.Session, helper: FakeHelper) -> None:
+    """Every step of ``session`` gives through ``helper``, as the client's poll passes it."""
+    session.step = functools.partial(session.step, helper=helper)
+
+
 @pytest.fixture
 def with_helper(setup):
     session, g = setup
     helper = FakeHelper(g)
-    session.helper = helper
-    session.announced = 0
+    through(session, helper)
+    session.announced_read = True  # the server's count, read: no popup shown yet
     writes = []
     real = g.set_item
     g.set_item = lambda *a: (writes.append(a), real(*a))
@@ -387,15 +388,34 @@ def test_a_refused_batch_gives_nothing_and_is_tried_again(with_helper) -> None:
     assert session.step(g, [17], gap=0).granted == {17: 1}
 
 
-def test_a_failed_helper_is_dropped_for_direct_writes(with_helper) -> None:
+def test_a_helper_that_fails_is_raised_with_nothing_written(with_helper) -> None:
+    # The client attaches it again before the next step (zexion_client's poll), so the items
+    # owed get their popups: none is written directly meanwhile.
     session, g, helper, writes = with_helper
     helper.fail = True
-    assert give(session, g, [17]) == {17: 1}
-    assert writes == [(17, 0, 1)] and session.helper is None and helper.closed
-    assert session.mismatch is None, "a helper that failed is tried again later"
+    session.step(g, [17], gap=0)
+    with pytest.raises(native.HelperError):
+        session.step(g, [17], gap=0)
+    assert writes == [] and g.inv[17] == 0
+    assert session.announced == 0, "it never reached the helper: its popup is still to show"
 
 
-def test_a_helper_that_doesnt_match_is_dropped_and_kept_for_the_poll_to_say(with_helper) -> None:
+def test_a_lost_reply_counts_its_popups_as_handed_over(with_helper) -> None:
+    session, g, helper, writes = with_helper
+
+    def apply(text: str) -> str:
+        helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    helper.apply = apply
+    session.step(g, [17], gap=0, senders=["Bob"])
+    with pytest.raises(native.ReplyLost):
+        session.step(g, [17], gap=0, senders=["Bob"])
+    assert writes == [] and helper.popups() == ["popup 17 FROM Bob"]
+    assert session.announced == 1, "the helper may have shown it: not shown again"
+
+
+def test_a_helper_that_doesnt_match_is_raised_for_the_poll_to_say(with_helper) -> None:
     session, g, helper, writes = with_helper
     mismatch = native.ModMismatch("both are version 0, but from different builds")
 
@@ -403,8 +423,10 @@ def test_a_helper_that_doesnt_match_is_dropped_and_kept_for_the_poll_to_say(with
         raise mismatch
 
     helper.apply = apply
-    assert give(session, g, [17]) == {17: 1}, "given directly"
-    assert session.helper is None and session.mismatch is mismatch
+    session.step(g, [17], gap=0)
+    with pytest.raises(native.ModMismatch) as raised:
+        session.step(g, [17], gap=0)
+    assert raised.value is mismatch and writes == []
 
 
 def test_popups_announce_each_received_item_once(with_helper) -> None:
@@ -441,10 +463,10 @@ def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
 def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setup) -> None:
     session, g = setup
     helper = FakeHelper(g)
-    session.helper = helper
+    through(session, helper)
     assert give(session, g, [17], senders=["Alice"]) == {}
     assert helper.requests == [] and g.inv[17] == 0
-    session.announced = 0  # the server's count: no popup shown yet
+    session.announced_read = True  # the server's count: no popup shown yet
     give(session, g, [17], senders=["Alice"])
     assert g.inv[17] == 1 and "popup 17 FROM Alice" in helper.requests[-1]
 
@@ -466,10 +488,11 @@ def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_hel
 
 
 def test_without_guns_first_each_item_pops_up_as_itself() -> None:
-    off = plan(options={10: 0, 42: 2, 72: 1}, cells=tuple(CELLS))
+    off = plan(options={10: 0, 42: 2, 72: 1})
     session, g = ss.Session(off), FakeGame(off)
     helper = FakeHelper(g)
-    session.helper, session.announced = helper, 0
+    through(session, helper)
+    session.announced_read = True
     # The Machine Gun is a starting item: a received Pulse Wave and Pentashot are themselves.
     give(session, g, [9, 14], senders=["Alice"] * 2)
     assert helper.popups() == ["popup 9 FROM Alice", "popup 14 FROM Alice"]
@@ -493,9 +516,11 @@ def test_nothing_is_sent_when_all_is_in_order(with_helper) -> None:
 
 def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
     session, g = setup
-    session.announced = 0
     give(session, g, [17])
-    assert g.inv[17] == 1 and session.announced == 1
+    assert g.inv[17] == 1 and session.announced == 0, "before the count is read: left as it is"
+    session.announced_read = True
+    give(session, g, [17, 22])
+    assert g.inv[22] == 1 and session.announced == 2
 
 
 def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
@@ -527,9 +552,7 @@ def test_the_ending_begun_while_disconnected_holds_after_the_reconnect(setup) ->
     look_away(session, g)
     g.flags[ENDING] = 1  # it begins while disconnected, in the same load
     after = reconnect(session)
-    assert after.carried_from is session
     after.step(g, [17], gap=0)
-    assert after.carried_from is None, "stepped: no later end of the old load is its"
     after.step(g, [17], gap=0)
     assert after.holding and g.inv[17] == 0
 

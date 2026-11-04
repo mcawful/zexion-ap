@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fakes import connection, slot_data
 
-from client import discs, game, native, state
+from client import discs, game, native, session, state
 
 
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
@@ -24,13 +24,12 @@ def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
         slot=2,
     )
     assert conn.mode == "Standard" and conn.plan.start == (5, 326, 449)
-    assert conn.session.plan is conn.plan
     assert conn.foreign == [3], "location 9 is not kept"
     assert conn.hint_targets == [[1, 3392510_520, 16]]
     assert conn.lock_assists and conn.intel_chip and conn.death_link_on
     assert conn.hunt == discs.DiscHunt(3, 5, 0, frozenset({12}))
     assert not conn.items_listed and conn.awaiting_backlog
-    assert conn.newgame is None and not conn.goal_sent and not conn.dressed
+    assert conn.newgame is None
 
 
 def test_the_options_off_set_none_of_them() -> None:
@@ -40,7 +39,9 @@ def test_the_options_off_set_none_of_them() -> None:
     assert conn.hunt is None
 
 
-@pytest.mark.parametrize("key", ["hints", "intel_chip", "stand_in", "menu", "goal", "mode"])
+@pytest.mark.parametrize(
+    "key", ["hints", "intel_chip", "stand_in", "menu", "goal", "mode", "locations"]
+)
 def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
     slot = slot_data()
     del slot[key]
@@ -48,7 +49,9 @@ def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
         state.Connection.from_slot_data(slot, team=0, slot=1)
 
 
-@pytest.mark.parametrize("changes", [{"goal": "boss"}, {"menu": []}, {"start_items": []}])
+@pytest.mark.parametrize(
+    "changes", [{"goal": "boss"}, {"menu": []}, {"start_items": []}, {"options": {"42": 2}}]
+)
 def test_slot_data_values_this_client_cannot_read_are_an_unsupported_seed(changes) -> None:
     # A goal it does not know, or a value of another kind.
     with pytest.raises(state.UnsupportedSeed):
@@ -84,15 +87,15 @@ def test_leaving_the_seeds_save_starts_the_next_load_afresh() -> None:
 
 def test_with_no_count_stored_everything_held_counts_as_handed_and_is_stored_at_once() -> None:
     for absent in (None, "x", -1, True):
-        assert state.announced_start(absent, 5) == 5
+        assert state.announced_start(absent, 5, 0) == 5
         assert state.announced_to_store(5, absent, None) == 5, "the key is made at once"
-    assert state.announced_start(None, 0) == 0
+    assert state.announced_start(None, 0, 0) == 0
     assert state.announced_to_store(0, None, None) == 0, "even with nothing held"
 
 
 def test_a_stored_count_starts_the_session_capped_at_the_items_held() -> None:
-    assert state.announced_start(3, 5) == 3
-    assert state.announced_start(9, 5) == 5
+    assert state.announced_start(3, 5, 0) == 3
+    assert state.announced_start(9, 5, 0) == 5
     assert state.announced_to_store(3, 3, None) is None, "nothing new: nothing stored"
 
 
@@ -103,11 +106,11 @@ def test_a_shield_count_that_is_not_a_count_pauses_shields_rather_than_reading_a
         assert state.shield_count(bad) is None, "every received shield would be given again"
 
 
-def test_a_reconnect_does_not_hand_over_again_what_the_connection_before_did() -> None:
-    # Its last count may not have reached the server before it ended.
-    assert state.announced_start(3, 5, handed_before=5) == 5
-    assert state.announced_start(3, 5, handed_before=9) == 5
-    assert state.announced_start(3, 5, handed_before=2) == 3
+def test_a_reconnect_does_not_hand_over_again_what_the_session_did_before() -> None:
+    # Its last count may not have reached the server before the connection ended.
+    assert state.announced_start(3, 5, handed=5) == 5
+    assert state.announced_start(3, 5, handed=9) == 5
+    assert state.announced_start(3, 5, handed=2) == 3
 
 
 def test_new_popups_handed_over_are_stored_and_a_failed_store_is_sent_again() -> None:
@@ -179,30 +182,6 @@ def test_leaving_this_seeds_save_says_items_wait() -> None:
 # --- reconnects, a lost helper, the goal ------------------------------------------------------
 
 
-def test_a_reconnect_to_the_same_seed_carries_the_popups_handed_and_the_endings_hold() -> None:
-    old = connection()
-    old.session.announced, old.session.holding = 7, True
-    new = connection()
-    state.carry_over(new, old, same_seed=True)
-    assert new.before is old.session and new.session.holding
-    old.session.announced = 9  # its last poll handed more over after Connected
-    assert new.before.announced == 9, "read when the new count starts, not at Connected"
-    other_seed = connection()
-    state.carry_over(other_seed, old, same_seed=False)
-    assert other_seed.before is None and not other_seed.session.holding
-    state.carry_over(other_seed, None, same_seed=True)
-    assert other_seed.before is None
-
-
-def test_a_reconnect_takes_over_only_the_labels_sent_for_the_dropped_connection() -> None:
-    # What else carries over for the helper (the save dressed, the disk count, the labels sent
-    # for the dropped connection) is test_ticks's reconnect tests.
-    other = connection()
-    told = state.HelperState(labels_for=other)
-    state.carry_over(connection(), connection(), same_seed=True, told=told)
-    assert told.labels_for is other
-
-
 def test_reload_mod_says_whether_the_mod_unloaded() -> None:
     unloaded, line = state.reload_reply("bye")
     assert unloaded and "loading it again" in line
@@ -214,16 +193,6 @@ def test_reload_mod_says_whether_the_mod_unloaded() -> None:
     unloaded, line = state.reload_reply(reply)
     assert not unloaded and "(the frame hook was replaced by something else)" in line
     assert "restart Zexion" in line, "advice that does not hinge on a menu"
-
-
-def test_connects_own_disconnect_keeps_the_connection_a_disconnect_left() -> None:
-    # Disconnect, then Connect: Archipelago's connect disconnects first, with no connection.
-    conn = connection()
-    left = state.left_connection(conn, None)
-    assert left is conn
-    assert state.left_connection(None, left) is conn, "the one left is not forgotten"
-    newer = connection()
-    assert state.left_connection(newer, left) is newer
 
 
 def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
@@ -276,24 +245,16 @@ def test_a_guard_still_off_in_play_is_said_once() -> None:
     assert state.FeatsCheck().seen("", True, 0.0, said) is None, "no field: as off"
 
 
-def test_a_load_ended_while_away_ends_and_undresses_for_both() -> None:
+def test_a_load_ended_while_away_ends_the_hold_and_undresses() -> None:
     # The connection dropped with this seed's save loaded, and the player went back to the
     # title (Session.look_away, in a thread): the ending's hold, the labels and the disk count
-    # go, from a connection that carried them over meanwhile (Connected) too.
-    old = connection()
-    old.dressed, old.session.holding, old.session._goal_before = True, True, True
-    new = connection()
-    state.carry_over(new, old, same_seed=True)
-    assert new.dressed and new.session.holding and new.session.carried_from is old.session
-    state.end_kept_load(old, new)
-    assert not old.dressed and not old.session.holding and old.session._goal_before is None
-    assert not new.dressed and not new.session.holding and new.session._goal_before is None
-    # One carried from no other (or that has stepped since: step clears it) keeps its own.
-    other = connection()
-    other.dressed, other.session.holding = True, True
-    state.end_kept_load(old, other)
-    assert other.dressed and other.session.holding
-    state.end_kept_load(old, None)
+    # go, for the next connection to the seed too (it carries on with the same SeedState).
+    seed = state.SeedState(("seed", 0, 1), session.Session(connection().plan), dressed=True)
+    seed.session.holding, seed.session._goal_before = True, True
+    seed.discs_told, seed.session.announced = True, 4
+    seed.end_load()
+    assert not seed.dressed and not seed.session.holding and seed.session._goal_before is None
+    assert seed.discs_told and seed.session.announced == 4, "the seed's, not the load's"
 
 
 def test_the_language_is_said_outside_the_default_english_and_english_hd() -> None:

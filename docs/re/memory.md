@@ -18,7 +18,6 @@ the heading its facts are under.
 | `copy_entry_fn` | `+0xF7550` | The file select |
 | `current_menu` | `+0xDF82F8` | The game-mode panel: NORMAL / RANDOMIZER |
 | `current_slot` | `+0xCDD080` | Starting a new game; Feats and achievements |
-| `database_count` | `+0x345F2C` | Translation tables |
 | `death_fn` | `+0x1D9FA0` | DeathLink |
 | `delete_entry_fn` | `+0xF67F0` | The file select |
 | `draw_layer` | `+0xCE0F78` | The title screen |
@@ -39,7 +38,6 @@ the heading its facts are under.
 | `free_slot` | `+0x209798` | Byte patterns |
 | `halt_flag` | `+0x345EF4` | DeathLink |
 | `hd_build_fn` | `+0x88480` | Translated menus and the prompt |
-| `hd_entry_fn` | `+0x1880F0` | Translated messages |
 | `hd_messages` | `+0xEAEE40` | Translated messages |
 | `hd_text_fn` | `+0x1870A0` | Translated messages |
 | `hud_layout_fn` | `+0x1D5470` | Game functions the helper calls |
@@ -51,10 +49,7 @@ the heading its facts are under.
 | `item_pool` | `+0xB6E030` | Live item objects |
 | `item_records` | `+0xCDD068` | Other players' items ("Item records") |
 | `keys_branch` | `+0x168C7D` | The pause screen's KEYS row |
-| `large_attach_fn` | `+0x8AD90` | Translated menus and the prompt |
 | `large_count` | `+0xEAEE24` | Translation tables |
-| `large_offsets` | `+0xC9CF70` | Translation tables |
-| `large_text` | `+0xC9CF48` | Translation tables |
 | `last_message` | `+0x3E29F0` | Game functions the helper calls; The mission prompt |
 | `malloc_slot` | `+0x2097A0` | Byte patterns |
 | `map_grid` | `+0x3E469D` | The live map grid flips at the moment of pickup; Map markers |
@@ -95,7 +90,6 @@ the heading its facts are under.
 | `start_flags` | `+0xEAFC20` | The game-mode panel: NORMAL / RANDOMIZER ("The start table") |
 | `stats_context` | `+0x22FC48` | Feats and achievements |
 | `suit_color_fn` | `+0x1EDC00` | Game functions the helper calls |
-| `text_attach_fn` | `+0x8AC30` | Translated menus and the prompt |
 | `text_link_fn` | `+0xA8620` | The title screen |
 | `text_new_fn` | `+0x92300` | The title screen |
 | `text_place_fn` | `+0xA79E0` | The equipment screen |
@@ -695,7 +689,7 @@ the heading its facts are under.
 
 | Field | |
 |---|---|
-| Value | Byte patterns for the targets the translations need, in `client/patterns.py` since 2026-11-02 (the helper's config keys among them: `translation`, `tr_flag`, `small_text`, `small_offsets`, `item_names`, `item_name_offsets`, `small_count`, `item_name_count`, `hd_messages`, `message_slots`, `hd_text_fn`, `hd_build_fn`, `wstring_new_fn`, and `large_count` since the Feats title in a translation, which an older cache may lack; the other six, which the helper does not read, `TOOL_TARGETS`, checked by `tools/check_patterns.py` only). Each is `rip` (the field's offset in the match, then where its instruction ends; addend 0 unless given) or `at`, in the form `tools/make_pattern.py` prints. Struct offsets from these: "Translation tables", "Translated messages", "Translated menus and the prompt". Every target has two or more patterns from different code, as `client/patterns.py` wants; the counts' second patterns come from the `Objects` and `Text` loader `0x1DDA00`, which reads ItemNames' and Database's counts from those files (`0x1DE03C`, `0x1DE2F8`: 2 bytes each), and sizes LargeText's from its count (`0x1DE35A`), and from two readers (`0x16EFA7`, `0x1F122`). |
+| Value | Byte patterns for the targets the translations need, in `client/patterns.py` since 2026-11-02 (the helper's config keys among them: `translation`, `tr_flag`, `small_text`, `small_offsets`, `item_names`, `item_name_offsets`, `small_count`, `item_name_count`, `hd_messages`, `message_slots`, `hd_text_fn`, `hd_build_fn`, `wstring_new_fn`, and `large_count` since the Feats title in a translation, which an older cache may lack; the other six, which nothing reads, are recorded here only: they were in `client/patterns.py` too, as `TOOL_TARGETS`, until 2026-11-04). Each is `rip` (the field's offset in the match, then where its instruction ends; addend 0 unless given) or `at`, in the form `tools/make_pattern.py` prints. Struct offsets from these: "Translation tables", "Translated messages", "Translated menus and the prompt". Every target has two or more patterns from different code, as `client/patterns.py` wants; the counts' second patterns come from the `Objects` and `Text` loader `0x1DDA00`, which reads ItemNames' and Database's counts from those files (`0x1DE03C`, `0x1DE2F8`: 2 bytes each), and sizes LargeText's from its count (`0x1DE35A`), and from two readers (`0x16EFA7`, `0x1F122`). |
 | | **`translation`** (`+0xC9CF10`, the translation object (buffers, offset tables, flags)): from `0x785C2`, `rip` 3, 7: `48 8D 15 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 66 0F 6F 05 ?? ?? ?? ?? 4C 8D 45 AF`; from `0xCB9AC`, `rip` 3, 7: `48 8D 15 ?? ?? ?? ?? 48 8D 8D 58 01 00 00 E8 ?? ?? ?? ?? 44 0F B6 F0` |
 | | **`tr_flag`** (`+0xC9CFA1`, 1 while a translation is on): from `0x1F857`, `rip` 3, 7: `44 38 3D ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 48 0F BF 96 E8 01 00 00`; from `0x1820AE`, `rip` 3, 7: `40 38 3D ?? ?? ?? ?? 74 49 48 63 83 E0 01 00 00`; from `0x1870E3`, `rip` 2, 7: `80 3D ?? ?? ?? ?? 00 4E 8D 34 3E 74 1A F2 0F 10 05 ?? ?? ?? ??` |
 | | **`small_text`** (`+0xC9CF40`, SmallText.txt's wide buffer): from `0x8AC5B`, `rip` 3, 7: `48 8B 05 ?? ?? ?? ?? 0F 57 C0 49 89 5B 08 0F 11 44 24 38`; from `0x187C0B`, `rip` 3, 7: `48 8B 05 ?? ?? ?? ?? 48 8D 4C 24 60 41 B8 00 03 00 00 48 8D 14 50 E8 ?? ?? ?? ?? 8B 86 10 02 00 00`; from `0x1FC403`, `rip` 3, 7: `48 8B 0D ?? ?? ?? ?? 48 8D 0C 41 EB 07 48 8D 0D ?? ?? ?? ??` |
@@ -737,7 +731,7 @@ the heading its facts are under.
 
 | Field | |
 |---|---|
-| Value | Ninety-eight targets, each a `Target` in `client/patterns.py`: its patterns (where each comes from on B1: "Pattern sources" below) and, in `Target.rvas`, the address it resolved to on each build (for checks only; `tests/test_patterns.py` holds a digest of them all to compare with). "Lookup: targets" at the top of this page gives each target's heading. The client attaches with `patterns.CLIENT_TARGETS`, every target but those only the RE tools locate (`TOOL_TARGETS`: `pickup_counter`, and six of the translations': "Translation patterns"). |
+| Value | Ninety-two targets, each a `Target` in `client/patterns.py`: its patterns (where each comes from on B1: "Pattern sources" below) and, in `Target.rvas`, the address it resolved to on each build (for checks only; `tests/test_patterns.py` holds a digest of them all to compare with). "Lookup: targets" at the top of this page gives each target's heading. The client attaches with `patterns.CLIENT_TARGETS`, every target but the one only the RE tools locate (`TOOL_TARGETS`: `pickup_counter`). |
 | | **Checks.** Each is found by two to four patterns from different code; `client/game.py` requires every pattern to match exactly once in `.text` (overlapping matches counted) and all to lead to the same address, or it refuses to run. Except the patterns of kind `at` (the match is the target's own bytes: a function's start, or an instruction, with an addend when the match starts before or after it: `keys_branch` `+0x7`, `popup_width_code` `+0x19`, `ending_unlocks` `+0x4E` and `-0xD`, `ending_join` `+0x7`, `seen_marker_code` `+0x19` and `-0x32`), only instruction-pointer-relative references are used. Before scanning, it identifies the build from the PE header (TimeDateStamp `0x6A3F82DE`, SizeOfImage `0x1204000` on B1) and refuses builds not listed in `client/patterns.py`, since a patch could keep the code and change what the bytes mean. The randomizer section is validated before use (154 distinct cells on the map, 155 with Secret Shuffle, sorted by y then x; a zero gap; item IDs 0 to 50: `client/game.py`, `parse_seed`). |
 | | **How they are chosen.** A call site resolves like any instruction-pointer-relative reference (`call rel32`), and most functions also get a pattern over their own start. Where a pattern refers to a field inside the target rather than its start, another refers to the start, so a layout change makes them disagree (`rando_blob`'s third pattern reads a settings field `0x6C4` into it; `start_cells` and `start_flags`, with one reference of their own each, take the count's pattern plus their distance from it on B1; `item_pool` and `object_pool` come from the next-free-slot number right after each pool, with a negative addend). Wildcards cover every relative or image-base address, and in a few patterns a short jump's distance. `malloc_slot` (`+0x2097A0`) and `free_slot` (`+0x209798`), with no fact row of their own, are the import slots of the C runtime's `malloc` and `free` (from calls at `0x89FD2` and `0x1B4E8C`; disassembly, B1), only read. |
 | Status | measured on B1: every target matches once offline (`tools/check_patterns.py` on the exe copy) and live (`--live`, or the client resolving them in the running game to configure the helper). First live use by group: the first seven (the five data targets equal to the loaded save byte for byte, then `menu_state` and `save_loaded`), 2026-10-21; `rando_marker`, the grant and new-game targets, the ARCHIPELAGO choice's and `flags`, 2026-10-22; the escape skip's, the start table's, live item objects', the sprite texture, the popup width, the area-event handlers, DeathLink's, ASSIST's and the object pool, 2026-10-23; the OS Install Disks goal's thirteen (the scanner's Text table, the equipment screen's ten, the mission prompt's routine table, the KEYS branch) and the file select's five, 2026-10-24; the title screen's three and `map_handler`, 2026-10-25; Feats and achievements' four (`ending_unlocks`, `ending_join`, `stats_context`, `context_init_slot`), 2026-10-26; `fade` and `fade_level`, 2026-10-27; `seen_marker_code`, 2026-10-28 (`check_patterns.py --live`, and `lab/mapmarks-flash/seen_probe.py` reading the game's 50 bytes there, the helper 0.30.0 from develop loaded at the title); the translations' 20, 2026-11-02 (resolved live by `Game.attach`: "Translation patterns"); `options_back_fn`, 2026-11-03 (`check_patterns.py` on the exe copy: "matches B1"; live the same day, `check_patterns.py --live` with the 1.0.0 RC running: once, at `Zexion.exe+0x168910`); `pickup_list`, 2026-11-03, offline (the same); live inferred, 2026-11-04 (an AP save's ITEMS row filled on develop 1acaaaf's build, which only a `pickup_list` a client resolved does: "The pickup record holds the major-item list") |
@@ -832,23 +826,17 @@ the heading its facts are under.
 | | **`tr_flag`:** 1. `0x1F857`; 2. `0x1820AE`; 3. `0x1870E3` |
 | | **`small_text`:** 1. `0x8AC5B`; 2. `0x187C0B`; 3. `0x1FC403` |
 | | **`small_offsets`:** 1. `0x8AC38`; 2. `0x187BFB`; 3. `0x1FC3EB` |
-| | **`large_text`:** 1. `0x187C4F`; 2. `0x8AE35`; 3. `0x183394` |
-| | **`large_offsets`:** 1. `0x187C3F`; 2. `0x8AE21`; 3. `0x18337C` |
 | | **`item_names`:** 1. `0x1F8D6`; 2. `0x1F942`; 3. `0x187CE8` |
 | | **`item_name_offsets`:** 1. `0x1F86C`; 2. `0x1F931`; 3. `0x187CDD` |
 | | **`small_count`:** 1. `0x8EA60`; 2. `0x16EFA7` |
 | | **`large_count`:** 1. `0x8EA7F`; 2. `0x1DE35A` |
 | | **`item_name_count`:** 1. `0x8EA9E`; 2. `0x1DE03C` |
-| | **`database_count`:** 1. `0x1DE2F8`; 2. `0x1F122` |
 | | **`hd_messages`:** 1. `0x1870CE`; 2. `0x1881E2`; 3. `0x187D55` |
 | | **`message_slots`:** 1. `0x203515`; 2. `0x150C4` |
 | | **`hd_text_fn`:** 1. the call at `0x1F985`; 2. the call at `0x1FC425`; 3. the call at `0x1FC8DE`; 4. its start |
-| | **`hd_entry_fn`:** 1. the call at `0x10F75`; 2. the call at `0x10F81`; 3. its start |
-| | **`text_attach_fn`:** 1. the call at `0x169C49`; 2. the call at `0x18027B`; 3. its start |
-| | **`large_attach_fn`:** 1. the call at `0xB3215`; 2. the call at `0xB327A`; 3. its start |
 | | **`hd_build_fn`:** 1. the call at `0x8ACF1`; 2. the call at `0x18756A`; 3. its start |
 | | **`wstring_new_fn`:** 1. the call at `0x1165A`; 2. the call at `0x8ACA0`; 3. its start |
 | Status | measured on B1: each pattern matches once and leads to its target ("Byte patterns") |
 | Method | `tools/make_pattern.py` on the exe copy, the references read where each pattern was chosen, each recorded beside its pattern as it was added; kept in `client/patterns.py`'s comments until 2026-11-04, then moved here unchanged but for wording and the corrections under Evidence |
 | Build | B1 |
-| Evidence | `lab/data/6d8a94bd4d64/Zexion.exe` (copy); `tools/check_patterns.py` on it ("Byte patterns"). Checked on the move, 2026-11-04: every pattern of the 98 targets (255, as `sum(len(t.patterns) for t in patterns.TARGETS)` counts them) matched in the copy's `.text` and its recorded address compared with the match: an instruction or call within it, a start equal to it (a scratch script over `client/patterns.py`, with capstone through `lab/hd-trace/zdis.py` for the two that differed, read on screen, not kept); the re-auditor's review the same day disassembled each match and found every address the referring instruction, a call a `call`, a start a function start; and once more after the planning session's review, the same day: a script parsing this section against `patterns.TARGETS` found one entry per pattern (255 in 98 rows), each naming an address within its pattern's match in `.text` or, for "its start", equal to it (`popup_width_code`'s first, which named none, given `0x1F8F6` then); two had been recorded wrong and are corrected here: `sound_system`'s first (`0x1F9CD` before, the `lea` at `0x1F9DE`) and `item_records`'s second (`0x1F0AB` before, the `mov` at `0x1F98A`); and `ending_join`'s first named the `je` at the `cmp`'s address (`0x94D5B`; the `je` is at `0x94D62`, found by the planning session's review) |
+| Evidence | `lab/data/6d8a94bd4d64/Zexion.exe` (copy); `tools/check_patterns.py` on it ("Byte patterns"). Checked on the move, 2026-11-04: every pattern of the 98 targets (255, as `sum(len(t.patterns) for t in patterns.TARGETS)` counts them) matched in the copy's `.text` and its recorded address compared with the match: an instruction or call within it, a start equal to it (a scratch script over `client/patterns.py`, with capstone through `lab/hd-trace/zdis.py` for the two that differed, read on screen, not kept); the re-auditor's review the same day disassembled each match and found every address the referring instruction, a call a `call`, a start a function start; and once more after the planning session's review, the same day: a script parsing this section against `patterns.TARGETS` found one entry per pattern (255 in 98 rows), each naming an address within its pattern's match in `.text` or, for "its start", equal to it (`popup_width_code`'s first, which named none, given `0x1F8F6` then); two had been recorded wrong and are corrected here: `sound_system`'s first (`0x1F9CD` before, the `lea` at `0x1F9DE`) and `item_records`'s second (`0x1F0AB` before, the `mov` at `0x1F98A`); and `ending_join`'s first named the `je` at the `cmp`'s address (`0x94D5B`; the `je` is at `0x94D62`, found by the planning session's review). Later that day the six translation targets nothing read left `client/patterns.py` with their 17 patterns, and their rows here with them (their sources stay in "Translation patterns"): 92 targets and 238 patterns, every target matching B1 in the copy (`check_patterns.py`) |

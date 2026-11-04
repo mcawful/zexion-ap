@@ -93,12 +93,11 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     # After the seed's placement the section must hold its location list (the cells the world
     # placed the seed at, in the game's list order, then zeros to the item table: the 4 bytes
     # the 155th fills with Secret Shuffle), its amounts and the settings the logic reads.
-    if plan.cells:
-        if not all(0 <= v < ids.MAP_SIZE for cell in plan.cells for v in cell):
-            raise NewGameError("a location cell of the seed is off the map")
-        listed = b"".join(struct.pack("<HH", *plan.cells[i]) for i in plan.order)
-        gap = section(sp.ITEM_TABLE) - len(listed)
-        lines.append(f"expect 0x0 {(listed + bytes(gap)).hex()}")
+    if not all(0 <= v < ids.MAP_SIZE for cell in plan.cells for v in cell):
+        raise NewGameError("a location cell of the seed is off the map")
+    listed = b"".join(struct.pack("<HH", *plan.cells[i]) for i in plan.order)
+    gap = section(sp.ITEM_TABLE) - len(listed)
+    lines.append(f"expect 0x0 {(listed + bytes(gap)).hex()}")
     lines.append(f"expect {section(sp.AMOUNTS):#x} {struct.pack('<6h', *plan.amounts).hex()}")
     for t, value in sorted(plan.options.items()):
         lines.append(f"expect {section(sp.OPTIONS + t):#x} {value:02x}")

@@ -44,7 +44,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-from . import aplabels, discs, game, ids, native, shields, state, ticks  # noqa: E402
+from . import aplabels, discs, game, ids, native, session, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 from .storage import announced_tick, hint_notes, hints_tick, own_found, store_found  # noqa: E402
 from .ticks import (  # noqa: E402
@@ -119,12 +119,9 @@ class ZexionContext(CommonContext):
         self.keep_randomizer = False  # arm without ARCHIPELAGO (--keep-randomizer)
         # The state, by how long each part lasts (client/state.py).
         self.conn: state.Connection | None = None
-        # The connection a disconnect ended, for the next one to the same seed (connected).
-        self.left_conn: state.Connection | None = None
         self.told: state.HelperState | None = None  # set with helper
-        self.seed_state = state.SeedState()
+        self.seed_state: state.SeedState | None = None  # set with the first conn, then kept
         self.load = state.LoadState()
-        self.shields = shields.Shields()  # by slot key: kept across connections
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
         self.helper_retry_at = 0.0
@@ -160,9 +157,13 @@ class ZexionContext(CommonContext):
             self.connected(args["slot_data"])
 
     def connected(self, slot: dict) -> None:
+        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
+        seed = self.seed_state
         try:
             conn = state.Connection.from_slot_data(slot, self.team, self.slot)
-        except state.UnsupportedSeed as exc:
+            if seed is None or seed.identity != identity:  # another seed or slot: afresh
+                seed = state.SeedState(identity, session.Session(conn.plan))
+        except ValueError as exc:  # state.UnsupportedSeed, or locations the session can't use
             logger.error(
                 "This seed was made with another version of the Zexion APWorld than this "
                 "client: generate and play with the same release. Disconnecting."
@@ -170,20 +171,17 @@ class ZexionContext(CommonContext):
             log.error(f"Cannot play this seed: {exc}.")
             Utils.async_start(self.disconnect(), name="disconnect")
             return
-        conn.session.helper = self.helper
-        # The connection before: one that dropped (kept), or one a disconnect ended.
-        old = state.left_connection(self.conn, self.left_conn)
-        self.left_conn = None
-        identity = (self.server_seed_name or self.seed_name, self.team, self.slot)
-        state.carry_over(conn, old, identity == self.seed_state.identity, self.told)
-        self.conn = conn
+        # A reconnect to the same seed and slot (a drop, or a Disconnect and Connect) carries on
+        # with its SeedState: the session (the ending's hold, the popups handed over), the
+        # save dressed and the labels the helper holds for it. Only the popup count is read
+        # again, from the server (announced_tick).
+        seed.session.announced_read = False
+        self.seed_state, self.conn = seed, conn
         # Kept by the server across clients: shields given, locations found, follow-ups shown
         # and item popups handed over.
         self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
-        if identity != self.seed_state.identity:  # another seed or slot: nothing carries over
-            self.seed_state = state.SeedState(identity)
         # Wait for this connection's own read of the stored hints and its item list, and for
-        # its own first look at the load (what the helper holds for the save stays: carry_over).
+        # its own first look at the load (what the helper holds for the save stays).
         self.stored_data.pop(conn.hints_key, None)
         self.load.seed_loaded = False
         self.load.return_home = discs.ReturnHome()
@@ -212,9 +210,8 @@ class ZexionContext(CommonContext):
             self.disarm_pending = True
         # Nothing of the seed's is wanted now: the helper ticks, which run while a helper is
         # attached, take back the labels, the ASSIST lock and the INTEL CHIP name.
-        self.left_conn = state.left_connection(conn, self.left_conn)
-        if self.left_conn is not None:
-            self.left_conn.dressed = False  # nothing held for the next one (carry_over)
+        if self.seed_state is not None:
+            self.seed_state.dressed = False  # nothing held for the next connection either
         self.conn = None
         self.load.seed_loaded = False
         self.load.save_collected = set()
@@ -225,7 +222,7 @@ class ZexionContext(CommonContext):
         # A dropped connection comes here (connection_closed), not through disconnect: the
         # received items are gone until the next connection lists them again, so what counts
         # them waits. What the helper holds for the seed (labels, the disk count, the ASSIST
-        # lock, the armed new game) stays for the reconnect (state.carry_over).
+        # lock, the armed new game) stays for the reconnect (state.SeedState).
         super().reset_server_state()
         conn = getattr(self, "conn", None)  # an Archipelago that calls it from __init__
         if conn is not None:
@@ -272,15 +269,11 @@ class ZexionContext(CommonContext):
         self.load.feats = state.FeatsCheck()  # the next helper is asked about its own guard
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
-        if conn is not None:
-            # Its popups not shown yet still show if it stays loaded, and are lost if it is gone.
-            conn.session.helper = None
-            conn.session.mismatch = None  # said by now, or of a game that closed
-            # A plan the lost helper held is armed again in the next one; a new game just made
-            # waits until its save is in play (poll), and a seed that cannot make one
-            # stays as it is.
-            if conn.newgame is state.NewGame.ARMED:
-                conn.newgame = None
+        # Its popups not shown yet still show if it stays loaded, and are lost if it is gone. A
+        # plan the lost helper held is armed again in the next one; a new game just made waits
+        # until its save is in play (poll), and a seed that cannot make one stays as it is.
+        if conn is not None and conn.newgame is state.NewGame.ARMED:
+            conn.newgame = None
         self.disarm_pending = False
 
     def assists_unlocked(self) -> bool:
@@ -323,18 +316,26 @@ class Poll:
         self.found = own_found(ctx)
 
 
+def helper_error(ctx: ZexionContext, exc: native.HelperError) -> None:
+    """The helper failed in a tick or the step: dropped, and attached again before the next
+    step (helper_lost), as a step with no helper would write the items owed with no popup; one
+    that doesn't match the client is said so instead, and left alone."""
+    if isinstance(exc, native.ModMismatch):
+        ctx.mismatched(exc)
+        return
+    log.warning(f"The in-game helper failed ({exc}); trying it again later.")
+    ctx.lose_helper()
+    ctx.helper_lost = True
+
+
 async def side_tick(ctx: ZexionContext, name: str, tick: Callable[[], Awaitable[None]]) -> None:
     """Run a tick that the items, the checks and the goal must not wait on: a helper that fails
-    is dropped, and attached again before the next step (helper_lost), and any other failure
-    is logged, once for each distinct one, and the poll goes on."""
+    is dropped (helper_error), and any other failure is logged, once for each distinct one,
+    and the poll goes on."""
     try:
         await tick()
-    except native.ModMismatch as exc:
-        ctx.mismatched(exc)
     except native.HelperError as exc:
-        log.warning(f"The in-game helper failed ({exc}); trying it again later.")
-        ctx.lose_helper()
-        ctx.helper_lost = True
+        helper_error(ctx, exc)
     except Exception as exc:
         if ctx.said(f"tick {name}", repr(exc)):
             logger.warning(
@@ -368,15 +369,15 @@ def game_alive(ctx: ZexionContext) -> bool:
     return False
 
 
-def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
+def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     """The attached game has exited: nothing of this game's carries into the next one's,
-    ``kept``'s load (the ending's hold, and the save dressed: the next game's helper is not to
+    ``seed``'s load (the ending's hold, and the save dressed: the next game's helper is not to
     dress a save at its title) included."""
     logger.info("Zexion has closed.")
-    ctx.shields.left()
-    ctx.shields.restart()  # the next game's spawns are its own
+    seed.shields.left()
+    seed.shields.restart()  # the next game's spawns are its own
     ctx.load.leave()
-    state.end_kept_load(kept, ctx.conn)
+    seed.end_load()
     with contextlib.suppress(Exception):
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
@@ -388,18 +389,18 @@ def game_closed(ctx: ZexionContext, kept: state.Connection) -> None:
 
 
 async def away_tick(ctx: ZexionContext) -> None:
-    """While no connection steps a session (disconnected, or dropped): the one kept for the
-    next connection (connected, state.carry_over) still sees its save leave, so the ending's
-    hold it carries is one of the load still loaded (Session.look_away), and the helper takes
-    back what it held for the save (state.end_kept_load)."""
-    kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
-    if kept is None or ctx.game_conn is None:
+    """While no connection steps the session (disconnected, or dropped): it still sees its save
+    leave, so the ending's hold it keeps for the next connection is one of the load still
+    loaded (Session.look_away), and the helper takes back what it held for the save
+    (state.SeedState.end_load)."""
+    seed = ctx.seed_state
+    if seed is None or ctx.game_conn is None:
         return
     try:
-        if await asyncio.to_thread(kept.session.look_away, ctx.game_conn):
-            state.end_kept_load(kept, ctx.conn)
+        if await asyncio.to_thread(seed.session.look_away, ctx.game_conn):
+            seed.end_load()
     except game.GameNotRunning:
-        game_closed(ctx, kept)
+        game_closed(ctx, seed)
     except game.GameError as exc:  # looked at again on the next poll
         log.debug(f"Reading Zexion while disconnected failed: {exc}")
 
@@ -408,18 +409,18 @@ async def leave_helper_tick(ctx: ZexionContext) -> None:
     """While no connection steps a session and a save the client has not dressed is loaded, let
     the helper go, as if the client had closed, so the helper dresses an AP save itself from the
     client's file (native/README.md, "AP saves without the client"). Kept: a save dressed before
-    a drop (state.carry_over), an ending, and an armed new game at the title. The next
+    a drop (state.SeedState.dressed), an ending, and an armed new game at the title. The next
     connection attaches it again before its first step (poll)."""
-    kept = state.left_connection(ctx.conn, ctx.left_conn)  # as connected() picks it
+    seed = ctx.seed_state
     if ctx.helper is None or ctx.game_conn is None:
         return
-    if kept is not None and (kept.dressed or kept.session.holding):
+    if seed is not None and (seed.dressed or seed.session.holding):
         return  # the client's look, or its ending (the Feats guard, RETURN HOME): kept as is
     try:
         no_save = await asyncio.to_thread(ctx.game_conn.state) == game.NO_SAVE
     except game.GameNotRunning:
-        if kept is not None:
-            game_closed(ctx, kept)
+        if seed is not None:
+            game_closed(ctx, seed)
         return
     except game.GameError:  # read again on the next poll
         return
@@ -493,11 +494,12 @@ async def poll(ctx: ZexionContext) -> None:
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
-    current = conn.session
+    seed = ctx.seed_state  # set with conn (connected)
+    current = seed.session
     p = Poll(ctx)  # again: the items may have come while the above waited
     # A save past its ending playing it again: held before this poll's step gives anything.
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
-    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
+    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     try:
         notes: dict[int, str] = {}
         try:
@@ -512,14 +514,17 @@ async def poll(ctx: ZexionContext) -> None:
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
         if hunt is not None:  # a received disc pops up with the count
-            notes |= discs.received_notes(hunt, p.codes, p.found, conn.discs_told)
+            notes |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         step = await asyncio.to_thread(
-            current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes
+            current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes, helper=ctx.helper
         )
+    except native.HelperError as exc:  # nothing more this poll: attached again first
+        helper_error(ctx, exc)
+        return
     except game.GameNotRunning:
-        game_closed(ctx, conn)
+        game_closed(ctx, seed)
         return
     except game.GameError as exc:
         if ctx.said("read", "failing"):  # said again only after a read that worked
@@ -529,22 +534,15 @@ async def poll(ctx: ZexionContext) -> None:
         await asyncio.sleep(2)
         return
     ctx.said.clear("read", "read detail")
-    if ctx.helper is not None and current.helper is None:
-        # The session gave up on it: tried again later, unless it doesn't match the client.
-        mismatch, current.mismatch = current.mismatch, None
-        if mismatch is not None:
-            ctx.mismatched(mismatch)
-        else:
-            ctx.lose_helper()
-    elif ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
+    if ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
     # The popups the step handed the helper, or the items it wrote directly.
-    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, p))
+    await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     load = ctx.load
     if step.left_seed:
-        ctx.shields.left()
-        ctx.shields.restart()  # a stop was that load's (not a reconnect's: the load goes on)
+        seed.shields.left()
+        seed.shields.restart()  # a stop was that load's (not a reconnect's: the load goes on)
         load.assists_want = load.intel_want = False
     if ctx.conn is not conn:
         return  # a poll from before a reconnect says nothing of this seed
@@ -558,7 +556,7 @@ async def poll(ctx: ZexionContext) -> None:
         if not load.seed_loaded:
             logger.info(state.save_loaded(step.save_stamp))  # again after a reconnect
         load.seed_loaded = True
-        conn.discs_told = step.scanned
+        seed.discs_told = step.scanned
         load.save_collected = set(step.checked)
         if conn.lock_assists and ctx.assists_unlocked():
             conn.lock_assists = False
@@ -571,7 +569,7 @@ async def poll(ctx: ZexionContext) -> None:
         load.leave()  # reminded again on the next load, and so on
     if not step.other_seed and (step.left_seed or step.seed_matches):  # not an unsettled read
         ctx.said.clear("other save")  # said again for the next such load (other_save_tick)
-    conn.dressed = aplabels.labels_wanted(step.seed_matches, step.left_seed, conn.dressed)
+    seed.dressed = aplabels.labels_wanted(step.seed_matches, step.left_seed, seed.dressed)
     if conn.death_link_on:
         await side_tick(ctx, "DeathLink", lambda: deathlink_tick(ctx, step))
     if ctx.helper is not None:
@@ -583,7 +581,7 @@ async def poll(ctx: ZexionContext) -> None:
         # A load's first look: sent from the next poll's, two reads apart, so a load caught half
         # way (the section still the last save's, the map grid the new one's) sends nothing.
         return
-    shield_work = ctx.shields.pending is not None or ctx.shields.given is not None
+    shield_work = seed.shields.pending is not None or seed.shields.given is not None
     if ctx.helper is not None or shield_work:
         await side_tick(ctx, "Energy Shields", lambda: shields_tick(ctx, p.codes))
     if ctx.conn is not conn:
@@ -615,7 +613,7 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, name, tick)
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: this ending is not its goal
-    if step.goal and not conn.goal_sent and not ctx.finished_game:
+    if step.goal and not ctx.finished_game:
         have = 0 if hunt is None else discs.owned(hunt, p.codes, p.found)
         if state.goal_reached(step.goal, None if hunt is None else hunt.required, have):
             try:
@@ -624,7 +622,6 @@ async def poll(ctx: ZexionContext) -> None:
                 logger.warning("Couldn't send the goal (connection lost?); trying again.")
                 log.warning(f"Sending the goal failed ({exc}); trying again.")
                 return
-            conn.goal_sent = True
             ctx.finished_game = True
             logger.info(
                 "This save reached the ending: goal sent."
