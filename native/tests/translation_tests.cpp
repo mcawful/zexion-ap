@@ -976,10 +976,22 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     g_menu = 0;
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "the map closed: the name picked up again");
+    // Open again with no wrap (no map hook): the game's own name all the same.
+    game.set_hooks({});
+    put<void*>(child, 0x168, &map_handler);
+    put<void*>(child, 0x178, &map_handler);
+    g_current_menu = reinterpret_cast<BYTE*>(&menu);
+    g_menu = 2;
+    frames(game, 1);
+    check(get<void*>(child, 0x168) == &map_handler && entry_text(g_items, 47) == L"Scrap Energy",
+          "the map open, not wrapped: the game's own name");
+    g_current_menu = nullptr;
+    g_menu = 0;
+    frames(game, 1);
+    check(entry_text(g_items, 47) == picked, "and the name picked up again once it closes");
     end_message(0);
     frames(game, 1);
     g_map_handler = nullptr;
-    game.set_hooks({});
 
     // Back at the title with the message still bound: no save, so nothing held.
     in_cell(5);
@@ -1000,6 +1012,10 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     load_translation("French", true, L" (FR)");
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "a language change: the name picked up kept");
+    // The client gone with the message still bound: put back, and not written again.
+    game.client_gone(&no_callback);
+    frames(game, 2);
+    check(entry_text(g_items, 47) == L"Scrap Energy (FR)", "the client gone: put back for good");
     game.put_back_all(&no_callback);
     reset_translation();
 }

@@ -106,6 +106,9 @@ public:
                const std::function<std::wstring(int)>& hd_name = {});
     void restore(const GameAddresses& a);
     bool holds_hook() const { return child_ != nullptr; }
+    // Whether the map is the top menu, its first child holding the game's map handler or the
+    // helper's wrapper, whether or not this wrapped it.
+    static bool open(const GameAddresses& a);
 
 private:
     // The wrapped child is still the open map menu's first child, a slot holding the wrapper
