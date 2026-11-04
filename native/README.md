@@ -751,7 +751,8 @@ back from OPTION MENU is still its wrapper.
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
 screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
 built again in the translation's font; the pause row's count is KEYS's translated text built
-again ("2 of 15", centered on the row as the game centers a prompt's line, built again
+again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
+row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
 next frame call otherwise), the key slots' characters hidden; the disk count
 popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
@@ -1028,8 +1029,8 @@ closed, gone with it open.
     whole line or nothing, only over a line that is blank or already its note, and only if every
     glyph of it is writable and has the font's frames. In a translation, while the note (or the
     title written over the hint) is there, the title's translated text is built again as
-    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
-    it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
+    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" (in
+    capitals outside English(HD): "Translations", mixed case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
     and kept at the title's middle as the game lays out its title ("Translations"); the game's
     own entry (220, or 219 for the hint) again when the note goes.
     Without LargeText's count (a cache from before the `large_count` key), or with too little
