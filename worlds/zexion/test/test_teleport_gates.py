@@ -1,7 +1,6 @@
-"""Double Teleport's second target and the Gates setting, as the game's logic has them (built
-2026-10-28; docs/re/randocells.md, "Starting Location and the second teleport target" and "What
-each setting does in the game"), and Gates Vanilla made Unlocked for the OS Install Disks
-goal."""
+"""Double Teleport's second target and the Gates setting, as the game's logic has them
+(docs/re/randocells.md, "Starting Location and the second teleport target" and "What each
+setting does in the game"), and Gates Vanilla made Unlocked for the OS Install Disks goal."""
 
 import dataclasses
 import io
@@ -87,7 +86,7 @@ class TestGatesOpen(unittest.TestCase):
                 self.assertNotIn(reach.LOCATION_AT[cell], data.LOCATION_RULES)
 
     def test_rtalvas_gate_opens_no_travel(self) -> None:
-        # The game's logic counts it; the world does not (the owner's guard, 2026-10-28).
+        # The game's logic counts it; the world does not (reach.RTALVA_GATE).
         # From its cell with no items, the world's flood reaches no gate cell beyond it.
         self.assertIn((reach.RTALVA_GATE, True), logic.GATE_TRIGGERS)
         settings = with_settings(preset("standard"), gates_open=True).settings

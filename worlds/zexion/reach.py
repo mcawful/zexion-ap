@@ -92,8 +92,8 @@ def collectible(
 
 
 # R'Talva's gate: the game's logic lets reaching it open the gate travel (logic.GATE_TRIGGERS),
-# but in game the gate appears only after a boss, so the world leaves it out (a guard, decided
-# 2026-10-28: docs/re/locations.md, "Where the world departs from the game").
+# but in game the gate appears only after a boss, so the world leaves it out
+# (docs/re/locations.md, "Where the world departs from the game").
 RTALVA_GATE = (51, 34)
 GATE_TRIGGERS = tuple(t for t in logic.GATE_TRIGGERS if t[0] != RTALVA_GATE)
 
@@ -206,8 +206,8 @@ def _cells(have: Inventory, start: dict, second: dict | None) -> tuple[Cell, ...
 def second_starts(seed: Seed, start: dict, rooms: Iterable[dict]) -> list[dict]:
     """The rooms that can be the second teleport target for ``start``: every room but the start,
     as the game draws, but a flagged room only when the logic counts it from the start
-    (``logic.second_counts`` with the starting items; a guard, decided 2026-10-28:
-    docs/re/locations.md, "OHKO: two starts, and only the locations they reach"), and of those
+    (``logic.second_counts`` with the starting items: docs/re/locations.md, "OHKO: two
+    starts, and only the locations they reach"), and of those
     the rooms with which the starting items collect a location (``Seed.sphere0_from``), the
     game's one-location rule for a start."""
     alone = bool(seed.sphere0(start["cell"]).locations)

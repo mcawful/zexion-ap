@@ -491,7 +491,12 @@ YAMLs from `samples/` (`zexion-easy.yaml`, `zexion-standard.yaml`, `zexion-ohko.
 `zexion-custom.yaml`). The samples name the world's version, so raising it means running
 `tools/gen_sample_yamls.py` again: the build refuses samples for another version. It packs only
 files git tracks and refuses a release that would not match (its docstring): run locally,
-rebuild `native/` first after a checkout that touched it.
+rebuild `native/` first after a checkout that touched it. The apworld's `archipelago.json` is
+the world's plus the two container keys Archipelago's own builder adds, `version` 7 and
+`compatible_version` 7 (`CONTAINER_KEYS`). Without `compatible_version`, AP 0.6.8's
+`APContainer.read_contents` fails, its apworld loader logs "Invalid or missing manifest file",
+and the world's `world_version` and `minimum_ap_version` are never read (read in AP 0.6.8's
+`worlds/Files.py` and `worlds/__init__.py`, 2026-11-04).
 
 Players download the latest release from the
 [Releases page](https://github.com/mcawful/zexion-ap/releases).

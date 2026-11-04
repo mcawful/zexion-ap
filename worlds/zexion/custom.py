@@ -197,9 +197,8 @@ def problems(menu: Menu) -> list[str]:
     999 in all, and the pool missiles and bombs ten per free place. The pool: for every coin
     flip and draw, no longer list than places once the supplies are in (``most_entries``),
     which the menu allows: the game drops the extra entries at random, keys and items among
-    them, and past 155 writes beyond its list. The keys, items and Energy Tanks alone never
-    are: 4 + 27 + 40 at most, of 154. What it does not check is the filler for the locations a
-    seed leaves out, which depends on what the items reach from the start (world.py,
+    them, and past 155 writes beyond its list. It does not check the filler for the locations
+    a seed leaves out, which depends on what the items reach from the start (world.py,
     ``fit_pool``)."""
     a = menu.amounts
     out = []

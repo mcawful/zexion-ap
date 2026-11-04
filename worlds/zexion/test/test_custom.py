@@ -132,7 +132,7 @@ class TestThePresetsDraw(unittest.TestCase):
 
 
 class TestTheGeneratedSeeds(unittest.TestCase):
-    """The three seeds generated in the game's menu and read from their first saves, 2026-10-27
+    """The three seeds generated in the game's menu and read from their first saves
     (docs/re/randocells.md, "The pool")."""
 
     def test_seed_a_everything_started_fits_as_singles(self) -> None:
@@ -205,7 +205,7 @@ class TestMoreBoxesThanTens(unittest.TestCase):
             self.assertEqual(got, Counter({MISSILE_BOX: 2, BOMB_BOX: 3}), seed)
 
     def test_standard_with_900_mega_bombs_generates(self) -> None:
-        # The finding's state: once a crash in the draw. R = 107: 94 boxes for 92 tens.
+        # R = 107: 94 boxes for 92 tens.
         menu = self.menu(20, 900)
         self.assertEqual(custom.problems(menu), [])
         self.assertEqual(
@@ -338,7 +338,7 @@ class TestGunsFirst(unittest.TestCase):
         # A Plasma Burst alone counts as the Arc Plasma only with Guns First (0xE5680).
         self.assertEqual(reach.Seed.of(on, {12: 1}, []).start_items, ((7, 1),))
         self.assertEqual(reach.Seed.of(off, {12: 1}, []).start_items, ((12, 1),))
-        # A started gun and its upgrade count as both (the logic review's finding).
+        # A started gun and its upgrade count as both.
         self.assertEqual(reach.Seed.of(on, {7: 2}, []).start_items, ((7, 1), (12, 1)))
         # And a gun picked up twice counts as its upgrade only with it.
         self.assertEqual(reach.Seed.of(on, {}, [7, 7]).every_item, ((7, 1), (12, 1)))
