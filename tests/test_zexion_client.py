@@ -13,6 +13,7 @@ import sys
 import types
 from unittest import mock
 
+import pytest
 from fakes import connection, seed_state, slot_data
 
 from client import game, native, session, state, ticks
@@ -28,8 +29,12 @@ class CommonContext:
         self.player_names: dict[int, str] = {}
         self.slot, self.team = 1, 0
         self.server_seed_name = self.seed_name = None
+        self.finished_game = False
 
     def set_notify(self, *keys: str) -> None:
+        pass
+
+    async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         pass
 
     async def update_death_link(self, on: bool) -> None:
@@ -486,6 +491,81 @@ def test_a_helper_failing_the_step_again_is_left_to_the_usual_retry(monkeypatch)
         asyncio.run(zc.poll(ctx))
     assert order == ["step with the helper", "attach", "step with the helper", "step without it"]
     assert ctx.helper is None and not ctx.helper_lost and ctx.helper_retry_at > 0
+
+
+def test_a_step_that_goes_through_ends_the_failures_in_a_row(monkeypatch) -> None:
+    # A failure, a step through the helper, a failure: attached again before the next step,
+    # as after a first failure.
+    ctx, order = lost_helper(monkeypatch, attaches=True)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    fails = iter([True, False, True, False])
+
+    def step(g, received, helper=None, **kwargs):
+        order.append("step")
+        lost = helper is not None and next(fails)
+        error = native.ReplyLost("no reply within 3.0 s") if lost else None
+        return session.Step(state=game.IN_PLAY, helper_error=error)
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    for _ in range(4):
+        asyncio.run(zc.poll(ctx))
+    assert order == ["step", "attach", "step", "step", "attach", "step"]
+
+
+@pytest.mark.parametrize("fails", [1, 2])
+def test_a_helper_lost_just_before_the_step_holds_its_grants_once(monkeypatch, fails) -> None:
+    # Lost in the ending-again tick, after the attach and before the step: the step gives
+    # nothing, rather than write the items with no popup, and the helper is attached again
+    # first. Lost again there, the next step gives directly, as after two failed steps.
+    ctx, order = lost_helper(monkeypatch, attaches=True)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    lost: list[int] = []
+
+    async def replay(c) -> None:
+        if c.helper is not None and len(lost) < fails:
+            lost.append(1)
+            raise native.ReplyLost("no reply within 2.0 s")
+
+    def step(g, received, helper=None, give=True, **kwargs):
+        order.append(
+            f"{'helper' if helper is not None else 'none'}, {'gives' if give else 'waits'}"
+        )
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(zc, "replay_tick", replay)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    asyncio.run(zc.poll(ctx))
+    after = "helper, gives" if fails == 1 else "none, gives"
+    assert order == ["none, waits", "attach", after]
+
+
+def test_a_disconnect_undresses_the_save_for_the_next_connection() -> None:
+    # A reconnect to the seed carries on with its SeedState: the helper takes the look back.
+    ctx = context(connection(), None)
+    ctx.seed_state.dressed = True
+    asyncio.run(ctx.disconnect())
+    assert ctx.conn is None and not ctx.seed_state.dressed
+
+
+def test_the_goal_is_sent_once(monkeypatch) -> None:
+    ctx = context(connection(), Running(game.IN_PLAY))
+    sent: list[dict] = []
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    monkeypatch.setattr(zc, "ClientStatus", types.SimpleNamespace(CLIENT_GOAL=30))
+    monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
+    ended = session.Step(
+        seed_matches=True, state=game.IN_PLAY, goal=True, ended=True, save_stamp=bytes(14)
+    )
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: ended)
+    for _ in range(4):
+        asyncio.run(zc.poll(ctx))
+    assert [m["cmd"] for m in sent if m["cmd"] == "StatusUpdate"] == ["StatusUpdate"]
+    assert ctx.finished_game
 
 
 def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:

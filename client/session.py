@@ -198,11 +198,14 @@ class Session:
         senders: list[str] | None = None,
         notes: dict[int, str] | None = None,
         helper: native.Helper | None = None,
+        give: bool = True,
     ) -> Step:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
         replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
         client/hints.py). Grants go through ``helper`` when one is attached, else directly; a
-        HelperError from it gives nothing and is kept in the step (``helper_error``)."""
+        HelperError from it gives nothing and is kept in the step (``helper_error``). Without
+        ``give`` (a helper lost earlier in the poll, to be attached again first) nothing is
+        given, and the rest is read as usual."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -253,7 +256,7 @@ class Session:
         elif not goal:
             self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
-        if snap.state == game.IN_PLAY and not self.holding:
+        if snap.state == game.IN_PLAY and not self.holding and give:
             try:
                 step.granted = self.give(g, snap, collected, received, gap, senders, notes, helper)
             except native.HelperError as exc:

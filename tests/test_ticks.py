@@ -742,3 +742,22 @@ def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
     with pytest.raises(asyncio.CancelledError):
         run(ticks.shields_tick(ctx, ctx.received))
     assert ctx.seed_state.shields.pending is not None
+
+
+def test_a_shield_seen_up_after_a_switch_to_another_seed_is_not_counted() -> None:
+    # Connected to another room's seed, with the same team and slot (the same data storage key),
+    # while the look ran: the count is not this seed's to store there.
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    world.spawn()
+    old = ctx.seed_state
+    old.shields.pending = shields.Pending(0.0)
+    real = world.settled_state
+
+    def switch(gap: float = 0.0) -> str:
+        ctx.seed_state = seed_state(connection())
+        return real(gap)
+
+    world.settled_state = switch
+    run(ticks.confirm_shield(ctx, world, old, ctx.conn.shield_key))
+    assert counts_sent(ctx) == [] and old.shields.given is None

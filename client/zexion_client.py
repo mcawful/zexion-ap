@@ -131,8 +131,8 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
-        # The last step in play that had a helper found it failing (poll): one failing the step
-        # again is not attached again before the next one.
+        # The last step in play that had a helper found it failing, or waited for one lost just
+        # before it (poll): one failing again is not attached again before the next step.
         self.step_failed = False
         # /reload_mod: the game loop unloads it and loads it again (poll).
         self.reload_mod_pending = False
@@ -521,8 +521,20 @@ async def poll(ctx: ZexionContext) -> None:
             notes |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
+        # A helper lost in a tick since the attach above (the ending again): the step gives
+        # nothing, as with one lost in the step, rather than write the items with no popup.
+        # Once only, as there (step_failed).
+        waiting = ctx.helper is None and ctx.helper_lost
+        if waiting and ctx.step_failed:
+            waiting = ctx.helper_lost = False
         step = await asyncio.to_thread(
-            current.step, ctx.game_conn, p.codes, senders=p.senders, notes=notes, helper=ctx.helper
+            current.step,
+            ctx.game_conn,
+            p.codes,
+            senders=p.senders,
+            notes=notes,
+            helper=ctx.helper,
+            give=not waiting,
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)
@@ -543,6 +555,8 @@ async def poll(ctx: ZexionContext) -> None:
         again = ctx.step_failed
         helper_error(ctx, step.helper_error)
         ctx.helper_lost = ctx.helper_lost and not again
+        ctx.step_failed = True
+    elif waiting:
         ctx.step_failed = True
     elif ctx.helper is not None and step.state == game.IN_PLAY:
         ctx.step_failed = False

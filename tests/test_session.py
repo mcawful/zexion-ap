@@ -103,7 +103,7 @@ def begin_ending(session: ss.Session, g: FakeGame) -> ss.Step:
 
 
 def look_away(session: ss.Session, g: FakeGame) -> None:
-    """What the client does with Session.look_away while disconnected (state.end_kept_load)."""
+    """What the client does with Session.look_away while disconnected (state.SeedState.end_load)."""
     if session.look_away(g, gap=0):
         session.leave()
 
