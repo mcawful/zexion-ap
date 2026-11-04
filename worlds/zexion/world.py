@@ -281,6 +281,7 @@ class ZexionWorld(World):
         who, named = f"Zexion ({self.player_name})", self.named_room
         first: list[str] = []
         unsuited: set[str] = set()  # the starting guns of the draws the named room did not suit
+        reaches: set[reach.Seed] = set()  # and what their items were, as the room is judged
         for _ in range(DRAWS):
             start, pool = custom.resolve(self.menu, self.random)
             self.start_inventory = custom.starting_items(self.menu, start)
@@ -297,14 +298,15 @@ class ZexionWorld(World):
                 return
             guns = [NAMES[c] for c in GUN_CODES if self.start_inventory.get(c)]
             unsuited.add(" and ".join(guns) or "no gun")
+            reaches.add(self.seed_reach)
         if not unsuited:
             raise OptionError(
                 f"{who}: the client cannot start a seed with these starting items (the mode's "
                 f"own, start_inventory and start_inventory_from_pool): {'; '.join(first)}"
             )
         goal = "the Landing Pod" if self.disc_hunt else "the core"
-        tried = ""  # the draws are named only where they differed
-        if len(unsuited) > 1:
+        tried = ""  # the draws are named only where they differed in what the room is judged by
+        if len(reaches) > 1:
             guns = ", ".join(sorted(unsuited))
             tried = f" with any of the {DRAWS} draws of its items tried (starting with {guns})"
         message = (

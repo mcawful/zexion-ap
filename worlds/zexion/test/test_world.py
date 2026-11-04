@@ -323,6 +323,17 @@ class TestStartRooms(unittest.TestCase):
         self.assertIn(f"any of the {DRAWS} draws", message)
         for gun in STANDARD_GUNS:  # every gun was drawn in 64 draws
             self.assertIn(gun, message)
+        # Custom with one gun but a coin flip (Slide Mod): the draws differ, so it names them.
+        custom = {
+            "mode": "custom",
+            "custom_base": "standard",
+            "random_gun": "off",
+            "custom_items": {"Arc Plasma": "pool", "Slide Mod": "random"},
+        }
+        with self.assertRaises(OptionError) as caught:
+            fake_world(start_room=empty[0]["index"] + 1, **custom).generate_early()
+        self.assertIn(f"any of the {DRAWS} draws", str(caught.exception))
+        self.assertIn("(starting with Progressive Machine Gun)", str(caught.exception))
         # Easy's draws all start alike: the error names no draws.
         with self.assertRaises(OptionError) as caught:
             fake_world(mode="easy", start_room=empty[0]["index"] + 1).generate_early()
