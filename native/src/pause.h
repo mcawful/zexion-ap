@@ -100,9 +100,7 @@ private:
     bool patched_ = false;
     BYTE* entry_ = nullptr;  // in a page never freed (above)
     float game_rect_[4] = {};  // frame 829's texture rectangle, as copied
-    // In a translation: the label whose translated text is the helper's count, and its mark.
-    BYTE* hd_label_ = nullptr;
-    BuiltMark hd_mark_;
+    BuiltLabel hd_;  // in a translation: the label whose translated text is the helper's count
     bool slots_hidden_ = false;  // the key slots' characters hidden for a translation
     BYTE* hooked_ = nullptr;     // the pause menu whose way back is the wrapper
 };

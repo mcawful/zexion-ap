@@ -158,17 +158,16 @@ constexpr int kTitleEntry = 220, kHintEntry = 219;
 constexpr wchar_t kFeatsNoteHd[] = L"Archipelago save: no Feats earned";
 constexpr Rebuild kTitleLayout = {.wrap = true, .center = true, .keep_middle = true};
 BYTE* g_swapped = nullptr;  // the label whose pixel glyphs the helper shows
-BYTE* g_hd_label = nullptr;  // the label whose translated text is the helper's
-BuiltMark g_hd_mark;
+BuiltLabel g_hd;  // the label whose translated text is the helper's
 int g_hd_entry = -1;  // the game's own entry for it, to put back
 void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
     std::wstring title;
     if (ours && translation_on(a) && read_large_entry(a, kTitleEntry, title)) {
-        bool hd = label == g_hd_label && built_mark(label) == g_hd_mark;
+        bool hd = g_hd.holds(label);
         if (!hd) {
             title.erase(0, title.find_first_not_of(L" \r\n"));
             title.erase(title.find_last_not_of(L" \r\n") + 1);
-            g_hd_label = nullptr;
+            g_hd.label = nullptr;
             // Each line centered on the longer with leading spaces, as the game's pixel title
             // centers them; the rebuild then centers the two as one block.
             FontMetrics metrics;
@@ -176,8 +175,7 @@ void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
                                                      metrics.load(a) ? &metrics : nullptr);
             hd = rebuild_label(a, label, text, kTitleLayout);
             if (hd) {
-                g_hd_label = label;
-                g_hd_mark = built_mark(label);
+                g_hd.take(label);
                 g_hd_entry = game_entry;
             }
         }
@@ -187,12 +185,12 @@ void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
             return;
         }
     }
-    if (g_hd_label == label) {
+    if (g_hd.label == label) {
         std::wstring own;
-        if (built_mark(label) == g_hd_mark && read_large_entry(a, g_hd_entry, own)) {
+        if (g_hd.holds(label) && read_large_entry(a, g_hd_entry, own)) {
             rebuild_label(a, label, own, kTitleLayout);
         }
-        g_hd_label = nullptr;
+        g_hd.label = nullptr;
     }
     if (ours) {
         if (translation_on(a) && !pixel_glyphs_shown(label) && show_pixel_glyphs(label)) {

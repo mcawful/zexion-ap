@@ -406,8 +406,8 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
     std::wstring own;
     if (!now || !now->on || !read_entry(now->small, kAssistEntry, own)) return;
     if (pixel_glyphs_shown(label)) show_translated_glyphs(label);  // as an older helper left it
-    if (label != hd_label_ || built_mark(label) != hd_mark_) {
-        hd_label_ = nullptr;
+    if (!hd_.holds(label)) {
+        hd_.label = nullptr;
         // Built after the pixel glyphs took the locked style: the builder gives each glyph the
         // first pixel glyph's (0x8AAB5), the padlock too (an icon past frame 0x70).
         // In the HD icons the padlock's cell has its own gap on its left (IconSheets): no space
@@ -420,8 +420,7 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
             right > edge) {
             rebuild_label(a, label, own, {.attached = true});
         }
-        hd_label_ = label;
-        hd_mark_ = built_mark(label);
+        hd_.take(label);
     }
     // The locked look again each time (the menu may restyle its entries). A translated glyph is
     // drawn in its style's color through a table the screens rewrite (0x2D890), so style 5's
@@ -442,8 +441,8 @@ void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
 }
 
 void AssistLock::unlock_translated(const GameAddresses& a, BYTE* label) {
-    const bool ours = label == hd_label_ && built_mark(label) == hd_mark_;
-    hd_label_ = nullptr;
+    const bool ours = hd_.holds(label);
+    hd_.label = nullptr;
     if (!ours || !translation_on(a)) return;
     const std::optional<Loaded> now = loaded_translation(a);
     std::wstring own;
@@ -546,7 +545,7 @@ bool AssistLock::restore(const GameAddresses& a) {
     menu_ = nullptr;
     panel_ = nullptr;
     moved_from_ = -1;
-    hd_label_ = nullptr;  // a label at the same place later is another's
+    hd_.label = nullptr;  // a label at the same place later is another's
     return put;
 }
 

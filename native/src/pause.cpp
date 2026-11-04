@@ -225,12 +225,11 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
             slots_hidden_ = hd;
         }
         if (!hd) return;
-        if (keys_label != hd_label_ || built_mark(keys_label) != hd_mark_) {
-            hd_label_ = nullptr;
+        if (!hd_.holds(keys_label)) {
+            hd_.label = nullptr;
             if (rebuild_label(a, keys_label, hd_row_text(text),
                               {.attached = true, .center = true})) {
-                hd_label_ = keys_label;
-                hd_mark_ = built_mark(keys_label);
+                hd_.take(keys_label);
             }
         }
         uint8_t pixel_shown = 0;
@@ -290,7 +289,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + sprite::kVisible) = 0;
     // A fresh pause screen: its label is the game's, even at the address and with the mark of
     // the last one the helper built.
-    hd_label_ = nullptr;
+    hd_.label = nullptr;
     keep_row();
 }
 

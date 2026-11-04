@@ -134,8 +134,7 @@ private:
     void* palettes_[kAssistLength] = {};
     int16_t palette_numbers_[kAssistLength] = {};
     float tints_[kAssistLength][6] = {};
-    BuiltMark hd_mark_;  // the helper's translated text, while it is (translation.h)
-    BYTE* hd_label_ = nullptr;
+    BuiltLabel hd_;  // the helper's translated text, while it is (translation.h)
 };
 
 }  // namespace zap

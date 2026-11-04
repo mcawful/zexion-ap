@@ -246,6 +246,17 @@ struct BuiltMark {
 };
 // The label's mark now (count -1 if it does not read).
 BuiltMark built_mark(const BYTE* label);
+// The label whose translated text the helper built, and its mark then: it is still the helper's
+// while the label reads that mark.
+struct BuiltLabel {
+    BYTE* label = nullptr;
+    BuiltMark mark;
+    bool holds(const BYTE* l) const { return l == label && built_mark(l) == mark; }
+    void take(BYTE* l) {
+        label = l;
+        mark = built_mark(l);
+    }
+};
 // The left and right of a label's translated text, as the game's centering takes them (0x85B00):
 // false if it has none or it does not read.
 bool translated_extent(const GameAddresses& a, const BYTE* label, float& left, float& right);
