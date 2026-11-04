@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any, TextIO
 
 from BaseClasses import (
@@ -92,8 +92,10 @@ DISC_REPLACES = (*FILLER_ORDER, custom.ENERGY_SHIELD)
 # two digits (native/src/files.cpp, file_disk_digits), hold no more. Not a game rule: the game has
 # no disk count.
 MAX_DISKS = 99
+GUN_CODES = tuple(custom.MENU_CODES[i] for i in custom.GUNS)  # the five guns' item codes
 # The most draws of the menu's items (``ZexionWorld.draw_items``) tried for starting items the
-# client can give with the start options'. Not a game rule: the game's menu has no such options.
+# client can give with the start options' and that the named start room suits. Not a game rule:
+# the game draws once per seed text.
 DRAWS = 64
 # How many of its own locations a Zexion player's starting state must reach before
 # Archipelago places progression; below it, fill_hook places items that open more
@@ -109,6 +111,18 @@ def important_elsewhere(item: Item | None) -> bool:
     if item is None or not item.advancement:
         return False
     return not (item.game == ZexionItem.game and code_of.get(item.name) in SUPPLIES)
+
+
+def pairs_of(
+    kinds: dict[tuple[int, str], list[Item]], keys: list[tuple[int, str]]
+) -> Iterator[tuple[tuple[int, str], tuple[int, str], list[Item]]]:
+    """Each two items of ``kinds`` (``ZexionWorld.by_kind``) among ``keys``, in their order: two
+    of one kind, where it has two, or the first of each of two kinds."""
+    for i, a in enumerate(keys):
+        for b in keys[i:]:
+            items = kinds[a][:2] if a == b else kinds[a][:1] + kinds[b][:1]
+            if len(items) == 2:
+                yield a, b, items
 
 
 class ZexionWorld(World):
@@ -145,7 +159,6 @@ class ZexionWorld(World):
         self.logic_settings = self.menu.logic_settings()
         self.location_cells = reach.seed_locations(self.logic_settings)
         self.draw_items()
-        self.seed_reach = self.reach_of_items()
         self.choose_starts()
         self.fit_pool()
         # The core is entered from its door (create_regions); the disks' goal returns home from
@@ -260,29 +273,58 @@ class ZexionWorld(World):
     def draw_items(self) -> None:
         """The seed's starting items and pool, drawn from its menu as the game draws them for a
         new game (``custom.resolve``, ``custom.pool_items``), a preset's as Custom's: Standard's
-        starting gun by Random Gun, every mode's filler. A draw whose starting items, with
-        start_inventory's and start_inventory_from_pool's, the client could not give
-        (``start_problems``), such as a third copy of a gun the seed started with that the YAML
-        takes twice from the pool, is drawn again, up to DRAWS times; with none that fits, the
-        seed is refused with the first draw's problems (docs/re/locations.md, "Where the world
-        departs from the game")."""
+        starting gun by Random Gun, every mode's filler, and what they reach (``seed_reach``).
+        A draw is drawn again, up to DRAWS times, when the client could not give its starting
+        items with start_inventory's and start_inventory_from_pool's (``start_problems``), such
+        as a third copy of a gun the seed started with that the YAML takes twice from the pool,
+        or when the start_room it names does not suit it (``passes``), such as a room only some
+        of Standard's guns suit. With none that fits, the seed is refused (docs/re/locations.md,
+        "Where the world departs from the game")."""
+        who, named = f"Zexion ({self.player_name})", self.named_room
         first: list[str] = []
+        unsuited: set[str] = set()  # the starting guns of the draws the named room did not suit
+        reaches: set[reach.Seed] = set()  # and what their items were, as the room is judged
         for _ in range(DRAWS):
             start, pool = custom.resolve(self.menu, self.random)
             self.start_inventory = custom.starting_items(self.menu, start)
             try:
                 self.pool_codes = custom.pool_items(self.menu, pool, self.random)
             except custom.PoolError as error:
-                raise OptionError(f"Zexion ({self.player_name}): {error}") from error
+                raise OptionError(f"{who}: {error}") from error
             found = self.start_problems()
-            if not found:
+            if found:
+                first = first or found
+                continue
+            self.seed_reach = self.reach_of_items()
+            if named is None or self.passes(named):
                 return
-            first = first or found
-        raise OptionError(
-            f"Zexion ({self.player_name}): the client cannot start a seed with these starting "
-            f"items (the mode's own, start_inventory and start_inventory_from_pool): "
-            f"{'; '.join(first)}"
+            guns = [NAMES[c] for c in GUN_CODES if self.start_inventory.get(c)]
+            unsuited.add(" and ".join(guns) or "no gun")
+            reaches.add(self.seed_reach)
+        if not unsuited:
+            raise OptionError(
+                f"{who}: the client cannot start a seed with these starting items (the mode's "
+                f"own, start_inventory and start_inventory_from_pool): {'; '.join(first)}"
+            )
+        goal = "the Landing Pod" if self.disc_hunt else "the core"
+        tried = ""  # the draws are named only where they differed in what the room is judged by
+        if len(reaches) > 1:
+            guns = ", ".join(sorted(unsuited))
+            tried = f" with any of the {DRAWS} draws of its items tried (starting with {guns})"
+        message = (
+            f"{who}: start room {StartRoom.name_lookup[self.options.start_room.value]} does not "
+            f"suit {self.mode_name} mode's settings{tried}: from it the starting items reach no "
+            f"location, or every item does not reach {goal}"
         )
+        if first:
+            message += f" (and other draws' starting items the client cannot give: {first[0]})"
+        raise OptionError(message)
+
+    @property
+    def named_room(self) -> dict | None:
+        """The start room start_room names, or None for random_start and automatic."""
+        choice = self.options.start_room.value
+        return None if choice in (RANDOM_START, AUTOMATIC) else data.START_ROOMS[choice - 1]
 
     def start_problems(self) -> list[str]:
         """Why the client could not give the drawn starting items with the start options' (one
@@ -411,14 +453,11 @@ class ZexionWorld(World):
         if alone:
             key = self.random.choice(alone)
             return [(first[key][0], self.random.choice(spots[key]))]
-        pairs = []
-        for i, a in enumerate(keys):
-            for b in keys[i:]:
-                items = first[a][:2] if a == b else first[a][:1] + first[b][:1]
-                if len(items) < 2 or len({id(loc) for loc in spots[a] + spots[b]}) < 2:
-                    continue
-                if opens(items):
-                    pairs.append((a, b, items))
+        pairs = [
+            (a, b, items)
+            for a, b, items in pairs_of(first, keys)
+            if len({id(loc) for loc in spots[a] + spots[b]}) >= 2 and opens(items)
+        ]
         if not pairs:
             return []
         a, b, (one, two) = self.random.choice(pairs)
@@ -453,13 +492,11 @@ class ZexionWorld(World):
 
     def openers_alone(
         self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
-    ) -> list[str]:
-        """The names of the items in ``pool`` (``by_kind``) that reach more alone, wherever
-        they could be placed: for the warning when none can be."""
-        kinds = self.by_kind(pool)
-        return sorted(
-            n for (_, n), items in kinds.items() if self.opens(state, mine, reached, items[:1])
-        )
+    ) -> bool:
+        """Whether an item in ``pool`` (``by_kind``) reaches more alone, wherever it could be
+        placed: for the warning when none can be."""
+        kinds = self.by_kind(pool).values()
+        return any(self.opens(state, mine, reached, items[:1]) for items in kinds)
 
     def openers_together(
         self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
@@ -467,15 +504,8 @@ class ZexionWorld(World):
         """Whether two items in ``pool`` (``by_kind``) reach more together, wherever they could
         be placed: for the warning when none can be."""
         kinds = self.by_kind(pool)
-        keys = sorted(kinds)
-        return any(
-            self.opens(
-                state, mine, reached, kinds[a][:2] if a == b else kinds[a][:1] + kinds[b][:1]
-            )
-            for i, a in enumerate(keys)
-            for b in keys[i:]
-            if a != b or len(kinds[a]) > 1
-        )
+        pairs = pairs_of(kinds, sorted(kinds))
+        return any(self.opens(state, mine, reached, items) for _, _, items in pairs)
 
     @property
     def disc_hunt(self) -> bool:
@@ -523,21 +553,12 @@ class ZexionWorld(World):
 
     def choose_starts(self) -> None:
         """The start room by the start_room option, and with Double Teleport the second
-        teleport target (docs/re/locations.md, "Which start rooms the world offers")."""
+        teleport target (docs/re/locations.md, "Which start rooms the world offers"). A named
+        room suits the draw (``draw_items``)."""
         who = f"Zexion ({self.player_name})"
         choice = self.options.start_room.value
-        start = None
-        if choice not in (RANDOM_START, AUTOMATIC):
-            room = data.START_ROOMS[choice - 1]
-            if not self.passes(room):
-                goal = "the Landing Pod" if self.disc_hunt else "the core"
-                raise OptionError(
-                    f"{who}: start room {StartRoom.name_lookup[choice]} does not suit "
-                    f"{self.mode_name} mode's settings: from it the starting items reach no "
-                    f"location, or every item does not reach {goal}"
-                )
-            start = room
-        elif choice == AUTOMATIC:
+        start = self.named_room
+        if choice == AUTOMATIC:
             room = data.START_ROOMS[AUTOMATIC_ROOM]
             if self.passes(room):
                 start = room

@@ -185,15 +185,13 @@ def goal_reached(ended: bool, required: int | None, have: int) -> bool:
 
 
 def stored_count(raw: object) -> int | None:
-    """A count read from data storage, or None when absent (or not a count).
+    """A count read from data storage, or None when absent or not a count (any client in the
+    room can write the key).
 
-    For received items' popups the server keeps how many have been handed over
-    (announced_key: Session.announced), so items received offline still pop up and a reconnect
-    or a restart replays none. The helper shows what it was handed even if the client goes
-    away; a game closed or the helper unloaded with popups still queued loses those popups (the
-    items are given), and so does a client closed between handing some over and storing the
-    count (the next one hands them over again: shown twice). The key is open to any client in
-    the room: anything but a count reads as absent."""
+    The server keeps how many received items' popups have been handed over (announced_key:
+    Session.announced), so items received offline still pop up and a reconnect replays none.
+    Popups still queued when the game closes or the helper unloads are lost (the items are
+    given); a client closed between handing some over and storing the count shows them twice."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None

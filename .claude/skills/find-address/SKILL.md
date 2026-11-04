@@ -60,8 +60,9 @@ memory.md is long: find the heading with a search for `^## ` and read only that 
 In `docs/re/memory.md`, in the format of `docs/re/README.md` ("How a fact is recorded"):
 
 - **Value:** the target and the arithmetic from it to the value; the value's type, size and
-  meaning (bit 3 = Wall Jump Boots). The patterns and their source instructions stay in
-  `client/patterns.py`; the first offline and live match goes in "Byte patterns".
+  meaning (bit 3 = Wall Jump Boots). The patterns stay in `client/patterns.py`; each one's
+  source instruction goes in "Pattern sources", and the first offline and live match in "Byte
+  patterns".
 - **Status:** **measured** once it resolves to the right value in a fresh game process;
   **working in game** only once a client read or write built on it did the right thing in the
   real game.

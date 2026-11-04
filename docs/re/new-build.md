@@ -33,7 +33,8 @@ the same heading with the new build, beside the old one, never in its place.
      SizeOfImage) and in `kKnownBuilds` (`native/src/build.cpp`: name, timestamp and
      SizeOfImage); `tests/test_cross_checks.py` checks the two agree;
    - the patterns' state on the new build in `docs/re/memory.md` ("Byte patterns"): which still
-     match once, which moved, and which broke and were replaced.
+     match once, which moved, and which broke and were replaced, with each replacement's source
+     instruction in "Pattern sources".
 6. **Re-check the struct layouts.** Patterns find addresses, not what is inside. Every struct
    offset the helper uses (`native/src/game_layout.h` and each part file, citing `memory.md`)
    is labeled B1 in `docs/re/memory.md`: confirm each on the new build and record it. The

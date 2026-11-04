@@ -265,10 +265,9 @@ def test_a_shield_is_up_while_the_player_links_to_its_live_object() -> None:
 
 
 def test_a_shield_is_up_whatever_its_slot_kept_from_the_object_before() -> None:
-    # The RC retest's spawn loop (2026-11-02): the shield's constructor leaves +0x3C8
-    # as the slot's last object left it (its Missiles entry's +0x80 is -1), and the game never
-    # sets the handle's two unused bytes. The client once required +0x3C8 to be the object's
-    # own address and those bytes to match, so such a shield was never read up.
+    # The shield's constructor leaves +0x3C8 as the slot's last object left it, and the game
+    # never sets the handle's two unused bytes (docs/re/memory.md, "Received Energy Shields"):
+    # requiring either made a shield that was up never read up.
     g = fake_game()
     put_shield(g)
     at = SHIELD_AT + OBJECT_LINK
@@ -301,6 +300,41 @@ def test_a_link_pointing_outside_the_game_is_an_error() -> None:
     put_shield(g, pointer=0x10_0000)  # past the fake's memory: a short read
     with pytest.raises(game.GameError, match="short read"):
         g.shield_up()
+
+
+MESSAGE_AT, GLYPHS_AT = 0x1400, 0x1800  # the fake's message slot and its glyph objects
+
+
+def put_message(g: FakeGame, text: bytes, sequence: int = 41) -> None:
+    """The game's last message, a slot holding ``text`` as glyphs, as the message routine
+    builds them (0x92690)."""
+    g.pm.memory[0x10:0x1C] = struct.pack("<Qi", MESSAGE_AT, sequence)
+    at = MESSAGE_AT + game.MESSAGE_SEQUENCE
+    g.pm.memory[at : at + 4] = struct.pack("<i", sequence)
+    at = MESSAGE_AT + game.MESSAGE_GLYPH_COUNT
+    g.pm.memory[at : at + 4] = struct.pack("<i", len(text))
+    for i, character in enumerate(text):
+        glyph = GLYPHS_AT + 0x40 * i
+        at = MESSAGE_AT + game.MESSAGE_GLYPHS + 8 * i
+        g.pm.memory[at : at + 8] = struct.pack("<Q", glyph)
+        at = glyph + game.GLYPH_CHARACTER
+        g.pm.memory[at : at + 4] = struct.pack("<i", character)
+
+
+def test_game_saved_is_the_sequence_of_a_last_message_reading_game_saved() -> None:
+    g = fake_game(size=0x3000, last_message=0x10)
+    assert g.game_saved() is None  # no message yet
+    put_message(g, b"GAME SAVED")
+    assert g.game_saved() == 41
+    g.pm.memory[0x18:0x1C] = struct.pack("<i", 45)  # a newer message's, the pointer put back
+    assert g.game_saved() is None
+    put_message(g, b"GAME SAVES", 42)
+    assert g.game_saved() is None
+    put_message(g, b"\xc9MISSILE BOX", 43)  # a pickup's popup
+    assert g.game_saved() is None
+    put_message(g, b"GAME SAVED", 44)
+    g.pm.memory[MESSAGE_AT + game.MESSAGE_GLYPHS : MESSAGE_AT + game.MESSAGE_GLYPHS + 8] = bytes(8)
+    assert g.game_saved() is None  # a glyph not made
 
 
 def test_an_exited_game_is_reported_as_not_running() -> None:

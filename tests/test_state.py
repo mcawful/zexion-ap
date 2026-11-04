@@ -257,7 +257,7 @@ def test_a_guard_on_without_all_of_it_is_said_once() -> None:
 
 
 def test_a_guard_still_off_in_play_is_said_once() -> None:
-    # Review 32, PR #15 finding 1: a save the helper never takes for an AP save.
+    # A save the helper never takes for an AP save.
     said = state.SayOnce()
     check = state.FeatsCheck()
     assert check.seen("off", False, 0.0, said) is None, "a menu does not start the wait"

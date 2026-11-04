@@ -50,21 +50,28 @@ OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without th
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 
 
-async def attach_helper(ctx: ZexionContext) -> None:
-    """Load and configure the native helper in the attached game, or carry on without it."""
+async def attach_helper(ctx: ZexionContext) -> bool:
+    """Load and configure the native helper in the attached game, or carry on without it.
+    Returns whether trying again soon may attach it: not for a mod that doesn't match."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
     except native.HelperError as exc:
-        # Tried every 30 s: each line said again only when it changes.
+        mismatch = isinstance(exc, native.ModMismatch)
+        if mismatch and not dll.is_file() and not isinstance(exc, native.NotUnloaded):
+            # Only the player can fix it, with Zexion closed: not tried again until it restarts.
+            ctx.mismatched(exc)
+            return False
+        # Tried every 30 s (a rebuild of the client's own build, or an old helper that unloads
+        # on a later try, fixes a mismatch): each line said again only when it changes.
         line = state.helper_failed(exc)
         if line is not None and ctx.said("helper", line):
             logger.warning(line)
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
-        return
+        return not mismatch
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
@@ -79,6 +86,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
     logger.info(f"The Zexion mod {native.VERSION} is running.")
+    return True
 
 
 # The settings the helper is told to turn on or off while this seed's save is loaded: its
@@ -276,6 +284,8 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
                 reply = await asyncio.to_thread(
                     helper.request, offline.put_request(kind, text, file)
                 )
+            except (native.ReplyLost, native.ModMismatch):
+                raise  # side_tick drops the helper before this poll's step gives through it
             except native.HelperError as exc:
                 reply = f"error {exc}"
         if reply in ("stored", "unchanged"):
@@ -462,12 +472,8 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
             log.warning(f"DeathLink: sending the death failed ({exc}).")
     conn = ctx.conn
     if deaths.owed and conn is not None and conn.session.holding:
-        # The game's own damage never kills the player in the ending, and what a death there
-        # does is not known: dropped, only while the ending that began in this load runs
-        # (Session.holding, also for the ending played again on a save past it: replay_tick). A
-        # save past its ending loaded again later deals them as any load does. A load first
-        # seen during its ending reads the same as that later load, so deaths are dealt there
-        # too (the known gap: docs/re/memory.md, "The ending: flag 250").
+        # What a death in the ending does is not known: dropped while an ending of this load
+        # runs (Session.holding; docs/re/memory.md, "DeathLink").
         deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
@@ -717,8 +723,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
     and its YES plays the ending again (replay_tick). Not while an ending runs in this load
     (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
-    a save at the pod. Every look at the save counts, in play or not: a death or a menu between
-    two looks makes a new stamp no save (discs.ReturnHome)."""
+    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome)."""
     conn, helper, told = ctx.conn, ctx.helper, ctx.told
     home = ctx.load.return_home
     if (
@@ -733,7 +738,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     hunt = conn.hunt
     enough = discs.owned(hunt, p.codes, p.found) >= hunt.required
     in_play = step.state == game.IN_PLAY
-    home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell)
+    home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell, step.game_saved)
     if not in_play or not enough or not told.client_back_sent:
         return
     # After the found disks' count popups (followups_tick), so the reminder comes last.

@@ -132,6 +132,45 @@ def test_deaths_queued_when_the_ending_begins_in_this_load_are_dropped() -> None
 # --- the offline seed file ---------------------------------------------------------------------
 
 
+class Failing(Helper):
+    """A helper whose every request fails with ``error``."""
+
+    def __init__(self, error: native.HelperError) -> None:
+        super().__init__()
+        self.error = error
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        self.requests.append(text)
+        raise self.error
+
+
+def offline_ctx(error: native.HelperError) -> Ctx:
+    """Due to send the helper the offline config file, which fails with ``error``."""
+    ctx = Ctx(connection())
+    ctx.helper = Failing(error)
+    ctx.game_conn = object()
+    ctx.offline_config = (ctx.game_conn, "config")
+    ctx.server_seed_name, ctx.seed_name, ctx.team = "S", None, 0
+    return ctx
+
+
+@pytest.mark.parametrize(
+    "error", [native.ReplyLost("no reply within 2.0 s"), native.ModMismatch("another build")]
+)
+def test_a_lost_offline_reply_reaches_side_tick(error: native.HelperError) -> None:
+    # side_tick drops the helper (or calls it mismatched) before the poll's step, which would
+    # otherwise give through a closed connection and write the items with no popup.
+    with pytest.raises(type(error)):
+        run(ticks.offline_tick(offline_ctx(error), no_finds()))
+
+
+def test_an_offline_file_the_helper_refused_keeps_the_helper(caplog) -> None:
+    ctx = offline_ctx(native.HelperError("the file could not be written"))
+    with caplog.at_level(logging.WARNING):
+        run(ticks.offline_tick(ctx, no_finds()))
+    assert ctx.helper.requests and "config" not in ctx.told.offline_sent
+
+
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:
     # Before this seed's save is seen in a connection, conn.lock_assists is the slot data's:
     # the file follows Assist Unlock, received on an earlier connection, all the same.
@@ -382,9 +421,16 @@ def enough_disks() -> types.SimpleNamespace:
     return types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=set())
 
 
-def at_the_pod(time: int, ended: bool, deaths: int = 0, state: str = game.IN_PLAY) -> session.Step:
+def at_the_pod(
+    time: int,
+    ended: bool,
+    deaths: int = 0,
+    state: str = game.IN_PLAY,
+    game_saved: int | None = None,
+) -> session.Step:
     """This seed's save in the pod's cell (in play unless ``state`` says otherwise), its block
-    last written at ``time`` with the pod as continue point, ``deaths`` its death count."""
+    last written at ``time`` with the pod as continue point, ``deaths`` its death count, and
+    ``game_saved`` as game.Game.game_saved reads the last message."""
     stamp = struct.pack("<iHHHHHI", 3, time, 0, 0, discs.HOME[1], discs.HOME[0], deaths)
     return session.Step(
         goal=ended,
@@ -394,6 +440,7 @@ def at_the_pod(time: int, ended: bool, deaths: int = 0, state: str = game.IN_PLA
         save_stamp=stamp,
         at_home=True,
         in_home_cell=True,
+        game_saved=game_saved,
     )
 
 
@@ -412,10 +459,22 @@ def test_a_save_past_its_ending_is_offered_return_home_after_a_save_at_the_pod()
         assert ctx.load.replay == ended  # its YES plays the ending again
 
 
+def test_a_save_at_the_pod_then_a_pause_is_offered_return_home() -> None:
+    # The first look at the new stamp is in the pause menu; its GAME SAVED says it is a save.
+    for ended in (False, True):
+        ctx = homing_ctx()
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, ended)))
+        menu = at_the_pod(200, ended, state=game.MENU, game_saved=7)
+        run(ticks.mission_tick(ctx, enough_disks(), menu))
+        assert prompts(ctx) == 0  # not while paused
+        run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, ended, game_saved=7)))
+        assert prompts(ctx) == 1
+        assert ctx.load.replay == ended
+
+
 def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -> None:
-    # The owner's report on the 1.0.0 RC: a death wrote the block's play time (and death
-    # count), then the player respawned at the pod, the continue point. A save there afterwards
-    # is still offered, on a save past the ending too.
+    # A death writes the block's play time and death count, then the player respawns at the
+    # pod, the continue point. A save there afterwards is still offered, past the ending too.
     for ended in (False, True):
         ctx = homing_ctx()
         run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, ended)))
@@ -428,9 +487,9 @@ def test_a_death_respawning_the_player_at_the_pod_is_not_offered_return_home() -
 
 
 def test_a_teleport_or_reload_from_save_to_the_pod_is_not_offered_return_home() -> None:
-    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100: a guard
-    # only, which develop's rule passes too); RELOAD FROM SAVE writes its play time behind its
-    # menu (200, which develop's rule offered): the first look back in play is no save.
+    # The pause menu's TELEPORT TO START leaves the slot's block as it was (time 100); RELOAD
+    # FROM SAVE writes its play time behind its menu (200): the first look back in play is no
+    # save.
     ctx = homing_ctx()
     run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, False)))
     for time in (100, 200):
@@ -563,8 +622,8 @@ def counts_sent(ctx: Ctx) -> list[int]:
 
 
 def test_a_shield_received_after_attaching_mid_play_is_spawned_once(monkeypatch) -> None:
-    # The RC retest (2026-11-02): attached to a save already in play, a received shield came up
-    # but was never read up, and was spawned again three times a minute until the save was left.
+    # Attached to a save already in play: a received shield that comes up is read up, not
+    # spawned again.
     world = ShieldWorld()
     ctx = shield_ctx(world)
     ctx.helper = ShieldHelper(world)

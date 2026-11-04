@@ -63,6 +63,11 @@ class ModMismatch(ModFixable):
     another build. The message, a clause for the player, says which is which and what to do."""
 
 
+class NotUnloaded(ModMismatch):
+    """A helper of another version that didn't unload to make way for the client's (a menu
+    open, say): a later try may unload it."""
+
+
 class UnreadableHello(ModMismatch):
     """A hello this client can't read: a helper too old or too new for this client."""
 
@@ -417,9 +422,8 @@ _EARLIER: dict[str, tuple[int | None, str]] = {}
 
 
 def _earlier(hello: dict[str, str]) -> str | None:
-    """Why a helper of this version is an earlier build of it, or None: no ``lang`` (1.0.0's
-    release candidate, before the translations: it would take the translation keys and ignore
-    them, so its popups would hide in a translation) or no ``case`` (before the mixed case: it
+    """Why a helper of this version is an earlier build of it, or None: no ``lang`` (it would
+    ignore the translation keys, so its popups would hide in a translation) or no ``case`` (it
     would refuse the scanner's line in mixed case, and with it every disks request and the
     offline file, so the disks goal could not be sent)."""
     if "lang" not in hello:
@@ -553,7 +557,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                 if stale is not None:  # the same file again: refused, the helper left alone
                     raise _wrong_version(dll, stale[1], own_build)
                 if not _unloaded(old, handle):
-                    raise ModMismatch(
+                    raise NotUnloaded(
                         f"the mod loaded in Zexion is {_shown(version)}, this client "
                         f"{VERSION}, and it didn't unload to make way for the client's build; "
                         "the client tries again, and if it keeps failing, restart Zexion"
