@@ -305,9 +305,10 @@ An `apply` (`src/game_calls.cpp`):
 5. Sets the suit's color if Magnus Armor was just gained.
 6. Queues the popups.
 
-It leaves out what only a real pickup should do: the map cell, the pickup counter, the
-major-item list, achievements, switching to a new weapon, and a key's area event (which only
-hides the key's map marker: `docs/re/memory.md`, "Keys, the gates and the key markers").
+An apply leaves out what only a real pickup should do: the map cell, the pickup counter, the
+major-item list (the frame call fills that in: below), achievements, switching to a new weapon,
+and a key's area event (which only hides the key's map marker: `docs/re/memory.md`, "Keys, the
+gates and the key markers").
 
 **The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned

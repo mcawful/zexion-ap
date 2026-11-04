@@ -14,9 +14,9 @@ Get the latest release from the [Releases page](https://github.com/mcawful/zexio
 It has `zexion.apworld`, `zexion_ap.dll`, `version.dll`, the two player guides and a sample
 YAML for each mode (Easy, Standard, OHKO and Custom).
 
-This is still in development: seeds have been played start to finish in testing. Each release
-works with certain versions of Zexion; if Steam updates the game, the client tells you when
-your version isn't supported.
+This is still in development: seeds have been played start to finish in testing. It supports
+one version of Zexion, Steam build 23943567; if Steam updates the game, the client tells you
+when your version isn't supported.
 
 ## Features
 
@@ -26,6 +26,9 @@ your version isn't supported.
 - Two goals: grab Zexion in the core and reach the game's ending, or hunt for OS Install Disks.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
 - DeathLink.
+- The game's default English and English(HD), where the mod's text and icons use the HD font
+  and art; in the other languages its text is in English (the setup guide's
+  [Languages](worlds/zexion/docs/setup_en.md#languages)).
 - The game's Easy, Standard and OHKO modes and its start rooms, and Custom mode: every
   setting of the game's randomizer menu in the YAML.
 - Play your seed's save without the client; what you found is sent when you connect again.
