@@ -93,238 +93,63 @@ How the helper works: [`native/README.md`](../native/README.md).
 
 ## Features, and when each was working in game
 
-All on B1. The evidence for each run is in [`docs/re/memory.md`](re/memory.md), or where its
-line says.
+All on B1. Each line gives the first run in game; later runs, the bugs found in them and the
+evidence are in the part of [`native/README.md`](../native/README.md) or the
+[`docs/re/memory.md`](re/memory.md) heading named (memory.md's Status and Evidence rows).
 
-- Received items with the game's popup, sound and HUD refresh: 2026-10-22.
+- Received items with the game's popup, sound and HUD refresh: 2026-10-22 ("Grants", "Popups").
 - Each received item pops up once, across reconnects and client restarts (the count in data
-  storage): 2026-10-26, with 0.27.0. Since 0.30.0 the count is of popups handed to the
-  helper, which keeps its queue when the client goes away (Disconnect then Connect, the
-  client closed, the save quit to the title: 2026-10-26). A game closed, or the helper
-  unloaded, with popups queued loses them (2026-10-26).
-- ARCHIPELAGO new games, all three modes: 2026-10-22 and 2026-10-23; two saves of one seed from
-  one connection: 2026-10-24.
-- Custom mode (the game's side, whose Status points to each run's record:
-  [`docs/re/randocells.md`](re/randocells.md), "What each setting does in the game"):
-  - A seed with every item started, Start Keys 4, X Crystals, X Blocks and Hints Revealed:
-    RANDO SETTINGS showing the seed's settings, the starting items and the four keys given and
-    the map revealed (X Crystals and X Blocks removing their blocks was seen only in seeds made
-    in the game's menu, with no client); Abridged Finale's ending at the grab of Zexion, with
-    the goal sent by the client: 2026-10-27.
-  - Double Teleport's flagged second target, drawn with 27 starting Energy Tanks, offered and
-    teleported to; Gates Open, three gates working without keys and R'Talva's appearing only
-    after a boss; Gates Off with the core goal, the core taken with the four keys under
-    Abridged Finale and the goal sent: 2026-10-28.
-  - Gates Vanilla made Unlocked by the disks goal: a gate lighting up when visited, then the
-    warp at a second gate visited, used with no keys: 2026-11-02 (`lab/ap/live52`).
-  - Guns First off: each upgrade, picked up or received, set only its own byte, and a reload
-    gave back only what the save lost: 2026-10-28.
-  - Secret Shuffle: the client taking the 155-entry list as the seed's, and the 155th location,
-    "??? 48,20", and three others near it in the list giving their items and checked under
-    their names: 2026-10-28. A Secret Shuffle seed with the new game's `expect` on the location
-    list (`client/newgame.py`): its ARCHIPELAGO game and its game by the seed's text through
-    `--keep-randomizer` both accepted, with randomizer sections equal byte for byte (155 cells),
-    RANDO SETTINGS showing Secret Shuffle and Guns First on, and the client matching both saves:
-    2026-10-29 (`lab/ap/live46`, slots 4 and 5, develop e088773).
-  - Guns First on: a gun sent twice from the server's console, the first popup naming the gun
-    (FORCE BLASTER, byte 4), the second its upgrade (PENTASHOT, byte 14): 2026-10-29.
-- `start_inventory_from_pool`: the start held the pool's items with the mode's own, and a
-  `start_inventory` copy of an item the pool holds refused at generation: 2026-10-28
-  ([`docs/re/locations.md`](re/locations.md), "What the world needs from the client").
-- `--keep-randomizer` (RANDOMIZER kept; a new game by the seed's text gets the seed): a Custom
-  seed (the same as its ARCHIPELAGO game byte for byte) and a Standard one, and another seed's
-  text refused, 2026-10-27; all three modes on an earlier path, 2026-10-22.
-- Other players' items (logo, name at pickup; another Zexion player's item as itself):
-  2026-10-23. Map markers and names under the cursor in an AP save: 2026-10-25; in a
-  three-game seed (other games' items, no owner on the map, other Zexion players' supplies
-  minor, markers right in a pause just after loading): 2026-10-26. A second three-game seed,
-  with the markers' wait for a settled load (two looks in a row, `native/README.md`, "The
-  map"): unseen squares named as the game names its own, markers kept after a save, a return to
-  the title and a load: 2026-10-26. The markers under Obscure Majors on with Minors off, with
-  Obscure Class off and on (hinted stand-ins as the game's hinted majors, seen ones named; a
-  stand-in's minimap dot flashing while it is on screen): 2026-10-27. The flash's fix (the
-  helper patches the game's write of an on-screen item's square): 2026-10-28.
-- Other players' items draw in the AP logo's own colors in every area (palette 26; the owner saw
-  them change by area on the 1.0.0 RC, 2026-11-03: `native/README.md`, "Other players' items").
-  Palette 26 on a stand-in worked in game written by hand, 2026-11-03; the helper's own colors:
-  working in game 2026-11-04 (B1, `zexion_ap.dll` `65878411…`, the build of develop 1acaaaf, the
-  owner's report: the logo's colors the same across areas). The logo's black borders showed the
-  sky in a sky room (the owner, 1.0.0 RC, 2026-11-03): the gaps between its circles were
-  transparent; now outlined black side-on (the owner's pick, the plain logo's middle open, the
-  arrow's one shut-in pixel black), working in game 2026-11-04 (the same build and report: the
-  outline in a sky room, on the plain and the arrow logos).
-- The helper hides R'Talva X34 Y51's marker (an object the game draws on the logo's empty
-  frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) by its shown byte
-  (`native/README.md`, "Other Zexion players' items, as themselves"). The byte, written by hand,
-  hid it in game, 2026-11-03; the helper's hiding: working in game 2026-11-04 (B1,
-  `zexion_ap.dll` `65878411…`, develop 1acaaaf, the owner's report: the gate's crystal without
-  the AP logo).
-- Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
-  A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
-  and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
-  Fixed since in the client's read and with a stop on spawns not seen; working in game
-  2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074, `lab/ap/live50`
-  slot 4: the client attached to the save in play, then four shields, each spawned once and read
-  as up, none spawned again; the stop not reached: `docs/re/memory.md`, "Received Energy
-  Shields").
-- DeathLink, both ways: 2026-10-23.
-- The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
-  2026-10-23.
-- Intel Chips: hints received, up to five lines: 2026-10-24; one picked up, the INTEL CHIP
-  name and no map reveal: 2026-10-25.
-- OS Install Disks goal: the count, the scanner text, the equipment and pause screens and the file
-  select: 2026-10-24 and 2026-10-25. RETURN HOME WITH THE DISKS? (YES and NO): 2026-10-24; offered
-  at the landing pod only: 2026-10-25; the fade before it: 2026-10-27, first timed to the fade
-  before the game's own SKIP ESCAPE AND FINAL BATTLE? by disassembly (not compared in game),
-  then started half a second after GAME SAVED appears (the owner's pick, 2026-10-27); the fade
-  turned back after a save at the pod during it: 2026-10-27. A request held by popups lapsing
-  once the player left the pod's room, and one left during GAME SAVED alone, then offered again
-  after the next save there: 2026-10-27. Each of these runs started at the Landing Pod. Not seen
-  in game: the fade turned back when the helper takes back a prompt it had not opened yet
-  (stand-in tests only). Since 2026-10-30, home is the Landing Pod's save point whichever room
-  the seed starts in (before, the start room's): run in game from a seed started at Open Cave,
-  2026-11-02 (no
-  prompt after a save in the start room, the prompt after a save at the pod, NO, the request
-  lapsing on leaving the pod's room while popups held it, the offer again, YES to the goal;
-  B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`).
-  A bug, 2026-11-03 (the 1.0.0 release candidate): with enough disks, respawning at the pod after
-  a death, or by the owner's account after a teleport, offered RETURN HOME. A death rewrites the
-  slot's block like a save, and so do the pause menu's RELOAD FROM SAVE and RELOAD FROM CHECKPOINT
-  (the "teleport" was RELOAD FROM SAVE, the owner said; a teleport writes neither, by
-  disassembly). Fixed since in the client (a new block is a save between two looks in play
-  with no death): working in game 2026-11-03 (B1, `lab/ap/live50` slot 4, past its ending: no
-  prompt after a death or RELOAD FROM SAVE at the pod, the prompt after each save there); RELOAD
-  FROM CHECKPOINT and a teleport to the pod not run. A new block that comes with a new GAME SAVED
-  message counts too, so a save followed at once by a pause or the map, or made just after
-  closing a menu, is offered (stand-in tests, not run in game); a reload on a button press, if
-  players can reach it, is not covered (`docs/re/memory.md`, "The mission prompt").
-  The reminder (ENOUGH OS INSTALL DISKS FOUND...) after the received disks' popups, and the pause
-  row on a pause right after loading: 2026-10-26. Starting disks counted, and the goal sent by a
-  client opened after the ending began: 2026-10-26. Received items held over the ending's
-  cutscenes across a Disconnect then Connect during them (the goal's collect, then two items
-  sent after the Connect: no popup until the save was loaded again): 2026-10-27. RETURN HOME
-  offered on a save past its ending too (YES plays the ending again, sending nothing, the goal
-  already sent; what is received waits as in a first ending: `client/ticks.py`, `replay_tick`):
-  working in game 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`, `lab/ap/live50` slot 8: the
-  offer after each save at the pod, YES replaying the ending with nothing sent, an item sent
-  during it shown on the next load). YES going into the ending with the screen kept black instead
-  of fading back into play first: not working in game, the same run, on that save and on one
-  before its ending (`lab/ap/live52`): black, then play at the pod for a moment, then the ending
-  (the owner's report: it faded back into play). Two causes fit, by disassembly
-  (`docs/re/memory.md`, "The mission prompt"): the black's 180-frame limit, which counted the
-  helper's frame calls (166 a second at 165 Hz against the game's 60) and so could end before
-  GAME SAVED and the ending did; and the ending routine's own level 4, in a frame the game draws
-  before the helper's frame call. Since, the limit counts game frames (240), the ending runs
-  through a wrapper that puts the black back before that frame is drawn and fades in from it,
-  and `mission_black` says how the black ended. Working in game 2026-11-02 (B1, `zexion_ap.dll`
-  `d179d32d…`, `lab/ap/live52`, a new game in lab slot 11, its first ending and a replay): black
-  until the ending, then straight into it; a read-only memory record's numbers fit the limit as
-  the cause (the release candidate not run again; the ending's own first frame not seen, the
-  wrapper hiding it; `mission_black` not read: the game was closed first). In that black the player could
-  still move and pause while the ending waited for GAME SAVED; since, the ending starts with GAME
-  SAVED up: working in game the same day (`zexion_ap.dll` `28ab9954…`, slot 11, a replay: black
-  for a frame or two after YES, then the ending fading in from it; the owner: "worked exactly how
-  we wanted"); on a first ending, working in game 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`,
-  the 1.0.0 RC at develop 76df074, English(HD), the owner's report: YES, black, then the ending at
-  once) (`native/README.md`, "The OS Install Disks goal").
+  storage): 2026-10-26; popups the helper holds when the game closes or it unloads are lost
+  ("The client in a live game").
+- ARCHIPELAGO new games: 2026-10-22 and 23, all three modes; a second save of one seed:
+  2026-10-24 ("New games"; "The game-mode panel").
+- Custom mode's settings in game: 2026-10-27 to 29 ([`docs/re/randocells.md`](re/randocells.md),
+  "What each setting does in the game"); Gates Vanilla made Unlocked by the disks goal:
+  2026-11-02 (`docs/re/locations.md`, "The OS Install Disks goal").
+- `start_inventory_from_pool`: 2026-10-28 (`docs/re/locations.md`, "What the world needs from
+  the client").
+- `--keep-randomizer` (a new game by the seed's text gets the seed): 2026-10-27 ("Starting a new
+  game").
+- Other players' items (logo, name at pickup): 2026-10-23; the logo's own colors and black
+  outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04 ("Other
+  players' items"; "Other Zexion players' items, as themselves").
+- Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
+  ("The map"; "Map markers").
+- Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
+  2026-11-03 ("Received Energy Shields"; its stop after three misses not run in game).
+- DeathLink, both ways: 2026-10-23 ("DeathLink").
+- The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
+  ("The assist menu").
+- Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
+  2026-10-25 ("Intel Chips").
+- OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
+  2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
+  2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending
+  and the ending straight from the black: 2026-11-02 ("The OS Install Disks goal"; "The mission
+  prompt"). The reminder after the received disks' popups, starting disks, and the goal sent by
+  a client opened during the ending: 2026-10-26 (`docs/re/locations.md`, "The OS Install Disks
+  goal"). Not run in game: RELOAD FROM CHECKPOINT and a teleport at the pod, and a save
+  counted by its GAME SAVED message (a pause or the map right after saving).
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
-- The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
-- `/reload_mod` in play: the mod back 3 s later, the ASSIST lock and the map's items the game's
-  for those seconds: 2026-10-26. With the pause or equipment screen open it unloaded, and the
-  open screen showed the disk wrong until reopened (2026-10-26), so an unload now refuses with a
-  menu open: refused with the pause screen open, then reloaded in play, 2026-10-26. A cleanup
-  after that run (5681ed6) made the client take any refusal for a failed request (it dropped
-  the helper and attached to it again); fixed since (`native.Helper.unload`, then
-  `state.reload_reply`): refused with the pause screen open, the client keeping the helper and
-  the screen unchanged, then reloaded in play, 2026-10-27. Refused while RETURN HOME WITH THE
-  DISKS?'s ending was on its way (after YES, with received items' popups holding it), the helper
-  kept and the ending run: 2026-10-27.
-- What the helper changed put back when the client goes away (item records, ASSIST):
-  2026-10-25.
-- Title screen: ARCHIPELAGO MOD, the version and ©2026 MCAWFUL: 2026-10-25. START THE AP
-  CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27. In English(HD),
-  the version's line and the hint in its font and in mixed case: seen 2026-11-02 (the 1.0.0
-  RC), staying over the Option menu and the file select after the title (a bug); fixed since,
-  working in game 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074,
-  the owner's report: the lines only on the title).
-- No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
-  SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
-  2026-10-26, with the client connected; again 2026-10-27, `GameUnlocks.sav` unchanged by the
-  ending. An achievement reaching Steam at the title after an AP save was quit (13SecretCode,
-  with the rewritten stub hooked at that title), and a plain randomizer save left alone with a
-  client connected:
-  2026-10-27. AP endings with no client, and with a client of another seed, no Feat earned:
-  2026-10-27; the note, missing under ASSISTS USED (Allow Assists on), shown after the fix in
-  d451e6b. The note with the secret Feats row shown (0.30.0 showed none there), and in the usual layout, no
-  Feat earned: 2026-10-28. In a fresh save folder (Ending B never reached), FEATS OF NATU! and
-  the note in place of the game's hint, over the shorter rows of a game with no Feats and, with
-  the code typed, over the secret row, no Feat earned, and the hint put back on an unload:
-  2026-10-28. Not
-  seen in game: Steam's stand-in stopping an achievement left to earn (it was in place; stand-in
-  tests only; the one left that is cheap to earn, 13SecretCode, is taken at the title only), and
-  no 15Explorer when a fully explored AP save loads (by disassembly and stand-in tests)
-  (`native/README.md`, "Feats and achievements in AP saves"). The client's warnings, the guard on
-  without all of it or still off in play: their decisions on stand-in tests (`state.FeatsCheck`),
-  the asking itself (`ticks.feats_tick`) not under test, none run in game. They could not be
-  arranged in game on 2026-10-27: a connected client leaves the helper its seed's file, so the
-  guard turns on in this seed's save.
-- AP saves marked on the file select, COPY FILE and DELETE FILE (the AP logo right of FILE
-  NN; normal and plain randomizer saves unmarked), with and without the client, through
-  paging, a copy and a delete, and whitened with a new game's fade: 2026-10-26. A new
-  ARCHIPELAGO game's own save getting the logo: 2026-10-27.
-- AP saves' ITEMS row on the file select: empty in the 1.0.0 RC, since the grants set the
-  inventory byte but never the major-item list the row draws (the owner's FILE 03, 2026-11-03);
-  the helper now fills the list from the inventory by the game's own pickup rule
-  (`native/README.md`, "Grants"). Working in game 2026-11-04 (B1, `zexion_ap.dll` `65878411…`,
-  the build of develop 1acaaaf, the owner's report: an AP save's ITEMS row filled).
-- AP saves without the client, from a fresh start too, and another seed's save told so:
-  2026-10-25; its notice as now worded, and its look kept when a client of another seed
-  attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
-  with a client connected (no notice, no look): 2026-10-27. With the client open (the
-  Launcher's, 1.0.0, `lab/ap/live47` with its `ZexionClient_*.txt` logs), 2026-10-29: a dropped connection with the save loaded
-  keeping the client's look, and a reconnect carrying it (no labels sent again), an item after it
-  popping up once; the save left during a drop taken back, and the save loaded again then given
-  the helper's look and NOT CONNECTED (the client letting the helper go: `leave_helper_tick`),
-  then the reconnect attaching it again, CLIENT CONNECTED and an item's popup; a Disconnect in
-  play the same, NOT CONNECTED and CLIENT CONNECTED at each Disconnect and Connect in one load,
-  and an item's popup after; Zexion closed with the client connected, and while dropped, the next
-  game's save dressed again (by the client, or by the helper until the client attached).
-- The game's translations (English(HD) above all): the mod's popups, notices, ARCHIPELAGO,
-  RETURN HOME WITH THE DISKS?, the equipment screen's disk, the stand-ins' names and the
-  scanner's line in the translation's font (ASSIST, the pause row's count, the Feats note and
-  the helper's icons too since that run, working in the run after; in the pixel font then)
-  ([`native/README.md`](../native/README.md), "Translations"), and the client's warning in any
-  translation but English(HD) (`ticks.language_tick`): run in game 2026-11-02 (B1,
-  `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`): popups, notices, the stand-ins' names, the
-  equipment screen's disk, RETURN HOME's question and the pixel-font parts showed in
-  English(HD), popups in French and Japanese, and the warning once, for French; ARCHIPELAGO's
-  label, the question's place, the equipment description's width and ASSIST's padlock are bugs,
-  fixed since and working in game later that day (`zexion_ap.dll` `946b08a1…`, with the HD
-  icons, the pause row's count, the locked ASSIST and the Feats note in the HD font; new bugs
-  then: the locked ASSIST's colors after another menu, ASSIST once seen unlocked, its padlock
-  low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since:
-  the last two working in game 2026-11-03, `12f090c6…`, the rest stand-in tests only, not run
-  in game yet; on the 1.0.0 RC, ASSIST unlocked and the version line locked in its place after
-  Video, fixed since, run in game 2026-11-03: "seems to work"; the ASSIST lock in English(HD)
-  working in game on the RC, 2026-11-03, `fce9e73b…`, the owner's report, which named none of
-  the parts above), and the scanner's line was not
-  run (`native/README.md`, "Translations", "Run
-  in game" and "Run in game again"). Before them, 1.0.0's release candidate in
-  English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
-  not shown, 2026-11-01 ([`docs/re/memory.md`](re/memory.md), "Translations"). Since the
-  2026-11-02 retest: the mod's own text in mixed case in English(HD), working in game
-  2026-11-03 (`12f090c6…`) for the stand-ins' names and the map cursor, not run in game yet for
-  its notices, the client's hints, the disks' popups and reminder and the scanner's line; the
-  HD disk and logo redrawn at the game's icon size, the disk (D2) working in game 2026-11-03
-  (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074, the owner's report), the
-  logo not singled out; and the Feats screen's HD title, its two lines starting at the same x (a
-  bug, seen 2026-11-03 on `12f090c6…`), its shorter line centered since, working in game
-  2026-11-03 (`fce9e73b…`, `lab/ap/live50/client-r5.log`, the owner's screenshot: both lines
-  centered). Found since on the release candidate: the pause row showing the game's Keys for one
-  frame after OPTION MENU closes (the owner, 2026-11-03); fixed since, working in game 2026-11-03
-  (`fce9e73b…`, the client connected, `lab/ap/live50/client-r5.log`: no Keys frame after Option,
-  the owner's report).
+- The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").
+- `/reload_mod`: 2026-10-26; refused with a menu open or the ending on its way: 2026-10-27
+  ("Unloading").
+- What the helper changed put back when the client goes away: 2026-10-25 ("A client going
+  away").
+- Title screen lines: 2026-10-25; the client line 2026-10-27; in English(HD): 2026-11-03 ("The
+  title screen's lines").
+- No Feats or Steam achievements in AP saves, and the note on the Feats of Natu screen:
+  2026-10-26 to 28 ("Feats and achievements in AP saves"). Not run in game: Steam's stand-in
+  stopping an achievement, no 15Explorer on loading a fully explored AP save, and the client's
+  warnings (`state.FeatsCheck`, `ticks.feats_tick`), which could not be arranged in game.
+- AP saves marked on the file select, COPY FILE and DELETE FILE: 2026-10-26; their ITEMS row:
+  2026-11-04 ("AP saves on the file select"; "Grants").
+- AP saves without the client: 2026-10-25; the client letting the helper go with no server
+  connection, from the Launcher's 1.0.0 client: 2026-10-29 ("AP saves without the client").
+- The game's translations, English(HD) above all, and the client's warning in the others:
+  2026-11-02, with later fixes run 2026-11-03 ("Translations", whose run bullets list what was
+  seen in each and what is not run in game yet).
 
 ## Platforms
 
@@ -346,7 +171,7 @@ Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, par
 `tests/test_native.py` and `tests/test_pe.py`), as does `tests/test_native.py`'s load test
 without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.
 
-The commands below are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
+The commands here and in `CLAUDE.md` are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
 Windows installs. Claude Code needs Git Bash on Windows here too: the hook commands in
 `.claude/settings.json` are written for a POSIX shell. With Git Bash (and with `sh` on Linux and
 macOS), a hook that fails with an exit code other than 2 lets the call through; without it,
@@ -357,24 +182,11 @@ Windows and `.venv/bin/` on Linux and macOS: change the folder in each command t
 
 ## Setup
 
-Git and uv, on any of the three. Archipelago 0.6.8 refuses Python 3.14, so the venv is 3.13,
-managed by uv. The venv is seeded with `pip` because Archipelago's own updater uses it.
-
-Install uv one of two ways:
-
-- `python -m pip install --user uv` (on Windows, where `python` is the python.org install),
-  then type `python -m uv` wherever `uv` appears below: `--user` does not put `uv` on `PATH`.
-- uv's own installer ([docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/)),
-  which does. On Linux and macOS use this one: Debian's, Ubuntu's and Homebrew's Pythons refuse
-  `pip install --user` (they are "externally managed"), and many systems have `python3` but no
-  `python`.
-
-```sh
-uv python install 3.13
-uv venv --seed --python 3.13 .venv
-uv pip install --python .venv -r requirements-dev.txt
-.venv/Scripts/python tools/ap_checkout.py   # Archipelago at AP_VERSION into .ap/, world linked in
-```
+The commands (uv, the Python 3.13 venv, `tools/ap_checkout.py`) are in
+[`CLAUDE.md`](../CLAUDE.md), "Setup". With `python -m pip install --user uv`, `python` is the
+python.org install on Windows; on Linux and macOS use uv's own installer, since Debian's,
+Ubuntu's and Homebrew's Pythons refuse `pip install --user` (they are "externally managed") and
+many systems have `python3` but no `python`.
 
 The native helper, on Windows only, needs Visual Studio 2022 or later with the C++ workload, and
 CMake 3.20 or later; `native/CMakeLists.txt` refuses another compiler or a single-config
@@ -385,25 +197,9 @@ Line endings: `.gitattributes` checks every text file out with LF, on Windows to
 
 ## Checks
 
-CI runs all of these (ruff and pytest on Windows, Ubuntu and macOS; the native build, its tests
-and `tests/test_native.py` on Windows; AP's world tests after `tools/ap_checkout.py`, on
-Ubuntu). The Claude Code skill `/preflight` runs the first block (AP's world tests need `.ap/`).
-
-```sh
-.venv/Scripts/ruff format --check .
-.venv/Scripts/ruff check .
-.venv/Scripts/python -m pytest
-cd .ap/Archipelago && AP_TEST_WORLDS=zexion ../../.venv/Scripts/python -m pytest test/general worlds/zexion/test
-```
-
-```sh
-cmake -S native -B native/build -A x64
-cmake --build native/build --config Release
-ctest --test-dir native/build -C Release --output-on-failure
-```
-
-Nothing in `tests/` needs the game. What the native tests cover: `native/README.md`,
-"Building".
+The commands, and which CI job runs each: [`CLAUDE.md`](../CLAUDE.md), "Checks". The Claude
+Code skill `/preflight` runs the Python ones and AP's world tests (those need `.ap/`). What the
+native tests cover: [`native/README.md`](../native/README.md), "Building".
 
 Some tests skip without what they need: the hook runner's without `sh`,
 `worlds/zexion/test/test_client_agrees.py` without the repo's `client` beside the world (the
@@ -413,20 +209,14 @@ them, and there a missing one fails a test as well.
 
 ## Running the client from source
 
-On Windows, with the game. It needs `.ap/` with the world linked in (`tools/ap_checkout.py`).
-Running it may load the helper into the game: the one already there if it is this version, else
-`native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`).
+On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
+"The client". Running it may load the helper into the game: the one already there if it is this
+version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond that:
 
-```sh
-.venv/Scripts/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281
-```
-
-- `--verbose` also shows what the client sets up in the game for the seed.
-- `--keep-randomizer` keeps RANDOMIZER in place of ARCHIPELAGO; a new game started from it
-  with the seed's text typed into the menu gets the seed: the helper places it again with the
-  seed's settings, whatever else the menu holds (`client/newgame.py`; `native/README.md`, "New
-  games"; working in game, 2026-10-27). From the Launcher:
-  `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
+- A new game started from RANDOMIZER (kept by `--keep-randomizer`) with the seed's text typed
+  into the menu gets the seed: the helper places it again with the seed's settings, whatever
+  else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
+  2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
   meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
   while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
@@ -441,7 +231,6 @@ Running it may load the helper into the game: the one already there if it is thi
 - Every few seconds while the helper is attached, the client reads the game's language from
   its `hello` (`lang`); in any translation but English(HD) it says once per game run that the
   mod's text is made for the default English and English(HD) (`state.language_line`).
-- `ZEXION_AP_DIR` points the client at another Archipelago folder than `.ap/Archipelago`.
 
 ## Branches and releases
 
@@ -460,10 +249,8 @@ already holds its number. If GitHub can't list the releases or `main`'s version 
 the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
 `develop` to `main` is checked too.
 
-A release has one version number, in three places: `VERSION` in `client/native.py`,
-`kVersion` in `native/src/dllmain.cpp` and `world_version` in
-`worlds/zexion/archipelago.json`. `tests/test_cross_checks.py` compares them, and the builder
-refuses a world of another number. `pyproject.toml`'s `0.0.0` is unused.
+A release has one version number, in three places, which the tests and the builder check
+([`CLAUDE.md`](../CLAUDE.md), "Releases and versions").
 
 To release:
 
@@ -487,14 +274,9 @@ To release:
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
    `main` again.
 
-`tools/build_apworld.py` writes `dist/`: `zexion.apworld` (the world without its tests, with
-`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, the player guides as
-`zexion-setup-guide.md` and `zexion-game-page.md` (from `worlds/zexion/docs/`), and the sample
-YAMLs from `samples/` (`zexion-easy.yaml`, `zexion-standard.yaml`, `zexion-ohko.yaml`,
-`zexion-custom.yaml`). The samples name the world's version, so raising it means running
-`tools/gen_sample_yamls.py` again: the build refuses samples for another version. It packs only
-files git tracks and refuses a release that would not match (its docstring): run locally,
-rebuild `native/` first after a checkout that touched it. The apworld's `archipelago.json` is
+What `tools/build_apworld.py` writes into `dist/` and what it refuses: [`CLAUDE.md`](../CLAUDE.md),
+"Releases and versions". Run locally, rebuild `native/` first after a checkout that touched it.
+The apworld's `archipelago.json` is
 the world's plus the two container keys Archipelago's own builder adds, `version` 7 and
 `compatible_version` 7 (`CONTAINER_KEYS`). Without `compatible_version`, AP 0.6.8's
 `APContainer.read_contents` fails, its apworld loader logs "Invalid or missing manifest file",
