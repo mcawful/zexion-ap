@@ -27,7 +27,7 @@ constexpr int32_t kFadeMessageLeft = 150;
 constexpr int kDarkFrames = 240;
 // The ending after YES fades in from black, a level each this many frames.
 constexpr int8_t kEndingFadeStep = 8;
-extern const char kMissionQuestion[];
+extern const char kMissionQuestion[];  // in capitals after a blank in its pixel glyphs
 // The status from the frame the ending is set until left_save (client/discs.py, ENDING_STARTED).
 extern const char kEndingStarted[];
 

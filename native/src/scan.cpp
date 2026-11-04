@@ -34,11 +34,6 @@ bool scan_line_ok(const std::string& line) {
     return true;
 }
 
-std::string scan_line_upper(std::string line) {
-    for (char& c : line) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    return line;
-}
-
 bool ScanText::apply(BYTE* table_holder, const std::string& line) {
     BYTE* table = pointer_at(table_holder);
     if (!scan_line_ok(line) || table == nullptr) return false;

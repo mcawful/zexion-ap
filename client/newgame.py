@@ -106,8 +106,7 @@ def plan_text(plan: sp.SeedPlan, build_sha256: str = "", offer_choice: bool = Tr
     # placement's list holds the 155th location at position 134 (save_patch.game_order).
     lines.append(f"write {section(sp.ITEM_TABLE):#x} {plan.table.hex()}")
     # The seed text and its hash: the seed's placement already ran from them (the helper's,
-    # for ARCHIPELAGO and over a RANDOMIZER game alike); written again for a plan without menu
-    # lines, whose game ran from the menu's own text.
+    # for ARCHIPELAGO and over a RANDOMIZER game alike); written all the same.
     lines.append(f"write {section(sp.SEED_TEXT):#x} {seed_text.encode('ascii').hex()}")
     hashed = struct.pack("<Q", sp.seed_hash(seed_text)).hex()
     lines.append(f"write {section(sp.SEED_HASH):#x} {hashed}")

@@ -114,8 +114,7 @@ public:
 
     // Game thread, every frame: applies an armed plan to a queued randomizer new game with more
     // than one frame left. One started from RANDOMIZER must hold `identify` (the seed text), and
-    // is placed again as the seed (or, with no menu lines, checked against `expect`); if not, it
-    // is left as the player made it and the plan dropped.
+    // is placed again as the seed; if not, it is left as the player made it and the plan dropped.
     void watch_newgame();
 
     // Game thread, each frame call while configured (dllmain.cpp, until an unload begins):
@@ -123,7 +122,7 @@ public:
     void watch_all(WidgetCallback callback);
 
     // Game thread, every frame: ARCHIPELAGO in place of RANDOMIZER (menu.h) while a plan with
-    // menu lines is armed, its callback `callback`; otherwise RANDOMIZER back.
+    // `choice` is armed, its callback `callback`; otherwise RANDOMIZER back.
     void watch_menu(WidgetCallback callback);
     // Whether the game may still hold one of the helper's functions (the parts' callbacks,
     // handlers and wrappers below), which unload must take back first. The ASSIST lock holds none.
@@ -257,8 +256,8 @@ public:
 
     // Game thread. Other players' items (apitem.h): armed by set_labels; restored before unload.
     void set_labels(std::map<int, Label> labels);
-    // The stand-ins' names by map cell, as last laid out (tests).
-    const std::map<int, std::string>& label_names() const { return ap_items_.labels(); }
+    // The labels by map cell, each laid out, an @N one resolved once records load.
+    const std::map<int, Label>& labels() const { return ap_items_.labels(); }
     void watch_ap_items();
     // The live stand-in objects in both pools, with their cells and positions (name_cells), from
     // this frame's copy of the item pool (null: not read) and the item sprites' frame list.
@@ -306,11 +305,10 @@ public:
     const EntryWriter& tr_entries() const { return tr_entries_; }
     const PopupAreas& popup_areas() const { return popup_areas_; }
 
-    // English(HD): the mod's text in mixed case (other languages' fonts may draw no lower case).
-    bool mixed_case() const;
-    // A labeled cell's name in a translation's font (translation.h, hd_label); "" with no label.
-    // In English(HD), the lines in the case the client sent them (Label::own_first, own_who).
-    std::wstring hd_label_text(int cell, bool first_line, bool icon) const;
+    // A label in the translation's font (translation.h, hd_case): its glyph as hd_icon (left out
+    // without `icon`), its first line, and with `first_line` false, whom it is for on the next.
+    // Another Zexion player's item it gives no name for: the translation's name for it.
+    std::wstring hd_label_text(const Label& label, bool first_line, bool icon) const;
 
 private:
     // The game's last message and its sequence, as the game keeps them: whether both read.
@@ -330,7 +328,7 @@ private:
     // The helper's names and scanner line in the translation's tables; popup areas freed.
     void watch_translation();
     // A popup in the translation's font: the icon and translated name (a stand-in's own, not its
-    // label), then the client's suffix on the next line; a notice's text as it is.
+    // label), then the client's suffix on the next line; a notice's text alone (hd_case).
     std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
     // A font glyph painted while wanted, cleared once not (if it was painted).
     void show_glyph(FontGlyph& glyph, bool wanted);
@@ -433,7 +431,6 @@ private:
     int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The labels' seed (the loaded item table and start when set): the map changes only in it.
     std::optional<OfflineSeed> labels_seed_;
-    std::map<int, Label> labels_;  // as set, for snapshot
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
     MapCursorNames map_names_;
@@ -454,8 +451,6 @@ private:
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
     int popup_width_ = -1;  // what the game holds, once read; -1 before
-    std::map<int, int> label_widths_;
-    std::map<int, Label> item_labels_;  // labels still to be made from an item's record
     ItemLooks looks_;  // other Zexion players' items shown as themselves
     // translation.h: the entries the helper writes, the popup areas, each stand-in's translated
     // name as last named ("" for none).
@@ -475,6 +470,9 @@ private:
     const BYTE* read_item_pool();
     std::vector<BYTE> pool_copy_;
     void resolve_item_labels();
+    // Item k's name in the loaded translation ("" if none): with `own`, the game's own under a
+    // name the helper wrote over it (tr_entries_).
+    std::wstring translated_name(int item, bool own, const std::optional<Loaded>& now) const;
     void set_popup_width(int width);
     GlFunctions gl_;
     TextureCheck texture_check_;  // for everything painted into the sprite texture

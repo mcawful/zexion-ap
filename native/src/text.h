@@ -5,7 +5,10 @@
 
 #include <windows.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace zap {
@@ -24,24 +27,51 @@ constexpr size_t kMessageMax = 255;
 // The popup message's box: its center's y (a double) and its half-height (32-bit).
 constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
 
-// A label for another player's item: the stand-in's name as laid out, and its widest line.
+// The helper's text is kept in the case it was sent or written in, mixed case for its own;
+// capitals only where they are drawn: the 8 x 8 font, and every translation but English(HD)
+// (translation.h, hd_case). Letters alone change: a record's icon byte (0x6E and 0x77 among
+// them) never goes through these, it is put before the text they make.
+constexpr char capital(char c) { return c >= 'a' && c <= 'z' ? static_cast<char>(c - 32) : c; }
+std::string in_capitals(std::string text);
+// One of the helper's fixed texts in capitals, made at compile time: Capitals kName{kText}.
+template <size_t N>
+struct Capitals {
+    char text[N] = {};
+    constexpr explicit Capitals(const char (&s)[N]) {
+        for (size_t i = 0; i < N; ++i) text[i] = capital(s[i]);
+    }
+    constexpr operator const char*() const { return text; }
+    constexpr operator std::string_view() const { return {text, N - 1}; }
+    static constexpr size_t size() { return N - 1; }
+};
+
+// The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
+// shows the name as written and it can be centered), and the name where no label is.
+constexpr uint8_t kApItemGlyph = 0xEE;
+constexpr char kApItemName[] = "AP Item";
+
+// A label for another player's item at a map cell (requests.h, parse_labels): its parts in the
+// case the client sent them, and the stand-in's name laid out from them (lay_out).
 struct Label {
-    std::string name;
-    int width = 0;
-    // `item`: another Zexion player's item N (-1 if none); its record's icon and name make the
-    // first line once records load (AP ITEM until then). `who`: the second line.
+    // The first line: its glyph and its text (kApItemName where "": first_text). For another
+    // Zexion player's item N (`item`, -1 if none) the logo and kApItemName until records load,
+    // then its record's icon and name (Game::resolve_item_labels).
+    uint8_t glyph = kApItemGlyph;
+    std::string first;
+    std::string who;  // the second line, whom it is for ("" for none)
     int item = -1;
-    std::string who;
     // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
     // the game's record calls DATA DISC).
     std::string item_name;
-    // The first line (without its glyph; an @N item's NAME) and `who` in the case they were sent
-    // in, for English(HD)'s mixed case (Game::hd_label_text); empty where none was sent.
-    std::string own_first, own_who;
+    bool pending() const { return item >= 0 && first.empty(); }
+    std::string first_text() const;
+    // The stand-in's name in the 8 x 8 font, set by lay_out: the first line (glyph first) and
+    // `who` in capitals, each centered in the longer, cut to the record's 49 bytes; and the
+    // widest line, the pickup popup's width.
+    std::string name;
+    int width = 0;
+    void lay_out();
 };
-
-// A label's layout: `first` (starting with its glyph) and `who`, each centered in the longer.
-Label layout_label(const std::string& first, const std::string& who);
 
 // Words of `text` in lines of at most `width` characters; a word longer than a line is cut.
 std::vector<std::string> wrap_words(const std::string& text, size_t width);

@@ -110,7 +110,7 @@ int wmain(int argc, wchar_t** argv) {
     check(stand_in::g_inventory[17] == 0, "a withdrawn batch is never applied");
 
     // A refused unload: the new-game plan the client armed is armed again.
-    reply = zap_test::ask(pipe, "ap_newgame\nwrite 0x310 11");
+    reply = zap_test::ask(pipe, "ap_newgame\nidentify 0x658 41\nwrite 0x310 11\nmenu 0x88 03");
     check(reply == "armed", "a plan armed", reply);
     // A menu open in a save: refused before anything is put back.
     stand_in::g_menu = 2;

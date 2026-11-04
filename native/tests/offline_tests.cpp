@@ -814,7 +814,7 @@ void test_a_cache_without_the_client_only_keys() {
           "the file select: the AP save's mark and its count");
 
     zap::NewGamePlan plan;
-    zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B", plan);
+    zap::parse_newgame("ap_newgame\nidentify 0x658 41\nwrite 0x26C 2E1B\nmenu 0x88 0300", plan);
     check(!game.arm_newgame(plan) && game.newgame_status() != "armed", "no new game armed");
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
     check(!game.menu_installed(), "no ARCHIPELAGO choice");
@@ -828,7 +828,7 @@ void test_a_cache_without_the_client_only_keys() {
         game.pump_popups();
     }
     check(game.intel_on() && game.assists_locked() && game.scan_line() == "COLLECT" &&
-              game.disc_count() == 3 && !game.label_names().empty(),
+              game.disc_count() == 3 && !game.labels().empty(),
           "the save dressed: INTEL CHIP, ASSIST locked, the disks, the labels");
     check(g_messages == 1 && game.queued_popups() == 0, "the not-connected warning shown");
     g_menu = 1;  // paused: the map's marks, the pause row
