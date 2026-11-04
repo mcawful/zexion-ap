@@ -226,9 +226,9 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
                 hd_.take(keys_label);
             }
         }
+        // The turn below shows the four pixel glyphs: hidden again for the translated text.
         uint8_t pixel_shown = 0;
-        if (pixel_glyphs_shown(keys_label) ||
-            (read(glyph[0], sprite::kVisible, pixel_shown) && pixel_shown != 0)) {
+        if (read(glyph[0], sprite::kVisible, pixel_shown) && pixel_shown != 0) {
             show_translated_glyphs(keys_label);
         }
     };
