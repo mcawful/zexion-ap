@@ -9,32 +9,18 @@ namespace zap {
 namespace {
 
 constexpr int kOfflineFrames = 15;  // frames between looks
-// Loading an AP save with no client; each in capitals for the pixel fonts and mixed case for
-// English(HD) (Popup::as_sent).
+// Loading an AP save with no client (in capitals where drawn so: text.h, in_capitals).
 constexpr char kOfflineWarning[] =
-    "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
-constexpr char kOfflineWarningHd[] =
     "Archipelago client not connected. Checks are sent when it connects.";
 // And once a client connects while a save was dressed offline.
-constexpr char kOnlineNotice[] = "ARCHIPELAGO CLIENT CONNECTED.";
-constexpr char kOnlineNoticeHd[] = "Archipelago client connected.";
+constexpr char kOnlineNotice[] = "Archipelago client connected.";
 // And once a load, from a client whose seed the loaded randomizer save is not.
 constexpr char kOtherSeedNotice[] =
-    "THIS SAVE IS FROM ANOTHER SEED. NOTHING IS SENT FROM IT, AND YOUR ITEMS WAIT FOR YOUR "
-    "SEED'S SAVE.";
-constexpr char kOtherSeedNoticeHd[] =
     "This save is from another seed. Nothing is sent from it, and your items wait for your "
     "seed's save.";
-static_assert(sizeof(kOfflineWarning) == sizeof(kOfflineWarningHd) &&
-              sizeof(kOnlineNotice) == sizeof(kOnlineNoticeHd) &&
-              sizeof(kOtherSeedNotice) == sizeof(kOtherSeedNoticeHd));
 
-// One of the helper's own notices: silent, for any save, its text in both cases.
-Popup notice(const char* text, const char* mixed) {
-    Popup p{kAreaMapItem, text, true};
-    p.as_sent = mixed;
-    return p;
-}
+// One of the helper's own notices: silent, for any save.
+Popup notice(const char* text) { return {kAreaMapItem, text, true}; }
 
 }  // namespace
 
@@ -82,7 +68,7 @@ void Game::merge_offline(std::vector<OfflineSeed> seeds) {
 
 bool Game::drop_notice(const char* text) {
     // The helper's notices are the only popups no client counts (parse_batch).
-    auto notice = [&](const Popup& p) { return !p.counted && p.suffix == text; };
+    auto notice = [&](const Popup& p) { return !p.counted && p.text == text; };
     return std::erase_if(popups_, notice) > 0;
 }
 
@@ -183,7 +169,7 @@ void Game::watch_offline() {
         if (seed >= 0) {  // the look itself: below
             // Once a load and after each client goes; with a client of another seed, its notice.
             if (!offline_warned_ && !other) {
-                popups_.push_back(notice(kOfflineWarning, kOfflineWarningHd));
+                popups_.push_back(notice(kOfflineWarning));
                 offline_warned_ = true;
             }
             if (!other) offline_played_ = seed;
@@ -240,7 +226,7 @@ std::string Game::other_save() {
     other_save_ = true;
     if (other_warned_) return "already told";
     drop_offline_warning();
-    popups_.push_back(notice(kOtherSeedNotice, kOtherSeedNoticeHd));
+    popups_.push_back(notice(kOtherSeedNotice));
     other_warned_ = true;
     return "told";
 }
@@ -250,7 +236,7 @@ bool Game::client_back() {
                  static_cast<size_t>(offline_played_) < offline_seeds_.size() &&
                  section_is(offline_seeds_[static_cast<size_t>(offline_played_)], at_.rando_blob);
     offline_played_ = -1;
-    if (shown) popups_.push_back(notice(kOnlineNotice, kOnlineNoticeHd));
+    if (shown) popups_.push_back(notice(kOnlineNotice));
     return shown;
 }
 

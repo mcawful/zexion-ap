@@ -168,9 +168,6 @@ class _Game:
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
-    lang: bool = True  # its hello reports the game's language
-    case: bool = True  # it takes mixed case
-    file_case: bool = True  # whether the built file takes mixed case
     stays: bool = False  # the helper refuses to unload
     loads: int = 0
     unloads: int = 0
@@ -205,11 +202,8 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
                 "folder": game.folder,
                 "build": game.build,
                 "hooked": hooked,
+                "lang": "-",
             }
-            if game.lang:
-                out["lang"] = "-"
-            if game.case:
-                out["case"] = "1"
             return out
 
         def request(self, text: str, *args: object) -> str:
@@ -226,8 +220,6 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
     def load(handle, pid, dll, if_absent=False) -> bool:
         game.loads += 1
         game.loaded = game.file_version
-        game.lang = True  # the client's build: this branch's, with the language
-        game.case = game.file_case  # and the mixed case, unless built before it
         return True
 
     monkeypatch.setattr(native, "Helper", FakeHelper)
@@ -235,7 +227,6 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
     monkeypatch.setattr(native, "load", load)
     monkeypatch.setattr(native, "wait_unloaded", lambda handle: True)
     monkeypatch.setattr(native, "_STALE", {})
-    monkeypatch.setattr(native, "_EARLIER", {})
     return game
 
 
@@ -269,44 +260,6 @@ def test_a_stale_build_is_refused_not_reloaded_until_it_changes(tmp_path, monkey
     os.utime(built, ns=(later, later))
     native.attach(game, built)
     assert game.unloads == 1 and game.loads == 2 and game.loaded == native.VERSION
-
-
-def test_an_earlier_build_of_this_version_is_refused_not_reloaded_until_it_changes(
-    tmp_path, monkeypatch
-) -> None:
-    # A build of the client's own from before the mixed case: refused, and each retry leaves it
-    # alone, until the file is rebuilt.
-    built = tmp_path / "zexion_ap.dll"
-    built.write_bytes(b"")
-    game = stand_in_attach(monkeypatch, file_version=native.VERSION, file_case=False)
-    with pytest.raises(native.ModMismatch, match="mixed case"):
-        native.attach(game, built)
-    assert game.loads == 1 and game.loaded == native.VERSION
-    for _ in range(2):
-        with pytest.raises(native.ModMismatch, match="mixed case"):
-            native.attach(game, built)
-    assert game.loads == 1 and game.unloads == 0, "refused without unloading or loading"
-    game.loaded = None  # the game restarted: not loaded into it either
-    with pytest.raises(native.ModMismatch, match="mixed case"):
-        native.attach(game, built)
-    assert game.loads == 1
-    # Rebuilt: loaded.
-    game.file_case = True
-    later = built.stat().st_mtime_ns + 1_000_000_000
-    os.utime(built, ns=(later, later))
-    native.attach(game, built)
-    assert game.loads == 2 and game.case
-
-
-def test_an_earlier_build_that_wont_unload_says_why(tmp_path, monkeypatch) -> None:
-    built = tmp_path / "zexion_ap.dll"
-    built.write_bytes(b"")
-    game = stand_in_attach(
-        monkeypatch, loaded=native.VERSION, file_version=native.VERSION, case=False, stays=True
-    )
-    with pytest.raises(native.ModMismatch, match="mixed case") as caught:
-        native.attach(game, built)
-    assert "language" not in str(caught.value)
 
 
 def test_a_stale_build_is_not_loaded_into_a_game_without_a_helper(tmp_path, monkeypatch) -> None:
@@ -505,61 +458,10 @@ def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monke
         native.attach(game, built)
 
 
-def test_a_mod_of_this_version_without_the_language_is_an_earlier_build(
-    tmp_path, monkeypatch
-) -> None:
-    # The same version without translation support (no lang in its hello): its config would
-    # ignore the translation keys.
-    (tmp_path / "zexion_ap.dll").write_bytes(b"")
-    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
-    game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", lang=False)
-    with pytest.raises(native.ModMismatch, match="different builds") as caught:
-        native.attach(game, tmp_path / "no-build.dll")
-    assert "doesn't report the game's language" in str(caught.value)
-    assert state.helper_failed(caught.value).startswith("The Zexion mod and this client don't")
-
-
-def test_a_mod_of_this_version_without_the_language_gives_way_to_the_clients_build(
-    tmp_path, monkeypatch
-) -> None:
-    built = tmp_path / "zexion_ap.dll"
-    built.write_bytes(b"")
-    game = stand_in_attach(
-        monkeypatch, loaded=native.VERSION, file_version=native.VERSION, folder="1", lang=False
-    )
-    native.attach(game, built)
-    assert game.unloads == 1 and game.loads == 1 and game.lang
-
-
-def test_a_mod_of_this_version_without_mixed_case_is_refused_without_a_build(
-    tmp_path, monkeypatch
-) -> None:
-    # One that reports the language but would refuse the client's scanner line in mixed case,
-    # and with it the disks goal.
-    (tmp_path / "zexion_ap.dll").write_bytes(b"")
-    monkeypatch.setattr(native, "game_folder", lambda handle: tmp_path)
-    game = stand_in_attach(monkeypatch, loaded=native.VERSION, folder="1", case=False)
-    with pytest.raises(native.ModMismatch, match="different builds") as caught:
-        native.attach(game, tmp_path / "no-build.dll")
-    assert "mixed case" in str(caught.value)
-
-
-def test_a_mod_of_this_version_without_mixed_case_gives_way_to_the_clients_build(
-    tmp_path, monkeypatch
-) -> None:
-    built = tmp_path / "zexion_ap.dll"
-    built.write_bytes(b"")
-    game = stand_in_attach(
-        monkeypatch, loaded=native.VERSION, file_version=native.VERSION, folder="1", case=False
-    )
-    native.attach(game, built)
-    assert game.unloads == 1 and game.loads == 1 and game.case
-
-
 @pytest.mark.parametrize(
     ("request_text", "reply", "said"),
     [
-        ("disk_slots 1 2 3", b"error unknown request", "doesn't know the request disk_slots"),
+        ("disk_slots 1 3", b"error unknown request", "doesn't know the request disk_slots"),
         ("ap_newgame\nfoo 1", b"error unknown line foo 1", "a line of ap_newgame (foo)"),
     ],
 )

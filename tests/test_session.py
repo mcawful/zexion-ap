@@ -411,7 +411,7 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
     session, g, helper, _ = with_helper
     session.announced = 1  # the first had its popup before this connection (received offline)
     give(session, g, [17, 36], senders=["Bob", "Alice"])
-    assert helper.popups() == ["popup 36 FROM Alice"]
+    assert helper.popups() == ["popup 36 from Alice"]
     assert session.announced == 2
     session.step(g, [17, 36], gap=0, senders=["Bob", "Alice"])
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
@@ -423,7 +423,7 @@ def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) 
     assert give(session, g, [26], senders=["Bob"]) == {26: 1}
     assert give(session, g, [26, 26], senders=["Bob", "Bob"]) == {}
     assert g.inv[26] == 1
-    assert helper.requests[-1].splitlines()[1:] == ["popup 26 FROM Bob"]
+    assert helper.requests[-1].splitlines()[1:] == ["popup 26 from Bob"]
     assert session.announced == 2
 
 
@@ -435,7 +435,7 @@ def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     session.step(g, received, gap=0, senders=senders, notes=notes)
     lines = helper.requests[-1].splitlines()
     popups = [line for line in lines if line.startswith(("popup", "notice"))]
-    assert popups == ["popup 17 FROM Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
+    assert popups == ["popup 17 from Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
 
 
 def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setup) -> None:
@@ -446,14 +446,14 @@ def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setu
     assert helper.requests == [] and g.inv[17] == 0
     session.announced = 0  # the server's count: no popup shown yet
     give(session, g, [17], senders=["Alice"])
-    assert g.inv[17] == 1 and "popup 17 FROM Alice" in helper.requests[-1]
+    assert g.inv[17] == 1 and "popup 17 from Alice" in helper.requests[-1]
 
 
 def test_a_received_weapon_already_owned_pops_up_as_its_upgrade(with_helper) -> None:
     session, g, helper, _ = with_helper
     # The Machine Gun is a starting item; the Force Blaster is not, until the first arrives.
     give(session, g, [3, 4, 4], senders=["Alice"] * 3)
-    assert helper.popups() == ["popup 9 FROM Alice", "popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert helper.popups() == ["popup 9 from Alice", "popup 4 from Alice", "popup 14 from Alice"]
 
 
 def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_helper) -> None:
@@ -461,7 +461,7 @@ def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_hel
     # A Pentashot sent from the server console is a Force Blaster's copy (reconcile): the first
     # sets the gun's byte, so it and the Force Blaster after it pop up as written.
     give(session, g, [14, 4], senders=["Alice"] * 2)
-    assert helper.popups() == ["popup 4 FROM Alice", "popup 14 FROM Alice"]
+    assert helper.popups() == ["popup 4 from Alice", "popup 14 from Alice"]
     assert (g.inv[4], g.inv[14]) == (1, 1)
 
 
@@ -472,7 +472,7 @@ def test_without_guns_first_each_item_pops_up_as_itself() -> None:
     session.helper, session.announced = helper, 0
     # The Machine Gun is a starting item: a received Pulse Wave and Pentashot are themselves.
     give(session, g, [9, 14], senders=["Alice"] * 2)
-    assert helper.popups() == ["popup 9 FROM Alice", "popup 14 FROM Alice"]
+    assert helper.popups() == ["popup 9 from Alice", "popup 14 from Alice"]
     assert (g.inv[3], g.inv[4], g.inv[9], g.inv[14]) == (1, 0, 1, 1)
 
 

@@ -171,13 +171,27 @@ void test_a_cell_off_the_map_is_skipped() {
     check(zap::mark_important(nullptr, s.grid.data(), false) == 0, "no section");
 }
 
+// A label as parse_labels makes it, laid out: its glyph, first line and whom it is for.
+zap::Label label(uint8_t glyph, std::string first, std::string who = "") {
+    zap::Label l;
+    l.glyph = glyph;
+    l.first = std::move(first);
+    l.who = std::move(who);
+    l.lay_out();
+    return l;
+}
+
+// What Game gives the cursor in a translation: the first line, no icon (as hd_label_text).
+std::wstring first_line(const zap::Label& l) { return zap::hd_text(l.first_text()); }
+
 void test_map_names() {
-    check(zap::map_name("\xFB" "OS INSTALL DISK", 16) == "OS INSTALL DISK", "own disk");
-    // Two lines of 17: the first only, never whom the item is for.
-    check(zap::map_name("\xEE" "PROGRESSION ITEM    FOR ALICE", 17) == "PROGRESSION ITEM",
-          "another game's item: the first line");
-    check(zap::map_name("\xEE" "SLIDE MOD  FOR BOB", 10) == "SLIDE MOD", "a Zexion item's name");
-    check(zap::map_name("AN ITEM NAME THAT IS FAR TOO LONG", 0) == "AN ITEM NAME THAT", "cut");
+    check(zap::map_name(label(0xFB, "OS Install Disk")) == "OS INSTALL DISK", "own disk");
+    // The first line only, never whom the item is for.
+    check(zap::map_name(label(0xEE, "Progression Item", "for Alice")) == "PROGRESSION ITEM",
+          "another game's item: the first line, in capitals");
+    check(zap::map_name(label(0xEE, "", "for Bob")) == "AP ITEM", "no name: AP ITEM");
+    check(zap::map_name(label(0xEE, "An item name that is far too long")) == "AN ITEM NAME THAT",
+          "cut");
 }
 
 void test_the_stand_in_names() {
@@ -297,8 +311,7 @@ void fake_text_set(void* text, const char* s, int first, int count) {
 
 // The cursor's square, as the name the helper writes for it: row 17, column 13 labeled.
 void test_the_cursor_square() {
-    const std::map<int, std::string> labels = {{17 * 54 + 13, "\xFB" "OS INSTALL DISK"}};
-    const std::map<int, int> widths = {{17 * 54 + 13, 16}};
+    const std::map<int, zap::Label> labels = {{17 * 54 + 13, label(0xFB, "OS INSTALL DISK")}};
     for (double scale : {40.0, 20.0}) {
         MapMenu m(scale);
         zap::GameAddresses a = m.addresses();
@@ -310,11 +323,11 @@ void test_the_cursor_square() {
         const bool fine = scale == 40.0;
         m.at(fine ? 165 : 380, fine ? 100 : 220);
         m.show("SCRAP CHUNK");
-        names.after(a, labels, widths);
+        names.after(a, labels, first_line);
         check(m.shown() == "OS INSTALL DISK", fine ? "zoomed in" : "zoomed out");
         m.at(fine ? 175 : 403, fine ? 100 : 220);  // row 18
         m.show("SCRAP CHUNK");
-        names.after(a, labels, widths);
+        names.after(a, labels, first_line);
         check(m.shown() == "SCRAP CHUNK", fine ? "zoomed in: row 18" : "zoomed out: row 18");
         names.restore(a);
         g_set_target = nullptr;
@@ -389,26 +402,25 @@ void test_the_handler_wrapped_and_the_name_rewritten() {
     check(m.slot() == &g_hook && names.holds_hook(), "on: the helper's wrapper");
     check(names.original(m.first.data()) == &m.handler, "the game's handler to call");
     check(names.original(m.panel.data()) == nullptr, "only for the map's child");
-    const std::map<int, std::string> labels = {
-        {17 * 54 + 13, "\xFB" "OS INSTALL DISK"},
-        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM    FOR ALICE"}};
-    const std::map<int, int> widths = {{17 * 54 + 13, 16}, {17 * 54 + 14, 17}};
+    const std::map<int, zap::Label> labels = {
+        {17 * 54 + 13, label(0xFB, "OS INSTALL DISK")},
+        {17 * 54 + 14, label(0xEE, "PROGRESSION ITEM", "FOR ALICE")}};
     g_set_target = &m;
     m.at(165, 100);
     m.show("SCRAP CHUNK");  // the game's handler wrote the record's name
-    names.after(a, labels, widths);
+    names.after(a, labels, first_line);
     check(m.shown() == "OS INSTALL DISK", "rewritten in the same frame");
     m.at(165, 108);  // (108 + 4) / 8 = 14
     m.show("SCRAP CHUNK");
-    names.after(a, labels, widths);
+    names.after(a, labels, first_line);
     check(m.shown() == "PROGRESSION ITEM", "another player's: what it is, not whose");
     m.show("CURRENT LOCATION");
     g_sets = 0;
-    names.after(a, labels, widths);
+    names.after(a, labels, first_line);
     check(g_sets == 0 && m.shown() == "CURRENT LOCATION", "another text left alone");
     m.at(165, 116);  // no label
     m.show("SCRAP CHUNK");
-    names.after(a, labels, widths);
+    names.after(a, labels, first_line);
     check(m.shown() == "SCRAP CHUNK", "no label: the game's");
     names.watch(a, false);
     check(m.slot() == &m.handler && !names.holds_hook(), "off again: put back");
@@ -437,15 +449,14 @@ void test_the_cursor_name_in_a_translation() {
     stand_in::with_translation(a);
     stand_in::HdGlyphs<3 * 17> hd(m.text.data());
     stand_in::built(m.text.data());
-    const std::map<int, std::string> labels = {
-        {17 * 54 + 14, "\xEE" "PROGRESSION ITEM    FOR ALICE"}};
-    const std::map<int, int> widths = {{17 * 54 + 14, 17}};
+    const std::map<int, zap::Label> labels = {
+        {17 * 54 + 14, label(0xEE, "PROGRESSION ITEM", "FOR ALICE")}};
     zap::MapCursorNames names;
     names.watch(a, true);
     g_set_target = &m;
     m.at(165, 108);
     m.show("SCRAP CHUNK");
-    names.after(a, labels, widths);
+    names.after(a, labels, first_line);
     check(!stand_in::g_builds.empty() && stand_in::g_builds.back().text == L"PROGRESSION ITEM",
           "built again as the first line, no logo");
     names.restore(a);

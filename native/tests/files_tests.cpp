@@ -438,15 +438,15 @@ void test_the_new_games_fade() {
 void test_the_request() {
     std::map<int, int> counts{{1, 1}};
     check(zap::parse_disk_slots("disk_slots", counts).empty() && counts.empty(), "off");
-    check(zap::parse_disk_slots("disk_slots 3 15 4,5", counts).empty() &&
+    check(zap::parse_disk_slots("disk_slots 3 4,5", counts).empty() &&
               counts == std::map<int, int>{{4, 3}, {5, 3}},
-          "a count, the number needed and the slots");
-    check(zap::parse_disk_slots("disk_slots 3 15 -", counts).empty() && counts.empty(),
+          "a count and the slots");
+    check(zap::parse_disk_slots("disk_slots 3 -", counts).empty() && counts.empty(),
           "no slot of this seed");
-    check(!zap::parse_disk_slots("disk_slots 3 15 31", counts).empty(), "slots 1 to 30");
-    check(!zap::parse_disk_slots("disk_slots 3 15 4,x", counts).empty(), "numbers only");
-    check(!zap::parse_disk_slots("disk_slots 3 0 4", counts).empty() && counts.empty(),
-          "the number needed is still checked");
+    check(!zap::parse_disk_slots("disk_slots 3 31", counts).empty(), "slots 1 to 30");
+    check(!zap::parse_disk_slots("disk_slots 3 4,x", counts).empty(), "numbers only");
+    check(!zap::parse_disk_slots("disk_slots 3 15 4", counts).empty() && counts.empty(),
+          "nothing after the slots");
     check(zap::file_disk_digits(3) == "03" && zap::file_disk_digits(15) == "15" &&
               zap::file_disk_digits(120) == "99",
           "two digits");

@@ -64,17 +64,6 @@ void test_the_text_helpers() {
     check(zap::hd_icon(0xFB) == L"\xE03A" && zap::hd_icon(0xEF) == L"\xE03B" &&
               zap::hd_icon(0xEE) == L"\xE03C",
           "the disk, the padlock and the AP logo as the helper paints them in the icon sheets");
-    // As layout_label lays a label out: "\xEE" "MASTER SWORD" over FOR ALICE, 13 wide.
-    const zap::Label label = zap::layout_label("\xEE" "MASTER SWORD", "FOR ALICE");
-    check(zap::hd_label(label.name, label.width) == L"\xE03C" L"MASTER SWORD\nFOR ALICE",
-          "a label's lines, the logo first");
-    check(zap::hd_label(label.name, label.width, true) == L"\xE03C" L"MASTER SWORD",
-          "its first line");
-    check(zap::hd_label(label.name, label.width, true, false) == L"MASTER SWORD",
-          "the map cursor's: no logo");
-    const zap::Label own = zap::layout_label("\xC5" "MISSILE BOX", "FOR BOB");
-    check(zap::hd_label(own.name, own.width) == L"\xE029MISSILE BOX\nFOR BOB",
-          "another Zexion player's item with its icon");
 }
 
 void test_the_tables() {
@@ -108,7 +97,7 @@ void test_popups_take_turns_and_empty() {
     zap::Game game;
     start(game);
     const int32_t run = g_small->offsets[66], seventy = g_small->offsets[70];
-    queue(game, "apply\npopup 36 FROM ALICE");
+    queue(game, "apply\npopup 36 from ALICE");
     frames(game, 1);
     check(g_messages == 1 && g_hd_texts.size() == 1, "a popup, given its translated text");
     const std::wstring first = L"\xE029Missile Box\nfrom ALICE";
@@ -121,7 +110,7 @@ void test_popups_take_turns_and_empty() {
     check(hd_object(0)[0x22C] == 1, "the message's HD object marked, as the game marks it");
 
     g_message_slot = 1;  // the first still closing
-    queue(game, "apply\npopup 0 FROM BOB");
+    queue(game, "apply\npopup 0 from BOB");
     frames(game, 25);
     check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 70 &&
               g_hd_texts[1].text == L"Energy Tank\nfrom BOB" &&
@@ -257,7 +246,7 @@ void test_a_whole_notice() {
 void test_the_last_item_name() {
     zap::Game game;
     start(game);
-    queue(game, "apply\npopup 50 FROM ALICE");
+    queue(game, "apply\npopup 50 from ALICE");
     frames(game, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nfrom ALICE"),
           "the last entry's name, as the translation has it");
@@ -653,10 +642,6 @@ void test_the_popup_layout() {
     put<double>(font, 0x40060, std::numeric_limits<double>::quiet_NaN());
     check(!m.load(a), "a font whose values are not a loaded font's: not measured");
     put<double>(font, 0x40060, 1.0);
-    check(zap::hd_suffix("FROM Bob") == L"from Bob" &&
-              zap::hd_suffix("FROM ALICE") == L"from ALICE" &&
-              zap::hd_suffix("FOR Bob") == L"FOR Bob",
-          "the client's FROM in the sentence's case, the name as sent");
     reset_translation();
 }
 
@@ -724,7 +709,7 @@ void test_a_popup_laid_out_by_the_font() {
     put<int32_t>(sheet, 0x1BC, 256);
     put<BYTE*>(sheet, 0x1A8, frames_list.data());
     g_template_list[104] = sheet;
-    queue(game, "apply\npopup 36 FROM Bob");
+    queue(game, "apply\npopup 36 from Bob");
     frames(game, 1);
     // "\xE029Missile Box" is 8 + 10 x 6 + 3 = 71 wide, "from Bob" 45: 13 more each side, 4 spaces.
     check(g_hd_texts.size() == 1 &&
@@ -978,7 +963,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
 void test_the_suffix_case() {
     zap::Game hd;
     start(hd);
-    queue(hd, "apply\npopup 36 FROM Bob");
+    queue(hd, "apply\npopup 36 from Bob");
     frames(hd, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nfrom Bob"),
           "English(HD): the suffix in the case the client sent it");
@@ -987,7 +972,7 @@ void test_the_suffix_case() {
     zap::Game french;
     start(french);
     load_translation("French");
-    queue(french, "apply\npopup 36 FROM Bob");
+    queue(french, "apply\npopup 36 from Bob");
     frames(french, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nFROM BOB"),
           "French: the suffix in capitals");
@@ -995,7 +980,7 @@ void test_the_suffix_case() {
 
     zap::Game plain;
     start(plain, false);
-    queue(plain, "apply\npopup 36 FROM Bob");
+    queue(plain, "apply\npopup 36 from Bob");
     frames(plain, 1);
     check(g_hd_texts.empty() && g_text.find("FROM BOB") != std::string::npos,
           "the default English: the pixel text in capitals, as before");
@@ -1031,17 +1016,17 @@ void test_the_mixed_case() {
         std::map<int, zap::Label> labels;
         const std::string text = "AP Item\nfor Alice";
         check(zap::parse_labels("ap_labels\nlabel 5 2 " + hex(text), labels).empty() &&
-                  labels.size() == 1 && labels.begin()->second.own_first == "AP Item" &&
-                  labels.begin()->second.own_who == "for Alice" &&
-                  labels.begin()->second.who == "FOR ALICE",
-              "a label parsed in both cases");
+                  labels.size() == 1 && labels.begin()->second.first == "AP Item" &&
+                  labels.begin()->second.who == "for Alice" &&
+                  labels.begin()->second.name == "\xEE" "AP ITEM FOR ALICE",
+              "a label kept as sent, its pixel name in capitals");
         game.set_labels(labels);
-        const int cell = 2 * 54 + 5;
+        const zap::Label& label = game.labels().begin()->second;
         if (language.on) {
-            check(game.hd_label_text(cell, false, true) ==
+            check(game.hd_label_text(label, false, true) ==
                       (hd ? L"\xE03C" L"AP Item\nfor Alice" : L"\xE03C" L"AP ITEM\nFOR ALICE"),
                   "a stand-in's name", where);
-            check(game.hd_label_text(cell, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
+            check(game.hd_label_text(label, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
                   "the map cursor's", where);
         }
         std::map<int, zap::Label> zexion;
@@ -1050,11 +1035,15 @@ void test_the_mixed_case() {
                   .empty(),
               "an @N label parsed");
         game.set_labels(zexion);
-        if (hd) {
+        if (language.on) {
+            // In every translation the translation's own name, as its received popup shows it.
             const std::wstring own_name = entry_text(g_items, 36);
             check(!own_name.empty() &&
-                      game.hd_label_text(2 * 54 + 6, false, false) == own_name + L"\nfor Bob",
-                  "another Zexion player's item by the translation's name");
+                      game.hd_label_text(game.labels().at(2 * 54 + 6), false, false) ==
+                          own_name + (hd ? L"\nfor Bob" : L"\nFOR BOB"),
+                  "another Zexion player's item by the translation's name", where);
+        }
+        if (hd) {
             // @47 where the player stands: the game's own name, not grown from the label the
             // helper writes into that same entry each frame.
             own_stand_ins(g_records);
@@ -1080,6 +1069,25 @@ void test_the_mixed_case() {
               "the scanner's pixel line in capitals", where);
         game.put_back_all(&no_callback);
     }
+    reset_translation();
+}
+
+// The helper's fixed texts follow the same rule (hd_case): mixed case in English(HD), capitals in
+// any other translation (ARCHIPELAGO, Intel Chip, RETURN HOME's question, the disk, the Feats
+// note).
+void test_the_helpers_fixed_texts_case() {
+    zap::GameAddresses a{};
+    with_translation(a);
+    load_translation("English(HD)");
+    check(zap::hd_case(a, zap::kIntelName) == L"Intel Chip" &&
+              zap::hd_case(a, zap::kFeatsNote) == L"Archipelago save: no Feats earned" &&
+              zap::hd_case(a, zap::kMissionQuestion) == L"Return home with the disks?",
+          "English(HD): in mixed case");
+    load_translation("French");
+    check(zap::hd_case(a, zap::kIntelName) == L"INTEL CHIP" &&
+              zap::hd_case(a, zap::kDiskName) == L"OS INSTALL DISK" &&
+              zap::hd_case(a, zap::kMissionQuestion) == L"RETURN HOME WITH THE DISKS?",
+          "French: in capitals");
     reset_translation();
 }
 
@@ -1115,6 +1123,7 @@ int main() {
     test_the_text_helpers();
     test_the_mixed_case();
     test_the_helpers_notice_case();
+    test_the_helpers_fixed_texts_case();
     test_the_popup_layout();
     test_the_icons_through_the_game();
     test_a_popup_laid_out_by_the_font();

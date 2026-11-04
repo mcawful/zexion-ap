@@ -189,18 +189,11 @@ int cursor_cell(BYTE* panel) {
 
 }  // namespace
 
-std::string map_name(const std::string& label, int width) {
-    const size_t first = width > 0 ? static_cast<size_t>(width) : label.size();
-    std::string flat;
-    for (unsigned char ch : label.substr(0, first)) {
-        const bool font = ch >= 0x20 && ch < 0x60;
-        const char put = font ? static_cast<char>(ch) : ' ';
-        if (put == ' ' && (flat.empty() || flat.back() == ' ')) continue;
-        flat += put;
-    }
-    while (!flat.empty() && flat.back() == ' ') flat.pop_back();
-    if (flat.size() > kMapNameMax) flat.resize(kMapNameMax);
-    return flat;
+std::string map_name(const Label& label) {
+    std::string name = in_capitals(label.first_text());
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (name.size() > kMapNameMax) name.resize(kMapNameMax);
+    return name;
 }
 
 bool cursor_shows_stand_in(const int32_t (&frames)[kMapNameMax]) {
@@ -245,9 +238,8 @@ bool MapCursorNames::still_wrapped(const GameAddresses& a) const {
            holds(child_, a.hooks.map);
 }
 
-void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::string>& labels,
-                           const std::map<int, int>& widths,
-                           const std::function<std::wstring(int)>& hd_name) {
+void MapCursorNames::after(const GameAddresses& a, const std::map<int, Label>& labels,
+                           const std::function<std::wstring(const Label&)>& hd_name) {
     if (child_ == nullptr || a.text_set_fn == nullptr) return;
     BYTE *menu = nullptr, *panel = nullptr, *child = nullptr;
     if (!map_menu(a.current_menu, a.hooks.map, menu, panel, child)) return;
@@ -266,16 +258,12 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     }
     // Another text (the player's room, a marker, unknown) is left alone.
     if (!cursor_shows_stand_in(frames)) return;
-    const auto found = widths.find(it->first);
-    const int width = found == widths.end() ? 0 : found->second;
-    const std::string name = map_name(it->second, width);
+    const std::string name = map_name(it->second);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
     // In a translation the cursor shows the text the game just built from ItemNames 47 or 48,
     // built again as the label's first line, without its icon (translation.h).
-    std::wstring hd = hd_name ? hd_name(it->first) : std::wstring();
-    if (hd.empty()) hd = hd_label(it->second, width, true, false);
-    rebuild_label(a, text, hd);
+    rebuild_label(a, text, hd_name(it->second));
 }
 
 void MapCursorNames::restore(const GameAddresses& a) {

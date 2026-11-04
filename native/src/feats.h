@@ -22,8 +22,8 @@ namespace zap {
 
 constexpr size_t kEndingPatchSize = 12;
 
-// Under FEATS OF NATU! after an AP save's ending.
-inline constexpr char kFeatsNote[] = "ARCHIPELAGO SAVE: NO FEATS EARNED";
+// Under FEATS OF NATU! after an AP save's ending (in capitals in pixel glyphs: text.h).
+inline constexpr char kFeatsNote[] = "Archipelago save: no Feats earned";
 
 // Game thread: if the Feats of Natu screen that follows an ending is the top menu, its title
 // label's last line made kFeatsNote, centered (`show`), or blank again; only a blank line or the

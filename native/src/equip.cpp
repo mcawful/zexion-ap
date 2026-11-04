@@ -2,13 +2,15 @@
 
 #include <cstring>
 
-#include "files.h"  // file_disk_digits
+#include "apitem.h"  // kHdDiskIcon
+#include "files.h"   // file_disk_digits
 #include "game_mem.h"
+#include "text.h"  // in_capitals
 #include "translation.h"
 
 namespace zap {
 
-const char kDiskName[] = "OS INSTALL DISK";
+const char kDiskName[] = "OS Install Disk";
 const char kDiskRows[8][9] = {
     "..###...", ".#...#..", "#.....#.", "#..#..#.",
     "#.....#.", ".#...#..", "..###...", "........",
@@ -19,12 +21,12 @@ const char kDiskDescription[] =
     "SECURE OS INSTALL THAT MY PLANET  "
     "NEEDS TO RUN ITS DEFENSE NETWORK.";
 // In a translation the box shows the texts the game built for the Data Disc's record (ItemNames
-// 44) and panel 3 (LargeText 87), built again as these: the description one line with a blank
-// first, as English(HD)'s own (342), wrapped at the box's columns as the game asks (0xB3268).
-const wchar_t kDiskNameHd[] = L"\xE03A" L"OS Install Disk";  // the disk icon first (IconSheets)
-const wchar_t kDiskDescriptionHd[] =
-    L" These few disks hold an old but secure OS install that my planet needs to run its "
-    L"defense network.";
+// 44) and panel 3 (LargeText 87), built again as the name after the disk icon (IconSheets) and
+// this description (hd_case): one line with a blank first, as English(HD)'s own (342), wrapped
+// at the box's columns as the game asks (0xB3268).
+const char kDiskDescriptionHd[] =
+    " These few disks hold an old but secure OS install that my planet needs to run its "
+    "defense network.";
 
 namespace {
 
@@ -210,12 +212,12 @@ void EquipmentScreen::on_event(const GameAddresses& a, void* widget, intptr_t ev
     using Set = void (*)(void*, const char*, int, int);
     auto set = reinterpret_cast<Set>(a.text_set_fn);
     set(description_label, kDiskDescription, 0, kDescriptionGlyphs);
-    set(name_label, kDiskName, 1, kNameGlyphs);
+    set(name_label, in_capitals(kDiskName).c_str(), 1, kNameGlyphs);
     // In a translation the pixel glyphs stay hidden, as the game left them: the translated texts
     // are built again instead (translation.h), the name after the disk icon (apitem.h IconSheets).
     if (translation_on(a)) {
-        rebuild_label(a, name_label, kDiskNameHd);
-        rebuild_label(a, description_label, kDiskDescriptionHd, {.wrap = true});
+        rebuild_label(a, name_label, kHdDiskIcon + hd_case(a, kDiskName));
+        rebuild_label(a, description_label, hd_case(a, kDiskDescriptionHd), {.wrap = true});
         return;
     }
     // Its icon before the name, as the game puts each record's own (the disk's record has none):

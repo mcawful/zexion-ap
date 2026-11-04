@@ -216,7 +216,7 @@ void test_offered_when_idle_then_yes_ends() {
 
     check(m.open(a).empty(), m.status().c_str());
     check(!m.opening() && m.holds_hook(), "opened: popups go on, YES still held");
-    check(g_set[prompt.question] == zap::kMissionQuestion, "the question relabeled");
+    check(g_set[prompt.question] == " RETURN HOME WITH THE DISKS?", "the question relabeled");
     check(at<void*>(prompt.child[0], 0x2C0) == a.hooks.mission_yes, "YES the helper's");
     check(at<void*>(prompt.child[1], 0x2C0) == reinterpret_cast<void*>(&game_no),
           "NO the game's");

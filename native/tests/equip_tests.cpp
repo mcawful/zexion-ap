@@ -343,8 +343,8 @@ void test_the_disk_in_a_translation() {
     si::built(description, 10.0, 150.0);  // the game's, for this selection
     si::built(name, 20.0, 140.0);
     screen.on_event(a, g_widgets[0], 0);
-    const std::wstring wanted = zap::kDiskDescriptionHd;
-    check(si::g_builds.size() == 2 && si::g_builds[0].text == zap::kDiskNameHd &&
+    const std::wstring wanted = zap::hd_text(zap::kDiskDescriptionHd);
+    check(si::g_builds.size() == 2 && si::g_builds[0].text == L"\xE03A" L"OS Install Disk" &&
               si::g_builds[0].x == 20.0f && si::g_builds[0].y == 140.0f &&
               si::g_builds[0].flag == 0,
           "the name built again where the game built it");

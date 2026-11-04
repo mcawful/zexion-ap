@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "text.h"  // capital
 #include "translation.h"
 
 namespace zap {
@@ -72,17 +73,8 @@ void place(BYTE* s, double x, double y, const double (&local)[4]) {
 
 }  // namespace
 
-std::wstring hd_row_text(const std::string& text) {
-    std::string t = text;
-    t.erase(0, t.find_first_not_of(' '));
-    t.erase(t.find_last_not_of(' ') + 1);
-    const size_t of = t.find(" OF ");
-    if (of != std::string::npos) t.replace(of, 4, " of ");
-    return hd_text(t);
-}
-
 std::string pause_row_text(int count, int required) {
-    std::string text = std::to_string(count) + " OF " +
+    std::string text = std::to_string(count) + " of " +
                        (required > 0 ? std::to_string(required) : std::string("?"));
     if (text.size() > static_cast<size_t>(kRowCells)) return "";
     size_t left = (kRowCells - text.size() + 1) / 2;
@@ -226,7 +218,10 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         if (!hd) return;
         if (!hd_.holds(keys_label)) {
             hd_.label = nullptr;
-            if (rebuild_label(a, keys_label, hd_row_text(text),
+            std::string trimmed = text;
+            trimmed.erase(0, trimmed.find_first_not_of(' '));
+            trimmed.erase(trimmed.find_last_not_of(' ') + 1);
+            if (rebuild_label(a, keys_label, hd_case(a, trimmed),
                               {.attached = true, .center = true})) {
                 hd_.take(keys_label);
             }
@@ -258,7 +253,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     if (font == nullptr) return;
     // The label's glyphs: the middle four characters (they stay where the game put them).
     for (int i = 0; i < kKeysGlyphs; ++i) {
-        set_frame(glyph[i], static_cast<unsigned char>(text[2 + i]));
+        set_frame(glyph[i], static_cast<unsigned char>(capital(text[2 + i])));
         *(glyph[i] + sprite::kVisible) = 1;
     }
     // The key slots, given the font: two characters each side of the label.
@@ -267,7 +262,7 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     for (int k = 0; k < 4; ++k) {
         BYTE* s = sprite[k];
         reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(s, font);
-        set_frame(s, static_cast<unsigned char>(text[cells[k]]));
+        set_frame(s, static_cast<unsigned char>(capital(text[cells[k]])));
         std::memcpy(s + kLocal, text_local, sizeof(text_local));
         double x = kLabelX + 8.0 * (cells[k] - 2);
         place(s, x, kRowY, text_local);

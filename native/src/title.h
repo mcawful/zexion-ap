@@ -24,10 +24,7 @@ extern const char kTitleHint[];
 class TitleLines {
 public:
     // The helper's version, for the first line (until set, no lines are made).
-    void set_version(const std::string& version) {
-        mod_line_ = "ARCHIPELAGO MOD " + version;
-        mod_line_hd_ = "Archipelago Mod " + version;
-    }
+    void set_version(const std::string& version) { mod_line_ = "Archipelago Mod " + version; }
 
     // Game thread, every frame call (looks every 9th, every one with `hd`, English(HD) shown):
     // adds the lines when the copyright line is up without them, and shows them as the game shows
@@ -40,7 +37,7 @@ public:
     bool shown() const { return shown_; }
 
 private:
-    std::string mod_line_, mod_line_hd_;
+    std::string mod_line_;
     int frames_ = 0;
     bool hd_ = false;  // English(HD) at the last call
     bool shown_ = false;
