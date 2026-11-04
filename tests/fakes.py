@@ -1,11 +1,11 @@
 """Stand-ins the tests share: a fake process and game.Game on it, and a seed's plan with a fresh
-randomizer save to write it into (no game, no exe, no real save)."""
+randomizer save and the loaded section of a save of it (no game, no exe, no real save)."""
 
 from __future__ import annotations
 
 import struct
 
-from client import game, ids, state
+from client import game, ids, session, state
 from client import save_patch as sp
 
 # --- a fake process and the client's Game on it ---------------------------------------------
@@ -75,22 +75,21 @@ CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by 
 
 
 def fresh(
-    start_cell: tuple[int, int] | None = (13, 16), cells: list = (), secret: bool = False
+    start_cell: tuple[int, int] | None = (13, 16), cells: list = CELLS, secret: bool = False
 ) -> bytearray:
-    """A fresh randomizer save as far as the patcher looks: the mode's amounts, a few
-    settings, one revealed start cell, a nonzero item table and inventory; ``cells`` as its
-    location list, and with ``secret`` Secret Shuffle on."""
+    """A fresh randomizer save as far as save_patch.check_fresh and the new game's writes
+    (client/newgame.py) look: the mode's amounts, a few settings, one revealed start cell, a
+    nonzero item table; ``cells`` as its location list, and with ``secret`` Secret Shuffle on."""
     save = bytearray(sp.SAVE_SIZE)
     for i, (x, y) in enumerate(cells):
         struct.pack_into("<HH", save, sp.SECTION + 4 * i, x, y)
     save[sp.OPTIONS + sp.SECRET_SHUFFLE] = secret
     save[sp.RANDO_MARKER] = 1
     struct.pack_into("<6h", save, sp.AMOUNTS, *AMOUNTS)
+    save[sp.OPTIONS + 10] = 1  # Guns First
     save[sp.OPTIONS + 42] = 2  # Safety Normal
     save[sp.OPTIONS + 72] = 1  # Gates Vanilla
     save[sp.ITEM_TABLE : sp.ITEM_TABLE + sp.LOCATIONS] = bytes([7] * sp.LOCATIONS)
-    save[sp.INVENTORY + 0] = 3
-    save[sp.INVENTORY + 50] = 9  # item 50 is left alone
     if start_cell is not None:
         x, y = start_cell
         save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
@@ -111,7 +110,7 @@ def slot_data(**changes) -> dict:
         "start_row": 449,
         "second_start": None,
         "amounts": list(AMOUNTS),
-        "options": {"42": 2},
+        "options": {"10": 1, "42": 2},
         "locations": [list(c) for c in CELLS],
         "kept_locations": [i for i in range(sp.LOCATIONS) if i != 9],
         "mode": "Standard",
@@ -119,7 +118,7 @@ def slot_data(**changes) -> dict:
             "seed_text": "0123456789ABCDEF",
             "start": [0] * 27,
             "pool": [1] * 27,
-            "settings": [0] * 64,
+            "settings": [1] + [0] * 31 + [2] + [0] * 31,  # as the options
             "second_target": [0, 20, 509],
         },
         "hints": [],
@@ -143,10 +142,15 @@ def connection(**changes) -> state.Connection:
     return conn
 
 
+def seed_state(conn: state.Connection) -> state.SeedState:
+    """The SeedState the client keeps for ``conn``'s seed (zexion_client's connected)."""
+    return state.SeedState(("S", conn.team, conn.slot), session.Session(conn.plan))
+
+
 def menu_setup(**changes) -> sp.MenuSetup:
     """A menu setup of plan()'s mode: a mode with one start."""
     settings = bytearray(64)
-    settings[42 - 10], settings[72 - 10] = 2, 1  # as plan()'s options
+    settings[10 - 10], settings[42 - 10], settings[72 - 10] = 1, 2, 1  # as plan()'s options
     fields = dict(
         seed_text="0123456789ABCDEF",
         start=bytes([0] * 4 + [1] + [0] * 22),
@@ -165,8 +169,9 @@ def plan(**changes) -> sp.SeedPlan:
         start=(5, 23 * 14 + 4, 22 * 20 + 9),
         second_start=None,
         amounts=AMOUNTS,
-        options={42: 2, 72: 1},
+        options={10: 1, 42: 2, 72: 1},
         menu=menu_setup(),
+        cells=tuple(CELLS),
     )
     fields.update(changes)
     return sp.SeedPlan(**fields)
@@ -185,7 +190,7 @@ def secret_plan(**changes) -> sp.SeedPlan:
     settings[sp.SECRET_SHUFFLE - 10] = 1
     fields = dict(
         location_items=tuple(i % 46 for i in range(sp.LOCATIONS + 1)),
-        options={42: 2, 72: 1, sp.SECRET_SHUFFLE: 1},
+        options={10: 1, 42: 2, 72: 1, sp.SECRET_SHUFFLE: 1},
         cells=tuple(SECRET_CELLS),
         menu=menu_setup(settings=bytes(settings)),
     )
@@ -193,13 +198,13 @@ def secret_plan(**changes) -> sp.SeedPlan:
     return plan(**fields)
 
 
-def secret_section(p: sp.SeedPlan) -> bytearray:
-    """The loaded section of a save of ``p``, a Secret Shuffle seed: its 155 cells, Secret
+def section(p: sp.SeedPlan) -> bytearray:
+    """The loaded section of a save of ``p``: its cells in the game's list order, Secret
     Shuffle's byte, the item table in the game's order and the start record."""
     section = bytearray(ids.SECTION_SIZE)
-    for i, (x, y) in enumerate(SECRET_LIST):
-        struct.pack_into("<HH", section, 4 * i, x, y)
-    section[sp.OPTIONS_AT + sp.SECRET_SHUFFLE] = 1
+    for i, at in enumerate(p.order):
+        struct.pack_into("<HH", section, 4 * i, *p.cells[at])
+    section[sp.OPTIONS_AT + sp.SECRET_SHUFFLE] = p.list_size > sp.LOCATIONS
     section[sp.TABLE_AT : sp.TABLE_AT + len(p.table)] = p.table
     struct.pack_into("<3H", section, sp.START_AT, *p.start)
     return section

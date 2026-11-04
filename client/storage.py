@@ -17,6 +17,7 @@ from . import hints, ids, state
 from .ids import ITEM_ID_BASE, LOCATION_ID_BASE
 
 if TYPE_CHECKING:
+    from . import session
     from .zexion_client import Poll, ZexionContext
 
 logger = logging.getLogger("Client")  # CommonClient's: the client's window shows it
@@ -120,21 +121,23 @@ def stored_hints(ctx: ZexionContext) -> dict[str, tuple[int, int]]:
     return out
 
 
-async def announced_tick(ctx: ZexionContext, conn: state.Connection, p: Poll) -> None:
-    """Received items' popups, kept across connections (client/state.py, stored_count): the
-    session starts from the server's count of those handed over, once it has been read (a
-    slot with none stored counts every item it holds, and stores that at once, so the key
-    exists); and the count is stored again as items are handed over (the larger one wins, for
-    two clients of a slot)."""
+async def announced_tick(
+    ctx: ZexionContext, conn: state.Connection, current: session.Session, p: Poll
+) -> None:
+    """Received items' popups, kept across connections (client/state.py, stored_count): once
+    per connection, the session (``current``, ``conn``'s seed's) takes the server's count of
+    those handed over, once it has been read (a slot with none stored counts every item it
+    holds, and stores that at once, so the key exists); and the count is stored again as items
+    are handed over (the larger one wins, for two clients of a slot)."""
+    if conn is not ctx.conn:
+        return  # a poll of a connection that has ended: the next one reads and stores its own
     if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
     raw = ctx.stored_data.get(conn.announced_key)
-    current = conn.session
-    if current.announced is None:
+    if not current.announced_read:
         # Counted as received() counts: Zexion items only.
-        before = None if conn.before is None else conn.before.announced
-        conn.before = None  # read once: the old session is not kept
-        current.announced = state.announced_start(raw, len(p.codes), before)
+        current.announced = state.announced_start(raw, len(p.codes), current.announced)
+        current.announced_read = True
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)
     if count is None:
         return

@@ -6,12 +6,12 @@ one at a time, and counts each in the server's data storage once the game shows 
 play. One not seen within SEEN_SECONDS, or whose player died or whose save was unloaded first,
 is spawned again (shield_outcome). A spawn not seen in play may have worked unseen, and then
 each one more is a shield given twice, so after MISSES of those in a row the client spawns none
-until the save is left (for the title, another save or a closed game), or the client connects
-to another slot (STOP, Shields.restart); one taken back by a death or unload is not a
-miss. A shield counts as asked for from the moment the request goes out (Shields.asking), so
-one whose ``spawned`` reply was lost is looked for, not spawned again unseen; one whose request
-never reached the helper, or that it answered with an error, is dropped (Shields.not_sent), so
-that a shield already up is not counted for it.
+until the save is left (for the title, another save or a closed game: STOP, Shields.restart),
+and another seed or slot has its own Shields (client/state.py, SeedState); one taken back by
+a death or unload is not a miss. A shield counts as asked for from the moment the request
+goes out (Shields.asking), so one whose ``spawned`` reply was lost is looked for, not spawned
+again unseen; one whose request never reached the helper, or that it answered with an error,
+is dropped (Shields.not_sent), so that a shield already up is not counted for it.
 
 Pure logic and the game read; client/ticks.py talks to the helper and the server.
 """
@@ -53,37 +53,35 @@ def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> s
 class Pending:
     """A received Energy Shield the helper was asked to spawn, not counted yet."""
 
-    key: str  # the data storage key of the slot it was spawned for
     at: float  # when (time.monotonic), or when last seen out of play
     left_play: bool = False  # the player died or the save was unloaded since
 
 
 @dataclass
 class Shields:
-    pending: Pending | None = None
+    """One seed and slot's received Energy Shields."""
+
+    pending: Pending | None = None  # the spawned shield waiting to be seen
     misses: int = 0  # spawns in a row not seen
     stopped: bool = False  # MISSES in a row not seen: no more spawns until restart()
-    slot: str = ""  # the data storage key current() last served
-    # Shields counted as given that the server may not hold yet: (key, count), and when the
-    # count was last sent.
-    given: tuple[str, int] | None = None
+    # Shields counted as given that the server may not hold yet, and when the count was last
+    # sent.
+    given: int | None = None
     count_sent_at: float = 0.0
     retry_at: float = 0.0
     said: str = ""  # the last reply or failure said, so each is said once
 
-    def given_count(self, key: str, stored: int) -> int:
-        """Shields counted as given for this slot: the server's number (``stored``), or this
-        client's when the server has not taken it yet."""
-        if self.given is not None and self.given[0] == key:
-            return max(stored, self.given[1])
-        return stored
+    def given_count(self, stored: int) -> int:
+        """Shields counted as given: the server's number (``stored``), or this client's when
+        the server has not taken it yet."""
+        return stored if self.given is None else max(stored, self.given)
 
-    def resend_due(self, key: str, stored: int, now: float) -> bool:
+    def resend_due(self, stored: int, now: float) -> bool:
         """Whether to send the count again: the server has not taken it, and GAP_SECONDS have
         passed. Forgets the count once the server has it."""
-        if self.given is None or self.given[0] != key:
+        if self.given is None:
             return False
-        if stored >= self.given[1]:
+        if stored >= self.given:
             self.given = None  # the server has it
             return False
         return now >= self.count_sent_at + GAP_SECONDS
@@ -94,18 +92,9 @@ class Shields:
         if self.pending is not None:
             self.pending.left_play = True
 
-    def current(self, key: str) -> Pending | None:
-        """The spawned shield waiting to be seen, if it was spawned for this slot."""
-        if self.pending is not None and self.pending.key != key:
-            self.pending = None  # spawned for another slot's seed: not counted
-        if key != self.slot:
-            self.slot = key
-            self.restart()  # the last slot's misses, and a stop they led to, are not this one's
-        return self.pending
-
     def restart(self) -> None:
-        """The save was left, the game closed, or another slot connected: spawning starts over
-        (its misses and a stop were the last one's). A reconnect to the same load does not."""
+        """The save was left, or the game closed: spawning starts over (its misses and a stop
+        were the last load's). A reconnect to the same load does not."""
         self.misses = 0
         self.stopped = False
 
@@ -113,10 +102,10 @@ class Shields:
         """Whether to ask the helper for another shield now."""
         return not self.stopped and now >= self.retry_at
 
-    def asking(self, key: str, now: float) -> None:
+    def asking(self, now: float) -> None:
         """The helper is about to be asked to spawn one: from here it is looked for, whatever
         becomes of the reply."""
-        self.pending = Pending(key, now)
+        self.pending = Pending(now)
 
     def not_sent(self, now: float) -> None:
         """The request never reached the helper, or the helper answered with an error: nothing
@@ -125,8 +114,8 @@ class Shields:
         self.pending = None
         self.retry_at = now + GAP_SECONDS
 
-    def spawned(self, key: str, now: float) -> None:
-        self.pending = Pending(key, now)
+    def spawned(self, now: float) -> None:
+        self.pending = Pending(now)
         self.said = ""
 
     def refused(self, reply: str, now: float) -> bool:
@@ -138,7 +127,7 @@ class Shields:
         self.retry_at = now + GAP_SECONDS
         return worth
 
-    def looked(self, pending: Pending, state: str, up: bool, key: str, stored: int, now: float):
+    def looked(self, pending: Pending, state: str, up: bool, stored: int, now: float):
         """One look at the game for ``pending``: its settled ``state`` and whether a shield is
         up. WAIT; AGAIN (spawned again after GAP_SECONDS); STOP (MISSES in a row not seen: none
         spawned again until restart); or UP, counted as given (``given``, to send to the
@@ -164,7 +153,7 @@ class Shields:
             self.retry_at = now + GAP_SECONDS
             return AGAIN
         self.misses = 0
-        self.given = (key, self.given_count(key, stored) + 1)
+        self.given = self.given_count(stored) + 1
         self.retry_at = now + GAP_SECONDS
         return UP
 

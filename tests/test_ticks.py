@@ -10,7 +10,7 @@ import types
 from typing import NamedTuple
 
 import pytest
-from fakes import SECRET_LIST, FakeProcess, connection, plan, secret_plan, slot_data
+from fakes import SECRET_LIST, FakeProcess, connection, secret_plan, seed_state, slot_data
 
 from client import (
     aplabels,
@@ -69,7 +69,7 @@ class Ctx:
         self.conn = conn
         self.helper = Helper()
         self.told = state.HelperState()
-        self.seed_state = state.SeedState(("S", 0, 1))
+        self.seed_state = seed_state(conn)
         self.load = state.LoadState()
         self.said = state.SayOnce()
         self.slot = 1
@@ -121,7 +121,7 @@ def test_a_save_past_its_ending_loaded_again_deals_received_deaths() -> None:
 
 def test_deaths_queued_when_the_ending_begins_in_this_load_are_dropped() -> None:
     ctx = Ctx(connection(death_link=True))
-    ctx.conn.session.holding = True  # the goal read going true in this load (Session.step)
+    ctx.seed_state.session.holding = True  # the goal read going true in this load (Session.step)
     ctx.seed_state.deaths.receive()
     ctx.seed_state.deaths.receive()  # the whole queue
     run(ticks.deathlink_tick(ctx, in_play(goal=True)))
@@ -192,8 +192,7 @@ def secret_connection() -> state.Connection:
     """A Secret Shuffle seed's connection: 155 locations, the 155th (index 154) listed last by
     location index and at list position 100 in the game's order (fakes.SECRET_CELLS)."""
     conn = connection()
-    p = secret_plan()
-    conn.plan, conn.session = p, session.Session(p)
+    conn.plan = secret_plan()
     conn.kept = frozenset(range(155))
     conn.foreign = [154]
     return conn
@@ -224,7 +223,7 @@ def dressed_save(**changes) -> Ctx:
     """This seed's save loaded, its labels and disk count sent to the helper."""
     ctx = Ctx(connection(**changes))
     ctx.scout()
-    ctx.conn.dressed, ctx.conn.discs_told = True, True
+    ctx.seed_state.dressed, ctx.seed_state.discs_told = True, True
     run(ticks.labels_tick(ctx))
     run(ticks.discs_helper_tick(ctx, no_finds()))
     assert ctx.helper.firsts() == ["ap_labels", "discs"]
@@ -235,12 +234,11 @@ def dressed_save(**changes) -> Ctx:
 
 def reconnect(ctx: Ctx, same_seed: bool) -> None:
     """A dropped connection, then Connected (zexion_client.connected): a new connection, its
-    items not listed yet."""
-    old = ctx.conn
-    old.items_listed = False  # reset_server_state
-    conn = state.Connection.from_slot_data(slot_data(**HUNT), 0, 1)
-    state.carry_over(conn, old, same_seed, ctx.told)
-    ctx.conn = conn
+    items not listed yet, with the same SeedState for the same seed and a new one for another."""
+    ctx.conn.items_listed = False  # reset_server_state
+    ctx.conn = state.Connection.from_slot_data(slot_data(**HUNT), 0, 1)
+    if not same_seed:
+        ctx.seed_state = seed_state(ctx.conn)
 
 
 def test_a_reconnect_to_the_same_seed_leaves_the_save_dressed() -> None:
@@ -260,7 +258,7 @@ def test_labels_taken_while_the_connection_changed_are_taken_back() -> None:
     # The helper held none; labels were sent, and a Disconnect came before the reply.
     ctx = Ctx(connection())
     ctx.scout()
-    ctx.conn.dressed = True
+    ctx.seed_state.dressed = True
     ctx.told.labels_held = False
     request = ctx.helper.request
 
@@ -296,9 +294,7 @@ class Arming(Helper):
 
 
 def arming_ctx(keep_randomizer: bool = False) -> Ctx:
-    conn = connection()
-    conn.plan = plan()
-    ctx = Ctx(conn)
+    ctx = Ctx(connection())
     ctx.helper = Arming()
     ctx.game_conn, ctx.keep_randomizer, ctx.disarm_pending = None, keep_randomizer, False
     return ctx
@@ -412,7 +408,8 @@ def homing_ctx() -> Ctx:
     ctx.helper = Homing()
     ctx.told.client_back_sent = True
     ctx.stored_data = {ctx.conn.popped_key: {}}
-    ctx.conn.session.announced = 3  # the received disks' popups handed over
+    ctx.seed_state.session.announced = 3  # the received disks' popups handed over
+    ctx.seed_state.session.announced_read = True
     return ctx
 
 
@@ -503,7 +500,7 @@ def test_a_teleport_or_reload_from_save_to_the_pod_is_not_offered_return_home() 
 def test_return_home_is_not_offered_while_an_ending_runs_in_this_load() -> None:
     ctx = homing_ctx()
     run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(100, True)))
-    ctx.conn.session.holding = True  # the ending began (flag 250, or replay_tick)
+    ctx.seed_state.session.holding = True  # the ending began (flag 250, or replay_tick)
     # The ending saves the slot as it begins, with the player still in the pod's cell.
     run(ticks.mission_tick(ctx, enough_disks(), at_the_pod(200, True)))
     assert prompts(ctx) == 0
@@ -517,10 +514,10 @@ def test_the_ending_played_again_holds_what_is_received() -> None:
     for status in ("shown", "yes: ending when idle, the screen kept black"):
         ctx.helper.status = status
         run(ticks.replay_tick(ctx))
-        assert not ctx.conn.session.holding
+        assert not ctx.seed_state.session.holding
     ctx.helper.status = discs.ENDING_STARTED
     run(ticks.replay_tick(ctx))
-    assert ctx.conn.session.holding
+    assert ctx.seed_state.session.holding
     asked = ctx.helper.requests.count(discs.MISSION_STATUS)
     run(ticks.replay_tick(ctx))
     assert ctx.helper.requests.count(discs.MISSION_STATUS) == asked  # held: not asked again
@@ -591,7 +588,6 @@ class ShieldHelper(Helper):
 def shield_ctx(world: game.Game, owed: int = 1) -> Ctx:
     ctx = Ctx(connection())
     ctx.game_conn = world
-    ctx.shields = shields.Shields()
     ctx.stored_data = {ctx.conn.shield_key: 0}
     ctx.sent: list[dict] = []
     ctx.server = types.SimpleNamespace(socket=types.SimpleNamespace(open=True, closed=False))
@@ -724,7 +720,7 @@ def test_a_request_that_never_reached_the_helper_counts_no_shield_up(why, monkey
     world.spawn()
     ctx = shield_ctx(world)
     failed_rounds(ctx, world, UNSENT[why], 1, monkeypatch)
-    assert ctx.shields.pending is None and counts_sent(ctx) == []
+    assert ctx.seed_state.shields.pending is None and counts_sent(ctx) == []
 
 
 @pytest.mark.parametrize("why", list(UNSENT))
@@ -732,7 +728,7 @@ def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch)
     world = ShieldWorld()
     ctx = shield_ctx(world)
     failed_rounds(ctx, world, UNSENT[why], shields.MISSES + 2, monkeypatch)
-    assert not ctx.shields.stopped and ctx.shields.misses == 0
+    assert not ctx.seed_state.shields.stopped and ctx.seed_state.shields.misses == 0
     ctx.helper = ShieldHelper(world)  # the helper back: the shield is still spawned
     play_for(ctx, 120.0, monkeypatch)  # the stand-in clock starts again at 1000
     assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
@@ -745,4 +741,23 @@ def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
     ctx.helper = NotSent(world, asyncio.CancelledError())
     with pytest.raises(asyncio.CancelledError):
         run(ticks.shields_tick(ctx, ctx.received))
-    assert ctx.shields.pending is not None
+    assert ctx.seed_state.shields.pending is not None
+
+
+def test_a_shield_seen_up_after_a_switch_to_another_seed_is_not_counted() -> None:
+    # Connected to another room's seed, with the same team and slot (the same data storage key),
+    # while the look ran: the count is not this seed's to store there.
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    world.spawn()
+    old = ctx.seed_state
+    old.shields.pending = shields.Pending(0.0)
+    real = world.settled_state
+
+    def switch(gap: float = 0.0) -> str:
+        ctx.seed_state = seed_state(connection())
+        return real(gap)
+
+    world.settled_state = switch
+    run(ticks.confirm_shield(ctx, world, old, ctx.conn.shield_key))
+    assert counts_sent(ctx) == [] and old.shields.given is None

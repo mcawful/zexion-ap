@@ -4,8 +4,9 @@ each, or None).
 - ``Connection``: one per Connected, from the seed's slot data; None while disconnected.
 - ``HelperState``: what one attached helper has been told; a new one each time a helper is
   attached, so a helper still loaded from before is told everything again.
-- ``SeedState``: what carries over reconnections to the same seed and slot (the Area Map
-  hints this client stored, DeathLink's queue); started afresh for another seed or slot.
+- ``SeedState``: what carries over reconnections to the same seed and slot (the session, the
+  save dressed, the received Energy Shields, the Area Map hints this client stored, DeathLink's
+  queue); started afresh for another seed or slot.
 - ``LoadState``: what the polls found of the loaded save of this seed; mostly started afresh
   when no save of the seed is loaded, or when the game closes.
 
@@ -23,7 +24,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, game, native, save_patch, session
+from . import aplabels, deathlink, discs, game, native, save_patch, session, shields
 
 
 class UnsupportedSeed(ValueError):
@@ -46,7 +47,6 @@ class Connection:
     slot: int
     mode: str  # the seed's mode, as the world names it
     plan: save_patch.SeedPlan
-    session: session.Session
     kept: frozenset[int]  # the location indices the world created
     # Other players' items (client/aplabels.py): this world's locations holding one.
     foreign: list[int]
@@ -59,21 +59,10 @@ class Connection:
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # Received items' popups (announced_tick): the count last stored, and the session of
-    # the connection before (same seed and slot), read for how many it handed over once
-    # its last poll has finished.
+    # Received items' popups (announced_tick): the count last stored.
     announced_sent: int | None = None
-    before: session.Session | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
-    # Whether this seed's save has had the scanner's message (the disks needed are known).
-    discs_told: bool = False
-    # Whether the helper should dress this seed's save, the labels and the disk count: only
-    # while it is loaded, as the last poll that could tell found it (aplabels.labels_wanted), so
-    # other saves keep Scrap Energy and the scanner's message as the game's own. Unlike
-    # LoadState.seed_loaded, a reconnect to the same seed carries it over (carry_over).
-    dressed: bool = False
-    goal_sent: bool = False
     choice_refused: bool = False  # the game's start table differed: no ARCHIPELAGO
     newgame: NewGame | None = None  # None: to arm
     newgame_said: bool | None = None  # whose "To play" line was said (once a connection)
@@ -93,7 +82,6 @@ class Connection:
                 slot=slot,
                 mode=str(slot_data["mode"]),
                 plan=plan,
-                session=session.Session(plan),
                 kept=kept,
                 foreign=aplabels.foreign_locations(slot_data["location_items"], kept),
                 hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
@@ -124,53 +112,6 @@ class Connection:
         self.popped_key = self.key("popped")
         self.announced_key = self.key("announced")
         self.hints_key = self.key("hints")
-
-
-def left_connection(conn: Connection | None, left: Connection | None) -> Connection | None:
-    """The connection to keep for the next one (carry_over) when the client disconnects: the
-    one just ended, or, with none (Archipelago's connect disconnects first, after a Disconnect
-    already ended it), the one kept before. The same pick names the connection a reconnect
-    carries from (connected), and the one kept meanwhile (away_tick: a dropped one is still
-    ``conn``)."""
-    return conn if conn is not None else left
-
-
-def carry_over(
-    conn: Connection, old: Connection | None, same_seed: bool, told: HelperState | None = None
-) -> None:
-    """A new connection to the same seed and slot as ``old`` (one that dropped, or one a
-    disconnect ended): the ending's hold carries over (Session.keep_ending), and ``old``'s
-    session (``before``), for how many popups it handed over in case its last count never
-    reached the server. Read at the first count (announced_tick), not now: a poll of ``old``
-    may still be handing some over.
-
-    So does what the helper (``told``) holds for the save: whether it is dressed, the labels
-    ``old`` sent (the same seed's and slot's) and whether the scanner's message was had, so a
-    dropped connection takes nothing away to send it again once reconnected. A disconnect has
-    taken them back already (``old.dressed`` False)."""
-    if old is None or not same_seed:
-        return
-    conn.session.keep_ending(old.session)
-    conn.before = old.session
-    conn.dressed, conn.discs_told = old.dressed, old.discs_told
-    if told is not None and told.labels_for is old:
-        told.labels_for = conn
-
-
-def end_kept_load(kept: Connection, conn: Connection | None) -> None:
-    """``kept``'s load has ended (its save left, or the game closed), found by a read in a
-    thread (Session.look_away, or a step raising GameNotRunning): its session leaves the load,
-    and the save is undressed, so the helper takes back the labels and the disk count from any
-    save loaded next. A reconnect may have carried both over meanwhile (carry_over): the
-    current connection's too, then, if it has not stepped since (polls run one at a time, so
-    it cannot have yet). One reconnect is covered: Archipelago waits 5 s, then 10 s, before
-    each, and one read takes seconds at most."""
-    ended = [kept]
-    if conn is not None and conn.session.carried_from is kept.session:
-        ended.append(conn)
-    for c in ended:
-        c.session.leave()
-        c.dressed = False
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:
@@ -205,16 +146,14 @@ def shield_count(raw: object) -> int | None:
     return stored_count(raw)
 
 
-def announced_start(raw: object, held: int, handed_before: int | None = None) -> int:
-    """How many received items a connection's session counts as handed over at its start: the
-    server's count (at most the ``held`` items), or, with none stored (or its data lost),
-    every item held: no flood of old popups. Never below what the connection before handed
-    over (``handed_before``), whose count may not have reached the server."""
+def announced_start(raw: object, held: int, handed: int) -> int:
+    """How many received items the session counts as handed over once a connection has read the
+    server's count: that count (at most the ``held`` items), or, with none stored (or its data
+    lost), every item held: no flood of old popups. Never below what the session handed over
+    itself (``handed``) before a reconnect, which may not have reached the server."""
     stored = stored_count(raw)
     start = held if stored is None else min(stored, held)
-    if handed_before is not None:
-        start = max(start, min(handed_before, held))
-    return start
+    return max(start, min(handed, held))
 
 
 def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:
@@ -273,9 +212,9 @@ class HelperState:
     slots: Toggle = field(default_factory=Toggle)
     slots_read_at: float = 0.0
     # The labels: whether it may hold some (this client's, or an earlier client's), the
-    # connection whose labels it holds, whether it refused them (not asked again).
+    # seed and slot whose labels it holds, whether it refused them (not asked again).
     labels_held: bool = True
-    labels_for: Connection | None = None
+    labels_for: SeedState | None = None
     labels_refused: bool = False
     labels_retry_at: float = 0.0
     client_back_sent: bool = False  # asked once (client_back_tick)
@@ -288,9 +227,20 @@ class HelperState:
 
 @dataclass
 class SeedState:
-    """What carries over reconnections to one seed and slot."""
+    """What carries over reconnections to one seed and slot: a dropped connection, or a
+    Disconnect and Connect, carry on with the same."""
 
-    identity: tuple | None = None  # (seed name, team, slot)
+    identity: tuple  # (seed name, team, slot)
+    session: session.Session  # the seed's polls of the game (client/session.py)
+    # Whether the helper should dress this seed's save, the labels and the disk count: only
+    # while it is loaded, as the last poll that could tell found it (aplabels.labels_wanted), so
+    # other saves keep Scrap Energy and the scanner's message as the game's own. Unlike
+    # LoadState.seed_loaded, it holds over a reconnect: a drop takes nothing away to send it
+    # again (a Disconnect takes it back).
+    dressed: bool = False
+    # Whether this seed's save has had the scanner's message (the disks needed are known).
+    discs_told: bool = False
+    shields: shields.Shields = field(default_factory=shields.Shields)  # received Energy Shields
     # The entry each Area Map used that this client stored (ahead of the server's until it is
     # echoed back), and when it was last stored.
     hints_mine: dict[str, tuple[int, int]] = field(default_factory=dict)
@@ -301,6 +251,14 @@ class SeedState:
     popped_sent_at: float = 0.0
     deaths: deathlink.DeathLink = field(default_factory=deathlink.DeathLink)
     death_retry_at: float = 0.0
+
+    def end_load(self) -> None:
+        """The load of this seed's save has ended (its save left, or the game closed), found
+        while no connection steps (Session.look_away) or by a step raising GameNotRunning: the
+        session leaves the load, and the save is undressed, so the helper takes back the labels
+        and the disk count from any save loaded next."""
+        self.session.leave()
+        self.dressed = False
 
 
 FEATS_ASK_SECONDS = 5.0  # between asks whether the Feats guard is on for this load

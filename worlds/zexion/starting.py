@@ -20,8 +20,7 @@ limits:
 - keys: the first ones from the Alpha Key on (the new game takes a key count);
 - no Mega Bombs or Bomb Boxes, not supported yet: client/newgame.py writes them as the new
   game's bomb amount, but the game's use of that amount is from disassembly only (docs/re/
-  memory.md, "Starting a new game"), and client/save_patch.py, the reference the new game's
-  edits are tested against, has no place for current bombs;
+  memory.md, "Starting a new game");
 - no Scrap, Area Map or Energy Shield (no way into a new game; the shield is a pickup's spawn);
 - no Intel Chip or Assist Unlock: the client acts on them only as received (a hint, the assist
   lock lifted), and a starting one is never received (the Enable Assist Options option lifts

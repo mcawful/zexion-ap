@@ -1,6 +1,7 @@
 """client/zexion_client.py: a load ended by the game closing, or seen to end while no connection
-steps, for the connection kept and one a reconnect carried it to meanwhile. Archipelago is not
-installed here, so the parts of it the module imports are stand-ins."""
+steps, a reconnect meanwhile included, what a reconnect carries on with, and the helper failing
+or let go. Archipelago is not installed here, so the parts of it the module imports are
+stand-ins."""
 
 from __future__ import annotations
 
@@ -12,7 +13,8 @@ import sys
 import types
 from unittest import mock
 
-from fakes import connection
+import pytest
+from fakes import connection, seed_state, slot_data
 
 from client import game, native, session, state, ticks
 
@@ -27,6 +29,19 @@ class CommonContext:
         self.player_names: dict[int, str] = {}
         self.slot, self.team = 1, 0
         self.server_seed_name = self.seed_name = None
+        self.finished_game = False
+
+    def set_notify(self, *keys: str) -> None:
+        pass
+
+    async def disconnect(self, allow_autoreconnect: bool = False) -> None:
+        pass
+
+    async def update_death_link(self, on: bool) -> None:
+        pass
+
+    async def send_msgs(self, msgs: list[dict]) -> None:
+        pass
 
 
 def _archipelago() -> dict[str, types.ModuleType]:
@@ -74,62 +89,86 @@ class Closed:
         return read
 
 
-def loaded() -> state.Connection:
-    """A connection whose save is loaded and dressed, in its ending."""
-    conn = connection()
-    conn.dressed, conn.session.holding = True, True
-    return conn
-
-
 def context(conn: state.Connection, g, dropped: bool = False) -> zc.ZexionContext:
     ctx = zc.ZexionContext(None, None)
-    ctx.conn, ctx.game_conn = conn, g
+    ctx.conn, ctx.seed_state, ctx.game_conn = conn, seed_state(conn), g
     if dropped:
         ctx.slot = None  # reset_server_state: no connection steps (away_tick)
     return ctx
 
 
-def reconnect(ctx: zc.ZexionContext, old: state.Connection) -> state.Connection:
-    """Connected to the same seed while a read ran in a thread (ZexionContext.connected)."""
-    new = connection()
-    state.carry_over(new, old, same_seed=True)
-    ctx.conn = new
-    return new
+def loaded(ctx: zc.ZexionContext) -> state.SeedState:
+    """The seed's save loaded and dressed, in its ending."""
+    seed = ctx.seed_state
+    seed.dressed, seed.session.holding = True, True
+    return seed
 
 
-def ended(conn: state.Connection) -> bool:
-    return not conn.dressed and not conn.session.holding
+def reconnect(ctx: zc.ZexionContext) -> None:
+    """Connected to the same seed while a read ran in a thread (ZexionContext.connected): a new
+    connection, the same SeedState."""
+    ctx.conn = connection()
+    ctx.seed_state.session.announced_read = False
 
 
-def test_the_game_closing_in_a_poll_ends_the_load_for_a_reconnect_carrying_it_too() -> None:
-    old = loaded()
+def ended(seed: state.SeedState) -> bool:
+    return not seed.dressed and not seed.session.holding
+
+
+def test_the_game_closing_in_a_poll_ends_the_load_after_a_reconnect_meanwhile_too() -> None:
+    old = connection()
     ctx = context(old, None)
-    ctx.game_conn = Closed(lambda: reconnect(ctx, old) if ctx.conn is old else None)
+    seed = loaded(ctx)
+    ctx.game_conn = Closed(lambda: reconnect(ctx) if ctx.conn is old else None)
     asyncio.run(zc.poll(ctx))
-    new = ctx.conn
-    assert new is not old and ctx.game_conn is None
-    assert ended(new), "the next game's helper would dress a save at its title"
-    assert not old.session.holding
+    assert ctx.conn is not old and ctx.seed_state is seed and ctx.game_conn is None
+    assert ended(seed), "the next game's helper would dress a save at its title"
 
 
-def test_a_save_left_while_dropped_ends_the_load_for_a_reconnect_carrying_it_too() -> None:
-    old = loaded()
-    ctx = context(old, object(), dropped=True)
+def test_a_save_left_while_dropped_ends_the_load_after_a_reconnect_meanwhile_too() -> None:
+    ctx = context(connection(), object(), dropped=True)
+    seed = loaded(ctx)
 
     def left(g) -> bool:
-        reconnect(ctx, old)
+        reconnect(ctx)
         return True  # the title, read twice
 
-    old.session.look_away = left
+    seed.session.look_away = left
     asyncio.run(zc.poll(ctx))
-    assert ended(old) and ended(ctx.conn)
+    assert ended(seed) and ctx.seed_state is seed
 
 
 def test_the_game_closing_while_dropped_ends_the_load_kept() -> None:
-    kept = loaded()
-    ctx = context(kept, Closed(), dropped=True)
+    ctx = context(connection(), Closed(), dropped=True)
+    seed = loaded(ctx)
     asyncio.run(zc.poll(ctx))
-    assert ended(kept) and ctx.game_conn is None
+    assert ended(seed) and ctx.game_conn is None
+
+
+def test_a_reconnect_carries_on_with_the_seeds_state_and_another_seed_starts_afresh(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(zc.Utils, "async_start", lambda coro, name="": coro.close(), raising=False)
+    ctx = zc.ZexionContext(None, None)
+    ctx.seed_name = "A"
+    ctx.connected(slot_data())
+    seed, first = ctx.seed_state, ctx.conn
+    seed.dressed, seed.session.holding = True, True
+    seed.session.announced, seed.session.announced_read = 4, True
+    seed.shields.stopped, seed.shields.given = True, 2
+    ctx.connected(slot_data())  # a drop, then Connected again
+    assert ctx.seed_state is seed and ctx.conn is not first
+    assert seed.dressed and seed.session.holding and seed.session.announced == 4
+    assert seed.shields.stopped and seed.shields.given == 2
+    assert not seed.session.announced_read, "the popup count is read from the server again"
+    ctx.seed_name = "B"  # another room's seed, with the same team and slot
+    ctx.connected(slot_data())
+    other = ctx.seed_state
+    assert other is not seed and not other.dressed and not other.session.holding
+    assert other.session.announced == 0 and other.session.plan is ctx.conn.plan
+    # Its slot's shield count has the same data storage key: the stop and the count not sent
+    # yet were the other seed's.
+    assert not other.shields.stopped and other.shields.given is None
 
 
 class Mismatched:
@@ -160,7 +199,7 @@ def test_a_mod_of_another_build_is_said_once_and_left_until_zexion_restarts(capl
     lines = [r.getMessage() for r in caplog.records if r.name == "Client"]
     assert len(lines) == 1 and lines[0].startswith("The Zexion mod and this client don't match")
     assert zc.HELPER_LOST not in lines
-    zc.game_closed(ctx, ctx.conn)
+    zc.game_closed(ctx, ctx.seed_state)
     assert ctx.helper_retry_at < math.inf, "a restarted Zexion is tried again"
 
 
@@ -168,7 +207,7 @@ def test_the_language_is_told_again_in_the_next_game() -> None:
     # language_tick says it once a game run (ctx.said's "language"): a closed game clears it.
     ctx = context(connection(), Closed())
     assert ctx.said("language", "told") and not ctx.said("language", "told")
-    zc.game_closed(ctx, ctx.conn)
+    zc.game_closed(ctx, ctx.seed_state)
     assert ctx.said("language", "told"), "the next game's language is told"
 
 
@@ -180,16 +219,6 @@ def test_a_mismatch_the_session_found_is_said_once_not_as_a_lost_helper(caplog) 
             ctx.mismatched(native.ModMismatch("both are version 0, but from different builds"))
     lines = [r.getMessage() for r in caplog.records if r.name == "Client"]
     assert len(lines) == 1 and "don't match" in lines[0] and ctx.helper_retry_at == math.inf
-
-
-def test_dropping_the_helper_forgets_a_mismatch_of_the_one_before() -> None:
-    # Else a matching helper of a restarted Zexion, failing for any other reason later, would
-    # be taken for one that doesn't match and left alone.
-    ctx = context(connection(), Closed())
-    ctx.helper = Mismatched()
-    ctx.conn.session.mismatch = native.ModMismatch("different builds")
-    zc.game_closed(ctx, ctx.conn)
-    assert ctx.conn.session.mismatch is None
 
 
 # --- the helper let go while no connection steps -------------------------------------------
@@ -240,15 +269,14 @@ def test_a_save_loaded_while_dropped_leaves_the_helper_its_offline_look(caplog) 
 
 def test_a_save_loaded_after_a_disconnect_leaves_the_helper_its_offline_look() -> None:
     ctx = away(connection(), game.MENU)
-    ctx.left_conn, ctx.conn = ctx.conn, None  # disconnect(): the connection left
+    ctx.conn, ctx.seed_state.dressed = None, False  # disconnect()
     asyncio.run(zc.poll(ctx))
     assert ctx.helper is None
 
 
 def test_a_save_dressed_before_the_drop_keeps_the_helper() -> None:
-    conn = connection()
-    conn.dressed = True  # carried over to the reconnect (state.carry_over)
-    ctx = away(conn, game.IN_PLAY)
+    ctx = away(connection(), game.IN_PLAY)
+    ctx.seed_state.dressed = True  # kept for the reconnect (state.SeedState)
     helper = ctx.helper
     asyncio.run(zc.poll(ctx))
     assert ctx.helper is helper and helper.closed == 0
@@ -280,15 +308,14 @@ def test_a_reconnect_attaches_the_helper_before_the_first_step(monkeypatch) -> N
     async def attach(c) -> None:
         order.append("attach")
         c.helper = helper
-        c.conn.session.helper = helper
 
-    def step(g, received, **kwargs):
-        order.append("step with the helper" if conn.session.helper is helper else "step")
+    def step(g, received, helper=None, **kwargs):
+        order.append("step with the helper" if helper is not None else "step")
         order.append("still away" if ctx.helper_left else "back")
         raise game.GameNotRunning("Zexion is not running")  # the poll ends here
 
     monkeypatch.setattr(zc, "attach_helper", attach)
-    monkeypatch.setattr(conn.session, "step", step)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach", "step with the helper", "back"]
 
@@ -296,10 +323,9 @@ def test_a_reconnect_attaches_the_helper_before_the_first_step(monkeypatch) -> N
 def test_a_save_in_its_ending_keeps_the_helper() -> None:
     # A disconnect in the ending undresses the save but keeps its hold: letting the helper go
     # would put back its Feats guard and RETURN HOME's ending meanwhile.
-    conn = connection()
-    conn.session.holding = True
-    ctx = away(conn, game.IN_PLAY)
-    ctx.left_conn, ctx.conn = ctx.conn, None
+    ctx = away(connection(), game.IN_PLAY)
+    ctx.seed_state.session.holding = True
+    ctx.conn, ctx.seed_state.dressed = None, False  # disconnect()
     helper = ctx.helper
     asyncio.run(zc.poll(ctx))
     assert ctx.helper is helper and helper.closed == 0
@@ -331,7 +357,7 @@ def failing_reattach(monkeypatch) -> tuple[zc.ZexionContext, list[str]]:
 
     monkeypatch.setattr(zc, "attach_helper", attach)
     monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
-    monkeypatch.setattr(conn.session, "step", step)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
     return ctx, order
 
 
@@ -364,7 +390,7 @@ def mismatched_reattach(
 
     monkeypatch.setattr(native, "attach", attach)
     monkeypatch.setattr(native, "default_dll", lambda: dll)
-    monkeypatch.setattr(ctx.conn.session, "step", step)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
     return ctx, order
 
 
@@ -396,18 +422,22 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     assert len(order) == 2 and order[1] != "step, retry at inf"
 
 
-def lost_in_a_side_tick(monkeypatch, attaches: bool) -> tuple[zc.ZexionContext, list[str]]:
+async def nothing(*args) -> None:
+    return None
+
+
+def lost_helper(
+    monkeypatch, attaches: bool, step_fails: int = 0
+) -> tuple[zc.ZexionContext, list[str]]:
     """Connected, the game running with a helper, which the offline files' tick loses (a late
-    reply); attaching it again works if ``attaches``."""
+    reply), or with ``step_fails`` the first that many steps with it; attaching it again works
+    if ``attaches``."""
     ctx = context(connection(), Running(game.IN_PLAY))
     ctx.helper, ctx.told = Helper(), state.HelperState()
     order: list[str] = []
 
-    async def nothing(*args) -> None:
-        return None
-
     async def late(c, p) -> None:
-        if c.helper is not None:  # as offline_tick
+        if c.helper is not None and not step_fails:  # as offline_tick
             raise native.ReplyLost("no reply within 2.0 s")
 
     async def attach(c) -> bool:
@@ -416,31 +446,130 @@ def lost_in_a_side_tick(monkeypatch, attaches: bool) -> tuple[zc.ZexionContext, 
             c.helper, c.told = Helper(), state.HelperState()
         return True  # worth trying again soon
 
-    def step(g, received, **kwargs):
-        order.append("step with the helper" if ctx.helper is not None else "step without it")
+    def step(g, received, helper=None, **kwargs):
+        assert helper is ctx.helper, "the step gives through the helper attached"
+        order.append("step with the helper" if helper is not None else "step without it")
+        if helper is not None and order.count("step with the helper") <= step_fails:
+            lost = native.ReplyLost("no reply within 3.0 s")  # the batch went out
+            return session.Step(state=game.IN_PLAY, helper_error=lost)  # session.py
         raise game.GameNotRunning("Zexion is not running")
 
     for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
         monkeypatch.setattr(zc, name, nothing)
-    for name in ("slots_tick", "language_tick"):
+    for name in ("slots_tick", "language_tick", "replay_tick"):
         monkeypatch.setattr(zc, name, nothing)
     monkeypatch.setattr(zc, "offline_tick", late)
     monkeypatch.setattr(zc, "attach_helper", attach)
     monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
-    monkeypatch.setattr(ctx.conn.session, "step", step)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
     return ctx, order
 
 
 def test_a_helper_lost_in_a_side_tick_is_attached_again_before_the_step(monkeypatch) -> None:
     # Else the step gives the items owed with no helper: written directly, with no popup.
-    ctx, order = lost_in_a_side_tick(monkeypatch, attaches=True)
+    ctx, order = lost_helper(monkeypatch, attaches=True)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach", "step with the helper"]
     assert not ctx.helper_lost
 
 
+def test_a_helper_lost_in_the_step_is_attached_again_before_the_next(monkeypatch) -> None:
+    # The step gives nothing that poll (session.py), and no item is written directly.
+    ctx, order = lost_helper(monkeypatch, attaches=True, step_fails=1)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["step with the helper"] and ctx.helper is None and ctx.helper_lost
+    asyncio.run(zc.poll(ctx))
+    assert order == ["step with the helper", "attach", "step with the helper"]
+    assert not ctx.helper_lost
+
+
+def test_a_helper_failing_the_step_again_is_left_to_the_usual_retry(monkeypatch) -> None:
+    # A request it keeps refusing: the items are written directly meanwhile, as with no
+    # helper, rather than held back for good.
+    ctx, order = lost_helper(monkeypatch, attaches=True, step_fails=2)
+    for _ in range(3):
+        asyncio.run(zc.poll(ctx))
+    assert order == ["step with the helper", "attach", "step with the helper", "step without it"]
+    assert ctx.helper is None and not ctx.helper_lost and ctx.helper_retry_at > 0
+
+
+def test_a_step_that_goes_through_ends_the_failures_in_a_row(monkeypatch) -> None:
+    # A failure, a step through the helper, a failure: attached again before the next step,
+    # as after a first failure.
+    ctx, order = lost_helper(monkeypatch, attaches=True)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    fails = iter([True, False, True, False])
+
+    def step(g, received, helper=None, **kwargs):
+        order.append("step")
+        lost = helper is not None and next(fails)
+        error = native.ReplyLost("no reply within 3.0 s") if lost else None
+        return session.Step(state=game.IN_PLAY, helper_error=error)
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    for _ in range(4):
+        asyncio.run(zc.poll(ctx))
+    assert order == ["step", "attach", "step", "step", "attach", "step"]
+
+
+@pytest.mark.parametrize("fails", [1, 2])
+def test_a_helper_lost_just_before_the_step_holds_its_grants_once(monkeypatch, fails) -> None:
+    # Lost in the ending-again tick, after the attach and before the step: the step gives
+    # nothing, rather than write the items with no popup, and the helper is attached again
+    # first. Lost again there, the next step gives directly, as after two failed steps.
+    ctx, order = lost_helper(monkeypatch, attaches=True)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    lost: list[int] = []
+
+    async def replay(c) -> None:
+        if c.helper is not None and len(lost) < fails:
+            lost.append(1)
+            raise native.ReplyLost("no reply within 2.0 s")
+
+    def step(g, received, helper=None, give=True, **kwargs):
+        order.append(
+            f"{'helper' if helper is not None else 'none'}, {'gives' if give else 'waits'}"
+        )
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(zc, "replay_tick", replay)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    asyncio.run(zc.poll(ctx))
+    after = "helper, gives" if fails == 1 else "none, gives"
+    assert order == ["none, waits", "attach", after]
+
+
+def test_a_disconnect_undresses_the_save_for_the_next_connection() -> None:
+    # A reconnect to the seed carries on with its SeedState: the helper takes the look back.
+    ctx = context(connection(), None)
+    ctx.seed_state.dressed = True
+    asyncio.run(ctx.disconnect())
+    assert ctx.conn is None and not ctx.seed_state.dressed
+
+
+def test_the_goal_is_sent_once(monkeypatch) -> None:
+    ctx = context(connection(), Running(game.IN_PLAY))
+    sent: list[dict] = []
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    monkeypatch.setattr(zc, "ClientStatus", types.SimpleNamespace(CLIENT_GOAL=30))
+    monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
+    ended = session.Step(
+        seed_matches=True, state=game.IN_PLAY, goal=True, ended=True, save_stamp=bytes(14)
+    )
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: ended)
+    for _ in range(4):
+        asyncio.run(zc.poll(ctx))
+    assert [m["cmd"] for m in sent if m["cmd"] == "StatusUpdate"] == ["StatusUpdate"]
+    assert ctx.finished_game
+
+
 def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:
-    ctx, order = lost_in_a_side_tick(monkeypatch, attaches=False)
+    ctx, order = lost_helper(monkeypatch, attaches=False)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach"], "no step gives items without their popups"
     ctx.helper_back_by = 1.0  # long past: given up, as after any failed attach
@@ -458,20 +587,22 @@ def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:
 def test_a_stop_on_energy_shields_ends_with_the_game_or_the_load(monkeypatch) -> None:
     # client/shields.py: a stop holds for the load it happened in, a reconnect included.
     ctx = context(connection(), Closed())
-    ctx.shields.stopped, ctx.shields.misses = True, 3
-    zc.game_closed(ctx, ctx.conn)
-    assert not ctx.shields.stopped and ctx.shields.misses == 0
+    sh = ctx.seed_state.shields
+    sh.stopped, sh.misses = True, 3
+    zc.game_closed(ctx, ctx.seed_state)
+    assert not sh.stopped and sh.misses == 0
     conn = connection()
     ctx = context(conn, Running(game.IN_PLAY))
+    sh = ctx.seed_state.shields
     steps = [session.Step(seed_matches=True, state=game.IN_PLAY, save_stamp=bytes(14))]
-    monkeypatch.setattr(conn.session, "step", lambda g, received, **kwargs: steps[0])
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: steps[0])
     monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
     asyncio.run(zc.poll(ctx))
     assert ctx.conn is conn and ctx.load.seed_loaded, "the poll took the load"
-    ctx.shields.stopped = True
+    sh.stopped = True
     ctx.load.seed_loaded = False  # a reconnect: the same load, looked at afresh (connected)
     asyncio.run(zc.poll(ctx))
-    assert ctx.shields.stopped, "a reconnect does not end it"
+    assert sh.stopped, "a reconnect does not end it"
     steps[0] = session.Step(left_seed=True)  # the title, or another save
     asyncio.run(zc.poll(ctx))
-    assert not ctx.shields.stopped, "leaving the save ends it"
+    assert not sh.stopped, "leaving the save ends it"

@@ -22,10 +22,11 @@ Safety, in order:
   way through recording (the map cell set, the inventory byte not yet) is never taken for an
   item owed.
 
-With the helper attached (``Session.helper``) the grants go as one batch the helper applies
+With the helper attached (``step``'s ``helper``) the grants go as one batch the helper applies
 between frames, re-checking each byte, with the game's popup for each item not yet
-``announced`` (nothing goes through the helper until that count is known). A helper that
-fails is dropped and grants go back to direct writes.
+``announced`` (nothing goes through the helper until this connection has read that count). A
+helper that fails gives nothing this poll: the step keeps its checks and goal and names the
+error (``Step.helper_error``), and the client attaches the helper again before the next step.
 """
 
 from __future__ import annotations
@@ -143,49 +144,41 @@ class Step:
     at_home: bool = False
     in_home_cell: bool = False  # the player is in the Landing Pod's cell now
     game_saved: int | None = None  # read after save_stamp (game.Game.game_saved)
+    # The helper failed with this poll's grants: nothing given (zexion_client's helper_error).
+    helper_error: native.HelperError | None = None
 
 
 class Session:
+    """The polls of one seed and slot's game, kept over reconnections to it (state.SeedState)."""
+
     def __init__(self, plan: save_patch.SeedPlan):
-        if not plan.cells or plan.check_size():
+        if plan.check_size():
             raise ValueError(f"the slot data does not list {plan.list_size} locations")
         self.plan = plan
         self.listed = [plan.cells[i] for i in plan.order]  # as the game's list holds them
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
-        self.helper: native.Helper | None = None
-        # Why the helper was given up on, when it doesn't match the client (the poll says so).
-        self.mismatch: native.ModMismatch | None = None
         # How many received items have been handed over, to the helper for their popup or
-        # written directly; None until the server's count is read (client/storage.py,
-        # announced_tick).
-        self.announced: int | None = None
+        # written directly, and whether this connection has read the server's count since
+        # Connected (client/storage.py, announced_tick; the client clears it at each). Until it
+        # has, nothing goes through the helper, and direct writes leave the count as it is.
+        self.announced = 0
+        self.announced_read = False
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
-        # cutscenes read as play). Both cleared when no save of this seed is loaded.
+        # cutscenes read as play). Both cleared when no save of this seed is loaded, and kept
+        # over a reconnect, as a first read would take the goal as reached already and not hold.
         self._goal_before: bool | None = None
         self.holding = False
-        # The session keep_ending carried those from, until this one's first step
-        # (state.end_kept_load).
-        self.carried_from: Session | None = None
-
-    def keep_ending(self, before: Session) -> None:
-        """A reconnect to the same seed and slot: the ending's hold carries over, as a new
-        session would read the goal as reached already and never hold. Only a hold of the load
-        still loaded: ``before`` looked for its save leaving while no connection stepped it
-        (look_away)."""
-        self._goal_before, self.holding = before._goal_before, before.holding
-        self.carried_from = before
 
     def look_away(self, g: game.Game, gap: float = game.SETTLE_SECONDS) -> bool:
-        """While no step runs (the client disconnected, this session kept for the next
-        connection's keep_ending): whether its load has ended, no save loaded (the title, the
-        file select, MISSION COMPLETE onward) in two reads, as a step would see. Otherwise a
-        carried hold, or the goal as read before the ending, would land on a later load (an
-        ended save loaded again). GameNotRunning (the game closed) is raised. It reads nothing,
-        and says False, with nothing to carry. It changes nothing: it runs in a thread while a
-        reconnect may carry this session's ending over, so the caller ends the load
-        (state.end_kept_load)."""
+        """While no step runs (the client disconnected, or dropped): whether its load has ended,
+        no save loaded (the title, the file select, MISSION COMPLETE onward) in two reads, as a
+        step would see. Otherwise a hold, or the goal as read before the ending, would land on a
+        later load (an ended save loaded again) once a connection steps again. GameNotRunning
+        (the game closed) is raised. It reads nothing, and says False, with nothing to keep. It
+        changes nothing: it runs in a thread, and the caller ends the load
+        (state.SeedState.end_load)."""
         if self._goal_before is None and not self.holding:
             return False
         first = g.state()
@@ -204,11 +197,15 @@ class Session:
         gap: float = game.SETTLE_SECONDS,
         senders: list[str] | None = None,
         notes: dict[int, str] | None = None,
+        helper: native.Helper | None = None,
+        give: bool = True,
     ) -> Step:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
         replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
-        client/hints.py)."""
-        self.carried_from = None  # stepped: its own reads decide from here
+        client/hints.py). Grants go through ``helper`` when one is attached, else directly; a
+        HelperError from it gives nothing and is kept in the step (``helper_error``). Without
+        ``give`` (a helper lost earlier in the poll, to be attached again first) nothing is
+        given, and the rest is read as usual."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -259,8 +256,11 @@ class Session:
         elif not goal:
             self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
-        if snap.state == game.IN_PLAY and not self.holding:
-            step.granted = self.give(g, snap, collected, received, gap, senders, notes)
+        if snap.state == game.IN_PLAY and not self.holding and give:
+            try:
+                step.granted = self.give(g, snap, collected, received, gap, senders, notes, helper)
+            except native.HelperError as exc:
+                step.helper_error = exc
         return step
 
     def hold_ending(self) -> None:
@@ -284,6 +284,7 @@ class Session:
         gap: float,
         senders: list[str] | None = None,
         notes: dict[int, str] | None = None,
+        helper: native.Helper | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
@@ -299,18 +300,18 @@ class Session:
         due, self._due = self._due, result.inventory
         if result.inventory != due:
             return {}  # owed for the first time: wait for the next poll to agree
-        if self.helper is not None and self.announced is None:
-            return {}  # which items have had their popup is not known yet
-        if self.helper is not None:
+        if helper is not None:
+            if not self.announced_read:
+                return {}  # which items have had their popup is not known yet
             try:
-                return self.give_through_helper(snap, result.inventory, received, senders, notes)
-            except native.HelperError as exc:
-                logger.warning(f"The in-game helper failed ({exc}); giving items directly.")
-                if isinstance(exc, native.ModMismatch):
-                    self.mismatch = exc
-                self.helper.close()
-                self.helper = None
-        if self.announced is not None:
+                return self.give_through_helper(
+                    helper, snap, result.inventory, received, senders, notes
+                )
+            except native.ReplyLost:
+                # The batch may have been applied and its popups shown: none shown again.
+                self.announced = len(received)
+                raise
+        if self.announced_read:
             self.announced = len(received)  # direct writes show no popups
         granted: dict[int, int] = {}
         try:
@@ -339,6 +340,7 @@ class Session:
 
     def give_through_helper(
         self,
+        helper: native.Helper,
         snap: Snapshot,
         owed: dict[int, int],
         received: list[int],
@@ -346,7 +348,7 @@ class Session:
         notes: dict[int, str] | None = None,
     ) -> dict[int, int]:
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
-        start = self.announced if self.announced is not None else len(received)
+        start = self.announced
         # With Guns First, a progressive weapon received while its weapon is owned arrives as
         # the upgrade, so its popup names the upgrade; an upgrade received as itself (sent from
         # the server console) is a copy of its weapon too (reconcile.should_own). Without it,
@@ -369,13 +371,12 @@ class Session:
         if not owed and not popups:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:
-                self.helper.apply(native.batch_text([], [], refresh=True))
+                helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
-        reply = self.helper.apply(native.batch_text(cas, popups))
+        reply = helper.apply(native.batch_text(cas, popups))
         if reply != "applied":
             logger.info(f"Not given this time: {reply}")
             return {}
-        if self.announced is not None:
-            self.announced = len(received)
+        self.announced = len(received)
         return dict(owed)

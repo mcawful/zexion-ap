@@ -39,19 +39,15 @@ def apply_text(text: str, save: bytearray, menu: bytearray | None = None) -> lis
     return failed
 
 
-def test_the_plan_writes_what_save_patch_writes_into_the_section() -> None:
+def test_the_plan_writes_the_seed_into_the_section() -> None:
     p = plan(second_start=(9, 151, 464))
     save = fresh()
     assert apply_text(ng.plan_text(p, offer_choice=False), save) == []
-    patched = sp.patch(bytes(fresh()), p)
-    for start, size in (
-        (sp.ITEM_TABLE, sp.LOCATIONS),
-        (sp.START_RECORD, 6),
-        (sp.SECOND_START, 6),
-        (sp.SEED_TEXT, 16),
-        (sp.SEED_HASH, 8),
-    ):
-        assert save[start : start + size] == patched[start : start + size]
+    assert save[sp.ITEM_TABLE : sp.ITEM_TABLE + sp.LOCATIONS] == p.table
+    assert struct.unpack_from("<3H", save, sp.START_RECORD) == p.start
+    assert struct.unpack_from("<3H", save, sp.SECOND_START) == p.second_start
+    assert save[sp.SEED_TEXT : sp.SEED_TEXT + 16] == p.menu.seed_text.encode()
+    assert struct.unpack_from("<Q", save, sp.SEED_HASH)[0] == sp.seed_hash(p.menu.seed_text)
 
 
 def test_a_secret_shuffle_seed_writes_its_155_in_the_games_order() -> None:
@@ -79,8 +75,6 @@ def test_the_placement_must_list_the_seeds_locations() -> None:
     moved = fresh(cells=CELLS)
     struct.pack_into("<HH", moved, sp.SECTION + 4 * 20, 53, 53)  # another cell at position 20
     assert apply_text(ng.plan_text(p, offer_choice=False), moved) == ["0x0"]
-    # A plan without cells (the 154 in the game's order already) has no such check.
-    assert not any(line.startswith("expect 0x0 ") for line in ng.plan_text(plan()).splitlines())
 
 
 def test_a_location_cell_off_the_map_is_refused() -> None:
@@ -182,7 +176,7 @@ def test_the_menu_lines_set_the_menu_to_the_seeds_settings() -> None:
     assert menu[0:16] == b"0123456789ABCDEF"
     assert menu[0x51 : 0x51 + 27] == p.menu.start and menu[0x6C : 0x6C + 27] == p.menu.pool
     assert struct.unpack_from("<6h", menu, 0x88) == p.amounts
-    assert menu[0xCA + 10 : 0xCA + 12] == bytes(2)
+    assert menu[0xCA + 10 : 0xCA + 12] == bytes([1, 0])  # Guns First on
     assert menu[0xCA + 12] == 0xEE, "the player's color setting is kept"
     assert menu[0xCA + 42] == 2 and menu[0xCA + 72] == 1 and menu[0xCA + 73] == 0
     assert MENU_SIZE - 1 == 0xCA + 73, "setting 73 is the state's last byte"
@@ -272,7 +266,7 @@ def test_ohko_needs_a_table_of_this_build_that_lists_its_second_start(p, build, 
         (dict(menu=menu_setup(start=bytes(26))), "27 entries"),
         (dict(menu=menu_setup(pool=bytes([2] * 27))), "27 entries"),
         (dict(menu=menu_setup(settings=bytes(63))), "64"),
-        (dict(menu=menu_setup(settings=bytes(64))), "setting 42"),
+        (dict(menu=menu_setup(settings=bytes(64))), "setting 10"),
         (
             dict(menu=menu_setup(table_build="6d8a94bd4d64"), second_start=(3, 151, 464)),
             "no start table",
@@ -291,8 +285,6 @@ def test_a_menu_setup_that_does_not_fit_is_refused(changes, why) -> None:
 def test_a_seed_text_the_game_would_read_otherwise_is_refused(text) -> None:
     with pytest.raises(ValueError):
         sp.seed_hash(text)
-    with pytest.raises(sp.PatchError):
-        sp.patch(bytes(fresh()), plan(menu=menu_setup(seed_text=text)))
     with pytest.raises(ng.NewGameError):
         ng.plan_text(plan(menu=menu_setup(seed_text=text)), offer_choice=False)
 

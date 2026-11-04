@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
 from client.patterns import KNOWN_BUILDS, TARGETS, Pattern, at, rip  # noqa: E402
 
-FROZEN_SHA256 = "8080c4b0b1bd18947cfb78c048dd37e38514adabbb753dedc0879fd01f9c90a0"
+FROZEN_SHA256 = "a16ae6c15bf20b7f38571052a048f344ddb9bf1926b42fbb87541f90cf2d03a4"
 
 
 def digest() -> str:

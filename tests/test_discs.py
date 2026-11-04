@@ -326,6 +326,6 @@ def test_a_save_at_the_pod_is_offered_between_two_looks_in_play() -> None:
 
 
 def test_the_pod_note_waits_for_the_received_items_popups() -> None:
-    assert not discs.popups_handed(None, 3)  # not known yet
-    assert not discs.popups_handed(2, 3)  # the third received disk's popup not handed yet
-    assert discs.popups_handed(3, 3)
+    assert not discs.popups_handed(3, False, 3)  # not known yet on this connection
+    assert not discs.popups_handed(2, True, 3)  # the third received disk's popup not handed yet
+    assert discs.popups_handed(3, True, 3)
