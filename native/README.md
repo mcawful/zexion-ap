@@ -806,7 +806,10 @@ turned back after a save at the pod during it (the owner's report).
   Archipelago's logo, the world's AP item logo in its colors, right of FILE NN
   (`src/files.cpp`, with the disk count). The logo is one 16 x 16 image painted over four font
   glyphs empty in the game's art (`0x8C`, `0x8D`, `0x9C`, `0x9D`, two by two in the font), set
-  in the entry's blank cells at columns 16 and 17 of rows 0 and 1 and raised 4 px.
+  in the entry's blank cells at columns 16 and 17 of rows 0 and 1 and raised 4 px. Its black
+  gaps and border (painted since the stand-ins showed the sky through transparent ones: "Other
+  players' items") fall on the file select's black background, so it looks as it did (assumed
+  from that background; not run in game).
 - **Which saves:** every 16th frame call, each slot in use that is a randomizer save and whose
   own copy of the section is a known seed's: one the helper has a seed file for, or one a client
   has put (the Feats guard's test, `Game::known_section`, on the slot's copy). So it works with
