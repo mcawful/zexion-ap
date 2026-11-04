@@ -9,9 +9,11 @@ evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-In development. Every in-game run was on game build B1. A release build has run from Archipelago
-0.6.8's Launcher (working in game 2026-10-25, B1: [`docs/re/memory.md`](re/memory.md), "The client
-in a live game").
+1.0.0, the first release. Every in-game run was on game build B1. A release build has run from
+Archipelago 0.6.8's Launcher since 2026-10-25 ([`docs/re/memory.md`](re/memory.md), "The client in
+a live game"), the 1.0.0 client from it on 2026-10-29 (`native/README.md`, "AP saves without the
+client"), and the 1.0.0 release candidate's builds on 2026-11-03 and 04 ("Features, and when each
+was working in game", below).
 
 ## How it fits together
 

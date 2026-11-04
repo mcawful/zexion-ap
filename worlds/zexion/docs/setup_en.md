@@ -1,8 +1,5 @@
 # Zexion Setup Guide
 
-This world is in development. Seeds have been played through to the goal, but treat any seed
-as a test.
-
 ## What you need
 
 - Zexion on Steam (Windows), Steam build 23943567: the only version of the game this release
