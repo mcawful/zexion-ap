@@ -1265,7 +1265,7 @@ lands, not only the place passed.
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
     line at one x, where those spaces fit the entry's room, else as they are so no name is cut)
     while their records are restyled in play, for their pickup popup, each held as it is while
-    a pickup message bound to it shows (the HD message reads it again every frame:
+    a pickup message bound to it shows in the AP save (the HD message reads it again every frame:
     `docs/re/memory.md`, "Translated messages"), so walking into another cell or pausing during
     the popup leaves its name, unless another stand-in of that record is within reach, whose
     name the next pickup needs (stand-in test only, not run in game); Intel Chip into 49 while the Area
@@ -1517,8 +1517,9 @@ unload.
   picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
   widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's lines
   centered, and through the game into ItemNames, not where the spaces would pass its room, and
-  held while its pickup message shows (another cell, paused; another of its record within
-  reach takes it);
+  held while its pickup message shows (another cell, paused; not with no save loaded; another
+  of its record within reach takes it, even with one of the other nearer; a language change
+  names the new table);
   the mixed case in English(HD) and capitals in French and the default English for a client's
   notice, the helper's own, a label and the scanner's line; a popup through the game measured
   with its icon's width, a long notice wrapped), and

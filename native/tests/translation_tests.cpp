@@ -913,21 +913,26 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     in_cell(6);
     frames(game, 1);
     check(entry_text(g_items, 47) == picked, "held again for the next pickup");
-    // Another Scrap Energy stand-in, for (8, 2), within reach: its name, for the next pickup.
+    // Another Scrap Energy stand-in, for (8, 2), within reach, a Scrap Chunk one for (5, 2)
+    // nearer: 47 named for its own, for the next pickup.
     field<double>(0x1100) = 1000;
     field<double>(0x1108) = 600;
-    BYTE* o = g_item_pool;
-    std::memset(o, 0, 0x3B0);
-    put<int32_t>(o, 0x1D8, 77);
-    put<int16_t>(o, 0x1E8, 47);
-    o[0x3AC] = 2;
-    o[0x3AD] = 8;
-    put<double>(o, 0x40, 1010.0);
-    put<double>(o, 0x48, 610.0);
+    auto object = [](int k, int16_t record, int column, double x) {
+        BYTE* o = g_item_pool + k * 0x3B0;
+        std::memset(o, 0, 0x3B0);
+        put<int32_t>(o, 0x1D8, 77 + k);
+        put<int16_t>(o, 0x1E8, record);
+        o[0x3AC] = 2;
+        o[0x3AD] = static_cast<BYTE>(column);
+        put<double>(o, 0x40, x);
+        put<double>(o, 0x48, 600.0);
+    };
+    object(0, 47, 8, 1040.0);
+    object(1, 48, 5, 1005.0);
     frames(game, 1);
     check(entry_text(g_items, 47).find(L"BOOMERANG") != std::wstring::npos,
           "one of that record within reach: named for it");
-    std::memset(o, 0, 0x3B0);
+    std::memset(g_item_pool, 0, 2 * 0x3B0);
     end_message(0);
     frames(game, 1);
     check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos &&
@@ -937,6 +942,27 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     frames(game, 1);
     check(entry_text(g_items, 47) == L"Scrap Energy", "paused with the message ended: put back");
     g_menu = 0;
+
+    // Back at the title with the message still bound: no save, so nothing held.
+    in_cell(5);
+    frames(game, 1);
+    pick_up(47, 47);
+    g_menu = 1;
+    g_save_loaded = 0xFF;
+    frames(game, 1);
+    check(entry_text(g_items, 47) == L"Scrap Energy", "no save loaded: put back");
+    g_save_loaded = 3;
+    g_menu = 0;
+
+    // Another translation picked while it shows: its table named for the player's cell, not left
+    // the translation's own.
+    end_message(0);
+    frames(game, 1);
+    pick_up(48, 47);
+    load_translation("French", true, L" (FR)");
+    frames(game, 1);
+    check(entry_text(g_items, 47) != L"Scrap Energy (FR)" && !entry_text(g_items, 47).empty(),
+          "a language change: the new table named too");
     game.put_back_all(&no_callback);
     reset_translation();
 }
