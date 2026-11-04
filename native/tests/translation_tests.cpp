@@ -889,6 +889,23 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     frames(game, 1);
     check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos,
           "a message of another entry holds nothing");
+    // SmallText 47 (kind 0), and an object bound to an earlier message of the slot: neither holds.
+    in_cell(5);
+    frames(game, 1);
+    pick_up(44, 47);
+    put<int32_t>(hd_object(0), 0x210, 0);
+    in_cell(6);
+    frames(game, 1);
+    check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos,
+          "another kind's entry 47 holds nothing");
+    in_cell(5);
+    frames(game, 1);
+    pick_up(45, 47);
+    put<int32_t>(slot(0), 0x1D8, 46);  // the slot's next message, not bound
+    in_cell(6);
+    frames(game, 1);
+    check(entry_text(g_items, 47).find(L"MASTER SWORD") == std::wstring::npos,
+          "an object bound to an earlier message holds nothing");
     end_message(0);
     in_cell(5);
     frames(game, 1);
