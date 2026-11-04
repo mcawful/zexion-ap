@@ -100,6 +100,15 @@ bool shows_translated(BYTE* object) {
            read(object, hdlabel::kCount, count) && count > 0 && !pixel_glyphs_shown(object);
 }
 
+// A glyph shown or hidden, where it reads otherwise and can be written.
+void set_shown(BYTE* g, bool visible) {
+    uint8_t now = 0;
+    if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
+        writable(g, sprite::kSize)) {
+        g[sprite::kVisible] = visible ? 1 : 0;
+    }
+}
+
 // Each of the line's translated glyphs shown or hidden.
 void show_translated(BYTE* object, bool visible) {
     int32_t count = 0, capacity = 0;
@@ -108,14 +117,7 @@ void show_translated(BYTE* object, bool visible) {
         !translated_list(object, capacity, count, list)) {
         return;
     }
-    for (int32_t i = 0; i < count; ++i) {
-        BYTE* g = glyph_at(list, i);
-        uint8_t now = 0;
-        if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
-            writable(g, sprite::kSize)) {
-            *(g + sprite::kVisible) = visible ? 1 : 0;
-        }
-    }
+    for (int32_t i = 0; i < count; ++i) set_shown(glyph_at(list, i), visible);
 }
 
 // The line in the translation's font (`hd`: built each time it is not shown so, as with the
@@ -139,13 +141,7 @@ void show(BYTE* object, size_t length, bool visible) {
     }
     BYTE* g[kMaxGlyphs] = {};
     if (!glyphs_of(object, static_cast<int32_t>(length), g)) return;
-    for (size_t i = 0; i < length; ++i) {
-        uint8_t now = 0;
-        if (read(g[i], sprite::kVisible, now) && now != (visible ? 1 : 0) &&
-            writable(g[i], sprite::kSize)) {
-            *(g[i] + sprite::kVisible) = visible ? 1 : 0;
-        }
-    }
+    for (size_t i = 0; i < length; ++i) set_shown(g[i], visible);
 }
 
 // Makes one line as the title routine makes the copyright line, styled as `model` (the game's
