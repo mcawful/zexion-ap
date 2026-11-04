@@ -34,9 +34,6 @@ constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' s
 constexpr int kScanFrames = 30;
 // Frames between two looks for the Feats of Natu screen (feats_screen_note).
 constexpr int kNoteFrames = 7;
-// The scanner's message, Text entry 12: in a translation, SmallText entry 12 (the files' entries
-// match the Text table's one for one), which the message event reads every frame (0x10F81).
-constexpr int kScanEntry = 12;
 // The Area Map's name while it is an Intel Chip, in a translation (intel.h's, as text reads).
 constexpr wchar_t kIntelHdName[] = L"Intel Chip";
 // The most characters of a translated item name read for a popup when its room is not known.
@@ -778,7 +775,9 @@ void Game::watch_translation() {
             }
         }
         if (intel_.restyled()) want[{Table::kItems, kAreaMapItem}] = kIntelHdName;
-        if (scan_.written()) want[{Table::kSmall, kScanEntry}] =
+        // SmallText 12 is the Text table's entry 12 (the files match it one for one), which the
+        // message event reads every frame (0x10F81).
+        if (scan_.written()) want[{Table::kSmall, kScanTextEntry}] =
                 hd_text(mixed_case() ? scan_line_ : scan_line_upper(scan_line_));
         // A stand-in's name held as written while its pickup message shows in the AP save, since
         // the message reads it every frame: neither the next cell's name nor, paused, the game's

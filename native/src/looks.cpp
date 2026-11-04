@@ -78,6 +78,20 @@ BYTE* stand_ins_palette(const GameAddresses& at) {
 // The palette object the helper draws them in (26), or null.
 BYTE* own_palette(const GameAddresses& at) { return pointer_at(at.palette_table, kOwnPalette * 8); }
 
+// With `entry` (a look kept for a spawn) set: `act` on a copy of `object`'s first `size` bytes;
+// one that does not read is forgotten.
+template <typename Entry, typename Act>
+void act_live(BYTE* object, size_t size, Entry& entry, Act act) {
+    if (entry.spawn == 0) return;
+    BYTE seen[obj::kGeneralSize];
+    static_assert(obj::kItemSize <= sizeof(seen));
+    if (size > sizeof(seen) || !safe_read(object, seen, size)) {
+        entry = {};
+        return;
+    }
+    act(seen);
+}
+
 // `palette` is a stand-in's: the game's (8) or the helper's (26).
 bool stand_in_palette(const GameAddresses& at, const BYTE* palette) {
     return palette != nullptr &&
@@ -114,13 +128,7 @@ void ItemLooks::uncolor(BYTE* object, const BYTE* seen, Colored& c, BYTE* game, 
 
 void ItemLooks::uncolor_live(BYTE* object, size_t size, Colored& c, BYTE* game,
                              const BYTE* own) {
-    if (c.spawn == 0) return;
-    BYTE seen[obj::kGeneralSize];
-    if (size > sizeof(seen) || !safe_read(object, seen, size)) {
-        c = {};
-        return;
-    }
-    uncolor(object, seen, c, game, own);
+    act_live(object, size, c, [&](const BYTE* seen) { uncolor(object, seen, c, game, own); });
 }
 
 int ItemLooks::colored() const {
@@ -203,13 +211,7 @@ void ItemLooks::unhide(BYTE* object, const BYTE* seen, Hidden& h) {
 }
 
 void ItemLooks::unhide_live(BYTE* object, Hidden& h) {
-    if (h.spawn == 0) return;
-    BYTE seen[obj::kGeneralSize];
-    if (!safe_read(object, seen, sizeof(seen))) {
-        h = {};
-        return;
-    }
-    unhide(object, seen, h);
+    act_live(object, obj::kGeneralSize, h, [&](const BYTE* seen) { unhide(object, seen, h); });
 }
 
 int ItemLooks::item_at(uint8_t row, uint8_t column) const {
@@ -250,14 +252,9 @@ void ItemLooks::undress(BYTE* object, const BYTE* seen, Dressed& d, BYTE* base,
 
 void ItemLooks::undress_live(BYTE* object, size_t size, Dressed& d, BYTE* base,
                              BYTE* standin_palette, bool frame_shown) {
-    if (d.spawn == 0) return;
-    BYTE seen[obj::kGeneralSize];
-    static_assert(obj::kItemSize <= sizeof(seen));
-    if (size > sizeof(seen) || !safe_read(object, seen, size)) {
-        d = {};
-        return;
-    }
-    undress(object, seen, d, base, standin_palette, frame_shown);
+    act_live(object, size, d, [&](const BYTE* seen) {
+        undress(object, seen, d, base, standin_palette, frame_shown);
+    });
 }
 
 void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
@@ -342,20 +339,14 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     // Any dressed, hidden or colored earlier and not found now is put back if it is still ours.
     BYTE* own = own_palette(at);
     for (int slot = 0; slot < kObjectSlots; ++slot) {
-        if (colored_flipped_[slot].spawn != 0 &&
-            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
-            uncolor_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
-                         colored_flipped_[slot], standin_palette, own);
+        if (std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) != flipped_slots_.end()) {
+            continue;
         }
-        if (hidden_[slot].spawn != 0 &&
-            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
-            unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
-        }
-        if (flipped_dressed_[slot].spawn != 0 &&
-            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
-            undress_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
-                         flipped_dressed_[slot], base, standin_palette, true);
-        }
+        BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+        uncolor_live(object, obj::kGeneralSize, colored_flipped_[slot], standin_palette, own);
+        unhide_live(object, hidden_[slot]);
+        undress_live(object, obj::kGeneralSize, flipped_dressed_[slot], base, standin_palette,
+                     true);
     }
 }
 

@@ -26,11 +26,10 @@ int line_x(size_t length) { return 160 - 4 * static_cast<int>(length); }
 constexpr ptrdiff_t kListHead = 0x18, kListTail = 0x20;
 constexpr ptrdiff_t kOwner = 0x00, kNext = 0x10, kPrevious = 0x18;
 constexpr int kMaxObjects = 4096;
-// A text object's own fields (0x92300): past label:: (game_layout.h), 0x1E4 to 0x1EC (the last
-// the count shown), and its tag (0x178, 0x180).
-constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8, kTextShown = 0x1EC;
+// A text object's own fields (0x92300): past label:: (game_layout.h), 0x1E4 and 0x1E8 (the
+// count shown and the size are hdlabel::'s, translation.h), and its tag (0x178, 0x180).
+constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8;
 constexpr ptrdiff_t kTag = 0x178, kTagNumber = 0x180;
-constexpr size_t kTextSize = 0x268;
 constexpr int32_t kTextColumnsAll = 32;
 constexpr int32_t kCopyright = 0xA9;  // the font's ©
 // The game's line: © then "2025 GALLANT LEAF" (18 glyphs); the year is not checked.
@@ -176,7 +175,7 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
     BYTE* t = reinterpret_cast<New>(a.text_new_fn)(text.c_str(), length, columns);
     BYTE* g[kMaxGlyphs] = {};
     BYTE* owner = reinterpret_cast<BYTE*>(1);
-    if (t == nullptr || !writable(t, kTextSize) || !glyphs_of(t, length, g) ||
+    if (t == nullptr || !writable(t, hdlabel::kSize) || !glyphs_of(t, length, g) ||
         !read(t, kOwner, owner)) {
         return "no text object";  // nothing in the list yet: the game's heap keeps it
     }
@@ -199,7 +198,7 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
         put(t, kOwner, list);
     }
     reinterpret_cast<Link>(a.text_link_fn)(t);
-    put<int32_t>(t, kTextShown, length);
+    put<int32_t>(t, hdlabel::kPixelShown, length);
     for (int32_t i = 0; i < length; ++i) {
         if (!writable(g[i], sprite::kSize)) continue;
         *(g[i] + sprite::kVisible) = 1;
