@@ -180,27 +180,25 @@ Zexion:
     # RETURN HOME WITH THE DISKS?. The seed makes sure you can reach the Landing Pod. The keys are
     # not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
     # take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
-    # start_inventory): the gates then take no keys, only two of them visited (checked in game).
-    # The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
-    # you how many disks you need.
+    # start_inventory): the gates then take no keys, only two of them visited. The scanner room
+    # at Vallahar 6,8, which shows where the keys are in the normal game, tells you how many
+    # disks you need.
     core: 50
     os_install_disks: 0
 
   os_install_disks:
     # OS Install Disks goal only: how many disks are placed. They replace filler items: the
     # Scrap first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips
-    # (or Area Maps), then Energy Shields. Each seed draws its filler as the game does, so the
-    # numbers vary: Easy and Standard draw 27 filler items, on average about 17 Scrap, 5 Area
-    # Maps and 5 Energy Shields; OHKO draws 32, 4 of them for the locations it leaves out. With
-    # the keys' places the 30 disks always fit. In Custom the numbers are set by your pool.
-    # Excluded locations can hold only filler items (Scrap and Area Maps), of which a seed keeps
-    # its drawn ones and the keys' four places, less the disks: 26 on average but drawn per seed,
-    # as few as 18, so many excluded locations can stop one seed and not another. Exclude more
-    # than the seed keeps, and generation stops with an error saying so, unless the other
-    # players' filler makes up the difference. Where
-    # there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a box
-    # and nine Scrap Metal, as the game makes filler when it runs short. The disks placed and any
-    # in start_inventory can be 99 at most, the most the pause screen and the file select show.
+    # (or Area Maps), then Energy Shields. Each seed draws its filler as the game does: Easy and
+    # Standard 27 filler items, on average about 17 Scrap, 5 Area Maps and 5 Energy Shields, and
+    # OHKO 32, 4 of them for the locations it leaves out; in Custom your pool sets them. The 30
+    # disks always fit. Excluded locations can hold only Scrap and Area Maps, of which a seed has
+    # about 26 with the keys' places, as few as 18, less the disks, so many excluded locations
+    # can stop one seed and not another, with an error saying so, unless the other players'
+    # filler makes up the difference. Where there is not enough filler for the disks, ten Missile
+    # Containers or Mega Bombs become a box and nine Scrap Metal, as the game makes filler when it
+    # runs short. The disks placed and any in start_inventory can be 99 at most, the most the
+    # pause screen and the file select show.
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 1
