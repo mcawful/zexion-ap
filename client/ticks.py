@@ -59,12 +59,12 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
     except native.HelperError as exc:
         mismatch = isinstance(exc, native.ModMismatch)
-        if mismatch and not dll.is_file():
+        if mismatch and not dll.is_file() and not isinstance(exc, native.NotUnloaded):
             # Only the player can fix it, with Zexion closed: not tried again until it restarts.
             ctx.mismatched(exc)
             return False
-        # Tried every 30 s (with a build of the client's own, a rebuild or an old helper that
-        # unloads on a later try fixes a mismatch): each line said again only when it changes.
+        # Tried every 30 s (a rebuild of the client's own build, or an old helper that unloads
+        # on a later try, fixes a mismatch): each line said again only when it changes.
         line = state.helper_failed(exc)
         if line is not None and ctx.said("helper", line):
             logger.warning(line)
