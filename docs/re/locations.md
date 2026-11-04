@@ -156,7 +156,7 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   progression item (not another Zexion player's supplies, which stay 47, minor on the map as the
   game marks this player's own: `world.important_elsewhere`) and for this world's own OS
   Install Disk, which the game must not hand out
-  (slot data `stand_in` and `stand_in_progression`; the helper shows them as Archipelago items,
+  (`client/ids.py`'s `STAND_IN` and `STAND_IN_PROGRESSION`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` or `start_inventory_from_pool` (with Guns First, a second copy of a

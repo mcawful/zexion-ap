@@ -251,11 +251,11 @@ class ZexionWorld(World):
             )
         if not is_custom:
             return menu
-        unsupported = []
         if menu.amounts[custom.START_BOMBS]:
-            unsupported.append("starting_mega_bombs above 0 (the client cannot give them)")
-        if unsupported:
-            raise OptionError(f"{who}: not supported yet: {'; '.join(unsupported)}")
+            raise OptionError(
+                f"{who}: not supported yet: starting_mega_bombs above 0 (the client cannot give "
+                "them)"
+            )
         found = custom.problems(menu)
         if found:
             raise OptionError(
@@ -387,27 +387,8 @@ class ZexionWorld(World):
             if len(reached) >= min(START_REACH, len(mine)):
                 return
             empty = [loc for loc in reached if loc.item is None]
-            step = self.opening_step(state, mine, len(reached), progitempool, empty)
+            step, why = self.opening_step(state, mine, len(reached), progitempool, empty)
             if not step:
-                if not empty:
-                    why = "every one of those locations is excluded or already filled (plando)"
-                elif self.openers_alone(state, mine, len(reached), progitempool):
-                    why = (
-                        "every item that reaches more alone is kept out of those locations "
-                        "(non_local_items or an item rule)"
-                    )
-                elif not self.openers_together(state, mine, len(reached), progitempool):
-                    why = "no item reaches more, alone or with another"
-                elif len(empty) < 2:
-                    why = (
-                        "no item reaches more alone, and too few of those locations are free "
-                        "(not excluded or filled by plando) for two that do together"
-                    )
-                else:
-                    why = (
-                        "no item reaches more alone, and every two that do together are kept "
-                        "out of those locations (non_local_items or an item rule)"
-                    )
                 logging.warning(
                     f"Zexion ({self.player_name}): the starting items reach {len(reached)} of "
                     f"their locations, fewer than {START_REACH}, and {why}; Archipelago's fill "
@@ -427,36 +408,60 @@ class ZexionWorld(World):
         reached: int,
         pool: list[Item],
         empty: list[Location],
-    ) -> list[tuple[Item, Location]]:
+    ) -> tuple[list[tuple[Item, Location]], str]:
         """Items in ``pool`` of this player's, or of an item link it is in, that, collected into
         ``state``, reach more of ``mine`` than ``reached``, each with a location of ``empty``
         that can take it: one drawn at random among those that do alone, or else a pair drawn
-        among those that do together, in two locations; empty when none does."""
+        among those that do together, in two locations. With none, an empty step and why, for
+        the warning."""
         first = self.by_kind(pool)
         spots = {
             key: [loc for loc in empty if loc.can_fill(state, items[0])]
             for key, items in first.items()
         }
-        keys = sorted(key for key in first if spots[key])
 
         def opens(items: list[Item]) -> bool:
             return self.opens(state, mine, reached, items)
 
-        alone = [key for key in keys if opens(first[key][:1])]
+        alone = [key for key in sorted(first) if spots[key] and opens(first[key][:1])]
         if alone:
             key = self.random.choice(alone)
-            return [(first[key][0], self.random.choice(spots[key]))]
+            return [(first[key][0], self.random.choice(spots[key]))], ""
+        if not empty:
+            return [], "every one of those locations is excluded or already filled (plando)"
+        # Every two that reach more together, then those that two locations can take: the same
+        # pairs in the same order as pairs_of over the kinds with a location alone would give.
+        together = [(a, b, items) for a, b, items in pairs_of(first, sorted(first)) if opens(items)]
         pairs = [
             (a, b, items)
-            for a, b, items in pairs_of(first, keys)
-            if len({id(loc) for loc in spots[a] + spots[b]}) >= 2 and opens(items)
+            for a, b, items in together
+            if spots[a] and spots[b] and len({id(loc) for loc in spots[a] + spots[b]}) >= 2
         ]
-        if not pairs:
-            return []
-        a, b, (one, two) = self.random.choice(pairs)
-        first_spot = self.random.choice([s for s in spots[a] if any(t is not s for t in spots[b])])
-        second_spot = self.random.choice([t for t in spots[b] if t is not first_spot])
-        return [(one, first_spot), (two, second_spot)]
+        if pairs:
+            a, b, (one, two) = self.random.choice(pairs)
+            first_spot = self.random.choice(
+                [s for s in spots[a] if any(t is not s for t in spots[b])]
+            )
+            second_spot = self.random.choice([t for t in spots[b] if t is not first_spot])
+            return [(one, first_spot), (two, second_spot)], ""
+        if any(opens(items[:1]) for key, items in first.items() if not spots[key]):
+            why = (
+                "every item that reaches more alone is kept out of those locations "
+                "(non_local_items or an item rule)"
+            )
+        elif not together:
+            why = "no item reaches more, alone or with another"
+        elif len(empty) < 2:
+            why = (
+                "no item reaches more alone, and too few of those locations are free "
+                "(not excluded or filled by plando) for two that do together"
+            )
+        else:
+            why = (
+                "no item reaches more alone, and every two that do together are kept "
+                "out of those locations (non_local_items or an item rule)"
+            )
+        return [], why
 
     def by_kind(self, pool: list[Item]) -> dict[tuple[int, str], list[Item]]:
         """The progression items in ``pool`` of this player's, or of an item link it is in, by
@@ -482,23 +487,6 @@ class ZexionWorld(World):
         if any(item.player != self.player for item in items):
             more.sweep_for_advancements()  # a link's items reach its players through events
         return sum(1 for loc in mine if loc.can_reach(more)) > reached
-
-    def openers_alone(
-        self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
-    ) -> bool:
-        """Whether an item in ``pool`` (``by_kind``) reaches more alone, wherever it could be
-        placed: for the warning when none can be."""
-        kinds = self.by_kind(pool).values()
-        return any(self.opens(state, mine, reached, items[:1]) for items in kinds)
-
-    def openers_together(
-        self, state: CollectionState, mine: list[Location], reached: int, pool: list[Item]
-    ) -> bool:
-        """Whether two items in ``pool`` (``by_kind``) reach more together, wherever they could
-        be placed: for the warning when none can be."""
-        kinds = self.by_kind(pool)
-        pairs = pairs_of(kinds, sorted(kinds))
-        return any(self.opens(state, mine, reached, items) for _, _, items in pairs)
 
     @property
     def disc_hunt(self) -> bool:
@@ -811,9 +799,6 @@ class ZexionWorld(World):
             "amounts": list(self.menu.amounts),
             "options": {str(t): v for t, v in self.menu.checked().items()},
             "menu": self.menu_setup(),
-            # Other players' items are this item in location_items (client/aplabels.py).
-            "stand_in": FOREIGN,
-            "stand_in_progression": FOREIGN_PROGRESSION,
             "death_link": bool(self.options.death_link),
             "allow_assists": bool(self.options.allow_assists),
             "hints": self.hint_targets() if self.options.area_map_hints else [],

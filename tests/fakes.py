@@ -122,8 +122,6 @@ def slot_data(**changes) -> dict:
             "settings": [0] * 64,
             "second_target": [0, 20, 509],
         },
-        "stand_in": 47,
-        "stand_in_progression": 48,
         "hints": [],
         "allow_assists": True,
         "intel_chip": False,
