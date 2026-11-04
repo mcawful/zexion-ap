@@ -1131,7 +1131,10 @@ Not seen in game:
   play (13SecretCode is taken at the title only), so this is tested only with the stand-in;
 - the load test: a fully explored AP save loaded from the file select earning no 15Explorer
   (by disassembly and the stand-in only; the owner's 15Explorer is earned already);
-- the note over a bottom row of 6 (by disassembly and stand-in tests only).
+- the note over a bottom row of 6 (by disassembly and stand-in tests only);
+- the client's warnings (`state.FeatsCheck`, `ticks.feats_tick`): their decisions on stand-in
+  tests, the asking itself not under test. They could not be arranged on 2026-10-27: a connected
+  client gives the helper its seed's file, so the guard is on in this seed's save.
 
 ### Translations
 

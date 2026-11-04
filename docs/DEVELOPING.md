@@ -276,12 +276,11 @@ To release:
 
 What `tools/build_apworld.py` writes into `dist/` and what it refuses: [`CLAUDE.md`](../CLAUDE.md),
 "Releases and versions". Run locally, rebuild `native/` first after a checkout that touched it.
-The apworld's `archipelago.json` is
-the world's plus the two container keys Archipelago's own builder adds, `version` 7 and
-`compatible_version` 7 (`CONTAINER_KEYS`). Without `compatible_version`, AP 0.6.8's
-`APContainer.read_contents` fails, its apworld loader logs "Invalid or missing manifest file",
-and the world's `world_version` and `minimum_ap_version` are never read (read in AP 0.6.8's
-`worlds/Files.py` and `worlds/__init__.py`, 2026-11-04).
+The apworld's `archipelago.json` is the world's plus the two container keys Archipelago's own
+builder adds, `version` 7 and `compatible_version` 7 (`CONTAINER_KEYS`). Without
+`compatible_version`, AP 0.6.8's `APContainer.read_contents` fails, its apworld loader logs
+"Invalid or missing manifest file", and the world's `world_version` and `minimum_ap_version` are
+never read (read in AP 0.6.8's `worlds/Files.py` and `worlds/__init__.py`, 2026-11-04).
 
 Players download the latest release from the
 [Releases page](https://github.com/mcawful/zexion-ap/releases).
