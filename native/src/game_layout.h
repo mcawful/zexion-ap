@@ -62,7 +62,7 @@ constexpr uint64_t kFlagCount = 0x9C4;
 
 // The flags the helper reads, one byte each: 39, set once the scanner has said how many disks
 // there are (docs/re/memory.md, "The scanner"); 250, set only by the ending ("The ending: flag
-// 250").
+// 250"). looks.cpp also reads 154, set by R'Talva X34 Y51's boss (its own kMarkerFlag).
 namespace flag {
 constexpr int kScannerTold = 39;
 constexpr int kEnding = 250;
@@ -179,6 +179,10 @@ constexpr size_t kItemSize = 0x3B0;
 constexpr ptrdiff_t kItemRow = 0x3AC, kItemColumn = 0x3AD;
 constexpr size_t kGeneralSize = 0x5C8;
 constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211;
+// A general object's first script state (16-bit): its type's +0x144, which the spawn copies
+// (0x4521E to 0x45226); R'Talva X34 Y51's marker, type 1146, has 8210 (docs/re/memory.md,
+// "Other players' items", "A marker on frame 63").
+constexpr ptrdiff_t kFirstState = 0x32E;
 }  // namespace obj
 
 // Item records: 51 of 100 bytes behind [item_records] (docs/re/memory.md, "Other players'

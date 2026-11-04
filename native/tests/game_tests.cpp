@@ -868,6 +868,104 @@ void test_flipped_items_show_as_themselves() {
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 }
 
+// R'Talva X34 Y51's marker (type 1146: first state 8210, frame 63, palette 4) is hidden (its
+// shown byte, +0x120, cleared) every frame while the stand-ins are restyled and flag 154 is clear;
+// its frame, frame list and palette stay the game's. It is shown again at once, whatever its frame,
+// once the flag is set or it leaves the logo frame (after the boss, location 81's reward), and on
+// restore. It is no stand-in for naming them; a stand-in beside it keeps the logo, and another
+// type on a logo frame in its own palette (a boss's drop, type 1998) is left alone.
+void test_the_marker_hidden() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    g_flags[154] = 0;
+    auto object = [](int k, int32_t spawn, int32_t frame, int palette, int16_t first) {
+        put_flipped(k, spawn, frame, 34, 51);
+        put(general_slot(k), 0x198, g_palette_table[palette]);
+        put<int16_t>(general_slot(k), 0x1A0, static_cast<int16_t>(palette));
+        put<int16_t>(general_slot(k), 0x32E, first);
+        general_slot(k)[0x120] = 1;
+    };
+    auto marker = [&](int k, int32_t spawn, int32_t frame) { object(k, spawn, frame, 4, 8210); };
+    auto shown = [](int k) { return general_slot(k)[0x120]; };
+    marker(20, 601, 63);
+    put_flipped(21, 602, 63, 6, 2);  // a stand-in for another game's item
+    general_slot(21)[0x120] = 1;
+    object(23, 801, 63, 12, 13599);  // a boss's drop showing an AP item in its own palette
+    std::map<int, zap::Label> labels;
+    zap::parse_labels(kBoxAndApItem, labels);
+    game.set_labels(labels);
+    player_cell(34, 51);
+    game.watch_ap_items();
+    check(shown(20) == 0 && general_ptr(20, 0x1B0) == g_frames + 63 * 0x38 &&
+              general_ptr(20, 0x1A8) == g_frames && general_ptr(20, 0x198) == g_palette_table[4],
+          "the marker hidden, its frame, frame list and palette the game's");
+    check(shown(21) == 1 && general_ptr(21, 0x198) == g_palette_table[8], "a stand-in keeps the logo");
+    check(shown(23) == 1, "another type on a logo frame is left alone");
+    check(game.looks().hidden_markers() == 1, "one marker hidden");
+    const std::vector<zap::StandInSeen> seen = game.stand_ins_seen(g_item_pool, g_frames);
+    check(seen.size() == 2, "the marker is no stand-in for names; the others count");
+
+    general_slot(20)[0x120] = 1;  // the game shows it again (a blink after a hit)
+    game.watch_ap_items();
+    check(shown(20) == 0, "hidden again the next frame, not at the next scan");
+
+    g_flags[154] = 1;  // the boss beaten: the marker goes on
+    game.watch_ap_items();
+    check(shown(20) == 1 && game.looks().hidden_markers() == 0, "shown again once flag 154 is set");
+    game.watch_ap_items();
+    check(shown(20) == 1, "and left shown");
+
+    // Its script moves it to another frame (the reward) while hidden: shown again at once.
+    g_flags[154] = 0;
+    game.watch_ap_items();
+    check(shown(20) == 0, "hidden while it waits");
+    put<int32_t>(general_slot(20), 0x1C4, 19);
+    game.watch_ap_items();
+    check(shown(20) == 1 && game.looks().hidden_markers() == 0,
+          "off the logo frame: shown again the next frame, on its new frame");
+
+    // A marker the game hid itself is not the helper's to show.
+    marker(22, 701, 63);
+    general_slot(22)[0x120] = 0;
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(game.looks().hidden_markers() == 0, "one the game hid is not taken as hidden");
+    game.restore_ap_items();
+    check(shown(22) == 0, "nor shown on restore");
+
+    // Another object in its slot: not written.
+    game.set_labels(labels);
+    marker(20, 603, 63);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(20) == 0, "hidden");
+    marker(20, 604, 63);
+    general_slot(20)[0x120] = 0;
+    game.restore_ap_items();
+    check(shown(20) == 0, "another spawn is not shown");
+
+    game.set_labels(labels);
+    marker(20, 605, 63);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(20) == 0, "hidden");
+    game.restore_ap_items();
+    check(shown(20) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
+
+    // A multiworld with no other Zexion player: labels, none of them an item to dress (no "@N").
+    std::map<int, zap::Label> plain;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", plain);
+    game.set_labels(plain);
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));  // no item-pool stand-in dressed either
+    marker(20, 606, 63);
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(20) == 0 && game.looks().hidden_markers() == 1,
+          "hidden with no Zexion item to dress");
+    g_flags[154] = 1;
+    game.watch_ap_items();
+    check(shown(20) == 1, "and shown again on the flag");
+    g_flags[154] = 0;
+    game.restore_ap_items();
+}
+
 void test_zexion_items_show_as_themselves() {
     zap::Game game;
     ready(game);
@@ -1981,6 +2079,7 @@ int main() {
     test_zexion_item_labels();
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
+    test_the_marker_hidden();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_shield();

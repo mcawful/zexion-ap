@@ -1414,6 +1414,7 @@ void Game::watch_ap_items() {
     // Other Zexion players' items shown as themselves, only while the stand-ins are ours.
     if (ap_items_.restyled()) {
         looks_.scan(at_, base);
+        looks_.hide_marker(at_, base);  // whatever the labels: the logo is painted
         looks_.apply(at_, pool, base);
     } else {
         looks_.restore(at_);
@@ -1452,12 +1453,15 @@ std::vector<StandInSeen> Game::stand_ins_seen(const BYTE* pool, BYTE* base) cons
         }
     }
     if (at_.object_pool != nullptr && base != nullptr) {
-        BYTE o[obj::kGeneralRow + 2];
+        BYTE o[obj::kFirstState + 2];  // through the cell (+0x210) and the first state
+        static_assert(obj::kFirstState > obj::kGeneralColumn);
+        BYTE* standin_palette = ItemLooks::stand_ins_palette(at_);
         for (int slot : looks_.flipped_slots()) {
-            // Checked again: the list is from the last scan, up to 30 frames ago.
+            // Checked again: the list is from the last scan, up to 30 frames ago. A marker is no
+            // stand-in (ItemLooks::is_marker).
             if (slot < 0 || slot >= ItemLooks::kObjectSlots ||
                 !safe_read(at_.object_pool + slot * obj::kGeneralSize, o, sizeof(o)) ||
-                !ItemLooks::shows_stand_in(o, base)) {
+                !ItemLooks::shows_stand_in(o, base) || looks_.is_marker(slot, o, standin_palette)) {
                 continue;
             }
             // A logo frame (shows_stand_in): which stand-in it is.

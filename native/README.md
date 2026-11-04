@@ -560,9 +560,27 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
 - **Safety:** it writes only stand-ins with the template's base and palette 8, or ones it
-  dressed (the same spawn).
+  dressed (the same spawn); and, for R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared
+  and set again, only while it is the spawn it hid.
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
-  every 31st frame call finds any live object drawing a logo frame and dresses it the same way.
+  every 31st frame call finds any live object drawing a logo frame and dresses it the same way
+  (R'Talva X34 Y51's marker, below, is hidden instead).
+- **The marker:** R'Talva X34 Y51's marker (type 1146, known by its first script state, 8210, at
+  `+0x32E`) draws logo frame 63 in its own palette while it waits for the boss (flag 154 clear),
+  empty in the game's art, so it showed the helper's logo swaying in the gate's center; after the
+  boss it is location 81's reward display (`docs/re/memory.md`, "Other players' items"). While
+  the stand-ins are restyled (with any labels, other Zexion players' items among them or not) and
+  flag 154 is clear, every frame call hides it (`ItemLooks::hide_marker`, apart from the dressing) (clears its shown
+  byte, `+0x120`, which the draw loop skips and its own update leaves; its frame, frame list and
+  palette stay the game's), but only if the game shows it. It is not counted as a stand-in for
+  naming them. It is shown again, on whatever frame, the frame call after flag 154 is set or it
+  leaves the logo frame (its reward), when the stand-ins are put back and on an unload, if it is
+  still that spawn and still hidden. Other objects on a logo frame in their own palette (a boss's
+  drop showing another game's item, type 1998) are left showing the logo. The marker can show
+  the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
+  in a hit's blink. Hiding it by that byte worked in game
+  (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: stand-in tests
+  only, not run in game yet.
 - **Put back:** when the label goes, and with the rest.
 
 Working in game: 2026-10-23 ("Live item objects").
@@ -1375,7 +1393,9 @@ unload.
   (one that fails held), the build check and the pipe.
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
-  (an AP save's only, each icon once, by item ID, up to 26), the popup queue, the
+  (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
+  (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
+  frame and on restore; no stand-in for names; another type left alone), the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a

@@ -14,11 +14,8 @@ namespace {
 constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
-
-// The stand-ins' palette object, or null.
-BYTE* stand_ins_palette(const GameAddresses& at) {
-    return pointer_at(at.palette_table, kStandInPalette * 8);
-}
+constexpr int16_t kMarkerFirstState = 8210;  // type 1146's first state (Enemies, B1)
+constexpr int kMarkerFlag = 154;             // its wait ends once set (state 8210's branch)
 
 // How item `item` looks at `clock`: the frame its record's animation is on, and its palette.
 struct Look {
@@ -49,6 +46,18 @@ bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t c
     return true;
 }
 
+// Which stand-ins' records the helper has restyled now (one logo frame each): their logos are
+// painted, and their objects may be dressed.
+void restyled_stand_ins(const BYTE* records, bool (&ours)[kStandInCount]) {
+    for (int i = 0; i < kStandInCount; ++i) {
+        BYTE r[record::kSize];
+        ours[i] = records != nullptr &&
+                  safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
+                  field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
+                  field<int16_t>(r, record::kFrames) == 1;
+    }
+}
+
 // The object drawn in the look's palette, if it is not already (`seen`: its copy).
 void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
     if (field<BYTE*>(seen, sprite::kPalette) == look.palette_object) return;
@@ -57,6 +66,45 @@ void put_palette(BYTE* object, const BYTE* seen, const Look& look) {
 }
 
 }  // namespace
+
+BYTE* ItemLooks::stand_ins_palette(const GameAddresses& at) {
+    return pointer_at(at.palette_table, kStandInPalette * 8);
+}
+
+bool ItemLooks::is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const {
+    return slot >= 0 && slot < kObjectSlots && flipped_dressed_[slot].spawn == 0 &&
+           standin_palette != nullptr && field<BYTE*>(object, sprite::kPalette) != standin_palette &&
+           field<int16_t>(object, obj::kFirstState) == kMarkerFirstState;
+}
+
+bool ItemLooks::marker_waits(const GameAddresses& at) {
+    uint8_t flag = 1;
+    // The game's branch reads the flag as a signed byte and goes on when it is above 0.
+    return read(at.flags, kMarkerFlag, flag) && static_cast<int8_t>(flag) <= 0;
+}
+
+int ItemLooks::hidden_markers() const {
+    return static_cast<int>(std::count_if(hidden_.begin(), hidden_.end(),
+                                          [](const Hidden& h) { return h.spawn != 0; }));
+}
+
+void ItemLooks::unhide(BYTE* object, const BYTE* seen, Hidden& h) {
+    if (h.spawn == 0) return;
+    if (field<int32_t>(seen, obj::kSpawn) == h.spawn && seen[sprite::kVisible] == 0) {
+        put<BYTE>(object, sprite::kVisible, 1);
+    }
+    h = {};
+}
+
+void ItemLooks::unhide_live(BYTE* object, Hidden& h) {
+    if (h.spawn == 0) return;
+    BYTE seen[obj::kGeneralSize];
+    if (!safe_read(object, seen, sizeof(seen))) {
+        h = {};
+        return;
+    }
+    unhide(object, seen, h);
+}
 
 int ItemLooks::item_at(uint8_t row, uint8_t column) const {
     if (row >= kMapSide || column >= kMapSide) return -1;
@@ -122,13 +170,8 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
     // The stand-ins' records as they are now: an object is dressed only while its record shows
     // the one logo frame the shift is worked out from (restyled by apitem.h), so the game's
     // frame plus the shift always stays in the frame list.
-    auto restyled = [&](int i) {
-        BYTE r[record::kSize];
-        return safe_read(records + kStandInRecords[i] * record::kSize, r, sizeof(r)) &&
-               field<int16_t>(r, record::kFrame) == kStandInFrames[i] &&
-               field<int16_t>(r, record::kFrames) == 1;
-    };
-    const bool ours[kStandInCount] = {restyled(0), restyled(1)};
+    bool ours[kStandInCount];
+    restyled_stand_ins(records, ours);
     for (int slot = 0; slot < kSlots; ++slot) {
         const BYTE* seen = pool + slot * obj::kItemSize;
         BYTE* object = at.item_pool + slot * obj::kItemSize;
@@ -189,12 +232,47 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
             }
         }
     }
-    // Any dressed earlier and not found now is put back if it is still ours.
+    // Any dressed or hidden earlier and not found now is put back if it is still ours.
     for (int slot = 0; slot < kObjectSlots; ++slot) {
+        if (hidden_[slot].spawn != 0 &&
+            std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
+            unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
+        }
         if (flipped_dressed_[slot].spawn != 0 &&
             std::find(flipped_slots_.begin(), flipped_slots_.end(), slot) == flipped_slots_.end()) {
             undress_live(at.object_pool + slot * obj::kGeneralSize, obj::kGeneralSize,
                          flipped_dressed_[slot], base, standin_palette, true);
+        }
+    }
+}
+
+void ItemLooks::hide_marker(const GameAddresses& at, BYTE* base) {
+    if (at.object_pool == nullptr) return;
+    BYTE* standin_palette = stand_ins_palette(at);
+    bool ours[kStandInCount];
+    restyled_stand_ins(pointer_at(at.item_records), ours);
+    const bool waits = marker_waits(at);
+    for (int slot : flipped_slots_) {
+        BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+        BYTE seen[obj::kGeneralSize];
+        Hidden& h = hidden_[slot];
+        if (!safe_read(object, seen, sizeof(seen))) {
+            h = {};
+            continue;
+        }
+        const int32_t spawn = field<int32_t>(seen, obj::kSpawn);
+        if (h.spawn != 0 && h.spawn != spawn) h = {};  // another object now: not ours to put back
+        const int stand_in = logo_index(field<int32_t>(seen, sprite::kFrameIndex));
+        // Hidden while it waits on the helper's logo frame, if the game shows it (one the game
+        // hid is left to the game); shown again otherwise, whatever its frame.
+        if (base != nullptr && shows_stand_in(seen, base) &&
+            is_marker(slot, seen, standin_palette) && stand_in >= 0 && ours[stand_in] && waits) {
+            if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
+                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
+                h = {spawn};
+            }
+        } else {
+            unhide(object, seen, h);
         }
     }
 }
@@ -215,6 +293,8 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         // Which stand-in: the logo frame the game computed from its record.
         int32_t frame = field<int32_t>(seen, sprite::kFrameIndex);
         const int stand_in = logo_index(frame);
+        // The marker is no stand-in to dress (hide_marker hides it).
+        if (shows_stand_in(seen, base) && is_marker(slot, seen, standin_palette)) continue;
         int item = item_at(seen[obj::kGeneralRow], seen[obj::kGeneralColumn]);
         if (!shows_stand_in(seen, base) || stand_in < 0 || !ours[stand_in] || item < 0) {
             undress(object, seen, d, base, standin_palette, true);
@@ -239,6 +319,15 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
 void ItemLooks::restore(const GameAddresses& at) {
     flipped_slots_.clear();  // found again by the next scan
     frames_to_scan_ = 0;
+    if (hidden_markers() > 0) {
+        for (int slot = 0; slot < kObjectSlots; ++slot) {
+            if (at.object_pool == nullptr) {
+                hidden_[slot] = {};
+            } else {
+                unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
+            }
+        }
+    }
     if (at.item_pool == nullptr || !dressed()) {
         for (Dressed& d : dressed_) d = {};
         for (Dressed& d : flipped_dressed_) d = {};
