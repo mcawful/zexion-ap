@@ -855,8 +855,9 @@ void test_flipped_items_show_as_themselves() {
     check(general_ptr(12, 0x198) == g_palette_table[1] &&
               get<int16_t>(general_slot(12), 0x1A0) == 1,
           "in its palette");
-    check(general_ptr(13, 0x1A8) == g_frames && general_ptr(13, 0x198) == g_palette_table[8],
-          "another game's item keeps the logo");
+    check(general_ptr(13, 0x1A8) == g_frames && general_ptr(13, 0x198) == g_palette_table[26] &&
+              get<int32_t>(general_slot(13), 0x1D0) == 34,
+          "another game's item keeps the logo, in palette 26 at style 34");
     check(general_ptr(14, 0x1B0) == g_frames + 95 * 0x38 && general_ptr(15, 0x1B0) == g_frames + 40 * 0x38,
           "objects not showing a logo are left alone");
     check(game.ap_items_restyled(), "and unload has something to put back");
@@ -866,6 +867,99 @@ void test_flipped_items_show_as_themselves() {
               general_ptr(12, 0x198) == g_palette_table[8],
           "restore puts it back");
     check(!game.ap_items_restyled(), "and nothing is left to put back");
+}
+
+// Labels naming a Zexion item that arrive after a stand-in is drawn in palette 26: it is dressed
+// all the same, in both pools (the helper's palette is a stand-in's).
+void test_colored_stand_ins_dressed_later() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    animated_missile_box();
+    g_frame_clock = 1000;  // the Missile Box's frame 41
+    put_object(4, 78, 47, 6, 2);
+    put_flipped(12, 501, 63, 6, 2);
+    std::map<int, zap::Label> plain;
+    zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", plain);
+    game.set_labels(plain);
+    player_cell(6, 2);
+    game.watch_ap_items();
+    check(object_palette(4) == g_palette_table[26] && general_ptr(12, 0x198) == g_palette_table[26],
+          "both colored first");
+    std::map<int, zap::Label> box;
+    zap::parse_labels("ap_labels\nlabel 6 2 4033360a464f52205a4558494f4e32", box);  // "@36"
+    game.set_labels(box);
+    game.watch_ap_items();
+    check(object_base(4) == g_frames + (41 - 63) * 0x38 && object_palette(4) == g_palette_table[1],
+          "an item-pool stand-in in palette 26 dressed as the Missile Box");
+    check(general_ptr(12, 0x1B0) == g_frames + 41 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[1],
+          "and a general-pool one");
+    game.restore_ap_items();
+}
+
+// While the stand-ins are restyled, every live stand-in not dressed as a Zexion item draws in
+// palette 26 at style 34 (the logo in its own colors), its first style kept; one dressed, one
+// not as expected, this world's own items and the marker are left alone. Put back (palette 8,
+// its style) once its stand-in is no longer restyled, and on restore.
+void test_stand_ins_in_their_own_colors() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    animated_missile_box();
+    put_object(3, 77, 48, 5, 2);  // a progression stand-in in the Missile Box's cell: dressed
+    put_object(4, 78, 47, 6, 2);  // a stand-in for another game's item
+    put<int32_t>(pool_slot(4), 0x1D0, 7);  // its style: the template's texture name
+    put_object(5, 79, 1, 6, 2);   // this world's Missile Container
+    put_object(6, 80, 47, 6, 2);  // a stand-in with a base not the template's
+    put(pool_slot(6), 0x1A8, g_frames + 0x38);
+    put_flipped(12, 501, 63, 6, 2);  // a general-pool stand-in
+    std::map<int, zap::Label> labels;
+    zap::parse_labels(kBoxAndApItem, labels);
+    game.set_labels(labels);
+    player_cell(6, 2);
+    game.watch_ap_items();
+    check(object_palette(4) == g_palette_table[26] && object_palette_number(4) == 26 &&
+              get<int32_t>(pool_slot(4), 0x1D0) == 34,
+          "a stand-in in palette 26 at style 34");
+    check(general_ptr(12, 0x198) == g_palette_table[26] &&
+              get<int32_t>(general_slot(12), 0x1D0) == 34,
+          "and a general-pool one");
+    check(object_palette(3) == g_palette_table[1], "one dressed as a Zexion item keeps its look");
+    check(object_palette(5) == g_palette_table[8] && object_palette(6) == g_palette_table[8],
+          "this world's items and an object not as expected are left alone");
+    check(game.looks().colored() == 2, "two colored");
+
+    // The marker's type showing a stand-in in palette 8 (location 81's reward display): colored,
+    // and then still no marker, so neither hidden nor left out of the names.
+    g_flags[154] = 0;
+    put_flipped(14, 503, 63, 6, 2);
+    put<int16_t>(general_slot(14), 0x32E, 8210);
+    general_slot(14)[0x120] = 1;
+    for (int i = 0; i < 33; ++i) game.watch_ap_items();  // the next scan, then two frames
+    check(general_ptr(14, 0x198) == g_palette_table[26] && general_slot(14)[0x120] == 1,
+          "the reward display in its own colors, not hidden");
+    check(game.stand_ins_seen(g_item_pool, g_frames).size() == 5, "and counted for names");
+
+    // The stand-ins' records no longer the helper's (another tool, say): put back.
+    BYTE* r = g_records + 47 * 100;
+    put<int16_t>(r, 0x06, 2);
+    game.watch_ap_items();
+    check(object_palette(4) == g_palette_table[8] && object_palette_number(4) == 8 &&
+              get<int32_t>(pool_slot(4), 0x1D0) == 7,
+          "not restyled: palette 8 and its own style again");
+    game.restore_ap_items();
+
+    own_stand_ins(g_records);
+    put_object(4, 81, 47, 6, 2);
+    put<int32_t>(pool_slot(4), 0x1D0, 7);
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(object_palette(4) == g_palette_table[26], "colored");
+    game.restore_ap_items();
+    check(object_palette(4) == g_palette_table[8] && get<int32_t>(pool_slot(4), 0x1D0) == 7 &&
+              general_ptr(12, 0x198) == g_palette_table[8] && game.looks().colored() == 0,
+          "restore puts palette 8 and the style back");
 }
 
 // R'Talva X34 Y51's marker (type 1146: first state 8210, frame 63, palette 4) is hidden (its
@@ -900,7 +994,8 @@ void test_the_marker_hidden() {
     check(shown(20) == 0 && general_ptr(20, 0x1B0) == g_frames + 63 * 0x38 &&
               general_ptr(20, 0x1A8) == g_frames && general_ptr(20, 0x198) == g_palette_table[4],
           "the marker hidden, its frame, frame list and palette the game's");
-    check(shown(21) == 1 && general_ptr(21, 0x198) == g_palette_table[8], "a stand-in keeps the logo");
+    check(shown(21) == 1 && general_ptr(21, 0x198) == g_palette_table[26],
+          "a stand-in keeps the logo, in its own colors");
     check(shown(23) == 1, "another type on a logo frame is left alone");
     check(game.looks().hidden_markers() == 1, "one marker hidden");
     const std::vector<zap::StandInSeen> seen = game.stand_ins_seen(g_item_pool, g_frames);
@@ -984,8 +1079,9 @@ void test_zexion_items_show_as_themselves() {
           "the stand-in's frame list moved so frame 95 lands on the Missile Box's frame 41");
     check(object_palette(3) == g_palette_table[1] && object_palette_number(3) == 1,
           "and the Missile Box's palette");
-    check(object_base(4) == g_frames && object_palette(4) == g_palette_table[8],
-          "a stand-in for another game's item keeps the logo");
+    check(object_base(4) == g_frames && object_palette(4) == g_palette_table[26] &&
+              object_palette_number(4) == 26 && get<int32_t>(pool_slot(4), 0x1D0) == 34,
+          "a stand-in for another game's item keeps the logo, in palette 26 at style 34");
     check(object_base(5) == g_frames && object_palette(5) == g_palette_table[8],
           "this world's own items are left alone");
     check(game.ap_items_restyled(), "and unload has something to put back");
@@ -2080,6 +2176,8 @@ int main() {
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
     test_the_marker_hidden();
+    test_stand_ins_in_their_own_colors();
+    test_colored_stand_ins_dressed_later();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_shield();

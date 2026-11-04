@@ -526,6 +526,17 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
+- **Colors:** every live stand-in not dressed as a Zexion item draws in palette 26 at style 34
+  while they are restyled (`src/looks.cpp`, `ItemLooks::own_colors`): palette 26 draws the
+  texture's own colors, under white (cream with the fourth PALETTE display option), where the
+  game's palette 8 follows the suit, the weapon and the room, so the logo kept changing colors
+  (`docs/re/memory.md`, "Other players' items"). An
+  object is colored only with the template's frame list and palette 8 or 26; its style is kept,
+  and palette 8 and that style are put back when the stand-ins are, and on an unload. An
+  item-pool stand-in draws in palette 8, its colors wrong, for its first frame (the game's spawn)
+  and for one frame after its Zexion item look comes off; a general-pool one, until the next scan
+  finds it (up to 30 frame calls, as for its Zexion item look). Palette 26 on a stand-in, written by hand, worked in game (2026-11-03);
+  the helper's own colors: stand-in tests only, not run in game yet.
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x
   2048 sprite sheet. It leaves the game's texture binding, pixel-store state and GL errors as it
@@ -559,9 +570,10 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   objects there, in the game's pool of live item objects, as item N: N's palette, and the
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
-- **Safety:** it writes only stand-ins with the template's base and palette 8, or ones it
-  dressed (the same spawn); and, for R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared
-  and set again, only while it is the spawn it hid.
+- **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
+  helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
+  R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
+  while it is the spawn it hid.
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way
   (R'Talva X34 Y51's marker, below, is hidden instead).
@@ -576,7 +588,8 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   naming them. It is shown again, on whatever frame, the frame call after flag 154 is set or it
   leaves the logo frame (its reward), when the stand-ins are put back and on an unload, if it is
   still that spawn and still hidden. Other objects on a logo frame in their own palette (a boss's
-  drop showing another game's item, type 1998) are left showing the logo. The marker can show
+  drop showing another game's item, type 1998) are left as they are, drawing the logo frame
+  through their own palette. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: stand-in tests
@@ -1395,7 +1408,10 @@ unload.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
   (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
   (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone), the popup queue, the
+  frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
+  in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
+  world's items left alone; put back when not restyled and on restore),
+  the popup queue, the
   new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
   again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
@@ -1415,7 +1431,8 @@ unload.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order, the options menu built again after
   Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
-- `apitem`: the stand-in records restyled and named, the logo, the font glyphs, the pause
+- `apitem`: the stand-in records restyled and named, the logo (in its own colors, the arrow
+  yellow then white), the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each
   sheet's icons made once), the label parser.

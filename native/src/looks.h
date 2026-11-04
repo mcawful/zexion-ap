@@ -13,6 +13,13 @@
 // a scan finds any live one drawing a logo frame from the item sprites' list, and dresses it by
 // its frame shown and palette only, leaving its frame list as the game's.
 //
+// Every live stand-in not dressed as a Zexion item draws in palette 26 at style 34 while the
+// stand-ins are restyled: palette 26 draws without a shader, the texture as it is under the color
+// of style 34 (white), so the logo shows its own colors in every room, where palette 8's entries
+// follow the suit, the weapon and the room (docs/re/memory.md, "Other players' items"). The game
+// gives a stand-in palette 8 at its spawn; the helper puts that and its own style back when the
+// stand-ins are put back.
+//
 // R'Talva X34 Y51's marker (type 1146, its first state 8210) draws the logo frame 63 in its own
 // palette while it waits for the boss (flag 154 clear): empty in the game's art, it would show the
 // helper's logo (docs/re/memory.md, "Other players' items"). After the boss it becomes location
@@ -54,7 +61,15 @@ public:
     // frame, shown again otherwise (above).
     void hide_marker(const GameAddresses& at, BYTE* base);
 
-    // Game thread: puts back every object it dressed that is still that spawn; forgets them.
+    // Game thread, every frame while the stand-ins are restyled, after apply: each live stand-in
+    // not dressed (the item pool's in `pool`, this frame's copy; the general pool's found by scan)
+    // drawn in palette 26 at style 34, and put back (palette 8, its own style) where its stand-in
+    // is not restyled.
+    void own_colors(const GameAddresses& at, const BYTE* pool, BYTE* base);
+    int colored() const;  // objects drawn in palette 26 now (tests)
+
+    // Game thread: puts back every object it dressed, hid or colored that is still that spawn;
+    // forgets them.
     void restore(const GameAddresses& at);
     bool dressed() const;
     // General objects showing a stand-in's logo at the last scan (slots of the pool); each
@@ -64,14 +79,19 @@ public:
     // logo frame, empty in the game's own art: a stand-in, or a marker (is_marker).
     static bool shows_stand_in(const BYTE* object, const BYTE* base);
     // General object `slot` (`object`: a copy up to its first state, obj::kFirstState) is the
-    // marker, not a stand-in: type 1146's first state, in a palette other than the stand-ins'
-    // (`standin_palette`), not dressed by this helper. A marker on a logo frame (shows_stand_in)
-    // is the one to hide while flag 154 is clear.
-    bool is_marker(int slot, const BYTE* object, const BYTE* standin_palette) const;
+    // marker, not a stand-in: type 1146's first state, in a palette other than a stand-in's (8 or
+    // 26: after the boss it shows location 81's item, a stand-in in palette 8 the helper colors),
+    // not dressed by this helper. A marker on a logo frame (shows_stand_in) is the one to hide
+    // while flag 154 is clear.
+    bool is_marker(int slot, const BYTE* object, const GameAddresses& at) const;
     // Markers this helper has hidden, still to be put back (tests).
     int hidden_markers() const;
-    // The stand-ins' palette object, or null.
+    // The stand-ins' palette object as the game gives it (8), or null.
     static BYTE* stand_ins_palette(const GameAddresses& at);
+    // The palette object the helper draws them in (26), or null.
+    static BYTE* own_palette(const GameAddresses& at);
+    // `palette` is a stand-in's: the game's (8) or the helper's (26).
+    static bool stand_in_palette(const GameAddresses& at, const BYTE* palette);
     // The item sprites' frame list (every item object's base, the template's), or null.
     static BYTE* item_frame_base(const GameAddresses& at);
 
@@ -101,6 +121,18 @@ private:
                        int64_t clock, const bool (&ours)[2]);
     // Flag 154 (set by R'Talva X34 Y51's boss) is clear: the marker still waits, empty.
     static bool marker_waits(const GameAddresses& at);
+    // An object drawn in palette 26: its spawn, and the style it had (put back with palette 8).
+    struct Colored {
+        int32_t spawn = 0;  // 0 for none
+        int32_t style = 0;
+    };
+    // Draws `object` (`seen`: its copy) in palette 26 at style 34 (`own`: palette 26's object),
+    // keeping its first style in `c`.
+    static void color(BYTE* object, const BYTE* seen, Colored& c, BYTE* own);
+    // Puts `object` back in palette 8 (`game`) with the style `c` kept, if it is still that spawn
+    // and still the helper's look; forgets it.
+    static void uncolor(BYTE* object, const BYTE* seen, Colored& c, BYTE* game, const BYTE* own);
+    static void uncolor_live(BYTE* object, size_t size, Colored& c, BYTE* game, const BYTE* own);
     // A marker hidden: its spawn, so it is put back only while it is the same object.
     struct Hidden {
         int32_t spawn = 0;  // 0 for none
@@ -114,6 +146,8 @@ private:
     Dressed dressed_[kSlots] = {};
     std::vector<Dressed> flipped_dressed_ = std::vector<Dressed>(kObjectSlots);
     std::vector<Hidden> hidden_ = std::vector<Hidden>(kObjectSlots);
+    Colored colored_items_[kSlots] = {};
+    std::vector<Colored> colored_flipped_ = std::vector<Colored>(kObjectSlots);
     std::vector<int> flipped_slots_;  // general objects showing a logo at the last scan
     int frames_to_scan_ = 0;
     std::vector<BYTE> objects_;  // the last scan's copy of the general pool
