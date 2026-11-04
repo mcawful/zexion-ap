@@ -230,9 +230,8 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         location = sum(plan.menu.settings[t - 10] << i for i, t in enumerate(range(22, 28)))
         self.assertEqual(location, slot["start_index"] + 1)
 
-        self.assertEqual(aplabels.stand_ins(slot), {ids.STAND_IN, ids.STAND_IN_PROGRESSION})
         kept = frozenset(slot["kept_locations"])
-        foreign = aplabels.foreign_locations(slot["location_items"], kept, aplabels.stand_ins(slot))
+        foreign = aplabels.foreign_locations(slot["location_items"], kept)
         self.assertLessEqual(set(foreign), kept)
 
         if state is not None:  # all of the above together, as the client connects

@@ -137,17 +137,22 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
     put(message, kMessageY, y - 4);
 }
 
-Label layout_label(const std::string& first, const std::string& who) {
-    std::vector<std::string> shown{first};
-    if (!who.empty()) shown.push_back(who);
+std::string in_capitals(std::string text) {
+    for (char& c : text) c = capital(c);
+    return text;
+}
+
+std::string Label::first_text() const { return first.empty() ? std::string(kApItemName) : first; }
+
+void Label::lay_out() {
+    std::vector<std::string> shown{static_cast<char>(glyph) + in_capitals(first_text())};
+    if (!who.empty()) shown.push_back(in_capitals(who));
     size_t widest = 0;
     for (const std::string& part : shown) widest = (std::max)(widest, part.size());
-    Label label;
-    label.width = (std::min)(static_cast<int>(widest), kGamePopupWidth);
-    label.name = center_lines(shown, label.width);
-    if (label.name.size() > kItemNameMax) label.name.resize(kItemNameMax);
-    while (!label.name.empty() && label.name.back() == ' ') label.name.pop_back();
-    return label;
+    width = (std::min)(static_cast<int>(widest), kGamePopupWidth);
+    name = center_lines(shown, width);
+    if (name.size() > kItemNameMax) name.resize(kItemNameMax);
+    while (!name.empty() && name.back() == ' ') name.pop_back();
 }
 
 }  // namespace zap

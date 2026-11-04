@@ -31,10 +31,8 @@ void test_parsers() {
           "parses a batch");
     check(batch.cas.size() == 1 && batch.cas[0].item == 36 && batch.cas[0].value == 1, "cas");
     check(batch.refresh, "refresh");
-    check(batch.popups.size() == 1 && batch.popups[0].suffix == "FROM ALICE !",
-          "the suffix is upper-cased and filtered to the font");
-    check(batch.popups[0].as_sent == "from Alice !",
-          "and kept in its own case for a translation's font, the same characters");
+    check(batch.popups.size() == 1 && batch.popups[0].text == "from Alice !",
+          "the suffix filtered to the font, in the case it was sent in");
     zap::Batch bad;
     check(!zap::parse_batch("apply\ncas 50 0 1", bad).empty(), "item 50 is not writable");
     check(!zap::parse_batch("apply\ncas 3 0 256", bad).empty(), "values are bytes");
@@ -42,15 +40,15 @@ void test_parsers() {
     check(!zap::parse_batch("apply\npopup 51 X", bad).empty(), "popup items are 0..50");
     zap::Batch longer;
     zap::parse_batch("apply\npopup 1 " + std::string(100, 'a'), longer);
-    check(longer.popups[0].suffix.size() == 40, "the suffix is capped");
+    check(longer.popups[0].text.size() == 40, "the suffix is capped");
     zap::Batch notice;
     check(zap::parse_batch("apply\nnotice 49 Hint: Phaser at Machinus 29,30", notice).empty() &&
               notice.popups.size() == 1 && notice.popups[0].bare &&
-              notice.popups[0].suffix == "HINT: PHASER AT MACHINUS 29,30",
+              notice.popups[0].text == "Hint: Phaser at Machinus 29,30",
           "a notice keeps its colon and has no head");
     zap::Batch plain;
     zap::parse_batch("apply\npopup 49 Hint: X", plain);
-    check(!plain.popups[0].bare && plain.popups[0].suffix == "HINT X",
+    check(!plain.popups[0].bare && plain.popups[0].text == "Hint X",
           "a popup's suffix still drops the colon");
     zap::Batch empty_notice;
     check(!zap::parse_batch("apply\nnotice 49 ~~", empty_notice).empty(), "an empty notice is refused");
@@ -58,7 +56,8 @@ void test_parsers() {
 
 void test_newgame_parser() {
     zap::NewGamePlan plan;
-    check(zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 620 2E2E\nwrite 0x310 010203040506",
+    check(zap::parse_newgame("ap_newgame\nidentify 0x658 41\nexpect 0x6C0 0300\nwrite 620 2E2E\n"
+                             "write 0x310 010203040506\nmenu 0x88 03",
                              plan)
                   .empty(),
           "parses a new-game plan");
@@ -75,7 +74,9 @@ void test_newgame_parser() {
     check(!zap::parse_newgame("ap_newgame\nwrite +5 AABB", bad).empty(), "a sign is refused");
     check(!zap::parse_newgame("ap_newgame\nmenu 18446744073709551615 AABB", bad).empty(),
           "an offset whose end wraps around is refused");
-    check(!zap::parse_newgame("ap_newgame\nexpect 0x10 00", bad).empty(), "nothing to write");
+    check(!zap::parse_newgame("ap_newgame\nidentify 0x658 41\nexpect 0x10 00\nmenu 0x88 03", bad)
+               .empty(),
+          "nothing to write");
     check(!zap::parse_newgame("ap_newgame\npoke 0x10 00", bad).empty(), "unknown lines");
     zap::NewGamePlan full;
     check(zap::parse_newgame("ap_newgame\nidentify 0x658 4142\nwrite 0x10 00\nmenu 0x88 03\nchoice",
@@ -86,16 +87,20 @@ void test_newgame_parser() {
           "identify lines and choice");
     zap::NewGamePlan no_identify;
     check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nmenu 0x88 03", no_identify).empty(),
-          "menu lines without identify lines are refused");
+          "a plan without identify lines is refused");
     zap::NewGamePlan no_menu;
-    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nidentify 0x658 41\nchoice", no_menu)
-               .empty(),
-          "choice without menu lines is refused");
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nidentify 0x658 41", no_menu).empty(),
+          "a plan without menu lines is refused");
     zap::NewGamePlan extra;
-    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nchoice now", extra).empty(),
+    check(!zap::parse_newgame("ap_newgame\nidentify 0x658 41\nwrite 0x10 00\nmenu 0x88 03\n"
+                              "choice now",
+                              extra)
+               .empty(),
           "choice takes nothing after it");
     zap::NewGamePlan past;
-    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nidentify 0x907 0000", past).empty(),
+    check(!zap::parse_newgame("ap_newgame\nwrite 0x10 00\nmenu 0x88 03\nidentify 0x907 0000",
+                              past)
+               .empty(),
           "an identify past the section is refused");
 }
 

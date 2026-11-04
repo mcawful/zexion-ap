@@ -3,12 +3,13 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "text.h"  // Capitals
 
 namespace zap {
 
-const char kIntelName[] = "INTEL CHIP";
-
 namespace {
+
+constexpr Capitals kRecordName{kIntelName};
 
 // The Area Map's record (game_layout.h for its fields) as B1's Objects file holds it: the
 // fields the helper never changes, then its name and event.
@@ -36,11 +37,11 @@ void IntelChip::watch(BYTE* holder) {
         return;
     }
     if (reads(copy, kOwnName, kOwnEvent)) {
-        set_record_name(r, kIntelName);
+        set_record_name(r, kRecordName);
         put(r, record::kEvent, kNoEvent);
         restyled_ = true;
     } else {
-        restyled_ = reads(copy, kIntelName, kNoEvent);  // ours already, or another name: left alone
+        restyled_ = reads(copy, kRecordName, kNoEvent);  // ours already, or another name: left alone
     }
 }
 
@@ -48,7 +49,7 @@ void IntelChip::restore(BYTE* holder) {
     BYTE copy[record::kSize];
     BYTE* r = writable_record(holder, kAreaMapItem, copy);
     // Back to the game's, whether this helper renamed it or an earlier one left it so.
-    if (r != nullptr && matches(copy, kAreaMap) && reads(copy, kIntelName, kNoEvent)) {
+    if (r != nullptr && matches(copy, kAreaMap) && reads(copy, kRecordName, kNoEvent)) {
         set_record_name(r, kOwnName);
         put(r, record::kEvent, kOwnEvent);
     }

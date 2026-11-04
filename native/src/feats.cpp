@@ -5,6 +5,7 @@
 #include "game_layout.h"
 #include "game_mem.h"
 #include "iat.h"
+#include "text.h"  // Capitals
 #include "translation.h"
 
 namespace zap {
@@ -86,7 +87,8 @@ int32_t centered_frame(const char* text, int32_t i, int32_t columns) {
     return i >= left && i < left + length ? static_cast<uint8_t>(text[i - left]) : 0;
 }
 
-int32_t note_frame(int32_t i, int32_t columns) { return centered_frame(kFeatsNote, i, columns); }
+constexpr Capitals kPixelNote{kFeatsNote};
+int32_t note_frame(int32_t i, int32_t columns) { return centered_frame(kPixelNote, i, columns); }
 
 // Glyph `i` of the hint's stand-in: FEATS OF NATU! on line `first`, the note under it.
 int32_t stand_in_frame(int32_t i, int32_t columns, int32_t first) {
@@ -143,7 +145,6 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
 // are shown instead (translation.h). Only on the label feats_screen_note has found live
 // (native/README.md, "Feats and achievements in AP saves").
 constexpr int kTitleEntry = 220, kHintEntry = 219;
-constexpr wchar_t kFeatsNoteHd[] = L"Archipelago save: no Feats earned";
 constexpr Rebuild kTitleLayout = {.wrap = true, .center = true, .keep_middle = true};
 BYTE* g_swapped = nullptr;  // the label whose pixel glyphs the helper shows
 BuiltLabel g_hd;  // the label whose translated text is the helper's
@@ -158,7 +159,7 @@ void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
             g_hd.label = nullptr;
             // Each line centered on the longer with leading spaces, then the two as one block.
             FontMetrics metrics;
-            const std::wstring text = centered_lines(title + L"\n" + kFeatsNoteHd,
+            const std::wstring text = centered_lines(title + L"\n" + hd_case(a, kFeatsNote),
                                                      metrics.load(a) ? &metrics : nullptr);
             hd = rebuild_label(a, label, text, kTitleLayout);
             if (hd) {
@@ -289,8 +290,7 @@ void FeatsGuard::watch(const GameAddresses& a, bool on, const std::set<int>& loa
         ending_error_.clear();
     }
     // Hooked while on, or while the load test can block (a slot holds an AP save).
-    const bool test = !loading.empty() && a.rando_marker != nullptr &&
-                      a.current_slot != nullptr && a.save_loaded != nullptr;
+    const bool test = !loading.empty();
     if (!on && !test) {
         release_steam();
         steam_slot_error_.clear();

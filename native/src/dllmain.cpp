@@ -12,7 +12,6 @@
 #include <cstring>
 #include <functional>
 #include <map>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -63,9 +62,6 @@ bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
 // Set by the pipe thread on a disconnect; the next frame puts everything back before any request.
 std::atomic<bool> g_client_gone{false};
-// What clients had set, from a refused unload: the next frame sets it again before any request.
-// The pipe thread publishes it, the frame takes it; neither waits.
-std::atomic<zap::ClientState*> g_rearm{nullptr};
 // Loaded from the game's own folder (by the proxy, or a client with no build): `hello` reports it.
 bool g_from_game_folder = false;
 // The offline files (offline.h), read on the helper's thread at start and after each
@@ -256,21 +252,22 @@ uintptr_t frame(void* argument) {
     if (!g_in_frame_work.test_and_set(std::memory_order_acquire)) {
         try {
             g_game.note_play(GetTickCount64());
-            if (zap::ClientState* state = g_rearm.exchange(nullptr)) {
-                std::unique_ptr<zap::ClientState> owned(state);
-                g_game.rearm(std::move(*owned));
-            }
             if (g_client_gone.exchange(false)) {
                 // Only the offline look dresses a save until a client configures again.
                 g_game.client_gone(&archipelago_chosen);
             }
             take_offline();
             g_mailbox.serve();
-            g_game.watch_newgame();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
-                // No watch once an unload has begun. Guarded: a throw that kept the lock would
-                // make the next unload wait on it for good.
-                if (!g_unloading) guarded([] { g_game.watch_all(&archipelago_chosen); });
+                // No watch once an unload has begun: what the client asked for stays set, and a
+                // refused unload's next frame applies it again. Guarded: a throw that kept the
+                // lock would make the next unload wait on it for good.
+                if (!g_unloading) {
+                    guarded([] {
+                        g_game.watch_newgame();
+                        g_game.watch_all(&archipelago_chosen);
+                    });
+                }
                 publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
@@ -328,7 +325,6 @@ std::string one_word(std::string text) {
 std::string hello() {
     // The fields read on the game's thread; these defaults stand if no frame comes.
     std::string game = " configured=0 feats=off", look = " offline=- active=0 title=0 lang=?";
-    std::string left_out;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
@@ -339,7 +335,6 @@ std::string hello() {
                        " active=" + (g_game.active() ? "1" : "0") +
                        " title=" + one_word(g_game.title_state()) +
                        " lang=" + one_word(g_game.language());
-                left_out = g_game.left_out();
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -347,15 +342,12 @@ std::string hello() {
     AcquireSRWLockShared(&g_offline_lock);
     std::string error = g_offline_error;
     ReleaseSRWLockShared(&g_offline_lock);
-    // case=1: the client's text is taken in mixed case (English(HD)), its scanner's line
-    // too; a client refuses a helper of its version without it (client/native.py).
-    return std::string("zexion-ap ") + kVersion + " case=1 build=" +
+    return std::string("zexion-ap ") + kVersion + " build=" +
            (g_build ? g_build : "unknown") +
            " hooked=" + (g_slot ? "1" : "0") + game +
            " folder=" + (g_from_game_folder ? "1" : "0") + look +
            " reads=" + std::to_string(g_offline_reads.load()) + "/" +
            std::to_string(g_offline_found.load()) +
-           (left_out.empty() ? "" : " cache_missing=" + left_out) +
            (error.empty() ? "" : " read_error=" + one_word(error));
 }
 
@@ -464,7 +456,7 @@ std::string config(const std::string& request) {
 std::string apply(const std::string& request) {
     zap::Batch batch;
     std::string error = zap::parse_batch(request, batch);
-    // Game::apply refuses without every key (client_ready); a batch no frame took never applies.
+    // Game::apply refuses unconfigured; a batch no frame took never applies.
     return on_game([&] { return g_game.apply(batch); }, false, error);
 }
 
@@ -526,12 +518,11 @@ std::string handle(const std::string& request, bool& stop) {
 // Puts back everything the helper changed in the game, then unhooks: "" or why not, with the
 // helper then still loaded and working.
 std::string undo_for_unload() {
-    // From here no frame offers ARCHIPELAGO again; then one frame takes it off the menu.
+    // From here no frame offers ARCHIPELAGO again, nor runs a watch; then one frame takes it off
+    // the menu.
     set_unloading(true);
-    // What clients set, armed again should the unload be refused (they would not resend it).
-    bool saved = false;
+    bool put_back = false;
     const char* refusal = nullptr;  // Game::unload_refusal's, made before anything is put back
-    zap::ClientState state;
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
@@ -539,33 +530,31 @@ std::string undo_for_unload() {
                 // A menu open, or an AP save's ending on its way: nothing is put back.
                 refusal = g_game.unload_refusal();
                 if (refusal != nullptr) return std::string();
-                state = g_game.snapshot();
-                saved = true;
-                g_game.put_back_all(&archipelago_chosen);
-                g_game.hold_translated_popups();  // rearm undoes it, should the unload refuse
-                g_game.restore_feats();  // a refused unload sets them again (its watch)
-                g_game.hide_title();  // a refused unload shows them again (its watch)
+                // The game's memory only: what the client asked for is kept, for the watches to
+                // apply again should the unload be refused (the client would not resend it).
+                g_game.put_back_game(&archipelago_chosen);
+                g_game.hold_translated_popups();  // until a watch runs again
+                g_game.restore_feats();
+                g_game.hide_title();
                 publish_blocker();
+                put_back = true;
                 return std::string();
             },
             kFrameWaitMs, ignored);
     }
+    // Refused: the next frame's watches set it all again.
     auto refuse = [&](const std::string& why) {
         set_unloading(false);
-        // Re-armed by the next frame however late it comes (a mailbox call could be withdrawn).
-        // One left from an earlier refusal was taken already: a frame ran the snapshot after it.
-        if (saved) delete g_rearm.exchange(new zap::ClientState(std::move(state)));
         return why;
     };
     if (refusal != nullptr) return refuse(refusal);
     if (const char* blocker = set_unloading(true)) {
-        return refuse(std::string(blocker) + (saved ? "" : " (no frame came)"));
+        return refuse(std::string(blocker) + (put_back ? "" : " (no frame came)"));
     }
     // Steam's slot back even if no frame came: no frame call watches it from here (unloading is
     // set), and the stub it held stays, passing calls through (feats.h).
     g_game.release_steam();
     if (!unhook()) return refuse(kHookReplaced);
-    delete g_rearm.exchange(nullptr);  // one no frame took: unloading anyway
     return "";
 }
 

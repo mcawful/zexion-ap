@@ -10,7 +10,9 @@
 namespace zap {
 
 constexpr int kAreaMapItem = 49;
-extern const char kIntelName[];  // "INTEL CHIP"
+// The Area Map's name while it is an Intel Chip: its record's in capitals (text.h), a
+// translation's as hd_case shows it.
+inline constexpr char kIntelName[] = "Intel Chip";
 
 class IntelChip {
 public:

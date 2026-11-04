@@ -35,16 +35,10 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   the same file.
 - A helper of the client's version that disagrees with it is another build of that version:
   it answers `error unknown request` or `error unknown line …`, refuses `config` with
-  `error missing NAME` (it ignores names it does not know), reads `build=unknown` for a game
-  build the client knows, or has no `lang` in its `hello` (1.0.0's release candidate, from
-  before the translations: it would take the translation keys and ignore them) or no `case` (a
-  build from before the mixed case: it would refuse the client's scanner line, and with it every
-  `discs` request and the offline file), with a build of the client's own loaded in its place,
-  as for another version (a build of its own that loads as such an earlier one is refused and
-  not loaded again until the file changes, as a stale one is; `tests/test_native.py` only, not
-  seen in game). Found while attaching, it is refused like
-  another version; found in a later request (a side task's, or giving items), the client stops
-  using it until the game restarts.
+  `error missing NAME` (it ignores names it does not know), or reads `build=unknown` for a game
+  build the client knows. Found while attaching, it is refused like another version; found in a
+  later request (a side task's, or giving items), the client stops using it until the game
+  restarts.
 - Each of these, in the client's window: "The Zexion mod and this client don't match", with
   both versions (or "different builds") and what to do (`state.helper_failed`).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
@@ -109,18 +103,18 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> case=1 build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` cache_missing=<keys>` when configured from a cache lacking client-only, translation or later keys, ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
-| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; `menu` lines need `identify` lines, `choice` needs `menu` lines) | `armed`, `refused <why>`, `error <why>` | New games |
+| `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; a plan needs `write`, `menu` and `identify` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
-| `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT REQUIRED SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
+| `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
@@ -133,57 +127,25 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 - `folder`: loaded from the game's own folder (by the proxy, or by a client with no build).
 - `offline`: the seeds known to the offline look (read from the folder, and any a client put or
   that were read while it was connected), and the file of the one dressed.
-- `case`: always 1: the helper takes the client's text in mixed case (English(HD), "Translations").
 - `active`: a client has configured the helper and not gone away.
 - `title`: the title screen's lines are up (1), not (0), or why not.
 - `lang`: the language the game shows: `-` its default English, the loaded translation's folder
   name while one is on (`English(HD)`, `French`, `Brazilian_Portuguese`, …), or `?` when not known
-  (not configured, the translation keys missing, or nothing readable; and with no frame). The
+  (not configured, or nothing readable; and with no frame). The
   client warns in any translation but English(HD) (`client/ticks.py`, `language_tick`).
 - `reads`: the reads a frame has taken, and the seeds the last one found.
-- `cache_missing`: the client-only, translation and later keys (below) the offline cache lacked,
-  comma-separated. With a client-only one among them, `configured=1` means the offline look runs
-  while the client's parts still refuse; with translation keys, the translation parts stand down
-  ("Translations").
 
 `config` carries the addresses the client resolved by byte pattern (`CONFIG_KEYS` in
 `client/native.py`). The whole configuration is refused unless:
 
-- every name is there. An offline cache ("AP saves without the client") may lack the client-only
-  ones, or hold one that does not fit as below: those marked `client_only` in `kConfigKeys`
-  (`src/game_calls.cpp`), which only the grants, new games, DeathLink, Energy Shields, RETURN
-  HOME WITH THE DISKS? and the Feats guard's load test (`current_slot`, with no test when it is
-  unset) read. The helper then configures with those unset (`hello` lists them as
-  `cache_missing`), and `apply`, `shield`, `die`, `ap_newgame` and `mission_prompt` get `refused
-  not configured` until a client's `config` sets every key. A cache lacking any other key is
-  refused (`read_error=cache:_missing_NAME`) until a client rewrites it. So a release that adds
-  a key only the client's parts read keeps working offline with the older cache (working in game
-  2026-10-27, B1, the helper built at f838028, a cache without `fade` and `fade_level` and no
-  client: `docs/re/memory.md`, "AP saves without the client"; a client-only key that does not
-  fit: stand-in tests only);
-  one that adds a key the offline look reads does not, until the client has run once.
-  `tests/test_cross_checks.py` checks that only the client's parts read a client-only key, and
-  that each way a client's state comes in waits for every key. The translation keys, marked
-  `translation_key` (the translation object, its tables' pointers and counts, the HD message
-  objects and slots, and the game's text functions), may be missing from the cache too: the
-  helper then configures with them unset, every other part as usual (the client's parts ready if
-  the client-only keys are there), and the translation parts stand down ("Translations"), so a
-  cache written before them keeps the default English as it was; but for `large_count`, added
-  after: without it only the Feats screen's title keeps its pixel look in a translation (stand-in tests:
-  `tests/offline_tests.cpp`; seen in game 2026-11-02, B1, `zexion_ap.dll` `1c286c57…` loaded by
-  the proxy over a cache from before them: `configured=1 lang=?` and the 13 keys in
-  `cache_missing`, none missing after the client's first run). Only `src/translation.cpp` reads
-  them (`tests/test_cross_checks.py`);
-  the later keys, marked `later_key` (`options_back_fn` and `pickup_list`, newer than caches
-  already written), may be missing too: the helper configures without them, every part as usual
-  but for what one serves (without `options_back_fn` the pause row is turned on OPTION MENU's way
-  back a frame late, as before it: below; without `pickup_list` an AP save's major-item list is
-  not filled: "Grants"), until a client's `config` gives them (stand-in tests:
-  `tests/offline_tests.cpp`; working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, the
-  1.0.0 RC at develop 76df074, over a cache from before `options_back_fn`, no client:
-  `cache_missing=options_back_fn` in `tools/helper.py status` and Keys for a frame on the way back
-  from Option, as above; after a client's run the cache rewritten, no `cache_missing`:
-  `docs/re/memory.md`, "The pause screen's KEYS row");
+- every name is there, from a client's `config` or from the offline cache a client wrote ("AP
+  saves without the client"), which holds them all. A cache lacking one is refused
+  (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it. A release that
+  adds a key decides for that key alone: accept that, with everything the helper does without a
+  client off until the player's first client run after updating (the offline look of AP saves,
+  the file select's AP logo and disk counts, the map markers, the pause row from the seed file,
+  the major-item list, the title lines and the Feats guard), or let the helper configure without
+  that key, with a null check where it is read;
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -196,7 +158,7 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 ### On the game's thread
 
 A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title`,
-`lang` and `cache_missing`) goes to the game's thread through a one-slot mailbox
+and `lang`) goes to the game's thread through a one-slot mailbox
 (`src/mailbox.cpp`) and runs at the next frame call. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
 afterwards.
@@ -208,7 +170,8 @@ with one atomic exchange, and only one thread at a time does the work.
 
 When the pipe's client disconnects (the client exited or crashed, let the helper go while it
 had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
-any request, puts back everything the parts below set (`Game::put_back_all` in
+any request, puts back everything the parts below set in the game's memory and drops what the
+client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, in
 `src/game_calls.cpp`). A change held by a menu no longer open is gone with it. It goes inactive
 until a client sends `config` again (the client resends every request after it attaches). The
 client's popups not shown yet stay queued and still show ("Popups"): their items are already
@@ -222,8 +185,10 @@ Disks goal's screens.
 
 ### Unloading
 
-`unload` first stops frame calls from offering ARCHIPELAGO or locking ASSIST again, then, in a
-frame call, puts back what a client going away puts back and hides the title screen's lines.
+`unload` first stops frame calls from running any part's watch (so nothing offers ARCHIPELAGO,
+locks ASSIST or applies anything again), then, in a frame call, puts back in the game's memory
+what a client going away puts back (`Game::put_back_game`) and hides the title screen's lines.
+What the client asked for stays set.
 
 It refuses (`error a menu is open; not unloading`) while a save is loaded with a menu open
 (the pause, map or equipment screen, the quit menu), before putting anything back: an open
@@ -248,7 +213,7 @@ helper has started the ending (and while the screen is still kept black after it
 helper's wrapper has run the ending routine), and while the ending routine or that wrapper is
 the game's transition with the ending's patch in place: an unload would drop the ending, or put
 the patch back before the ending runs ("Feats and achievements in AP saves"). That window is a
-few frames, longer while received items' popups (the helper's own) hold the ending after YES.
+few frames, longer while a popup of the helper's already up holds the ending after YES.
 Working in game 2026-10-27 (575edbf, 0.30.0): `/reload_mod` sent every half second was refused as
 a menu open while the prompt showed, then as the ending on its way while received items' popups
 held it, and the ending ran and sent the goal (`docs/re/memory.md`, "The mission prompt"). That
@@ -257,8 +222,9 @@ only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
-refused unload sets again, in the next frame call and before any request, what clients had set
-(`zap::ClientState`), since a client would not know to resend it.
+refused unload lets the watches run again from the next frame call, and they apply what the
+client asked for again from what was kept, since a client would not know to resend it (as the
+offline look, the Feats guard and the title lines are applied again by theirs).
 
 Then it points the slot back at SDL, only if the slot still holds the trampoline (otherwise
 `error the frame hook was replaced by something else; not unloading`, and it stays loaded),
@@ -319,8 +285,7 @@ are what the helper adds. It leaves out what the new game started with (the sect
 start-with array, `rando::started_with`), as the game does (Standard's Machine Gun); and an
 older save's items, owned before this helper, go in by item ID, not in the order they came. So an AP save's row fills as items arrive, and an
 older one's the first time it is played with this helper; it shows on the file select once the
-game saves. It runs without a client too, once the client has written `pickup_list` into the
-offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
+game saves. It runs without a client too, from the offline cache. The list is
 the game's own data, so a client going away or an unload leaves it (`docs/re/memory.md`, "The
 pickup record holds the major-item list").
 
@@ -333,8 +298,9 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 
 - **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
   and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
-  on its way (its fade, before the game opens it), nor in the black after its YES (a popup
-  waiting ends the black) or the ending it started (until the save's next load). Each plays
+  on its way (its fade, before the game opens it), nor from its YES (the screen kept black or
+  not) through the ending it started: the ending does not wait for them, so they show at the
+  save's next load. Each plays
   the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
@@ -465,10 +431,9 @@ While a plan is armed (`ap_newgame`), each frame call:
   writes nothing and drops the plan; if the seed's placement is refused (or throws), the
   player's own placement is put back first, so the queued game is the one they made. Over a
   RANDOMIZER game the game's own start table is used, not the plan's (the client's fallback
-  when the two differ), and the seed's second start must be one of its rooms. A plan without `menu` lines is only checked against
-  `expect` as the player's placement made it (the client always sends them). Working in
+  when the two differ), and the seed's second start must be one of its rooms. Working in
   game: 2026-10-27 (`docs/re/memory.md`, "Starting a new game").
-- **ARCHIPELAGO:** with `menu` lines and `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
+- **ARCHIPELAGO:** with `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
   game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
@@ -514,7 +479,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   the nearest loaded one's (or AP ITEM). The game's pickup popup then shows the logo glyph, then
   PROGRESSION ITEM (or AP ITEM) over FOR ALICE (in English(HD), Progression Item or AP Item
   over for Alice, as the client writes them: "Translations", mixed case). The map cursor shows
-  the label's first line only: what the item is, not whom it is for.
+  the label's first line only: what the item is, not whom it is for. A label is kept as its
+  parts (`Label`, `src/text.h`: the glyph, the two lines, the `@N` item and its name), from which
+  the record's name is laid out in capitals and the translated texts are made.
 - **Popup width:** while a stand-in is named, the helper sets the width the pickup code passes
   (an immediate 24) to the label's longest line, after checking the instruction is `BA` with a
   width from 1 to 24.
@@ -603,8 +570,9 @@ Working in game: 2026-10-23 ("Live item objects").
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
-- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip is written there while
-  the record is INTEL CHIP ("Translations"; not run in game yet).
+- **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
+  English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
+  ("Translations"; not run in game yet).
 
 Working in game: 2026-10-25 ("Intel Chips").
 
@@ -668,20 +636,20 @@ the helper:
   fade's step, countdown and target set as event 3667's fade ends): no fade back into play between
   YES and the ending. Only a fade that reads as NO's close leaves it is turned off (`mission_status`
   then says `yes: ending when idle, the screen kept black`); anything else fades back in as before.
-  While it is black, popups and received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`);
-  a popup of the helper's waiting brings the screen back in for it (as NO's close would have), and
-  the ending follows the popups as before; so does the ending not starting within 240 game frames in
-  play (`kDarkFrames`: a safety that errs long, as after YES the ending waits only for a menu to
-  close and the gap after the helper's last popup, and no popup of the helper's shows in the black,
-  a waiting one ending it first; counted from the game's frame clock, `frame_clock`, which stands
-  still while a menu has the game paused, so frames with a menu open, the pause, which saves the
-  fade and puts it back, don't count), and the prompt cancelled (the save left, `discs` off, the
-  client gone); asked for with a menu open, the fade back waits until it has closed and put its
+  While it is black, received deaths wait (`refused RETURN HOME WITH THE DISKS? ending`). Popups
+  waiting at YES or arriving after it, the screen kept black or not, wait too and do not hold the
+  ending (which starts from black when kept so): they show at the save's next load, as those arriving during the ending do (their items are given
+  already). The screen is brought back in (as NO's close would have) if the ending has not started
+  within 240 game frames in play (`kDarkFrames`: a safety that errs long, as after YES the ending
+  waits only for a menu to close, a popup of the helper's already up and the gap after it; counted from the
+  game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so frames
+  with a menu open, the pause, which saves the fade and puts it back, don't count), and when the
+  prompt is cancelled (the save left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its
   saved black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade) drops
   it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended: the
-  ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`, `ended:
-  a popup waiting…`, `ended: cancelled…`, `ended: the save left`, or another `ended: …` note:
+  ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
+  `ended: cancelled…`, `ended: the save left`, or another `ended: …` note:
   another fade, the ending not faded in or with the fade no longer the helper's), for a live check.
   Two things could end the black before the ending, by disassembly: the limit above (when it counted
   the helper's frame calls, which a fast monitor runs out first, a run's numbers fit that as the
@@ -738,7 +706,8 @@ the helper:
   fade turned back after saves at the pod during it; a request lapsing once the player left the
   pod's cell while twelve received items' popups held it, and one left during GAME SAVED alone, each
   offered again after the next save there; the ending after YES waiting for five received items'
-  popups, then starting. Stand-in tests only: the fade turned back when the helper takes its opener
+  popups, then starting (since changed: popups waiting at YES now wait for the save's next load,
+  stand-in tests only). Stand-in tests only: the fade turned back when the helper takes its opener
   back, another transition's fade left alone, a death's own fade left alone, and `discs` turned off
   after such a save.
 
@@ -756,7 +725,8 @@ back from OPTION MENU is still its wrapper.
 In a translation ("Translations"): the scanner's line goes into SmallText 12 too; the equipment
 screen's disk (its name after the HD disk icon) and RETURN HOME WITH THE DISKS?'s question are
 built again in the translation's font; the pause row's count is KEYS's translated text built
-again ("2 of 15", centered on the row as the game centers a prompt's line, built again
+again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
+row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
 next frame call otherwise), the key slots' characters hidden; the disk count
 popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
@@ -830,10 +800,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   connected, and any seed file a client puts, are added to them from the next frame call
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
-  (`other_save`). With no client yet, the cached addresses configure it if they are for its
-  build and the game holds every checked function's bytes, even if the cache lacks the
-  client-only or translation keys (a cache from before a release that added one: "The
-  pipe"). So the offline
+  (`other_save`). With no client yet, the cached addresses configure it if the cache is for its
+  build and holds every key ("The pipe"), and the game holds every checked function's bytes. So
+  the offline
   look, the map markers and the title lines all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
@@ -911,8 +880,8 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
   shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
   names, the owner's look; Progression Item and OS Install Disk not looked at
-  on the map). Labels in capitals, as a client from before the mixed case (31d9203) writes them
-  and a seed's offline file may still hold them, show in capitals.
+  on the map). Since 2026-11-04 another Zexion player's item takes the translation's own name
+  in every translation, not only English(HD) (stand-in tests only, not run in game yet).
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
@@ -1008,12 +977,10 @@ closed, gone with it open.
     the slot in `current_slot` holds an AP save, by a table
     of 30 bytes the frame call fills, with no save loaded, from the slots' own copies of their
     sections (`Game::ap_file_slots`, as for the file select's logo, every 16th frame call). It
-    keeps the table while a save loads, and clears it once two frame calls in a row find a save
-    loaded that is not an AP save. The slot is hooked whenever the stub can block: the guard on,
-    or the table not empty. Without `current_slot` (a client-only key, so an offline cache may
-    lack it), `rando_marker` or `save_loaded` there is no table; and since the table is filled
-    only with no save loaded, a helper loaded in the middle of a save has none until the title
-    comes back. The helper hooks the slot only if:
+    keeps the table while a save loads, and clears it once a frame call finds a save loaded that
+    is not an AP save. The slot is hooked whenever the stub can block: the guard on,
+    or the table not empty. Since the table is filled only with no save loaded, a helper loaded
+    in the middle of a save has none until the title comes back. The helper hooks the slot only if:
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
@@ -1033,12 +1000,11 @@ closed, gone with it open.
     whole line or nothing, only over a line that is blank or already its note, and only if every
     glyph of it is writable and has the font's frames. In a translation, while the note (or the
     title written over the hint) is there, the title's translated text is built again as
-    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" under
-    it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
+    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" (in
+    capitals outside English(HD): "Translations", mixed case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
     and kept at the title's middle as the game lays out its title ("Translations"); the game's
     own entry (220, or 219 for the hint) again when the note goes.
-    Without LargeText's count (a cache from before the `large_count` key), or with too little
-    room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
+    Without LargeText's count, or with too little room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
     font. (Working in game in English(HD): the title and the note in the HD font, 2026-11-02, B1,
     `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03, `fce9e73b…`, the 1.0.0
     RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`, "Where a rebuilt label
@@ -1073,10 +1039,10 @@ closed, gone with it open.
   client of another seed is connected. A plain randomizer save matches no seed and is left
   alone. Not covered: an AP save played without the helper, or one whose seed the helper has
   no file for (every new game from ARCHIPELAGO is made with a client, which leaves the file).
-- **When:** every frame call while configured. It goes on once two frame calls in a row have
-  found an AP save loaded, a precaution: a load writes the section and the marker in one game
-  call (`docs/re/memory.md`, "The loaded save's randomizer section is at +0xCDD6D0"). It
-  goes off at once: no save loaded (MISSION COMPLETE onward, the title), a normal save, a
+- **When:** every frame call while configured. It goes on in the first frame call that finds an
+  AP save loaded: a load writes the section and the marker in one game call, so a frame call
+  never sees half of one (`docs/re/memory.md`, "The loaded save's randomizer section is at
+  +0xCDD6D0"). It goes off at once: no save loaded (MISSION COMPLETE onward, the title), a normal save, a
   randomizer save of no known seed. The load test (above) is set with no save loaded, while the
   guard is off. `hello` reports `feats=off`, `on`, or `on:` and why a change could not be made:
   the guard's state, not the load test's (with the guard off it reads `off`, the test set or
@@ -1093,7 +1059,7 @@ closed, gone with it open.
   stand-in, so lands in live memory that runs no helper code, and an unload need not wait for it. If
   something hooked over the stub since, the stub stays in its chain and passes everything through.
   The screen's note is blanked again before an unload; the game frees it with the screen otherwise.
-- **An unload leaves a gap:** from the unload to the next helper's second frame call (the
+- **An unload leaves a gap:** from the unload to the next helper's first frame call (the
   client's `/reload_mod` waits 3 s before loading it again), an AP save in play has no guard, so
   a pickup's achievement (a weapon, 10Burst, 11Armor and the like) then reaches Steam, and so
   would an ending the game itself starts then (the escape's). RETURN HOME WITH THE DISKS?'s
@@ -1157,10 +1123,9 @@ lands, not only the place passed.
     whose area is taken waits a frame, at most 240. Its text: the item's icon as the
     private-use character the translations' fonts draw (as the pickup does), the translation's
     own name for the item (a stand-in's own, not the label over it), then the client's suffix
-    on the next line: in English(HD) in the case the client sent it, its FROM as "from" ("from
-    Bob"), in any other translation in capitals as in the default English ("FROM BOB"; the
-    owner's choice, 2026-11-02); a notice's text likewise, the client's and the helper's own
-    (NOT CONNECTED, CLIENT CONNECTED, the other seed's) in mixed case in English(HD) only. Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
+    on the next line, as mixed case below has it: "from Bob" in English(HD), "FROM BOB" in any
+    other translation, as in the default English; a notice's text likewise, the client's and the
+    helper's own (NOT CONNECTED, CLIENT CONNECTED, the other seed's). Laid out as the font draws it (`FontMetrics`, `layout_popup`: the
     builder's advances, read from the font as loaded): no line wider than a pixel popup's 192
     pixels, words whole; a popup's lines centered on the widest with leading spaces (the game
     starts every line at the same x); a notice's left as they wrap; without the font's metrics,
@@ -1169,19 +1134,22 @@ lands, not only the place passed.
     unreadable with the flag set, or from an unload's put-back on) shows the helper's pixel
     text, with the mark the game's last translated message left in its slot cleared (told by
     the HD object's serial), so it shows, in its box.
-  - **Mixed case** (English(HD) only, the owner's choice, 2026-11-02; `Game::mixed_case`, by
-    the language's name): the client writes its text in mixed case (hints, the disks' popups and
-    reminder, the scanner's line, the labels: `client/hints.py`, `client/discs.py`,
-    `client/aplabels.py`), and the helper keeps each in its own case beside the capitals the
-    8 x 8 font draws (`Popup::as_sent`, `Label::own_first` and `own_who`; the scanner's line
-    written into the game's pixel Text table in capitals, `scan_line_upper`). English(HD) shows
-    the case as sent, with the helper's own notices in mixed case; every other translation and
-    the default English show capitals, as before (their fonts may draw no lower case). Labels
-    sent in capitals (a client from before this, or a seed's offline file it wrote) show in
-    capitals. The labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the
-    pickup popup's Progression Item over for AneziaDS2, the map cursor's AP Item ("Other
-    players' items", "Map markers"); the hints, the disks' popups and reminder, the scanner's
-    line and the notices: stand-in tests only, not run in game yet.
+  - **Mixed case** (English(HD) only, the owner's rule, 2026-11-02; `mixed_case`, by the
+    language's name): the client writes its text in mixed case (hints, the disks' popups and
+    reminder, the scanner's line, the labels, "from Bob": `client/hints.py`, `client/discs.py`,
+    `client/aplabels.py`, `client/session.py`), and the helper writes its own in mixed case too
+    (the notices, the title lines, Archipelago, Intel Chip, Return home with the disks?, OS
+    Install Disk and its description, the pause row's "2 of 15", the Feats note). Each is kept
+    once, in that case, and put in capitals only where it is drawn so: in the 8 x 8 font
+    (`in_capitals`, and `Capitals` for the fixed texts, `src/text.h`), and in every translation
+    but English(HD) (`hd_case`), whose fonts may draw no lower case. Only letters change: a
+    record's icon byte (0x6E and 0x77 lie in the lower-case range) goes before the text, never
+    through it. Until 2026-11-04 the helper's fixed texts showed in mixed case in every
+    translation; they follow the rule since (stand-in tests only, not run in game yet). The
+    labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the pickup popup's
+    Progression Item over for AneziaDS2, the map cursor's AP Item ("Other players' items", "Map
+    markers"); the hints, the disks' popups and reminder, the scanner's line and the notices:
+    stand-in tests only, not run in game yet.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
@@ -1201,7 +1169,8 @@ lands, not only the place passed.
     `wstring_new_fn`), laid out as the game lays out that label's own (`Rebuild`;
     `docs/re/memory.md`, "Where a rebuilt label goes"): ARCHIPELAGO (Archipelago; SmallText
     354's text again when RANDOMIZER goes back, not through the new game's fade) and Return home
-    with the disks? where the game's attach would build them now (the label's first pixel glyph
+    with the disks? (each as mixed case above has it, as are the rest of the helper's texts below)
+    where the game's attach would build them now (the label's first pixel glyph
     less 1: the game moves a label without updating the place its build was given), the question
     then centered as the game centers its own; the equipment screen's OS Install Disk and its
     description (no icon) where the game built them for the selection, the description wrapped
@@ -1243,9 +1212,8 @@ lands, not only the place passed.
   English(HD) (`lang`).
 - **When:** each frame call (the names, the areas' emptying: `Game::watch_translation`), each
   popup (`Game::pump_popups`) and each label built. None of it with the flag clear (the default
-  English, even with a translation's tables still loaded), without the translation keys (an
-  offline cache from before them: "The pipe"), or with the object's fields not where the other
-  keys say (`translation_keys`).
+  English, even with a translation's tables still loaded), unconfigured, or with the object's
+  fields not where the other keys say (`translation_keys`).
 - **Safety:** the tables are heap memory, freed and loaded again when the player picks another
   translation (`docs/re/memory.md`, "Translation tables"). Each write goes into the tables as
   they are now, checked against the pointers and count read when its state was made, so after a
@@ -1325,8 +1293,8 @@ lands, not only the place passed.
   the owner's own checks.
   - Working in English(HD): the Feats of Natu screen's title and note both centered
     (the owner's screenshot); no Keys frame on the pause row after Option with the client
-    connected, and the documented frame of Keys before it, over a cache without
-    `options_back_fn` ("The pipe"; "The OS Install Disks goal"); by the owner's report, the
+    connected, and the frame of Keys before it, over a cache from before the
+    `options_back_fn` key ("The OS Install Disks goal"); by the owner's report, the
     assist lock ("The assist menu"), the D2 disk icon (the helper's icons, above), the title
     lines only on the title ("The title screen's lines") and YES on a first ending ("The OS
     Install Disks goal").
@@ -1374,14 +1342,16 @@ unload.
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
   the popup queue, the
-  new-game watch, a whole ARCHIPELAGO press, what a refused unload sets
-  again, the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
+  new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
+  (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
   game's last message, however many frame calls pass, the ending after YES
   starting with a message of the game's still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for; the screen
-  kept black after YES, a popup waiting bringing it back in, received deaths refused (`RETURN
+  kept black after YES into the ending with a popup waiting (shown at the next load), and the
+  same popup wait after a YES not kept black, received
+  deaths refused (`RETURN
   HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
   until another save is loaded). `mission` covers the black after YES on its own: kept, not
   kept for a fade not as NO leaves it, ended by kDarkFrames game frames in play (from a stand-in
@@ -1410,7 +1380,7 @@ unload.
   client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
   came and went, a seed put with a client, the AP saves' slots, and the file select's logo
   through the frame call: painted, whitened through a new game's fade, and cleared by
-  `restore_files`, and a cache without the translation keys or the later keys).
+  `put_back_files`, and a cache missing a key refused).
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
   leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
   areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
@@ -1442,8 +1412,7 @@ unload.
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
   the patch. It also covers the Steam import hooked and passed through, the stub's test while an AP
-  save loads (by slot, marker and context, kept and dropped, off with `release_steam`, none without
-  `current_slot`), the refusals, putting back with and without a frame, and the Feats of Natu
+  save loads (by slot, marker and context, kept and dropped, off with `release_steam`), the refusals, putting back with and without a frame, and the Feats of Natu
   screen's note (on a stand-in screen, after an AP ending only). The program imports
   `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`), as
   the game does. Both are built into `build/feats/`, apart from the helper.
@@ -1465,10 +1434,10 @@ unload.
 |---|---|
 | `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, each part's watch |
-| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads (the client-only, translation and later ones null after an offline cache lacking them) |
+| `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
-| `text.cpp` | the popups' text layout |
+| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |

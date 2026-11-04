@@ -93,11 +93,10 @@ std::string configure_feats(zap::Game& game, bool active = true) {
     return game.configure(GetModuleHandleW(nullptr), feats_config(), active);
 }
 
-// An AP save of a seed the game knows, loaded and watched over two frame calls: the guard on.
+// An AP save of a seed the game knows, loaded and watched: the guard on.
 void guard_on(zap::Game& game, uint8_t salt = 1) {
     load_save(salt);
     game.add_known_seeds({seed_of_save()});
-    game.watch_feats();
     game.watch_feats();
 }
 
@@ -161,10 +160,8 @@ void test_on_and_off() {
     load_save(1);
     game.add_known_seeds({seed_of_save()});
     game.watch_feats();
-    check(!game.feats().on() && !game.feats().ending_patched() && !game.feats().steam_hooked(),
-          "one frame call is not enough (a precaution)");
-    game.watch_feats();
-    check(game.feats().on() && game.feats_state() == "on", "on at the second", game.feats_state());
+    check(game.feats().on() && game.feats_state() == "on", "on at the first frame call",
+          game.feats_state());
     check(game.feats().ending_patched() && game.feats().steam_hooked(), "both changes made");
     check(game.unload_blocker() != nullptr &&
               std::string(game.unload_blocker()) == "the ending's patch is still the helper's",
@@ -321,11 +318,9 @@ void test_a_load_from_the_file_select() {
     std::memcpy(g_section, rando_copy(5), 0x908);
     g_save_loaded = 0;
     game.watch_feats();
-    check(game.feats().load_test(), "one frame call: kept (a precaution)");
-    game.watch_feats();
     check(!game.feats().steam_hooked() && !game.feats().load_test() &&
               slot_value() == steam_function(),
-          "a save that is not an AP save: the slot back to steam_api64's");
+          "a save that is not an AP save: the slot back to steam_api64's at the first frame call");
     g_current_slot = 2;
     std::memcpy(g_section, rando_copy(3), 0x908);
     g_rando_marker = 1;
@@ -359,17 +354,6 @@ void test_a_load_from_the_file_select() {
     game.watch_feats();
     check(game.feats().load_test(), "and set again by the next frame call");
     game.restore_feats();
-
-    zap::Game offline;  // a cache without current_slot, a client-only key
-    auto config = feats_config();
-    config.erase("current_slot");
-    check(offline.configure(GetModuleHandleW(nullptr), config, false).empty(),
-          "configured from a cache without current_slot");
-    offline.set_offline({zap::offline_seed_of(rando_copy(3))});
-    offline.watch_feats();
-    check(!offline.feats().steam_hooked() && !offline.feats().load_test(),
-          "without current_slot: not hooked at the file select");
-    offline.restore_feats();
     clear_slots();
     g_current_slot = 0;
     g_rando_marker = 0;
@@ -520,7 +504,7 @@ std::string centered_line(const std::string& text) {
     return out;
 }
 
-std::string noted_line() { return centered_line(zap::kFeatsNote); }
+std::string noted_line() { return centered_line(zap::in_capitals(zap::kFeatsNote)); }
 
 // In a translation the note's pixel glyphs show in place of the translated title while the note
 // is there.

@@ -30,10 +30,12 @@ constexpr ptrdiff_t kEdgeQuadRight1 = 0xA8, kEdgeQuadRight2 = 0xB8;
 constexpr int32_t kGameBorderWidth = kLabelLength * 8 + 8;  // 96
 constexpr double kEdgeAsLaid = 80.1;  // the top-right piece's x past the label's (read live)
 constexpr double kBorderMove = 8.0;   // one character: as far past the label as on its left
-constexpr char kLabel[kLabelLength + 1] = "ARCHIPELAGO";
+// In capitals in its pixel glyphs; in a translation the panel shows SmallText 354's text
+// (0x18027B), built again as this (hd_case).
+constexpr char kLabel[] = "Archipelago";
+constexpr Capitals kPixelLabel{kLabel};
+static_assert(kPixelLabel.size() == kLabelLength);
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
-// In a translation the panel shows SmallText 354's text (0x18027B).
-constexpr wchar_t kTranslatedLabel[] = L"Archipelago";
 constexpr int kRandomizerEntry = 354;
 constexpr int32_t kMaxPanels = 16, kMaxChildren = 64;
 constexpr ptrdiff_t kPanelSelected = 0x2DC;  // 32-bit: the selected child, -1 for none
@@ -178,16 +180,16 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
     // A label already reading ARCHIPELAGO (left by `release`) saves RANDOMIZER as its original.
-    const bool already = glyphs_show(glyphs, kLabel);
+    const bool already = glyphs_show(glyphs, kPixelLabel);
     for (int i = 0; i < kLabelLength; ++i) {
         BYTE* g = glyphs[i];
         frames_[i] = already ? static_cast<unsigned char>(kRandomizer[i])
                              : at<int32_t>(g, sprite::kFrameIndex);
-        set_frame(g, static_cast<unsigned char>(kLabel[i]));  // glyphs_of: count > 'Z'
+        set_frame(g, static_cast<unsigned char>(kPixelLabel.text[i]));  // glyphs_of: count > 'Z'
     }
     // In a translation, built again where the attach would build it now; the game sizes its
     // hover border from that text (0xAE500), and fit_border leaves it alone.
-    rebuild_label(a, pointer_at(child, widget::kLabel), kTranslatedLabel, {.attached = true});
+    rebuild_label(a, pointer_at(child, widget::kLabel), hd_case(a, kLabel), {.attached = true});
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).
@@ -384,7 +386,6 @@ bool AssistLock::install(const GameAddresses& a) {
 void AssistLock::lock_translated(const GameAddresses& a, BYTE* label) {
     std::wstring own;
     if (!read_small_entry(a, kAssistEntry, own)) return;
-    if (pixel_glyphs_shown(label)) show_translated_glyphs(label);  // as an older helper left it
     if (!hd_.holds(label)) {
         hd_.label = nullptr;
         // Built after the pixel glyphs took the locked style, which the builder copies (0x8AAB5).

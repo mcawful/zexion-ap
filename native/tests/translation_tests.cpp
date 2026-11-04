@@ -64,17 +64,6 @@ void test_the_text_helpers() {
     check(zap::hd_icon(0xFB) == L"\xE03A" && zap::hd_icon(0xEF) == L"\xE03B" &&
               zap::hd_icon(0xEE) == L"\xE03C",
           "the disk, the padlock and the AP logo as the helper paints them in the icon sheets");
-    // As layout_label lays a label out: "\xEE" "MASTER SWORD" over FOR ALICE, 13 wide.
-    const zap::Label label = zap::layout_label("\xEE" "MASTER SWORD", "FOR ALICE");
-    check(zap::hd_label(label.name, label.width) == L"\xE03C" L"MASTER SWORD\nFOR ALICE",
-          "a label's lines, the logo first");
-    check(zap::hd_label(label.name, label.width, true) == L"\xE03C" L"MASTER SWORD",
-          "its first line");
-    check(zap::hd_label(label.name, label.width, true, false) == L"MASTER SWORD",
-          "the map cursor's: no logo");
-    const zap::Label own = zap::layout_label("\xC5" "MISSILE BOX", "FOR BOB");
-    check(zap::hd_label(own.name, own.width) == L"\xE029MISSILE BOX\nFOR BOB",
-          "another Zexion player's item with its icon");
 }
 
 void test_the_tables() {
@@ -108,7 +97,7 @@ void test_popups_take_turns_and_empty() {
     zap::Game game;
     start(game);
     const int32_t run = g_small->offsets[66], seventy = g_small->offsets[70];
-    queue(game, "apply\npopup 36 FROM ALICE");
+    queue(game, "apply\npopup 36 from ALICE");
     frames(game, 1);
     check(g_messages == 1 && g_hd_texts.size() == 1, "a popup, given its translated text");
     const std::wstring first = L"\xE029Missile Box\nfrom ALICE";
@@ -121,7 +110,7 @@ void test_popups_take_turns_and_empty() {
     check(hd_object(0)[0x22C] == 1, "the message's HD object marked, as the game marks it");
 
     g_message_slot = 1;  // the first still closing
-    queue(game, "apply\npopup 0 FROM BOB");
+    queue(game, "apply\npopup 0 from BOB");
     frames(game, 25);
     check(g_hd_texts.size() == 2 && g_hd_texts[1].entry == 70 &&
               g_hd_texts[1].text == L"Energy Tank\nfrom BOB" &&
@@ -151,7 +140,7 @@ void test_popups_take_turns_and_empty() {
           "every area empty once its message has gone");
     check(game.unload_blocker() != nullptr, "the split: an unload no frame came for waits");
 
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(g_small->offsets[70] == seventy && !game.popup_areas().split(), "the split undone");
     check(game.unload_blocker() == nullptr, "nothing for an unload to wait for");
 }
@@ -171,7 +160,7 @@ void test_a_notice_too_long_shows_its_pixel_text() {
     check(g_messages == 1 && g_hd_texts.empty(), "past the run: no translated text");
     check(hd_object(0)[0x22C] == 0, "the slot's mark cleared, so its pixel text shows");
     check(entry_text(g_small, 66) == L"\r", "nothing written");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // Unreadable tables (no ItemNames loaded), and an unload's put-back: the pixel text, nothing
@@ -190,19 +179,19 @@ void test_the_pixel_text_when_the_tables_cannot_be_used() {
           "tables not readable: the pixel text, the mark cleared");
     put<wchar_t*>(g_translation, 0x48, g_items->text.data());
 
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     game.hold_translated_popups();
     hd_object(0)[0x22C] = 1;
     queue(game, "apply\npopup 36 FROM BOB");
-    frames(game, 25);
+    for (int i = 0; i < 25; ++i) game.pump_popups();  // no watch while unloading
     check(g_messages == 2 && g_hd_texts.empty() && hd_object(0)[0x22C] == 0 &&
               !game.popup_areas().split() && game.unload_blocker() == nullptr,
           "while unloading: the pixel text, no entry borrowed");
-    game.rearm(game.snapshot());  // the unload refused
+    // The unload refused: the next frame's watches.
     queue(game, "apply\npopup 36 FROM CAROL");
     frames(game, 25);
     check(g_hd_texts.size() == 1, "refused: the translation's font again");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // A borrowed run with text in one entry (68) is not split: PopupAreas::prepare takes the run only
@@ -222,7 +211,7 @@ void test_the_run_not_borrowed_when_an_entry_holds_text() {
     check(g_messages == 1 && g_hd_texts.empty(), "the popup in its pixel text");
     check(!game.popup_areas().split() && g_small->offsets == offsets && g_small->text == text,
           "no split, the table as it was");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 void test_a_whole_notice() {
@@ -250,18 +239,18 @@ void test_a_whole_notice() {
     end_message(1);
     frames(game, 1);
     check(!game.popup_areas().in_use() && entry_text(g_small, 66).empty(), "both free again");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // ItemNames' last entry, whose room the offsets cannot give: the popup still has its name.
 void test_the_last_item_name() {
     zap::Game game;
     start(game);
-    queue(game, "apply\npopup 50 FROM ALICE");
+    queue(game, "apply\npopup 50 from ALICE");
     frames(game, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"Energy Shield\nfrom ALICE"),
           "the last entry's name, as the translation has it");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 // The same translation reloaded into the same buffers (the allocator may give them): what the
@@ -282,7 +271,7 @@ void test_a_reload_in_place() {
     end_message(0);
     frames(game, 1);
     check(table->text == fresh, "the area not emptied: it no longer reads as written");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(table->offsets[70] == seventy && !game.popup_areas().split(),
           "entry 70 left at the new table's own offset");
 }
@@ -302,12 +291,12 @@ void test_a_language_change_mid_popup() {
     check(!game.popup_areas().split() && !game.popup_areas().in_use(), "the old split forgotten");
     end_message(0);
     queue(game, "apply\npopup 36 FROM BOB");
-    frames(game, 25);
+    for (int i = 0; i < 25; ++i) game.pump_popups();  // no watch while unloading
     check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"\xE029Missile Box (FR)\nFROM BOB" &&
               entry_text(g_small, g_hd_texts[1].entry) == g_hd_texts[1].text &&
               g_small->offsets[70] > g_small->offsets[66],
           "split again in the new table, the new translation's name");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 }
 
 void test_the_names_written_and_put_back() {
@@ -373,7 +362,7 @@ void test_the_scanner_line() {
     check(entry_text(g_small, 12) == L"Energy Keys detected!", "and back with discs off");
     game.set_discs(3, 12, "COLLECT 12 OS INSTALL DISKS!", true);
     frames(game, 1);
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(entry_text(g_small, 12) == L"Energy Keys detected!" && game.unload_blocker() == nullptr,
           "put back with the rest");
 }
@@ -395,7 +384,7 @@ void test_the_default_english_untouched() {
     check(g_small->text == small && g_items->text == items && g_small->offsets == offsets,
           "the tables as loaded");
     check(game.language() == "-", "hello: the default English");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
 
     zap::Game fresh;  // no translation ever loaded: the pointers null
     reset_game();
@@ -405,7 +394,7 @@ void test_the_default_english_untouched() {
     frames(fresh, 1);
     check(g_messages == 1 && g_hd_texts.empty() && fresh.language() == "-",
           "a popup in the pixel font");
-    fresh.put_back_all(&no_callback);
+    fresh.put_back_game(&no_callback);
 }
 
 
@@ -653,10 +642,6 @@ void test_the_popup_layout() {
     put<double>(font, 0x40060, std::numeric_limits<double>::quiet_NaN());
     check(!m.load(a), "a font whose values are not a loaded font's: not measured");
     put<double>(font, 0x40060, 1.0);
-    check(zap::hd_suffix("FROM Bob") == L"from Bob" &&
-              zap::hd_suffix("FROM ALICE") == L"from ALICE" &&
-              zap::hd_suffix("FOR Bob") == L"FOR Bob",
-          "the client's FROM in the sentence's case, the name as sent");
     reset_translation();
 }
 
@@ -688,7 +673,7 @@ void test_the_icons_through_the_game() {
     frames(game, 1);
     check(gl_fake::g_uploads.size() == 6, "painted again with the translation back");
     gl_fake::g_uploads.clear();
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads),
           "cleared before an unload");
 
@@ -699,7 +684,7 @@ void test_the_icons_through_the_game() {
     other.set_gl(gl_fake::fake_gl());
     frames(other, 1);
     check(gl_fake::g_uploads.empty(), "a sheet whose cell the game uses: left as the game's");
-    other.put_back_all(&no_callback);
+    other.put_back_game(&no_callback);
     check(gl_fake::g_uploads.empty(), "and nothing to clear");
     g_template_list[101] = g_template_list[104] = nullptr;
     gl_fake::reset_gl();
@@ -724,7 +709,7 @@ void test_a_popup_laid_out_by_the_font() {
     put<int32_t>(sheet, 0x1BC, 256);
     put<BYTE*>(sheet, 0x1A8, frames_list.data());
     g_template_list[104] = sheet;
-    queue(game, "apply\npopup 36 FROM Bob");
+    queue(game, "apply\npopup 36 from Bob");
     frames(game, 1);
     // "\xE029Missile Box" is 8 + 10 x 6 + 3 = 71 wide, "from Bob" 45: 13 more each side, 4 spaces.
     check(g_hd_texts.size() == 1 &&
@@ -753,7 +738,7 @@ void test_a_popup_laid_out_by_the_font() {
     }
     check(narrow && lines >= 3, "a long notice wrapped, no line wider than a pixel popup");
     g_template_list[104] = nullptr;
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -793,7 +778,7 @@ void test_a_stand_in_name_centered_through_the_game() {
               L"\xE03C" L"ABCDEFGHIJKLMNOPQRSTUVW\nFOR B",
           "not centered where the spaces would not fit, nothing cut");
     g_template_list[104] = nullptr;
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -970,7 +955,7 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
     game.client_gone(&no_callback);
     frames(game, 2);
     check(entry_text(g_items, 47) == L"Scrap Energy (FR)", "the client gone: put back for good");
-    game.put_back_all(&no_callback);
+    game.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -978,28 +963,28 @@ void test_a_stand_in_name_held_while_its_popup_shows() {
 void test_the_suffix_case() {
     zap::Game hd;
     start(hd);
-    queue(hd, "apply\npopup 36 FROM Bob");
+    queue(hd, "apply\npopup 36 from Bob");
     frames(hd, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nfrom Bob"),
           "English(HD): the suffix in the case the client sent it");
-    hd.put_back_all(&no_callback);
+    hd.put_back_game(&no_callback);
 
     zap::Game french;
     start(french);
     load_translation("French");
-    queue(french, "apply\npopup 36 FROM Bob");
+    queue(french, "apply\npopup 36 from Bob");
     frames(french, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text.ends_with(L"\nFROM BOB"),
           "French: the suffix in capitals");
-    french.put_back_all(&no_callback);
+    french.put_back_game(&no_callback);
 
     zap::Game plain;
     start(plain, false);
-    queue(plain, "apply\npopup 36 FROM Bob");
+    queue(plain, "apply\npopup 36 from Bob");
     frames(plain, 1);
     check(g_hd_texts.empty() && g_text.find("FROM BOB") != std::string::npos,
           "the default English: the pixel text in capitals, as before");
-    plain.put_back_all(&no_callback);
+    plain.put_back_game(&no_callback);
     reset_translation();
 }
 
@@ -1031,17 +1016,17 @@ void test_the_mixed_case() {
         std::map<int, zap::Label> labels;
         const std::string text = "AP Item\nfor Alice";
         check(zap::parse_labels("ap_labels\nlabel 5 2 " + hex(text), labels).empty() &&
-                  labels.size() == 1 && labels.begin()->second.own_first == "AP Item" &&
-                  labels.begin()->second.own_who == "for Alice" &&
-                  labels.begin()->second.who == "FOR ALICE",
-              "a label parsed in both cases");
+                  labels.size() == 1 && labels.begin()->second.first == "AP Item" &&
+                  labels.begin()->second.who == "for Alice" &&
+                  labels.begin()->second.name == "\xEE" "AP ITEM FOR ALICE",
+              "a label kept as sent, its pixel name in capitals");
         game.set_labels(labels);
-        const int cell = 2 * 54 + 5;
+        const zap::Label& label = game.labels().begin()->second;
         if (language.on) {
-            check(game.hd_label_text(cell, false, true) ==
+            check(game.hd_label_text(label, false, true) ==
                       (hd ? L"\xE03C" L"AP Item\nfor Alice" : L"\xE03C" L"AP ITEM\nFOR ALICE"),
                   "a stand-in's name", where);
-            check(game.hd_label_text(cell, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
+            check(game.hd_label_text(label, true, false) == (hd ? L"AP Item" : L"AP ITEM"),
                   "the map cursor's", where);
         }
         std::map<int, zap::Label> zexion;
@@ -1050,11 +1035,15 @@ void test_the_mixed_case() {
                   .empty(),
               "an @N label parsed");
         game.set_labels(zexion);
-        if (hd) {
+        if (language.on) {
+            // In every translation the translation's own name, as its received popup shows it.
             const std::wstring own_name = entry_text(g_items, 36);
             check(!own_name.empty() &&
-                      game.hd_label_text(2 * 54 + 6, false, false) == own_name + L"\nfor Bob",
-                  "another Zexion player's item by the translation's name");
+                      game.hd_label_text(game.labels().at(2 * 54 + 6), false, false) ==
+                          own_name + (hd ? L"\nfor Bob" : L"\nFOR BOB"),
+                  "another Zexion player's item by the translation's name", where);
+        }
+        if (hd) {
             // @47 where the player stands: the game's own name, not grown from the label the
             // helper writes into that same entry each frame.
             own_stand_ins(g_records);
@@ -1078,8 +1067,27 @@ void test_the_mixed_case() {
         check(std::string(reinterpret_cast<const char*>(g_text_table + 12 * 32)) ==
                   "COLLECT 12 OS INSTALL DISKS!",
               "the scanner's pixel line in capitals", where);
-        game.put_back_all(&no_callback);
+        game.put_back_game(&no_callback);
     }
+    reset_translation();
+}
+
+// The helper's fixed texts follow the same rule (hd_case): mixed case in English(HD), capitals in
+// any other translation (ARCHIPELAGO, Intel Chip, RETURN HOME's question, the disk, the Feats
+// note).
+void test_the_helpers_fixed_texts_case() {
+    zap::GameAddresses a{};
+    with_translation(a);
+    load_translation("English(HD)");
+    check(zap::hd_case(a, zap::kIntelName) == L"Intel Chip" &&
+              zap::hd_case(a, zap::kFeatsNote) == L"Archipelago save: no Feats earned" &&
+              zap::hd_case(a, zap::kMissionQuestion) == L"Return home with the disks?",
+          "English(HD): in mixed case");
+    load_translation("French");
+    check(zap::hd_case(a, zap::kIntelName) == L"INTEL CHIP" &&
+              zap::hd_case(a, zap::kDiskName) == L"OS INSTALL DISK" &&
+              zap::hd_case(a, zap::kMissionQuestion) == L"RETURN HOME WITH THE DISKS?",
+          "French: in capitals");
     reset_translation();
 }
 
@@ -1104,7 +1112,7 @@ void test_the_helpers_notice_case() {
         check(shown.find(hd ? L"Archipelago client not" : L"ARCHIPELAGO CLIENT NOT") !=
                   std::wstring::npos,
               hd ? "English(HD): the helper's notice in mixed case" : "French: in capitals");
-        game.put_back_all(&no_callback);
+        game.put_back_game(&no_callback);
     }
     reset_translation();
 }
@@ -1115,6 +1123,7 @@ int main() {
     test_the_text_helpers();
     test_the_mixed_case();
     test_the_helpers_notice_case();
+    test_the_helpers_fixed_texts_case();
     test_the_popup_layout();
     test_the_icons_through_the_game();
     test_a_popup_laid_out_by_the_font();

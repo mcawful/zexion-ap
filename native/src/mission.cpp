@@ -3,15 +3,16 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "text.h"  // in_capitals
 #include "translation.h"
 
 namespace zap {
 
-// Centered in the 30-glyph line the prompt's builder gives the question (0x166D9F).
-const char kMissionQuestion[] = " RETURN HOME WITH THE DISKS?";
-// In a translation the question shows SmallText 374's text (0x166EEE), built again as this and
-// centered as the game centers 374's: on x 160 less 4 (0x166EFA, 0x85B00).
-const wchar_t kMissionQuestionHd[] = L"Return home with the disks?";
+// In capitals after a blank, centered so in the 30-glyph line the prompt's builder gives the
+// question (0x166D9F). In a translation the question shows SmallText 374's text (0x166EEE),
+// built again as this (hd_case) and centered as the game centers 374's: on x 160 less 4
+// (0x166EFA, 0x85B00).
+const char kMissionQuestion[] = "Return home with the disks?";
 constexpr float kQuestionCenterBy = -4.0f;
 const char kEndingStarted[] = "ending started";
 
@@ -19,7 +20,7 @@ namespace {
 
 // The prompt as 0x1668A0 builds it: one panel of three children, YES, NO and the question.
 constexpr int32_t kPromptChildren = 3;
-constexpr int kMinQuestionGlyphs = static_cast<int>(sizeof(kMissionQuestion) - 1);
+constexpr int kMinQuestionGlyphs = static_cast<int>(sizeof(kMissionQuestion));  // the blank too
 
 // Event 3667 as B1 loads it (docs/re/memory.md, "The mission prompt"): the global level to 4,
 // then toward -1 (black) a step every 8 frames. Its handler (0xD6A0) reads only the record.
@@ -87,15 +88,6 @@ void MissionPrompt::request() {
     if (started_) return;
     requested_ = true;
     status_ = "asked";
-}
-
-void MissionPrompt::resume(bool asked, bool ending) {
-    if (ending) {
-        ending_ = true;
-        status_ = "yes: ending when idle";
-    } else if (asked) {
-        request();
-    }
 }
 
 void MissionPrompt::watch(const GameAddresses& a, bool idle_in_play, bool away) {
@@ -292,9 +284,9 @@ std::string MissionPrompt::open(const GameAddresses& a) {
         return status_ = "the question's label is not as traced: YES is NO";
     }
     reinterpret_cast<void (*)(void*, const char*, int, int)>(a.text_set_fn)(
-        question, kMissionQuestion, 0, glyphs);
+        question, (" " + in_capitals(kMissionQuestion)).c_str(), 0, glyphs);
     // In a translation (translation.h): where the game built 374's, centered as it centers that.
-    rebuild_label(a, question, kMissionQuestionHd,
+    rebuild_label(a, question, hd_case(a, kMissionQuestion),
                   {.attached = true, .center = true, .center_by = kQuestionCenterBy});
     if (a.hooks.mission_yes != nullptr) put(child[0], widget::kCallback, a.hooks.mission_yes);
     no_fn_ = no;

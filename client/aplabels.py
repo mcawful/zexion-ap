@@ -122,21 +122,16 @@ def labels_wanted(seed_matches: bool, left_seed: bool, wanted: bool) -> bool:
     return wanted
 
 
-def stand_ins(slot_data: Mapping[str, object]) -> frozenset[int]:
-    """The stand-in items the world says it uses; ValueError if they are not the client's."""
-    codes = (slot_data["stand_in"], slot_data["stand_in_progression"])
-    if codes != (STAND_IN, STAND_IN_PROGRESSION):
-        raise ValueError(f"the world's stand-in items {codes} are not the client's")
-    return frozenset(codes)
-
-
-def foreign_locations(
-    location_items: Sequence[int], kept: Iterable[int], codes: Iterable[int] = (STAND_IN,)
-) -> list[int]:
-    """Indices of this world's locations that hold a stand-in: another player's item, or one
-    of this player's own the game must not hand out (an OS Install Disk, client/discs.py)."""
-    keep, wanted = set(kept), set(codes)
-    return [i for i, code in enumerate(location_items) if code in wanted and i in keep]
+def foreign_locations(location_items: Sequence[int], kept: Iterable[int]) -> list[int]:
+    """Indices of this world's locations that hold a stand-in (STAND_IN or STAND_IN_PROGRESSION,
+    which the world uses too: worlds/zexion/test/test_client_agrees.py): another player's item,
+    or one of this player's own the game must not hand out (an OS Install Disk, client/discs.py)."""
+    keep = set(kept)
+    return [
+        i
+        for i, code in enumerate(location_items)
+        if code in (STAND_IN, STAND_IN_PROGRESSION) and i in keep
+    ]
 
 
 def labels_request(labels: Mapping[tuple[int, int], str]) -> str:

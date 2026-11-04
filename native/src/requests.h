@@ -22,7 +22,9 @@ struct Cas {
 
 struct Popup {
     uint8_t item;
-    std::string suffix;  // already filtered to the font (see parse_batch)
+    // A popup's suffix or a notice's text, filtered to the font (parse_batch), in the case it was
+    // sent or written in (in capitals where it is drawn: text.h, in_capitals).
+    std::string text;
     bool bare = false;   // a notice: the text alone, no icon or name (an Area Map's hint)
     // A client's (from `apply`), with the pickup sound and held for its save; else one of the
     // helper's own notices (game_offline.cpp), silent.
@@ -30,9 +32,6 @@ struct Popup {
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
-    // The same characters in the case they were sent in, or the helper's own notices' mixed-case
-    // text (game_offline.cpp); English(HD) shows it (Game::hd_popup_text). Empty where none.
-    std::string as_sent;
 };
 
 struct Batch {
@@ -60,8 +59,7 @@ struct StartRoom {
 // as the seed's settings for the game's placement, which the helper runs itself: for ARCHIPELAGO
 // (offered only with `choice`), and again over a matching RANDOMIZER game's own. After it the
 // section must hold `expect` (the location list, amounts and checked settings), then gets
-// `write` (the AP item table, start, starting items, seed text and hash). Without `menu`, a
-// RANDOMIZER game is checked against `expect` as the player's placement made it.
+// `write` (the AP item table, start, starting items, seed text and hash).
 struct NewGamePlan {
     std::vector<SectionBytes> identify;
     std::vector<SectionBytes> expect;
@@ -82,16 +80,14 @@ constexpr size_t kMenuSize = 0x114;  // the randomizer menu's state, as the game
 // HEX" (in the section) and "menu OFFSET HEX" (in the menu's state); OFFSET decimal or 0x hex,
 // HEX an even number of hex digits; every range must lie inside its block. Also "start_table
 // HEX": 5 bytes per room (x and y, 16-bit, and the flag), at most 64 rooms, cells on the 54 x
-// 54 map, flags 0 or 1; and "choice" alone, which needs menu lines. Menu lines need identify
-// lines.
+// 54 map, flags 0 or 1; and "choice" alone. A plan needs write, menu and identify lines.
 std::string parse_newgame(const std::string& request, NewGamePlan& out);
 
 // "ap_labels" followed by lines "label X Y HEX": the name, as hex bytes, for the stand-in
-// item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws
-// (letters made upper-case, digits, space and . , ' ! ? - : ( ) / &; each line also kept in
-// the case it was sent in, Label::own_first and own_who, for English(HD)), and of each of its two
+// item at map cell (x, y), both 0 to 53. Names keep only what the game's font draws (letters in
+// either case, kept as sent; digits, space and . , ' ! ? - : ( ) / &), and of each of its two
 // lines only the first line it wraps to: the item's at 23 characters (after the logo glyph),
-// whom it is for at 24.
+// whom it is for at 24. Each label is laid out (Label::lay_out).
 std::string parse_labels(const std::string& request, std::map<int, Label>& out);
 
 // Hex digits (either case), two to a byte, appended to `out`: false for none, an odd count or
@@ -106,10 +102,9 @@ bool parse_number_list(const std::string& text, size_t max_digits, int lo, int h
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
 
 // "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
-// "notice ITEM TEXT". A popup's suffix keeps only letters (made upper-case), digits, space and
+// "notice ITEM TEXT". A popup's suffix keeps only letters (in the case sent), digits, space and
 // . , ' ! ? -, at most 40 characters; a notice's text keeps the same and :, at most 200, and is
-// shown alone, with no icon or name (notice_text). Either keeps the same characters in the case
-// they were sent in (Popup::as_sent), which English(HD) shows.
+// shown alone, with no icon or name (notice_text).
 std::string parse_batch(const std::string& request, Batch& out);
 
 // A `discs` request: "discs" (off: count 0, required 0, line "") or "discs COUNT REQUIRED HEX
@@ -117,10 +112,9 @@ std::string parse_batch(const std::string& request, Batch& out);
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
 
-// A `disk_slots` request: "disk_slots" (off: no slot) or "disk_slots COUNT REQUIRED SLOTS",
-// SLOTS a comma list of slots 1 to 30, or "-": `counts` gets COUNT for each slot. REQUIRED
-// (1 to 255) is checked, as the client sends it, but not kept: the file select shows the count
-// alone (files.h).
+// A `disk_slots` request: "disk_slots" (off: no slot) or "disk_slots COUNT SLOTS", SLOTS a comma
+// list of slots 1 to 30, or "-": `counts` gets COUNT for each slot (the file select shows the
+// count alone: files.h).
 std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts);
 
 // A `mission_prompt` request: "mission_prompt COLUMN ROW", home's save point in tiles (the

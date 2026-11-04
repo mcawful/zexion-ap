@@ -3,8 +3,8 @@
 // menu labels built again with the game's builder (rebuild_label), and the pixel glyphs shown
 // where a text cannot be built (show_pixel_glyphs). The tables are heap memory a pick of another
 // translation frees, so each write goes only into the tables as read now, and is put back only
-// while it still reads as written. Every part stands down without the translation's keys
-// (game_calls.cpp, `translation_key`) or with the flag clear. Game thread only; every read is
+// while it still reads as written. Every part stands down unconfigured, with the tables not at
+// their traced places, or with the flag clear. Game thread only; every read is
 // fault-safe and every write checked first. native/README.md, "Translations"; docs/re/memory.md,
 // "Translations" and the sections after it.
 #pragma once
@@ -91,7 +91,7 @@ struct Loaded {
     const TextTable& table(Table t) const { return t == Table::kSmall ? small : items; }
 };
 
-// The translation's keys are all there, the tables and the flag at their traced places.
+// Configured, with the tables and the flag at their traced places.
 bool translation_keys(const GameAddresses& a);
 // Game thread: the translation now, if its keys are there and its pointers read; with `on`
 // clear, the tables may still be loaded (the default English picked) but nothing is written.
@@ -103,6 +103,9 @@ bool hd_font_on(const GameAddresses& a);
 // For `hello`: "-" the default English (the flag clear), the loaded translation's name while it
 // is on (spaces as underscores), or "?" (no translation keys, or nothing readable).
 std::string language_name(const GameAddresses& a);
+// Game thread: English(HD), the one translation the mod's text shows in mixed case (the owner's
+// rule, native/README.md, "Mixed case").
+bool mixed_case(const GameAddresses& a);
 
 // LargeText entry k, as loaded now: false without large_count, with the flag clear, or unread.
 bool read_large_entry(const GameAddresses& addresses, int k, std::wstring& out);
@@ -126,11 +129,9 @@ std::wstring hd_text(std::string_view font_text);
 // character the translations' fonts draw; "" for any other (docs/re/memory.md, "Translated
 // messages").
 std::wstring hd_icon(uint8_t icon);
-// A stand-in's label (`width` characters a line, its first character the item's glyph; text.h,
-// Label) as translated text: each line trimmed, joined by line breaks, the glyph as hd_icon (left
-// out without `icon`); with `first_line`, the first line alone, as the map cursor names it.
-std::wstring hd_label(const std::string& name, int width, bool first_line = false,
-                      bool icon = true);
+// Game thread: a client's or the helper's own text (no icon) in the translation's font, as
+// hd_text: as it is in English(HD), in capitals in any other (mixed_case).
+std::wstring hd_case(const GameAddresses& a, std::string_view text);
 
 // How rebuild_label places and lays out a label's text (docs/re/memory.md, "Where a rebuilt
 // label goes").
@@ -179,8 +180,6 @@ std::vector<std::wstring> split_lines(const std::wstring& text);
 std::wstring join_lines(const std::vector<std::wstring>& lines);
 // `text`'s lines centered as layout_popup centers a popup's; as it is without metrics.
 std::wstring centered_lines(const std::wstring& text, const FontMetrics* metrics);
-// A suffix in the translation's font, as the client sent it: "FROM Bob" as "from Bob".
-std::wstring hd_suffix(const std::string& as_sent);
 
 // Game thread: builds `label`'s translated text again as `text` with the game's builder, as `how`
 // says, hidden if the text it replaces was. False, nothing done, without the keys or the flag, for

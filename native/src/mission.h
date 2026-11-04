@@ -27,7 +27,7 @@ constexpr int32_t kFadeMessageLeft = 150;
 constexpr int kDarkFrames = 240;
 // The ending after YES fades in from black, a level each this many frames.
 constexpr int8_t kEndingFadeStep = 8;
-extern const char kMissionQuestion[];
+extern const char kMissionQuestion[];  // in capitals after a blank in its pixel glyphs
 // The status from the frame the ending is set until left_save (client/discs.py, ENDING_STARTED).
 extern const char kEndingStarted[];
 
@@ -82,8 +82,7 @@ public:
 
     // Game thread: out of the black after YES, fading back in as NO's close would; with a menu
     // open, once it has closed (watch). Nothing if not dark. `why` is what black() then says.
-    void end_dark(const GameAddresses& addresses,
-                  const char* why = "ended: a popup waiting, faded back in");
+    void end_dark(const GameAddresses& addresses, const char* why);
     // How the last black after YES ended (`mission_black`): "kept black" while it lasts, or "none".
     const std::string& black() const { return black_; }
 
@@ -103,14 +102,13 @@ public:
     bool holds_hook() const { return armed_ || yes_child_ != nullptr || end_set_; }
     // The opener set and not run yet (the fade, then the prompt): popups wait.
     bool opening() const { return armed_; }
-    // For a refused unload: a prompt on its way (asked for, opening or shown), the ending after
-    // YES; `resume` asks for them again after restore.
-    bool asked() const { return requested_ || armed_ || yes_child_ != nullptr; }
+    // A prompt asked for or opening (not one shown: an unload refuses then, and a NO's closed one
+    // is cleared only by the next watch), which a refused unload asks for again.
+    bool on_its_way() const { return requested_ || armed_; }
     bool ending() const { return ending_; }
     // Whether the ending routine, or the helper's wrapper for it, is the game's transition now
     // (set and not run yet); false without the routine table.
     bool ending_queued(const GameAddresses& addresses) const;
-    void resume(bool asked, bool ending);
     const std::string& status() const { return status_; }
 
 private:

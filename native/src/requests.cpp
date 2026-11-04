@@ -6,7 +6,6 @@
 #include <cstring>
 #include <sstream>
 
-#include "apitem.h"       // the logo glyph and AP ITEM
 #include "game_layout.h"  // kMapSide, record::kCount
 #include "scan.h"         // scan_line_ok
 
@@ -27,34 +26,15 @@ bool parse_number(const std::string& text, uint64_t& out) {
     return end != nullptr && *end == '\0';
 }
 
-// Adds `c` to `out` if the game's font draws it: a letter (made upper-case), a digit, or `kept`.
+// Adds `c` to `out` if the game's font draws it: a letter (in either case), a digit, or `kept`.
 void keep_font_char(std::string& out, unsigned char c, const char* kept) {
-    if (std::isalpha(c)) {
-        out += static_cast<char>(std::toupper(c));
-    } else if (std::isdigit(c) || (c != 0 && std::strchr(kept, c) != nullptr)) {
-        out += static_cast<char>(c);
-    }
+    if (std::isalnum(c) || (c != 0 && std::strchr(kept, c) != nullptr)) out += static_cast<char>(c);
 }
 
-// keep_font_char into `out`, and the same character in its own case into `own` (a label's
-// text for English(HD), Label::own_first).
-void keep_both(std::string& out, std::string& own, unsigned char c, const char* kept) {
-    const size_t before = out.size();
-    keep_font_char(out, c, kept);
-    if (out.size() > before) own += static_cast<char>(c);
-}
-
-// The first line `wrap_words` makes of `upper`, and the same characters of `own`.
-void first_wrapped(const std::string& upper, const std::string& own, size_t width,
-                   std::string& line, std::string& own_line) {
-    std::vector<std::string> wrapped = wrap_words(upper, width);
-    std::vector<std::string> own_wrapped = wrap_words(own, width);
-    line = wrapped.empty() ? std::string() : wrapped.front();
-    // The same breaks (case does not change a word's length); else none of its own.
-    own_line = own_wrapped.size() == wrapped.size() && !own_wrapped.empty() &&
-                       own_wrapped.front().size() == line.size()
-                   ? own_wrapped.front()
-                   : std::string();
+// The first line `wrap_words` makes of `text`, or "".
+std::string first_wrapped(const std::string& text, size_t width) {
+    std::vector<std::string> wrapped = wrap_words(text, width);
+    return wrapped.empty() ? std::string() : wrapped.front();
 }
 
 }  // namespace
@@ -131,17 +111,14 @@ std::string parse_batch(const std::string& request, Batch& out) {
             if (!(words >> item) || item >= record::kCount) return "bad line " + line;
             std::string rest;
             std::getline(words >> std::ws, rest);
-            std::string suffix, as_sent;
+            std::string text;
             for (char c : rest) {
-                keep_both(suffix, as_sent, static_cast<unsigned char>(c), kept);
-                if (suffix.size() >= most) break;
+                keep_font_char(text, static_cast<unsigned char>(c), kept);
+                if (text.size() >= most) break;
             }
-            while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();
-            as_sent.resize(suffix.size());
-            if (bare && suffix.empty()) return "bad line " + line;
-            Popup p{static_cast<uint8_t>(item), suffix, bare, true};
-            p.as_sent = as_sent;
-            out.popups.push_back(std::move(p));
+            while (!text.empty() && text.back() == ' ') text.pop_back();
+            if (bare && text.empty()) return "bad line " + line;
+            out.popups.push_back({static_cast<uint8_t>(item), std::move(text), bare, true});
         } else if (!op.empty()) {
             return "unknown line " + line;
         }
@@ -200,9 +177,9 @@ std::string parse_newgame(const std::string& request, NewGamePlan& out) {
             .push_back(std::move(edit));
     }
     if (out.write.empty()) return "nothing to write";
-    if (out.choice && out.menu.empty()) return "choice without menu lines";
-    // Menu lines place the seed over a RANDOMIZER game: only over one that is this seed.
-    if (!out.menu.empty() && out.identify.empty()) return "menu lines without identify lines";
+    // The menu lines place the seed; over a RANDOMIZER game only over one that is this seed.
+    if (out.menu.empty()) return "no menu lines";
+    if (out.identify.empty()) return "no identify lines";
     return "";
 }
 
@@ -253,10 +230,9 @@ std::string parse_disk_slots(const std::string& request, std::map<int, int>& cou
     if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
     std::istringstream words(request.substr(11));
     std::string list, extra;
-    int count = 0, required = 0;  // required: checked only (requests.h)
+    int count = 0;
     std::vector<int> slots;
-    if (!(words >> count >> required >> list) || (words >> extra) || count < 0 || count > 255 ||
-        required < 1 || required > 255 ||
+    if (!(words >> count >> list) || (words >> extra) || count < 0 || count > 255 ||
         (list != "-" && !parse_number_list(list, 2, 1, slot::kCount, slots))) {
         return "bad disk_slots request";
     }
@@ -282,55 +258,40 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
         // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
         // it this name instead of the record's (this player's own OS Install Disk).
-        std::vector<std::string> parts{std::string()}, own{std::string()};
-        int item = -1;
+        std::vector<std::string> parts{std::string()};
+        Label label;
         size_t from = 0;
-        std::string item_name, own_item_name;
         if (!raw.empty() && raw[0] == '@') {
             int n = 0;
             size_t i = 1;
             while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
             size_t end = i;
+            std::string item_name;
             if (i > 1 && i < raw.size() && raw[i] == ' ') {
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_both(item_name, own_item_name, raw[end], kFontPunctuation);
+                    keep_font_char(item_name, raw[end], kFontPunctuation);
                 }
             }
             if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
-                item = n;
+                label.item = n;
+                label.item_name = std::move(item_name);
                 from = end;
-            } else {
-                item_name.clear();
-                own_item_name.clear();
             }
         }
         for (size_t k = from; k < raw.size(); ++k) {
             if (raw[k] == '\n') {
                 if (parts.size() == 2) break;
                 parts.emplace_back();
-                own.emplace_back();
                 continue;
             }
-            keep_both(parts.back(), own.back(), raw[k], kFontPunctuation);
+            keep_font_char(parts.back(), raw[k], kFontPunctuation);
         }
-        std::string first, who, own_first, own_who;
-        first_wrapped(parts[0], own[0], static_cast<size_t>(kGamePopupWidth) - 1, first,
-                      own_first);
-        if (first.empty()) first = kApItemName;
-        first.insert(first.begin(), static_cast<char>(kApItemGlyph));
-        if (parts.size() > 1) {
-            first_wrapped(parts[1], own[1], static_cast<size_t>(kGamePopupWidth), who, own_who);
+        // An @N label's first line waits for its record (Game::resolve_item_labels).
+        if (label.item < 0) {
+            label.first = first_wrapped(parts[0], static_cast<size_t>(kGamePopupWidth) - 1);
         }
-        Label label = layout_label(item >= 0 ? std::string(1, static_cast<char>(kApItemGlyph)) +
-                                                   kApItemName
-                                             : first,
-                                   who);
-        label.item = item;
-        label.who = who;
-        label.item_name = item_name;
-        // For English(HD): the lines in the case they were sent in, an @N item's own name.
-        label.own_first = item >= 0 ? own_item_name : own_first;
-        label.own_who = own_who;
+        if (parts.size() > 1) label.who = first_wrapped(parts[1], kGamePopupWidth);
+        label.lay_out();
         out[static_cast<int>(y * kMapSide + x)] = label;
     }
     return "";

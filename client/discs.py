@@ -114,11 +114,11 @@ def seed_slots(
     return out
 
 
-def slots_request(count: int, required: int, slots: Sequence[int]) -> str:
-    """The helper's ``disk_slots`` request: the count, the number needed, and the slots holding
-    the seed, whose file select entries show the disks in place of the keys."""
+def slots_request(count: int, slots: Sequence[int]) -> str:
+    """The helper's ``disk_slots`` request: the count and the slots holding the seed, whose
+    file select entries show the disks in place of the keys."""
     listed = ",".join(str(n) for n in slots) if slots else "-"
-    return f"disk_slots {count} {required} {listed}"
+    return f"disk_slots {count} {listed}"
 
 
 def scan_line(required: int) -> str:

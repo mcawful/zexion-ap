@@ -600,7 +600,7 @@ class TestTheStartIsOpened(ZexionTestBase):
         state = self.multiworld.state.copy()
         state.sweep_for_advancements()
         empty = [loc for loc in mine if loc.can_reach(state)]
-        step = self.world.opening_step(state, mine, len(empty), pool, empty)
+        step, _ = self.world.opening_step(state, mine, len(empty), pool, empty)
         return step, len(empty), empty, state
 
     def test_a_pair_where_no_item_opens_alone(self) -> None:
@@ -790,8 +790,6 @@ class TestSlotDataForTheClient(ZexionTestBase):
             items[: len(kinds)],
             [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN, FOREIGN_PROGRESSION],
         )
-        slot = self.world.fill_slot_data()
-        self.assertEqual((slot["stand_in"], slot["stand_in_progression"]), (47, 48))
 
     def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
         # Progression for the rules' counts, but the game marks supplies minor on the map.

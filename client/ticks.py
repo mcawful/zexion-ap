@@ -173,7 +173,7 @@ async def slots_tick(ctx: ZexionContext, p: Poll) -> None:
         slots = discs.seed_slots(markers, copies, conn.plan)
         if slots:
             have = discs.owned(hunt, p.codes, p.found)
-            want = discs.slots_request(have, hunt.required, slots)
+            want = discs.slots_request(have, slots)
     ok = "disk_slots off" if want == discs.SLOTS_OFF else "disk_slots on"
     await tell(ctx.helper, told.slots, want, want, ok)
 

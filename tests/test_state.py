@@ -40,7 +40,7 @@ def test_the_options_off_set_none_of_them() -> None:
 
 
 @pytest.mark.parametrize(
-    "key", ["hints", "intel_chip", "stand_in", "menu", "goal", "mode", "locations"]
+    "key", ["hints", "intel_chip", "location_items", "menu", "goal", "mode", "locations"]
 )
 def test_slot_data_this_client_cannot_read_is_an_unsupported_seed(key) -> None:
     slot = slot_data()
@@ -205,7 +205,7 @@ def test_the_goal_is_the_ending_with_enough_disks_seen_begin_or_not() -> None:
 def test_the_feats_guard_is_asked_every_few_seconds_until_it_is_on() -> None:
     check, said = state.FeatsCheck(), state.SayOnce()
     assert check.due(0.0) and not check.due(4.9) and check.due(5.0)
-    assert check.seen("off", True, 5.0, said) is None, "not on yet: the helper needs two frames"
+    assert check.seen("off", True, 5.0, said) is None, "not on yet: no frame has found it"
     assert check.seen("on", True, 6.0, said) is None and check.known
     assert not check.due(100.0), "on: not asked again this load"
 
