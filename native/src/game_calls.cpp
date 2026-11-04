@@ -78,8 +78,7 @@ struct ConfigKey {
     uint64_t room;    // bytes from the address that must lie in its section, if not 0
     uint64_t before;  // and bytes before it
     bool client_only = false;  // read only by the client's parts: the cache may lack it
-    bool translated = false;  // read only by the translation parts: the cache may lack it
-    bool later = false;       // newer than offline caches already written: the cache may lack it
+    bool newer = false;  // newer than some offline caches (translation_key, later_key)
 };
 constexpr ConfigKey code(const char* name, Member member) {
     return {name, member, Held::kCode, 0, 0};
@@ -99,13 +98,13 @@ constexpr ConfigKey client_only(ConfigKey key) {
 // translation parts then stand down (translation_keys) while everything else runs; read only by
 // translation.cpp.
 constexpr ConfigKey translation_key(ConfigKey key) {
-    key.translated = true;
+    key.newer = true;
     return key;
 }
 // Added after offline caches were already written: a cache from before it lacks it, and its part
 // then does without it (addresses.h says how) until a client's config gives it.
 constexpr ConfigKey later_key(ConfigKey key) {
-    key.later = true;
+    key.newer = true;
     return key;
 }
 // transition_fn is data: it holds the address of the routine the game runs next.
@@ -250,7 +249,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
         if (!why.empty()) {
-            if (active || !(key.client_only || key.translated || key.later)) return why;
+            if (active || !(key.client_only || key.newer)) return why;
             left_out += (left_out.empty() ? "" : ",") + std::string(key.name);
             client_left_out = client_left_out || key.client_only;
             continue;

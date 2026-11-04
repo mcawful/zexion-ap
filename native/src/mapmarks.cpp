@@ -265,14 +265,15 @@ void MapCursorNames::after(const GameAddresses& a, const std::map<int, std::stri
     }
     // Another text (the player's room, a marker, unknown) is left alone.
     if (!cursor_shows_stand_in(frames)) return;
-    const auto width = widths.find(it->first);
-    const std::string name = map_name(it->second, width == widths.end() ? 0 : width->second);
+    const auto found = widths.find(it->first);
+    const int width = found == widths.end() ? 0 : found->second;
+    const std::string name = map_name(it->second, width);
     using Set = void (*)(void*, const char*, int, int);
     reinterpret_cast<Set>(a.text_set_fn)(text, name.c_str(), 0, static_cast<int>(kMapNameMax));
     // In a translation the cursor shows the text the game just built from ItemNames 47 or 48,
     // built again as the label's first line, without its icon (translation.h).
     std::wstring hd = hd_name ? hd_name(it->first) : std::wstring();
-    if (hd.empty()) hd = hd_label(it->second, width == widths.end() ? 0 : width->second, true, false);
+    if (hd.empty()) hd = hd_label(it->second, width, true, false);
     rebuild_label(a, text, hd);
 }
 
