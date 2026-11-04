@@ -90,7 +90,8 @@ Zexion:
     # ('random' is random_start too). Or one of the game's 34 rooms, by its name in the
     # menu: a room from which your starting items reach no location, or every item does
     # not reach Zexion's core (core goal) or the Landing Pod (OS Install Disks goal), is
-    # refused. automatic (the default): landing_pod, or a random start where that room is
+    # refused (where the starting weapon is drawn, as in Standard, only if none suits it).
+    # automatic (the default): landing_pod, or a random start where that room is
     # refused. In any game, alone or in a multiworld, the few items that open your start are
     # placed in your own world, in the area around your start: each where you can already
     # reach it. Items your non_local_items keep out of your world are not. If every item
@@ -180,9 +181,8 @@ Zexion:
     # not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
     # take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
     # start_inventory): the gates then take no keys, only two of them visited (checked in game).
-    # The
-    # scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells you
-    # how many disks you need.
+    # The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
+    # you how many disks you need.
     core: 50
     os_install_disks: 0
 
