@@ -50,24 +50,28 @@ OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without th
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 
 
-async def attach_helper(ctx: ZexionContext) -> None:
-    """Load and configure the native helper in the attached game, or carry on without it."""
+async def attach_helper(ctx: ZexionContext) -> bool:
+    """Load and configure the native helper in the attached game, or carry on without it.
+    Returns whether trying again soon may attach it: not for a mod that doesn't match."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
         helper = await asyncio.to_thread(native.attach, ctx.game_conn, dll, notes)
-    except native.ModMismatch as exc:
-        ctx.mismatched(exc)  # not tried again until Zexion restarts
-        return
     except native.HelperError as exc:
-        # Tried every 30 s: each line said again only when it changes.
+        mismatch = isinstance(exc, native.ModMismatch)
+        if mismatch and not dll.is_file():
+            # Only the player can fix it, with Zexion closed: not tried again until it restarts.
+            ctx.mismatched(exc)
+            return False
+        # Tried every 30 s (with a build of the client's own, a rebuild or an old helper that
+        # unloads on a later try fixes a mismatch): each line said again only when it changes.
         line = state.helper_failed(exc)
         if line is not None and ctx.said("helper", line):
             logger.warning(line)
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
-        return
+        return not mismatch
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
@@ -82,6 +86,7 @@ async def attach_helper(ctx: ZexionContext) -> None:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
     logger.info(f"The Zexion mod {native.VERSION} is running.")
+    return True
 
 
 # The settings the helper is told to turn on or off while this seed's save is loaded: its

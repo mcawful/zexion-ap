@@ -320,9 +320,10 @@ def failing_reattach(monkeypatch) -> tuple[zc.ZexionContext, list[str]]:
     ctx.helper_left = True
     order: list[str] = []
 
-    async def attach(c) -> None:
+    async def attach(c) -> bool:
         order.append("attach")
-        c.helper_retry_at = math.inf if c.helper_retry_at == math.inf else 30.0  # drop_helper
+        c.helper_retry_at = 30.0  # drop_helper
+        return True  # worth trying again soon
 
     def step(g, received, **kwargs):
         order.append("step")
@@ -345,9 +346,11 @@ def test_a_failed_reattach_holds_back_the_step_for_a_while(monkeypatch) -> None:
     assert order[-2:] == ["attach", "step"] and not ctx.helper_left
 
 
-def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(monkeypatch) -> None:
+def mismatched_reattach(monkeypatch, dll) -> tuple[zc.ZexionContext, list[str]]:
+    """failing_reattach through the real attach_helper, the mod not matching, ``dll`` the
+    client's own build."""
     ctx, order = failing_reattach(monkeypatch)
-    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)  # the real one
+    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
 
     def attach(*args) -> None:
         order.append("attach")
@@ -358,10 +361,28 @@ def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(monkeypatc
         raise game.GameNotRunning("Zexion is not running")
 
     monkeypatch.setattr(native, "attach", attach)
-    monkeypatch.setattr(native, "default_dll", lambda: None)
+    monkeypatch.setattr(native, "default_dll", lambda: dll)
     monkeypatch.setattr(ctx.conn.session, "step", step)
+    return ctx, order
+
+
+def test_a_failed_reattach_of_a_mod_that_does_not_match_does_not_wait(
+    monkeypatch, tmp_path
+) -> None:
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll")  # no build
     asyncio.run(zc.poll(ctx))
     assert order == ["attach", "step, retry at inf"]  # not tried again until Zexion restarts
+
+
+def test_a_mismatch_a_rebuild_can_fix_is_tried_again_without_holding_the_step(
+    monkeypatch, tmp_path
+) -> None:
+    dll = tmp_path / "zexion_ap.dll"
+    dll.write_bytes(b"")  # a build of the client's own
+    ctx, order = mismatched_reattach(monkeypatch, dll)
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 2 and order[1].startswith("step, retry at ")
+    assert order[1] != "step, retry at inf"
 
 
 def test_a_failed_reattach_to_a_closed_game_does_not_wait(monkeypatch) -> None:

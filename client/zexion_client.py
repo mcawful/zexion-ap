@@ -479,8 +479,7 @@ async def poll(ctx: ZexionContext) -> None:
         now = time.monotonic()
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
-        await attach_helper(ctx)
-        waiting = ctx.helper_retry_at < math.inf and now < ctx.helper_back_by
+        waiting = await attach_helper(ctx) and now < ctx.helper_back_by
         if ctx.helper is None and waiting and game_alive(ctx):
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return
