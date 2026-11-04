@@ -1,6 +1,5 @@
-// Host tests for the pause screen's disk row (pause.h): a stand-in pause screen laid out as read
-// live on B1 (its KEYS panel: a 4-glyph label and nine sprites), the stand-in game's `jne` in
-// code, and check.h's stand-in for the game's sprite-sheet function.
+// Host tests for the pause screen's disk row (pause.h), on a stand-in pause screen laid out as
+// read live on B1: its KEYS panel a 4-glyph label and nine sprites.
 
 #include <windows.h>
 
@@ -70,7 +69,6 @@ void test_the_row_shows_the_disks() {
           "the small Data Disc in the middle, white");
     check(p.sprite[5][0x120] == 0 && p.sprite[7][0x120] == 0 && p.sprite[8][0x120] == 0,
           "the other key icons hidden");
-    // Turned once: a second look changes nothing.
     at<int32_t>(p.sprite[0], 0x1C4) = 'X';
     row.watch(a, false);
     check(p.frame(p.sprite[0]) == 'X', "turned once");
@@ -80,8 +78,8 @@ void test_the_row_shows_the_disks() {
     check(branch() == 0x75 && !row.patched(), "off: the jne back");
 }
 
-// A disk seed's save loaded before the client sets its count: the seed file's count shows at
-// once (no KEYS flash); the client's count then wins, from the next pause screen.
+// Before the client sets its count, the seed file's shows at once (no KEYS flash); the client's
+// then wins, from the next pause screen.
 void test_prepared_before_the_count() {
     Pause p;
     zap::PauseDiskRow row;
@@ -103,8 +101,8 @@ void test_prepared_before_the_count() {
     check(branch() == 0x75 && !row.patched(), "neither: the jne back");
 }
 
-// The helper's 24 x 24 disc, once painted: sprite 4 pointed at the helper's one entry, a copy of
-// frame 829's with the disc's place in the texture, drawn 24 x 24 about the icon's place.
+// The helper's 24 x 24 disc, once painted: sprite 4 pointed at the helper's copy of frame 829's
+// entry, with the disc's place in the texture.
 void test_the_helpers_disc() {
     Pause p;
     zap::PauseDiskRow row;
@@ -132,25 +130,21 @@ void test_the_helpers_disc() {
               at<float>(s, 0x68) == 1.0f && at<BYTE*>(s, 0x30) == p.font,
           "in the middle, above the text, white, its template kept");
     check(p.sprite[5][0x120] == 0 && p.sprite[8][0x120] == 0, "the other icons hidden");
-    // Turned once: a second look changes nothing.
     at<int32_t>(p.sprite[0], 0x1C4) = 'X';
     row.watch(a, true);
     check(p.frame(p.sprite[0]) == 'X', "turned once");
 
-    // The image not painted any more (a new texture it could not paint into): the entry shows
-    // the game's disc.
+    // A new texture it could not paint into.
     row.watch(a, false);
     check(std::memcmp(entry, g_disc_frame, 16) == 0, "unpainted: frame 829's rectangle");
     row.watch(a, true);
     check(std::memcmp(entry, rect, sizeof(rect)) == 0, "painted again: the disc's");
-    // Off (and before an unload): the entry kept, showing frame 829's rectangle.
     row.set("");
     row.watch(a, false);
     check(branch() == 0x75 && !row.patched(), "off: the jne back");
     check(at<const BYTE*>(s, 0x1B0) == entry && std::memcmp(entry, g_disc_frame, 16) == 0,
           "the entry kept, never freed, showing the game's disc");
 
-    // The next pause screen reuses the one entry.
     Pause q;
     row.set(zap::pause_row_text(3, 15));
     row.watch(q.addresses(), true);
@@ -161,7 +155,7 @@ void test_the_helpers_disc() {
 }
 
 // The disc not painted, or a sprite without its template (whose list the game would free): the
-// game's frame 829, 16 x 16, as before; a sprite with no frame 829: no disc at all.
+// game's frame 829, 16 x 16; a sprite with no frame 829: no disc at all.
 void test_the_games_disc_otherwise() {
     zap::PauseDiskRow row;
     {
@@ -241,8 +235,7 @@ void test_the_text() {
     check(zap::pause_row_text(3, 9) == " 3 OF 9 ", "centered");
 }
 
-// The helper's wrapper of the pause menu's way back from OPTION MENU, as dllmain.cpp's: the
-// game's, then the row turned.
+// The pause menu's way back from OPTION MENU wrapped as dllmain.cpp wraps it.
 zap::PauseDiskRow* g_row = nullptr;
 const zap::GameAddresses* g_at = nullptr;
 void options_back(void* menu) {
@@ -252,8 +245,8 @@ void options_back(void* menu) {
 
 void* on_return(Pause& p) { return at<void*>(p.menu, 0x68); }
 
-// OPTION MENU opened over the pause screen `p`, as its opener does: the pause menu's way back
-// set to 0x168910 (0x16207D), then a menu of its own on top, with the pause menu below it.
+// OPTION MENU opened over the pause screen, as its opener does: the pause menu's way back set to
+// 0x168910 (0x16207D), its own menu on top.
 struct Options {
     BYTE menu[0x80] = {};
     Pause& under;
@@ -280,10 +273,8 @@ zap::GameAddresses hooked_addresses(Pause& p, zap::PauseDiskRow& row) {
 
 }  // namespace
 
-// The flash the owner saw in English(HD) (2026-11-03): OPTION MENU opened from the pause screen
-// and backed out of; the game's way back builds KEYS's translated text again before it draws the
-// frame. With the pause menu's way back wrapped, the count is built again in the same call, so the
-// frame drawn after it shows the count, never Keys.
+// Back from OPTION MENU in English(HD), the game builds Keys again before it draws; the wrapped
+// way back builds the count in the same call, so no frame shows Keys.
 void test_back_from_options_in_a_translation() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);
@@ -329,9 +320,8 @@ void test_back_from_options_in_a_translation() {
     stand_in::reset_translation();
 }
 
-// With the flag clear (the default English) the game's way back shows the label's four pixel
-// glyphs again, which still hold the helper's characters, and leaves the sprites: the row as it
-// was, the key slots' characters shown.
+// In the default English the game's way back shows the four pixel glyphs again, which still hold
+// the helper's characters: the row as it was.
 void test_back_from_options_in_the_default_english() {
     stand_in::reset_translation();
     Pause p;
@@ -358,10 +348,8 @@ void test_back_from_options_in_the_default_english() {
     row.watch(a, false);
 }
 
-// The way back is the game's again when the row turns off and before an unload, while its menu is
-// open and holds the wrapper; a menu that closed is forgotten, never written. Nothing else is
-// wrapped: a menu of another shape, another way back, no address for it (an offline cache from
-// before it), the row off.
+// The way back is the game's again when the row turns off and before an unload; a menu that
+// closed is forgotten, never written.
 void test_the_way_back_put_back() {
     stand_in::reset_translation();
     const void* game_fn = reinterpret_cast<void*>(&stand_in::options_back_fn);
@@ -386,7 +374,6 @@ void test_the_way_back_put_back() {
         row.restore(a);
         check(!row.holds_hook() && on_return(p) == a.hooks.options_back,
               "a menu no longer open: forgotten, not written");
-        // Changed since by something else: forgotten, the field not touched.
         p.current = options.menu;
         at<void*>(p.menu, 0x68) = const_cast<void*>(game_fn);
         row.watch(a, false);
@@ -427,8 +414,8 @@ void test_the_way_back_put_back() {
     }
 }
 
-// A fresh pause screen's label is the game's even where the last one the helper built was, with
-// its mark: the count is built on it.
+// A fresh pause screen's label at the last one's place, with its mark, is the game's: the count
+// is built on it.
 void test_a_fresh_label_at_the_last_ones_place() {
     stand_in::reset_translation();
     stand_in::load_translation("English(HD)", true);
@@ -452,8 +439,7 @@ void test_a_fresh_label_at_the_last_ones_place() {
         check(stand_in::g_builds.size() == 2, "the first screen's count built");
         const int32_t count = get<int32_t>(p->label, 0x248);
         const double x = get<double>(p->label, 0x258), y = get<double>(p->label, 0x260);
-        // Closed, and the next pause screen built at the same place, its label's mark (by
-        // chance) the one the helper left.
+        // The next pause screen at the same place, its label's mark by chance the helper's.
         p->~Pause();
         p = new (room) Pause();
         stand_in::HdGlyphs<12> hd2(p->label);
@@ -471,10 +457,8 @@ void test_a_fresh_label_at_the_last_ones_place() {
     stand_in::reset_translation();
 }
 
-// In a translation the count is the KEYS label's translated text, in the translation's font,
-// centered on the row (x 160), the key slots' characters hidden; built again after the game
-// builds KEYS again (OPTION MENU's return). With the flag clear (the default English, a
-// translated label built before) the label is left as it is and the key slots show.
+// In a translation the count is the KEYS label's translated text, centered on the row (x 160),
+// the key slots' characters hidden; with the flag clear, the label left as it is.
 void test_the_row_in_a_translation() {
     for (bool on : {true, false}) {
         stand_in::reset_translation();

@@ -1,9 +1,7 @@
-// The disk count on the equipment screen (the OS Install Disks goal; docs/re/memory.md, "The
-// equipment screen"). While on, EQUIPMENT's callback is the helper's wrapper: it calls the
-// game's, then EquipmentScreen::add moves the Energy Tank left and adds a widget for the disk
-// (the Data Disc's record, the count as its label) in a row the cursor reaches; the panel's
-// handler then writes the disk's name and description on hover. The new children array comes
-// from the game's malloc, and the game frees it with the menu. Every value is checked first.
+// The disk count on the equipment screen (the OS Install Disks goal): while on, EQUIPMENT's
+// callback is the helper's wrapper, which calls the game's, then EquipmentScreen::add, a widget
+// for the disk in a row the cursor reaches, named on hover. Its children array comes from the
+// game's malloc, and the game frees it with the menu (docs/re/memory.md, "The equipment screen").
 #pragma once
 
 #include <windows.h>
@@ -19,10 +17,9 @@ namespace zap {
 // itself refuses a count of 0).
 class EquipmentHook {
 public:
-    // Game thread, each frame while `discs` is on: if the menu on top has EQUIPMENT with
-    // the game's callback, points it at the hook; a hooked entry whose menu is no longer on top
-    // gets the game's callback back (if its menu is still open). Returns true when it hooked
-    // one this frame.
+    // Game thread, each frame while `discs` is on: points the top menu's EQUIPMENT at the hook; a
+    // hooked entry whose menu is no longer on top gets the game's callback back (if still open).
+    // Returns true when it hooked one this frame.
     bool install(const GameAddresses& addresses);
     // Game thread: the game's callback back on the entry this hooked, if its menu is still open
     // and the entry still holds the hook; otherwise just forgets it. Returns true when it wrote.
@@ -37,8 +34,7 @@ private:
     BYTE* child_ = nullptr;
 };
 
-// The equipment screen with the disk added: the menu, the Energy Tank panel holding the panel
-// hook, and the disk's widget.
+// The equipment screen with the disk added, its Energy Tank panel holding the panel hook.
 class EquipmentScreen {
 public:
     // Game thread, right after EQUIPMENT's callback has built the screen (the menu on top): with

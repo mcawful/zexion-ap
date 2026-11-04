@@ -1,8 +1,6 @@
-// A stand-in steam_api64.dll for the feats tests, built into a folder of its own with them:
-// SteamInternal_ContextInit as Steamworks' accessors use it (docs/re/memory.md, "Feats and
-// achievements"), returning a context's interface pointer, here an interface that counts the
-// calls to each vtable slot. The tests import it by name, as the game does, so the helper finds
-// and hooks the import slot the same way.
+// A stand-in steam_api64.dll for the feats tests: SteamInternal_ContextInit as Steamworks'
+// accessors use it (docs/re/memory.md, "Feats and achievements"), its interface counting the
+// calls to each vtable slot.
 #include <windows.h>
 
 #include <utility>

@@ -1,17 +1,11 @@
-// The save entries of the file select, COPY FILE and DELETE FILE (docs/re/memory.md, "The file
-// select"), rewritten in two ways:
-// - The disk count in place of the keys. For each listed slot, the keys' six glyphs show a
-//   squashed DISK and the count in two digits (5 px lower, on the items bracket), then a blank
-//   row; with no disk, all blank.
-// - The AP logo on AP saves: a 16 x 16 image over four font glyphs (kApLogoGlyphs) in the blank
-//   cells right of FILE NN (rows 0 and 1, columns 16 and 17), raised 4 px to center on that line.
-//   Only over blank cells drawn in palette 26 at style 0x15 (white), under which a glyph shows
-//   its own colors.
-// While either is on, each entry's handler is the helper's wrapper: it calls the game's, then
-// rewrites the entry after the fill (event 0xF), so no frame shows the game's; a frame-call
-// watch catches fills that bypass the handler. Written only over the game's glyphs or the
-// helper's own; when off and before an unload, the game's frames, the moved glyphs' rows and the
-// handlers go back, in menus still open.
+// The save entries of the file select, COPY FILE and DELETE FILE, rewritten two ways: the disk
+// count in place of the keys (a squashed DISK over two digits; all blank with no disk), and the
+// AP logo on AP saves, over four font glyphs in blank white cells right of FILE NN. While either
+// is on, each entry's handler is the helper's wrapper, which rewrites the entry right after the
+// game's fill (event 0xF), so no frame shows the game's; a frame-call watch catches fills that
+// bypass it. Written only over the game's glyphs or the helper's own; when off and before an
+// unload, the game's frames, the moved glyphs' rows and the handlers go back, in menus still
+// open (docs/re/memory.md, "The file select"; native/README.md, "AP saves on the file select").
 #pragma once
 
 #include <windows.h>
@@ -26,16 +20,14 @@
 
 namespace zap {
 
-// The squashed DISK: "DI" and "SK", drawn as the game's KEYS (0x81 "KE", 0x82 "YS"), into font
-// glyphs empty in the game's art (found by their alpha in Sprites.png, as 0xFB), painted while
-// the file select's count is on (apitem.h FontGlyph).
+// The squashed DISK, "DI" and "SK" as the game's KEYS (0x81, 0x82), in font glyphs empty in the
+// game's art (by their alpha in Sprites.png), painted while the count is on (apitem.h FontGlyph).
 constexpr uint8_t kDiskHeaderGlyphs[2] = {0xFC, 0xFD};
 extern const char kDiskHeaderRows[2][8][9];
 
-// The AP logo: four font glyphs empty in the game's art, two by two in the font (0x8C and 0x8D
-// over 0x9C and 0x9D), so that one 16 x 16 image at kApLogoX, kApLogoY covers them; painted
-// while a listed slot is an AP save. The world's AP item logo (apitem.h kApLogoRows), in
-// glyph_rgb's colors, painted whiter through a new game's fade to white (Game::watch_files).
+// The AP logo: four font glyphs empty in the game's art, two by two, so that one 16 x 16 image
+// at kApLogoX, kApLogoY covers them; painted while a listed slot is an AP save, as apitem.h's
+// kApLogoRows in glyph_rgb's colors, whiter through a new game's fade (Game::watch_files).
 constexpr uint8_t kApLogoGlyphs[4] = {0x8C, 0x8D, 0x9C, 0x9D};
 constexpr int kApLogoX = font_x(kApLogoGlyphs[0]), kApLogoY = font_y(kApLogoGlyphs[0]);
 static_assert(kApLogoGlyphs[1] == kApLogoGlyphs[0] + 1 &&
@@ -43,9 +35,8 @@ static_assert(kApLogoGlyphs[1] == kApLogoGlyphs[0] + 1 &&
                   kApLogoGlyphs[3] == kApLogoGlyphs[0] + 17 && kApLogoGlyphs[0] % 16 < 15,
               "the logo's glyphs two by two in the font");
 
-// A new game's transition (newgame_fn queued, a 40-frame timer counting down), during which the
-// screen fades to white: how far toward white the logo is painted (FontGlyph::set_white) with
-// `left` frames to go, 0 when no new game is queued.
+// How far toward white the logo is painted (FontGlyph::set_white) with `left` frames to go in a
+// new game's transition (newgame_fn queued, its 40-frame fade to white); 0 with none queued.
 constexpr int32_t kNewGameFadeFrames = 40;
 constexpr int new_game_white(bool queued, int32_t left) {
     return queued && left > 0 && left <= kNewGameFadeFrames
@@ -77,13 +68,11 @@ public:
     // ...then, after event 0xF (the fill), the entry rewritten.
     void on_event(const GameAddresses& addresses, void* widget, intptr_t event);
 
-    // Game thread: every wrapped handler put back, in menus still open (before an unload), and
-    // the entry's glyphs as the game left them; only into an entry still holding the hook (one
-    // built again in its place is forgotten unwritten).
+    // Game thread (before an unload): every wrapped handler and its entry's glyphs put back, in
+    // menus still open, only into an entry still holding the hook (others forgotten unwritten).
     void restore(const GameAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
-    // Each listed slot's count, and the AP saves' slots.
     const std::map<int, int>& counts() const { return counts_; }
     const std::set<int>& ap_slots() const { return ap_slots_; }
 

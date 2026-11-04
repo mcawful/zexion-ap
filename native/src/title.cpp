@@ -10,27 +10,25 @@ namespace zap {
 
 const char kTitleCredit[] = "C2026 MCAWFUL";
 const char kTitleHint[] = "START THE AP CLIENT TO PLAY A SEED";
-const char kTitleHintHd[] = "Start the AP client to play a seed";
+constexpr char kTitleHintHd[] = "Start the AP client to play a seed";
 
 namespace {
 
-// The helper's lines (their text: the version's, kTitleCredit, kTitleHint) and where they go:
-// centered on the 320-pixel screen, 8 pixels a character, in the band below the planet, 12
-// pixels apart: the hint, then the version, then the credit.
+// The helper's lines and where they go: centered on the 320-pixel screen, 8 pixels a character,
+// 12 apart in the band below the planet: the hint, then the version, then the credit.
 constexpr int kLines = 3;
 constexpr int kModLine = 0, kCredit = 1, kHint = 2;
 constexpr int kLineY[kLines] = {202, 214, 190};
 int line_x(size_t length) { return 160 - 4 * static_cast<int>(length); }
 
-// The draw list (from disassembly, B1: 0x93885, 0xA8620).
+// The draw list (docs/re/memory.md, "The title screen").
 constexpr ptrdiff_t kListHead = 0x18, kListTail = 0x20;
 constexpr ptrdiff_t kOwner = 0x00, kNext = 0x10, kPrevious = 0x18;
 constexpr int kMaxObjects = 4096;
-// A text object's own fields (0x92300): past label:: (game_layout.h), 0x1E4 to 0x1EC (the last
-// the count shown), and its tag (0x178, 0x180).
-constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8, kTextShown = 0x1EC;
+// A text object's own fields (0x92300): past label:: (game_layout.h), 0x1E4 and 0x1E8 (the
+// count shown and the size are hdlabel::'s, translation.h), and its tag (0x178, 0x180).
+constexpr ptrdiff_t kTextHint = 0x1E4, kTextFlag = 0x1E8;
 constexpr ptrdiff_t kTag = 0x178, kTagNumber = 0x180;
-constexpr size_t kTextSize = 0x268;
 constexpr int32_t kTextColumnsAll = 32;
 constexpr int32_t kCopyright = 0xA9;  // the font's ©
 // The game's line: © then "2025 GALLANT LEAF" (18 glyphs); the year is not checked.
@@ -101,22 +99,23 @@ bool shows_translated(BYTE* object) {
            read(object, hdlabel::kCount, count) && count > 0 && !pixel_glyphs_shown(object);
 }
 
-// Each of the line's translated glyphs shown or hidden.
+// A glyph shown or hidden, where it reads otherwise and can be written.
+void set_shown(BYTE* g, bool visible) {
+    uint8_t now = 0;
+    if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
+        writable(g, sprite::kSize)) {
+        g[sprite::kVisible] = visible ? 1 : 0;
+    }
+}
+
 void show_translated(BYTE* object, bool visible) {
     int32_t count = 0, capacity = 0;
     BYTE** list = nullptr;
-    if (!read(object, hdlabel::kCount, count) || !read(object, hdlabel::kCapacity, capacity) ||
-        !read(object, hdlabel::kGlyphs, list) || count < 0 || count > capacity) {
+    if (!read(object, hdlabel::kCapacity, capacity) ||
+        !translated_list(object, capacity, count, list)) {
         return;
     }
-    for (int32_t i = 0; i < count; ++i) {
-        BYTE* g = pointer_at(reinterpret_cast<BYTE*>(list), i * static_cast<ptrdiff_t>(8));
-        uint8_t now = 0;
-        if (g != nullptr && read(g, sprite::kVisible, now) && now != (visible ? 1 : 0) &&
-            writable(g, sprite::kSize)) {
-            *(g + sprite::kVisible) = visible ? 1 : 0;
-        }
-    }
+    for (int32_t i = 0; i < count; ++i) set_shown(glyph_at(list, i), visible);
 }
 
 // The line in the translation's font (`hd`: built each time it is not shown so, as with the
@@ -140,13 +139,7 @@ void show(BYTE* object, size_t length, bool visible) {
     }
     BYTE* g[kMaxGlyphs] = {};
     if (!glyphs_of(object, static_cast<int32_t>(length), g)) return;
-    for (size_t i = 0; i < length; ++i) {
-        uint8_t now = 0;
-        if (read(g[i], sprite::kVisible, now) && now != (visible ? 1 : 0) &&
-            writable(g[i], sprite::kSize)) {
-            *(g[i] + sprite::kVisible) = visible ? 1 : 0;
-        }
-    }
+    for (size_t i = 0; i < length; ++i) set_shown(g[i], visible);
 }
 
 // Makes one line as the title routine makes the copyright line, styled as `model` (the game's
@@ -170,13 +163,13 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
     using New = BYTE* (*)(const char*, int, int);
     using Place = void (*)(void*, int, int);
     using Link = void (*)(void*);
-    // One row: the game's 32 columns, or the line's length if longer (a 32-column row wraps a
-    // longer line, seen in game).
+    // One row: the game's 32 columns, or the line's length if longer (the row wraps at its
+    // columns: docs/re/memory.md, "The title screen").
     const int32_t columns = (std::max)(length, kTextColumnsAll);
     BYTE* t = reinterpret_cast<New>(a.text_new_fn)(text.c_str(), length, columns);
     BYTE* g[kMaxGlyphs] = {};
     BYTE* owner = reinterpret_cast<BYTE*>(1);
-    if (t == nullptr || !writable(t, kTextSize) || !glyphs_of(t, length, g) ||
+    if (t == nullptr || !writable(t, hdlabel::kSize) || !glyphs_of(t, length, g) ||
         !read(t, kOwner, owner)) {
         return "no text object";  // nothing in the list yet: the game's heap keeps it
     }
@@ -199,7 +192,7 @@ std::string make_line(const GameAddresses& a, BYTE* list, BYTE* model, const std
         put(t, kOwner, list);
     }
     reinterpret_cast<Link>(a.text_link_fn)(t);
-    put<int32_t>(t, kTextShown, length);
+    put<int32_t>(t, hdlabel::kPixelShown, length);
     for (int32_t i = 0; i < length; ++i) {
         if (!writable(g[i], sprite::kSize)) continue;
         *(g[i] + sprite::kVisible) = 1;
@@ -224,9 +217,8 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     if (hd != hd_) frames_ = 0;
     hd_ = hd;
     if (mod_line_.empty() || frames_-- > 0) return "";
-    // In English(HD) every frame call: a menu's builder hides every glyph of the HD list
-    // (docs/re/memory.md "Where a rebuilt label goes"), the lines' too, which are shown again at
-    // the next frame call the title is up with no menu open (the title's draw list is short).
+    // In English(HD) every frame call: a menu's builder hides the HD list's glyphs, the lines'
+    // too (docs/re/memory.md, "Where a rebuilt label goes"); the title's draw list is short.
     frames_ = hd ? 0 : kLookFrames;
     const std::string texts[kLines] = {mod_line_, kTitleCredit, kTitleHint};
     Look l = look(a.draw_layer, texts);
@@ -243,8 +235,7 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
     uint8_t menu = 0xFF;
     const bool no_menu = read(a.menu_state, 0, menu) && menu == 0;
     // Once a title: a line that failed is not made again until the game's line goes and comes.
-    // Made only with no menu open: made under one (a client configuring the helper with the file
-    // select up), they would join the list after the menu's objects, over them.
+    // Made only with no menu open: made under one, they would join the list over its objects.
     std::string why = last_error_;
     for (int k = 0; k < kLines && why.empty(); ++k) {
         if (l.made[k] == nullptr && no_menu) {
@@ -258,12 +249,9 @@ std::string TitleLines::watch(const GameAddresses& a, bool client, bool hd) {
         if (l.made[k] != nullptr) use_font(a, l.made[k], hd_texts[k], hd);
     }
     shown_ = l.made[kModLine] != nullptr && l.made[kCredit] != nullptr && l.made[kHint] != nullptr;
-    // Shown while the game's © is (and again after a refused unload hid them); the hint only
-    // while no client is connected. A line's pixel glyphs are drawn from the title's list, as
-    // the game's line is, so they follow its ©. Its translated glyphs are drawn from the HD list,
-    // not the title's (docs/re/memory.md, "The title screen"), so they are shown only while no
-    // menu is open either: the game's menus open over the title, which stays in the list, and
-    // the HD list is drawn over them.
+    // Shown while the game's © is (and again after a refused unload hid them), the hint only with
+    // no client. Translated glyphs are drawn from the HD list, over any menu opened on the title,
+    // so they show only with no menu open too (docs/re/memory.md, "The title screen").
     BYTE* g[kGameLineLength] = {};
     uint8_t visible = 0;  // the © unreadable: hidden
     if (!glyphs_of(l.game_line, kGameLineLength, g) || !read(g[0], sprite::kVisible, visible)) {

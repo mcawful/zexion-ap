@@ -1,9 +1,6 @@
-// Host tests for Feats and achievements kept out of AP saves (feats.h): the AP-save test, the
-// guard going on and off, the ending's patch run on a stand-in ending, Steam's import slot
-// hooked, the stub's test while an AP save loads, the refusals, and putting both back. This
-// program imports SteamInternal_ContextInit by name from a stand-in steam_api64.dll
-// (steam_stub.cpp), as the game does, so the helper finds and hooks the real import slot of a
-// real import.
+// Host tests for Feats and achievements kept out of AP saves (feats.h). This program imports
+// SteamInternal_ContextInit by name from a stand-in steam_api64.dll (steam_stub.cpp), as the
+// game does, so the helper hooks a real import slot.
 
 #include <windows.h>
 
@@ -135,20 +132,17 @@ void test_the_ap_save_test() {
     game.add_known_seeds({seed_of_save(), seed_of_save()});
     check(game.known_seeds() == 2, "each seed known once");
 
-    // Offline: a seed file read from the folder, with no client.
-    zap::Game offline;
+    zap::Game offline;  // a seed file read from the folder, no client
     check(configure_feats(offline, false).empty(), "configured from the cache");
     load_save(3);
     offline.set_offline({seed_of_save()});
     check(offline.ap_save_loaded(), "a seed file's save, with no client");
-    // A client of another seed: the save's own seed known from its file still counts.
-    load_save(4);
+    load_save(4);  // a client of another seed
     offline.add_known_seeds({seed_of_save()});  // the client's own
     check(configure_feats(offline).empty(), "a client configures");
     load_save(3);
     check(offline.ap_save_loaded(), "a seed file's save, with a client of another seed");
 
-    // The seed the labels were set for (a client sends them while its save is loaded).
     zap::Game labeled;
     check(configure_feats(labeled).empty(), "configured");
     load_save(5);
@@ -186,7 +180,6 @@ void test_on_and_off() {
 void test_the_ending() {
     reset();
     const std::vector<unsigned char> original = call_bytes();
-    // Off: the ending as the game runs it, its Steam call through the import.
     int set_before = stub_calls(kSetAchievement);
     run_ending();
     check(g_flags[250] == 1 && g_flags[251] == 1 && stub_calls(kSetAchievement) == set_before + 1,
@@ -203,8 +196,8 @@ void test_the_ending() {
     check(site + 7 + get<int32_t>(patch.data(), 2) == g_flags + 251, "the mov clears flag 251");
     check(site + 12 + get<int32_t>(patch.data(), 8) == g_ending + kEndingJoin,
           "the jmp lands on the join");
-    // The ending routine set as the transition (RETURN HOME's, or the escape's event 2567), not
-    // run yet, with the patch in place: an unload would put the patch back first, so it refuses.
+    // The ending queued (RETURN HOME's, or the escape's event 2567): an unload would put the
+    // patch back before it runs, so it refuses.
     g_routine_table[zap::kEndingRoutine] = g_ending;
     g_transition_fn = g_ending;
     check(game.ending_pending() && game.unload_refusal() == zap::kEndingRefusal,
@@ -212,16 +205,14 @@ void test_the_ending() {
     g_transition_fn = nullptr;
     check(!game.ending_pending() && game.unload_refusal() == nullptr, "once it has run: not");
     g_routine_table[zap::kEndingRoutine] = nullptr;
-    // A save that already holds flag 251 (an ending before the guard).
-    g_flags[250] = 0;
+    g_flags[250] = 0;  // a save already holding flag 251 (an ending before the guard)
     g_flags[251] = 1;
     set_before = stub_calls(kSetAchievement);
     run_ending();
     check(g_flags[250] == 1, "on: flag 250 (the client's goal) is still set");
     check(g_flags[251] == 0, "on: flag 251 is cleared");
     check(stub_calls(kSetAchievement) == set_before, "on: no achievement");
-    // Run twice: the routine runs once per ending, but nothing in it depends on that.
-    run_ending();
+    run_ending();  // once per ending in the game, but nothing depends on that
     check(g_flags[251] == 0 && stub_calls(kSetAchievement) == set_before, "again the same");
 
     g_save_loaded = 0xFF;  // MISSION COMPLETE and the title: no save loaded
@@ -271,8 +262,8 @@ void put_slot(int n, uint8_t salt) {
     std::memcpy(rando_copy(n), g_section, 0x908);
 }
 
-// The load routine sets current_slot's save loaded and runs the 15Explorer check in one game
-// call, before any frame call (feats.h): the stub blocks then if that slot holds an AP save.
+// The load routine runs the 15Explorer check before any frame call (feats.h): the stub blocks
+// then if current_slot holds an AP save.
 void test_a_load_from_the_file_select() {
     reset();
     clear_slots();
@@ -316,7 +307,6 @@ void test_a_load_from_the_file_select() {
     }
     check(stub_calls(kSetAchievement) == set_before + 6, "all three to Steam");
 
-    // The AP save loaded: the guard on after two frame calls, then the title again.
     g_current_slot = 2;
     std::memcpy(g_section, rando_copy(3), 0x908);
     game.watch_feats();
@@ -327,7 +317,6 @@ void test_a_load_from_the_file_select() {
     check(!game.feats().on() && game.feats().steam_hooked() && game.feats().load_test(),
           "back at the title: off, the load test kept");
 
-    // The plain save loaded: the slots kept for one frame call, dropped at the second.
     g_current_slot = 4;
     std::memcpy(g_section, rando_copy(5), 0x908);
     g_save_loaded = 0;
@@ -344,8 +333,7 @@ void test_a_load_from_the_file_select() {
     g_save_loaded = 0xFF;
     game.watch_feats();
     check(game.feats().load_test(), "at the title again: armed at once");
-    // The title keeps the last save's marker and current_slot: with no save loaded, a menu's
-    // achievement (12GetBonus, 13SecretCode) still reaches Steam.
+    // The title keeps the last save's marker and current_slot; a menu's achievement still counts.
     check(call_stats(g_stats_context, kSetAchievement, "12GetBonus") &&
               stub_calls(kSetAchievement) == set_before + 1,
           "at the title, the AP save's marker and slot left: Steam sees it");
@@ -356,8 +344,7 @@ void test_a_load_from_the_file_select() {
     g_save_loaded = 0xFF;
     set_before = stub_calls(kSetAchievement);
 
-    // From the pipe thread once no frame can watch (an unload): the test off with the slot.
-    void* stub = game.feats().stub();
+    void* stub = game.feats().stub();  // the pipe thread, once no frame can watch
     game.release_steam();
     auto stub_fn = reinterpret_cast<void* (*)(void*)>(stub);
     check(slot_value() == steam_function() && !game.feats().load_test() &&
@@ -373,8 +360,7 @@ void test_a_load_from_the_file_select() {
     check(game.feats().load_test(), "and set again by the next frame call");
     game.restore_feats();
 
-    // An offline cache without current_slot (a client-only key): no load test, nothing hooked.
-    zap::Game offline;
+    zap::Game offline;  // a cache without current_slot, a client-only key
     auto config = feats_config();
     config.erase("current_slot");
     check(offline.configure(GetModuleHandleW(nullptr), config, false).empty(),
@@ -391,7 +377,7 @@ void test_a_load_from_the_file_select() {
 }
 
 void test_refusals() {
-    // The stand-in's own config: a slot that is not the import's. Neither change is made.
+    // The stand-in's own config: a slot that is not the import's.
     reset();
     zap::Game plain;
     check(configure(plain).empty(), "configured with a slot that is no import");
@@ -404,7 +390,6 @@ void test_refusals() {
                   std::string::npos,
           "and hello says why", why);
 
-    // A context that asks for another interface.
     reset();
     zap::Game other;
     auto config = feats_config();
@@ -417,7 +402,6 @@ void test_refusals() {
     check(other.feats().ending_patched(), "the ending is, on its own checks");
     guard_off(other);
 
-    // An ending that reads otherwise at its join: nothing written.
     reset();
     const std::vector<unsigned char> before = call_bytes();
     set_code_byte(g_ending, kEndingJoin + 1, 0x8B);  // not a movsxd
@@ -431,7 +415,6 @@ void test_refusals() {
     check(join.feats().steam_hooked(), "Steam still hooked");
     guard_off(join);
 
-    // An import slot something else has hooked: left to it.
     reset();
     void* other_hook = reinterpret_cast<void*>(&stub_calls);
     write_slot(other_hook);
@@ -447,9 +430,8 @@ void test_refusals() {
     guard_off(hooked);
 }
 
-// The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, and the
-// title label, three lines of 38 glyphs with the title on the middle one. with_secret_row: a
-// fifth panel, the 5 secret Feats (read live, 2026-10-28).
+// The Feats of Natu screen as read live on B1 (feats.h): 4 panels, two rows of 7 Feats, the title
+// label's three lines of 38 glyphs, the title in the middle; with_secret_row a fifth panel of 5.
 struct FeatsScreen {
     static constexpr int kColumns = 38, kLength = 3 * kColumns;
     BYTE menu[0x80] = {};
@@ -461,8 +443,7 @@ struct FeatsScreen {
     BYTE* glyph_list[kLength] = {};
     BYTE glyphs[kLength][0x1D8] = {};
     std::vector<BYTE> table = std::vector<BYTE>(256 * 0x38);
-    // MISSION COMPLETE's statistics, the menu under it: 1 panel of 10 lines (with_assists: and
-    // ASSISTS USED's 8, as read live after an ending with the assist menu unlocked).
+    // MISSION COMPLETE's statistics under it: a panel of 10 lines (with_assists: ASSISTS USED's 8).
     BYTE stats[0x80] = {};
     BYTE* stats_panels[2] = {};
     BYTE stats_panel[2][0x300] = {};
@@ -505,9 +486,8 @@ struct FeatsScreen {
         }
     }
 
-    // The title's hint for a game that has never reached Ending B (description 219), as the
-    // builder places it: on the upper two lines of the label, the widget 8 lower than the
-    // usual title's (lines at y 24, 40 and 56), the last line blank.
+    // The hint (description 219) for a game never at Ending B, on the upper two lines, the
+    // widget 8 lower than the title's (lines at y 24, 40 and 56).
     void hint() {
         const std::string text[3] = {"      COMPLETE ANY ONE OF THESE",
                                      "     TO SEE THE EXPANDED ENDING!", ""};
@@ -542,9 +522,8 @@ std::string centered_line(const std::string& text) {
 
 std::string noted_line() { return centered_line(zap::kFeatsNote); }
 
-// In a translation the game shows the title's translated text, its pixel glyphs (which hold
-// the note) hidden: shown in its place while the note is there, and the translated title back
-// once it is blanked.
+// In a translation the note's pixel glyphs show in place of the translated title while the note
+// is there.
 void test_the_screen_note_in_a_translation() {
     reset_translation();
     load_translation();
@@ -567,11 +546,8 @@ void test_the_screen_note_in_a_translation() {
     reset_translation();
 }
 
-// In a translation with LargeText readable and room in the title's translated text: the title
-// built again as LargeText 220's with the note under it, in the translation's font, wrapped and
-// centered across and kept at the middle the game's title had; the game's own entry again once
-// the note goes, and 219's for a hint the helper replaced. Without LargeText's count, the pixel
-// glyphs as before.
+// With LargeText readable, the title is built again as LargeText 220's with the note under it,
+// centered and kept at the game's title's middle; without LargeText's count, the pixel glyphs.
 void test_the_title_in_a_translations_font() {
     reset_translation();
     load_translation();
@@ -587,8 +563,7 @@ void test_the_title_in_a_translations_font() {
         put<double>(hd.glyphs[i], 0xC0, 4.0);
     }
     put<double>(screen.glyphs[0], 0x40, 8.0);
-    // The font measured as the builder lays it out: every character 6 wide, a space 3 (a
-    // stand-in pixel font, as translation_tests' popup layout).
+    // A stand-in pixel font: every character 6 wide, a space 3.
     BYTE* font = g_translation + 0xD0;
     BYTE glyph[0x20] = {};
     put<int32_t>(glyph, 0x10, 6 * 64);
@@ -617,7 +592,6 @@ void test_the_title_in_a_translations_font() {
     check(zap::feats_screen_note(a, false) && g_builds.back().text == L"Feats of Natu!",
           "blanked: LargeText 220's own text again");
 
-    // No LargeText count (a cache from before it): the pixel glyphs, as before.
     g_builds.clear();
     a.large_count = nullptr;
     check(zap::feats_screen_note(a, true) && g_builds.empty() &&
@@ -634,7 +608,6 @@ void test_the_screen_note() {
     zap::GameAddresses a;
     a.current_menu = reinterpret_cast<BYTE*>(&current);
     a.widget_handler_fn = reinterpret_cast<BYTE*>(&widget_handler_fn);
-    // A screen the note is refused on: nothing written.
     const auto refused = [&](FeatsScreen& shown, const char* what) {
         current = shown.menu;
         check(!zap::feats_screen_note(a, true) && shown.line(2) == blank, what);
@@ -645,13 +618,11 @@ void test_the_screen_note() {
     check(zap::feats_screen_note(a, true) && screen.line(2) == noted_line(), "written once");
     check(zap::feats_screen_note(a, false) && screen.line(2) == blank, "and blanked again");
 
-    // The game's own text on the last line: never written over.
     at<int32_t>(screen.glyphs[2 * FeatsScreen::kColumns + 3], 0x1C4) = 'X';
     const std::string theirs = screen.line(2);
     check(zap::feats_screen_note(a, true) && screen.line(2) == theirs, "other text left alone");
 
     {
-        // MISSION COMPLETE with ASSISTS USED under it, as after an ending with assists unlocked.
         FeatsScreen assists("FEATS OF NATU!", true);
         current = assists.menu;
         check(zap::feats_screen_note(a, true) && assists.line(2) == noted_line(),
@@ -668,7 +639,6 @@ void test_the_screen_note() {
     }
 
     {
-        // The secret row, as read live (2026-10-28): a fifth panel of 5, ASSISTS USED under it.
         FeatsScreen secret("FEATS OF NATU!", true, true);
         current = secret.menu;
         check(zap::feats_screen_note(a, true) && secret.line(2) == noted_line(),
@@ -696,7 +666,6 @@ void test_the_screen_note() {
               "rows of 6 and 5", short_rows.line(2));
     }
 
-    // Other screens: not this one.
     FeatsScreen other("OPTIONS");
     refused(other, "a title without NATU");
     FeatsScreen top_five;
@@ -810,8 +779,7 @@ void after_ending(zap::Game& game, FeatsScreen& screen) {
     note_looks(game);
 }
 
-// The note after an AP save's ending, through Game: the guard on, then MISSION COMPLETE (no
-// save loaded, flag 250 set), then the screen.
+// The note after an AP save's ending, through Game.
 void test_the_note_after_an_ending() {
     reset();
     const std::string blank(FeatsScreen::kColumns, '.');
@@ -827,13 +795,11 @@ void test_the_note_after_an_ending() {
     note_looks(game);
     check(screen.line(2) == noted_line(), "and back after a refused one");
 
-    // A save loaded ends it.
     g_save_loaded = 3;
     guard_off(game);
     check(!game.feats_ended(), "a save loaded ends it");
     g_current_menu = nullptr;
 
-    // A normal save's ending: the guard never on, no note.
     zap::Game normal;
     check(configure_feats(normal).empty(), "configured");
     g_save_loaded = 3;
@@ -842,7 +808,6 @@ void test_the_note_after_an_ending() {
     FeatsScreen plain;
     after_ending(normal, plain);
     check(!normal.feats_ended() && plain.line(2) == blank, "a normal ending: no note");
-    // An AP save left with no ending (flag 250 clear): no note either.
     zap::Game left;
     check(configure_feats(left).empty(), "configured");
     g_flags[250] = 0;
@@ -854,8 +819,7 @@ void test_the_note_after_an_ending() {
     check(!left.feats_ended() && plain.line(2) == blank, "an AP save left before its ending");
     g_current_menu = nullptr;
 
-    // The guard on but the patch refused (the ending's bytes not as traced): the ending ran as the
-    // game's, so no note.
+    // The patch refused (the ending's bytes not as traced): the ending ran as the game's, no note.
     reset();
     set_code_byte(g_ending, kEndingJoin + 1, 0x8B);
     zap::Game refused;
@@ -869,7 +833,6 @@ void test_the_note_after_an_ending() {
           "a refused patch: no note over the Feats earned");
     g_current_menu = nullptr;
 
-    // The screen seen, then gone: the note's turn is over.
     reset();
     zap::Game seen;
     check(configure_feats(seen).empty(), "configured");
@@ -895,18 +858,15 @@ void test_put_back() {
     check(configure_feats(game).empty(), "configured");
     guard_on(game);
 
-    // Configured again with the same addresses (a client reconnecting): left as it is.
     check(configure_feats(game).empty() && game.feats().ending_patched() &&
               game.feats().steam_hooked(),
           "a config with the same addresses keeps both");
 
-    // Before an unload: both back, in the frame call.
     game.restore_feats();
     check(!game.feats().ending_patched() && !game.feats().steam_hooked() &&
               call_bytes() == original &&
               slot_value() == steam_function() && game.unload_blocker() == nullptr,
           "restore_feats puts both back");
-    // A refused unload: the next frame calls set them again.
     game.watch_feats();
     game.watch_feats();
     check(game.feats().ending_patched() && game.feats().steam_hooked(), "and they come back");
@@ -926,7 +886,6 @@ void test_put_back() {
               !reinterpret_cast<Method>(vtable[kStoreStats])(object, nullptr),
           "the stand-in stays, answering 0");
 
-    // Something hooked over the stub: the slot is left to it, and the stub passes through.
     game.watch_feats();
     check(game.feats().steam_hooked(), "hooked again");
     void* over = reinterpret_cast<void*>(&stub_calls);

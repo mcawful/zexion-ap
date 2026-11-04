@@ -1,6 +1,5 @@
-// Stand-in menus for the native tests, laid out as traced on B1: the game-mode panel (menu.h:
-// the most recent menu, its panel list, the panel, four children, RANDOMIZER's label and its 11
-// glyphs, each with a frame table), the pause menu's options, and the pause screen (pause.h).
+// Stand-in menus for the native tests, laid out as traced on B1: the game-mode panel and the
+// options (menu.h), and the pause screen (pause.h).
 #pragma once
 
 #include <windows.h>
@@ -18,7 +17,7 @@ namespace stand_in {
 
 constexpr int kFrames = 256;  // the font's 256 glyphs
 
-// One game-mode panel: the menu, its panel list, the panel, four children, RANDOMIZER's label
+// The game-mode panel: the menu, its panel list, the panel, four children, RANDOMIZER's label
 // and its 11 glyphs, each with a frame table.
 struct ModePanel {
     void* const panel_handler_ptr;
@@ -90,9 +89,8 @@ struct ModePanel {
     void* callback() { return at<void*>(child, 0x2C0); }
 };
 
-// The pause menu's options, as built with a save loaded (menu.h, AssistLock): a menu with two
-// panels, the second holding eight entries, ASSIST at 6 with its 12 glyphs (ASSIST and six
-// blanks) styled 0x15, as read live.
+// The pause menu's options with a save loaded, as read live: two panels, the second's eight
+// entries with ASSIST at 6, its 12 glyphs (ASSIST and six blanks) styled 0x15.
 struct OptionsMenu {
     void* const widget_handler_ptr;
     void* const assist_menu_ptr;
@@ -130,20 +128,45 @@ struct OptionsMenu {
         at<BYTE*>(child, 0x1F0) = label;
         at<int32_t>(label, 0x1D8) = zap::kAssistLength;
         at<BYTE**>(label, 0x228) = glyph_list;
-        const char text[zap::kAssistLength + 1] = "ASSIST\0\0\0\0\0";  // six blanks
         for (int i = 0; i < zap::kAssistLength; ++i) {
-            BYTE* g = glyphs[i];
-            glyph_list[i] = g;
-            at<BYTE*>(g, 0x1A8) = table.data();
-            at<int32_t>(g, 0x1BC) = kFrames;
-            at<int32_t>(g, 0x1C4) = text[i];
-            at<BYTE*>(g, 0x1B0) = table.data() + text[i] * 0x38;
+            glyph_list[i] = glyphs[i];
+            at<BYTE*>(glyphs[i], 0x1A8) = table.data();
+            at<int32_t>(glyphs[i], 0x1BC) = kFrames;
+        }
+        build_label("ASSIST\0\0\0\0\0\0");  // six blanks
+        palettes[26] = palette_objects[1];
+        current = menu;
+    }
+
+    // Glyph i of the label shows `text[i]`, each glyph as the game builds an options entry, in
+    // the menu's own palette (number 26, say).
+    void build_label(const char (&text)[zap::kAssistLength + 1]) {
+        for (int i = 0; i < zap::kAssistLength; ++i) {
+            BYTE* g = glyph_list[i];
+            const int32_t c = static_cast<unsigned char>(text[i]);
+            at<int32_t>(g, 0x1C4) = c;
+            at<BYTE*>(g, 0x1B0) = table.data() + c * 0x38;
             at<int32_t>(g, 0x1D0) = 0x15;
             for (ptrdiff_t t : {0x68, 0x6C, 0x70, 0x74, 0x78, 0x7C, 0x80, 0x84}) at<float>(g, t) = 1.0f;
-            at<void*>(g, 0x198) = palette_objects[1];  // the menu's own palette: number 26, say
+            at<void*>(g, 0x198) = palette_objects[1];
             at<int16_t>(g, 0x1A0) = 26;
         }
-        palettes[26] = palette_objects[1];
+    }
+
+    // Built again in place, as leaving Video builds it (0x124D30): VERSION 1.20 (no callback,
+    // its own panel, `version_list`) where ASSIST was, `fresh`'s ASSIST sixth of eight.
+    void rebuild_in_place(OptionsMenu& fresh, BYTE* (&version_list)[1]) {
+        at<void*>(child, 0x2C0) = nullptr;
+        at<int32_t>(child, 0x1E0) = 0;
+        build_label("VERSION 1.20");
+        version_list[0] = child;
+        at<BYTE**>(first, 0x1E0) = version_list;
+        at<int32_t>(first, 0x1E8) = 1;
+        for (int i = 0; i < 7; ++i) children[i < 6 ? i : 7] = others[i];
+        children[6] = fresh.child;
+        for (int i = 0; i < 8; ++i) at<int32_t>(children[i], 0x1E0) = i;
+        at<int32_t>(second, 0x1EC) = 8;
+        at<int32_t>(second, 0x2DC) = -1;
         current = menu;
     }
 
@@ -200,9 +223,8 @@ struct OptionsMenu {
     }
 };
 
-// The pause screen (pause.h), laid out as read live on B1: two panels, the first holding
-// EQUIPMENT, the second the KEYS row (a 4-glyph label and nine sprites), drawn from a frame list
-// whose frame 829 is the game's small Data Disc.
+// The pause screen as read live on B1: the first panel holding EQUIPMENT, the second the KEYS
+// row (a 4-glyph label and nine sprites).
 inline BYTE g_pause_frames[1024 * 0x38];
 inline BYTE* const g_disc_frame = g_pause_frames + 829 * 0x38;  // the game's small Data Disc
 // The key icons' quad, as read live.

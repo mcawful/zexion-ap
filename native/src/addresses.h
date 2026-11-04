@@ -1,10 +1,7 @@
 // Where the game's state and functions are: one member per config key (game_calls.cpp,
-// kConfigKeys, which fills them from the RVAs the client resolved by byte pattern:
-// client/patterns.py), and the helper's wrappers the game is pointed at. Game keeps one and
-// hands it to every part. The client-only keys' members (kConfigKeys, client_only) may be null
-// after the offline cache's configure: only the client's parts read them (Game::client_ready).
-// Function arguments as traced in docs/re/memory.md, "Game functions the helper calls"; each
-// part's header says what it reads.
+// kConfigKeys, from the RVAs client/patterns.py resolved), and the helper's wrappers. Client-only
+// keys' members may be null after the offline cache's configure (Game::client_ready). Calls as
+// traced in docs/re/memory.md, "Game functions the helper calls"; each part's header says more.
 #pragma once
 
 #include <windows.h>
@@ -61,8 +58,8 @@ struct GameAddresses {
     BYTE* start_flags = nullptr;
     // Other players' items (apitem.h, looks.h).
     BYTE* sprite_texture = nullptr;  // holds the pointer to the sprite data
-    // The mov edx, 24 that sets the pickup popup's width for items with no icon (the
-    // stand-ins); set to the named label's width (docs/re/memory.md, "Other players' items").
+    // The pickup popup's `mov edx, 24` for items with no icon (the stand-ins), set to a label's
+    // width (docs/re/memory.md, "Other players' items").
     BYTE* popup_width_code = nullptr;
     BYTE* item_pool = nullptr;      // 128 item objects, 0x3B0 bytes each
     BYTE* palette_table = nullptr;  // the palette objects by number (a glyph's +0x198, +0x1A0)
@@ -85,15 +82,14 @@ struct GameAddresses {
     BYTE* sprite_sheet_fn = nullptr;  // (object, template): gives it a sprite definition's frames
     BYTE* panel_link_fn = nullptr;    // (panel): links its widgets into the menu's draw list
     BYTE* text_set_fn = nullptr;      // (text, string, first glyph, glyphs)
-    BYTE* routine_table = nullptr;    // the transition routines (0x3CF5F0)
+    BYTE* routine_table = nullptr;    // the transition routines
     BYTE* fade = nullptr;             // the global level's fade (mission.h, fade_state)
     BYTE* fade_level = nullptr;       // the global level, a signed byte
     BYTE* keys_branch = nullptr;      // the `jne` (75 2E) that skips the pause screen's KEYS
-    // OPTION MENU's way back to the pause screen (0x168910), which its opener puts in the pause
-    // menu's +0x68 (pause.h); an offline cache may lack it (the row is then turned a frame late).
+    // OPTION MENU's way back (pause.h); null in an older cache: the row then turns a frame late.
     BYTE* options_back_fn = nullptr;
-    // The loaded save's major-item list and its count (game_layout.h, pickups); an offline cache
-    // may lack it (the list is then not filled until a client's config gives it).
+    // The loaded save's major-item list and its count (game_layout.h, pickups); null in an older
+    // cache, the list then filled only once a client's config gives it.
     BYTE* pickup_list = nullptr;
     BYTE* file_panel_fn = nullptr;    // the save entries' panel handler
     // The save entries' handlers: the file select's, COPY FILE's and DELETE FILE's.
@@ -109,16 +105,15 @@ struct GameAddresses {
     BYTE* text_new_fn = nullptr;   // (characters, length, 32): a text object and its glyphs
     BYTE* text_link_fn = nullptr;  // (text): its glyphs into its list
     BYTE* draw_layer = nullptr;    // holds the draw list new screen objects join
-    BYTE* map_handler = nullptr;   // holds the map's per-frame handler (0x169E50; mapmarks.h)
+    BYTE* map_handler = nullptr;   // holds the map's per-frame handler (mapmarks.h)
     BYTE* seen_marker_code = nullptr;  // the write of an on-screen item's square (mapmarks.h)
     // Feats and achievements (feats.h).
     BYTE* ending_unlocks = nullptr;     // the ending's first Steam call (6 bytes)
     BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250
     BYTE* stats_context = nullptr;      // ISteamUserStats' accessor context
     BYTE* context_init_slot = nullptr;  // the import slot of SteamInternal_ContextInit
-    // The translations (translation.h): an offline cache may lack these (translation_key in
-    // kConfigKeys); only translation.cpp reads them, and every translation part stands down
-    // without them (translation_keys).
+    // The translations (translation.h), read only by translation.cpp: an older offline cache
+    // may lack them (translation_key), and the translation parts then stand down.
     BYTE* translation = nullptr;        // the translation object: its name, tables and flag
     BYTE* tr_flag = nullptr;            // 1 while a translation is on (translation + 0x91)
     BYTE* small_text = nullptr;         // each holds a pointer: SmallText's text, its offsets,
@@ -129,13 +124,12 @@ struct GameAddresses {
     BYTE* item_name_count = nullptr;
     BYTE* hd_messages = nullptr;        // the four HD message objects, 0x238 bytes each
     BYTE* message_slots = nullptr;      // the four message slots, 0x1628 bytes each
-    BYTE* hd_text_fn = nullptr;         // gives a message translated text (0x1870A0)
-    BYTE* hd_build_fn = nullptr;        // builds a label's translated text (0x88480)
-    BYTE* wstring_new_fn = nullptr;     // the game's std::wstring assign (0x17BD0)
+    BYTE* hd_text_fn = nullptr;         // gives a message translated text
+    BYTE* hd_build_fn = nullptr;        // builds a label's translated text
+    BYTE* wstring_new_fn = nullptr;     // the game's std::wstring assign
     BYTE* large_count = nullptr;        // LargeText's entry count (16-bit); may be null
 
-    // Not a key: set before configure (Game::set_hooks). A null hook leaves that part's game
-    // function as the game's.
+    // Not a key: set before configure (Game::set_hooks); a null hook leaves the game's function.
     Hooks hooks;
 };
 

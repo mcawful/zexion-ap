@@ -18,8 +18,8 @@ constexpr char kScanTextOriginal[] = "ENERGY KEYS DETECTED!";
 class ScanText {
 public:
     // Game thread. `table_holder` holds the pointer to the loaded Text table. Writes `line`
-    // (must pass scan_line_ok, in capitals) over entry 12 if it reads as the game's or the helper's last
-    // line; returns whether it reads `line` now.
+    // (must pass scan_line_ok, in capitals) over entry 12 if it reads as the game's or the
+    // helper's last line; returns whether it reads `line` now.
     bool apply(BYTE* table_holder, const std::string& line);
 
     // Game thread. Puts the game's text back if the table is the one written and the entry

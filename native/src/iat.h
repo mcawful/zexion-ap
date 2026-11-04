@@ -10,17 +10,14 @@ namespace zap {
 // regard to case), or nullptr if the module does not import it by name.
 void** find_import_slot(HMODULE module, const char* dll, const char* function);
 
-// Atomically replaces the pointer in `slot` with `replacement` if it still holds `expected`.
-// Returns true if it did.
+// Atomically replaces `slot`'s pointer with `replacement` if it still holds `expected`; true if so.
 bool swap_slot(void** slot, void* expected, void* replacement);
 
-// A few bytes of code in memory that is never freed. Each call to `entry` counts itself in
-// `*in_flight`, calls `*target` with the same register arguments (at most four, none on the
-// stack) and returns its result. Pointing an import slot here instead of at the DLL makes
-// unloading safe: put the slot back, set `*target` to the original function, and wait for
-// `*in_flight` to reach 0; after that no thread can be in, or about to enter, the DLL's code
-// through the trampoline (calls the game makes into helper functions are counted separately:
-// InCallback, dllmain.cpp). Deliberately leaked: two pages per load.
+// A few bytes of code in memory never freed (two pages per load). Each call to `entry` counts
+// itself in `*in_flight`, calls `*target` with the same register arguments (at most four, none
+// on the stack) and returns its result. Once the slot is put back, `*target` is the original
+// and `*in_flight` is 0, no thread can be in, or about to enter, the DLL through it (the game's
+// calls into helper functions are counted apart: InCallback, dllmain.cpp).
 struct Trampoline {
     void* entry = nullptr;
     volatile LONG* in_flight = nullptr;

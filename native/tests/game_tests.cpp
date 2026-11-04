@@ -17,19 +17,12 @@ namespace {
 
 using namespace stand_in;
 
-std::string apply(zap::Game& game, const std::string& request) {
-    zap::Batch batch;
-    std::string error = zap::parse_batch(request, batch);
-    return error.empty() ? game.apply(batch) : "parse: " + error;
-}
-
 // Configured as a client configures it, and the stand-in game as a save in play leaves it.
 void ready(zap::Game& game) {
     check(configure(game).empty(), "configures");
     reset_game();
 }
 
-// The player in map cell (column, row).
 void player_cell(int column, int row) {
     field<uint8_t>(0x107A) = static_cast<uint8_t>(row);
     field<uint8_t>(0x107B) = static_cast<uint8_t>(column);
@@ -165,7 +158,6 @@ void test_popups() {
               g_sound_category == 8 && g_sound_x == 120.5f && g_sound_y == 64.0f &&
               g_sound_system_seen == g_sound_system,
           "the item's own sound at the player");
-    // The game reports the popup still showing: the next waits.
     message_showing(100);
     for (int i = 0; i < 50; ++i) game.pump_popups();
     check(g_messages == 1 && game.queued_popups() == 1, "waits while the last popup shows");
@@ -175,7 +167,6 @@ void test_popups() {
               g_text == "\xC5MISSILE BOX  FROM BOB",
           "then shows the next");
 
-    // A notice: its text alone, left-aligned and wrapped at 24, with the item's sound.
     reset_game();
     apply(game, "apply\nnotice 36 HINT: PHASER AT MACHINUS 29,30");
     for (int i = 0; i < 30; ++i) game.pump_popups();
@@ -190,7 +181,6 @@ void test_popups() {
               std::vector<std::string>{"HINT: ABCDEFGHIJKLMNOPQ-", "RSTUVWXYZ0123"},
           "a word longer than a line is split with a hyphen at the line's end");
     {
-        // A full line, then a word longer than a line: it starts a new line, no line runs over.
         auto lines = zap::wrap_hyphenated("HINT: MAGNUS ARMOR IS AT " + std::string(25, 'A'), 24);
         bool within = !lines.empty();
         for (const std::string& line : lines) within = within && line.size() <= 24;
@@ -205,7 +195,6 @@ void test_popups() {
     check(get<int32_t>(g_message, 0x1FC) == 4 * 1 + 7 && get<double>(g_message, 0x48) == 0x58 - 1,
           "a two-line notice keeps the game's box");
 
-    // Three lines and the blank one: the box fitted to the three.
     reset_game();
     ::apply(game, "apply\nnotice 36 HINT: GAMMA KEY IS AT AN OLD TOWER BY THE SEA IN ALICE'S WORLD");
     for (int i = 0; i < 30; ++i) game.pump_popups();
@@ -222,8 +211,7 @@ void test_popups() {
               "a message not as the game made it is left alone");
     }
 
-    // A notice past the 256-byte message slot: cut to the whole lines that fit (here 10 lines
-    // of 24), then the blank line.
+    // The 256-byte message slot holds 10 lines of 24, then the blank line's space: 241.
     reset_game();
     std::string words(24, 'Y');
     for (int i = 0; i < 14; ++i) words += " ABCDEFGHIJKL";
@@ -308,9 +296,8 @@ void test_newgame_watch() {
     check(game.newgame_status() == "idle", "disarming");
 }
 
-// A new game the player started from RANDOMIZER, with a plan that has menu lines: identified by
-// its seed text, then placed again as the seed (the menu set to its settings), as ARCHIPELAGO
-// places it, and the plan written over it.
+// A RANDOMIZER new game with the seed's text is placed again as the seed (the menu set to its
+// settings), as ARCHIPELAGO places it, and the plan written over it.
 void test_randomizer_by_seed() {
     zap::Game game;
     ready(game);
@@ -345,7 +332,6 @@ void test_randomizer_by_seed() {
     game.watch_newgame();
     check(g_steps == "placement ", "applied once only");
 
-    // Another seed's text: left as the game made it.
     started("AC", 3);
     game.arm_newgame(plan);
     game.watch_newgame();
@@ -367,8 +353,7 @@ void test_randomizer_by_seed() {
               0,
           "and reported refused");
 
-    // Double Teleport: the game's own start table is used, not the plan's; the second start
-    // must be one of its rooms.
+    // Double Teleport: the game's own start table is used, not the plan's.
     g_start_count = 2;
     std::memset(g_start_flags, 0, sizeof(g_start_flags));
     zap::NewGamePlan teleport;
@@ -432,13 +417,11 @@ struct ModeScreen {
 
     // The button pressed: its callback, as the game's widget code calls it (event 6).
     void press() { reinterpret_cast<zap::WidgetCallback>(panel.callback())(panel.child, 6); }
-    // `plan` armed, ARCHIPELAGO offered, and pressed.
     void start(const zap::NewGamePlan& plan) {
         game.arm_newgame(plan);
         game.watch_menu(&chosen);
         press();
     }
-    // The file screen visited again: nothing queued, the label built afresh.
     void visit_again() {
         g_steps.clear();
         g_transition_fn = nullptr;
@@ -501,8 +484,7 @@ void test_archipelago_choice() {
     game.watch_menu(&chosen);
     check(!game.menu_installed(), "the plan is used up");
 
-    // The file screen closes as the new game starts; a later visit builds the panel afresh.
-    // Another mode: the placement's amounts are not the seed's. Nothing is queued.
+    // Another mode: the placement's amounts are not the seed's.
     screen.visit_again();
     zap::NewGamePlan other;
     zap::parse_newgame(
@@ -516,7 +498,6 @@ void test_archipelago_choice() {
     game.watch_menu(&chosen);
     check(!game.menu_installed() && panel.text() == "RANDOMIZER ", "and the plan dropped");
 
-    // A slot the game will not start a new game in.
     g_steps.clear();
     g_slot_taken = true;
     screen.start(plan);
@@ -560,7 +541,7 @@ void test_start_table() {
     check(zap::parse_newgame(request, plan).empty() && plan.start_table.size() == 2,
           "parses the start table");
 
-    // The menu never opened: the table is built as it would build it, before the placement.
+    // The menu never opened: the table is built as the menu would build it.
     screen.start(plan);
     check(g_start_count == 2 && g_start_cells[0] == 1 && g_start_cells[1] == 25 &&
               g_start_cells[2] == 6 && g_start_cells[3] == 41 && g_start_flags[0] == 1 &&
@@ -569,13 +550,11 @@ void test_start_table() {
     check(g_steps == "placement queue ", "and the new game started");
     game.watch_newgame();
 
-    // The menu built it already, the same: accepted as it is.
     screen.visit_again();
     screen.start(plan);
     check(g_steps == "placement queue ", "a matching table: the new game started");
     game.watch_newgame();
 
-    // A table that differs (another build's rooms, say): refused before anything is placed.
     screen.visit_again();
     g_start_flags[1] = 1;
     screen.start(plan);
@@ -584,7 +563,6 @@ void test_start_table() {
           "and reported");
     check(screen.panel.text() == "RANDOMIZER ", "RANDOMIZER is back");
 
-    // A second start outside the table: refused before anything is written.
     g_steps.clear();
     g_start_count = 0;
     zap::NewGamePlan outside;
@@ -623,14 +601,12 @@ void test_scanner_line() {
               !game.scan_written(),
           "off again: the game's text back");
 
-    // Another text in the entry (another language, say): left alone.
-    std::memcpy(text_12(), "ENERGIESCHLUESSEL!\0\0\0", 21);
+    std::memcpy(text_12(), "ENERGIESCHLUESSEL!\0\0\0", 21);  // another language, say
     game.set_discs(0, 15, "COLLECT 15 DATA DISCS!");
     for (int i = 0; i < 31; ++i) game.watch_discs();
     check(text(text_12()) == "ENERGIESCHLUESSEL!" && !game.scan_written(), "another text untouched");
 
-    // The game loads its texts again into a new table: the new one is written; restore puts
-    // back only the table it wrote, and only while it still reads as written.
+    // Restore puts back only the table it wrote, and only while it still reads as written.
     reset_texts();
     for (int i = 0; i < 31; ++i) game.watch_discs();
     static BYTE other[20 * 32];
@@ -720,8 +696,7 @@ void test_pickup_popup_width() {
         later.restore_ap_items();
     }
 
-    // Code that is not the traced instruction is left alone.
-    set_code_byte(g_popup_width_code, 0, 0xB9);  // mov ecx, not mov edx
+    set_code_byte(g_popup_width_code, 0, 0xB9);  // mov ecx, not the traced mov edx
     game.set_labels(labels);
     game.watch_ap_items();
     check(popup_width_in_code() == 24 && game.popup_width() == 24, "other code: not written");
@@ -768,8 +743,7 @@ void test_zexion_item_labels() {
     game.watch_ap_items();
     check(record_name(47) == "\xC5OS INSTALL DISK",
           "named as the client says, after the item's icon");
-    // An OS Install Disk (item 44, whose record has no icon): the helper's disk glyph.
-    std::map<int, zap::Label> disk;
+    std::map<int, zap::Label> disk;  // item 44, whose record has no icon
     zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@44 os install disk"), disk);
     game.set_labels(disk);
     game.watch_ap_items();
@@ -869,8 +843,8 @@ void test_flipped_items_show_as_themselves() {
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 }
 
-// Labels naming a Zexion item that arrive after a stand-in is drawn in palette 26: it is dressed
-// all the same, in both pools (the helper's palette is a stand-in's).
+// A stand-in already in palette 26 (the helper's own) is still dressed when a label names a
+// Zexion item, in both pools.
 void test_colored_stand_ins_dressed_later() {
     zap::Game game;
     ready(game);
@@ -898,10 +872,8 @@ void test_colored_stand_ins_dressed_later() {
     game.restore_ap_items();
 }
 
-// While the stand-ins are restyled, every live stand-in not dressed as a Zexion item draws in
-// palette 26 at style 34 (the logo in its own colors), its first style kept; one dressed, one
-// not as expected, this world's own items and the marker are left alone. Put back (palette 8,
-// its style) once its stand-in is no longer restyled, and on restore.
+// Stand-ins not dressed as a Zexion item draw in palette 26 at style 34 while restyled; palette 8
+// and their own style come back once not restyled, and on restore.
 void test_stand_ins_in_their_own_colors() {
     zap::Game game;
     ready(game);
@@ -930,8 +902,7 @@ void test_stand_ins_in_their_own_colors() {
           "this world's items and an object not as expected are left alone");
     check(game.looks().colored() == 2, "two colored");
 
-    // The marker's type showing a stand-in in palette 8 (location 81's reward display): colored,
-    // and then still no marker, so neither hidden nor left out of the names.
+    // The marker's type showing a stand-in in palette 8 (location 81's reward display).
     g_flags[154] = 0;
     put_flipped(14, 503, 63, 6, 2);
     put<int16_t>(general_slot(14), 0x32E, 8210);
@@ -941,8 +912,7 @@ void test_stand_ins_in_their_own_colors() {
           "the reward display in its own colors, not hidden");
     check(game.stand_ins_seen(g_item_pool, g_frames).size() == 5, "and counted for names");
 
-    // The stand-ins' records no longer the helper's (another tool, say): put back.
-    BYTE* r = g_records + 47 * 100;
+    BYTE* r = g_records + 47 * 100;  // the records no longer the helper's
     put<int16_t>(r, 0x06, 2);
     game.watch_ap_items();
     check(object_palette(4) == g_palette_table[8] && object_palette_number(4) == 8 &&
@@ -962,12 +932,9 @@ void test_stand_ins_in_their_own_colors() {
           "restore puts palette 8 and the style back");
 }
 
-// R'Talva X34 Y51's marker (type 1146: first state 8210, frame 63, palette 4) is hidden (its
-// shown byte, +0x120, cleared) every frame while the stand-ins are restyled and flag 154 is clear;
-// its frame, frame list and palette stay the game's. It is shown again at once, whatever its frame,
-// once the flag is set or it leaves the logo frame (after the boss, location 81's reward), and on
-// restore. It is no stand-in for naming them; a stand-in beside it keeps the logo, and another
-// type on a logo frame in its own palette (a boss's drop, type 1998) is left alone.
+// The logo-frame marker at R'Talva X34 Y51 is hidden (+0x120 cleared) each frame while restyled
+// and flag 154 is clear, and shown again on the flag, off the logo frame, or on restore
+// (docs/re/memory.md, "Other players' items").
 void test_the_marker_hidden() {
     zap::Game game;
     ready(game);
@@ -1011,7 +978,6 @@ void test_the_marker_hidden() {
     game.watch_ap_items();
     check(shown(20) == 1, "and left shown");
 
-    // Its script moves it to another frame (the reward) while hidden: shown again at once.
     g_flags[154] = 0;
     game.watch_ap_items();
     check(shown(20) == 0, "hidden while it waits");
@@ -1020,7 +986,6 @@ void test_the_marker_hidden() {
     check(shown(20) == 1 && game.looks().hidden_markers() == 0,
           "off the logo frame: shown again the next frame, on its new frame");
 
-    // A marker the game hid itself is not the helper's to show.
     marker(22, 701, 63);
     general_slot(22)[0x120] = 0;
     for (int i = 0; i < 31; ++i) game.watch_ap_items();
@@ -1028,7 +993,6 @@ void test_the_marker_hidden() {
     game.restore_ap_items();
     check(shown(22) == 0, "nor shown on restore");
 
-    // Another object in its slot: not written.
     game.set_labels(labels);
     marker(20, 603, 63);
     for (int i = 0; i < 31; ++i) game.watch_ap_items();
@@ -1090,13 +1054,10 @@ void test_zexion_items_show_as_themselves() {
     game.watch_ap_items();
     check(object_base(3) == g_frames + (42 - 95) * 0x38, "the item animates with the clock");
 
-    // The object leaves (its room left) and its slot is taken by a new spawn: that one is
-    // dressed afresh, and the old one is not "put back".
-    put_object(3, 80, 48, 5, 2);
+    put_object(3, 80, 48, 5, 2);  // its slot taken by a new spawn
     game.watch_ap_items();
     check(object_base(3) == g_frames + (42 - 95) * 0x38, "a new spawn is dressed too");
 
-    // A base this helper did not write (another build, another tool): left alone.
     put_object(6, 81, 48, 5, 2);
     BYTE* odd = g_frames + 0x38;
     put(pool_slot(6), 0x1A8, odd);
@@ -1104,7 +1065,6 @@ void test_zexion_items_show_as_themselves() {
     check(object_base(6) == odd && object_palette(6) == g_palette_table[8],
           "an object not as expected is not written");
 
-    // The label goes: the stand-in shows the logo again.
     std::map<int, zap::Label> fewer;
     zap::parse_labels("ap_labels\nlabel 6 2 4150204974656d0a464f52205a4558494f4e32", fewer);
     game.set_labels(fewer);
@@ -1121,15 +1081,13 @@ void test_zexion_items_show_as_themselves() {
           "restore puts the objects back");
     check(!game.ap_items_restyled(), "and nothing is left to put back");
 
-    // The game sets a dressed object's base back itself: it is dressed again.
     game.set_labels(labels);
     game.watch_ap_items();
     put(pool_slot(3), 0x1A8, static_cast<BYTE*>(g_frames));
     game.watch_ap_items();
     check(object_base(3) == g_frames + (42 - 95) * 0x38, "a base the game set back is redressed");
 
-    // Scrap Chunk's record is no longer ours (left as another helper left it, say): its objects
-    // are put back and not dressed, since the frame the game computes is no longer the logo's.
+    // Scrap Chunk's record no longer ours: the frame the game computes is no longer the logo's.
     put_object(7, 91, 48, 5, 2);
     put<int16_t>(g_records, 48 * 100 + 0x40, 3551);  // neither own nor ours
     put<int16_t>(g_records, 48 * 100 + 0x02, 142);
@@ -1141,7 +1099,6 @@ void test_zexion_items_show_as_themselves() {
     game.restore_ap_items();
     own_stand_ins(g_records);
 
-    // A dressed object whose slot was reused by another spawn is not "put back" on restore.
     game.set_labels(labels);
     game.watch_ap_items();
     put_object(3, 90, 1, 9, 9);  // now a Missile Container somewhere else
@@ -1197,7 +1154,6 @@ void test_received_stand_in_popup() {
     apply(game, "apply\npopup 48 FROM BOB");
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_text == chunk && g_message_args[0] == width, "and Scrap Chunk SCRAP CHUNK FROM BOB");
-    // Away from every label: the records read AP ITEM.
     player_cell(9, 3);
     game.watch_ap_items();
     check(record_name(47).find("AP ITEM") != std::string::npos, "the record reads AP ITEM");
@@ -1218,8 +1174,7 @@ void test_stand_ins_named_by_their_own_cell() {
                       "label 6 2 4150204974656d0a464f52205a4558494f4e32",
                       labels);
     game.set_labels(labels);
-    // The player in a cell with no label, at (1000, 600).
-    player_cell(9, 3);
+    player_cell(9, 3);  // a cell with no label, at (1000, 600)
     field<double>(0x1100) = 1000;
     field<double>(0x1108) = 600;
     put_object(3, 77, 48, 5, 2);  // a drop for (5, 2), far away
@@ -1237,7 +1192,6 @@ void test_stand_ins_named_by_their_own_cell() {
     check(record_name(48).find("FINDER") != std::string::npos, "and follows the player");
     check(game.popup_width() == 10, "the popup as wide as the label of the stand-in within reach");
 
-    // An object off the map, or in a cell with no label, is not taken.
     place(pool_slot(3), -5, 600);
     game.watch_ap_items();
     check(record_name(48).find("ZEXION2") != std::string::npos, "a position off the map is not used");
@@ -1246,14 +1200,12 @@ void test_stand_ins_named_by_their_own_cell() {
     game.watch_ap_items();
     check(record_name(48).find("ZEXION2") != std::string::npos, "nor a cell with no label");
 
-    // A stand-in shown by a general object (found by the scan every 31st frame) counts too.
-    put_flipped(12, 501, 63, 5, 2);
+    put_flipped(12, 501, 63, 5, 2);  // found by the scan every 31st frame
     place(general_slot(12), 2995, 600);
     for (int i = 0; i < 32; ++i) game.watch_ap_items();  // through the next scan
     check(record_name(47).find("FINDER") != std::string::npos,
           "a general object's stand-in is named for its own cell");
 
-    // Out of reach of every stand-in, a labeled cell of the player's own comes first.
     player_cell(5, 2);  // FINDER
     field<double>(0x1100) = 1600;
     game.watch_ap_items();
@@ -1261,8 +1213,7 @@ void test_stand_ins_named_by_their_own_cell() {
           "a stand-in out of reach does not beat the player's labeled cell");
     check(game.popup_width() == 10, "and the popup is that cell's width");
 
-    // A general object no longer showing a logo is not taken, even before the next scan.
-    put_flipped(12, 501, 40, 5, 2);
+    put_flipped(12, 501, 40, 5, 2);  // no longer a logo, before the next scan
     player_cell(9, 3);
     field<double>(0x1100) = 2995;
     game.watch_ap_items();
@@ -1385,9 +1336,8 @@ static_assert(!zap::pickups::listed(0, 0xE7) && !zap::pickups::listed(2, 0xC0) &
               !zap::pickups::listed(45, 0xE6) && !zap::pickups::listed(36, 0xE8) &&
               !zap::pickups::listed(37, 0x6E) && !zap::pickups::listed(35, 0));
 
-// In play in an AP save, each owned item the game lists goes into the save's major-item list
-// once, by item ID, below the game's 26; a new one joins the end. Nothing in a plain randomizer
-// save, with a menu open, or with a count the game would not have written.
+// In play in an AP save, each owned item the game lists joins the save's major-item list once,
+// by item ID, up to the game's 26; nothing in other saves, menus, or a count the game never writes.
 void test_pickup_list() {
     zap::Game game;
     ready(game);
@@ -1427,7 +1377,6 @@ void test_pickup_list() {
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 3 && g_pickups[2] == 0xC3, "a new one at the end");
 
-    // A list the game filled: its codes kept, the missing one after them.
     std::memset(g_pickups, 0, sizeof(g_pickups));
     g_pickups[0] = 0xC7;
     g_pickups[1] = 0xD2;
@@ -1437,7 +1386,6 @@ void test_pickup_list() {
               g_pickups[3] == 0xC3 && g_pickups[zap::pickups::kCount] == 4,
           "the game's own entries kept, in their order");
 
-    // Full at 26: nothing more, as the game's pickup.
     std::memset(g_pickups, 0x77, zap::pickups::kMax);
     g_pickups[zap::pickups::kCount] = zap::pickups::kMax;
     game.watch_all(&chosen);
@@ -1449,17 +1397,14 @@ void test_pickup_list() {
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 0xFF, "nor a negative one");
 
-    // A normal save.
     std::memset(g_pickups, 0, sizeof(g_pickups));
     g_rando_marker = 0;
     game.watch_all(&chosen);
     check(g_pickups[zap::pickups::kCount] == 0, "a normal save: untouched");
 }
 
-// The map's important squares are raised in the labels' seed's save with a menu open too (the
-// player may pause and open the map at once), once two looks in a row (every 16th frame) have
-// read that seed loaded, and not in another seed's save. The on-screen marker write is the
-// helper's from the raise on, and the game's again in the first frame another save is loaded.
+// The map's squares are raised in the labels' seed's save with a menu open too (the player may
+// pause and open the map at once), after two looks in a row (every 16th frame) read that seed.
 void test_map_marks_with_a_menu_open() {
     zap::Game game;
     ready(game);
@@ -1485,7 +1430,6 @@ void test_map_marks_with_a_menu_open() {
               std::string(game.unload_blocker()) ==
                   "the map's on-screen marker is still the helper's",
           "an unload waits for it");
-    // Another save for one frame call between two passes: counted afresh all the same.
     g_map_grid[4 * 54 + 3] = 0x19;
     const BYTE was = g_section[0x26D];
     g_section[0x26D] = 0x2F;
@@ -1519,8 +1463,8 @@ void test_map_marks_with_a_menu_open() {
     g_map_grid[4 * 54 + 3] = 0;
 }
 
-// A refused unload: put_back_all drops what clients set, and rearm sets all of it again, since
-// the client does not know to resend it.
+// After a refused unload, rearm sets again all that put_back_all dropped: the client does not
+// know to resend it.
 void test_refused_unload_rearms() {
     zap::Game game;
     ready(game);
@@ -1569,8 +1513,8 @@ void test_refused_unload_rearms() {
     g_rando_marker = 0;
 }
 
-// A refused unload after ARCHIPELAGO's new game was queued: rearm keeps it started, so the next
-// frame applies the plan without the mode check and ARCHIPELAGO is not offered again.
+// A refused unload after ARCHIPELAGO's new game was queued: rearm keeps it started, so the plan
+// is applied without the mode check and ARCHIPELAGO is not offered again.
 void test_refused_unload_keeps_a_start() {
     zap::Game game;
     ModeScreen screen(game);
@@ -1602,9 +1546,8 @@ void options_back(void* menu) {
     g_back_game->options_returned(menu);
 }
 
-// A known disk seed's save loaded before the client has set its count: the pause row is
-// prepared from the seed's file (its count with the map as it is), so a pause screen opened at
-// once shows it; a save of no known seed gets no row.
+// A known disk seed's save loaded before the client sets its count gets its pause row from the
+// seed's file, so a pause screen opened at once shows it.
 void test_pause_row_from_the_seed_file() {
     zap::Game game;
     ready(game);  // a client, its count not set yet
@@ -1625,8 +1568,7 @@ void test_pause_row_from_the_seed_file() {
     check(p.frame(p.sprite[1]) == '3' && p.frame(p.sprite[2]) == '?' &&
               p.frame(p.sprite[4]) == 829,
           "the file's count on the pause screen at once (\" 3 OF ? \")");
-    // OPTION MENU over it: the pause menu's way back wrapped, which an unload must wait for; its
-    // way back runs the game's; put_back_all gives the game's back to one still open.
+    // OPTION MENU over it: an unload waits for the wrapped way back.
     zap::Hooks hooks;
     hooks.options_back = reinterpret_cast<void*>(&options_back);
     game.set_hooks(hooks);
@@ -1670,8 +1612,8 @@ void test_pause_row_from_the_seed_file() {
     g_rando_marker = 0;
 }
 
-// The popups queued, the client's and the helper's own notices; a client going away leaves its
-// popups to show (their items are given) and takes its other-seed notice with it.
+// A client going away leaves its popups to show (their items are given) and takes its
+// other-seed notice with it.
 void test_queued_popups() {
     zap::Game game;
     check(game.queued_popups() == 0, "none before a config");
@@ -1718,8 +1660,8 @@ void test_popups_wait_for_their_save() {
     g_section[0x26C] = 0x11;  // its save again
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 2 && game.queued_popups() == 0, "shown in its own save");
-    // A client of another seed: the first's popups still held for their own save, and shown
-    // there (the client counts them handed over and never sends them again).
+    // A client of another seed: the first's popups held for their own save (the client never
+    // sends them again).
     apply(game, "apply\npopup 36 FROM ALICE");
     g_section[0x26C] = 0x22;
     check(game.queued_popups() == 1, "held for its seed");
@@ -1733,9 +1675,8 @@ void test_popups_wait_for_their_save() {
     g_rando_marker = 0;
 }
 
-// RETURN HOME WITH THE DISKS? (mission.h) through the Game: configured, the opener hooked, the
-// routine table's idle, prompt and ending routines stand-ins of their own, idle in play; all put
-// back after. Bodies of their own: the linker folds identical functions into one address.
+// RETURN HOME WITH THE DISKS? (mission.h) through the Game, with stand-in routines. Each has a
+// body of its own: the linker folds identical functions into one address.
 int g_routine_runs = 0;
 void idle_routine() { g_routine_runs += 1; }
 void prompt_routine() { g_routine_runs += 2; }  // builds nothing: the opener then reports it
@@ -1778,7 +1719,6 @@ struct MissionGame {
     MissionGame(const MissionGame&) = delete;
     MissionGame& operator=(const MissionGame&) = delete;
 
-    // Idle in play: the idle routine, no transition pending.
     static void idle() {
         g_transition_fn = g_routine_table[zap::kIdleRoutine];
         g_transition_timer = 0;
@@ -1792,9 +1732,8 @@ struct MissionGame {
     }
 };
 
-// Offered once idle: event 3667's fade with event 3666's delay, popups waiting until the game
-// runs the opener; not before the game's last message is down to its last kFadeMessageLeft
-// frames (GAME SAVED's, half a second in).
+// Popups wait from the fade until the opener runs; the fade waits until the last message has
+// kFadeMessageLeft frames left (GAME SAVED's, half a second in).
 void test_popups_wait_for_the_mission_fade() {
     MissionGame m;
     zap::Game& game = m.game;
@@ -1820,20 +1759,18 @@ void test_popups_wait_for_the_mission_fade() {
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 1, "then shows");
 
-    // The helper's own popup the last message: never cut short, the fade waits for its end.
+    // The helper's own popup is never cut short: the fade waits for its end.
     m.again();
     reset_game();
     player_cell(13, 16);  // the player state cleared: back at the pod
     game.request_mission(kPodColumn, kPodRow);
-    // The game makes each new message its last one (0x182CEB): the helper's popup is, then.
-    g_slots_live = true;
+    g_slots_live = true;  // the game makes each new message its last one (0x182CEB)
     g_message_is_last = true;
     BYTE* own = g_slots + 0x1628 * g_message_slot;
     apply(game, "apply\npopup 36 FROM BOB");
     game.pump_popups();
     check(g_messages == 1 && g_last_message.last == own, "the helper's popup shows");
-    // As many frame calls as you like (more of them than game frames on a fast monitor).
-    for (int i = 0; i < 300; ++i) game.pump_popups();
+    for (int i = 0; i < 300; ++i) game.pump_popups();  // more calls than frames: a fast monitor
     put<int32_t>(own, 0x1EC, zap::kFadeMessageLeft);
     game.watch_all(&chosen);
     check(g_fade_calls == 0, "not with kFadeMessageLeft frames of the helper's popup left");
@@ -1846,8 +1783,7 @@ void test_popups_wait_for_the_mission_fade() {
     g_slots_live = false;
     g_message_is_last = false;
 
-    // The player dead when the game runs the opener: no prompt, the fade turned back (toward the
-    // normal level, a step every 6 frames), asked again.
+    // Dead when the opener runs: the fade turned back (a step every 6 frames), asked again.
     field<int16_t>(0xCEA) = -1;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
@@ -1861,9 +1797,8 @@ void test_popups_wait_for_the_mission_fade() {
     game.put_back_all(&chosen);
 }
 
-// A save at the save point during the fade sets the pause opener back in the opener's place:
-// through the Game (the wiring watch_mission gives the prompt), the fade turned back and the
-// prompt asked again; under a door's own fade, nothing turned back.
+// A save during the fade puts the pause opener back: the fade turned back and the prompt asked
+// again, except under a door's own fade.
 void test_a_save_during_the_mission_fade() {
     for (bool door : {false, true}) {
         MissionGame m;
@@ -1909,36 +1844,30 @@ void test_the_mission_request_gives_home() {
     }
 }
 
-// Asked for with home the Landing Pod's save point, in a seed that starts elsewhere: dropped at
-// the seed's start, which is not home; offered at the pod; held by popups, dropped once the
-// player is in play outside the pod's cell, before it opens; a death's own fade left alone when
-// the opener is put off; and after YES, the ending comes with the game's message still up but
-// waits for the helper's own popup to end, and an unload refuses until it has started.
+// Home the Landing Pod, the seed starting elsewhere: offered only at the pod, dropped once the
+// player is in play outside its cell; after YES the ending waits for the helper's own popup.
 void test_return_home_lapses_away_from_the_pod() {
     MissionGame m;
     zap::Game& game = m.game;
     g_rando_marker = 1;
-    // The start record: candidate 17 (Open Cave), tile column 333 and row 449, so cell row 22,
-    // column 23. The helper does not read it: home is what the request gives.
+    // The start: candidate 17 (Open Cave), tiles (333, 449), cell row 22, column 23. The helper
+    // does not read it: home is what the request gives.
     put<uint16_t>(g_section, 0x310, 17);
     put<uint16_t>(g_section, 0x312, 333);
     put<uint16_t>(g_section, 0x314, 449);
 
-    // A home off the map: refused, nothing asked.
     check(!game.request_mission(-1, kPodRow) && !game.request_mission(kPodColumn, 1080) &&
               game.mission_status() == "not asked",
           "a home off the map refused");
 
-    // At the seed's start: not home, so the request lapses and nothing opens.
-    player_cell(23, 22);
+    player_cell(23, 22);  // the seed's start
     message_showing(1);
     game.request_mission(kPodColumn, kPodRow);
     game.watch_all(&chosen);
     check(g_fade_calls == 0 && game.mission_status() == "lapsed: the player left the landing pod",
           "at the seed's start, not the pod: lapsed");
 
-    // At the pod: offered.
-    player_cell(13, 16);
+    player_cell(13, 16);  // the pod
     message_showing(1);
     game.request_mission(kPodColumn, kPodRow);
     game.watch_all(&chosen);
@@ -1992,7 +1921,6 @@ void test_return_home_lapses_away_from_the_pod() {
           "put off, the death's fade not turned back");
     field<int16_t>(0xCEA) = 48;
 
-    // The helper's own popup the last message after YES: the ending waits for its end.
     m.again();
     g_slots_live = true;
     g_message_is_last = true;
@@ -2012,8 +1940,7 @@ void test_return_home_lapses_away_from_the_pod() {
     check(g_transition_fn == m.hooks.mission_end, "then comes as it ends");
     g_slots_live = false;
     g_message_is_last = false;
-    // YES: the ending waits for no message of the game's (GAME SAVED: the ending routine ends
-    // every message itself, 0x1F9CE0), but for one of the helper's own popups to end.
+    // The ending waits for no message of the game's (the ending routine ends them, 0x1F9CE0).
     m.again();
     check(!game.ending_pending() && game.unload_refusal() == nullptr, "nothing pending");
     g_menu = 2;
@@ -2032,10 +1959,8 @@ void test_return_home_lapses_away_from_the_pod() {
     game.put_back_all(&chosen);
 }
 
-// A last message the helper's own call did not change is not taken for its popup (the game makes
-// each new message the last one, with a new sequence number, 0x182CEB): after YES the ending
-// does not wait for it. Here the stand-in leaves the last message alone, a message of the
-// game's in the same slot the popup went to.
+// A last message the helper's call did not make new (the game makes each new message the last
+// one, with a new sequence number, 0x182CEB) is not taken for its popup: the ending does not wait.
 void test_own_popup_needs_a_new_last_message() {
     MissionGame m;
     zap::Game& game = m.game;
@@ -2054,10 +1979,8 @@ void test_own_popup_needs_a_new_last_message() {
     game.put_back_all(&chosen);
 }
 
-// YES through the Game (the wiring the YES hook and watch_mission give the prompt): kept black
-// after NO's close, a received death refused meanwhile, a popup received meanwhile held, then
-// the screen back in for it and the ending after it; once started, not offered again until
-// another save is loaded.
+// After YES the screen stays black past NO's close, refusing deaths and holding popups until the
+// ending; once started, not offered again until another save is loaded.
 void test_the_black_after_yes() {
     MissionGame m;
     zap::Game& game = m.game;
@@ -2088,8 +2011,7 @@ void test_the_black_after_yes() {
               game.mission_status() == zap::kEndingStarted,
           "then the ending");
 
-    // Cancelled (`discs` off) with a menu on top but not the game's menu state: the black alone,
-    // the ending dropped, refuses an unload until the screen is back in.
+    // Canceled (`discs` off) under a menu that is not the game's menu state.
     m.again();
     game.mission_yes();
     set_fade(4, -1, 6);
@@ -2107,7 +2029,6 @@ void test_the_black_after_yes() {
           "the menu closed: back in, nothing pending");
     game.set_discs(3, 3, "COLLECT 3 OS INSTALL DISKS!", true);
 
-    // Black with nothing waiting: the ending at once, the screen black for it.
     m.again();
     game.mission_yes();
     set_fade(4, -1, 6);

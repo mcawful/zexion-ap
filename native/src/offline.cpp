@@ -151,7 +151,6 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             if (!(words >> a) || (a != "lock" && a != "free")) return "bad assists";
             out.lock_assists = a == "lock";
         } else if (key == "discs") {
-            // "discs -", or as the `discs` request (its TOLD left out).
             if (words >> a && a == "-") continue;
             bool told = false;
             if (!parse_discs(line, out.count, out.required, out.scan_line, told).empty() ||

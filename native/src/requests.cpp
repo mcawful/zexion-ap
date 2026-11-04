@@ -16,8 +16,7 @@ namespace {
 
 constexpr int kItems = 50;  // inventory bytes the helper may write: 0..49
 constexpr size_t kSuffixMax = 40;
-// A notice's text as sent, at most; laid out, it is cut further to the game's message slot
-// (notice_text).
+// A notice's text as sent, at most; notice_text cuts it further to the game's message slot.
 constexpr size_t kNoticeMax = 200;
 
 bool parse_number(const std::string& text, uint64_t& out) {
@@ -28,8 +27,7 @@ bool parse_number(const std::string& text, uint64_t& out) {
     return end != nullptr && *end == '\0';
 }
 
-// Adds `c` to `out` if the game's font draws it: a letter (made upper-case), a digit, or one of
-// `kept`.
+// Adds `c` to `out` if the game's font draws it: a letter (made upper-case), a digit, or `kept`.
 void keep_font_char(std::string& out, unsigned char c, const char* kept) {
     if (std::isalpha(c)) {
         out += static_cast<char>(std::toupper(c));
@@ -126,8 +124,6 @@ std::string parse_batch(const std::string& request, Batch& out) {
         } else if (op == "refresh") {
             out.refresh = true;
         } else if (op == "popup" || op == "notice") {
-            // "popup ITEM SUFFIX": the item's icon and name, then the suffix. "notice ITEM
-            // TEXT": the text alone (the item's sound); it also keeps colons.
             const bool bare = op == "notice";
             const char* kept = bare ? " .,'!?-:" : " .,'!?-";
             const size_t most = bare ? kNoticeMax : kSuffixMax;
@@ -137,9 +133,7 @@ std::string parse_batch(const std::string& request, Batch& out) {
             std::getline(words >> std::ws, rest);
             std::string suffix, as_sent;
             for (char c : rest) {
-                const size_t before = suffix.size();
-                keep_font_char(suffix, static_cast<unsigned char>(c), kept);
-                if (suffix.size() > before) as_sent += c;  // the same character, its case
+                keep_both(suffix, as_sent, static_cast<unsigned char>(c), kept);
                 if (suffix.size() >= most) break;
             }
             while (!suffix.empty() && suffix.back() == ' ') suffix.pop_back();

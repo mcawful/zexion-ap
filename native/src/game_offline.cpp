@@ -9,8 +9,8 @@ namespace zap {
 namespace {
 
 constexpr int kOfflineFrames = 15;  // frames between looks
-// What the player is told on loading an AP save with no client; each in capitals for the pixel
-// fonts, and in mixed case for English(HD) (Popup::as_sent, Game::hd_popup_text).
+// Loading an AP save with no client; each in capitals for the pixel fonts and mixed case for
+// English(HD) (Popup::as_sent).
 constexpr char kOfflineWarning[] =
     "ARCHIPELAGO CLIENT NOT CONNECTED. CHECKS ARE SENT WHEN IT CONNECTS.";
 constexpr char kOfflineWarningHd[] =
@@ -40,12 +40,10 @@ Popup notice(const char* text, const char* mixed) {
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
     add_known_seeds(seeds);
-    // The files are read again each time a pipe client goes (a client, `helper.py status`): a
-    // dressed seed they still hold stays dressed, its record as it is (as merge_offline keeps
-    // it). Undressed, the save's look would wait for play, ASSIST unlocked in a menu meanwhile.
+    // Read again each time a pipe client goes: a dressed seed they still hold stays dressed, its
+    // record as it is; undressed, its look would wait for play, ASSIST unlocked in a menu.
     int kept = -1;
-    // The seed played offline this load (client_back) found again by its record: the files come
-    // newest first, so its place may change.
+    // The seed played offline this load (client_back), found again by its record (newest first).
     int played = -1;
     if (offline_played_ >= 0 && static_cast<size_t>(offline_played_) < offline_seeds_.size()) {
         const OfflineSeed& was = offline_seeds_[static_cast<size_t>(offline_played_)];
@@ -70,8 +68,7 @@ void Game::set_offline(std::vector<OfflineSeed> seeds) {
 
 void Game::merge_offline(std::vector<OfflineSeed> seeds) {
     add_known_seeds(seeds);
-    // Each seed in place of its old record, or after the others: the indices stay, so the
-    // dressed seed (offline_index_) is still the one dressed, and its record is kept as it is.
+    // In place of its old record, or appended: the indices stay; the dressed seed's record is kept.
     for (OfflineSeed& seed : seeds) {
         auto same = [&](const OfflineSeed& k) { return offline_matches(k, seed); };
         auto it = std::find_if(offline_seeds_.begin(), offline_seeds_.end(), same);
@@ -90,15 +87,13 @@ bool Game::drop_notice(const char* text) {
 }
 
 void Game::drop_offline_warning() {
-    // Withdrawn before it showed: told again when a save is next dressed with no client this
-    // load (after a client of another seed goes away, say).
+    // Withdrawn before it showed: told again at the next dress with no client this load.
     if (drop_notice(kOfflineWarning)) offline_warned_ = false;
 }
 
 void Game::drop_client_notices() {
-    // Not shown yet when its client went away (or a client configures again): the other-seed
-    // notice is told again to the next client that says so, and CLIENT CONNECTED. is no longer
-    // so.
+    // Not shown yet when its client went (or a client configures again): the other-seed notice is
+    // told again to the next client that says so; CLIENT CONNECTED. no longer holds.
     drop_notice(kOtherSeedNotice);
     drop_notice(kOnlineNotice);
     other_save_ = false;
@@ -144,10 +139,9 @@ int Game::loaded_seed() const {
 }
 
 std::string Game::known_disk_row() const {
-    // A save of a known seed with the disks, loaded in play or not: its count from the seed's
-    // file, for the pause screen's row until the client's (or the offline look's) is set. During
-    // a load it may read the last save's count for a frame: only the branch's code byte follows
-    // it, put right the next frame, and no pause screen opens mid-load.
+    // A known disk seed's save, in play or not: its count from the seed's file, until the client's
+    // (or the offline look's) is set. Mid-load it may read the last save's for a frame: only the
+    // branch's code byte follows, put right the next frame, and no pause screen opens mid-load.
     const int seed = loaded_seed();
     if (seed < 0) return "";
     const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(seed)];
@@ -159,8 +153,7 @@ std::string Game::known_disk_row() const {
 void Game::watch_offline() {
     if (!configured_) return;
     if (*at_.save_loaded == kNoSaveLoaded) {
-        // No save: each notice comes again with the next load, and one not shown yet is
-        // withdrawn (it was for the save just left; pump_popups would show it in the next).
+        // No save: each notice comes again next load; one not shown yet was for the save left.
         drop_notice(kOfflineWarning);
         drop_client_notices();
         offline_warned_ = false;
@@ -175,24 +168,20 @@ void Game::watch_offline() {
     }
     if (offline_frames_-- > 0) return;
     offline_frames_ = kOfflineFrames;
-    // A save is dressed with no client, or with a client that said the loaded save is not its
-    // seed's (other_save); undressed when that stops.
+    // Dressed with no client, or a client that said other_save; undressed when that stops.
     const bool other = active_ && other_save_;
     const bool dress = !active_ || other;
-    // Which known seed's save is loaded.
     const int seed = dress ? loaded_seed() : -1;
-    // A save is dressed once it has been in play since it loaded (not while it loads, when the
-    // marker and section may still be another save's: a menu or a death later keeps the same
-    // save), and undressed at once with no save, a client's look, or in play. A save in play
-    // since its load that reads as no known seed with a menu up is held as it is until play:
-    // the lock must not lift for a read in the options menu (no such read is known).
+    // Dressed once in play since it loaded (while loading, the marker and section may be another
+    // save's); undressed at once with no save, a client's look, or in play. One read as no known
+    // seed with a menu up is held until play, so the lock cannot lift in the options menu on such
+    // a read (none is known).
     const bool undress = !dress || !offline_settled_ || in_play();
     if (seed != offline_index_ && (seed >= 0 ? offline_settled_ : undress)) {
         leave_offline_seed();
         offline_index_ = seed;
         if (seed >= 0) {  // the look itself: below
-            // Once a load and after each client goes (configure): why received items and hints
-            // wait (with a client of another seed, its own notice said so: other_save).
+            // Once a load and after each client goes; with a client of another seed, its notice.
             if (!offline_warned_ && !other) {
                 popups_.push_back(notice(kOfflineWarning, kOfflineWarningHd));
                 offline_warned_ = true;
@@ -204,9 +193,8 @@ void Game::watch_offline() {
     }
     if (offline_index_ >= 0) {
         const OfflineSeed& sd = offline_seeds_[static_cast<size_t>(offline_index_)];
-        // The save's look, set when it is dressed and kept while it is: a client of another
-        // seed, attaching while this save is in play, takes its own look back (no labels, ASSIST
-        // free, AREA MAP, no disks), which is not this save's.
+        // Set when dressed and kept while dressed: a client of another seed attaching in play
+        // takes its own look back (no labels, ASSIST free, AREA MAP, no disks).
         if (!ap_items_.active() && !sd.labels.empty()) {
             std::map<int, Label> labels;
             if (parse_labels(sd.labels, labels).empty()) set_labels(std::move(labels));
@@ -223,9 +211,8 @@ void Game::watch_offline() {
             }
         }
     }
-    // The file select: each save of a known seed with the disks, by its own copy of the section
-    // (valid for a randomizer save in use: client/discs.py, seed_slots), with or without a
-    // client (whose own counts win for its seed's saves: apply_file_counts).
+    // The file select: each known disk seed's save by its own section copy, with or without a
+    // client (whose counts win for its seed's saves: apply_file_counts).
     std::map<int, int> counts;
     for (int n = 1; n <= slot::kCount; ++n) {
         const BYTE* copy = slot_section(n);
@@ -247,9 +234,8 @@ void Game::watch_offline() {
 }
 
 std::string Game::other_save() {
-    // Only an AP save of another seed: one whose seed the helper has a file for (every new game
-    // from ARCHIPELAGO is made with a client, which leaves one). A plain randomizer game is left
-    // alone.
+    // Only an AP save of another seed: one with a seed file (every ARCHIPELAGO new game is made
+    // with a client, which leaves one). A plain randomizer game is left alone.
     if (!configured_ || loaded_seed() < 0) return "unknown";
     other_save_ = true;
     if (other_warned_) return "already told";

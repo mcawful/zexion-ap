@@ -1,12 +1,9 @@
-// AP saves without the client (offline). The client sends each seed's file and its resolved
-// addresses (`offline_put`); the helper writes them under %LOCALAPPDATA%\ZexionAP, never the
-// game's folder. The helper writes them, not the client: a client run from an MSIX package has
-// its AppData writes redirected where the game does not see them (inferred; docs/re/memory.md,
-// "AP saves without the client"). The helper reads them at start and each time a client goes
-// away. With no client (or one that sent `other_save`), a loaded save of one of those seeds gets
-// the client's look, from the cached addresses for the build they were made on. A seed file
-// matches a save by the section's location count, item table and start record
-// (client/save_patch.py, section_matches).
+// AP saves without the client (native/README.md, "AP saves without the client";
+// docs/re/memory.md, "AP saves without the client"). The client sends each seed's file and its
+// resolved addresses (`offline_put`); the helper writes them under %LOCALAPPDATA%\ZexionAP (an
+// MSIX-packaged client's AppData writes are redirected, inferred), never the game's folder, and
+// reads them at start and each time a client goes away. A seed file matches a save by the
+// section's location count, item table and start record (client/save_patch.py, section_matches).
 //
 // A seed file, one line each, then the labels:
 //   zexion-ap offline 1
@@ -84,8 +81,7 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
 // or not at all: "stored", "unchanged" or "error <why>". A seed kept ("stored" or "unchanged") is
-// also given in `seed`, named NAME, if not null (for the AP-save test and the offline look,
-// which know a client's seed as soon as it is put: Game::merge_offline).
+// also given in `seed`, named NAME, if not null (Game::merge_offline).
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed = nullptr);
 

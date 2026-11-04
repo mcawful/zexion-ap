@@ -1,6 +1,5 @@
-// Host tests for the helper's parts that do not need the game: the import-table hook and the
-// trampoline (on this test program's own import of GetTickCount), game_mem.h's shared readers,
-// memory check, frames and code patches, the build check and the pipe.
+// Host tests for the helper's parts that do not need the game: the import-table hook (on this
+// program's own import of GetTickCount), game_mem.h, the build check and the pipe.
 
 #include <windows.h>
 
@@ -170,9 +169,8 @@ void test_game_mem_helpers() {
     VirtualFree(pages, 0, MEM_RELEASE);
 }
 
-// The memory check under every read and write of the game's memory: each page on the way,
-// across regions; a guard page (another thread's stack) neither read nor written, and so still
-// armed.
+// The memory check under every read and write of the game's memory, across regions; a guard page
+// (another thread's stack) is neither read nor written, so it stays armed.
 void test_memory_checks() {
     // Pages: read-write, read-only, guard, no access, and one reserved but not committed.
     auto* pages = static_cast<BYTE*>(VirtualAlloc(nullptr, 0x5000, MEM_RESERVE, PAGE_READWRITE));

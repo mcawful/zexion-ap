@@ -98,7 +98,7 @@ void test_the_file() {
     std::string longer = seed_text();
     longer.insert(longer.find("table ") + 6, "0000");
     check(!zap::parse_offline_seed(longer, short_table).empty(), "a table of 156: refused");
-    // A table of 155, then one of 154: refused, not the 154 with the first's 155th entry kept.
+    // A table of 155, then one of 154: refused, lest the 154 keep the first's 155th entry.
     const size_t first = seed_text().find("table ");
     std::string twice = seed_text();
     twice.insert(first, "table " + hex(secret, sizeof(secret)) + "\n");
@@ -191,7 +191,6 @@ void test_the_helper_writes_what_the_client_sends() {
 
 void test_the_cache_must_fit_the_game() {
     HMODULE self = GetModuleHandleW(nullptr);
-    // Code that is surely there.
     uint64_t entry = zap::nt_headers(self)->OptionalHeader.AddressOfEntryPoint;
     zap::OfflineFiles f;
     for (int i = 0; i < 8; ++i) {
@@ -266,16 +265,14 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.disc_count() == 4 && game.discs_told(), "a disk found offline, and told");
 
-    // Another save (a normal one keeps the old section: the marker says so).
-    g_rando_marker = 0;
+    g_rando_marker = 0;  // a normal save keeps the old section: the marker tells
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(!game.intel_on() && !game.assists_locked() && game.scan_line().empty(),
           "another save: all of it put back");
     check(game.queued_popups() == 0, "the warning not shown yet withdrawn");
     g_rando_marker = 1;
 
-    // The file select: slot 3 holds the seed, slot 4 another, slot 5 is empty (its section
-    // still the seed's).
+    // Slot 3 holds the seed, slot 4 another, slot 5 is empty (its section still the seed's).
     for (int n : {3, 4, 5}) {
         put<uint16_t>(slot_block(n), 0x9400, 1);
         slot_block(n)[0x935E] = 0;
@@ -292,17 +289,14 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.files().counts().at(3) == 4, "counted for that save on the file select");
 
-    // A client configures: the offline look goes.
     check(configure(game).empty() && game.active(), "a client's config");
     check(game.files().counts().empty(), "the file select's counts left to the client");
     check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
 
-    // Played offline, then a client connects: told so, and the not-connected warning withdrawn.
     zap::Game again;
     dress_offline(again, s);
     check(again.intel_on() && again.queued_popups() == 1, "dressed offline, warned");
-    // A client's short first connection (its version check) undresses it, as any client going
-    // away does; the real one comes next.
+    // A client's short first connection (its version check) undresses it; the real one follows.
     again.leave_offline();
     configure(again);
     check(again.queued_popups() == 0 && !again.intel_on(), "a client: the warning withdrawn");
@@ -310,8 +304,7 @@ void test_a_save_of_the_seed_dressed_offline() {
           "its session sees the save: CLIENT CONNECTED, once");
     check(!again.client_back() && again.queued_popups() == 1, "not twice");
 
-    // A client of another seed: its session says the loaded save is not its seed's.
-    zap::Game other;
+    zap::Game other;  // a client of another seed
     configure(other);  // a client, active
     other.set_offline({s});
     for (int i = 0; i < 16; ++i) other.watch_offline();
@@ -323,8 +316,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     for (int i = 0; i < 16; ++i) other.watch_offline();
     check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
           "the other seed's save dressed, with no not-connected warning");
-    // A client attaching meanwhile takes its own look back (it has none for this save): the
-    // dressed save keeps its own.
+    // The client takes its own look back (none for this save): the dressed save keeps its own.
     other.set_labels({});
     other.set_intel(false);
     other.set_assists_locked(false);
@@ -333,8 +325,7 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(other.intel_on() && other.assists_locked() && other.scan_line() == "COLLECT",
           "a client's look taken back: the dressed save's own again");
     {
-        // A refused unload meanwhile: the look is the offline one's, not set again with what
-        // the client set; the watch dresses the save again by itself.
+        // A refused unload: the look is the offline one's, not set again from the client's.
         zap::ClientState saved = other.snapshot();
         check(!saved.intel && !saved.assists_locked && saved.labels.empty() &&
                   saved.scan_line.empty(),
@@ -357,15 +348,13 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(other.queued_popups() == 0, "the last client's notice withdrawn");
     check(other.other_save() == "told" && other.queued_popups() == 1, "and told again");
     {
-        // A randomizer save of no known seed (a plain randomizer game): nothing said or done.
-        zap::Game plain;
+        zap::Game plain;  // a randomizer save of no known seed
         configure(plain);
         check(plain.other_save() == "unknown" && plain.queued_popups() == 0,
               "a plain randomizer game: no notice");
     }
 
-    // The file select with a client: its counts for its saves, the offline ones for others'.
-    g_save_loaded = 0xFF;
+    g_save_loaded = 0xFF;  // the file select
     other.set_disk_slots({{4, 7}});
     for (int i = 0; i < 16; ++i) other.watch_offline();
     auto merged = other.files().counts();
@@ -376,12 +365,8 @@ void test_a_save_of_the_seed_dressed_offline() {
           "the client's taken back: the offline one stays");
 }
 
-// A dressed save stays dressed, ASSIST locked, through a menu: the files read again (each time a
-// pipe client goes), a read of no known seed for a check, and a client going away all with a
-// menu up. The 2026-11-02 retest once saw ASSIST unlocked in the options menu with no client:
-// each of these used to undress the save until play.
-// A client going away with the options menu up: the save dressed again and ASSIST locked in the
-// same frame call (watch_assists runs after watch_offline), so the cursor never finds it open.
+// A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the
+// options menu up locks it again in the same frame call, so the cursor never finds it open.
 void test_assist_locked_again_in_the_same_frame() {
     reset_game();
     zap::Game game;
@@ -451,8 +436,7 @@ void test_the_look_held_in_a_menu() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.assists_locked(), "then dressed");
 
-    // The files read again in another order (newest first): the save played offline is still
-    // the one CLIENT CONNECTED. is told for.
+    // The files read again newest first: CLIENT CONNECTED. still for the save played offline.
     zap::Game order;
     configure(order, false);
     order.set_offline({other, s});
@@ -464,8 +448,8 @@ void test_the_look_held_in_a_menu() {
     check(order.client_back(), "CLIENT CONNECTED. for the save played offline");
 }
 
-// The helper's notices are each for the load they were queued in: one the player leaves before
-// it shows is withdrawn, not shown in the next save (the client's own seed's).
+// The helper's notices are each for the load they were queued in: withdrawn if the player
+// leaves it before they show.
 void test_a_notice_not_shown_goes_with_its_save() {
     reset_game();
     zap::OfflineSeed s;
@@ -497,8 +481,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
-        // A client going away before its notice shows: withdrawn with it, not shown before the
-        // not-connected warning that follows.
+        // A client going away before its notice shows.
         zap::Game game;
         configure(game);
         game.set_offline({s});
@@ -519,8 +502,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
-        // Warned with no client, but paused before it showed; a client of another seed comes and
-        // goes meanwhile: the warning is given again once the save is dressed without it.
+        // Warned, paused before it showed, a client of another seed come and gone meanwhile.
         g_messages = 0;
         zap::Game game;
         dress_offline(game, s);
@@ -538,8 +520,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
-        // Warned and shown with no client; a client comes back, then goes again in the same load
-        // (a disconnect, say): warned again, as CLIENT CONNECTED. is each time one comes back.
+        // Warned and shown; a client comes back, then goes again in the same load.
         g_messages = 0;
         zap::Game game;
         dress_offline(game, s);
@@ -560,8 +541,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
-        // CLIENT CONNECTED. not shown yet when its client goes: withdrawn.
-        zap::Game game;
+        zap::Game game;  // CLIENT CONNECTED. not shown yet when its client goes
         dress_offline(game, s);
         game.leave_offline();
         configure(game);
@@ -571,8 +551,7 @@ void test_a_notice_not_shown_goes_with_its_save() {
         game.put_back_all(nullptr);
     }
     {
-        // Or when a client configures again.
-        zap::Game game;
+        zap::Game game;  // or when a client configures again
         dress_offline(game, s);
         game.leave_offline();
         configure(game);
@@ -601,8 +580,8 @@ void test_a_notice_not_shown_goes_with_its_save() {
     g_rando_marker = 0;
 }
 
-// A seed file put (or read) while a client is connected reaches the look at once, not only the
-// AP-save test: another seed's save is told and dressed as one, and a dressed save keeps its own.
+// A seed file put while a client is connected reaches the look at once; a dressed save keeps
+// its own record.
 void test_a_seed_put_with_a_client_reaches_the_look() {
     reset_game();
     zap::Game game;
@@ -618,8 +597,7 @@ void test_a_seed_put_with_a_client_reaches_the_look() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.intel_on() && game.assists_locked() && game.offline_state() == "1:b",
           "the save dressed");
-    // The same seed again (its look changed) and another: the dressed save keeps its record.
-    zap::OfflineSeed newer = b;
+    zap::OfflineSeed newer = b;  // the same seed, its look changed
     newer.name = "b2";
     newer.intel = false;
     zap::OfflineSeed c = b;
@@ -629,7 +607,6 @@ void test_a_seed_put_with_a_client_reaches_the_look() {
     for (int i = 0; i < 16; ++i) game.watch_offline();
     check(game.intel_on() && game.offline_state() == "2:b", "the dressed record kept; one added");
     check(game.known_seeds() == 2, "both known");
-    // Not dressed: the newer record takes the old one's place.
     g_save_loaded = 0xFF;
     for (int i = 0; i < 16; ++i) game.watch_offline();
     game.merge_offline({newer});
@@ -672,7 +649,6 @@ void test_the_ap_saves_slots() {
               game.ap_file_slots() == std::set<int>{3, 7},
           "with a client too");
 
-    // The frame call gives them to the file select's entries; putting back takes them away.
     check(game.files().ap_slots().empty(), "not before a frame");
     game.watch_all(&no_callback);
     check(game.files().ap_slots() == std::set<int>{3, 7}, "the first frame sets them");
@@ -692,9 +668,8 @@ void test_the_ap_saves_slots() {
     check(labeled.ap_file_slots() == std::set<int>{7}, "the labels' seed's save");
 }
 
-// The file select's AP logo as the frame call paints it (Game::watch_files): in its colors,
-// whiter through a new game's fade to white (its routine queued, the timer counting down), and
-// cleared from the texture when the file select's look is put back (restore_files).
+// The file select's AP logo as the frame call paints it: whiter through a new game's fade to
+// white, cleared when the file select's look is put back.
 void test_the_logo_through_the_frame_call() {
     reset_game();
     gl_fake::reset_gl();
@@ -775,7 +750,7 @@ bool is_translation_key(const std::string& key) {
     return false;
 }
 
-// The keys newer than caches already written (game_calls.cpp, later_key).
+// The keys an older cache lacks (game_calls.cpp, later_key).
 const char* const kLaterKeys[] = {"options_back_fn", "pickup_list"};
 
 bool is_later_key(const std::string& key) {
@@ -785,10 +760,8 @@ bool is_later_key(const std::string& key) {
     return false;
 }
 
-// The cache of a client from before a release that added client-only keys (here: all of them).
-// The helper configures from it, inactive, with those members null: every part the offline look
-// uses runs (a null one read would fault here), and the client's parts refuse until a client's
-// config sets every key. A cache missing any other key still refuses.
+// A cache without the client-only keys configures, inactive, those members null: the offline
+// look runs (a null read would fault here), the client's parts refuse until a client configures.
 void test_a_cache_without_the_client_only_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();
@@ -811,7 +784,6 @@ void test_a_cache_without_the_client_only_keys() {
         check(client.configure(self, partial) == "missing weapon_strip_gate" &&
                   !client.configured(),
               "a client's config needs every key");
-        // One that does not fit (here: data in code) is left out as a missing one is.
         auto misplaced = stand_in_config();
         misplaced["fade"] = misplaced["message_fn"];
         zap::Game cached;
@@ -841,7 +813,6 @@ void test_a_cache_without_the_client_only_keys() {
     check(game.files().ap_slots() == std::set<int>{3} && game.files().counts().at(3) == 3,
           "the file select: the AP save's mark and its count");
 
-    // ARCHIPELAGO's new game needs a client.
     zap::NewGamePlan plan;
     zap::parse_newgame("ap_newgame\nexpect 0x6C0 0300\nwrite 0x26C 2E1B", plan);
     check(!game.arm_newgame(plan) && game.newgame_status() != "armed", "no new game armed");
@@ -864,7 +835,6 @@ void test_a_cache_without_the_client_only_keys() {
     for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
     g_menu = 0;
 
-    // The client's parts refuse.
     game.note_play(1000);
     zap::Batch batch;
     zap::parse_batch("apply\ncas 1 3 4", batch);
@@ -875,8 +845,7 @@ void test_a_cache_without_the_client_only_keys() {
     for (int i = 0; i < 4; ++i) game.watch_all(&no_callback);
     check(game.mission_status() == "not asked" && g_fade_calls == 0, "none shown");
     {
-        // A refused unload's state (as a client's would be) taken back: still no new game or
-        // prompt.
+        // A refused unload's state taken back: still no new game or prompt.
         zap::ClientState state = game.snapshot();
         state.newgame_armed = true;
         state.newgame = plan;
@@ -886,8 +855,7 @@ void test_a_cache_without_the_client_only_keys() {
               "rearm sets neither");
     }
 
-    // A client's short first connection going away, or an unload: everything put back (the
-    // prompt's, the choice's and the map's too) with those members null, then dressed again.
+    // A client going away, or an unload: everything put back with those members null.
     game.client_gone(&no_callback);
     check(game.configured() && !game.client_ready() && !game.intel_on() &&
               !game.menu_installed(),
@@ -895,7 +863,6 @@ void test_a_cache_without_the_client_only_keys() {
     for (int i = 0; i < 32; ++i) game.watch_all(&no_callback);
     check(game.intel_on() && game.assists_locked(), "and the save dressed again");
 
-    // A client's config sets every key: its parts run.
     check(configure(game).empty() && game.client_ready() && game.left_out().empty(),
           "a client's config: every key");
     check(game.apply(batch) == "applied" && g_inventory[1] == 4, "a grant");
@@ -904,10 +871,8 @@ void test_a_cache_without_the_client_only_keys() {
     g_rando_marker = 0;
 }
 
-// The cache of a client from before the translations' keys (1.0.0's release candidate): the
-// helper configures from it with every client-only key, so its parts are ready, and the
-// translation parts stand down. In English(HD) its notices show in the pixel font, as before, and
-// nothing is written into the translation's tables.
+// A cache without the translations' keys: the client's parts ready, the translation parts
+// standing down (the pixel font, nothing written into the tables).
 void test_a_cache_without_the_translation_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();
@@ -947,9 +912,8 @@ void test_a_cache_without_the_translation_keys() {
     g_rando_marker = 0;
 }
 
-// The cache of a client from before the later keys: the helper configures from it, every part
-// ready, those members null (the pause row is then turned on OPTION MENU's way back a frame late,
-// pause.h); a client's config needs them.
+// A cache without the later keys configures, those members null (the pause row then a frame late
+// on OPTION MENU's way back, pause.h); a client's config needs them.
 void test_a_cache_without_the_later_keys() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto partial = stand_in_config();

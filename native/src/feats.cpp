@@ -11,9 +11,9 @@ namespace zap {
 
 namespace {
 
-// The ending's call and the code around the join, as traced on B1 (docs/re/memory.md, "Feats and
+// The ending's call and the code around its join, as traced on B1 (docs/re/memory.md, "Feats and
 // achievements"): `call [rip+slot]` then `mov rdx, [rip+...]` at the call; `mov byte [rip+flag
-// 251], 1` just before the join, `movsxd rdx, [rip+...]` at it and `mov byte [rip+flag 250], 1`
+// 251], 1` just before the join, `movsxd rdx, [rip+...]` at it, and `mov byte [rip+flag 250], 1`
 // 0x11 bytes after it.
 constexpr ptrdiff_t kMaxStretch = 0x1000;  // the join lies after the call, within the routine
 constexpr BYTE kCallIndirect[] = {0xFF, 0x15};  // call [rip+rel32]: 6 bytes
@@ -33,10 +33,9 @@ constexpr size_t kLeaSize = 7;
 
 // The stub's two pages (feats.h): code, then data, adjacent.
 constexpr size_t kPage = 0x1000;
-// Data: the original function, the stats context, the stand-in's switch (blocking always), the
-// holder the stub returns (pointing at the object), the object (pointing at the vtable), the
-// vtable; then the load test: where the live marker word is (null: no test), where current_slot
-// is, where save_loaded is, and a byte per slot, set for an AP save's.
+// Data: the original function, the stats context, the switch (blocking always), the holder the
+// stub returns (-> the object -> the vtable), the vtable; then the load test: the marker word's
+// place (null: no test), current_slot's, save_loaded's, and a byte per slot, set for an AP save.
 constexpr ptrdiff_t kOriginal = 0x00, kContext = 0x08, kBlocked = 0x10, kHolder = 0x18,
                     kObject = 0x20, kVtable = 0x28;
 constexpr int kVtableEntries = 64;  // ISteamUserStats v013 has 51; the game calls 6, 7 and 9
@@ -51,8 +50,8 @@ bool fits_rel32(const BYTE* from_next, const BYTE* to) {
     return d >= INT32_MIN && d <= INT32_MAX;
 }
 
-// Where `mov byte [rip+rel32], value` at `where` (7 bytes, read into `bytes`) stores, if it is
-// one storing `value`; null otherwise.
+// Where `mov byte [rip+rel32], value` at `where` (7 bytes, read into `bytes`) stores, if it is one
+// storing `value`; null otherwise.
 const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
     if (std::memcmp(bytes, kStoreByte, sizeof(kStoreByte)) != 0 || bytes[6] != value) {
         return nullptr;
@@ -60,10 +59,8 @@ const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
     return where + kStoreSize + field<int32_t>(bytes, 2);
 }
 
-// The Feats of Natu screen (feats.h): its panels (a fifth, the secret row, when the builder adds
-// it), the Feat rows' sizes, the title label's lines, what its middle line names, and the menu
-// under it, MISSION COMPLETE's statistics: 10 lines, and, seen with the assist menu unlocked,
-// ASSISTS USED's 8 (the game's condition not traced).
+// The Feats of Natu screen's shape after an ending, MISSION COMPLETE's statistics under it
+// (docs/re/memory.md, "Feats and achievements").
 constexpr int32_t kScreenPanels = 4, kSecretPanels = 5, kSecretRow = 4, kSecretFeats = 5;
 struct FeatRow {
     int32_t panel, fewest, most;
@@ -75,17 +72,14 @@ constexpr int32_t kStatsLines = 10, kAssistLines = 8;
 constexpr int32_t kFontFrames = 128;  // every character of the note has its frame
 constexpr int32_t kTitleChildren = 3, kExitPanel = 1;  // panel 0: title, name, description
 
-// The title's hint for a game that has never reached Ending B (the Text file's description 219,
-// COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING!), named by its second line; and what
-// the helper writes over it: FEATS OF NATU! and the note on two lines that clear the top row of
-// Feats (a line's glyphs span its y to 7 below it, the row's icons start 6 above the row's y:
-// measured on the owner's screenshots, docs/re/memory.md).
+// The title's hint for a game that has never reached Ending B (description 219), named by its
+// second line, and what the helper writes over it on two lines that clear the top row of Feats
+// by kRoom (docs/re/memory.md, "Feats and achievements").
 constexpr char kHintName[] = "EXPANDED ENDING";
 constexpr char kScreenTitle[] = "FEATS OF NATU!";
 constexpr double kRoom = 16;
 
-// The frame at column `i` of a line `columns` wide holding `text` centered: its character, or
-// blank (0).
+// The frame at column `i` of a line `columns` wide holding `text` centered, or blank (0).
 int32_t centered_frame(const char* text, int32_t i, int32_t columns) {
     const auto length = static_cast<int32_t>(std::strlen(text));
     const int32_t left = (columns - length + 1) / 2;
@@ -94,8 +88,7 @@ int32_t centered_frame(const char* text, int32_t i, int32_t columns) {
 
 int32_t note_frame(int32_t i, int32_t columns) { return centered_frame(kFeatsNote, i, columns); }
 
-// Glyph `i` of the hint's stand-in: FEATS OF NATU! on line `first`, the note under it, the
-// other line blank.
+// Glyph `i` of the hint's stand-in: FEATS OF NATU! on line `first`, the note under it.
 int32_t stand_in_frame(int32_t i, int32_t columns, int32_t first) {
     const int32_t line = i / columns, column = i % columns;
     if (line == first) return centered_frame(kScreenTitle, column, columns);
@@ -123,9 +116,8 @@ bool takes_text(BYTE* const* glyphs, int32_t count) {
     return true;
 }
 
-// The hint at the title (feats.h), when `show`: its frames kept to put back, then FEATS OF NATU!
-// and the note written over it, on the lower two lines if the note clears the top row of Feats
-// there, else the upper two. Nothing written unless every glyph takes text and one pair has room.
+// The hint at the title, when `show`: its frames kept to put back, then the stand-in written,
+// the lower pair of lines first. Nothing written unless every glyph takes text and a pair fits.
 void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32_t* frames,
                   int32_t columns, bool show) {
     const int32_t length = kTitleLines * columns;
@@ -145,39 +137,32 @@ void replace_hint(BYTE* top, const BYTE* label, BYTE* const* glyphs, const int32
     for (int32_t i = 0; i < length; ++i) set_frame(glyphs[i], stand_in_frame(i, columns, first));
 }
 
-// In a translation the title shows its translated text (LargeText 220, Feats of Natu!, or 219,
-// the hint) over the pixel glyphs that hold the note (or the title the helper wrote over the
-// hint). While the helper's text is there, the translated title is built again as LargeText
-// 220's with the note under it, wrapped, each line centered on the longer with leading spaces (as
-// the stand-ins' names are), the two centered and kept at their middle as the game lays out the
-// title (0x179A8E to 0x179AC7); once it is not, the game's own entry again, if it is still the
-// helper's text. Without LargeText (a cache lacking large_count), the pixel glyphs are shown in
-// its place instead, as before (translation.h). Only on the label being looked at, which
-// feats_screen_note has found live.
+// In a translation the title shows LargeText 220 (or 219, the hint) over the pixel glyphs.
+// While the helper's text is there it is built again as 220's with the note under it; once it
+// is not, the game's own entry again, if still the helper's. Without LargeText the pixel glyphs
+// are shown instead (translation.h). Only on the label feats_screen_note has found live
+// (native/README.md, "Feats and achievements in AP saves").
 constexpr int kTitleEntry = 220, kHintEntry = 219;
 constexpr wchar_t kFeatsNoteHd[] = L"Archipelago save: no Feats earned";
 constexpr Rebuild kTitleLayout = {.wrap = true, .center = true, .keep_middle = true};
 BYTE* g_swapped = nullptr;  // the label whose pixel glyphs the helper shows
-BYTE* g_hd_label = nullptr;  // the label whose translated text is the helper's
-BuiltMark g_hd_mark;
+BuiltLabel g_hd;  // the label whose translated text is the helper's
 int g_hd_entry = -1;  // the game's own entry for it, to put back
 void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
     std::wstring title;
-    if (ours && translation_on(a) && read_large_entry(a, kTitleEntry, title)) {
-        bool hd = label == g_hd_label && built_mark(label) == g_hd_mark;
+    if (ours && read_large_entry(a, kTitleEntry, title)) {
+        bool hd = g_hd.holds(label);
         if (!hd) {
             title.erase(0, title.find_first_not_of(L" \r\n"));
             title.erase(title.find_last_not_of(L" \r\n") + 1);
-            g_hd_label = nullptr;
-            // Each line centered on the longer with leading spaces, as the game's pixel title
-            // centers them; the rebuild then centers the two as one block.
+            g_hd.label = nullptr;
+            // Each line centered on the longer with leading spaces, then the two as one block.
             FontMetrics metrics;
             const std::wstring text = centered_lines(title + L"\n" + kFeatsNoteHd,
                                                      metrics.load(a) ? &metrics : nullptr);
             hd = rebuild_label(a, label, text, kTitleLayout);
             if (hd) {
-                g_hd_label = label;
-                g_hd_mark = built_mark(label);
+                g_hd.take(label);
                 g_hd_entry = game_entry;
             }
         }
@@ -187,12 +172,12 @@ void show_ours(const GameAddresses& a, BYTE* label, bool ours, int game_entry) {
             return;
         }
     }
-    if (g_hd_label == label) {
+    if (g_hd.label == label) {
         std::wstring own;
-        if (built_mark(label) == g_hd_mark && read_large_entry(a, g_hd_entry, own)) {
+        if (g_hd.holds(label) && read_large_entry(a, g_hd_entry, own)) {
             rebuild_label(a, label, own, kTitleLayout);
         }
-        g_hd_label = nullptr;
+        g_hd.label = nullptr;
     }
     if (ours) {
         if (translation_on(a) && !pixel_glyphs_shown(label) && show_pixel_glyphs(label)) {
@@ -540,8 +525,7 @@ void FeatsGuard::set_switch(const GameAddresses& a, bool on, const std::set<int>
         std::memset(table, 0, slot::kCount);
         return;
     }
-    // The table and current_slot's and save_loaded's places before the marker's, which turns
-    // the test on.
+    // The table and the places before the marker's, which turns the test on.
     at<BYTE*>(data_, kSlot) = a.current_slot;
     at<BYTE*>(data_, kSaved) = a.save_loaded;
     for (int n = 1; n <= slot::kCount; ++n) table[n - 1] = loading.count(n) != 0 ? 1 : 0;

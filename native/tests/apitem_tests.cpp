@@ -42,12 +42,9 @@ void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
     items.watch(records_holder, cells);
 }
 
-// Whether a painted 16 x 16 logo (RGBA) has the owner's outline: a pixel that is not a color is
-// black exactly where it touches a colored one side-on (left, right, up or down) or is shut in by
-// black on all four sides (the arrow logo's pixel left of the tip), and transparent elsewhere: no
-// black from a diagonal alone, the plain logo's middle open, nothing outside the frame's edge.
-// The stand-ins draw the texture as painted (palette 26), so a transparent pixel beside a circle
-// shows the room behind: the sky, in a sky room.
+// Whether a painted 16 x 16 logo (RGBA) has the side-on outline: an uncolored pixel is black
+// exactly where it touches a colored one side-on or is shut in by black on all four sides (the
+// arrow logo's pixel left of the tip), else transparent: nothing from a diagonal alone.
 bool outlined(const std::vector<uint8_t>& rgba) {
     if (rgba.size() != 16 * 16 * 4) return false;
     auto at = [&](int x, int y) { return &rgba[(y * 16 + x) * 4]; };
@@ -200,8 +197,7 @@ void test_painting() {
     bool any_opaque = false;
     for (size_t i = 3; i < g_uploads[0].pixels.size(); i += 4) any_opaque |= g_uploads[0].pixels[i] != 0;
     check(any_opaque, "the logo has pixels");
-    // Each of the logo's letters in its own color (the stand-ins draw in palette 26, which shows
-    // the texture's colors): the AP logo's.
+    // The AP logo's letters in its own colors (palette 26 shows the texture's colors).
     const std::map<char, std::vector<uint8_t>> colors = {
         {'k', {0, 0, 0}},       {'g', {22, 113, 41}}, {'b', {53, 181, 255}}, {'r', {246, 26, 46}},
         {'p', {249, 47, 237}},  {'o', {212, 82, 19}}, {'y', {251, 213, 127}}};
@@ -245,9 +241,8 @@ void test_painting() {
     check(g_bound == 3 && g_row_length == 5, "the game's state put back after an arrow repaint");
     g_uploads.clear();
 
-    // Never painted: a texture whose known art is not where the PNG has it (flipped, say),
-    // something already where the arrow logo goes (another build's art, say), a texture of
-    // another size (not the sprite sheet), an unpack buffer bound (pixels would be read from it).
+    // Never painted: known art not where the PNG has it, something where the arrow logo goes,
+    // another size, an unpack buffer bound (pixels would be read from it).
     struct Case {
         const char* what;
         void (*spoil)();
@@ -268,8 +263,7 @@ void test_painting() {
         check(g_uploads.empty() && spoiled.painted_texture() == 0, c.what);
     }
 
-    // A menu open: the logos come off (menus draw item frames too); back in the world, they go
-    // back on at once.
+    // A menu open: the logos come off, as menus draw item frames too.
     reset_gl();
     zap::ApItems menu;
     zap::TextureCheck menu_check;
@@ -285,7 +279,6 @@ void test_painting() {
     menu.paint(sprites(), gl, menu_check, 30);
     check(g_uploads.size() == 3 && menu.painted_texture() == 7, "the world paints them again");
 
-    // Restore clears the painted pixels.
     reset_gl();
     zap::ApItems painted;
     zap::TextureCheck painted_check;
@@ -379,7 +372,6 @@ void test_an_image_of_its_own() {
               all_blank({g_uploads.back()}),
           "cleared");
 
-    // Its place not blank in the texture: not painted.
     reset_gl();
     g_disc_place_used = true;
     zap::FontGlyph blocked(zap::kDiscX, zap::kDiscY, zap::kDiscRows);
@@ -432,8 +424,7 @@ void test_an_image_in_colors() {
     logo.paint(sprites(), gl, check_logo);
     check(g_uploads.size() == 4 && pixel_at(red_x, 1)[0] == 246 && pixel_at(red_x, 1)[1] == 26,
           "its colors again");
-    // A repaint that fails (a pixel buffer bound) leaves the image there: still cleared after.
-    g_unpack_buffer = 9;
+    g_unpack_buffer = 9;  // a repaint fails
     logo.set_white(64);
     logo.paint(sprites(), gl, check_logo);
     check(g_uploads.size() == 4 && logo.painted(), "a failed repaint: the image kept as painted");
@@ -463,8 +454,7 @@ void test_one_readback_for_every_painter() {
     disk.paint(sprites(), gl, shared);
     check(g_readbacks == 2 && lock.painted() && disk.painted(), "a new texture is read once more");
 
-    // One slot taken (another build's art in frame 95): the logos are not painted, the glyphs
-    // still are.
+    // Another build's art in frame 95: the logos are not painted, the glyphs still are.
     reset_gl();
     g_frame95_used = true;
     zap::TextureCheck taken;
@@ -477,9 +467,8 @@ void test_one_readback_for_every_painter() {
           "a slot not blank stops only what paints there");
 }
 
-// The helper's icons in the translations' icon sheets: painted into frames 0x96 to 0x98 of each
-// sheet the game loaded (definitions 101 and 104, their GL names at the templates' +0x1D0),
-// only where the cells are blank and the game's art is where the PNG has it; cleared after.
+// The helper's icons in frames 0x96 to 0x98 of the translations' icon sheets (definitions 101 and
+// 104), only where the cells are blank and the game's art is where the PNG has it.
 void test_the_icon_sheets() {
     gl_fake::reset_gl();
     BYTE hd[0x1D8] = {}, pixel[0x1D8] = {};
@@ -501,7 +490,7 @@ void test_the_icon_sheets() {
           "frames 0x96 to 0x98: 64 x 64 cells in the HD sheet, 10 x 9 in the pixel one");
     check(gl_fake::g_bound == 3 && gl_fake::g_row_length == 5, "the game's binding put back");
     check(!gl_fake::all_blank(up), "painted, not blank");
-    // The HD disk (D2), centered at (32, 28): its hub hole and its two shine cuts clear (up
+    // The HD disk, centered at (32, 28): its hub hole and its two shine cuts clear (up
     // right and down left of the hub), the disc around them white and opaque.
     const std::vector<uint8_t> disk = zap::IconSheets::art(0, 64, 64);
     auto alpha = [&](const std::vector<uint8_t>& a, int w, int x, int y) {
@@ -529,14 +518,13 @@ void test_the_icon_sheets() {
                std::to_string(b[2]) + "," + std::to_string(b[3]);
     };
     // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a gap in; the disk
-    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50 (D2, L1).
+    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50.
     check(box(1) == "16,6 to 49,45", "the HD padlock on the text's line", box(1));
     check(box(0) == "10,6 to 53,49", "the HD disk the game's icons' size", box(0));
     check(box(2) == "12,6 to 51,49", "the HD logo the game's icons' size", box(2));
     const std::vector<uint8_t> lock = zap::IconSheets::art(1, 10, 9);
     check(alpha(lock, 10, 1 + 3, 0) == 255 && alpha(lock, 10, 0, 0) == 0,
           "the pixel padlock: the 8 x 8 glyph a column in");
-    // Painted again only now and then.
     gl_fake::g_uploads.clear();
     sheets.paint(holder, gl);
     check(gl_fake::g_uploads.empty(), "not every frame");
@@ -551,7 +539,6 @@ void test_the_icon_sheets() {
               !sheets.painted(),
           "cleared");
 
-    // The game's art in the cell, or not where the PNG has it: left alone.
     for (int k = 0; k < 2; ++k) {
         gl_fake::reset_gl();
         if (k == 0) gl_fake::g_icon_cell_used = true;
