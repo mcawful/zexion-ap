@@ -111,8 +111,9 @@ weapons, and Easy's are the same 17: `exodia`, `upper_tower`, `below_arena`, `to
 and `vulknor_entry`. The Force Blaster adds `below_junkyard` and `phobyss_entry`, and the Lance
 `crysmoon_entry`, `white_crysmoon` and `phobyss_entry`; a seed that draws another weapon stops
 with an error in those (generate again, or pick one of the 17). From a room where your starting
-items reach only a few locations, generation sometimes fails: generate again, or pick another
-room. With Double
+items reach only a few locations, generation sometimes fails, and from some often:
+`below_machinus` about one try in three in Easy and one in ten in Standard, `vulknor_entry` and
+`below_arena` about one in thirteen in Easy. Generate again, or pick another room. With Double
 Teleport the second room is any other, but the eight rooms the game flags (Exodia, Below
 Junkyard, Below Machinus, Fijedar Entry, R'talva, Phobyss Entry, Vulknor Entry and Waste Zone)
 only when your starting items score 27 or more, as the game's logic counts them: Energy Tanks

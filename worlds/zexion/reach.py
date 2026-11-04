@@ -1,7 +1,8 @@
 """What a seed's settings and items reach, worked out when the seed is generated: the locations
-the world keeps, the regions it creates and what its start rooms are judged by (worlds/zexion/
-world.py). The flood is the game's (``tools/randocells.py``, ``reachable_cells``) on the region
-graph ``data.py`` holds instead of on cells, under the seed's ``logic.Settings``; how it works,
+the world keeps, the regions it creates, what its start rooms are judged by and the items that
+open the way out of what the starting items reach (``openers``; worlds/zexion/world.py). The
+flood is the game's (``tools/randocells.py``, ``reachable_cells``) on the region graph
+``data.py`` holds instead of on cells, under the seed's ``logic.Settings``; how it works,
 and where it stops short of the game's, never past it: docs/re/locations.md, "The world works
 out what a seed reaches when it is generated" and "The region graph holds what the settings
 reach". ``data.MODES`` keeps each mode's results computed cell by cell, for the tests. Results
@@ -187,6 +188,22 @@ class Seed:
         """What the starting items alone reach from a start room and its second teleport
         target, the target counted as the logic counts it (``logic.second_counts``)."""
         return self.sphere0(*_cells(self.start_items, start, second))
+
+
+def openers(seed: Seed, start: dict, second: dict | None, items: Iterable[int]) -> list[int]:
+    """The item codes of ``items`` of which one more, with the starting items, collects more
+    locations from the start room (and second teleport target, counted as the logic counts it)
+    than the starting items alone (``Seed.sphere0_from``): the items that open the seed's way out
+    of what the starting items reach. Each code once, sorted."""
+    base = len(seed.sphere0_from(start, second).locations)
+    out = []
+    for code in sorted(set(items)):
+        have = dict(seed.start_items)
+        logic.collect(have, code, seed.settings.guns_first)
+        more = inventory(have)
+        if len(reach(seed.settings, more, _cells(more, start, second)).locations) > base:
+            out.append(code)
+    return out
 
 
 def flagged(room: dict) -> bool:
