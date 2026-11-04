@@ -360,9 +360,10 @@ private:
 // Game thread, the flag set: the mark the game's last translated message left in `message`'s
 // slot cleared, so its pixel glyphs and box show (docs/re/memory.md, "Translated messages").
 void clear_mark(const GameAddresses& a, BYTE* message);
-// Game thread: whether a message showing reads ItemNames entry `record` (the pickup's): an HD
-// object still bound to its slot's message (its serial the slot's) with that entry, kind 3. The
-// game reads the entry again every frame while it shows (docs/re/memory.md, "Translated messages").
-bool item_name_shown(const GameAddresses& a, int record);
+// Game thread: the serials of the messages showing ItemNames entry `record` (the pickup's), none
+// if none does: each an HD object still bound to its slot's message (its serial the slot's) with
+// that entry, kind 3. The game reads the entry again every frame while it shows
+// (docs/re/memory.md, "Translated messages").
+std::vector<int32_t> item_name_serials(const GameAddresses& a, int record);
 
 }  // namespace zap
