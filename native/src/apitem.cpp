@@ -18,10 +18,10 @@ const char kApItemRows[8][9] = {
     "........", ".#...#..", "...#....", "........",
 };
 const char kApLogoRows[16][17] = {
-    ".....krrrrk.....", ".....rrrrrr.....", ".kyyk.rrrr.kgkk.", "kyyyyy.rr.gggggk",
-    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yy...yk..kg....g", ".kbbkk....kpppk.",
-    "kbbbbb....pppppk", "bbbbbb.kk.pppppp", "bbbbbkooookppppp", "bbbb.oooooo.pppp",
-    "kbbbkooooookpppk", ".kkkkooooookkkk.", ".....oooooo.....", ".....kooook.....",
+    ".....krrrrk.....", "..kkkrrrrrrkk...", ".kyykkrrrrkkgkk.", "kyyyyykrrkgggggk",
+    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yykkkykkkkgkkkkg", "kkbbkk....kpppkk",
+    "kbbbbbk..kpppppk", "bbbbbbkkkkpppppp", "bbbbbkooookppppp", "bbbbkooooookpppp",
+    "kbbbkooooookpppk", ".kkkkooooookkkk.", "....kooooook....", ".....kooook.....",
 };
 
 namespace {
@@ -56,23 +56,25 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
-// flashes itself between yellow and white.
+// flashes itself between yellow and white. Outlined like kApLogoRows, the arrow counted as a
+// circle, and the one pixel left of the arrow's tip, shut in by black, black too (the owner's
+// pick).
 constexpr char kLogoArrow[16][17] = {
     ".....krrrrk.....",
-    ".....rrrrrr.....",
-    ".kyyk.rrrr.kgkk.",
-    "kyyyyy.rr.gggggk",
+    "..kkkrrrrrrkk...",
+    ".kyykkrrrrkkgkk.",
+    "kyyyyykrrkgggggk",
     "yyyyyykrrkgggggg",
     "yyyyyykrrkgggggg",
-    "yy...yk..kg....g",
-    ".kbbkk....kpppk.",
-    "kbbbbb....pkkkpk",
-    "bbbbbb.kk.kk^kkp",
+    "yykkkykkkkgkkkkg",
+    "kkbbkk....kpppkk",
+    "kbbbbbk..kpkkkpk",
+    "bbbbbbkkkkkk^kkp",
     "bbbbbkoookk^^^kk",
-    "bbbb.oookk^^^^^k",
+    "bbbbkoookk^^^^^k",
     "kbbbkoook^^^^^^^",
     ".kkkkoookkk^^^kk",
-    ".....oooook^^^k.",
+    "....koooook^^^k.",
     ".....kooook^^^k.",
 };
 // A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent). The

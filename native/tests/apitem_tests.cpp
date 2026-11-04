@@ -42,6 +42,36 @@ void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
     items.watch(records_holder, cells);
 }
 
+// Whether a painted 16 x 16 logo (RGBA) has the owner's outline: a pixel that is not a color is
+// black exactly where it touches a colored one side-on (left, right, up or down) or is shut in by
+// black on all four sides (the arrow logo's pixel left of the tip), and transparent elsewhere: no
+// black from a diagonal alone, the plain logo's middle open, nothing outside the frame's edge.
+// The stand-ins draw the texture as painted (palette 26), so a transparent pixel beside a circle
+// shows the room behind: the sky, in a sky room.
+bool outlined(const std::vector<uint8_t>& rgba) {
+    if (rgba.size() != 16 * 16 * 4) return false;
+    auto at = [&](int x, int y) { return &rgba[(y * 16 + x) * 4]; };
+    auto clear = [&](int x, int y) { return at(x, y)[3] == 0; };
+    auto black = [&](int x, int y) {
+        const uint8_t* p = at(x, y);
+        return p[3] == 0xFF && p[0] == 0 && p[1] == 0 && p[2] == 0;
+    };
+    auto in = [](int x, int y) { return x >= 0 && x < 16 && y >= 0 && y < 16; };
+    auto colored = [&](int x, int y) { return in(x, y) && !clear(x, y) && !black(x, y); };
+    auto walled = [&](int x, int y) { return in(x, y) && black(x, y); };
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            if (colored(x, y)) continue;
+            const bool beside = colored(x - 1, y) || colored(x + 1, y) || colored(x, y - 1) ||
+                                colored(x, y + 1);
+            const bool shut_in = walled(x - 1, y) && walled(x + 1, y) && walled(x, y - 1) &&
+                                 walled(x, y + 1);
+            if (beside || shut_in ? !black(x, y) : !clear(x, y)) return false;
+        }
+    }
+    return true;
+}
+
 // --- tests -----------------------------------------------------------------------------------
 
 void test_restyle_and_names() {
@@ -186,6 +216,8 @@ void test_painting() {
         }
     }
     check(in_colors, "in its colors, the rest clear");
+    check(outlined(g_uploads[0].pixels) && outlined(g_uploads[1].pixels),
+          "both logos outlined black side-on round their circles, the middle open");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and unpack state put back");
 
     check(g_readbacks == 1, "the texture read back before the first paint");
