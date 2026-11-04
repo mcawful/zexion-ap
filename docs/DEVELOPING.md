@@ -144,19 +144,26 @@ line says.
 - Other players' items draw in the AP logo's own colors in every area (palette 26; the owner saw
   them change by area on the 1.0.0 RC, 2026-11-03: `native/README.md`, "Other players' items").
   Palette 26 on a stand-in worked in game written by hand, 2026-11-03; the helper's own colors:
-  stand-in tests only, not run in game yet. The logo's black borders showed the sky in a sky
-  room (the owner, 1.0.0 RC, 2026-11-03): the gaps between its circles were transparent; now
-  outlined black side-on (the owner's pick, the plain logo's middle open, the arrow's one shut-in
-  pixel black), stand-in tests only, not run in game yet.
+  working in game 2026-11-04 (B1, `zexion_ap.dll` `65878411…`, the build of develop 1acaaaf, the
+  owner's report: the logo's colors the same across areas). The logo's black borders showed the
+  sky in a sky room (the owner, 1.0.0 RC, 2026-11-03): the gaps between its circles were
+  transparent; now outlined black side-on (the owner's pick, the plain logo's middle open, the
+  arrow's one shut-in pixel black), working in game 2026-11-04 (the same build and report: the
+  outline in a sky room, on the plain and the arrow logos).
 - The helper hides R'Talva X34 Y51's marker (an object the game draws on the logo's empty
   frame, where the owner saw the AP logo: report 2026-11-03, 1.0.0 RC) by its shown byte
   (`native/README.md`, "Other Zexion players' items, as themselves"). The byte, written by hand,
-  hid it in game, 2026-11-03; the helper's hiding: stand-in tests only, not run in game yet.
+  hid it in game, 2026-11-03; the helper's hiding: working in game 2026-11-04 (B1,
+  `zexion_ap.dll` `65878411…`, develop 1acaaaf, the owner's report: the gate's crystal without
+  the AP logo).
 - Received Energy Shields (spawned by the helper, counted once the shield is up): 2026-10-23.
   A bug, 2026-11-02: attached to a save already in play, the client never read a shield as up
   and spawned it again about every minute (`native/README.md`, "Received Energy Shields").
-  Fixed since in the client's read and with a stop on spawns not seen; not yet run in game
-  (`docs/re/memory.md`, "Received Energy Shields").
+  Fixed since in the client's read and with a stop on spawns not seen; working in game
+  2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074, `lab/ap/live50`
+  slot 4: the client attached to the save in play, then four shields, each spawned once and read
+  as up, none spawned again; the stop not reached: `docs/re/memory.md`, "Received Energy
+  Shields").
 - DeathLink, both ways: 2026-10-23.
 - The ASSIST lock: 2026-10-23; left unlocked in another save: 2026-10-25. Assist Unlock:
   2026-10-23.
@@ -214,8 +221,9 @@ line says.
   still move and pause while the ending waited for GAME SAVED; since, the ending starts with GAME
   SAVED up: working in game the same day (`zexion_ap.dll` `28ab9954…`, slot 11, a replay: black
   for a frame or two after YES, then the ending fading in from it; the owner: "worked exactly how
-  we wanted"; a replay only: a first ending with this build is still to run)
-  (`native/README.md`, "The OS Install Disks goal").
+  we wanted"); on a first ending, working in game 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`,
+  the 1.0.0 RC at develop 76df074, English(HD), the owner's report: YES, black, then the ending at
+  once) (`native/README.md`, "The OS Install Disks goal").
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy, and used by the client: 2026-10-25.
@@ -235,7 +243,8 @@ line says.
   CLIENT TO PLAY A SEED above them with no client, gone with one: 2026-10-27. In English(HD),
   the version's line and the hint in its font and in mixed case: seen 2026-11-02 (the 1.0.0
   RC), staying over the Option menu and the file select after the title (a bug); fixed since,
-  stand-in tests only, not run in game yet.
+  working in game 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074,
+  the owner's report: the lines only on the title).
 - No Feats earned in AP saves (the ending jumps over its Feats and 14Victory), ARCHIPELAGO
   SAVE: NO FEATS EARNED on the Feats of Natu screen after, and Feats in a normal save as usual:
   2026-10-26, with the client connected; again 2026-10-27, `GameUnlocks.sav` unchanged by the
@@ -264,7 +273,8 @@ line says.
 - AP saves' ITEMS row on the file select: empty in the 1.0.0 RC, since the grants set the
   inventory byte but never the major-item list the row draws (the owner's FILE 03, 2026-11-03);
   the helper now fills the list from the inventory by the game's own pickup rule
-  (`native/README.md`, "Grants"). Stand-in tests only, not run in game yet.
+  (`native/README.md`, "Grants"). Working in game 2026-11-04 (B1, `zexion_ap.dll` `65878411…`,
+  the build of develop 1acaaaf, the owner's report: an AP save's ITEMS row filled).
 - AP saves without the client, from a fresh start too, and another seed's save told so:
   2026-10-25; its notice as now worded, and its look kept when a client of another seed
   attaches with it in play: 2026-10-26. A plain (not Archipelago) randomizer game left alone
@@ -293,7 +303,9 @@ line says.
   low, the logo on the map cursor and a stand-in's popup lines not centered, all fixed since:
   the last two working in game 2026-11-03, `12f090c6…`, the rest stand-in tests only, not run
   in game yet; on the 1.0.0 RC, ASSIST unlocked and the version line locked in its place after
-  Video, fixed since, run in game 2026-11-03: "seems to work"), and the scanner's line was not
+  Video, fixed since, run in game 2026-11-03: "seems to work"; the ASSIST lock in English(HD)
+  working in game on the RC, 2026-11-03, `fce9e73b…`, the owner's report, which named none of
+  the parts above), and the scanner's line was not
   run (`native/README.md`, "Translations", "Run
   in game" and "Run in game again"). Before them, 1.0.0's release candidate in
   English(HD), French and Japanese: many received items' popups hidden and the mod's menu text
@@ -301,11 +313,15 @@ line says.
   2026-11-02 retest: the mod's own text in mixed case in English(HD), working in game
   2026-11-03 (`12f090c6…`) for the stand-ins' names and the map cursor, not run in game yet for
   its notices, the client's hints, the disks' popups and reminder and the scanner's line; the
-  HD disk and logo redrawn at the game's icon size, not run in game yet; and the Feats screen's
-  HD title, its two lines starting at the same x (a bug, seen 2026-11-03 on `12f090c6…`), its
-  shorter line centered since, stand-in tests only, not run in game yet. Found since on the release candidate: the pause row showing the
-  game's Keys for one frame after OPTION MENU closes (the owner, 2026-11-03); fixed since,
-  stand-in tests only, not run in game yet.
+  HD disk and logo redrawn at the game's icon size, the disk (D2) working in game 2026-11-03
+  (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074, the owner's report), the
+  logo not singled out; and the Feats screen's HD title, its two lines starting at the same x (a
+  bug, seen 2026-11-03 on `12f090c6…`), its shorter line centered since, working in game
+  2026-11-03 (`fce9e73b…`, `lab/ap/live50/client-r5.log`, the owner's screenshot: both lines
+  centered). Found since on the release candidate: the pause row showing the game's Keys for one
+  frame after OPTION MENU closes (the owner, 2026-11-03); fixed since, working in game 2026-11-03
+  (`fce9e73b…`, the client connected, `lab/ap/live50/client-r5.log`: no Keys frame after Option,
+  the owner's report).
 
 ## Platforms
 

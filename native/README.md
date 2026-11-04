@@ -178,8 +178,12 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   already written), may be missing too: the helper configures without them, every part as usual
   but for what one serves (without `options_back_fn` the pause row is turned on OPTION MENU's way
   back a frame late, as before it: below; without `pickup_list` an AP save's major-item list is
-  not filled: "Grants"), until a client's `config` gives them (stand-in tests only:
-  `tests/offline_tests.cpp`);
+  not filled: "Grants"), until a client's `config` gives them (stand-in tests:
+  `tests/offline_tests.cpp`; working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, the
+  1.0.0 RC at develop 76df074, over a cache from before `options_back_fn`, no client:
+  `cache_missing=options_back_fn` in `tools/helper.py status` and Keys for a frame on the way back
+  from Option, as above; after a client's run the cache rewritten, no `cache_missing`,
+  `lab/ap/live50/client-r5.log`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -321,11 +325,13 @@ older save's items, owned before this helper, go in by item ID, not in the order
 older one's the first time it is played with this helper; it shows on the file select once the
 game saves. It runs without a client too, once the client has written `pickup_list` into the
 offline cache (`helper.py status` shows `cache_missing=pickup_list` until then). The list is
-the game's own data, so a client going away or an unload leaves it. Not run in game yet
-(`docs/re/memory.md`, "The pickup record holds the major-item list").
+the game's own data, so a client going away or an unload leaves it (`docs/re/memory.md`, "The
+pickup record holds the major-item list").
 
 Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
-calls", "The client in a live game").
+calls", "The client in a live game"); the major-item list, 2026-11-04 (B1, `zexion_ap.dll`
+`65878411…`, the build of develop 1acaaaf, the owner's report: an AP save's ITEMS row on the file
+select filled; the Machine Gun's row in a Standard save not singled out).
 
 ### Popups
 
@@ -385,8 +391,12 @@ Working in game: 2026-10-23 ("Received Energy Shields"). A bug, 2026-11-02 (B1, 
 screenshot) but the client never read it as up, so it spawned it again three times a round,
 a round about every minute, until the save was left; it still missed after the next load, and
 read a shield up at once on the load after the ending replayed. Fixed since in the client
-(its read of the shield, and the stop above); the fix has not run in game
-(`docs/re/memory.md`, "Received Energy Shields").
+(its read of the shield, and the stop above): working in game 2026-11-03 (B1, `zexion_ap.dll`
+`fce9e73b…`, the 1.0.0 RC at develop 76df074, `lab/ap/live50` slot 4, `server-r6.log`,
+`client-r6.log`, `client-r7.log`): the client attached to the save in play, a shield sent, one
+spawn, read as up at the first look; nothing more over three minutes and a leave and reload; three
+more shields, the last refreshing the one up (the owner's report), each spawned once and read as
+up, none spawned again. The stop was not reached (`docs/re/memory.md`, "Received Energy Shields").
 
 ### DeathLink
 
@@ -452,7 +462,10 @@ HOME's YES on a disks seed) dropped, and none dealt on the next load.
   saves without the client"). On the 1.0.0 RC (develop `78320a6`) the owner then saw, sometimes,
   after Video and back in English(HD): the version line gray with the padlock in place of its
   blank and ASSIST open, white with no padlock; that is the reused place above, fixed since by
-  finding the entry again each frame, run in game 2026-11-03 as above.)
+  finding the entry again each frame, run in game 2026-11-03 as above. On the RC itself, B1,
+  `zexion_ap.dll` `fce9e73b…` (develop 76df074), the owner's own check the same day: the assist
+  lock in English(HD) working, by the owner's report, which did not single out the look's parts
+  above, nor GENERAL or the assist menu.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -536,7 +549,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   item-pool stand-in draws in palette 8, its colors wrong, for its first frame (the game's spawn)
   and for one frame after its Zexion item look comes off; a general-pool one, until the next scan
   finds it (up to 30 frame calls, as for its Zexion item look). Palette 26 on a stand-in, written by hand, worked in game (2026-11-03);
-  the helper's own colors: stand-in tests only, not run in game yet.
+  the helper's own colors: working in game 2026-11-04 (B1, `zexion_ap.dll` `65878411…`, the build
+  of develop 1acaaaf, the owner's report: the logo's colors the same across areas).
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x
   2048 sprite sheet. The logo is outlined side-on (the owner's pick): every pixel touching a
@@ -544,9 +558,11 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   arrow's tip that black shuts in, the rest transparent, so the plain logo's middle stays open
   and a circle on the 16 x 16 frame's edge is not outlined past it. Palette 26 draws what is
   painted over the room as it is, so the gaps the logo had left transparent showed the sky
-  through its black borders in a sky room (`docs/re/memory.md`, "Other players' items"; stand-in
-  tests only, not run in game yet). It leaves the game's texture binding, pixel-store state and
-  GL errors as it found them, and paints nothing while a pixel buffer is bound.
+  through its black borders in a sky room (`docs/re/memory.md`, "Other players' items"). The
+  painting leaves the game's texture binding, pixel-store state and GL errors as it found them,
+  and paints nothing while a pixel buffer is bound. The side-on outline: working in game
+  2026-11-04 (B1, `zexion_ap.dll` `65878411…`, develop 1acaaaf, the owner's report: in a sky
+  room, on the plain and the arrow logos).
 - **Put back:** the records (and any an earlier helper left restyled), the width (24) and the
   pixels. Unload refuses (`error an item record is still restyled (no frame came)`) if no frame
   came to do it.
@@ -598,8 +614,9 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   through their own palette. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
-  (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: stand-in tests
-  only, not run in game yet.
+  (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game
+  2026-11-04 (B1, `zexion_ap.dll` `65878411…`, the build of develop 1acaaaf, the owner's report:
+  the gate's crystal without the AP logo; the reward after the boss not singled out).
 - **Put back:** when the label goes, and with the rest.
 
 Working in game: 2026-10-23 ("Live item objects").
@@ -641,7 +658,10 @@ the helper:
   while the row is on, that pointer is the helper's wrapper, which calls the game's and then
   turns the row in the same call (in a translation the game builds KEYS's translated text there
   again, which the 1.0.0 release candidate showed for one frame before the count: the owner's
-  report, 2026-11-03; fixed in stand-in tests, not yet run in game). The game's way back sets the
+  report, 2026-11-03; fixed since, working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`,
+  the 1.0.0 RC at develop 76df074, English(HD), the client connected, `lab/ap/live50/client-r5.log`:
+  no Keys frame after Option, the owner's report; `options_back_fn` matched once live,
+  `tools/check_patterns.py --live`). The game's way back sets the
   pointer to its own again; the helper puts it back when the row turns off and before an unload,
   while its menu is open and still holds the wrapper;
 - while that row is on, paints its disc, a 24 x 24 white image of the helper's own, at (128,
@@ -724,8 +744,9 @@ the helper:
   game in lab slot 11, its first ending and a replay: black until the ending, then straight into
   it, the numbers fitting the limit's running out as the cause; the ending starting with GAME
   SAVED up, since, working in game the same day, `zexion_ap.dll` `28ab9954…`, slot 11, a replay:
-  black for a frame or two after YES, then the ending fading in from it; a first ending with it
-  is still to run). Working: the ending played again on the save past it, with nothing new sent and the
+  black for a frame or two after YES, then the ending fading in from it; on a first ending,
+  working in game 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074,
+  English(HD), the owner's report: YES, black, then the ending at once). Working: the ending played again on the save past it, with nothing new sent and the
   Feats note shown; the goal sent on the save before it; items received during either (a
   Missile Container sent during the replay; the items collected at the goal) held, their popups
   shown on the next load; a death received during the first ending dropped; the pause opened
@@ -996,7 +1017,8 @@ side), no flash ("Map markers").
   the file select up; with Option up over it, and back on the file select after it, it is not
   measured (the options builder stores 2 or has the widget set 3, never 0). Whether a frame call between a menu closing and a load (or a new
   game) starting sees `menu_state` 0 with the © still shown, and so shows the lines for a moment,
-  is not known. Stand-in tests only, not run in game yet.
+  is not known. Stand-in tests, and working in game 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`,
+  the 1.0.0 RC at develop 76df074, English(HD), the owner's report: the lines only on the title).
 - **Put back:** a client going away leaves them; an unload hides them (stand-in tests only).
 - **In English(HD):** the version's line and the hint in the translation's font and in mixed
   case (Archipelago Mod 1.0.0, Start the AP client to play a seed): each line's translated text
@@ -1007,7 +1029,8 @@ side), no flash ("Map markers").
   title (`docs/re/memory.md`, "The title screen"). Seen in game 2026-11-02 (B1, the 1.0.0 RC,
   develop d484024, `zexion_ap.dll` `6e5dcb1b…`, the owner's screenshots): the two lines stayed
   on screen after the title, over the Option menu, below the Option box and over the file
-  select's bottom buttons (a bug, fixed since as under "Shown"; stand-in tests only).
+  select's bottom buttons (a bug, fixed since as under "Shown"; working in game 2026-11-03, as
+  there).
 
 Working in game: 2026-10-25, the two lines under the copyright, with a client and from the cache
 ("The title screen"). The client line: working in game 2026-10-27 (0.30.0, the owner's
@@ -1079,7 +1102,10 @@ closed, gone with it open.
     HOME's YES on a save past its ending: Feats of Natu! over "Archipelago save: no Feats
     earned", both in the HD font, the two lines starting at the same x, as again on
     `12f090c6…` on 2026-11-03: a bug, the title not centered over the note. Since, the title's
-    line centered with leading spaces: stand-in tests only, not run in game yet.)
+    line centered with leading spaces: working in game 2026-11-03, B1, `zexion_ap.dll`
+    `fce9e73b…`, the 1.0.0 RC at develop 76df074, English(HD), `lab/ap/live50/client-r5.log`
+    (slot 4, RETURN HOME's YES on a save past its ending): both lines centered, the owner's
+    screenshot, not kept in `lab/`.)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -1274,7 +1300,9 @@ lands, not only the place passed.
     square chosen to match the game's own icons (their boxes' medians x 9 to 53, y 7 to 50:
     `docs/re/memory.md`, "The assist menu"): the owner's picks D2 and L1 of the 2026-11-02
     mockups: a solid disc with a hub hole, a thin groove and two shine cuts, and the pixel
-    glyph's dots, smaller (not run in game yet). `hd_icon` names the helper's glyphs (0xFB,
+    glyph's dots, smaller (the disk D2 working in game 2026-11-03, B1, `zexion_ap.dll`
+    `fce9e73b…`, the 1.0.0 RC at develop 76df074, the owner's report; the logo L1 not singled
+    out). `hd_icon` names the helper's glyphs (0xFB,
     0xEF, 0xEE) as these characters, so popups, names and labels carry them.
   - **Pixel glyphs shown** in place of a label's translated ones, as the game does with the flag
     clear (`0x168AE9`), only for the Feats screen's title when its HD text cannot be built
@@ -1366,7 +1394,8 @@ lands, not only the place passed.
     offline look kept through menus (a re-read of the offline files, done whenever anything
     left the pipe, had undressed the save until play: a path that unlocks ASSIST with a menu
     up); the padlock on the text's line with no space before it ("The assist menu", "AP saves
-    without the client"). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
+    without the client"; the ASSIST lock in English(HD) working on the 1.0.0 RC since, run
+    below, no part of it singled out). Working in game 2026-11-03 (`zexion_ap.dll` `12f090c6…`): the map
     cursor without the logo and the pickup popup's lines centered ("Other players' items"). A
     second path to ASSIST unlocked, seen on the 1.0.0 RC (the version line locked in its place
     after Video), fixed since by finding the entry again each frame, run in game 2026-11-03 (the
@@ -1378,6 +1407,17 @@ lands, not only the place passed.
     popup (FROM ARCHIPELAGO in capitals), RETURN HOME's question centered and NO, as before.
   - Not run in game: as in the run before, and French and Japanese since the HD icons (their
     FROM … in capitals).
+- **Run on the 1.0.0 RC:** 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…` and `version.dll`
+  `2a640209…` (develop 76df074) loaded by the proxy, English(HD): the client from source on
+  `lab/ap/live50` slot 4 (`client-r5.log`, `server-r5.log`), then the owner's own checks.
+  - Working in English(HD): the Feats of Natu screen's title and note both centered
+    (the owner's screenshot); no Keys frame on the pause row after Option with the client
+    connected, and the documented frame of Keys before it, over a cache without
+    `options_back_fn` ("The pipe"; "The OS Install Disks goal"); by the owner's report, the
+    assist lock ("The assist menu"), the D2 disk icon (the helper's icons, above), the title
+    lines only on the title ("The title screen's lines") and YES on a first ending ("The OS
+    Install Disks goal").
+  - Not run in game: as before, and French and Japanese since the HD icons.
 
 ## Building
 
