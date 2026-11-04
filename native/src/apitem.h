@@ -174,11 +174,13 @@ private:
 extern const char kApItemRows[8][9];
 // The AP logo, 16 x 16: Archipelago's six circles, each cutting a gap into the one drawn before,
 // as in its logo (data/icon.png in Archipelago), in glyph_rgb's letters (k the outline, then the
-// circles, r y g b p o). The gaps between the circles and a one-pixel border round them (where
-// the 16 x 16 frame leaves room) are black: the stand-ins draw it as painted, with no black
-// background behind it (palette 26; docs/re/memory.md, "Other players' items"), so a gap left
-// transparent would show the room behind, as a sky room did. The world's AP items show it, and
-// the file select marks AP saves with it (files.h).
+// circles, r y g b p o). Outlined side-on, the owner's pick: a pixel that is not a circle's is
+// black where it touches a circle left, right, above or below, and transparent elsewhere (no
+// black from a diagonal alone, the middle open, a circle on the frame's edge not outlined past
+// it). The stand-ins draw it as painted, with no black background behind it (palette 26;
+// docs/re/memory.md, "Other players' items"), so a gap left transparent beside a circle would
+// show the room behind, as a sky room did. The world's AP items show it, and the file select
+// marks AP saves with it (files.h).
 extern const char kApLogoRows[16][17];
 
 // The helper's icons in the translations' fonts (docs/re/memory.md, "The translations' icons").

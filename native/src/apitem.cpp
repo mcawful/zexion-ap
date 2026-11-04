@@ -18,10 +18,10 @@ const char kApItemRows[8][9] = {
     "........", ".#...#..", "...#....", "........",
 };
 const char kApLogoRows[16][17] = {
-    "....kkrrrrkk....", ".kkkkrrrrrrkkk..", "kkyykkrrrrkkgkkk", "kyyyyykrrkgggggk",
-    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yykkkykkkkgkkkkg", "kkbbkkkkkkkpppkk",
-    "kbbbbbkkkkpppppk", "bbbbbbkkkkpppppp", "bbbbbkooookppppp", "bbbbkooooookpppp",
-    "kbbbkooooookpppk", "kkkkkooooookkkkk", "....kooooook....", "....kkooookk....",
+    ".....krrrrk.....", "..kkkrrrrrrkk...", ".kyykkrrrrkkgkk.", "kyyyyykrrkgggggk",
+    "yyyyyykrrkgggggg", "yyyyyykrrkgggggg", "yykkkykkkkgkkkkg", "kkbbkk....kpppkk",
+    "kbbbbbk..kpppppk", "bbbbbbkkkkpppppp", "bbbbbkooookppppp", "bbbbkooooookpppp",
+    "kbbbkooooookpppk", ".kkkkooooookkkk.", "....kooooook....", ".....kooook.....",
 };
 
 namespace {
@@ -56,24 +56,25 @@ constexpr unsigned kPackRowLength = 0x0D02, kPackAlignment = 0x0D05;  // then sk
 
 // The logo for a progression item: kApLogoRows with Archipelago's up arrow over the lower right,
 // as in its own icons (Factorio's ap.png in Archipelago); '^' the arrow, which the helper
-// flashes itself between yellow and white. Outlined like kApLogoRows.
+// flashes itself between yellow and white. Outlined like kApLogoRows, the arrow counted as a
+// circle.
 constexpr char kLogoArrow[16][17] = {
-    "....kkrrrrkk....",
-    ".kkkkrrrrrrkkk..",
-    "kkyykkrrrrkkgkkk",
+    ".....krrrrk.....",
+    "..kkkrrrrrrkk...",
+    ".kyykkrrrrkkgkk.",
     "kyyyyykrrkgggggk",
     "yyyyyykrrkgggggg",
     "yyyyyykrrkgggggg",
     "yykkkykkkkgkkkkg",
-    "kkbbkkkkkkkpppkk",
-    "kbbbbbkkkkpkkkpk",
-    "bbbbbbkkkkkk^kkp",
+    "kkbbkk....kpppkk",
+    "kbbbbbk..kpkkkpk",
+    "bbbbbbkkk.kk^kkp",
     "bbbbbkoookk^^^kk",
     "bbbbkoookk^^^^^k",
     "kbbbkoook^^^^^^^",
-    "kkkkkoookkk^^^kk",
+    ".kkkkoookkk^^^kk",
     "....koooook^^^k.",
-    "....kkooook^^^k.",
+    ".....kooook^^^k.",
 };
 // A logo pixel's color (glyph_rgb's, the arrow's by `arrow_phase`), or false (transparent). The
 // stand-ins draw in palette 26, which shows the texture's own colors (ItemLooks::own_colors), so

@@ -539,10 +539,11 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; `lab/ap/live46`).
   the helper's own colors: stand-in tests only, not run in game yet.
 - **Logo:** it paints Archipelago's logo (with a flashing arrow for progression) into those
   frames and a glyph, through OpenGL in the swap hook, after checking the texture is the 2048 x
-  2048 sprite sheet. The gaps between the logo's circles, and a one-pixel border round them
-  where the 16 x 16 frame has room, are painted black: palette 26 draws what is painted over
-  the room as it is, so a gap left transparent showed the sky through the logo's black borders
-  in a sky room (`docs/re/memory.md`, "Other players' items"; stand-in tests only, not run in
+  2048 sprite sheet. The logo is outlined side-on (the owner's pick): every pixel touching a
+  circle (or the arrow) left, right, above or below is black, the rest transparent, so the
+  middle stays open and a circle on the 16 x 16 frame's edge is not outlined past it. Palette 26
+  draws what is painted over the room as it is, so the gaps the logo had left transparent
+  showed the sky through its black borders in a sky room (`docs/re/memory.md`, "Other players' items"; stand-in tests only, not run in
   game yet). It leaves the game's texture binding, pixel-store state and GL errors as it
   found them, and paints nothing while a pixel buffer is bound.
 - **Put back:** the records (and any an earlier helper left restyled), the width (24) and the
@@ -806,9 +807,9 @@ turned back after a save at the pod during it (the owner's report).
   Archipelago's logo, the world's AP item logo in its colors, right of FILE NN
   (`src/files.cpp`, with the disk count). The logo is one 16 x 16 image painted over four font
   glyphs empty in the game's art (`0x8C`, `0x8D`, `0x9C`, `0x9D`, two by two in the font), set
-  in the entry's blank cells at columns 16 and 17 of rows 0 and 1 and raised 4 px. Its black
-  gaps and border (painted since the stand-ins showed the sky through transparent ones: "Other
-  players' items") fall on the file select's black background, so it looks as it did (assumed
+  in the entry's blank cells at columns 16 and 17 of rows 0 and 1 and raised 4 px. Its side-on
+  black outline (painted since the stand-ins showed the sky through transparent gaps: "Other
+  players' items") falls on the file select's black background, so it looks as it did (assumed
   from that background; not run in game).
 - **Which saves:** every 16th frame call, each slot in use that is a randomizer save and whose
   own copy of the section is a known seed's: one the helper has a seed file for, or one a client

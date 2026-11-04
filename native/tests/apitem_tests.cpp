@@ -42,11 +42,11 @@ void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
     items.watch(records_holder, cells);
 }
 
-// Whether a painted 16 x 16 logo (RGBA) keeps its black border wherever it is drawn: no colored
-// pixel touches a transparent one, even corner to corner, and every transparent pixel reaches the
-// frame's edge through transparent ones (none shut in between the circles). The stand-ins draw
-// the texture as painted (palette 26), so a transparent pixel shows the room behind: the sky,
-// in a sky room.
+// Whether a painted 16 x 16 logo (RGBA) has the owner's outline: a pixel that is not a color is
+// black exactly where it touches a colored one side-on (left, right, up or down), and transparent
+// elsewhere: no black from a diagonal alone, the middle open, and nothing outside the frame's edge.
+// The stand-ins draw the texture as painted (palette 26), so a transparent pixel beside a circle
+// shows the room behind: the sky, in a sky room.
 bool outlined(const std::vector<uint8_t>& rgba) {
     if (rgba.size() != 16 * 16 * 4) return false;
     auto at = [&](int x, int y) { return &rgba[(y * 16 + x) * 4]; };
@@ -55,35 +55,15 @@ bool outlined(const std::vector<uint8_t>& rgba) {
         const uint8_t* p = at(x, y);
         return p[3] == 0xFF && p[0] == 0 && p[1] == 0 && p[2] == 0;
     };
+    auto colored = [&](int x, int y) {
+        return x >= 0 && x < 16 && y >= 0 && y < 16 && !clear(x, y) && !black(x, y);
+    };
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
-            if (clear(x, y) || black(x, y)) continue;
-            for (int dy = -1; dy <= 1; ++dy) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const int nx = x + dx, ny = y + dy;
-                    if (nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && clear(nx, ny)) return false;
-                }
-            }
-        }
-    }
-    bool outside[16][16] = {};
-    std::vector<std::pair<int, int>> todo;
-    for (int i = 0; i < 16; ++i) {
-        todo.push_back({i, 0});
-        todo.push_back({i, 15});
-        todo.push_back({0, i});
-        todo.push_back({15, i});
-    }
-    while (!todo.empty()) {
-        auto [x, y] = todo.back();
-        todo.pop_back();
-        if (x < 0 || x > 15 || y < 0 || y > 15 || outside[y][x] || !clear(x, y)) continue;
-        outside[y][x] = true;
-        todo.insert(todo.end(), {{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}});
-    }
-    for (int y = 0; y < 16; ++y) {
-        for (int x = 0; x < 16; ++x) {
-            if (clear(x, y) && !outside[y][x]) return false;
+            if (colored(x, y)) continue;
+            const bool beside = colored(x - 1, y) || colored(x + 1, y) || colored(x, y - 1) ||
+                                colored(x, y + 1);
+            if (beside ? !black(x, y) : !clear(x, y)) return false;
         }
     }
     return true;
@@ -234,7 +214,7 @@ void test_painting() {
     }
     check(in_colors, "in its colors, the rest clear");
     check(outlined(g_uploads[0].pixels) && outlined(g_uploads[1].pixels),
-          "both logos black between and round their circles, so no room shows through");
+          "both logos outlined black side-on round their circles, the middle open");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and unpack state put back");
 
     check(g_readbacks == 1, "the texture read back before the first paint");
