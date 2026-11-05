@@ -102,7 +102,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22 ("Grants", "Popups").
 - Each received item pops up once, across reconnects and client restarts (the count in data
   storage): 2026-10-26; popups the helper holds when the game closes or it unloads are lost
-  ("The client in a live game").
+  ("The client in a live game"). Checks and items during a drop, each once, over three drops in
+  one load; the client's "To play" lines only away from the seed's save: 2026-11-04.
 - ARCHIPELAGO new games: 2026-10-22 and 23, all three modes; a second save of one seed:
   2026-10-24 ("New games"; "The game-mode panel").
 - Custom mode's settings in game: 2026-10-27 to 29 ([`docs/re/randocells.md`](re/randocells.md),
@@ -118,7 +119,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
-  2026-11-03 ("Received Energy Shields"; its stop after three misses not run in game).
+  2026-11-03; given once across reconnects: 2026-11-04 ("Received Energy Shields"; its stop
+  after three misses not run in game).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
@@ -130,8 +132,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and the ending straight from the black: 2026-11-02 ("The OS Install Disks goal"; "The mission
   prompt"). The reminder after the received disks' popups, starting disks, and the goal sent by
   a client opened during the ending: 2026-10-26 (`docs/re/locations.md`, "The OS Install Disks
-  goal"). Not run in game: RELOAD FROM CHECKPOINT and a teleport at the pod, and a save
-  counted by its GAME SAVED message (a pause or the map right after saving).
+  goal"). A save at the pod then a pause at once, and popups waiting at YES shown at the next
+  load: 2026-11-04. Not run in game: RELOAD FROM CHECKPOINT and a teleport at the pod, and the
+  map right after saving.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").
@@ -150,7 +153,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - AP saves without the client: 2026-10-25; the client letting the helper go with no server
   connection, from the Launcher's 1.0.0 client: 2026-10-29 ("AP saves without the client").
 - The game's translations, English(HD) above all, and the client's warning in the others:
-  2026-11-02, with later fixes run 2026-11-03 ("Translations", whose run bullets list what was
+  2026-11-02, with later fixes run 2026-11-03, and the helper's text in capitals in French and
+  the default English, 2026-11-04 ("Translations", whose run bullets list what was
   seen in each and what is not run in game yet).
 
 ## Platforms
