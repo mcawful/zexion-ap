@@ -65,7 +65,10 @@ class Connection:
     hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
     choice_refused: bool = False  # the game's start table differed: no ARCHIPELAGO
     newgame: NewGame | None = None  # None: to arm
-    newgame_said: bool | None = None  # whose "To play" line was said (once a connection)
+    # Whose "To play" lines were made (ARCHIPELAGO's or RANDOMIZER's: once a connection), and
+    # those not said yet: held until a poll finds no save of this seed loaded (how_to_play).
+    newgame_said: bool | None = None
+    newgame_lines: tuple[str, ...] = ()
     newgame_polled_at: float = 0.0
     newgame_retry_at: float = 0.0  # when to arm again after the helper refused (newgame_tick)
     warned: set[int] = field(default_factory=set)  # received items said to be no Zexion item

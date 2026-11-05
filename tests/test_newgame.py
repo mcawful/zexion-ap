@@ -7,6 +7,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_LIST, fresh, menu_setup, plan, secret_plan
 
+from client import game, ids
 from client import newgame as ng
 from client import save_patch as sp
 
@@ -48,6 +49,17 @@ def test_the_plan_writes_the_seed_into_the_section() -> None:
     assert struct.unpack_from("<3H", save, sp.SECOND_START) == p.second_start
     assert save[sp.SEED_TEXT : sp.SEED_TEXT + 16] == p.menu.seed_text.encode()
     assert struct.unpack_from("<Q", save, sp.SEED_HASH)[0] == sp.seed_hash(p.menu.seed_text)
+
+
+def test_a_new_game_the_helper_made_is_this_seeds_save_to_the_client() -> None:
+    # The client calls a save another seed's when its list or section is not the seed's
+    # (session.py, then ticks.other_save_tick): a new game as the plan leaves it is neither.
+    p = plan()
+    save = fresh()
+    assert apply_text(ng.plan_text(p), save) == []
+    loaded = bytes(save[sp.SECTION : sp.SECTION + ids.SECTION_SIZE])
+    assert list(game.parse_seed(loaded).locations) == [p.cells[i] for i in p.order]
+    assert sp.section_matches(loaded, p)
 
 
 def test_a_secret_shuffle_seed_writes_its_155_in_the_games_order() -> None:

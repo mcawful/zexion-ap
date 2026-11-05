@@ -304,12 +304,18 @@ def said(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == "Client"]
 
 
+LEFT = session.Step(left_seed=True)  # the title, the file select or another save
+IN_SEED = session.Step(seed_matches=True, state=game.IN_PLAY)  # this seed's save in play
+
+
 def test_arming_with_archipelago_also_says_randomizers_route_and_the_seed_once(caplog) -> None:
     ctx = arming_ctx()
     with caplog.at_level(logging.INFO, logger="Client"):
         run(ticks.newgame_tick(ctx))
         assert ctx.conn.newgame is state.NewGame.ARMED
         assert ctx.helper.requests[-1].endswith("\nchoice")
+        assert said(caplog) == [], "said by the poll's step, once it has read the game"
+        ticks.how_to_play(ctx, LEFT)
         lines = said(caplog)
         assert len(lines) == 2 and "choose ARCHIPELAGO" in lines[0]
         assert "RANDOMIZER instead of ARCHIPELAGO" in lines[0]
@@ -317,6 +323,7 @@ def test_arming_with_archipelago_also_says_randomizers_route_and_the_seed_once(c
         # Armed again after a new game in the same connection: not said again.
         ctx.conn.newgame = None
         run(ticks.newgame_tick(ctx))
+        ticks.how_to_play(ctx, LEFT)
         assert ctx.conn.newgame is state.NewGame.ARMED and len(said(caplog)) == 2
 
 
@@ -324,10 +331,122 @@ def test_arming_for_randomizer_only_keeps_its_one_line(caplog) -> None:
     ctx = arming_ctx(keep_randomizer=True)
     with caplog.at_level(logging.INFO, logger="Client"):
         run(ticks.newgame_tick(ctx))
+        ticks.how_to_play(ctx, LEFT)
     assert said(caplog) == [
         "To play, load this seed's save, or start a new game: "
         f"{newgame.randomizer_message(ctx.conn.plan)}."
     ]
+
+
+def test_a_seed_archipelago_cannot_start_says_randomizers_route_with_why(
+    caplog, monkeypatch
+) -> None:
+    plan_text = newgame.plan_text
+
+    def no_choice(plan, build="", offer_choice=True) -> str:
+        if offer_choice:
+            raise newgame.NewGameError("no start table for this build")
+        return plan_text(plan, build, offer_choice)
+
+    monkeypatch.setattr(newgame, "plan_text", no_choice)
+    ctx = arming_ctx()
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+        ticks.how_to_play(ctx, LEFT)
+    assert said(caplog) == [
+        ticks.NO_ARCHIPELAGO,
+        "To play, load this seed's save, or start a new game: "
+        f"{newgame.randomizer_message(ctx.conn.plan)}.",
+    ]
+
+
+def test_how_to_play_waits_while_this_seeds_save_is_loaded_and_comes_on_leaving_it(
+    caplog,
+) -> None:
+    # Connected with this seed's save in play (live53, 2026-11-04): armed on the poll after the
+    # one that found it loaded, or on the first, before the game was read (an unsettled read
+    # gives an empty Step).
+    ctx = arming_ctx()
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+        for step in (session.Step(), IN_SEED, IN_SEED):
+            ticks.how_to_play(ctx, step)
+        assert said(caplog) == []
+        # Left to the title: the player may want another slot of the seed.
+        ticks.how_to_play(ctx, LEFT)
+        assert len(said(caplog)) == 2
+        ticks.how_to_play(ctx, LEFT)
+        ticks.how_to_play(ctx, IN_SEED)
+    assert len(said(caplog)) == 2, "once a connection"
+
+
+def test_how_to_play_waits_for_a_helper_armed_with_the_seed() -> None:
+    # Held in the seed's save, then the helper lost (drop_helper: newgame back to None).
+    ctx = arming_ctx()
+    run(ticks.newgame_tick(ctx))
+    helper, held = ctx.helper, ctx.conn.newgame_lines
+    ctx.helper, ctx.conn.newgame = None, None
+    ticks.how_to_play(ctx, LEFT)
+    assert ctx.conn.newgame_lines == held, "no ARCHIPELAGO to send the player to"
+    ctx.helper = helper  # attached again: armed, the lines not made again (newgame_said)
+    run(ticks.newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED and ctx.conn.newgame_lines == held
+    ticks.how_to_play(ctx, LEFT)
+    assert ctx.conn.newgame_lines == ()
+
+
+def test_how_to_play_comes_in_another_seeds_save() -> None:
+    ctx = arming_ctx()
+    run(ticks.newgame_tick(ctx))
+    ticks.how_to_play(ctx, session.Step(left_seed=True, other_seed=True, state=game.IN_PLAY))
+    assert ctx.conn.newgame_lines == ()
+
+
+# --- another seed's save ------------------------------------------------------------------------
+
+
+class Telling(Arming):
+    """A helper that takes the new game's plan and knows another seed's save (an AP save)."""
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "other_save":
+            self.requests.append(text)
+            return "told"
+        return super().request(text, seconds)
+
+
+def other_save_polls(ctx: Ctx, steps: list[session.Step]) -> None:
+    """What each poll does with its step: the window's lines, then the helper's notice."""
+    for step in steps:
+        ticks.how_to_play(ctx, step)
+        if not step.other_seed and (step.left_seed or step.seed_matches):
+            ctx.said.clear("other save")  # zexion_client.poll
+        run(ticks.other_save_tick(ctx, step))
+
+
+def test_a_new_game_of_this_seed_gets_no_other_seed_line_or_notice(caplog) -> None:
+    # ARCHIPELAGO pressed: the file select and the fade read as no save loaded, then the new
+    # game is in play holding the seed (the section the helper placed: test_newgame).
+    ctx = arming_ctx()
+    ctx.helper = Telling()
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+        other_save_polls(ctx, [LEFT, session.Step(), LEFT, IN_SEED, IN_SEED])
+    assert "other_save" not in ctx.helper.requests
+    assert state.OTHER_SAVE not in said(caplog)
+
+
+def test_another_ap_seeds_save_loaded_while_armed_still_gets_the_line_and_notice(caplog) -> None:
+    ctx = arming_ctx()
+    ctx.helper = Telling()
+    other = session.Step(left_seed=True, other_seed=True, state=game.IN_PLAY)
+    with caplog.at_level(logging.INFO, logger="Client"):
+        run(ticks.newgame_tick(ctx))
+        assert ctx.conn.newgame is state.NewGame.ARMED, "armed, as at the title"
+        other_save_polls(ctx, [LEFT, other, other, other])
+    assert ctx.helper.requests.count("other_save") == 1, "asked from the second poll, once"
+    assert said(caplog).count(state.OTHER_SAVE) == 1
+    assert ctx.conn.newgame is state.NewGame.ARMED, "another empty slot can still start it"
 
 
 # --- the game's language -----------------------------------------------------------------------

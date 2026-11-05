@@ -492,9 +492,15 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     seed.death_retry_at = time.monotonic() + DEATH_RETRY_SECONDS
 
 
+NO_ARCHIPELAGO = (
+    "This seed can't be started with ARCHIPELAGO, so start it from RANDOMIZER (see below)."
+)
+
+
 async def newgame_tick(ctx: ZexionContext) -> None:
     """Arm the helper with the AP seed for the next randomizer new game, and report what
-    became of it. Runs in the game loop, the helper's only user."""
+    became of it. Runs in the game loop, the helper's only user. The lines on how to start the
+    seed are made at the first arm of a connection and said by how_to_play."""
     helper = ctx.helper
     if ctx.disarm_pending:
         ctx.disarm_pending = False
@@ -522,11 +528,6 @@ async def newgame_tick(ctx: ZexionContext) -> None:
                 f"{state.REPORT}, with the seed's settings."
             )
             return
-        if choice and not offer:
-            logger.info(
-                "This seed can't be started with ARCHIPELAGO, so start it from "
-                "RANDOMIZER (see below)."
-            )
         reply = await asyncio.to_thread(helper.request, text)
         if reply != "armed":  # refused (no frame yet, say): asked again in a moment
             conn.newgame_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS
@@ -542,13 +543,13 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         if offer:
             # With RANDOMIZER's route too, should ARCHIPELAGO not show (the seed's text alone
             # on its own line, to copy).
-            for line in newgame.choice_message(plan):
-                logger.info(line)
+            conn.newgame_lines = newgame.choice_message(plan)
         else:
-            logger.info(
+            route = (
                 "To play, load this seed's save, or start a new game: "
                 f"{newgame.randomizer_message(plan)}."
             )
+            conn.newgame_lines = (NO_ARCHIPELAGO, route) if choice else (route,)
         return
     if time.monotonic() - conn.newgame_polled_at < NEWGAME_POLL_SECONDS:
         return
@@ -584,6 +585,23 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             )
     elif status == "idle":
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
+
+
+def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
+    """The arm's lines on how to start the seed (newgame_tick), said once a connection by the
+    first poll after them that finds no save of this seed loaded (the title, the file select,
+    another save): not while this seed's save is played, nor on the poll after a connect that
+    has not read the game yet. A player who connects in this seed's save gets them on leaving
+    it. Held while no helper holds the plan (lost, or the game restarted): they'd send the player
+    to an ARCHIPELAGO that isn't there, and a re-arm doesn't make them again."""
+    conn = ctx.conn
+    if conn is None or not conn.newgame_lines or not step.left_seed:
+        return
+    if ctx.helper is None or conn.newgame is not state.NewGame.ARMED:
+        return
+    for line in conn.newgame_lines:
+        logger.info(line)
+    conn.newgame_lines = ()
 
 
 async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:

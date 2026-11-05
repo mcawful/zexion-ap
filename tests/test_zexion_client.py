@@ -606,3 +606,35 @@ def test_a_stop_on_energy_shields_ends_with_the_game_or_the_load(monkeypatch) ->
     steps[0] = session.Step(left_seed=True)  # the title, or another save
     asyncio.run(zc.poll(ctx))
     assert not sh.stopped, "leaving the save ends it"
+
+
+# --- how to start the seed -----------------------------------------------------------------------
+
+
+def test_the_poll_says_how_to_play_once_no_save_of_this_seed_is_loaded(monkeypatch, caplog) -> None:
+    # Connected with this seed's save in play (live53, 2026-11-04): the arm's lines wait.
+    conn = connection()
+    ctx = context(conn, Showing(game.IN_PLAY))
+    ctx.helper, ctx.told = Helper(), state.HelperState()
+    how = ("To play, load this seed's save, or start a new game: ...", "SEED")
+    conn.newgame, conn.newgame_lines = state.NewGame.ARMED, how  # armed with the save in play
+    steps = [
+        session.Step(),  # a read that did not settle
+        session.Step(seed_matches=True, state=game.IN_PLAY),
+        session.Step(left_seed=True),  # back at the title
+    ]
+
+    async def no_attach(c) -> bool:
+        return False
+
+    monkeypatch.setattr(zc, "attach_helper", no_attach)
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kw: steps.pop(0))
+    with caplog.at_level(logging.INFO, logger="Client"):
+        said = []
+        for _ in range(3):
+            asyncio.run(zc.poll(ctx))
+            lines = [r.getMessage() for r in caplog.records if r.name == "Client"]
+            said.append([line for line in lines if line in how])
+    assert said[0] == [] and said[1] == [], "not before the game is read, nor in the seed's save"
+    assert said[2] == list(how)
+    assert conn.newgame_lines == ()
