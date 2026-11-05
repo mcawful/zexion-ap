@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import offline
+from client import offline
 
 
 def test_the_seed_file_name() -> None:
@@ -43,6 +43,8 @@ def test_the_cached_config_carries_its_checks() -> None:
         "check b " + "00" * 16,
     ]
     assert "keys_branch" in offline.NOT_CHECKED  # the helper patches it
+    assert "ending_unlocks" in offline.NOT_CHECKED  # and this, in AP saves
+    assert "seen_marker_code" in offline.NOT_CHECKED  # and the on-screen marker
 
 
 def test_grid_cells() -> None:

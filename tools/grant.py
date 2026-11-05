@@ -18,30 +18,26 @@ that does not change the energy, missile or bomb numbers the game uses (docs/re/
 "Granting each kind of item"). A grant becomes part of the slot once the game saves, so use
 it only on a lab slot, never on a real save.
 
-``set`` refuses unless ``Game.settled_state()`` reads "in play" (a save loaded, no menu open,
-the player alive, twice a moment apart); the person playing should still be standing still.
-After writing it waits as long again and logs ``unconfirmed`` (exit 2) if the state left
-"in play" or the byte no longer holds the value, which is how a reload undoing the write
-shows up. ``--yes`` records that they
-agreed to the write. The item names are
-read from the game folder, read-only; without it, items are shown by ID.
+``set`` refuses unless ``Game.settled_state()`` reads in play, and after writing checks again
+a moment later, logging ``unconfirmed`` (exit 2) if a reload undid it. ``--yes`` records that
+the person playing agreed. Item names are read from the game folder, read-only; without it,
+items show by ID.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import re
 import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "client"))
+from protected import ROOT, append_log, game_dir, lab_dir
 
-import game  # noqa: E402
-from protected import assert_writable, game_dir, lab_dir  # noqa: E402
+sys.path.insert(0, str(ROOT))  # the client package
+from client import game, ids  # noqa: E402
+from client.patterns import TARGETS  # noqa: E402
 
 ITEM_NAMES = Path("Files/Translations/English(HD)/ItemNames.txt")
 
@@ -75,8 +71,8 @@ def resolve_item(arg: str, names: dict[int, str]) -> int:
     """An item ID from an ID or an exact name (case, spaces and punctuation ignored)."""
     if arg.isdigit():
         item = int(arg)
-        if item not in game.ITEM_IDS:
-            raise ValueError(f"item {item} is not an item ID (0 to {game.ITEM_IDS[-1]})")
+        if item not in ids.GAME_ITEMS:
+            raise ValueError(f"item {item} is not an item ID (0 to {ids.GAME_ITEMS[-1]})")
         return item
     found = [i for i, n in names.items() if _key(n) == _key(arg)]
     if len(found) != 1:
@@ -99,14 +95,11 @@ def changes(old: bytes, new: bytes, names: dict[int, str]) -> list[str]:
 
 def log(entry: dict) -> None:
     """Append to lab/grants.jsonl; a failure here stops the write it describes."""
-    path = assert_writable(lab_dir() / "grants.jsonl")
-    entry = {"time": dt.datetime.now().isoformat(timespec="milliseconds"), **entry}
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    append_log(lab_dir() / "grants.jsonl", entry)
 
 
 def cmd_show(args: argparse.Namespace, names: dict[int, str]) -> int:
-    g = game.Game.attach()
+    g = game.Game.attach(TARGETS)  # the pickup counter too
     inv = g.inventory()
     print(f"build {g.build.name}; {g.state()}; pickup counter {g.pickup_counter()}")
     for i, v in enumerate(inv):
@@ -172,7 +165,7 @@ def _stamp() -> str:
 def cmd_watch(args: argparse.Namespace, names: dict[int, str]) -> int:
     """Print and log every inventory and counter change; a change undone within one interval
     is not seen."""
-    g = game.Game.attach()
+    g = game.Game.attach(TARGETS)
     inv, counter, state = g.inventory(), g.pickup_counter(), g.state()
     owned = {label(i, names): v for i, v in enumerate(inv) if v}
     print(f"{_stamp()}  watching; {state}; counter {counter}; inventory {owned}; Ctrl+C stops")

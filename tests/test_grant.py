@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 
 import pytest
+from fakes import FakeGame, FakeProcess, scripted_sleep
 
-import game
 import grant
-from patterns import Build
+from client import game
+from client.patterns import Build
 
 ITEM_NAMES = "0) ENERGY TANK\r\n\r\nEnergy Tank\r\n\r\n----\r\n27) ALPHA KEY\r\n\r\nAlpha Key\r\n"
 NAMES = grant.parse_item_names(ITEM_NAMES)
@@ -34,32 +35,6 @@ def test_changes_lists_each_byte_that_differs() -> None:
     assert grant.changes(old, new, {0: "ENERGY TANK"}) == ["0 ENERGY TANK: 5 -> 6", "2: 0 -> 1"]
 
 
-class FakeProcess:
-    def __init__(self) -> None:
-        self.memory = bytearray(0x1000)
-        self.writes = 0
-        self.fail_write = False
-        self.overwrite_with: int | None = None  # the game changes the byte straight after
-
-    def read_bytes(self, address: int, size: int) -> bytes:
-        return bytes(self.memory[address : address + size])
-
-    def write_bytes(self, address: int, data: bytes, size: int) -> None:
-        if self.fail_write:
-            raise OSError("access denied")
-        self.writes += 1
-        self.memory[address : address + size] = data
-        if self.overwrite_with is not None:
-            self.memory[address] = self.overwrite_with
-
-
-class FakeGame(game.Game):
-    alive = True
-
-    def _alive(self) -> bool:
-        return self.alive
-
-
 INV = 0x400
 ENERGY = INV - game.INVENTORY_IN_PLAYER_STATE + game.ENERGY_NOW
 RVA = {"inventory": INV, "pickup_counter": 0x980, "save_loaded": 0x900, "menu_state": 0x901}
@@ -71,14 +46,14 @@ def fake(monkeypatch, tmp_path):
     g = FakeGame(FakeProcess(), 0, dict(RVA), 1, Build("B1", "0" * 64, 0, 0))
     g.pm.memory[INV] = 5  # 5 Energy Tanks
     g.pm.memory[ENERGY : ENERGY + 2] = (80).to_bytes(2, "little")  # alive, a save loaded
-    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: g))
+    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls, targets=None: g))
     monkeypatch.setattr(grant, "load_item_names", lambda: dict(NAMES))
     monkeypatch.setattr(game.time, "sleep", lambda _: None)
     return g, tmp_path / "grants.jsonl"
 
 
 def entries(log_path) -> list[dict]:
-    return [json.loads(line) for line in log_path.read_text().splitlines()]
+    return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 
 
 def events(log_path) -> list[str]:
@@ -98,17 +73,15 @@ def test_set_refuses_without_yes(fake) -> None:
     assert g.pm.writes == 0 and not log_path.exists()
 
 
-def test_set_refuses_when_the_byte_is_not_as_expected(fake) -> None:
+@pytest.mark.parametrize(
+    "item_value_expect",
+    [("0", "6", "4"), ("50", "1", "0")],  # the byte is not as expected; item 50 (not an item)
+)
+def test_set_refuses_and_logs_the_attempt(fake, item_value_expect) -> None:
     g, log_path = fake
-    assert grant.main(["set", "0", "6", "--expect", "4", "--yes"]) == 1
+    item, value, expect = item_value_expect
+    assert grant.main(["set", item, value, "--expect", expect, "--yes"]) == 1
     assert g.pm.memory[INV] == 5 and g.pm.writes == 0
-    assert events(log_path) == ["attempt", "refused"]
-
-
-def test_set_refuses_item_50(fake) -> None:
-    g, log_path = fake
-    assert grant.main(["set", "50", "1", "--expect", "0", "--yes"]) == 1
-    assert g.pm.writes == 0
     assert events(log_path) == ["attempt", "refused"]
 
 
@@ -143,19 +116,16 @@ def test_a_failed_write_logs_what_the_byte_holds_afterward(fake) -> None:
 
 def test_watch_prints_and_logs_changes(fake, monkeypatch, capsys) -> None:
     g, log_path = fake
-    ticks = iter([lambda: g.pm.memory.__setitem__(INV + 27, 1), None])
 
-    def sleep(_):
-        step = next(ticks)
-        if step is None:
-            raise KeyboardInterrupt
-        step()
+    def pick_up_and_open_a_menu() -> None:
+        g.pm.memory[INV + 27] = 1
+        g.pm.memory[0x901] = 2
 
-    monkeypatch.setattr(grant.time, "sleep", sleep)
+    monkeypatch.setattr(grant.time, "sleep", scripted_sleep(pick_up_and_open_a_menu))
     assert grant.main(["watch"]) == 0
     out = capsys.readouterr().out
-    assert "27 ALPHA KEY: 0 -> 1" in out and "in play" in out
-    assert events(log_path) == ["watch", "change", "watch-ended"]
+    assert "27 ALPHA KEY: 0 -> 1" in out and "state: in play -> menu" in out
+    assert events(log_path) == ["watch", "change", "change", "watch-ended"]
     assert entries(log_path)[0]["inventory"][0] == 5
     assert entries(log_path)[-1]["reason"] == "stopped"
 
@@ -228,24 +198,16 @@ def test_set_refuses_while_the_state_is_changing(fake, monkeypatch) -> None:
 
 def test_a_reload_undoing_the_write_is_logged_unconfirmed(fake, monkeypatch) -> None:
     g, log_path = fake
-    sleeps = iter([lambda: None, lambda: g.pm.memory.__setitem__(INV, 5)])
-    monkeypatch.setattr(game.time, "sleep", lambda _: next(sleeps)())
+    put_back = scripted_sleep(lambda: None, lambda: g.pm.memory.__setitem__(INV, 5))
+    monkeypatch.setattr(game.time, "sleep", put_back)
     assert grant.main(["set", "0", "6", "--expect", "5", "--yes"]) == 2
     assert g.pm.writes == 1
     assert events(log_path) == ["attempt", "unconfirmed"]
     assert entries(log_path)[-1]["now"] == 5
 
 
-def test_watch_reports_state_changes(fake, monkeypatch, capsys) -> None:
-    g, log_path = fake
-    ticks = iter([lambda: g.pm.memory.__setitem__(0x901, 2), None])
-
-    def sleep(_):
-        step = next(ticks)
-        if step is None:
-            raise KeyboardInterrupt
-        step()
-
-    monkeypatch.setattr(grant.time, "sleep", sleep)
-    assert grant.main(["watch"]) == 0
-    assert "state: in play -> menu" in capsys.readouterr().out
+def test_the_log_creates_a_missing_lab_folder(monkeypatch, tmp_path) -> None:
+    lab = tmp_path / "fresh" / "lab"
+    monkeypatch.setenv("ZEXION_LAB_DIR", str(lab))
+    grant.log({"event": "attempt"})
+    assert [e["event"] for e in entries(lab / "grants.jsonl")] == ["attempt"]

@@ -18,6 +18,8 @@ import sys
 
 from protected import assert_writable, game_dir, lab_dir
 
+MEDIA = {".wav", ".ogg", ".nsf", ".png", ".svg"}  # left out of --list
+
 
 def build_tag() -> str:
     return hashlib.sha256((game_dir() / "Zexion.exe").read_bytes()).hexdigest()[:12]
@@ -33,13 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     files = game_dir() / "Files"
     if args.list:
         for path in sorted(files.iterdir()):
-            if path.is_file() and path.suffix.lower() not in {
-                ".wav",
-                ".ogg",
-                ".nsf",
-                ".png",
-                ".svg",
-            }:
+            if path.is_file() and path.suffix.lower() not in MEDIA:
                 print(f"{path.stat().st_size:>10,}  {path.name}")
         return 0
 

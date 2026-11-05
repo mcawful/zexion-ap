@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hints
+from client import hints
 
 TARGETS = [[2, 900, 16], [1, 501, 26], [2, 905, 27], [3, 77, 19]]  # player, location, item
 
@@ -21,25 +21,34 @@ def test_area_maps_past_the_list_hint_nothing() -> None:
 
 
 def test_the_notice_is_worded_as_the_servers_hint() -> None:
-    assert hints.popup_note("Slide Mod", "Guardia 22,7") == "HINT: SLIDE MOD IS AT GUARDIA 22,7"
+    assert hints.popup_note("Slide Mod", "Guardia 22,7") == "Hint: Slide Mod is at Guardia 22,7"
     assert hints.popup_note("S-Blade", "Exodia 27,0", "Zexion2") == (
-        "HINT: S-BLADE IS AT EXODIA 27,0 IN ZEXION2'S WORLD"
+        "Hint: S-Blade is at Exodia 27,0 in Zexion2's world"
     )
+
+
+def test_letters_whose_capitals_are_others_are_spelled_out() -> None:
+    note = hints.popup_note("Slide Mod", "Großes Tor", "Weiß")
+    assert note == "Hint: Slide Mod is at Grosses Tor in Weiss's world"
+    # The default English shows the helper's capitals of it, as the client once sent them.
+    assert note.upper() == "HINT: SLIDE MOD IS AT GROSSES TOR IN WEISS'S WORLD"
+    assert hints.popup_note("Kılıç", "Aı") == "Hint: Kili is at Ai"
 
 
 def test_another_games_long_location_is_shown_whole() -> None:
     note = hints.popup_note("Gamma Key", "Hyrule Castle - Big Key Chest (Upper Floor)", "Alice")
     assert (
-        note == "HINT: GAMMA KEY IS AT HYRULE CASTLE - BIG KEY CHEST UPPER FLOOR IN ALICE'S WORLD"
+        note == "Hint: Gamma Key is at Hyrule Castle - Big Key Chest Upper Floor in Alice's world"
     )
-    assert set(note) <= hints.POPUP_CHARS  # the parentheses would be dropped by the helper
+    # The parentheses would be dropped by the helper (a letter in either case kept).
+    assert {c.upper() for c in note} <= hints.POPUP_CHARS
 
 
 def test_past_the_helpers_limit_the_words_between_the_names_go() -> None:
     long_place = "Room " * 38  # 190 characters
     note = hints.popup_note("Slide Mod", long_place, "Alice")
     assert len(note) <= hints.POPUP_MAX
-    assert note.startswith("HINT: SLIDE MOD - ROOM ROOM")
+    assert note.startswith("Hint: Slide Mod - Room Room")
 
 
 def test_each_area_map_has_a_key_received_or_found_here() -> None:

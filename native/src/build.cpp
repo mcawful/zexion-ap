@@ -1,5 +1,7 @@
 #include "build.h"
 
+#include "game_mem.h"  // nt_headers
+
 namespace zap {
 
 namespace {
@@ -10,7 +12,7 @@ struct KnownBuild {
     DWORD size_of_image;
 };
 
-// Keep in step with KNOWN_BUILDS in client/patterns.py.
+// Keep in step with KNOWN_BUILDS in client/patterns.py; tests/test_cross_checks.py checks it.
 constexpr KnownBuild kKnownBuilds[] = {
     {"B1", 0x6A3F82DE, 0x1204000},
 };
@@ -27,11 +29,8 @@ const char* identify_build(DWORD time_date_stamp, DWORD size_of_image) {
 }
 
 const char* identify_build(HMODULE exe) {
-    auto* base = reinterpret_cast<const BYTE*>(exe);
-    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+    const IMAGE_NT_HEADERS64* nt = nt_headers(exe);
+    if (nt == nullptr) return nullptr;
     return identify_build(nt->FileHeader.TimeDateStamp, nt->OptionalHeader.SizeOfImage);
 }
 

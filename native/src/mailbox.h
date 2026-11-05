@@ -1,9 +1,6 @@
-// Hands one piece of work at a time from the pipe thread to the game's thread.
-//
-// The pipe thread posts work and waits for its result. The game's frame call takes the work at
-// its next frame, runs it, and posts the result. If no frame takes the work within the timeout,
-// the pipe thread withdraws it, and it is never run afterwards: a frame either took it before
-// the withdrawal (and the pipe thread waits for that run to finish) or never will.
+// Hands one piece of work at a time from the pipe thread to the game's thread (native/README.md,
+// "On the game's thread"). Work no frame took within the timeout is withdrawn and never runs: a
+// frame either took it before the withdrawal (the pipe thread then waits for that run) or never.
 #pragma once
 
 #include <windows.h>

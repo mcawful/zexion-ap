@@ -1,77 +1,80 @@
 #include "pause.h"
 
+#include <algorithm>
 #include <cstring>
 
-#include "menu.h"  // safe_read, writable
+#include "game_mem.h"
+#include "text.h"  // capital
+#include "translation.h"
 
 namespace zap {
 
+const char kDiscRows[kDiscSize][kDiscSize + 1] = {
+    "..........####..........",
+    ".......##########.......",
+    ".....#######.#..###.....",
+    "....#########...#.##....",
+    "...#########...#..###...",
+    "..##########..#..#####..",
+    "..##########.#..###..#..",
+    ".########......###..###.",
+    ".#######..####..#..#..#.",
+    ".######..######...#...#.",
+    "#######.###..###.#...###",
+    "#######.##....##....#.##",
+    "##.#....##....##.#######",
+    "###...#.###..###.#######",
+    ".#...#...######..######.",
+    ".#..#..#..####..#######.",
+    ".###..###......########.",
+    "..#..###..#.##########..",
+    "..#####..#..##########..",
+    "...###..#...#########...",
+    "....##.#...#########....",
+    ".....###..#.#######.....",
+    ".......##########.......",
+    "..........####..........",
+};
+
 namespace {
 
-constexpr uint8_t kJne = 0x75, kJmp = 0xEB, kSkip = 0x2E;
-constexpr ptrdiff_t kMenuPanelCount = 0x08;
-constexpr ptrdiff_t kPanelChildren = 0x1E0, kPanelCapacity = 0x1E8;
+// The branch: `jne` over the row (+0x2E), as the game has it, and `jmp` while on.
+constexpr BYTE kGameBranch[2] = {0x75, 0x2E}, kOurBranch[2] = {0xEB, 0x2E};
+// The KEYS row's panel: its sprites and their count, at the offsets a widget uses for its label
+// and record (docs/re/memory.md, "The pause screen's KEYS row"; B1).
 constexpr ptrdiff_t kPanelSprites = 0x1F0, kPanelSpriteCount = 0x1F8;
-constexpr ptrdiff_t kReleased = 0x1C8, kChildLabel = 0x1F0, kChildCallback = 0x2C0;
-constexpr ptrdiff_t kChildHandler = 0x2C8;
-constexpr ptrdiff_t kLabelCapacity = 0x1D8, kLabelGlyphs = 0x228;
 constexpr int kMaxEntries = 16;
 constexpr int32_t kPausePanels = 2, kRowSprites = 9, kKeysGlyphs = 4;
 constexpr int kKeyIconFirst = 384, kDiskIcon = 829;
-// Sprite fields.
-constexpr ptrdiff_t kX = 0x40, kY = 0x48, kTint = 0x68, kTintSize = 0x20, kVisible = 0x120;
+// A sprite's drawn rectangle (left, top, right, bottom) and its rectangle about its place.
 constexpr ptrdiff_t kWorld = 0x128, kLocal = 0x148;
-constexpr ptrdiff_t kPalettePtr = 0x198, kPaletteNumber = 0x1A0, kStyle = 0x1D0;
-constexpr ptrdiff_t kFrameBase = 0x1A8, kFrameShown = 0x1B0, kFrameCount = 0x1BC;
-constexpr ptrdiff_t kFrameIndex = 0x1C4, kFrameSize = 0x38;
-constexpr size_t kSpriteSize = 0x1D8;
-constexpr ptrdiff_t kFontTemplate = 1 * 8;
-// Where things go (read live on B1, 2026-10-24): the label's line, and the middle.
+// Where things go: the label's line (read live, B1), and the disc's place, 4 above the middle
+// of the game's key icons (native/README.md, "The OS Install Disks goal").
 constexpr double kRowY = 208.0, kLabelX = 144.0, kIconX = 160.0, kIconY = 184.0;
-
-template <typename T>
-bool read(const BYTE* base, ptrdiff_t offset, T& out) {
-    return base != nullptr && safe_read(base + offset, &out, sizeof(T));
-}
-
-template <typename T>
-void put(BYTE* base, ptrdiff_t offset, T value) {
-    std::memcpy(base + offset, &value, sizeof(value));
-}
-
-bool set_frame(BYTE* s, int frame) {
-    int32_t frames = 0;
-    BYTE* base = nullptr;
-    if (!read(s, kFrameCount, frames) || frame < 0 || frame >= frames ||
-        !read(s, kFrameBase, base) || base == nullptr) {
-        return false;
-    }
-    put<int32_t>(s, kFrameIndex, frame);
-    put(s, kFrameShown, base + frame * kFrameSize);
-    return true;
-}
+// The helper's disc about its place, as the quad's corners (clockwise from top left) and as the
+// rectangle, centered as the game's icon is.
+constexpr double kHalf = kDiscSize / 2.0;
+constexpr double kDiscCorners[8] = {-kHalf, -kHalf, kHalf, -kHalf, kHalf, kHalf, -kHalf, kHalf};
+constexpr double kDiscLocal[4] = {-kHalf, -kHalf, kHalf, kHalf};
+// A frame-list entry starts with its texture rectangle (u0, v0, u1, v1), over the texture's size
+// (docs/re/memory.md, "The pause screen's KEYS row").
+constexpr float kSide = kTextureSize;
+constexpr float kDiscRect[4] = {kDiscX / kSide, kDiscY / kSide, (kDiscX + kDiscSize) / kSide,
+                                (kDiscY + kDiscSize) / kSide};
 
 void place(BYTE* s, double x, double y, const double (&local)[4]) {
-    put(s, kX, x);
-    put(s, kY, y);
+    put(s, sprite::kX, x);
+    put(s, sprite::kY, y);
     put(s, kWorld + 0, x + local[0]);
     put(s, kWorld + 8, y + local[1]);
     put(s, kWorld + 16, x + local[2]);
     put(s, kWorld + 24, y + local[3]);
 }
 
-// Drawn as `like` is: its palette, style and tint.
-void look_like(BYTE* s, const BYTE* like) {
-    std::memcpy(s + kPalettePtr, like + kPalettePtr, sizeof(void*));
-    std::memcpy(s + kPaletteNumber, like + kPaletteNumber, sizeof(int16_t));
-    std::memcpy(s + kStyle, like + kStyle, sizeof(int32_t));
-    std::memcpy(s + kTint, like + kTint, kTintSize);
-}
-
 }  // namespace
 
 std::string pause_row_text(int count, int required) {
-    std::string text = std::to_string(count) + " OF " +
+    std::string text = std::to_string(count) + " of " +
                        (required > 0 ? std::to_string(required) : std::string("?"));
     if (text.size() > static_cast<size_t>(kRowCells)) return "";
     size_t left = (kRowCells - text.size() + 1) / 2;
@@ -81,117 +84,177 @@ std::string pause_row_text(int count, int required) {
     return out;
 }
 
-bool PauseDiskRow::patch(const PauseAddresses& a, uint8_t from, uint8_t to) {
-    BYTE now[2] = {};
-    if (a.keys_branch == nullptr || !safe_read(a.keys_branch, now, sizeof(now)) ||
-        now[1] != kSkip || now[0] != from) {
-        return false;
-    }
-    DWORD old = 0;
-    if (!VirtualProtect(a.keys_branch, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
-    *a.keys_branch = to;
-    DWORD unused = 0;
-    VirtualProtect(a.keys_branch, 1, old, &unused);
-    FlushInstructionCache(GetCurrentProcess(), a.keys_branch, 2);
-    return true;
-}
-
-void PauseDiskRow::watch(const PauseAddresses& a) {
-    if (text_.empty()) {
+void PauseDiskRow::watch(const GameAddresses& a, bool disc) {
+    const std::string& text = shown();
+    if (text.empty()) {
         restore(a);
         return;
     }
-    if (!patched_ && patch(a, kJne, kJmp)) patched_ = true;
-    BYTE* top = nullptr;
-    if (read(a.current_menu, 0, top) && top != nullptr) turn(a, top);
+    entry_shows(disc);
+    if (!patched_ && code_reads(a.keys_branch, kGameBranch, 2) &&
+        patch_code(a.keys_branch, kOurBranch, 1)) {
+        patched_ = true;
+    }
+    if (BYTE* top = pointer_at(a.current_menu)) turn(a, top, text, disc);
+    hook_return(a);
 }
 
-void PauseDiskRow::restore(const PauseAddresses& a) {
-    if (!patched_) return;
-    patch(a, kJmp, kJne);  // only where it still reads as written
-    BYTE now = 0;
-    // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (!safe_read(a.keys_branch, &now, 1) || now != kJmp) patched_ = false;
+void PauseDiskRow::restore(const GameAddresses& a) {
+    unhook_return(a);
+    entry_shows(false);  // the image is cleared next: a sprite still on the entry shows 829's
+    // Only where it still reads as written; still held while it does (put back failed).
+    if (patched_ && put_back_code(a.keys_branch, kOurBranch, kGameBranch, 2)) patched_ = false;
 }
 
-void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
-    // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
-    int32_t panels_n = 0, capacity = 0, sprites_n = 0, glyphs_n = 0, released = 1;
-    BYTE** panels = nullptr;
-    BYTE* entries = nullptr;
-    BYTE* row = nullptr;
-    if (!read(menu, kMenuPanelCount, panels_n) || panels_n != kPausePanels ||
-        !read(menu, 0, panels) || !read(reinterpret_cast<BYTE*>(panels), 0, entries) ||
-        !read(reinterpret_cast<BYTE*>(panels), 8, row)) {
-        return;
+void PauseDiskRow::returned(const GameAddresses& a, BYTE* menu, bool disc) {
+    // The game's way back has set its own (0x168986): the wrapper is no longer there to put back.
+    if (menu == hooked_ && pointer_at(menu, menu::kOnReturn) != a.hooks.options_back) {
+        hooked_ = nullptr;
     }
-    BYTE** children = nullptr;
-    int32_t entry_count = 0;
-    if (!read(entries, kPanelCapacity, entry_count) || entry_count < 1 ||
-        entry_count > kMaxEntries || !read(entries, kPanelChildren, children)) {
-        return;
+    const std::string& text = shown();
+    if (!text.empty() && menu != nullptr && is_open(a.current_menu, menu)) {
+        turn(a, menu, text, disc);
     }
-    BYTE* list[kMaxEntries] = {};
-    if (!safe_read(children, list, entry_count * sizeof(BYTE*))) return;
-    bool equipment = false;
-    for (int i = 0; i < entry_count; ++i) {
-        void* cb = nullptr;
-        if (read(list[i], kChildCallback, cb) &&
-            (cb == a.equipment_fn || (a.equipment_hook != nullptr && cb == a.equipment_hook))) {
-            equipment = true;
+}
+
+void PauseDiskRow::hook_return(const GameAddresses& a) {
+    void* hook = a.hooks.options_back;
+    if (a.options_back_fn == nullptr || hook == nullptr) return;
+    if (hooked_ != nullptr) {
+        if (is_open(a.current_menu, hooked_) && pointer_at(hooked_, menu::kOnReturn) == hook) {
+            return;  // still the wrapper
         }
+        hooked_ = nullptr;  // its menu closed (freed with it), or the game's way back has run
     }
-    BYTE** row_children = nullptr;
-    BYTE* keys = nullptr;
-    BYTE* label = nullptr;
-    BYTE** glyph_list = nullptr;
-    BYTE** sprite_list = nullptr;
-    void* handler = nullptr;
-    if (!equipment || !read(row, kPanelCapacity, capacity) || capacity != 1 ||
-        !read(row, kPanelSpriteCount, sprites_n) || sprites_n != kRowSprites ||
-        !read(row, kPanelChildren, row_children) ||
-        !read(reinterpret_cast<BYTE*>(row_children), 0, keys) || !read(keys, kReleased, released) ||
-        released != 0 || !read(keys, kChildHandler, handler) || handler != a.widget_handler ||
-        !read(keys, kChildLabel, label) || !read(label, kLabelCapacity, glyphs_n) ||
-        glyphs_n != kKeysGlyphs || !read(label, kLabelGlyphs, glyph_list) ||
-        !read(row, kPanelSprites, sprite_list)) {
+    // The open menu OPTION MENU's opener gave its way back: the pause menu, two panels.
+    BYTE* menu = pointer_at(a.current_menu);
+    for (int i = 0; i < kMaxMenus && menu != nullptr; ++i, menu = pointer_at(menu, menu::kBelow)) {
+        if (pointer_at(menu, menu::kOnReturn) != a.options_back_fn) continue;
+        if (panel_count(menu) == kPausePanels &&
+            swap_pointer(menu, menu::kOnReturn, a.options_back_fn, hook)) {
+            hooked_ = menu;
+        }
         return;
     }
+}
+
+void PauseDiskRow::unhook_return(const GameAddresses& a) {
+    if (hooked_ == nullptr) return;
+    if (is_open(a.current_menu, hooked_)) {
+        swap_pointer(hooked_, menu::kOnReturn, a.hooks.options_back, a.options_back_fn);
+    }
+    hooked_ = nullptr;
+}
+
+void PauseDiskRow::entry_shows(bool disc) {
+    if (entry_ == nullptr) return;
+    std::memcpy(entry_, disc ? kDiscRect : game_rect_, sizeof(kDiscRect));
+}
+
+bool PauseDiskRow::show_disc(BYTE* s) {
+    // Only a sprite that keeps its template: the game frees the frame list of one that does not
+    // (0x745C0), and must never free the helper's entry.
+    BYTE* list = frame_list(s, kDiskIcon);
+    if (pointer_at(s, sprite::kTemplate) == nullptr || list == nullptr) return false;
+    if (entry_ == nullptr) {
+        // Made once, from frame 829's entry, and never freed (pause.h).
+        BYTE copy[sprite::kFrameSize];
+        if (!safe_read(list + kDiskIcon * sprite::kFrameSize, copy, sizeof(copy))) return false;
+        auto* page = static_cast<BYTE*>(
+            VirtualAlloc(nullptr, sprite::kFrameSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        if (page == nullptr) return false;
+        std::memcpy(page, copy, sizeof(copy));
+        std::memcpy(game_rect_, copy, sizeof(game_rect_));
+        entry_ = page;
+        entry_shows(true);  // watch's ran before the entry was made
+    }
+    put(s, sprite::kFrameList, entry_);
+    put(s, sprite::kFrameShown, entry_);
+    put<int32_t>(s, sprite::kFrameCount, 1);
+    put<int32_t>(s, sprite::kFrameIndex, 0);
+    std::memcpy(s + sprite::kCorners, kDiscCorners, sizeof(kDiscCorners));
+    std::memcpy(s + kLocal, kDiscLocal, sizeof(kDiscLocal));
+    return true;
+}
+
+void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& text, bool disc) {
+    // The text fills the row's cells (pause_row_text), read by index below.
+    if (text.size() != static_cast<size_t>(kRowCells)) return;
+    // The pause screen: two panels, the first holding EQUIPMENT, the second the KEYS row.
+    int32_t sprites_n = 0;
+    BYTE* row = panel_at(menu, 1);
+    BYTE* list[kMaxEntries] = {};
+    const int32_t entry_count = children_of(panel_at(menu, 0), list, kMaxEntries);
+    if (panel_count(menu) != kPausePanels || entry_count < 1 || entry_count > kMaxEntries) return;
+    const bool equipment = std::any_of(list, list + entry_count, [&](BYTE* entry) {
+        void* cb = pointer_at(entry, widget::kCallback);
+        return cb != nullptr && (cb == a.equipment_fn || cb == a.hooks.equipment);
+    });
+    BYTE* keys = child_at(row, 0);
     BYTE* glyph[kKeysGlyphs] = {};
     BYTE* sprite[kRowSprites] = {};
-    if (!safe_read(glyph_list, glyph, sizeof(glyph)) ||
-        !safe_read(sprite_list, sprite, sizeof(sprite))) {
+    if (!equipment || child_count(row) != 1 ||
+        !read(row, kPanelSpriteCount, sprites_n) || sprites_n != kRowSprites ||
+        !live_widget(keys, a.widget_handler_fn) ||
+        !label_glyphs(pointer_at(keys, widget::kLabel), kKeysGlyphs, glyph) ||
+        !safe_read(pointer_at(row, kPanelSprites), sprite, sizeof(sprite))) {
+        return;
+    }
+    // In a translation the game draws KEYS's translated text (SmallText 139) over the row and
+    // builds it again when OPTION MENU returns (0x168AC6): the count is that text instead, built
+    // again whenever it is not the helper's, the key slots hidden. With the flag clear the game
+    // shows the label's pixel glyphs itself (0x168AE9).
+    BYTE* keys_label = pointer_at(keys, widget::kLabel);
+    auto keep_row = [&] {
+        const bool hd = translation_on(a);
+        // The key slots hidden in a translation, and shown again only if the helper hid them
+        // (the default English's row left as its first turn set it).
+        if (hd || slots_hidden_) {
+            for (int k = 0; k < 4; ++k) {
+                if (writable(sprite[k], sprite::kSize)) *(sprite[k] + sprite::kVisible) = hd ? 0 : 1;
+            }
+            slots_hidden_ = hd;
+        }
+        if (!hd) return;
+        if (!hd_.holds(keys_label)) {
+            hd_.label = nullptr;
+            std::string trimmed = text;
+            trimmed.erase(0, trimmed.find_first_not_of(' '));
+            trimmed.erase(trimmed.find_last_not_of(' ') + 1);
+            if (rebuild_label(a, keys_label, hd_case(a, trimmed),
+                              {.attached = true, .center = true})) {
+                hd_.take(keys_label);
+            }
+        }
+        // The turn below shows the four pixel glyphs: hidden again for the translated text.
+        uint8_t pixel_shown = 0;
+        if (read(glyph[0], sprite::kVisible, pixel_shown) && pixel_shown != 0) {
+            show_translated_glyphs(keys_label);
+        }
+    };
+    // Turned already (each frame, as the screen stays up): nothing more to check.
+    int32_t icon = -1;
+    BYTE* shown = nullptr;
+    read(sprite[4], sprite::kFrameIndex, icon);
+    read(sprite[4], sprite::kFrameShown, shown);
+    if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) {
+        keep_row();
         return;
     }
     for (BYTE* s : sprite) {
-        if (!writable(s, kSpriteSize)) return;
+        if (!writable(s, sprite::kSize)) return;
     }
     for (BYTE* g : glyph) {
-        if (!writable(g, kSpriteSize)) return;
+        if (!writable(g, sprite::kSize)) return;
     }
-    int32_t icon = -1;
-    read(sprite[4], kFrameIndex, icon);
-    if (icon == kDiskIcon) return;  // turned already
     // Still the game's KEYS row: KEYS, and the first key's icon.
-    const char keys_text[] = "KEYS";
-    for (int i = 0; i < kKeysGlyphs; ++i) {
-        int32_t c = -1;
-        if (!read(glyph[i], kFrameIndex, c) || c != static_cast<unsigned char>(keys_text[i])) {
-            return;
-        }
-    }
-    if (icon != kKeyIconFirst) return;
-    BYTE* templates = nullptr;
-    BYTE* font = nullptr;
-    if (!read(a.sprite_templates, 0, templates) || !read(templates, kFontTemplate, font) ||
-        font == nullptr) {
-        return;
-    }
+    if (!glyphs_show(glyph, "KEYS") || icon != kKeyIconFirst) return;
+    BYTE* font = pointer_at(pointer_at(a.sprite_templates), sprite::kFontTemplate);
+    if (font == nullptr) return;
     // The label's glyphs: the middle four characters (they stay where the game put them).
-    const std::string& t = text_;
     for (int i = 0; i < kKeysGlyphs; ++i) {
-        set_frame(glyph[i], static_cast<unsigned char>(t[2 + i]));
-        *(glyph[i] + kVisible) = 1;
+        set_frame(glyph[i], static_cast<unsigned char>(capital(text[2 + i])));
+        *(glyph[i] + sprite::kVisible) = 1;
     }
     // The key slots, given the font: two characters each side of the label.
     const double text_local[4] = {0, 0, 8, 8};
@@ -199,24 +262,29 @@ void PauseDiskRow::turn(const PauseAddresses& a, BYTE* menu) {
     for (int k = 0; k < 4; ++k) {
         BYTE* s = sprite[k];
         reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(s, font);
-        set_frame(s, static_cast<unsigned char>(t[cells[k]]));
+        set_frame(s, static_cast<unsigned char>(capital(text[cells[k]])));
         std::memcpy(s + kLocal, text_local, sizeof(text_local));
         double x = kLabelX + 8.0 * (cells[k] - 2);
         place(s, x, kRowY, text_local);
         look_like(s, glyph[0]);
-        *(s + kVisible) = 1;
+        *(s + sprite::kVisible) = 1;
     }
-    // The disk in the middle, white as the text; the other key icons and Zexion's hidden.
-    double icon_local[4] = {};
-    safe_read(sprite[4] + kLocal, icon_local, sizeof(icon_local));
-    if (set_frame(sprite[4], kDiskIcon)) {
+    // The disc in the middle, white as the text: the helper's if painted, else the game's small
+    // Data Disc. The other key icons and Zexion's hidden.
+    if ((disc && show_disc(sprite[4])) || set_frame(sprite[4], kDiskIcon)) {
+        double icon_local[4] = {};  // its own size, or the helper's disc's (show_disc)
+        safe_read(sprite[4] + kLocal, icon_local, sizeof(icon_local));
         place(sprite[4], kIconX, kIconY, icon_local);
-        std::memcpy(sprite[4] + kTint, glyph[0] + kTint, kTintSize);
-        *(sprite[4] + kVisible) = 1;
+        std::memcpy(sprite[4] + sprite::kTint, glyph[0] + sprite::kTint, sprite::kTintSize);
+        *(sprite[4] + sprite::kVisible) = 1;
     } else {
-        *(sprite[4] + kVisible) = 0;
+        *(sprite[4] + sprite::kVisible) = 0;
     }
-    for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + kVisible) = 0;
+    for (int k = 5; k < kRowSprites; ++k) *(sprite[k] + sprite::kVisible) = 0;
+    // A fresh pause screen: its label is the game's, even at the address and with the mark of
+    // the last one the helper built.
+    hd_.label = nullptr;
+    keep_row();
 }
 
 }  // namespace zap

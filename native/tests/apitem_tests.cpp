@@ -1,8 +1,9 @@
-// Host tests for other players' items (apitem.h): the stand-in records restyled and named by
-// cell, the logo painted through a fake OpenGL, and everything put back; and the label parser.
+// Host tests for apitem.h: the stand-in records restyled and named by cell, the logos and font
+// glyphs painted through a fake OpenGL (one readback shared), all put back; and the label parser.
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,212 +11,145 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "apitem.h"
+#include "files.h"
 #include "game_calls.h"
+#include "pause.h"  // the pause row's disc
+#include "stand_in.h"  // the item records and the sprite data
+#include "fake_gl.h"
+
+using namespace gl_fake;
 
 namespace {
 
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
+// One label whose stand-in name, as laid out, is `name`.
+std::map<int, zap::Label> named(int cell, std::string name) {
+    zap::Label label;
+    label.name = std::move(name);
+    return {{cell, label}};
 }
 
-// --- a stand-in item table: 51 records of 100 bytes, records 47 and 48 as the game loads them
+// --- the stand-in game's item table, records 47 and 48 as the game loads them
 
-BYTE g_records[51 * 100];
-BYTE* g_records_ptr = g_records;
-BYTE* const g_scrap = g_records + 47 * 100;
-BYTE* const g_chunk = g_records + 48 * 100;
-
-void put16(BYTE* p, ptrdiff_t o, int16_t v) { std::memcpy(p + o, &v, 2); }
-int16_t get16(const BYTE* p, ptrdiff_t o) {
-    int16_t v;
-    std::memcpy(&v, p + o, 2);
-    return v;
-}
-
-void own_record(BYTE* r, int16_t frame, const char* name, int16_t event) {
-    put16(r, 0x00, 34);
-    put16(r, 0x02, frame);
-    put16(r, 0x04, 6);
-    put16(r, 0x06, 2);
-    r[0x08] = 0;
-    r[0x09] = 8;
-    std::memcpy(r + 0x0A, name, std::strlen(name) + 1);
-    put16(r, 0x3C, 46);
-    put16(r, 0x3E, 45);
-    put16(r, 0x40, event);
-    put16(r, 0x58, 1);
-    put16(r, 0x5A, 13);
-    put16(r, 0x60, 244);
-}
+BYTE* const g_scrap = stand_in::g_records + 47 * 100;
+BYTE* const g_chunk = stand_in::g_records + 48 * 100;
 
 void reset_records() {
-    std::memset(g_records, 0, sizeof(g_records));
-    own_record(g_scrap, 134, "SCRAP ENERGY", 3549);
-    own_record(g_chunk, 142, "SCRAP CHUNK", 3550);
+    std::memset(stand_in::g_records, 0, sizeof(stand_in::g_records));
+    own_stand_ins(stand_in::g_records);
 }
 
-std::string name(const BYTE* r = g_scrap) {
-    return std::string(reinterpret_cast<const char*>(r + 0x0A));
+BYTE* holder() { return reinterpret_cast<BYTE*>(&stand_in::g_records_ptr); }
+BYTE* sprites() { return reinterpret_cast<BYTE*>(&stand_in::g_sprite_holder); }
+
+// Both stand-ins named for one cell.
+void watch(zap::ApItems& items, BYTE* records_holder, int cell) {
+    const int cells[2] = {cell, cell};
+    items.watch(records_holder, cells);
 }
 
-// --- a fake OpenGL ---------------------------------------------------------------------------
-
-struct Upload {
-    int x, y, w, h;
-    std::vector<uint8_t> pixels;
-};
-unsigned g_bound = 3;  // the game's own binding, to be put back
-int g_width = 2048, g_unpack_buffer = 0, g_row_length = 5;
-std::vector<Upload> g_uploads;
-std::vector<unsigned> g_binds;
-
-void WINAPI fake_bind(unsigned, unsigned texture) {
-    g_binds.push_back(texture);
-    g_bound = texture;
+// Whether a painted 16 x 16 logo (RGBA) has the side-on outline: an uncolored pixel is black
+// exactly where it touches a colored one side-on or is shut in by black on all four sides (the
+// arrow logo's pixel left of the tip), else transparent: nothing from a diagonal alone.
+bool outlined(const std::vector<uint8_t>& rgba) {
+    if (rgba.size() != 16 * 16 * 4) return false;
+    auto at = [&](int x, int y) { return &rgba[(y * 16 + x) * 4]; };
+    auto clear = [&](int x, int y) { return at(x, y)[3] == 0; };
+    auto black = [&](int x, int y) {
+        const uint8_t* p = at(x, y);
+        return p[3] == 0xFF && p[0] == 0 && p[1] == 0 && p[2] == 0;
+    };
+    auto in = [](int x, int y) { return x >= 0 && x < 16 && y >= 0 && y < 16; };
+    auto colored = [&](int x, int y) { return in(x, y) && !clear(x, y) && !black(x, y); };
+    auto walled = [&](int x, int y) { return in(x, y) && black(x, y); };
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            if (colored(x, y)) continue;
+            const bool beside = colored(x - 1, y) || colored(x + 1, y) || colored(x, y - 1) ||
+                                colored(x, y + 1);
+            const bool shut_in = walled(x - 1, y) && walled(x + 1, y) && walled(x, y - 1) &&
+                                 walled(x, y + 1);
+            if (beside || shut_in ? !black(x, y) : !clear(x, y)) return false;
+        }
+    }
+    return true;
 }
-void WINAPI fake_get_integer(unsigned name, int* value) {
-    if (name == 0x8069) *value = static_cast<int>(g_bound);
-    if (name == 0x88EF) *value = g_unpack_buffer;
-    if (name == 0x0CF2) *value = g_row_length;
-    if (name == 0x0CF3 || name == 0x0CF4) *value = 0;
-}
-void WINAPI fake_level_parameter(unsigned, int, unsigned, int* value) { *value = g_width; }
-void WINAPI fake_pixel_store(unsigned name, int value) {
-    if (name == 0x0CF2) g_row_length = value;
-}
-void WINAPI fake_sub_image(unsigned, int, int x, int y, int w, int h, unsigned, unsigned,
-                           const void* pixels) {
-    auto* p = static_cast<const uint8_t*>(pixels);
-    g_uploads.push_back({x, y, w, h, std::vector<uint8_t>(p, p + w * h * 4)});
-}
-unsigned WINAPI fake_get_error() { return 0; }
-// The texture as read back: Sprites.png's known art (Scrap Energy's frame at (6, 0), glyph 0xC0
-// at (2, 1)) opaque, unless a test turns it off; the logos' places blank, unless a test puts
-// something in frame 95.
-bool g_frame95_used = false;
-bool g_known_art = true;
-int g_readbacks = 0;
-void WINAPI fake_get_tex_image(unsigned, int, unsigned, unsigned, void* pixels) {
-    ++g_readbacks;
-    auto* p = static_cast<uint8_t*>(pixels);
-    std::memset(p, 0, static_cast<size_t>(2048) * 2048 * 4);
-    if (!g_known_art) return;
-    auto opaque = [&](int x, int y) { p[(static_cast<size_t>(y) * 2048 + x) * 4 + 3] = 0xFF; };
-    opaque(128 + (134 % 8) * 16 + 6, 640 + (134 / 8) * 16);
-    opaque((0xC0 % 16) * 8 + 2, 976 + (0xC0 / 16) * 8 + 1);
-    if (g_frame95_used) opaque(128 + (95 % 8) * 16, 640 + (95 / 8) * 16);  // where the logo is not
-}
-unsigned char WINAPI fake_is_texture(unsigned texture) { return texture != 0; }
-
-zap::GlFunctions fake_gl() {
-    zap::GlFunctions gl;
-    gl.BindTexture = fake_bind;
-    gl.GetIntegerv = fake_get_integer;
-    gl.GetTexLevelParameteriv = fake_level_parameter;
-    gl.PixelStorei = fake_pixel_store;
-    gl.TexSubImage2D = fake_sub_image;
-    gl.GetError = fake_get_error;
-    gl.GetTexImage = fake_get_tex_image;
-    gl.IsTexture = fake_is_texture;
-    return gl;
-}
-
-uint32_t g_texture_object[2] = {7, 0};
-BYTE g_sprite_data[0x80];
-BYTE* g_sprite_holder = g_sprite_data;
-
-void reset_gl() {
-    std::memset(g_sprite_data, 0, sizeof(g_sprite_data));
-    *reinterpret_cast<uint32_t**>(g_sprite_data + 0x40) = g_texture_object;
-    g_texture_object[0] = 7;
-    g_bound = 3;
-    g_width = 2048;
-    g_unpack_buffer = 0;
-    g_row_length = 5;
-    g_uploads.clear();
-    g_binds.clear();
-    g_known_art = true;
-    g_frame95_used = false;
-    g_readbacks = 0;
-}
-
-BYTE* holder() { return reinterpret_cast<BYTE*>(&g_records_ptr); }
-BYTE* sprites() { return reinterpret_cast<BYTE*>(&g_sprite_holder); }
 
 // --- tests -----------------------------------------------------------------------------------
 
 void test_restyle_and_names() {
     reset_records();
     zap::ApItems items;
+    zap::TextureCheck items_check;
     BYTE before[100], before_chunk[100];
     std::memcpy(before, g_scrap, 100);
     std::memcpy(before_chunk, g_chunk, 100);
-    items.watch(holder(), 5);
+    watch(items, holder(), 5);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "nothing happens before the labels arrive");
 
-    items.set_labels({{2 * 54 + 5, "MASTER SWORD FOR ALICE"}});
-    items.watch(holder(), 2 * 54 + 5);
+    items.set_labels(named(2 * 54 + 5, "MASTER SWORD FOR ALICE"));
+    watch(items, holder(), 2 * 54 + 5);
     check(items.restyled(), "restyled");
-    check(get16(g_scrap, 0x02) == 63 && get16(g_scrap, 0x06) == 1 && g_scrap[0x08] == 0,
+    check(get<int16_t>(g_scrap, 0x02) == 63 && get<int16_t>(g_scrap, 0x06) == 1 &&
+              g_scrap[0x08] == 0,
           "the logo frame, one frame, no icon of its own (the name starts with the glyph)");
-    check(get16(g_scrap, 0x40) == -1, "no refill drop at pickup");
+    check(get<int16_t>(g_scrap, 0x40) == -1, "no refill drop at pickup");
     check(g_scrap[0x09] == 8, "Scrap Energy's own palette, whose colors the logo uses");
-    check(get16(g_scrap, 0x60) == 244 && get16(g_scrap, 0x3C) == 46, "the rest left alone");
-    check(name() == "MASTER SWORD FOR ALICE", "named for the player's cell");
-    check(get16(g_chunk, 0x02) == 95 && get16(g_chunk, 0x06) == 1 && g_chunk[0x08] == 0 &&
-              get16(g_chunk, 0x40) == -1 && name(g_chunk) == "MASTER SWORD FOR ALICE",
+    check(get<int16_t>(g_scrap, 0x60) == 244 && get<int16_t>(g_scrap, 0x3C) == 46,
+          "the rest left alone");
+    check(stand_in::record_name(47) == "MASTER SWORD FOR ALICE", "named for the player's cell");
+    check(get<int16_t>(g_chunk, 0x02) == 95 && get<int16_t>(g_chunk, 0x06) == 1 &&
+              g_chunk[0x08] == 0 && get<int16_t>(g_chunk, 0x40) == -1 &&
+              stand_in::record_name(48) == "MASTER SWORD FOR ALICE",
           "Scrap Chunk too: the arrow logo's frame, the same glyph, no refill, the same name");
-    items.watch(holder(), 7);
-    check(name() == "\xEE" "AP ITEM", "elsewhere, the glyph and the general name");
+    watch(items, holder(), 7);
+    check(stand_in::record_name(47) == "\xEE" "AP ITEM",
+          "elsewhere, the glyph and the general name");
     std::string long_name(60, 'A');
-    items.set_labels({{7, long_name}});
-    items.watch(holder(), 7);
-    check(name() == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
+    items.set_labels(named(7, long_name));
+    watch(items, holder(), 7);
+    check(stand_in::record_name(47) == std::string(49, 'A') && g_scrap[0x0A + 49] == 0,
           "a name is cut to 49 bytes and stays terminated");
 
-    items.restore(holder(), sprites(), zap::GlFunctions{});
+    items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "restore puts the whole record back");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and Scrap Chunk's");
-    check(!items.restyled() && !items.active(), "and forgets them");
+    check(!items.restyled() && items.active(), "and keeps the labels");
 }
 
 void test_one_record_not_as_expected_leaves_the_other_restyled() {
     reset_records();
-    put16(g_chunk, 0x40, 3551);  // not as traced
+    put<int16_t>(g_chunk, 0x40, 3551);  // not as traced
     BYTE before_chunk[100];
     std::memcpy(before_chunk, g_chunk, 100);
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
-    check(items.restyled() && get16(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
+    zap::TextureCheck items_check;
+    items.set_labels(named(1, "X"));
+    watch(items, holder(), 1);
+    check(items.restyled() && get<int16_t>(g_scrap, 0x02) == 63, "Scrap Energy is restyled");
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "Scrap Chunk, not as traced, is not");
-    items.restore(holder(), sprites(), zap::GlFunctions{});
+    items.restore(holder(), sprites(), zap::GlFunctions{}, items_check);
     check(std::memcmp(before_chunk, g_chunk, 100) == 0, "and restore leaves it alone too");
 }
 
 void test_records_not_as_expected_are_left_alone() {
     reset_records();
-    put16(g_scrap, 0x40, 3550);  // another build's event, say
-    put16(g_chunk, 0x40, 3551);
+    put<int16_t>(g_scrap, 0x40, 3550);  // another build's event, say
+    put<int16_t>(g_chunk, 0x40, 3551);
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
+    items.set_labels(named(1, "X"));
+    watch(items, holder(), 1);
     check(!items.restyled() && std::memcmp(before, g_scrap, 100) == 0,
           "a record not as traced is not written");
 
     BYTE* none = nullptr;
     zap::ApItems no_table;
-    no_table.set_labels({{1, "X"}});
-    no_table.watch(reinterpret_cast<BYTE*>(&none), 1);
+    no_table.set_labels(named(1, "X"));
+    watch(no_table, reinterpret_cast<BYTE*>(&none), 1);
     check(!no_table.restyled(), "no records loaded: nothing");
 }
 
@@ -224,24 +158,27 @@ void test_a_record_left_restyled_is_adopted_and_put_back() {
     BYTE before[100];
     std::memcpy(before, g_scrap, 100);
     zap::ApItems earlier;
-    earlier.set_labels({{1, "OLD NAME"}});
-    earlier.watch(holder(), 1);  // and then unloaded with no frame to restore it
+    earlier.set_labels(named(1, "OLD NAME"));
+    watch(earlier, holder(), 1);  // and then unloaded with no frame to restore it
     zap::ApItems later;
-    later.set_labels({{1, "NEW NAME"}});
-    later.watch(holder(), 1);
-    check(later.restyled() && name() == "NEW NAME", "a later helper takes it over and renames it");
-    later.restore(holder(), sprites(), zap::GlFunctions{});
+    zap::TextureCheck later_check;
+    later.set_labels(named(1, "NEW NAME"));
+    watch(later, holder(), 1);
+    check(later.restyled() && stand_in::record_name(47) == "NEW NAME",
+          "a later helper takes it over and renames it");
+    later.restore(holder(), sprites(), zap::GlFunctions{}, later_check);
     check(std::memcmp(before, g_scrap, 100) == 0, "and puts the game's own values back");
 }
 
 void test_a_reload_is_restyled_again() {
     reset_records();
     zap::ApItems items;
-    items.set_labels({{1, "X"}});
-    items.watch(holder(), 1);
+    items.set_labels(named(1, "X"));
+    watch(items, holder(), 1);
     reset_records();  // the game reloaded its records
-    items.watch(holder(), 1);
-    check(get16(g_scrap, 0x02) == 63 && name() == "X", "restyled again after a reload");
+    watch(items, holder(), 1);
+    check(get<int16_t>(g_scrap, 0x02) == 63 && stand_in::record_name(47) == "X",
+          "restyled again after a reload");
 }
 
 void test_painting() {
@@ -249,10 +186,11 @@ void test_painting() {
     reset_gl();
     zap::GlFunctions gl = fake_gl();
     zap::ApItems items;
-    items.paint(sprites(), gl, 0);
+    zap::TextureCheck items_check;
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.empty(), "nothing painted before the labels arrive");
-    items.set_labels({{1, "X"}});
-    items.paint(sprites(), gl, 0);
+    items.set_labels(named(1, "X"));
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.size() == 3, "two frames and the glyph");
     if (g_uploads.size() != 3) return;
     check(items.painted_texture() == 7, "into the sprite texture");
@@ -266,97 +204,105 @@ void test_painting() {
     bool any_opaque = false;
     for (size_t i = 3; i < g_uploads[0].pixels.size(); i += 4) any_opaque |= g_uploads[0].pixels[i] != 0;
     check(any_opaque, "the logo has pixels");
+    // The AP logo's letters in its own colors (palette 26 shows the texture's colors).
+    const std::map<char, std::vector<uint8_t>> colors = {
+        {'k', {0, 0, 0}},       {'g', {22, 113, 41}}, {'b', {53, 181, 255}}, {'r', {246, 26, 46}},
+        {'p', {249, 47, 237}},  {'o', {212, 82, 19}}, {'y', {251, 213, 127}}};
+    bool in_colors = true;
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            const uint8_t* px = &g_uploads[0].pixels[(y * 16 + x) * 4];
+            auto color = colors.find(zap::kApLogoRows[y][x]);
+            in_colors &= color == colors.end()
+                             ? px[3] == 0
+                             : std::equal(px, px + 3, color->second.begin()) && px[3] == 0xFF;
+        }
+    }
+    check(in_colors, "in its colors, the rest clear");
+    check(outlined(g_uploads[0].pixels) && outlined(g_uploads[1].pixels),
+          "both logos outlined black side-on round their circles, the middle open");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and unpack state put back");
 
     check(g_readbacks == 1, "the texture read back before the first paint");
     g_uploads.clear();
-    items.paint(sprites(), gl, 0);
+    items.paint(sprites(), gl, items_check, 0);
     check(g_uploads.empty(), "not every frame");
-    items.paint(sprites(), gl, 299);
+    items.paint(sprites(), gl, items_check, 299);
     check(g_uploads.empty(), "the arrow keeps its color for 300 ms");
-    items.paint(sprites(), gl, 300);
+    items.paint(sprites(), gl, items_check, 300);
     check(g_uploads.size() == 1 && g_uploads[0].x == 240 && g_uploads[0].y == 816,
           "then only the arrow's frame is repainted");
     std::vector<uint8_t> second = g_uploads.empty() ? std::vector<uint8_t>() : g_uploads[0].pixels;
+    auto has_white = [](const std::vector<uint8_t>& p) {
+        for (size_t i = 0; i + 3 < p.size(); i += 4) {
+            if (p[i] == 255 && p[i + 1] == 255 && p[i + 2] == 255 && p[i + 3] == 0xFF) return true;
+        }
+        return false;
+    };
+    check(has_white(second), "the arrow white in its second color");
     g_uploads.clear();
-    items.paint(sprites(), gl, 450);
+    items.paint(sprites(), gl, items_check, 450);
     check(g_uploads.empty(), "not again until the color changes");
-    items.paint(sprites(), gl, 600);
+    items.paint(sprites(), gl, items_check, 600);
     check(g_uploads.size() == 1 && g_uploads[0].pixels != second, "and back: the arrow flashes");
     check(g_bound == 3 && g_row_length == 5, "the game's state put back after an arrow repaint");
     g_uploads.clear();
 
-    // A texture whose known art is not where the PNG has it (flipped, say): never painted.
-    reset_gl();
-    g_known_art = false;
-    zap::ApItems flipped;
-    flipped.set_labels({{1, "X"}});
-    flipped.paint(sprites(), gl, 0);
-    check(g_uploads.empty() && flipped.painted_texture() == 0, "unexpected art: nothing painted");
+    // Never painted: known art not where the PNG has it, something where the arrow logo goes,
+    // another size, an unpack buffer bound (pixels would be read from it).
+    struct Case {
+        const char* what;
+        void (*spoil)();
+    };
+    const Case cases[] = {
+        {"unexpected art: nothing painted", [] { g_known_art = false; }},
+        {"frame 95 not empty: nothing painted", [] { g_frame95_used = true; }},
+        {"a texture of another size is left alone", [] { g_width = 1024; }},
+        {"an unpack buffer bound: nothing uploaded", [] { g_unpack_buffer = 9; }},
+    };
+    for (const Case& c : cases) {
+        reset_gl();
+        c.spoil();
+        zap::ApItems spoiled;
+        zap::TextureCheck spoiled_check;
+        spoiled.set_labels(named(1, "X"));
+        spoiled.paint(sprites(), gl, spoiled_check, 0);
+        check(g_uploads.empty() && spoiled.painted_texture() == 0, c.what);
+    }
 
-    // Something already where the arrow logo goes (another build's art, say): never painted.
-    reset_gl();
-    g_frame95_used = true;
-    zap::ApItems used;
-    used.set_labels({{1, "X"}});
-    used.paint(sprites(), gl, 0);
-    check(g_uploads.empty() && used.painted_texture() == 0, "frame 95 not empty: nothing painted");
-
-    // Another texture size (not the sprite sheet): nothing uploaded.
-    reset_gl();
-    g_width = 1024;
-    zap::ApItems other;
-    other.set_labels({{1, "X"}});
-    other.paint(sprites(), gl, 0);
-    check(g_uploads.empty() && other.painted_texture() == 0, "a texture of another size is left alone");
-
-    // An unpack buffer bound: pixels would be read from it, so nothing is uploaded.
-    reset_gl();
-    g_unpack_buffer = 9;
-    zap::ApItems buffered;
-    buffered.set_labels({{1, "X"}});
-    buffered.paint(sprites(), gl, 0);
-    check(g_uploads.empty(), "an unpack buffer bound: nothing uploaded");
-
-    // A menu open: the logos come off (menus draw item frames too); back in the world, they go
-    // back on at once.
+    // A menu open: the logos come off, as menus draw item frames too.
     reset_gl();
     zap::ApItems menu;
-    menu.set_labels({{1, "X"}});
-    menu.paint(sprites(), gl, 0);
+    zap::TextureCheck menu_check;
+    menu.set_labels(named(1, "X"));
+    menu.paint(sprites(), gl, menu_check, 0);
     g_uploads.clear();
-    menu.paint(sprites(), gl, 10, false);
-    bool blank = g_uploads.size() == 3;
-    for (const Upload& u : g_uploads) {
-        for (uint8_t b : u.pixels) blank &= b == 0;
-    }
-    check(blank && menu.painted_texture() == 0, "a menu clears both frames and the glyph");
+    menu.paint(sprites(), gl, menu_check, 10, false);
+    check(g_uploads.size() == 3 && all_blank(g_uploads) && menu.painted_texture() == 0,
+          "a menu clears both frames and the glyph");
     g_uploads.clear();
-    menu.paint(sprites(), gl, 20, false);
+    menu.paint(sprites(), gl, menu_check, 20, false);
     check(g_uploads.empty(), "and leaves them clear while it stays open");
-    menu.paint(sprites(), gl, 30);
+    menu.paint(sprites(), gl, menu_check, 30);
     check(g_uploads.size() == 3 && menu.painted_texture() == 7, "the world paints them again");
 
-    // Restore clears the painted pixels.
     reset_gl();
     zap::ApItems painted;
-    painted.set_labels({{1, "X"}});
-    painted.paint(sprites(), gl, 0);
+    zap::TextureCheck painted_check;
+    painted.set_labels(named(1, "X"));
+    painted.paint(sprites(), gl, painted_check, 0);
     g_uploads.clear();
-    painted.restore(holder(), sprites(), gl);
-    bool cleared = g_uploads.size() == 3;
-    for (const Upload& u : g_uploads) {
-        for (uint8_t b : u.pixels) cleared &= b == 0;
-    }
-    check(cleared, "restore clears both frames and the glyph");
+    painted.restore(holder(), sprites(), gl, painted_check);
+    check(g_uploads.size() == 3 && all_blank(g_uploads),
+          "restore clears both frames and the glyph");
 }
 
 void test_label_parser() {
     std::map<int, zap::Label> out;
     check(zap::parse_labels("ap_labels\nlabel 5 2 4d617374657220537764", out).empty(), "parses");
-    check(out.size() == 1 && out[2 * 54 + 5].name == "\xEE" "MASTER SWD" &&
-              out[2 * 54 + 5].width == 11,
-          "upper-cased, by cell, after the glyph; one line as it is");
+    check(out.size() == 1 && out[2 * 54 + 5].first == "Master Swd" &&
+              out[2 * 54 + 5].name == "\xEE" "MASTER SWD" && out[2 * 54 + 5].width == 11,
+          "by cell, kept as sent, laid out in capitals after the glyph; one line as it is");
     out.clear();
     zap::parse_labels("ap_labels\nlabel 5 2 " + std::string("4d61702057696474682626") + "0a" +
                           "466f722046696e646572",
@@ -380,7 +326,8 @@ void test_font_glyph() {
     reset_gl();
     zap::GlFunctions gl = fake_gl();
     zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
-    lock.paint(sprites(), gl);
+    zap::TextureCheck lock_check;
+    lock.paint(sprites(), gl, lock_check);
     const int x = (zap::kLockGlyph % 16) * 8, y = 976 + (zap::kLockGlyph / 16) * 8;
     check(lock.painted() && g_uploads.size() == 1 && g_uploads[0].x == x && g_uploads[0].y == y &&
               g_uploads[0].w == 8 && g_uploads[0].h == 8,
@@ -390,25 +337,244 @@ void test_font_glyph() {
               alpha(g_uploads[0], 3, 4) == 0 && alpha(g_uploads[0], 0, 6) == 0xFF,
           "drawn from its rows");
     check(g_bound == 3 && g_row_length == 5, "the game's binding and pixel store are put back");
-    lock.paint(sprites(), gl);
+    lock.paint(sprites(), gl, lock_check);
     check(g_uploads.size() == 1, "not painted again every frame");
-    lock.clear(sprites(), gl);
-    bool blank = true;
-    for (uint8_t v : g_uploads.back().pixels) blank = blank && v == 0;
-    check(!lock.painted() && g_uploads.size() == 2 && blank, "cleared");
+    lock.clear(sprites(), gl, lock_check);
+    check(!lock.painted() && g_uploads.size() == 2 && all_blank({g_uploads.back()}), "cleared");
 
     reset_gl();
     g_known_art = false;
     zap::FontGlyph other(zap::kLockGlyph, zap::kLockRows);
-    other.paint(sprites(), gl);
+    zap::TextureCheck other_check;
+    other.paint(sprites(), gl, other_check);
     check(!other.painted() && g_uploads.empty(), "a texture not as expected is left alone");
     int reads = g_readbacks;
-    for (int i = 0; i < 10; ++i) other.paint(sprites(), gl);
+    for (int i = 0; i < 10; ++i) other.paint(sprites(), gl, other_check);
     check(g_readbacks == reads, "and not read back again every frame");
 }
 
+// An image of the helper's own at a place of its own: the pause row's 24 x 24 disc.
+void test_an_image_of_its_own() {
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::FontGlyph disc(zap::kDiscX, zap::kDiscY, zap::kDiscRows);
+    zap::TextureCheck check_disc;
+    disc.paint(sprites(), gl, check_disc);
+    check(disc.painted() && g_uploads.size() == 1 && g_uploads[0].x == 128 &&
+              g_uploads[0].y == 1008 && g_uploads[0].w == 24 && g_uploads[0].h == 24,
+          "the disc goes to (128, 1008), 24 x 24");
+    auto pixel = [&](int px, int py) {
+        const uint8_t* p = &g_uploads[0].pixels[(py * 24 + px) * 4];
+        return p[0] == 0xFF && p[1] == 0xFF && p[2] == 0xFF && p[3] == 0xFF ? '#'
+               : p[3] == 0                                                ? '.'
+                                                                          : '?';
+    };
+    bool same = true;
+    for (int py = 0; py < 24; ++py) {
+        for (int px = 0; px < 24; ++px) same = same && pixel(px, py) == zap::kDiscRows[py][px];
+    }
+    check(same, "white where its rows have '#', transparent elsewhere");
+    disc.clear(sprites(), gl, check_disc);
+    check(!disc.painted() && g_uploads.size() == 2 && g_uploads[1].w == 24 &&
+              all_blank({g_uploads.back()}),
+          "cleared");
+
+    reset_gl();
+    g_disc_place_used = true;
+    zap::FontGlyph blocked(zap::kDiscX, zap::kDiscY, zap::kDiscRows);
+    zap::TextureCheck taken;
+    blocked.paint(sprites(), gl, taken);
+    check(!blocked.painted() && g_uploads.empty(), "a place not blank is left alone");
+}
+
+// An image in colors over four font glyphs: the file select's AP logo (files.h).
+void test_an_image_in_colors() {
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::FontGlyph logo(zap::kApLogoX, zap::kApLogoY, zap::kApLogoRows);
+    zap::TextureCheck check_logo;
+    logo.paint(sprites(), gl, check_logo);
+    check(logo.painted() && g_uploads.size() == 1 && g_uploads[0].x == 96 &&
+              g_uploads[0].y == 1040 && g_uploads[0].w == 16 && g_uploads[0].h == 16,
+          "the logo goes to glyphs 0x8C, 0x8D, 0x9C and 0x9D: (96, 1040), 16 x 16");
+    bool same = true;
+    for (int py = 0; py < 16; ++py) {
+        for (int px = 0; px < 16; ++px) {
+            const uint8_t* p = &g_uploads[0].pixels[(py * 16 + px) * 4];
+            uint8_t rgb[3] = {};
+            const bool opaque = zap::glyph_rgb(zap::kApLogoRows[py][px], rgb);
+            same = same && (opaque ? p[3] == 0xFF && std::memcmp(p, rgb, 3) == 0 : p[3] == 0);
+        }
+    }
+    check(same, "each pixel in its color, opaque; transparent where '.'");
+    uint8_t red[3];
+    zap::glyph_rgb('r', red);
+    check(red[0] == 246 && red[1] == 26 && red[2] == 46,
+          "the logo's red as the world's items show it");
+    // Through a new game's fade to white: repainted at once, whiter, then its colors again.
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 1, "not painted again every frame");
+    auto pixel_at = [&](int px, int py) { return &g_uploads.back().pixels[(py * 16 + px) * 4]; };
+    int red_x = static_cast<int>(std::strchr(zap::kApLogoRows[1], 'r') - zap::kApLogoRows[1]);
+    logo.set_white(128);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 2 && pixel_at(red_x, 1)[0] == 246 + (255 - 246) * 128 / 255 &&
+              pixel_at(red_x, 1)[1] == 26 + (255 - 26) * 128 / 255 && pixel_at(red_x, 1)[3] == 0xFF,
+          "half way to white, repainted at once");
+    check(pixel_at(0, 0)[3] == 0, "transparent stays transparent");
+    logo.set_white(255);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 3 && pixel_at(red_x, 1)[0] == 255 && pixel_at(red_x, 1)[1] == 255 &&
+              pixel_at(red_x, 1)[2] == 255,
+          "all white");
+    logo.set_white(0);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 4 && pixel_at(red_x, 1)[0] == 246 && pixel_at(red_x, 1)[1] == 26,
+          "its colors again");
+    g_unpack_buffer = 9;  // a repaint fails
+    logo.set_white(64);
+    logo.paint(sprites(), gl, check_logo);
+    check(g_uploads.size() == 4 && logo.painted(), "a failed repaint: the image kept as painted");
+    g_unpack_buffer = 0;
+    logo.clear(sprites(), gl, check_logo);
+    check(!logo.painted() && g_uploads.size() == 5 && all_blank({g_uploads.back()}), "cleared");
+}
+
+// Everything painted into the sprite texture shares one read of it (16 MB), until the game
+// makes the texture again.
+void test_one_readback_for_every_painter() {
+    reset_records();
+    reset_gl();
+    zap::GlFunctions gl = fake_gl();
+    zap::TextureCheck shared;
+    zap::ApItems items;
+    items.set_labels(named(1, "X"));
+    zap::FontGlyph lock(zap::kLockGlyph, zap::kLockRows);
+    zap::FontGlyph disk(zap::kDiskGlyph, zap::kDiskRows);
+    items.paint(sprites(), gl, shared, 0);
+    lock.paint(sprites(), gl, shared);
+    disk.paint(sprites(), gl, shared);
+    check(g_readbacks == 1 && items.painted_texture() == 7 && lock.painted() && disk.painted(),
+          "the logos and two glyphs painted after one readback");
+    stand_in::g_texture_object[0] = 8;  // the game made the texture again
+    lock.paint(sprites(), gl, shared);
+    disk.paint(sprites(), gl, shared);
+    check(g_readbacks == 2 && lock.painted() && disk.painted(), "a new texture is read once more");
+
+    // Another build's art in frame 95: the logos are not painted, the glyphs still are.
+    reset_gl();
+    g_frame95_used = true;
+    zap::TextureCheck taken;
+    zap::ApItems blocked;
+    blocked.set_labels(named(1, "X"));
+    zap::FontGlyph padlock(zap::kLockGlyph, zap::kLockRows);
+    blocked.paint(sprites(), gl, taken, 0);
+    padlock.paint(sprites(), gl, taken);
+    check(blocked.painted_texture() == 0 && padlock.painted() && g_readbacks == 1,
+          "a slot not blank stops only what paints there");
+}
+
+// The helper's icons in frames 0x96 to 0x98 of the translations' icon sheets (definitions 101 and
+// 104), only where the cells are blank and the game's art is where the PNG has it.
+void test_the_icon_sheets() {
+    gl_fake::reset_gl();
+    BYTE hd[0x1D8] = {}, pixel[0x1D8] = {};
+    put<int32_t>(hd, 0x1BC, 256);
+    put<int32_t>(hd, 0x1D0, static_cast<int32_t>(gl_fake::kHdSheet));
+    put<int32_t>(pixel, 0x1BC, 256);
+    put<int32_t>(pixel, 0x1D0, static_cast<int32_t>(gl_fake::kPixelSheet));
+    stand_in::g_template_list[101] = hd;
+    stand_in::g_template_list[104] = pixel;
+    BYTE* holder = reinterpret_cast<BYTE*>(&stand_in::g_sprite_templates);
+    const zap::GlFunctions gl = gl_fake::fake_gl();
+    zap::IconSheets sheets;
+    sheets.paint(holder, gl);
+    const auto& up = gl_fake::g_uploads;
+    check(up.size() == 6 && sheets.painted(), "three icons into each sheet");
+    check(up.size() == 6 && up[0].x == 6 * 64 && up[0].y == 9 * 64 && up[0].w == 64 &&
+              up[0].h == 64 && up[2].x == 8 * 64 && up[3].x == 6 * 10 && up[3].y == 9 * 9 &&
+              up[3].w == 10 && up[3].h == 9,
+          "frames 0x96 to 0x98: 64 x 64 cells in the HD sheet, 10 x 9 in the pixel one");
+    check(gl_fake::g_bound == 3 && gl_fake::g_row_length == 5, "the game's binding put back");
+    check(!gl_fake::all_blank(up), "painted, not blank");
+    // The HD disk, centered at (32, 28): its hub hole and its two shine cuts clear (up
+    // right and down left of the hub), the disc around them white and opaque.
+    const std::vector<uint8_t> disk = zap::IconSheets::art(0, 64, 64);
+    auto alpha = [&](const std::vector<uint8_t>& a, int w, int x, int y) {
+        return a[(static_cast<size_t>(y) * w + x) * 4 + 3];
+    };
+    check(alpha(disk, 64, 32, 28) == 0 && alpha(disk, 64, 43, 16) == 0 &&
+              alpha(disk, 64, 21, 39) == 0,
+          "the HD disk: its hub hole and its shine cuts clear");
+    check(alpha(disk, 64, 32, 12) == 255 && alpha(disk, 64, 32, 44) == 255 &&
+              alpha(disk, 64, 18, 28) == 255 && alpha(disk, 64, 46, 28) == 255 &&
+              disk[(12 * 64 + 32) * 4] == 255,
+          "the HD disk: a solid white disc");
+    // Each HD icon's opaque box in its cell: left, top, right, bottom.
+    auto box = [&](int k) {
+        const std::vector<uint8_t> art = zap::IconSheets::art(k, 64, 64);
+        int b[4] = {64, 64, -1, -1};
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                if (alpha(art, 64, x, y) < 128) continue;
+                b[0] = (std::min)(b[0], x), b[2] = (std::max)(b[2], x);
+                b[1] = (std::min)(b[1], y), b[3] = (std::max)(b[3], y);
+            }
+        }
+        return std::to_string(b[0]) + "," + std::to_string(b[1]) + " to " +
+               std::to_string(b[2]) + "," + std::to_string(b[3]);
+    };
+    // The HD padlock from the text's cap height (y 6) to its baseline (y 46), a gap in; the disk
+    // and the logo in the game's own icons' box, x 10 to 54, y 6 to 50.
+    check(box(1) == "16,6 to 49,45", "the HD padlock on the text's line", box(1));
+    check(box(0) == "10,6 to 53,49", "the HD disk the game's icons' size", box(0));
+    check(box(2) == "12,6 to 51,49", "the HD logo the game's icons' size", box(2));
+    const std::vector<uint8_t> lock = zap::IconSheets::art(1, 10, 9);
+    check(alpha(lock, 10, 1 + 3, 0) == 255 && alpha(lock, 10, 0, 0) == 0,
+          "the pixel padlock: the 8 x 8 glyph a column in");
+    gl_fake::g_uploads.clear();
+    sheets.paint(holder, gl);
+    check(gl_fake::g_uploads.empty(), "not every frame");
+    // Each sheet's icons made once (the HD ones take milliseconds): a repaint makes none.
+    const int made = zap::IconSheets::arts_made();
+    for (int frame = 0; frame < 301; ++frame) sheets.paint(holder, gl);
+    check(gl_fake::g_uploads.size() == 6 && zap::IconSheets::arts_made() == made,
+          "painted again after a while, its icons not made again");
+    gl_fake::g_uploads.clear();
+    sheets.clear(holder, gl);
+    check(gl_fake::g_uploads.size() == 6 && gl_fake::all_blank(gl_fake::g_uploads) &&
+              !sheets.painted(),
+          "cleared");
+
+    for (int k = 0; k < 2; ++k) {
+        gl_fake::reset_gl();
+        if (k == 0) gl_fake::g_icon_cell_used = true;
+        if (k == 1) gl_fake::g_known_art = false;
+        zap::IconSheets other;
+        other.paint(holder, gl);
+        check(gl_fake::g_uploads.empty() && !other.painted(),
+              k == 0 ? "a cell the game uses: not painted" : "not the game's art: not painted");
+        // Read again now and then, three times a texture at most (each read is the whole sheet).
+        for (int frame = 0; frame < 5 * 301; ++frame) other.paint(holder, gl);
+        check(gl_fake::g_readbacks == 2 * 3, "three reads of each sheet, then no more");
+    }
+    // No sheet (a template not of 256 frames): nothing.
+    gl_fake::reset_gl();
+    put<int32_t>(hd, 0x1BC, 12);
+    stand_in::g_template_list[104] = nullptr;
+    zap::IconSheets none;
+    none.paint(holder, gl);
+    check(gl_fake::g_uploads.empty(), "no sheet as traced: nothing painted");
+    stand_in::g_template_list[101] = nullptr;
+    gl_fake::reset_gl();
+}
+
 int main() {
+    test_the_icon_sheets();
     test_font_glyph();
+    test_an_image_of_its_own();
+    test_an_image_in_colors();
+    test_one_readback_for_every_painter();
     test_restyle_and_names();
     test_one_record_not_as_expected_leaves_the_other_restyled();
     test_records_not_as_expected_are_left_alone();
@@ -416,6 +582,5 @@ int main() {
     test_a_reload_is_restyled_again();
     test_painting();
     test_label_parser();
-    if (g_failures == 0) std::printf("apitem tests: all passed%c", 10);
-    return g_failures == 0 ? 0 : 1;
+    return report("apitem tests");
 }

@@ -1,6 +1,5 @@
-// Host tests for the title screen's mod lines (title.h): a stand-in draw list holding the
-// game's copyright line, and stand-ins for the game's text constructor, layout and glyph link
-// that build and link objects with the fields the helper reads, as traced on B1.
+// Host tests for the title screen's mod lines (title.h): a stand-in draw list with the game's
+// copyright line, and stand-ins of the game's text functions as traced on B1.
 
 #include <windows.h>
 
@@ -10,30 +9,12 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
+#include "stand_in.h"
 #include "title.h"
+#include "translation.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-template <typename T>
-T get(const BYTE* b, ptrdiff_t o) {
-    T v;
-    std::memcpy(&v, b + o, sizeof(v));
-    return v;
-}
-
-template <typename T>
-void set(BYTE* b, ptrdiff_t o, T v) {
-    std::memcpy(b + o, &v, sizeof(v));
-}
 
 constexpr int kFrames = 256;
 std::vector<std::unique_ptr<BYTE[]>> g_blocks;
@@ -42,6 +23,7 @@ BYTE g_list[0x30];
 BYTE* g_layer = g_list;
 int g_made = 0;
 bool g_client = false;
+uint8_t g_menu = 0;  // menu_state: 0 on the idle title, 3 with the file select up
 BYTE g_palette[8], g_tag[8];
 
 BYTE* block(size_t size) {
@@ -51,33 +33,38 @@ BYTE* block(size_t size) {
 }
 
 void frame(BYTE* g, int32_t f) {
-    set<int32_t>(g, 0x1C4, f);
-    set<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
+    put<int32_t>(g, 0x1C4, f);
+    put<BYTE*>(g, 0x1B0, g_frames + f * 0x38);
 }
 
 BYTE* text_new(const char* chars, int length, int columns) {
     ++g_made;
     BYTE* t = block(0x268);
-    set<int32_t>(t, 0x1D8, length);
-    set<int32_t>(t, 0x1DC, columns);
-    set<int32_t>(t, 0x1EC, length);
+    put<int32_t>(t, 0x1D8, length);
+    put<int32_t>(t, 0x1DC, columns);
+    put<int32_t>(t, 0x1EC, length);
     auto** glyphs = reinterpret_cast<BYTE**>(block(sizeof(BYTE*) * length));
     for (int i = 0; i < length; ++i) {
         BYTE* g = block(0x1D8);
-        set<BYTE*>(g, 0x1A8, g_frames);
-        set<int32_t>(g, 0x1BC, kFrames);
-        set<int32_t>(g, 0x1D0, 0x15);
+        put<BYTE*>(g, 0x1A8, g_frames);
+        put<int32_t>(g, 0x1BC, kFrames);
+        put<int32_t>(g, 0x1D0, 0x15);
         frame(g, static_cast<uint8_t>(chars[i]));
         glyphs[i] = g;
     }
-    set<BYTE**>(t, 0x228, glyphs);
+    put<BYTE**>(t, 0x228, glyphs);
+    // Room for translated text, three glyphs a pixel glyph (0x92511), none built yet.
+    auto** translated = reinterpret_cast<BYTE**>(block(sizeof(BYTE*) * 3 * length));
+    for (int i = 0; i < 3 * length; ++i) translated[i] = block(0x1D8);
+    put<BYTE**>(t, 0x238, translated);
+    put<int32_t>(t, 0x240, 3 * length);
     return t;
 }
 
 void text_place(void* text, int x, int y) {
     auto* t = static_cast<BYTE*>(text);
-    set<double>(t, 0x40, x);
-    set<double>(t, 0x48, y);
+    put<double>(t, 0x40, x);
+    put<double>(t, 0x48, y);
 }
 
 // As 0xA8620: each glyph not in a list right after the text.
@@ -89,63 +76,67 @@ void text_link(void* text) {
         BYTE* g = glyphs[i];
         if (get<BYTE*>(g, 0) != nullptr) continue;
         BYTE* next = get<BYTE*>(t, 0x10);
-        if (next != nullptr) set<BYTE*>(next, 0x18, g);
-        set<BYTE*>(g, 0x10, next);
-        set<BYTE*>(t, 0x10, g);
-        set<BYTE*>(g, 0x18, t);
-        if (next == nullptr) set<BYTE*>(list, 0x20, g);
-        set<BYTE*>(g, 0, list);
+        if (next != nullptr) put<BYTE*>(next, 0x18, g);
+        put<BYTE*>(g, 0x10, next);
+        put<BYTE*>(t, 0x10, g);
+        put<BYTE*>(g, 0x18, t);
+        if (next == nullptr) put<BYTE*>(list, 0x20, g);
+        put<BYTE*>(g, 0, list);
     }
 }
 
 void append(BYTE* t) {
     BYTE* tail = get<BYTE*>(g_list, 0x20);
     if (tail != nullptr) {
-        set<BYTE*>(tail, 0x10, t);
+        put<BYTE*>(tail, 0x10, t);
     } else {
-        set<BYTE*>(g_list, 0x18, t);
+        put<BYTE*>(g_list, 0x18, t);
     }
-    set<BYTE*>(t, 0x18, tail);
-    set<BYTE*>(t, 0x10, nullptr);
-    set<BYTE*>(g_list, 0x20, t);
-    set<BYTE*>(t, 0, g_list);
+    put<BYTE*>(t, 0x18, tail);
+    put<BYTE*>(t, 0x10, nullptr);
+    put<BYTE*>(g_list, 0x20, t);
+    put<BYTE*>(t, 0, g_list);
 }
 
 BYTE* glyph(BYTE* t, int i) { return get<BYTE**>(t, 0x228)[i]; }
 
-// The title as the game's routine leaves it: the copyright line, after something else.
-BYTE* reset_title() {
+// The title as the game's routine leaves it: the copyright line (returned), after something
+// else; without `copyright`, only that something else (null returned).
+BYTE* reset_title(bool copyright = true) {
     std::memset(g_list, 0, sizeof(g_list));
     g_made = 0;
     BYTE* other = text_new("PUSH ANY KEY", 12, 32);
     append(other);
     text_link(other);
+    g_made = 0;
+    if (!copyright) return nullptr;
     BYTE* line = text_new("C2025 GALLANT LEAF", 18, 32);
     append(line);
     text_link(line);
     for (int i = 0; i < 18; ++i) {
         BYTE* g = glyph(line, i);
         g[0x120] = 1;
-        set<BYTE*>(g, 0x198, g_palette);
-        set<int16_t>(g, 0x1A0, 0x1A);
+        put<BYTE*>(g, 0x198, g_palette);
+        put<int16_t>(g, 0x1A0, 0x1A);
     }
     frame(glyph(line, 0), 0xA9);
-    set<BYTE*>(line, 0x178, g_tag);
-    set<int16_t>(line, 0x180, 0x79);
+    put<BYTE*>(line, 0x178, g_tag);
+    put<int16_t>(line, 0x180, 0x79);
     g_made = 0;
     return line;
 }
 
-zap::TitleAddresses addresses() {
-    zap::TitleAddresses a;
+zap::GameAddresses addresses() {
+    zap::GameAddresses a;
     a.draw_layer = reinterpret_cast<BYTE*>(&g_layer);
-    a.text_new_fn = reinterpret_cast<void*>(&text_new);
-    a.text_place_fn = reinterpret_cast<void*>(&text_place);
-    a.text_link_fn = reinterpret_cast<void*>(&text_link);
+    a.text_new_fn = reinterpret_cast<BYTE*>(&text_new);
+    a.text_place_fn = reinterpret_cast<BYTE*>(&text_place);
+    a.text_link_fn = reinterpret_cast<BYTE*>(&text_link);
+    a.menu_state = &g_menu;
     return a;
 }
 
-// Runs the watch past its frame count, so it looks once.
+// Nine frame calls: one look (title.cpp looks every 9th).
 std::string look(zap::TitleLines& lines) {
     std::string why;
     for (int i = 0; i < 9; ++i) {
@@ -219,7 +210,6 @@ void test_lines_are_made_under_the_copyright() {
     check(get<BYTE*>(credit, 0x178) == g_tag && get<int16_t>(credit, 0x180) == 0x79,
           "the game line's tag");
     check(get<int32_t>(mod, 0x1E4) == -1, "as the routine sets +0x1E4");
-    // Every object in the list owned by it, linked both ways.
     std::vector<BYTE*> all = objects();
     bool linked = get<BYTE*>(g_list, 0x20) == all.back();
     for (size_t i = 0; i < all.size(); ++i) {
@@ -232,11 +222,7 @@ void test_lines_are_made_under_the_copyright() {
 }
 
 void test_nothing_without_the_copyright_line() {
-    std::memset(g_list, 0, sizeof(g_list));
-    g_made = 0;
-    BYTE* other = text_new("PUSH ANY KEY", 12, 32);
-    append(other);
-    g_made = 0;
+    reset_title(false);
     zap::TitleLines lines;
     lines.set_version("0.22.0");
     look(lines);
@@ -279,8 +265,6 @@ void test_a_new_title_gets_new_lines() {
     check(g_made == 3 && find("ARCHIPELAGO MOD 0.22.0", false) != nullptr, "made for the new title");
 }
 
-}  // namespace
-
 void test_the_hint_only_without_a_client() {
     reset_title();
     zap::TitleLines lines;
@@ -296,12 +280,250 @@ void test_the_hint_only_without_a_client() {
     check(hint != nullptr && all_visible(hint, true), "the client gone: the hint shown");
 }
 
+// English(HD): the version's line and the hint built in its font, in mixed case, centered,
+// their pixel glyphs hidden; the credit in pixels; back to pixels in another language.
+void test_the_lines_in_english_hd() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    reset_title();
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    auto watch = [&](bool hd) {
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+    };
+    watch(true);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    BYTE* hint = find("START THE AP CLIENT TO PLAY A SEED", false);
+    BYTE* credit = find("C2026 MCAWFUL", true);
+    if (mod == nullptr || hint == nullptr || credit == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    auto built = [](const std::wstring& text) {
+        for (const auto& b : stand_in::g_builds) {
+            if (b.text == text) return true;
+        }
+        return false;
+    };
+    check(built(L"Archipelago Mod 1.0.0") && built(L"Start the AP client to play a seed"),
+          "both built in mixed case");
+    check(!built(L"C2026 MCAWFUL") && all_visible(credit, true), "the credit left in pixels");
+    auto translated_shown = [](BYTE* t, bool visible) {
+        auto** list = get<BYTE**>(t, 0x238);
+        const int32_t n = get<int32_t>(t, 0x248);
+        for (int32_t i = 0; i < n; ++i) {
+            if ((list[i][0x120] != 0) != visible) return false;
+        }
+        return n > 0;
+    };
+    check(all_visible(mod, false) && all_visible(hint, false) && translated_shown(mod, true) &&
+              translated_shown(hint, true),
+          "their translated text shown, their pixel glyphs hidden");
+    const size_t builds = stand_in::g_builds.size();
+    g_client = true;
+    watch(true);
+    check(translated_shown(hint, false) && translated_shown(mod, true) &&
+              stand_in::g_builds.size() == builds,
+          "a client: the hint hidden, nothing built again");
+    g_client = false;
+    // A menu opening on the title hides every glyph of the HD list (its builder): the lines
+    // shown again at the next frame call, each time, not at the next 9th.
+    auto hide_translated = [](BYTE* t) {
+        auto** list = get<BYTE**>(t, 0x238);
+        for (int32_t i = 0; i < get<int32_t>(t, 0x248); ++i) list[i][0x120] = 0;
+    };
+    bool back = true;
+    for (int i = 0; i < 3; ++i) {
+        hide_translated(mod);
+        lines.watch(a, g_client, true);
+        back = back && translated_shown(mod, true);
+    }
+    check(back, "hidden by a menu's builder: shown again at the next frame call, each time");
+    lines.watch(a, g_client, false);  // another language picked: one frame call
+    check(all_visible(mod, true) && all_visible(hint, true) && translated_shown(mod, false),
+          "another language: the pixel lines again, in the same frame call");
+    lines.watch(a, g_client, false);  // a frame call later, its next look 8 calls away
+    const size_t before = stand_in::g_builds.size();
+    lines.watch(a, g_client, true);  // English(HD) again
+    check(stand_in::g_builds.size() > before && translated_shown(mod, true) &&
+              all_visible(mod, false),
+          "English(HD) again: built again with the translation loaded now, in the same frame "
+          "call");
+    stand_in::reset_translation();
+}
+
+// The game's menus open over the title with its line still shown, and the HD list is drawn over
+// them: the translated lines are hidden while a menu is open, shown again on the title.
+void test_the_hd_lines_off_the_title() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    BYTE* line = reset_title();
+    g_menu = 0;
+    g_client = false;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    for (int i = 0; i < 9; ++i) lines.watch(a, g_client, true);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    BYTE* hint = find("START THE AP CLIENT TO PLAY A SEED", false);
+    BYTE* credit = find("C2026 MCAWFUL", true);
+    if (mod == nullptr || hint == nullptr || credit == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    auto translated_shown = [](BYTE* t, bool visible) {
+        auto** list = get<BYTE**>(t, 0x238);
+        const int32_t n = get<int32_t>(t, 0x248);
+        for (int32_t i = 0; i < n; ++i) {
+            if ((list[i][0x120] != 0) != visible) return false;
+        }
+        return n > 0;
+    };
+    auto hide_translated = [](BYTE* t) {
+        auto** list = get<BYTE**>(t, 0x238);
+        for (int32_t i = 0; i < get<int32_t>(t, 0x248); ++i) list[i][0x120] = 0;
+    };
+    const size_t builds = stand_in::g_builds.size();
+    auto none_shown = [&] {
+        return translated_shown(mod, false) && translated_shown(hint, false) &&
+               all_visible(mod, false) && all_visible(hint, false) &&
+               get<int32_t>(mod, 0x244) == get<int32_t>(mod, 0x248) &&
+               get<int32_t>(hint, 0x244) == get<int32_t>(hint, 0x248);
+    };
+    auto title_shown = [&](bool hint_too) {
+        return translated_shown(mod, true) && translated_shown(hint, hint_too) &&
+               all_visible(mod, false) && all_visible(hint, false);
+    };
+    check(title_shown(true), "on the title: both shown");
+    g_menu = 3;  // Option: its builder hides the HD list, the © stays shown
+    hide_translated(mod);
+    hide_translated(hint);
+    bool hidden = true;
+    for (int i = 0; i < 9; ++i) {
+        lines.watch(a, g_client, true);
+        hidden = hidden && none_shown();
+    }
+    check(hidden, "Option open: hidden every frame call, their count kept");
+    check(all_visible(credit, true), "the credit in pixels follows the game's line, as before");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "back on the title: shown at the next frame call");
+    g_menu = 3;  // the file select: the same, without the builder's hide
+    lines.watch(a, g_client, true);
+    check(none_shown(), "the file select: hidden at once");
+    g_client = true;
+    for (int i = 0; i < 9; ++i) lines.watch(a, g_client, true);
+    check(none_shown(), "a client connecting on the file select: still hidden");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    check(title_shown(false), "back on the title with a client: the version only");
+    g_client = false;
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "the client gone: the hint again");
+    check(stand_in::g_builds.size() == builds, "nothing built again on the way");
+    zap::GameAddresses unread = a;
+    unread.menu_state = nullptr;
+    lines.watch(unread, g_client, true);
+    check(none_shown() && all_visible(credit, true), "menu_state unreadable: hidden");
+    lines.watch(a, g_client, true);
+    check(title_shown(true), "readable again: shown");
+    BYTE* before = get<BYTE*>(line, 0x18);  // the game's line taken out of the list
+    BYTE* after = get<BYTE*>(glyph(line, 17), 0x10);
+    put<BYTE*>(before, 0x10, after);
+    if (after != nullptr) put<BYTE*>(after, 0x18, before);
+    lines.watch(a, g_client, true);
+    check(none_shown() && !lines.shown(), "the game's line gone: hidden");
+    stand_in::reset_translation();
+}
+
+// English(HD) picked under Option: the lines built and hidden in the same frame call.
+void test_english_hd_picked_under_a_menu() {
+    stand_in::reset_translation();
+    stand_in::load_translation("English(HD)", true);
+    zap::GameAddresses a = addresses();
+    stand_in::with_translation(a);
+    reset_title();
+    g_client = false;
+    g_menu = 0;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    look(lines);  // the default English: pixel lines
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    if (mod == nullptr) {
+        check(false, "the lines made");
+        return;
+    }
+    g_menu = 3;
+    lines.watch(a, g_client, true);
+    auto** list = get<BYTE**>(mod, 0x238);
+    const int32_t n = get<int32_t>(mod, 0x248);
+    bool hidden = n > 0 && all_visible(mod, false);
+    for (int32_t i = 0; i < n; ++i) hidden = hidden && list[i][0x120] == 0;
+    check(hidden, "picked under a menu: built and hidden in the same frame call");
+    g_menu = 0;
+    lines.watch(a, g_client, true);
+    bool shown = n > 0;
+    for (int32_t i = 0; i < n; ++i) shown = shown && list[i][0x120] != 0;
+    check(shown, "the menu closed: shown");
+    stand_in::reset_translation();
+}
+
+// A menu already open over the title when the helper is first configured: no lines made until
+// it closes.
+void test_no_lines_made_under_a_menu() {
+    for (bool hd : {false, true}) {
+        stand_in::reset_translation();
+        zap::GameAddresses a = addresses();
+        if (hd) {
+            stand_in::load_translation("English(HD)", true);
+            stand_in::with_translation(a);
+        }
+        reset_title();
+        g_client = false;
+        g_menu = 3;
+        zap::TitleLines lines;
+        lines.set_version("1.0.0");
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        check(g_made == 0 && !lines.shown(),
+              hd ? "English(HD), a menu open: nothing made" : "a menu open: nothing made");
+        g_menu = 0;
+        for (int i = 0; i < 9; ++i) lines.watch(a, g_client, hd);
+        BYTE* credit = find("C2026 MCAWFUL", true);
+        check(g_made == 3 && lines.shown() && credit != nullptr && all_visible(credit, true),
+              hd ? "English(HD), the menu closed: made" : "the menu closed: made");
+    }
+    stand_in::reset_translation();
+}
+
+// The default English keeps its rule: the lines follow the game's ©, a menu open or not.
+void test_the_default_english_ignores_menus() {
+    reset_title();
+    g_client = false;
+    zap::TitleLines lines;
+    lines.set_version("1.0.0");
+    look(lines);
+    BYTE* mod = find("ARCHIPELAGO MOD 1.0.0", false);
+    g_menu = 3;
+    look(lines);
+    check(mod != nullptr && all_visible(mod, true), "a menu open: shown with the game's line");
+    g_menu = 0;
+}
+
+}  // namespace
+
 int main() {
+    test_the_lines_in_english_hd();
+    test_the_hd_lines_off_the_title();
+    test_english_hd_picked_under_a_menu();
+    test_no_lines_made_under_a_menu();
+    test_the_default_english_ignores_menus();
     test_the_hint_only_without_a_client();
     test_lines_are_made_under_the_copyright();
     test_nothing_without_the_copyright_line();
     test_hidden_and_shown_with_the_copyright();
     test_a_new_title_gets_new_lines();
-    if (g_failures == 0) std::printf("title tests: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("title tests");
 }

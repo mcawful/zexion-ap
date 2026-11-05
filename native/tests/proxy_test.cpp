@@ -3,32 +3,16 @@
 
 #include <windows.h>
 
-#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
-namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        std::printf("FAIL: %s\n", what);
-        ++g_failures;
-    }
-}
-
-std::wstring widen(const char* s) {
-    std::wstring out;
-    for (; *s != '\0'; ++s) out += static_cast<wchar_t>(*s == '/' ? '\\' : *s);
-    return out;
-}
-
-}  // namespace
+#include "check.h"
 
 int main() {
-    std::wstring proxy_path = widen(ZAP_PROXY_PATH);
+    // With backslashes, which LoadLibraryW needs (CMake gives forward slashes).
+    std::wstring proxy_path = std::filesystem::path(ZAP_PROXY_PATH).make_preferred().wstring();
     wchar_t sys[MAX_PATH];
     GetSystemDirectoryW(sys, MAX_PATH);
     std::wstring real_path = std::wstring(sys) + L"\\version.dll";
@@ -65,7 +49,7 @@ int main() {
               fixed != nullptr && fixed->dwSignature == 0xFEEF04BD,
           "and queried");
 
-    // The forwarders of the real one, kept as forwarders.
+    // VerLanguageNameW (a forwarder to KERNEL32) works through the proxy.
     using LangW = DWORD(WINAPI*)(DWORD, LPWSTR, DWORD);
     auto lang = reinterpret_cast<LangW>(GetProcAddress(proxy, "VerLanguageNameW"));
     wchar_t name[64] = {};
@@ -76,9 +60,8 @@ int main() {
           "the ordinals kept");
 
     // Not Zexion.exe: no helper, whatever is beside it.
-    Sleep(200);
+    Sleep(200);  // time for the proxy's loader thread to run (and load nothing)
     check(GetModuleHandleW(L"zexion_ap.dll") == nullptr, "no helper outside the game");
 
-    if (g_failures == 0) std::printf("proxy test: all passed\n");
-    return g_failures == 0 ? 0 : 1;
+    return report("proxy test");
 }

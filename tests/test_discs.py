@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import struct
 
-import discs
+import fakes
+import pytest
+
+from client import discs, ids
 
 SLOT = {
     "goal": "os_install_disks",
@@ -17,7 +20,15 @@ SLOT = {
 
 def test_the_core_goal_has_no_hunt() -> None:
     assert discs.from_slot_data({"goal": "core"}) is None
-    assert discs.from_slot_data({}) is None  # a world from before the option
+
+
+def test_a_goal_the_client_does_not_know_is_refused() -> None:
+    with pytest.raises(KeyError):
+        discs.from_slot_data({})
+    with pytest.raises(ValueError, match="'boss'"):
+        discs.from_slot_data({"goal": "boss"})
+    with pytest.raises(KeyError):
+        discs.from_slot_data({k: v for k, v in SLOT.items() if k != "disc_locations"})
 
 
 def test_the_hunt_comes_from_slot_data() -> None:
@@ -34,126 +45,287 @@ def test_owned_counts_received_own_checked_and_starting_discs() -> None:
 
 def test_before_the_scanner_the_popups_give_the_count_alone() -> None:
     hunt = discs.from_slot_data(SLOT)
-    assert discs.note(2) == "OS INSTALL DISK 2"
-    assert discs.received_notes(hunt, [44], [], told=False) == {0: "OS INSTALL DISK 1"}
+    assert discs.note(2) == "OS Install Disk 2"
+    assert discs.received_notes(hunt, [44], [], told=False) == {0: "OS Install Disk 1"}
 
 
 def test_received_discs_count_up_in_their_popups() -> None:
     hunt = discs.from_slot_data(SLOT)
     notes = discs.received_notes(hunt, [44, 0, 44, 44], [40])
     assert notes == {
-        0: "OS INSTALL DISK 2 OF 3",
-        2: "OS INSTALL DISK 3 OF 3",
-        3: "OS INSTALL DISK 4 OF 3",
+        0: "OS Install Disk 2 of 3",
+        2: "OS Install Disk 3 of 3",
+        3: "OS Install Disk 4 of 3",
     }
 
 
 def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
-    assert discs.request(2, 3) == "discs 2 3 " + b"COLLECT 3 OS INSTALL DISKS!".hex() + " 1"
+    assert discs.request(2, 3) == "discs 2 3 " + b"Collect 3 OS Install Disks!".hex() + " 1"
     assert discs.request(2, 3, told=False).endswith(" 0")
     assert discs.OFF == "discs"
 
 
 def test_seed_slots_are_randomizer_saves_holding_this_seed() -> None:
-    import save_patch
-
-    plan = save_patch.SeedPlan(
-        location_items=[46] * 154,
-        start_items={},
-        start=(6, 191, 329),
-        second_start=None,
-        amounts=None,
-        options={},
-    )
-    ours = bytearray(discs.SLOT_COPY)
+    plan = fakes.plan(location_items=(46,) * 154, start_items={}, start=(6, 191, 329))
+    ours = bytearray(ids.SECTION_SIZE)
     ours[0x26C : 0x26C + 154] = bytes(plan.location_items)
     ours[0x310:0x316] = bytes.fromhex("0600bf004901")
-    other = bytearray(discs.SLOT_COPY)
-    copies = bytes(ours) + bytes(ours) + bytes(ours) + bytes(other) + bytes(discs.SLOT_COPY) * 26
+    other = bytearray(ids.SECTION_SIZE)
+    copies = bytes(ours) + bytes(ours) + bytes(ours) + bytes(other) + bytes(ids.SECTION_SIZE) * 26
     markers = [(1, True), (0, True), (1, False), (1, True)] + [(0, False)] * 26
     # Slot 1 ours; 2 a normal save over a stale copy; 3 empty; 4 another seed.
     assert discs.seed_slots(markers, copies, plan) == [1]
 
 
 def test_the_slots_request() -> None:
-    assert discs.slots_request(3, 15, [4, 5]) == "disk_slots 3 15 4,5"
-    assert discs.slots_request(3, 15, []) == "disk_slots 3 15 -"
+    assert discs.slots_request(3, [4, 5]) == "disk_slots 3 4,5"
+    assert discs.slots_request(3, []) == "disk_slots 3 -"
     assert discs.SLOTS_OFF == "disk_slots"
 
 
 def test_the_scanner_line_fits_one_line_of_the_game_text() -> None:
-    assert discs.scan_line(15) == "COLLECT 15 OS INSTALL DISKS!"
-    assert discs.scan_line(1) == "COLLECT 1 OS INSTALL DISK!"
+    assert discs.scan_line(15) == "Collect 15 OS Install Disks!"
+    assert discs.scan_line(1) == "Collect 1 OS Install Disk!"
     assert len(discs.scan_line(41)) <= 31
 
 
-def stamp(time: int, column: int, row: int, slot: int = 3) -> bytes:
-    """A save stamp as game.Game.save_stamp reads it: the slot, then the block from +0x9354."""
-    return struct.pack("<iHHHHH", slot, time, 0, 0, row, column)
+def stamp(time: int, column: int, row: int, slot: int = 3, deaths: int = 0) -> bytes:
+    """A save stamp as game.Game.save_stamp reads it: the slot, then the block from +0x9354,
+    then its death count."""
+    return struct.pack("<iHHHHHI", slot, time, 0, 0, row, column, deaths)
 
 
-def start_blob(column: int, row: int) -> bytes:
-    blob = bytearray(0x908)
-    struct.pack_into("<hhh", blob, discs.START_AT, 6, column, row)
-    return bytes(blob)
+def test_saved_at_home_compares_the_continue_point_with_the_landing_pod() -> None:
+    # The live26 save: a save at the pod (191, 329); one at (151, 464) elsewhere.
+    assert discs.saved_at_home(stamp(39567, 191, 329))
+    assert not discs.saved_at_home(stamp(36589, 151, 464))
+    assert not discs.saved_at_home(b"")
 
 
-def test_saved_at_start_compares_the_continue_point_with_the_start() -> None:
-    # The live26 save, read 2026-10-25: the start (191, 329); a save at (151, 464) elsewhere.
-    blob = start_blob(191, 329)
-    assert discs.saved_at_start(stamp(39567, 191, 329), blob)
-    assert not discs.saved_at_start(stamp(36589, 151, 464), blob)
-    assert not discs.saved_at_start(b"", blob)
+def test_home_is_the_landing_pod_whichever_room_the_seed_starts_in() -> None:
+    # A seed starting in the save room at (23, 22) (tiles 333, 449): a save there is not home;
+    # its start record is not read at all.
+    assert discs.HOME == (191, 329)
+    assert not discs.saved_at_home(stamp(100, 333, 449))
+    assert discs.saved_at_home(stamp(200, 191, 329))
 
 
-def test_the_reminder_comes_once_with_enough_disks() -> None:
-    home = discs.ReturnHome()
-    assert not home.remind(False)
-    assert home.remind(True)
-    home.reminded = True
-    assert not home.remind(True)
-
-
-def test_the_start_cell_is_the_records_row_and_column_in_cells() -> None:
+def test_the_home_cell_is_the_pods_row_and_column_in_cells() -> None:
     # (191, 329): cell (13, 16) in this repo's (x, y), which the player state holds as 16, 13.
-    assert discs.start_cell(start_blob(191, 329)) == (16, 13)
+    assert discs.HOME_CELL == (16, 13)
+
+
+def test_the_mission_request_gives_the_helper_home() -> None:
+    assert discs.MISSION_REQUEST == "mission_prompt 191 329"
 
 
 def test_return_home_is_offered_after_a_save_at_the_pod_only() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329), True, True, True)
+    home.see(stamp(100, 191, 329), True, True, True, True)
     assert not home.offer  # loaded at the pod: not a save
-    home.see(stamp(100, 191, 329), True, True, True)
+    home.see(stamp(100, 191, 329), True, True, True, True)
     assert not home.offer  # nothing new
-    home.see(stamp(200, 151, 464), False, True, False)
+    home.see(stamp(200, 151, 464), True, False, True, False)
     assert not home.offer  # saved elsewhere
-    home.see(stamp(300, 191, 329), True, False, True)
+    home.see(stamp(300, 191, 329), True, True, False, True)
     assert not home.offer  # saved at the pod without enough disks
-    home.see(stamp(400, 191, 329), True, True, True)
+    home.see(stamp(400, 191, 329), True, True, True, True)
     assert home.offer  # saved at the pod with enough
     home.offer = False  # the prompt queued (NO plays on)
-    home.see(stamp(400, 191, 329), True, True, True)
+    home.see(stamp(400, 191, 329), True, True, True, True)
     assert not home.offer
-    home.see(stamp(500, 191, 329), True, True, True)
+    home.see(stamp(500, 191, 329), True, True, True, True)
     assert home.offer  # the next save there offers it again
 
 
-def test_a_save_away_from_the_start_cell_offers_nothing() -> None:
+def test_a_save_away_from_the_pods_cell_offers_nothing() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329), True, True, False)
+    home.see(stamp(100, 191, 329), True, True, True, False)
     # The game's own save in the escape keeps the pod as the continue point.
-    home.see(stamp(200, 191, 329), True, True, False)
+    home.see(stamp(200, 191, 329), True, True, True, False)
     assert not home.offer
-    home.see(stamp(300, 191, 329), True, True, True)
+    home.see(stamp(300, 191, 329), True, True, True, True)
     assert home.offer
-    home.see(stamp(300, 191, 329), True, True, False)
+    home.see(stamp(300, 191, 329), True, True, True, False)
     assert not home.offer  # left the cell before the prompt came: it lapses
 
 
 def test_another_slot_is_not_a_save() -> None:
     home = discs.ReturnHome()
-    home.see(stamp(100, 191, 329, slot=3), True, True, True)
-    home.see(stamp(900, 191, 329, slot=5), True, True, True)
+    home.see(stamp(100, 191, 329, slot=3), True, True, True, True)
+    home.see(stamp(900, 191, 329, slot=5), True, True, True, True)
     assert not home.offer  # another save of the seed loaded at its pod
-    home.see(stamp(950, 191, 329, slot=5), True, True, True)
+    home.see(stamp(950, 191, 329, slot=5), True, True, True, True)
     assert home.offer
+
+
+def test_the_stamp_holds_the_death_count() -> None:
+    assert discs.deaths(stamp(100, 191, 329, deaths=7)) == 7
+    assert discs.deaths(stamp(100, 191, 329)[:14]) is None  # a stamp without one
+
+
+POD = (191, 329)
+
+
+def at_pod(time: int, deaths: int = 0) -> bytes:
+    """The stamp of a save whose continue point is the pod."""
+    return stamp(time, *POD, deaths=deaths)
+
+
+def test_a_death_respawning_the_player_at_the_pod_is_not_a_save() -> None:
+    # The death writes the block's play time and death count with the player dead (death_fn's
+    # tail, 0x1DCB11), then the player respawns at the continue point, in the pod's cell.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)  # in play away from the pod
+    home.see(at_pod(200, deaths=1), False, True, True, False)  # the death screen
+    home.see(at_pod(200, deaths=1), True, True, True, True)  # respawned at the pod
+    assert not home.offer
+    home.see(at_pod(300, deaths=1), True, True, True, True)
+    assert home.offer  # a save there after the death
+
+
+def test_a_death_no_poll_saw_is_not_a_save_either() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200, deaths=1), True, True, True, True)  # in play both times
+    assert not home.offer
+
+
+def test_a_death_in_the_pods_cell_is_not_a_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200, deaths=1), False, True, True, True)
+    home.see(at_pod(200, deaths=1), True, True, True, True)
+    assert not home.offer
+
+
+def test_a_death_drops_an_offer_not_queued_yet() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(200), True, True, True, True)
+    assert home.offer  # saved at the pod; the helper has not queued it yet
+    home.see(at_pod(300, deaths=1), False, True, True, True)
+    assert not home.offer
+
+
+def test_a_teleport_to_the_pod_is_not_a_save() -> None:
+    # TELEPORT TO START (0xA3430) reloads a copy of the play state (0x9FF60), not the slot:
+    # the stamp stays.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)  # in play away from the pod
+    home.see(at_pod(100), False, True, True, False)  # the pause menu
+    home.see(at_pod(100), True, True, True, True)  # at the start, the pod
+    assert not home.offer
+
+
+def test_reload_from_save_at_the_pod_is_not_a_save() -> None:
+    # RELOAD FROM SAVE (0xA3150): its YES sets 0x9F620, which writes the block's play time the
+    # next frame with no death, then puts the player back at the continue point, the pod.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, False)
+    home.see(at_pod(200), False, True, True, False)
+    home.see(at_pod(200), True, True, True, True)
+    assert not home.offer
+    home.see(at_pod(200), False, True, True, True)  # paused at the pod
+    home.see(at_pod(300), True, True, True, True)  # the first look back in play is new
+    assert not home.offer
+
+
+def test_reload_from_checkpoint_at_the_pod_is_not_a_save() -> None:
+    # RELOAD FROM CHECKPOINT (0xA3000) adds one to the death count, then writes the block.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)  # the pause menu
+    home.see(at_pod(200, deaths=1), True, True, True, True)
+    assert not home.offer
+
+
+def test_a_save_then_a_pause_inside_one_poll_is_offered() -> None:
+    # The first look at the new stamp is in the pause menu (or the map): its GAME SAVED says
+    # it is a save.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)  # an old GAME SAVED
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
+    assert home.offer
+    home.offer = False  # the prompt queued
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert not home.offer  # the same save
+
+
+def test_a_save_just_after_a_menu_is_offered() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)  # the pause menu, closed before the save
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert home.offer
+
+
+def test_without_its_message_a_save_just_after_a_menu_waits_for_the_next() -> None:
+    # No GAME SAVED read (another message came straight after it): it reads as a reload.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True)
+    home.see(at_pod(100), False, True, True, True)
+    home.see(at_pod(200), True, True, True, True)
+    assert not home.offer
+    home.see(at_pod(300), True, True, True, True)
+    assert home.offer
+
+
+def test_a_game_saved_from_before_the_first_look_is_no_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), False, True, True, True, game_saved=9)  # loaded with it last
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # RELOAD FROM SAVE
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_reload_from_save_after_a_save_is_not_a_save() -> None:
+    # GAME SAVED is still the last message when RELOAD FROM SAVE writes the block.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # saved, then paused
+    home.offer = False  # the prompt queued; NO
+    home.see(at_pod(200), False, True, True, True, game_saved=9)  # the pause menu
+    home.see(at_pod(300), True, True, True, True, game_saved=9)  # reloaded
+    assert not home.offer
+
+
+def test_reload_from_checkpoint_after_a_save_is_not_a_save() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200), True, True, True, True, game_saved=9)
+    home.offer = False
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
+    home.see(at_pod(300, deaths=1), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_a_death_with_a_new_game_saved_is_not_a_save() -> None:
+    # Saved, then died inside one poll: the death count says so.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(200, deaths=1), False, True, True, True, game_saved=9)
+    home.see(at_pod(200, deaths=1), True, True, True, True, game_saved=9)
+    assert not home.offer
+
+
+def test_a_game_saved_read_before_its_stamp_counts_with_the_stamp() -> None:
+    # A look reading the stamp the frame before the save and the message the frame after.
+    home = discs.ReturnHome()
+    home.see(at_pod(100), True, True, True, True, game_saved=5)
+    home.see(at_pod(100), False, True, True, True, game_saved=9)
+    home.see(at_pod(200), False, True, True, True, game_saved=9)
+    assert home.offer
+
+
+def test_a_save_at_the_pod_is_offered_between_two_looks_in_play() -> None:
+    home = discs.ReturnHome()
+    home.see(at_pod(100, deaths=4), True, True, True, True)
+    home.see(at_pod(200, deaths=4), True, True, True, True)
+    assert home.offer
+
+
+def test_the_pod_note_waits_for_the_received_items_popups() -> None:
+    assert not discs.popups_handed(3, False, 3)  # not known yet on this connection
+    assert not discs.popups_handed(2, True, 3)  # the third received disk's popup not handed yet
+    assert discs.popups_handed(3, True, 3)

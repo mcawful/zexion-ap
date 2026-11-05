@@ -1,0 +1,171 @@
+"""Received Energy Shields: when to spawn one through the helper, and when it counts as given.
+
+An Energy Shield's effect is its pickup's spawn, not an inventory byte (docs/re/memory.md,
+"Received Energy Shields"). The client asks the helper to spawn received ones not given yet,
+one at a time, and counts each in the server's data storage once the game shows it up in
+play. One not seen within SEEN_SECONDS, or whose player died or whose save was unloaded first,
+is spawned again (shield_outcome). A spawn not seen in play may have worked unseen, and then
+each one more is a shield given twice, so after MISSES of those in a row the client spawns none
+until the save is left (for the title, another save or a closed game: STOP, Shields.restart),
+and another seed or slot has its own Shields (client/state.py, SeedState); one taken back by
+a death or unload is not a miss. A shield counts as asked for from the moment the request
+goes out (Shields.asking), so one whose ``spawned`` reply was lost is looked for, not spawned
+again unseen; one whose request never reached the helper, or that it answered with an error,
+is dropped (Shields.not_sent), so that a shield already up is not counted for it.
+
+Pure logic and the game read; client/ticks.py talks to the helper and the server.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from . import game
+
+GAP_SECONDS = 2.0  # between received Energy Shields, or before asking again
+SEEN_SECONDS = 3.0  # from a spawn, in play, to giving up on seeing the shield
+MISSES = 3  # spawns in a row not seen before spawning stops (until Shields.restart)
+
+# What a look at a spawned shield led to (shield_outcome, Shields.looked).
+WAIT, AGAIN, STOP, UP = "wait", "again", "stop", "up"
+
+
+def shield_outcome(in_play: bool, up: bool, left_play: bool, overdue: bool) -> str:
+    """Whether a spawned Energy Shield counts as given (UP), needs another look (WAIT), or
+    must be spawned again (AGAIN), from one look at the game: ``in_play``, the settled state
+    reads in play; ``up``, the player has a shield up; ``left_play``, the player died or the
+    save was unloaded since the spawn, which takes back what the last save did not hold;
+    ``overdue``, the time to see it has run out.
+
+    A shield up in play counts at once (the link is set from its first frame): the check
+    confirms it appeared, not that it lasts, or a player under fire would get shield after
+    shield. A refreshed shield looks the same and counts too."""
+    if left_play:
+        return AGAIN
+    if not in_play:
+        return WAIT  # paused or loading: look again once in play
+    if up:
+        return UP
+    return AGAIN if overdue else WAIT
+
+
+@dataclass
+class Pending:
+    """A received Energy Shield the helper was asked to spawn, not counted yet."""
+
+    at: float  # when (time.monotonic), or when last seen out of play
+    left_play: bool = False  # the player died or the save was unloaded since
+
+
+@dataclass
+class Shields:
+    """One seed and slot's received Energy Shields."""
+
+    pending: Pending | None = None  # the spawned shield waiting to be seen
+    misses: int = 0  # spawns in a row not seen
+    stopped: bool = False  # MISSES in a row not seen: no more spawns until restart()
+    # Shields counted as given that the server may not hold yet, and when the count was last
+    # sent.
+    given: int | None = None
+    count_sent_at: float = 0.0
+    retry_at: float = 0.0
+    said: str = ""  # the last reply or failure said, so each is said once
+
+    def given_count(self, stored: int) -> int:
+        """Shields counted as given: the server's number (``stored``), or this client's when
+        the server has not taken it yet."""
+        return stored if self.given is None else max(stored, self.given)
+
+    def resend_due(self, stored: int, now: float) -> bool:
+        """Whether to send the count again: the server has not taken it, and GAP_SECONDS have
+        passed. Forgets the count once the server has it."""
+        if self.given is None:
+            return False
+        if stored >= self.given:
+            self.given = None  # the server has it
+            return False
+        return now >= self.count_sent_at + GAP_SECONDS
+
+    def left(self) -> None:
+        """The player died, or the save was unloaded or the game closed: a spawned shield not
+        counted yet is spawned again."""
+        if self.pending is not None:
+            self.pending.left_play = True
+
+    def restart(self) -> None:
+        """The save was left, or the game closed: spawning starts over (its misses and a stop
+        were the last load's). A reconnect to the same load does not."""
+        self.misses = 0
+        self.stopped = False
+
+    def may_spawn(self, now: float) -> bool:
+        """Whether to ask the helper for another shield now."""
+        return not self.stopped and now >= self.retry_at
+
+    def asking(self, now: float) -> None:
+        """The helper is about to be asked to spawn one: from here it is looked for, whatever
+        becomes of the reply."""
+        self.pending = Pending(now)
+
+    def not_sent(self, now: float) -> None:
+        """The request never reached the helper, or the helper answered with an error: nothing
+        was spawned, so nothing to look for and no miss. (A shield already up must not be
+        counted for it.)"""
+        self.pending = None
+        self.retry_at = now + GAP_SECONDS
+
+    def spawned(self, now: float) -> None:
+        self.pending = Pending(now)
+        self.said = ""
+
+    def refused(self, reply: str, now: float) -> bool:
+        """The helper did not spawn it (``reply``): True if that is worth saying (not said
+        just before, and not the usual wait for a settled game)."""
+        self.pending = None  # nothing to look for
+        worth = reply != self.said and reply != "refused not settled"
+        self.said = reply
+        self.retry_at = now + GAP_SECONDS
+        return worth
+
+    def looked(self, pending: Pending, state: str, up: bool, stored: int, now: float):
+        """One look at the game for ``pending``: its settled ``state`` and whether a shield is
+        up. WAIT; AGAIN (spawned again after GAP_SECONDS); STOP (MISSES in a row not seen: none
+        spawned again until restart); or UP, counted as given (``given``, to send to the
+        server)."""
+        if state in (game.DEAD, game.NO_SAVE):
+            pending.left_play = True
+        if state != game.IN_PLAY:
+            pending.at = now  # the time to see it runs in play only
+        overdue = now >= pending.at + SEEN_SECONDS
+        outcome = shield_outcome(state == game.IN_PLAY, up, pending.left_play, overdue)
+        if outcome == WAIT:
+            return WAIT
+        self.pending = None
+        if outcome == AGAIN and pending.left_play:
+            # A death or unload took back what the last save did not hold: not a miss.
+            self.retry_at = now + GAP_SECONDS
+            return AGAIN
+        if outcome == AGAIN:
+            self.misses += 1
+            if self.misses >= MISSES:
+                self.stopped = True
+                return STOP
+            self.retry_at = now + GAP_SECONDS
+            return AGAIN
+        self.misses = 0
+        self.given = self.given_count(stored) + 1
+        self.retry_at = now + GAP_SECONDS
+        return UP
+
+
+def look(game_conn: game.Game, state: str) -> tuple[bool, str]:
+    """Whether the player has a shield up, read only in play (``state``, settled); and the
+    error if the read failed, which counts as not seen."""
+    if state != game.IN_PLAY:
+        return False, ""
+    try:
+        return game_conn.shield_up(), ""
+    except game.GameNotRunning:
+        raise
+    except game.GameError as exc:  # the link leads nowhere readable: not seen
+        return False, str(exc)

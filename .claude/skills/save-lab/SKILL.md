@@ -7,13 +7,13 @@ description: Experiment with Zexion save files safely - pause Steam Cloud, back 
 
 The real saves live in `%APPDATA%\Gallant Leaf\Zexion` and Steam Cloud syncs them. The user has
 real progress in some slots. Nothing writes there except `tools/save_lab.py install` and
-`restore`, and the Archipelago client's `/prepare` (`client/prepare.py`, after its own verified
-backup; ask before it, as before `install`). The write-guard hook blocks every other route
-Claude could take.
+`restore` (the Archipelago client never does). The write-guard hook blocks every other route
+through Bash, PowerShell, Monitor, the terminal tool and the file tools (`CLAUDE.md`, "Repo
+tooling").
 
 ## 1. Pause Steam Cloud for Zexion first
 
-Before any session that installs or prepares a save, or plays a lab slot, ask the user to turn Steam Cloud
+Before any session that installs a save or plays a lab slot, ask the user to turn Steam Cloud
 off for Zexion, and wait until they confirm. You can't do it for them, and you can't check it.
 
 > Steam → Library → right-click Zexion → Properties → General → turn off "Keep game saves in the
@@ -29,8 +29,13 @@ the game has been closed.
 .venv/Scripts/python tools/save_lab.py slots
 ```
 
-Lists every slot with size, date, hash and whether it is **empty** (the unused-slot template,
-see `docs/re/save-format.md`) or **IN USE**. Never assume a slot number is free; read this.
+Lists every slot with size, date, hash and its state. Never assume a slot number is free; read
+this. A slot is **empty** (the unused-slot template), **empty (deleted, data kept)** (a save
+deleted in the game, which keeps its data but marks the slot empty), or **IN USE**. So 30 files
+full of save data do not mean the folder is full: count the slots this command calls empty.
+Each state: `tools/save_lab.py --help`. The two bytes a deletion sets, the evidence and what is
+still assumed: `docs/re/save-format.md`, "Clearing a slot in the game sets two bytes and keeps
+the rest".
 
 ## 3. Back up
 
@@ -39,8 +44,9 @@ see `docs/re/save-format.md`) or **IN USE**. Never assume a slot number is free;
 ```
 
 Copies the whole folder to `lab/backups/<time>/` with a SHA-256 manifest, and checks every copy
-against its original. `install` refuses to run without a backup from the last 12 hours that
-holds the target slot exactly as it is now, so take one at the start of each session.
+against its original. `install` refuses to run unless the newest backup is from the last 12
+hours and holds the target slot exactly as it is now (an older backup does not count), so take
+one at the start of each session and again after the game has saved.
 
 ## 4. Work on copies
 
@@ -53,8 +59,9 @@ holds the target slot exactly as it is now, so take one at the start of each ses
 
 `diff` prints each changed run with its offset and both sides' first 16 bytes, plus a u8, u16,
 or u32 and f32 reading for runs of exactly 1, 2 or 4 bytes. It lists 200 runs unless
-`--max-runs` says otherwise; `--merge-gap N` joins runs separated by N or fewer unchanged bytes. When sizes differ it compares the common length and says so; inserted data
-shifts everything after it, so look for where the runs stop lining up.
+`--max-runs` says otherwise; `--merge-gap N` joins runs separated by N or fewer unchanged
+bytes. When sizes differ it compares the common length and says so; inserted data shifts
+everything after it, so look for where the runs stop lining up.
 
 A patch spec checks what it overwrites, so it can't land on the wrong save:
 
@@ -68,16 +75,20 @@ up one item, open one door), save again in another slot, then diff.
 ## 5. Install into the game
 
 Only with the user's explicit yes, for this install. Say which lab file, which slot, and that
-the slot is empty.
+the slot is empty; for a deleted save, also that the data the game kept there will be
+overwritten, and that the backup keeps it.
 
 ```sh
 .venv/Scripts/python tools/save_lab.py install lab/work/a-patched.sav 30 --yes
 ```
 
-It refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
-backup. It writes through a temporary file, reads the result back, and logs to
-`lab/installs.log`. The game may cache saves; have the user return to the title screen or restart
-before loading the slot.
+It fills either kind of empty slot. It refuses while Zexion is running, or when that can't be
+told, as `restore` does (the game writes its copies of the slots back over an install, and
+presumably over a restore: `save_lab.py --help`), so ask the user to close the game first. It
+also refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
+backup. Over a deleted save it names the backup file that now
+holds the old data. It logs to `lab/installs.log`, with `was=template` or `was=deleted` for the
+kind of slot it filled. Then the user starts the game.
 
 ## 6. Put things back
 
@@ -86,11 +97,14 @@ before loading the slot.
 .venv/Scripts/python tools/save_lab.py restore lab/backups/<time> --yes        # everything
 ```
 
-Ask first. `restore` checks the backup against its manifest, then backs up the current state
-before overwriting, so a restore can itself be undone.
+Ask first, and have the user close the game: like `install`, `restore` refuses while Zexion is
+running. It refuses a backup of another save folder (one taken with `--save-dir` or
+`ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
+manifest, then backs up the current state before overwriting, so a restore can itself be undone.
 
 ## 7. Record what you learned
 
 Every finding goes into `docs/re/save-format.md` in the format from `docs/re/README.md`: value,
 status, method, build, evidence. Name the slots and lab files used and what was done in the game
-between them. The `.sav` bytes themselves never get committed.
+between them. The `.sav` bytes themselves never get committed. save-format.md is long: find the
+section with a search for `^## ` and read only that range.
