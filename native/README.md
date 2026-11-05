@@ -224,7 +224,9 @@ If no frame came, it goes by what the last frame call found: the reason then end
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
 refused unload lets the watches run again from the next frame call, and they apply what the
 client asked for again from what was kept, since a client would not know to resend it (as the
-offline look, the Feats guard and the title lines are applied again by theirs).
+offline look, the Feats guard and the title lines are applied again by theirs). This kept state,
+and the watches applying it again after a refusal: stand-in tests only, not run in game (the
+refusal itself ran on 0.30.0, above).
 
 Then it points the slot back at SDL, only if the slot still holds the trampoline (otherwise
 `error the frame hook was replaced by something else; not unloading`, and it stays loaded),
@@ -349,9 +351,10 @@ Working in game: 2026-10-24, notices up to five lines ("Game functions the helpe
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
 client attached to a save already in play, each shield spawned once and read as up and none spawned
-again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074). The stop after
-three not seen up: stand-in tests only, not reached in game (`docs/re/memory.md`, "Received Energy
-Shields").
+again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074); one received
+while disconnected, given once on reconnecting and not again after another reconnect, 2026-11-04
+(B1, `zexion_ap.dll` `a7469024…`, develop 345fea7). The stop after three not seen up: stand-in
+tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields").
 
 ### DeathLink
 
@@ -408,11 +411,13 @@ dealt on the next load ("DeathLink").
   video options or the map (`docs/re/memory.md`, "The assist menu"); building it again gives
   alpha 1.0 back. (Run in game 2026-11-02 in English(HD), `zexion_ap.dll` `946b08a1…`: the entry in
   the HD font, gray, its padlock inside the box; the bugs that run found are fixed since
-  ("Translations", "Run in game again"). Stand-in tests only, not run in game yet: the look above,
-  the padlock on the text's line with no space before it, and the offline look held through menus
-  ("AP saves without the client"). The lock in English(HD): working in game on the 1.0.0 RC,
-  2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, develop 76df074, by the owner's report, which did not
-  single out the look's parts above, nor GENERAL or the assist menu.)
+  ("Translations", "Run in game again"). Stand-in tests only, not run in game yet: the look above
+  after Video or the map, the padlock on the text's line with no space before it, and the offline
+  look held through menus ("AP saves without the client"). The lock in English(HD): working in game
+  on the 1.0.0 RC, 2026-11-03, B1, `zexion_ap.dll` `fce9e73b…`, develop 76df074, by the owner's
+  report, which did not single out the look's parts above, nor GENERAL or the assist menu; and
+  2026-11-04, B1, `zexion_ap.dll` `a7469024…`, develop 345fea7, the owner's report: gray, with its
+  padlock, unselectable, no stray pixel letters.)
 
 Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in another save
 ("The assist menu").
@@ -572,7 +577,9 @@ Working in game: 2026-10-23 ("Live item objects").
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
 - **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
   English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
-  ("Translations"; not run in game yet).
+  ("Translations"; working in game in English(HD) 2026-11-04, B1, `zexion_ap.dll` `a7469024…`,
+  develop 345fea7: an Intel Chip picked up, named Intel Chip, then its hint; a pickup in the
+  other translations not run in game).
 
 Working in game: 2026-10-25 ("Intel Chips").
 
@@ -680,7 +687,9 @@ the helper:
   their popups shown on the next load, a death received during the first ending dropped, and the
   pause opened in the black after YES with EXIT GAME going to the title with no black left and
   `/reload_mod` not refused after that, 2026-11-02 (`946b08a1…`) (`docs/re/memory.md`, "The mission
-  prompt"). Not run in game: a door or a death right after YES, and the prompt asked for again. If
+  prompt"); two received items' popups waiting at YES, the ending straight after it and both popups
+  at the next load, 2026-11-04 (`a7469024…`, develop 345fea7, English(HD)). Not run in game: a door
+  or a death right after YES, and the prompt asked for again. If
   event 3667 or its handler is not as traced, the prompt opens at once with no fade, as before. A
   request not yet opened lapses (`lapsed: the player left the landing pod`) once the player is in
   play outside home's cell (the request's row / 20 and column / 14 against the player state's cell,
@@ -707,7 +716,7 @@ the helper:
   pod's cell while twelve received items' popups held it, and one left during GAME SAVED alone, each
   offered again after the next save there; the ending after YES waiting for five received items'
   popups, then starting (since changed: popups waiting at YES now wait for the save's next load,
-  stand-in tests only). Stand-in tests only: the fade turned back when the helper takes its opener
+  working in game 2026-11-04, above). Stand-in tests only: the fade turned back when the helper takes its opener
   back, another transition's fade left alone, a death's own fade left alone, and `discs` turned off
   after such a save.
 
@@ -733,7 +742,8 @@ popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "T
 in game" and "Run in game again"): the received disks' count popups and the reminder in the HD font,
 NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
 after the HD disk icon and its description wrapped inside its box, the question centered, and the
-pause row's count ("4 of ?") in the HD font (`946b08a1…`). The scanner's line: not run in game yet.
+pause row's count ("4 of ?") in the HD font (`946b08a1…`); the scanner's line, 2026-11-04
+(`a7469024…`, develop 345fea7).
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -826,9 +836,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   then they are given as with no helper (`client/zexion_client.py`, `leave_helper_tick` and `poll`;
   stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's
   client): a save loaded during a drop and a Disconnect in play, each given this look and its
-  notice, then the client's again on connecting, with CLIENT CONNECTED and received items' popups.
-  Not seen in game: a failed attach on connecting, an ending during a drop or after a Disconnect,
-  and an armed new game kept at the title during a drop. The file select shows each such save's
+  notice, then the client's again on connecting, with CLIENT CONNECTED and received items' popups;
+  2026-11-04 (B1, `zexion_ap.dll` `a7469024…`, develop 345fea7), three Disconnects and Connects
+  in one load, and a Disconnect then Connect during an ending played again, the item received
+  meanwhile popping up at the next load. Not seen in game: a failed attach on connecting, an
+  ending that begins during a drop, and an armed new game kept at the title during a drop. The file select shows each such save's
   count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the file
   select").
 - **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known
@@ -850,7 +862,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 Working in game: 2026-10-25 ("AP saves without the client"); 2026-10-29, a Secret Shuffle
 seed's file (a 155-byte table, one `table` line): the save dressed with the client closed, its
 notice shown, the map's unseen squares named as the game names its own (develop e088773,
-`9b609b92…`; "AP saves without the client").
+`9b609b92…`; "AP saves without the client"); 2026-11-04 (B1, `zexion_ap.dll` `a7469024…` and
+`version.dll` `88d0de4c…`, develop 345fea7), the helper the proxy loaded configured from a cache
+holding every key, with no client, at two starts of the game and one after a close while
+disconnected.
 
 ### The map
 
@@ -879,9 +894,11 @@ notice shown, the map's unseen squares named as the game names its own (develop 
   2026-11-03, B1, `zexion_ap.dll` `12f090c6…` ("Map markers"): AP Item on a DLCQuest
   player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
   shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
-  names, the owner's look; Progression Item and OS Install Disk not looked at
-  on the map). Since 2026-11-04 another Zexion player's item takes the translation's own name
-  in every translation, not only English(HD) (stand-in tests only, not run in game yet).
+  names, the owner's look; Progression Item and OS Install Disk, first line only and no logo:
+  2026-11-04, B1, `zexion_ap.dll` `a7469024…`, develop 345fea7, the owner's report). Since
+  2026-11-04 another Zexion player's item takes the translation's own name in every translation,
+  not only English(HD): on its pickup popup in French, working in game 2026-11-04 (the same build:
+  Wall Jump Boots as BOTTES DE SAUT MURAL, the owner's report); on the map cursor, not run in game.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
@@ -1145,11 +1162,12 @@ lands, not only the place passed.
     but English(HD) (`hd_case`), whose fonts may draw no lower case. Only letters change: a
     record's icon byte (0x6E and 0x77 lie in the lower-case range) goes before the text, never
     through it. Until 2026-11-04 the helper's fixed texts showed in mixed case in every
-    translation; they follow the rule since (stand-in tests only, not run in game yet). The
-    labels working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`): the pickup popup's
-    Progression Item over for AneziaDS2, the map cursor's AP Item ("Other players' items", "Map
-    markers"); the hints, the disks' popups and reminder, the scanner's line and the notices:
-    stand-in tests only, not run in game yet.
+    translation; they follow the rule since (working in game 2026-11-04 in English(HD) and
+    French: "Run on develop 345fea7", below). The labels working in game 2026-11-03 (B1,
+    `zexion_ap.dll` `12f090c6…`): the pickup popup's Progression Item over for AneziaDS2, the map
+    cursor's AP Item ("Other players' items", "Map markers"); a hint, the scanner's line and "from
+    Bob", 2026-11-04 (the same run); the disks' popups and reminder and the notices' case: not
+    singled out in game.
   - **Names the game reads while they show,** written into the tables in place and cut to each
     entry's room: the stand-ins' labels into ItemNames 47 and 48 (both lines, centered on the
     wider with leading spaces as a received item's popup's, since the pickup popup starts each
@@ -1157,7 +1175,8 @@ lands, not only the place passed.
     while their records are restyled in play, for their pickup popup, each held as it is while
     a pickup message bound to it shows in the AP save (the HD message reads it again every frame:
     `docs/re/memory.md`, "Translated messages"), so walking into another cell or pausing during
-    the popup leaves its name, unless another stand-in of that record is within reach, whose
+    the popup leaves its name (another cell: working in game 2026-11-04 in English(HD), "Run on
+    develop 345fea7", below), unless another stand-in of that record is within reach, whose
     name the next pickup needs. A newer pickup message of that record (one no scan had found
     within reach: the message routine counts its serials up, `0x18284F` to `0x18285A`) gets the
     frame's name, then that is held. While the map is open the game's own name is back, for the
@@ -1299,6 +1318,27 @@ lands, not only the place passed.
     lines only on the title ("The title screen's lines") and YES on a first ending ("The OS
     Install Disks goal").
   - Not run in game: as before, and French and Japanese since the HD icons.
+- **Run on develop 345fea7:** 2026-11-04, B1, `zexion_ap.dll` `a7469024…` and `version.dll`
+  `88d0de4c…` loaded by the proxy, the client from source, `lab/ap/live53` (a disks seed, another
+  Zexion player and a DLC Quest player), the owner's report (`docs/re/memory.md`, "Translations").
+  - Working in English(HD), mixed case in the HD font: the title lines, ARCHIPELAGO on the
+    panel, a received popup ("Missile Box" over "from Bob"), the pickup popups of another game's
+    item (the logo, Progression Item over for Alice) and of another Zexion player's (its icon and
+    name over for Bob), the name kept on walking into the next cell during the popup, an Intel
+    Chip picked up (Intel Chip, then its hint), the scanner's line, the pause row's count, the
+    equipment screen's OS Install Disk, the question, the Feats note, and the locked ASSIST with
+    no stray pixel letters.
+  - Working in French, the helper's text in capitals: FROM BOB, INTEL CHIP (a received one's
+    popup), AP ITEM and
+    PROGRESSION ITEM, the title lines, ARCHIPELAGO, the pause row's count, the equipment screen's
+    disk and its description in its box, the question (centered), and the Feats note on its own
+    line, neither wrapped nor cut (the owner's screenshot); the icons as before; another Zexion
+    player's pickup by the French name.
+  - The default English, the same run: a received popup, a pickup label and the pause row in
+    capitals in the pixel font, the title lines and ARCHIPELAGO, as before.
+  - Not run in game: in French, the map cursor's name for another Zexion player's item, the
+    scanner's line and an Intel Chip picked up (ItemNames 49); Japanese since the HD icons; the
+    unload's refusal while a popup shows; Assist Unlock in a translation; a save-state load.
 
 ## Building
 
