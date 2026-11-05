@@ -57,6 +57,7 @@ from .ticks import (  # noqa: E402
     discs_helper_tick,
     feats_tick,
     followups_tick,
+    how_to_play,
     labels_tick,
     language_tick,
     log,
@@ -593,6 +594,7 @@ async def poll(ctx: ZexionContext) -> None:
         if load.seed_loaded:
             logger.info(state.SAVE_CLOSED)
         load.leave()  # reminded again on the next load, and so on
+    how_to_play(ctx, step)  # after the loaded or left line, not while this seed's save is loaded
     if not step.other_seed and (step.left_seed or step.seed_matches):  # not an unsettled read
         ctx.said.clear("other save")  # said again for the next such load (other_save_tick)
     seed.dressed = aplabels.labels_wanted(step.seed_matches, step.left_seed, seed.dressed)
