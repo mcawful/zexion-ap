@@ -312,7 +312,7 @@ std::string Game::apply(const Batch& batch) {
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
-        popup.intel = !popup.bare && popup.item == kAreaMapItem && intel_.on();
+        popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
     return "applied";

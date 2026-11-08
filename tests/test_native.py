@@ -47,11 +47,12 @@ def test_an_apply_request_puts_each_popup_on_one_line() -> None:
     # spaces (any text the server sends) must not break a popup into another line.
     cas = [(17, 0, 1), (0, 3, 4)]
     popups = [(17, "FROM  Bob\nthe\tBold "), (0, ""), (49, " A  hint\n", True), (16, "", True)]
-    assert native.batch_text(cas, popups, refresh=True).splitlines() == [
+    assert native.batch_text(cas, popups, refresh=True, intel=True).splitlines() == [
         "apply",
         "cas 17 0 1",
         "cas 0 3 4",
         "refresh",
+        "intel",
         "popup 17 FROM Bob the Bold",
         "popup 0",
         "notice 49 A hint",

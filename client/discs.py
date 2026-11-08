@@ -175,8 +175,8 @@ def deaths(stamp: bytes) -> int | None:
 def popups_handed(queued: int, read: bool, received: int) -> bool:
     """Whether every received item's popup has gone to the helper (``Session.announced``, and
     ``read``: that count read on this connection, ``Session.announced_read``). The helper shows
-    its queue in order, so POD_NOTE queued after that comes after the disks' own popups (a
-    received item is handed over a poll after it arrives, once its grant is confirmed)."""
+    its queue in order, so POD_NOTE queued after that comes after the disks' own popups and
+    counts (a received item is handed over once any grant it makes is confirmed)."""
     return read and queued >= received
 
 

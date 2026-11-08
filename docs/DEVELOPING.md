@@ -125,8 +125,7 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
-  2026-10-25 ("Intel Chips"). Not run in game: a received chip's own popup before its hint
-  (since 2026-11-07; before, the hint took its place).
+  2026-10-25 ("Intel Chips"). Not run in game: a received chip's own popup before its hint.
 - OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
   2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
   2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending
@@ -135,8 +134,7 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   a client opened during the ending: 2026-10-26 (`docs/re/locations.md`, "The OS Install Disks
   goal"). A save at the pod then a pause at once, and popups waiting at YES shown at the next
   load: 2026-11-04. Not run in game: RELOAD FROM CHECKPOINT and a teleport at the pod, the
-  map right after saving, and a received disk's own popup before its count (since 2026-11-07;
-  before, the count took its place).
+  map right after saving, and a received disk's own popup before its count.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").

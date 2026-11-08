@@ -166,7 +166,7 @@ class ZexionContext(CommonContext):
         try:
             conn = state.Connection.from_slot_data(slot, self.team, self.slot)
             if seed is None or seed.identity != identity:  # another seed or slot: afresh
-                seed = state.SeedState(identity, session.Session(conn.plan))
+                seed = state.SeedState(identity, session.Session(conn.plan, conn.intel_chip))
         except ValueError as exc:  # state.UnsupportedSeed, or locations the session can't use
             logger.error(
                 "This seed was made with another version of the Zexion APWorld than this "
@@ -496,12 +496,6 @@ async def poll(ctx: ZexionContext) -> None:
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return
         ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
-        if ctx.helper is not None:  # told Intel Chips before the step: a chip's popup reads so
-            await side_tick(
-                ctx,
-                "Intel Chips",
-                lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL),
-            )
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
@@ -512,7 +506,7 @@ async def poll(ctx: ZexionContext) -> None:
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     try:
-        followups: dict[int, str] = {}  # notices after a received item's popup
+        followups: dict[int, str] = {}
         try:
             await hints_tick(ctx, p)
             followups = hint_notes(ctx, p.codes)

@@ -692,35 +692,27 @@ void test_the_icons_through_the_game() {
 }
 
 // A received OS Install Disk: the HD disk icon and the helper's name, not the record's (the
-// translation's Data Disc), then its count alone.
+// translation's Data Disc).
 void test_a_received_disk_popup() {
     zap::Game game;
     start(game);
-    queue(game, "apply\npopup 44 from Bob\nnotice 44 OS Install Disk 1 of 3");
+    queue(game, "apply\npopup 44 from Bob");
     frames(game, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE03A" L"OS Install Disk\nfrom Bob",
           "the disk icon and OS Install Disk over the suffix");
-    end_message(0);
-    g_message_slot = 1;
-    frames(game, 200);
-    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"OS Install Disk 1 of 3",
-          "then the count, alone");
     game.put_back_game(&no_callback);
     reset_translation();
 }
 
-// A received Area Map taken while it is an Intel Chip: Intel Chip, not the translation's Area
-// Map, though Intel Chips are off when it shows.
+// A received Area Map from a seed with Intel Chips: Intel Chip, not the translation's Area Map,
+// though Intel Chips are off when it shows.
 void test_a_received_intel_chip_popup() {
     zap::Game game;
     start(game);
-    g_records[49 * 100 + 0x08] = 0xC7;  // its icon
-    game.set_intel(true);
-    queue(game, "apply\npopup 49 from Bob");
-    game.set_intel(false);
+    queue(game, "apply\nintel\npopup 49 from Bob");
     frames(game, 1);
-    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE02B" L"Intel Chip\nfrom Bob",
-          "its icon and Intel Chip over the suffix");
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"Intel Chip\nfrom Bob",
+          "Intel Chip over the suffix");
     game.put_back_game(&no_callback);
     reset_translation();
 }

@@ -320,30 +320,6 @@ def test_a_reconnect_attaches_the_helper_before_the_first_step(monkeypatch) -> N
     assert order == ["attach", "step with the helper", "back"]
 
 
-def test_a_helper_attached_again_is_told_intel_chips_before_the_step(monkeypatch) -> None:
-    # A chip received meanwhile pops up as one: the helper names it from `intel on` at apply.
-    ctx = context(connection(), Showing(game.IN_PLAY))
-    ctx.helper_left, ctx.load.intel_want = True, True
-    order: list[str] = []
-
-    class Told(Helper):
-        def request(self, text: str, seconds: float = 2.0) -> str:
-            order.append(text)
-            return text  # "intel on" answered as taken
-
-    async def attach(c) -> None:
-        c.helper, c.told = Told(), state.HelperState()
-
-    def step(g, received, helper=None, **kwargs):
-        order.append("step")
-        raise game.GameNotRunning("Zexion is not running")  # the poll ends here
-
-    monkeypatch.setattr(zc, "attach_helper", attach)
-    monkeypatch.setattr(ctx.seed_state.session, "step", step)
-    asyncio.run(zc.poll(ctx))
-    assert order.index("intel on") < order.index("step")
-
-
 def test_a_save_in_its_ending_keeps_the_helper() -> None:
     # A disconnect in the ending undresses the save but keeps its hold: letting the helper go
     # would put back its Feats guard and RETURN HOME's ending meanwhile.

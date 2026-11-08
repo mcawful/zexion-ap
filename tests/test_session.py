@@ -8,7 +8,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import discs, game, native
+from client import game, native
 from client import save_patch as sp
 from client import session as ss
 
@@ -455,11 +455,8 @@ def shown(helper: FakeHelper) -> list[str]:
     return [line for line in lines if line.startswith(("popup", "notice"))]
 
 
-def give_disks(session, g, received, senders, hints=None) -> None:
-    """Two polls giving ``received``, each disk followed by its count as the client's poll
-    passes it (discs.received_notes), and each Intel Chip in ``hints`` by its hint."""
-    hunt = discs.DiscHunt(3, 5, 0, frozenset())
-    followups = discs.received_notes(hunt, received, []) | (hints or {})
+def give_with(session, g, received, senders, followups) -> None:
+    """Two polls giving ``received``, with the notices after their popups."""
     for _ in range(2):
         session.step(g, received, gap=0, senders=senders, followups=followups)
 
@@ -467,7 +464,12 @@ def give_disks(session, g, received, senders, hints=None) -> None:
 def test_each_received_disk_or_chip_pops_up_from_its_sender_then_its_note(with_helper) -> None:
     session, g, helper, _ = with_helper
     received, senders = [44, 49, 17, 44], ["Bob", "Alice", "Dan", "Carol"]
-    give_disks(session, g, received, senders, hints={1: "HINT: SLIDE MOD AT GUARDIA 22,7"})
+    followups = {
+        0: "OS Install Disk 1 of 3",
+        1: "HINT: SLIDE MOD AT GUARDIA 22,7",
+        3: "OS Install Disk 2 of 3",
+    }
+    give_with(session, g, received, senders, followups)
     assert len(helper.requests) == 1, "in one batch"
     assert shown(helper) == [
         "popup 44 from Bob",
@@ -479,14 +481,14 @@ def test_each_received_disk_or_chip_pops_up_from_its_sender_then_its_note(with_h
         "notice 44 OS Install Disk 2 of 3",
     ]
     assert session.announced == 4, "four items handed over, not seven popups"
-    give_disks(session, g, received, senders, hints={1: "HINT: SLIDE MOD AT GUARDIA 22,7"})
+    give_with(session, g, received, senders, followups)
     assert len(helper.requests) == 1, "nothing shown again"
 
 
 def test_a_refused_batch_sends_both_of_a_disks_popups_again(with_helper) -> None:
     session, g, helper, _ = with_helper
     helper.reply = "refused not in play"
-    give_disks(session, g, [44], ["Bob"])
+    give_with(session, g, [44], ["Bob"], {0: "OS Install Disk 1 of 3"})
     assert session.announced == 0
     helper.reply = "applied"
     session.step(g, [44], gap=0, senders=["Bob"], followups={0: "OS Install Disk 1 of 3"})
@@ -520,6 +522,18 @@ def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_hel
     give(session, g, [14, 4], senders=["Alice"] * 2)
     assert helper.popups() == ["popup 4 from Alice", "popup 14 from Alice"]
     assert (g.inv[4], g.inv[14]) == (1, 1)
+
+
+@pytest.mark.parametrize("chips", [True, False])
+def test_a_seed_with_intel_chips_says_so_in_its_batches(chips: bool) -> None:
+    # The helper names its Area Maps' popups Intel Chip from it, whatever it has been told since.
+    session, g = ss.Session(PLAN, intel_chips=chips), FakeGame(PLAN)
+    helper = FakeHelper(g)
+    through(session, helper)
+    session.announced_read = True
+    give(session, g, [49], senders=["Bob"])
+    lines = helper.requests[-1].splitlines()
+    assert ("intel" in lines) is chips and lines[-1] == "popup 49 from Bob"
 
 
 def test_without_guns_first_each_item_pops_up_as_itself() -> None:

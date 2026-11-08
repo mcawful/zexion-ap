@@ -151,10 +151,11 @@ class Step:
 class Session:
     """The polls of one seed and slot's game, kept over reconnections to it (state.SeedState)."""
 
-    def __init__(self, plan: save_patch.SeedPlan):
+    def __init__(self, plan: save_patch.SeedPlan, intel_chips: bool = False):
         if plan.check_size():
             raise ValueError(f"the slot data does not list {plan.list_size} locations")
         self.plan = plan
+        self.intel_chips = intel_chips  # its Area Maps are Intel Chips (their popups say so)
         self.listed = [plan.cells[i] for i in plan.order]  # as the game's list holds them
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
@@ -375,7 +376,7 @@ class Session:
                 helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
-        reply = helper.apply(native.batch_text(cas, popups))
+        reply = helper.apply(native.batch_text(cas, popups, intel=self.intel_chips))
         if reply != "applied":
             logger.info(f"Not given this time: {reply}")
             return {}
