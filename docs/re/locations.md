@@ -173,7 +173,21 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   (Standard's, then always the fresh save's), Snake 1, Slide Mod 1 and no Tunneler; the Snake
   picked up at Kresezoa 25,25 gave the Tunneler (byte 15 at 1, the Snake still 1), the check sent
   once. The same YAML with a `start_inventory` Slide Mod stopped Archipelago's `Generate.py` with the `pool_duplicates`
-  error (`lab/ap/live45/refused/generate.log`). `amounts` and
+  error (`lab/ap/live45/refused/generate.log`). **Item plando (`plando_items`) working in
+  game**, through Archipelago's own plando (AP 0.6.8, generated with its items plando on: the
+  default `plando_options` leave it off, and a first try of `live55` without it ignored the
+  plando, `lab/pr118-ingame-checks.md`): besides `live45`'s Snake above, on B1, 2026-11-04
+  (`lab/ap/live53/`, develop 345fea7's client and helper, `lab/round5-ingame-checks.md`), in an
+  Easy disks-goal seed with another Zexion player (Bob) and a DLCQuest player (Alice), every
+  block `from_pool: true` and `force: true`: Alice's Movement Pack at Rex's Kresezoa 25,25 showed
+  the logo and "for Alice", Bob's Gravity Harness at Rex's Machinus 24,29 its icon and "for Bob",
+  Rex's own OS Install Disk at Machinus 27,24 its stand-in, and Rex's own Intel Chip at Kresezoa
+  25,19 its name and its hint; Rex's Missile Box at Bob's Machinus 27,24 arrived with its popup
+  ("from Bob", sent with the server's `/send_location`); and on 2026-11-08 (`lab/ap/live55/`,
+  PR #118's c0be163, `lab/pr118-ingame-checks.md`) all six of Rex's disks and two Intel Chips
+  plando'd into Bob's world arrived, each disk with its count, through `/send_location`. What
+  plando may give a player is checked at generation ("Where the world departs from the game").
+  `amounts` and
   `options`: the seed's six Energy, missile and bomb amounts and the settings the logic depends
   on (Guns First 10, code 68's tiers 30, 31, 32 and 37, Double Teleport 33, Safety 42 and 43,
   Gates 72 and 73; `custom.CHECKED`), for the client to compare with the player's new game.
@@ -302,6 +316,21 @@ where its subject is:
   of the fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`,
   since 2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
   `TestExcludedLocationsNameThePlayerOver`).
+- **Item plando past what the game holds is refused** (`worlds/zexion/plando.py`, from
+  `ZexionWorld.pre_fill`, since 2026-11-08): Archipelago's plando makes items where a block has
+  `from_pool: false`, or names an item the pool holds no more of. The world counts the player's
+  items, in the pool, in any world's locations and in the start inventory, before plando
+  (`generate_basic`) and after it, and where plando made more of one than the world did, refuses
+  the seed, naming each, for the limits of the starting items where they apply to items found
+  too (`worlds/zexion/starting.py`): a second copy of an item held once (with Guns First a third
+  copy of a progressive weapon, or an upgrade as an item of its own), more than 40 Energy Tanks
+  or 999 missiles or Mega Bombs (10 per box), an OS Install Disk without the disks goal or more
+  than its options make, an Area Map with Area Map Hints on, or an Intel Chip with it off. What
+  the world makes alone is not refused there: `start_inventory`'s supplies on top of the pool can
+  pass 40 tanks or 999 missiles, as the start options allow. It warns, from `generate_basic`, where a
+  plando names one of its locations the seed does not have (left out, or Secret Shuffle's
+  without it), which Archipelago alone reports only as items it could not place. Tested only
+  (`worlds/zexion/test/test_plando.py`); a refused seed never reaches the game.
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   does, in every mode; with no ten left the seed is refused ("The OS Install Disks goal: the

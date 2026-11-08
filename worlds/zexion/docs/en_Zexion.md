@@ -170,6 +170,62 @@ What a new game can start with:
 Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
 or Assist Unlock, stops generation with an error that names it.
 
+## Can I use plando?
+
+Item plando (`plando_items`) works as in other Archipelago games: it puts the items you name in
+the locations you name, in your world or another player's, and other players can put theirs in
+yours. Generation reads it only with item plando turned on: `plando_options` in your Archipelago
+folder's `host.yaml` must include `items` (it doesn't by default, and generation then skips the
+plando with a warning). For example:
+
+```yaml
+Zexion:
+  plando_items:
+    - items:
+        Gravity Harness: 1
+      locations:
+        - Kresezoa 25,25
+    - items:
+        OS Install Disk: 3
+      world: Bob
+      locations:
+        - Machinus 24,29
+        - Machinus 27,24
+        - Vallahar 6,14
+```
+
+Locations are named by area and X,Y ("Where does the game start?"). In `locations`, an area's
+name, such as Machinus, stands for its locations; in `items`, an item group (Keys, Weapons,
+Weapon Upgrades, Supplies, Scrap) for one of its items. Keep `from_pool: true`, the default: it
+moves an item from your pool rather than making a new one.
+
+Played in game: another game's item and another Zexion player's in your locations, your own OS
+Install Disk and Intel Chip in your own, a Progressive Snake at Kresezoa 25,25, and your disks
+and Intel Chips in another Zexion player's world. What the generator refuses or warns about,
+below, is checked in generation only.
+
+Generation stops with an error naming the item if plando gives you items the game doesn't hold
+(`from_pool: false` makes new ones, and so does `from_pool: true` for an item your pool has
+none left of):
+
+- a second copy of an item the game holds once; with Guns First on (every preset), a third of
+  a Progressive weapon, or one of the five upgrades as an item of its own;
+- more than 40 Energy Tanks, or more than 999 missiles or Mega Bombs in all (ten per box), your
+  starting ones counted: the most the game's randomizer menu allows;
+- an OS Install Disk without the OS Install Disks goal, or more disks than `os_install_disks`
+  (with your starting disks) makes: set the number there;
+- an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
+
+If a plando names a location your seed doesn't have, the generator logs a warning saying why:
+Secret Shuffle's location with Secret Shuffle off, or a location your settings don't reach from
+your start (OHKO leaves some out). Archipelago then doesn't place it there (with `force: true`,
+generation stops). Plando into the locations around your start counts when the generator opens
+your start ("Where does the game start?"). Your own Assist Unlock can't go in your own
+locations.
+
+Plando connections, bosses and texts don't apply: Zexion has no entrances to shuffle (choose the
+start with `start_room`), its randomizer doesn't move bosses, and it has no hint texts.
+
 ## What do other players' items look like?
 
 - A location holding another player's item shows the Archipelago logo, with a flashing up arrow

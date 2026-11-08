@@ -111,6 +111,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   2026-11-02 (`docs/re/locations.md`, "The OS Install Disks goal").
 - `start_inventory_from_pool`: 2026-10-28 (`docs/re/locations.md`, "What the world needs from
   the client").
+- Item plando: own items in own locations, 2026-10-28 and 2026-11-04; other players' items in
+  this world's and this world's items, OS Install Disks among them, in another Zexion player's:
+  2026-11-04 and 08 (`docs/re/locations.md`, "What the world needs from the client"). What the
+  world refuses after plando is tested only ("Where the world departs from the game").
 - `--keep-randomizer` (a new game by the seed's text gets the seed): 2026-10-27 ("Starting a new
   game").
 - Other players' items (logo, name at pickup): 2026-10-23; the logo's own colors and black
