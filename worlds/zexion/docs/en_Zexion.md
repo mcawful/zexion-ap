@@ -34,8 +34,9 @@ Set with the Goal option.
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
   - Your count shows on each disk's popup, on the pause screen and on the file select.
-  - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
-    you how many you need. Until you have been there, the pause screen shows "OF ?". With
+  - The scanner at Guardia 42,26, outside the core's door (seen in game), which shows where
+    the keys are in the normal game, tells you how many you need. Until you have been there,
+    the pause screen shows "OF ?". With
     Hints Revealed (Custom), the game counts you as told from the start, so the number shows
     at once (by the game's code; not yet checked in game).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
