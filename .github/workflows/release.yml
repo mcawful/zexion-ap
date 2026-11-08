@@ -69,4 +69,4 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Zexion $VERSION" --generate-notes
+            --target "$GITHUB_SHA" --title "Zexion-AP $VERSION" --generate-notes
