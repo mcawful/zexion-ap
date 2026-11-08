@@ -1,7 +1,7 @@
 """client/zexion_client.py: a load ended by the game closing, or seen to end while no connection
-steps, a reconnect meanwhile included, what a reconnect carries on with, and the helper failing
-or let go. Archipelago is not installed here, so the parts of it the module imports are
-stand-ins."""
+steps, a reconnect meanwhile included, what a reconnect carries on with, the helper failing or
+let go, and a received disk's count and Intel Chip's hint after its popup. Archipelago is not
+installed here, so the parts of it the module imports are stand-ins."""
 
 from __future__ import annotations
 
@@ -638,3 +638,25 @@ def test_the_poll_says_how_to_play_once_no_save_of_this_seed_is_loaded(monkeypat
     assert said[0] == [] and said[1] == [], "not before the game is read, nor in the seed's save"
     assert said[2] == list(how)
     assert conn.newgame_lines == ()
+
+
+def test_a_received_disk_has_its_count_and_a_chip_its_hint_after_its_popup(monkeypatch) -> None:
+    # Each follows the item's own popup ("from Bob"), not in its place.
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    ctx = context(connection(**hunt), Showing(game.IN_PLAY))
+    monkeypatch.setattr(ctx, "received", lambda: ([49, 44, 44], ["Alice", "Bob", "Carol"]))
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    monkeypatch.setattr(zc, "hint_notes", lambda c, codes: {0: "HINT: SLIDE MOD"})
+    passed: dict = {}
+
+    def step(g, received, **kwargs):
+        passed.update(kwargs)
+        raise game.GameNotRunning("Zexion is not running")  # the poll ends here
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert passed["followups"] == {
+        0: "HINT: SLIDE MOD",
+        1: "OS Install Disk 1",
+        2: "OS Install Disk 2",
+    }

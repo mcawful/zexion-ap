@@ -144,7 +144,7 @@ def connection(**changes) -> state.Connection:
 
 def seed_state(conn: state.Connection) -> state.SeedState:
     """The SeedState the client keeps for ``conn``'s seed (zexion_client's connected)."""
-    return state.SeedState(("S", conn.team, conn.slot), session.Session(conn.plan))
+    return state.SeedState(("S", conn.team, conn.slot), session.Session(conn.plan, conn.intel_chip))
 
 
 def menu_setup(**changes) -> sp.MenuSetup:

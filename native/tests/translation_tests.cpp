@@ -691,6 +691,32 @@ void test_the_icons_through_the_game() {
     reset_translation();
 }
 
+// A received OS Install Disk: the HD disk icon and the helper's name, not the record's (the
+// translation's Data Disc).
+void test_a_received_disk_popup() {
+    zap::Game game;
+    start(game);
+    queue(game, "apply\npopup 44 from Bob");
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE03A" L"OS Install Disk\nfrom Bob",
+          "the disk icon and OS Install Disk over the suffix");
+    game.put_back_game(&no_callback);
+    reset_translation();
+}
+
+// A received Area Map from a seed with Intel Chips: Intel Chip, not the translation's Area Map,
+// though Intel Chips are off when it shows.
+void test_a_received_intel_chip_popup() {
+    zap::Game game;
+    start(game);
+    queue(game, "apply\nintel\npopup 49 from Bob");
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"Intel Chip\nfrom Bob",
+          "Intel Chip over the suffix");
+    game.put_back_game(&no_callback);
+    reset_translation();
+}
+
 // A popup measured as the font draws it, through the game: every character 6 wide, a space 3,
 // each icon 8.
 void test_a_popup_laid_out_by_the_font() {
@@ -1132,6 +1158,8 @@ int main() {
     test_a_stand_in_name_held_while_its_popup_shows();
     test_the_tables();
     test_popups_take_turns_and_empty();
+    test_a_received_disk_popup();
+    test_a_received_intel_chip_popup();
     test_a_notice_too_long_shows_its_pixel_text();
     test_the_pixel_text_when_the_tables_cannot_be_used();
     test_the_run_not_borrowed_when_an_entry_holds_text();

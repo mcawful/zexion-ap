@@ -370,6 +370,7 @@ private:
     int frames_since_popup_ = 1 << 20;
     // The helper's last popup as the game's last message holds it (own_popup_up).
     BYTE* own_message_ = nullptr;
+    bool own_disk_ = false;  // that popup a received disk's (its glyph kept while it shows)
     int32_t own_sequence_ = 0;
     bool own_popup_up() const;
 

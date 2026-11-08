@@ -25,6 +25,10 @@ constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
+// A received OS Install Disk's popup: the disk glyph and OS INSTALL DISK, as its map label shows
+// it, not the record's DATA DISC with no icon (docs/re/memory.md, "The Data Disc").
+bool disk_popup(const Popup& popup) { return !popup.bare && popup.item == kDiskItem; }
+
 // The last message's frames left and its sequence beside the pointer to it (docs/re/memory.md,
 // "Game functions the helper calls"), and the frame calls between two of the helper's popups.
 constexpr size_t kMessageFramesLeft = 0x1EC;
@@ -308,6 +312,7 @@ std::string Game::apply(const Batch& batch) {
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
     return "applied";
@@ -366,9 +371,11 @@ void Game::pump_popups() {
         if (stand_in >= 0) {
             // A received stand-in: the game's own name and no icon, not the restyled record's.
             head = kStandInNames[stand_in];
+        } else if (disk_popup(popup)) {
+            head = static_cast<char>(kDiskGlyph) + in_capitals(kDiskName);
         } else {
             if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
-            head += record_name(rec);
+            head += popup.intel ? in_capitals(kIntelName) : std::string(record_name(rec));
         }
         text = popup_text(head, in_capitals(popup.text), kGamePopupWidth, &per_line);
     }
@@ -391,6 +398,7 @@ void Game::pump_popups() {
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
+    own_disk_ = disk_popup(popup);
     popups_.erase(next);
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
@@ -447,9 +455,14 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
     if (popup.bare) return layout_popup(L"", hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    if (disk_popup(popup)) {
+        return layout_popup(hd_icon(kDiskGlyph) + hd_case(at_, kDiskName),
+                            hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    }
     const int stand_in = stand_in_index(popup.item);
     // A stand-in's own name, under the label the helper wrote.
-    std::wstring name = translated_name(popup.item, stand_in >= 0, now);
+    std::wstring name = popup.intel ? hd_case(at_, kIntelName)
+                                    : translated_name(popup.item, stand_in >= 0, now);
     if (name.empty()) {
         name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
                                      : std::string(record_name(rec)));
@@ -859,7 +872,10 @@ void Game::watch_equipment() {
     pause_row_.prepare(known_disk_row());
     show_glyph(pause_disc_, pause_row_.on());
     pause_row_.watch(at_, pause_disc_.painted());
-    show_glyph(disk_glyph_, !scan_line_.empty());
+    // Also while a received disk's popup waits or shows: after a load the goal may not be on yet.
+    const bool disk_popup_due = (own_disk_ && own_popup_up()) ||
+                                std::any_of(popups_.begin(), popups_.end(), disk_popup);
+    show_glyph(disk_glyph_, !scan_line_.empty() || disk_popup_due);
     if (!scan_line_.empty()) {
         equip_.install(at_);
     } else {

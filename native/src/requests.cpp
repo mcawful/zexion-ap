@@ -103,6 +103,8 @@ std::string parse_batch(const std::string& request, Batch& out) {
                                static_cast<uint8_t>(value)});
         } else if (op == "refresh") {
             out.refresh = true;
+        } else if (op == "intel") {
+            out.intel = true;
         } else if (op == "popup" || op == "notice") {
             const bool bare = op == "notice";
             const char* kept = bare ? " .,'!?-:" : " .,'!?-";
