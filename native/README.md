@@ -322,7 +322,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   width the helper has set for the game's own pickup popup ("Other players' items"). A popup
   for item 44, a received OS Install Disk, is the disk glyph and OS INSTALL DISK (in a
   translation, the HD disk icon and the name in its case), not the record's DATA DISC with no
-  icon (not run in game yet); an Area Map's reads Intel Chip in an `apply` with `intel` ("Intel Chips").
+  icon (in translations other than English(HD): not run in game); an Area Map's reads Intel
+  Chip in an `apply` with `intel` ("Intel Chips").
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
@@ -334,14 +335,23 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
   or Intel Chip found in the world, after the game's own popup. A received OS Install Disk's or
   Intel Chip's `popup` is followed in the same `apply` by its count or hint as a `notice`, so
-  the two show one after the other, each with the item's sound, and wait together (not run in
-  game yet).
+  the two show one after the other, each with the item's sound, and wait together (a chip's
+  two waiting: not run in game).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
 
 Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
-2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
+2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips"); 2026-11-08 (B1,
+`zexion_ap.dll` `2c29d10e…`, PR #118's head `c0be163`, the seed `lab/ap/live55`, the owner's
+report), each received OS Install Disk named as the disk with its icon over its sender, then
+its count: one before the scanner and one after in the default English ("OS Install Disk 1",
+then "2 of 4"); two at once in English(HD), with the HD disk icon, in mixed case (popup, "3 of
+4", popup, "4 of 4", then the pod reminder); and one sent while RETURN HOME's question was up,
+with no popup over it, both its popups shown at the next load after YES and the ending (their
+language and the count's text not stated); and a received Intel Chip named as the chip over its
+sender, then its hint, in the default English and in English(HD) ("Intel Chips"). The sounds
+were not singled out.
 
 ### Received Energy Shields
 
@@ -583,8 +593,10 @@ Working in game: 2026-10-23 ("Live item objects").
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
 - **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
   Maps are Intel Chips) reads INTEL CHIP (Intel Chip in a translation), with `intel on` or not
-  when it shows, as after a load before the client sends it again ("Popups"). Not run in game
-  yet.
+  when it shows, as after a load before the client sends it again ("Popups"). Working in game
+  with `intel on`, 2026-11-08 (B1, `zexion_ap.dll` `2c29d10e…`, PR #118's head `c0be163`, the
+  owner's report): named as the chip over its sender, then its hint, in the default English and
+  in English(HD). Not run in game: one shown with `intel off`, and other translations.
 - **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
   English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
   ("Translations"; working in game in English(HD) 2026-11-04, B1, `zexion_ap.dll` `a7469024…`,
@@ -603,7 +615,9 @@ the helper:
   capitals (the client sends it in mixed case for English(HD): "Translations"), only over the
   game's text or its own;
 - paints the disk glyph into font glyph `0xFB`; it is also kept, the goal on or not, while a
-  received disk's popup waits or shows ("Popups"; not run in game yet);
+  received disk's popup waits or shows ("Popups"; working in game on received disks' popups,
+  2026-11-08, `zexion_ap.dll` `2c29d10e…`, held ones at the next load included; one shown with
+  the goal off not singled out);
 - with a disk or more, wraps the pause screen's EQUIPMENT callback (`src/equip.cpp`): after the
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
