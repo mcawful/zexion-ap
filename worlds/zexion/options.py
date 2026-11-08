@@ -443,8 +443,9 @@ class Goal(Choice):
     not placed, so Gates Vanilla (OHKO's, or Custom's gates: vanilla), whose hyperspace gates
     take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
     start_inventory): the gates then take no keys, only two of them visited. The scanner at
-    Guardia 42,26, outside the core's door (seen in game), which shows where the keys are in
-    the normal game, tells you how many disks you need."""
+    Guardia 42,26, outside the core's door, which shows where the keys are in the normal game,
+    tells you how many disks you need (seen there in game after a visit to Vallahar 6,8;
+    whether that visit is needed first is not known yet)."""
 
     display_name = "Goal"
     option_core = 0
