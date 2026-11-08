@@ -1185,6 +1185,33 @@ void test_received_stand_in_popup() {
     game.restore_ap_items();
 }
 
+// A received OS Install Disk (item 44) with the goal on pops up as the helper names it, after
+// its disk glyph, not as the record's DATA DISC with no icon; its count notice follows it.
+void test_received_disk_popup() {
+    zap::Game game;
+    ready(game);
+    apply(game, "apply\npopup 44 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text.find("OS INSTALL DISK") == std::string::npos,
+          "the goal off: the record's own name");
+    game.set_discs(1, 3, "COLLECT 3 OS INSTALL DISKS!", true);
+    int width = 0;
+    const std::string disk = zap::popup_text("\xFB" "OS INSTALL DISK", "FROM BOB", 24, &width);
+    apply(game, "apply\npopup 44 FROM BOB\nnotice 44 OS INSTALL DISK 1 OF 3");
+    game.pump_popups();  // the last popup 30 frames ago: this one at once
+    check(g_text == disk && g_message_args[0] == width && game.queued_popups() == 1,
+          "the goal on: the disk glyph, OS INSTALL DISK, then FROM BOB; its count waiting");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::notice_text("OS INSTALL DISK 1 OF 3", 24) && game.queued_popups() == 0,
+          "then its count, alone");
+    // Taken with the goal on, shown after it went off (held for the next load, which shows its
+    // popups before the client turns the goal on again): still named as the disk.
+    apply(game, "apply\npopup 44 FROM BOB");
+    game.set_discs(0, 0, "");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == disk, "named as it was when taken");
+}
+
 void test_stand_ins_named_by_their_own_cell() {
     zap::Game game;
     ready(game);
@@ -2178,6 +2205,7 @@ int main() {
     test_colored_stand_ins_dressed_later();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
+    test_received_disk_popup();
     test_received_shield();
     test_received_death();
     test_assist_watch();

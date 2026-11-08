@@ -691,6 +691,25 @@ void test_the_icons_through_the_game() {
     reset_translation();
 }
 
+// A received OS Install Disk with the goal on: the HD disk icon and the helper's name, not the
+// record's (the translation's Data Disc), then its count alone.
+void test_a_received_disk_popup() {
+    zap::Game game;
+    start(game);
+    game.set_discs(1, 3, "Collect 3 OS Install Disks!", true);
+    queue(game, "apply\npopup 44 from Bob\nnotice 44 OS Install Disk 1 of 3");
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE03A" L"OS Install Disk\nfrom Bob",
+          "the disk icon and OS Install Disk over the suffix");
+    end_message(0);
+    g_message_slot = 1;
+    frames(game, 200);
+    check(g_hd_texts.size() == 2 && g_hd_texts[1].text == L"OS Install Disk 1 of 3",
+          "then the count, alone");
+    game.put_back_game(&no_callback);
+    reset_translation();
+}
+
 // A popup measured as the font draws it, through the game: every character 6 wide, a space 3,
 // each icon 8.
 void test_a_popup_laid_out_by_the_font() {
@@ -1132,6 +1151,7 @@ int main() {
     test_a_stand_in_name_held_while_its_popup_shows();
     test_the_tables();
     test_popups_take_turns_and_empty();
+    test_a_received_disk_popup();
     test_a_notice_too_long_shows_its_pixel_text();
     test_the_pixel_text_when_the_tables_cannot_be_used();
     test_the_run_not_borrowed_when_an_entry_holds_text();

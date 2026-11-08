@@ -308,6 +308,10 @@ std::string Game::apply(const Batch& batch) {
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        // A received OS Install Disk with the goal on: named when shown as its map label and the
+        // equipment screen name it, not as the record's DATA DISC with no icon (docs/re/memory.md,
+        // "The Data Disc"), though it may show after a load the goal is not on again yet.
+        popup.disk = popup.counted && !popup.bare && popup.item == kDiskItem && !scan_line_.empty();
         popups_.push_back(std::move(popup));
     }
     return "applied";
@@ -366,6 +370,8 @@ void Game::pump_popups() {
         if (stand_in >= 0) {
             // A received stand-in: the game's own name and no icon, not the restyled record's.
             head = kStandInNames[stand_in];
+        } else if (popup.disk) {
+            head = static_cast<char>(kDiskGlyph) + in_capitals(kDiskName);
         } else {
             if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
             head += record_name(rec);
@@ -447,6 +453,10 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
     if (popup.bare) return layout_popup(L"", hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    if (popup.disk) {
+        return layout_popup(hd_icon(kDiskGlyph) + hd_case(at_, kDiskName),
+                            hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    }
     const int stand_in = stand_in_index(popup.item);
     // A stand-in's own name, under the label the helper wrote.
     std::wstring name = translated_name(popup.item, stand_in >= 0, now);
@@ -859,7 +869,7 @@ void Game::watch_equipment() {
     pause_row_.prepare(known_disk_row());
     show_glyph(pause_disc_, pause_row_.on());
     pause_row_.watch(at_, pause_disc_.painted());
-    show_glyph(disk_glyph_, !scan_line_.empty());
+    show_glyph(disk_glyph_, !scan_line_.empty() || disk_popup_queued());
     if (!scan_line_.empty()) {
         equip_.install(at_);
     } else {

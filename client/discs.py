@@ -9,8 +9,8 @@ counts them,
                 + the disks received from other worlds
                 + this world's own disk locations the player has found
 
-Shown in popups ("OS Install Disk 3 of 15", "of 15" once the scanner has said how many; in
-capitals but in English(HD)).
+Shown in a notice after each disk's popup ("OS Install Disk 3 of 15", "of 15" once the scanner
+has said how many; in capitals but in English(HD)).
 "Found" is what clients reported from the game's map (storage.own_found), not the server's
 checked set, which a release fills; the disc the game gives for its secret boss does not count.
 Pure functions; client/ticks.py talks to the helper.
@@ -61,8 +61,8 @@ def owned(hunt: DiscHunt, received: Sequence[int], checked: Iterable[int]) -> in
 
 
 def note(count: int, required: int | None = None) -> str:
-    """A disk's popup text: the count, and how many are needed once the player has been told
-    (the scanner's message; ``required`` None before)."""
+    """A disk's count, the notice after its popup: the count, and how many are needed once the
+    player has been told (the scanner's message; ``required`` None before)."""
     if required is None:
         return f"{NAME} {count}"
     return f"{NAME} {count} of {required}"
@@ -71,8 +71,9 @@ def note(count: int, required: int | None = None) -> str:
 def received_notes(
     hunt: DiscHunt, received: Sequence[int], checked: Iterable[int], told: bool = True
 ) -> dict[int, str]:
-    """The popup text of each received disk, by its position in ``received``: the count with
-    that disk, so a batch of them counts up; with how many are needed once ``told``."""
+    """The count shown straight after each received disk's popup (its "from" line), by the
+    disk's position in ``received``: the count with that disk, so a batch of them counts up;
+    with how many are needed once ``told``."""
     count = hunt.start + len(hunt.locations & set(checked))
     out = {}
     for index, code in enumerate(received):

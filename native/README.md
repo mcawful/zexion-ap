@@ -319,7 +319,10 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 - **Text:** a `popup` is the item's icon and name from its record, then the client's suffix (≤ 40
   characters); a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character
   width (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls"), whatever
-  width the helper has set for the game's own pickup popup ("Other players' items").
+  width the helper has set for the game's own pickup popup ("Other players' items"). A popup
+  for item 44 that `apply` took while `discs` was on is the disk glyph and OS INSTALL DISK
+  ("The OS Install Disks goal"), not the record's DATA DISC with no icon, even when it shows
+  after a load, before the client sends `discs` again (not run in game yet).
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
@@ -329,7 +332,9 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
   FROM ARCHIPELAGO.
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
-  or Intel Chip found in the world, after the game's own popup.
+  or Intel Chip found in the world, after the game's own popup. A received OS Install Disk's
+  `popup` is followed in the same `apply` by its count as a `notice`, so the two show one after
+  the other, each with the disk's sound, and wait together (not run in game yet).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
@@ -592,7 +597,10 @@ the helper:
 - writes the scanner's message (Text entry 12) as the client's line (`src/scan.cpp`), in
   capitals (the client sends it in mixed case for English(HD): "Translations"), only over the
   game's text or its own;
-- paints the disk glyph into font glyph `0xFB`;
+- paints the disk glyph into font glyph `0xFB`, and keeps it while a received disk's popup waits;
+- names a received disk's popup (`popup 44`) after that glyph as OS INSTALL DISK (in a translation
+  the HD disk icon and the name in its case), not the record's DATA DISC ("Popups"; not run in
+  game yet);
 - with a disk or more, wraps the pause screen's EQUIPMENT callback (`src/equip.cpp`): after the
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
@@ -737,10 +745,10 @@ built again in the translation's font; the pause row's count is KEYS's translate
 again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
 row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
-next frame call otherwise), the key slots' characters hidden; the disk count
-popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
-in game" and "Run in game again"): the received disks' count popups and the reminder in the HD font,
-NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
+next frame call otherwise), the key slots' characters hidden; the disks' popups (not their
+counts, which are notices) carry the HD disk icon. Working in game 2026-11-02 in English(HD)
+(B1; "Translations", "Run in game" and "Run in game again"): the received disks' count popups
+and the reminder in the HD font, NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
 after the HD disk icon and its description wrapped inside its box, the question centered, and the
 pause row's count ("4 of ?") in the HD font (`946b08a1…`); the scanner's line, 2026-11-04
 (`a7469024…`, develop 345fea7).

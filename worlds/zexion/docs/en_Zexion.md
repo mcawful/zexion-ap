@@ -33,7 +33,8 @@ Set with the Goal option.
     then need no keys: once you have visited two of them, they work (checked in game). In the
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
-  - Your count shows on each disk's popup, on the pause screen and on the file select.
+  - Your count shows after each disk's popup (a disk sent to you first pops up as any item
+    does, with who sent it), on the pause screen and on the file select.
   - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
     you how many you need. Until you have been there, the pause screen shows "OF ?". With
     Hints Revealed (Custom), the game counts you as told from the start, so the number shows

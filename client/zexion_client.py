@@ -518,8 +518,9 @@ async def poll(ctx: ZexionContext) -> None:
                 )
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
-        if hunt is not None:  # a received disc pops up with the count
-            notes |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
+        followups: dict[int, str] = {}
+        if hunt is not None:  # a received disk's popup, then the count
+            followups = discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         # A helper lost in a tick since the attach above (the ending again): the step gives
@@ -536,6 +537,7 @@ async def poll(ctx: ZexionContext) -> None:
             notes=notes,
             helper=ctx.helper,
             give=not waiting,
+            followups=followups,
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)

@@ -8,7 +8,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, native
+from client import discs, game, native
 from client import save_patch as sp
 from client import session as ss
 
@@ -458,6 +458,67 @@ def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
     lines = helper.requests[-1].splitlines()
     popups = [line for line in lines if line.startswith(("popup", "notice"))]
     assert popups == ["popup 17 from Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
+
+
+def shown(helper: FakeHelper) -> list[str]:
+    """The popup and notice lines of the last batch, in order."""
+    lines = helper.requests[-1].splitlines()
+    return [line for line in lines if line.startswith(("popup", "notice"))]
+
+
+def give_disks(session, g, received, senders, notes=None) -> None:
+    """Two polls giving ``received``, each disk followed by its count as the client's poll
+    passes it (discs.received_notes)."""
+    hunt = discs.DiscHunt(3, 5, 0, frozenset())
+    followups = discs.received_notes(hunt, received, [])
+    for _ in range(2):
+        session.step(g, received, gap=0, senders=senders, notes=notes, followups=followups)
+
+
+def test_a_received_disk_pops_up_from_its_sender_then_its_count(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    give_disks(session, g, [44], ["Bob"])
+    assert len(helper.requests) == 1, "both in one batch"
+    assert shown(helper) == ["popup 44 from Bob", "notice 44 OS Install Disk 1 of 3"]
+    assert session.announced == 1, "one item handed over, not two popups"
+
+
+def test_disks_received_together_count_up_in_order(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    give_disks(session, g, [44, 17, 44], ["Bob", "Alice", "Carol"])
+    assert shown(helper) == [
+        "popup 44 from Bob",
+        "notice 44 OS Install Disk 1 of 3",
+        "popup 17 from Alice",
+        "popup 44 from Carol",
+        "notice 44 OS Install Disk 2 of 3",
+    ]
+    assert session.announced == 3
+    give_disks(session, g, [44, 17, 44], ["Bob", "Alice", "Carol"])
+    assert len(helper.requests) == 1, "handed over once: nothing shown again"
+
+
+def test_an_area_maps_hint_still_replaces_its_popup_beside_a_disk(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
+    give_disks(session, g, [44, 49], ["Bob", "Alice"], notes=notes)
+    assert shown(helper) == [
+        "popup 44 from Bob",
+        "notice 44 OS Install Disk 1 of 3",
+        "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7",
+    ]
+
+
+def test_a_refused_batch_sends_both_of_a_disks_popups_again(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    helper.reply = "refused not in play"
+    give_disks(session, g, [44], ["Bob"])
+    assert session.announced == 0
+    helper.reply = "applied"
+    session.step(g, [44], gap=0, senders=["Bob"], followups={0: "OS Install Disk 1 of 3"})
+    assert len(helper.requests) == 2
+    assert shown(helper) == ["popup 44 from Bob", "notice 44 OS Install Disk 1 of 3"]
+    assert session.announced == 1
 
 
 def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setup) -> None:
