@@ -89,14 +89,18 @@ def batch_text(
     cas: list[tuple[int, int, int]],
     popups: list[tuple[int, str] | tuple[int, str, bool]],
     refresh: bool = False,
+    intel: bool = False,
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
     popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
-    name, or (item, text, True) a notice, the text alone (an Area Map's hint)."""
+    name, or (item, text, True) a notice, the text alone (an Area Map's hint). With ``intel``,
+    its Area Maps' popups read Intel Chip."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
         lines.append("refresh")
+    if intel:
+        lines.append("intel")
     for popup in popups:
         item, text = popup[0], popup[1]
         notice = len(popup) > 2 and bool(popup[2])

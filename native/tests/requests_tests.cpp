@@ -30,7 +30,10 @@ void test_parsers() {
     check(zap::parse_batch("apply\ncas 36 0 1\nrefresh\npopup 36 from Alice ü!", batch).empty(),
           "parses a batch");
     check(batch.cas.size() == 1 && batch.cas[0].item == 36 && batch.cas[0].value == 1, "cas");
-    check(batch.refresh, "refresh");
+    check(batch.refresh && !batch.intel, "refresh");
+    zap::Batch chips;
+    check(zap::parse_batch("apply\nintel\npopup 49 from Bob", chips).empty() && chips.intel,
+          "intel: its Area Maps are Intel Chips");
     check(batch.popups.size() == 1 && batch.popups[0].text == "from Alice !",
           "the suffix filtered to the font, in the case it was sent in");
     zap::Batch bad;

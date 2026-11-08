@@ -1185,6 +1185,41 @@ void test_received_stand_in_popup() {
     game.restore_ap_items();
 }
 
+// A received OS Install Disk (item 44) pops up after the disk glyph as OS INSTALL DISK, not as its
+// record's DATA DISC with no icon; its count notice follows it.
+void test_received_disk_popup() {
+    zap::Game game;
+    ready(game);
+    std::memcpy(g_records + 44 * 100 + 0x0A, "DATA DISC", sizeof("DATA DISC"));
+    int width = 0;
+    const std::string disk = zap::popup_text("\xFB" "OS INSTALL DISK", "FROM BOB", 24, &width);
+    apply(game, "apply\npopup 44 FROM BOB\nnotice 44 OS INSTALL DISK 1 OF 3");
+    game.pump_popups();
+    check(g_text == disk && g_message_args[0] == width && game.queued_popups() == 1,
+          "the disk glyph, OS INSTALL DISK, then FROM BOB; its count waiting");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::notice_text("OS INSTALL DISK 1 OF 3", 24) && game.queued_popups() == 0,
+          "then its count, alone");
+}
+
+// A received Area Map from a seed with Intel Chips (`intel`) pops up as INTEL CHIP, though Intel
+// Chips are off when it shows (a load before the client turns them on again); otherwise as its
+// record names it.
+void test_received_intel_chip_popup() {
+    zap::Game game;
+    ready(game);
+    // As B1's record holds it: no popup icon (docs/re/memory.md, "Intel Chips").
+    std::memcpy(g_records + 49 * 100 + 0x0A, "AREA MAP", sizeof("AREA MAP"));
+    int width = 0;
+    const std::string chip = zap::popup_text("INTEL CHIP", "FROM BOB", 24, &width);
+    apply(game, "apply\nintel\npopup 49 FROM BOB");
+    game.pump_popups();
+    check(g_text == chip && g_message_args[0] == width, "an Intel Chip: INTEL CHIP");
+    apply(game, "apply\npopup 49 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::popup_text("AREA MAP", "FROM BOB", 24), "an Area Map: AREA MAP");
+}
+
 void test_stand_ins_named_by_their_own_cell() {
     zap::Game game;
     ready(game);
@@ -2178,6 +2213,8 @@ int main() {
     test_colored_stand_ins_dressed_later();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
+    test_received_disk_popup();
+    test_received_intel_chip_popup();
     test_received_shield();
     test_received_death();
     test_assist_watch();

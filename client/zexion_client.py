@@ -166,7 +166,7 @@ class ZexionContext(CommonContext):
         try:
             conn = state.Connection.from_slot_data(slot, self.team, self.slot)
             if seed is None or seed.identity != identity:  # another seed or slot: afresh
-                seed = state.SeedState(identity, session.Session(conn.plan))
+                seed = state.SeedState(identity, session.Session(conn.plan, conn.intel_chip))
         except ValueError as exc:  # state.UnsupportedSeed, or locations the session can't use
             logger.error(
                 "This seed was made with another version of the Zexion APWorld than this "
@@ -506,10 +506,10 @@ async def poll(ctx: ZexionContext) -> None:
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     try:
-        notes: dict[int, str] = {}
+        followups: dict[int, str] = {}
         try:
             await hints_tick(ctx, p)
-            notes = hint_notes(ctx, p.codes)
+            followups = hint_notes(ctx, p.codes)
         except Exception as exc:  # the hints must never stop items or checks
             if ctx.said("hints", str(exc)):
                 logger.warning(
@@ -518,8 +518,8 @@ async def poll(ctx: ZexionContext) -> None:
                 )
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
-        if hunt is not None:  # a received disc pops up with the count
-            notes |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
+        if hunt is not None:  # a received disk's popup, then the count
+            followups |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         # A helper lost in a tick since the attach above (the ending again): the step gives
@@ -533,7 +533,7 @@ async def poll(ctx: ZexionContext) -> None:
             ctx.game_conn,
             p.codes,
             senders=p.senders,
-            notes=notes,
+            followups=followups,
             helper=ctx.helper,
             give=not waiting,
         )

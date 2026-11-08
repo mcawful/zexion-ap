@@ -258,8 +258,8 @@ def hint_note(ctx: ZexionContext, entry: tuple[int, int]) -> str:
 
 
 def hint_notes(ctx: ZexionContext, codes: list[int]) -> dict[int, str]:
-    """The popup text of each received Area Map whose hint is known, by its position among
-    ``codes``."""
+    """The hint shown after the popup of each received Area Map (an Intel Chip) whose hint is
+    known, by its position among ``codes``."""
     used = hints_used(ctx) if ctx.conn and ctx.conn.hint_targets else None
     if not used:
         return {}

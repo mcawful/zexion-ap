@@ -33,7 +33,8 @@ Set with the Goal option.
     then need no keys: once you have visited two of them, they work (checked in game). In the
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
-  - Your count shows on each disk's popup, on the pause screen and on the file select.
+  - Your count shows after each disk's popup (a disk sent to you first pops up as any item
+    does, with who sent it), on the pause screen and on the file select.
   - The scanner at Guardia 42,26, outside the core's door (seen in game), which shows where
     the keys are in the normal game, tells you how many you need. Until you have been there,
     the pause screen shows "OF ?". With
@@ -190,9 +191,10 @@ or Assist Unlock, stops generation with an error that names it.
 
 With the Area Map Hints option (on by default), Area Maps become **Intel Chips**. Each Intel
 Chip you get, found or sent to you, hints where one of your upgrades, keys or OS Install Disks
-is that you don't have yet, in any world. A popup shows the hint, such as HINT: SLIDE MOD IS AT
-GUARDIA 22,7 (in English(HD), Hint: Slide Mod is at Guardia 22,7), and it goes into your hint
-list. When nothing is left to hint, it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
+is that you don't have yet, in any world. After its popup (with who sent it, if it was sent),
+a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(HD), Hint:
+Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
+it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
 With the option off, Area Maps work as in the normal game.
 
