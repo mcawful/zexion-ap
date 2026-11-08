@@ -134,8 +134,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   a client opened during the ending: 2026-10-26 (`docs/re/locations.md`, "The OS Install Disks
   goal"). A save at the pod then a pause at once, and popups waiting at YES shown at the next
   load: 2026-11-04. Not run in game: RELOAD FROM CHECKPOINT and a teleport at the pod, the
-  map right after saving, and a received disk's popup, named OS INSTALL DISK with the disk icon, naming its sender
-  before its count (since 2026-11-07; before, the count took its place).
+  map right after saving, and a received disk's own popup before its count (since 2026-11-07;
+  before, the count took its place).
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").

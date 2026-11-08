@@ -691,12 +691,11 @@ void test_the_icons_through_the_game() {
     reset_translation();
 }
 
-// A received OS Install Disk with the goal on: the HD disk icon and the helper's name, not the
-// record's (the translation's Data Disc), then its count alone.
+// A received OS Install Disk: the HD disk icon and the helper's name, not the record's (the
+// translation's Data Disc), then its count alone.
 void test_a_received_disk_popup() {
     zap::Game game;
     start(game);
-    game.set_discs(1, 3, "Collect 3 OS Install Disks!", true);
     queue(game, "apply\npopup 44 from Bob\nnotice 44 OS Install Disk 1 of 3");
     frames(game, 1);
     check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE03A" L"OS Install Disk\nfrom Bob",

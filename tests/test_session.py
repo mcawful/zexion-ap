@@ -475,38 +475,22 @@ def give_disks(session, g, received, senders, notes=None) -> None:
         session.step(g, received, gap=0, senders=senders, notes=notes, followups=followups)
 
 
-def test_a_received_disk_pops_up_from_its_sender_then_its_count(with_helper) -> None:
+def test_each_received_disk_pops_up_from_its_sender_then_its_count(with_helper) -> None:
     session, g, helper, _ = with_helper
-    give_disks(session, g, [44], ["Bob"])
-    assert len(helper.requests) == 1, "both in one batch"
-    assert shown(helper) == ["popup 44 from Bob", "notice 44 OS Install Disk 1 of 3"]
-    assert session.announced == 1, "one item handed over, not two popups"
-
-
-def test_disks_received_together_count_up_in_order(with_helper) -> None:
-    session, g, helper, _ = with_helper
-    give_disks(session, g, [44, 17, 44], ["Bob", "Alice", "Carol"])
-    assert shown(helper) == [
-        "popup 44 from Bob",
-        "notice 44 OS Install Disk 1 of 3",
-        "popup 17 from Alice",
-        "popup 44 from Carol",
-        "notice 44 OS Install Disk 2 of 3",
-    ]
-    assert session.announced == 3
-    give_disks(session, g, [44, 17, 44], ["Bob", "Alice", "Carol"])
-    assert len(helper.requests) == 1, "handed over once: nothing shown again"
-
-
-def test_an_area_maps_hint_still_replaces_its_popup_beside_a_disk(with_helper) -> None:
-    session, g, helper, _ = with_helper
-    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
-    give_disks(session, g, [44, 49], ["Bob", "Alice"], notes=notes)
+    received, senders = [44, 49, 44], ["Bob", "Alice", "Carol"]
+    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}  # an Area Map's hint still replaces its popup
+    give_disks(session, g, received, senders, notes=notes)
+    assert len(helper.requests) == 1, "in one batch"
     assert shown(helper) == [
         "popup 44 from Bob",
         "notice 44 OS Install Disk 1 of 3",
         "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7",
+        "popup 44 from Carol",
+        "notice 44 OS Install Disk 2 of 3",
     ]
+    assert session.announced == 3, "three items handed over, not five popups"
+    give_disks(session, g, received, senders, notes=notes)
+    assert len(helper.requests) == 1, "nothing shown again"
 
 
 def test_a_refused_batch_sends_both_of_a_disks_popups_again(with_helper) -> None:

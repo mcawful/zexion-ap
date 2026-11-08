@@ -29,9 +29,6 @@ struct Popup {
     // A client's (from `apply`), with the pickup sound and held for its save; else one of the
     // helper's own notices (game_offline.cpp), silent.
     bool counted = false;
-    // A received OS Install Disk's popup, the goal on when `apply` took it: shown as the helper
-    // names the disk (Game::pump_popups), even after a load the goal is not on again yet.
-    bool disk = false;
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;

@@ -6,7 +6,6 @@
 
 #include <windows.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -308,10 +307,6 @@ private:
     // A popup in the translation's font: the icon and translated name (a stand-in's own, not its
     // label), then the client's suffix on the next line; a notice's text alone (hd_case).
     std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
-    // Whether a received OS Install Disk's popup waits (Popup::disk): its glyph is kept painted.
-    bool disk_popup_queued() const {
-        return std::any_of(popups_.begin(), popups_.end(), [](const Popup& p) { return p.disk; });
-    }
     // A font glyph painted while wanted, cleared once not (if it was painted).
     void show_glyph(FontGlyph& glyph, bool wanted);
     // A client's or the offline look put back and dropped: stand-ins, INTEL CHIP, the ASSIST
@@ -375,6 +370,7 @@ private:
     int frames_since_popup_ = 1 << 20;
     // The helper's last popup as the game's last message holds it (own_popup_up).
     BYTE* own_message_ = nullptr;
+    bool own_disk_ = false;  // that popup a received disk's (its glyph kept while it shows)
     int32_t own_sequence_ = 0;
     bool own_popup_up() const;
 

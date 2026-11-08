@@ -320,9 +320,9 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   characters); a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character
   width (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls"), whatever
   width the helper has set for the game's own pickup popup ("Other players' items"). A popup
-  for item 44 that `apply` took while `discs` was on is the disk glyph and OS INSTALL DISK
-  ("The OS Install Disks goal"), not the record's DATA DISC with no icon, even when it shows
-  after a load, before the client sends `discs` again (not run in game yet).
+  for item 44, a received OS Install Disk, is the disk glyph and OS INSTALL DISK (in a
+  translation, the HD disk icon and the name in its case), not the record's DATA DISC with no
+  icon (not run in game yet).
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
@@ -597,10 +597,8 @@ the helper:
 - writes the scanner's message (Text entry 12) as the client's line (`src/scan.cpp`), in
   capitals (the client sends it in mixed case for English(HD): "Translations"), only over the
   game's text or its own;
-- paints the disk glyph into font glyph `0xFB`, and keeps it while a received disk's popup waits;
-- names a received disk's popup (`popup 44`) after that glyph as OS INSTALL DISK (in a translation
-  the HD disk icon and the name in its case), not the record's DATA DISC ("Popups"; not run in
-  game yet);
+- paints the disk glyph into font glyph `0xFB`; it is also kept, the goal on or not, while a
+  received disk's popup waits or shows ("Popups"; not run in game yet);
 - with a disk or more, wraps the pause screen's EQUIPMENT callback (`src/equip.cpp`): after the
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
@@ -745,13 +743,13 @@ built again in the translation's font; the pause row's count is KEYS's translate
 again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
 row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
-next frame call otherwise), the key slots' characters hidden; the disks' popups (not their
-counts, which are notices) carry the HD disk icon. Working in game 2026-11-02 in English(HD)
-(B1; "Translations", "Run in game" and "Run in game again"): the received disks' count popups
-and the reminder in the HD font, NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
-after the HD disk icon and its description wrapped inside its box, the question centered, and the
-pause row's count ("4 of ?") in the HD font (`946b08a1…`); the scanner's line, 2026-11-04
-(`a7469024…`, develop 345fea7).
+next frame call otherwise), the key slots' characters hidden; a received disk's popup carries
+the HD disk icon (not run in game yet). Working in game 2026-11-02 in English(HD) (B1;
+"Translations", "Run in game" and "Run in game again"): the received disks' count popups and
+the reminder in the HD font, NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the
+equipment screen's OS Install Disk after the HD disk icon and its description wrapped inside its
+box, the question centered, and the pause row's count ("4 of ?") in the HD font (`946b08a1…`);
+the scanner's line, 2026-11-04 (`a7469024…`, develop 345fea7).
 
 Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
@@ -1160,7 +1158,7 @@ lands, not only the place passed.
     text, with the mark the game's last translated message left in its slot cleared (told by
     the HD object's serial), so it shows, in its box.
   - **Mixed case** (English(HD) only, the owner's rule, 2026-11-02; `mixed_case`, by the
-    language's name): the client writes its text in mixed case (hints, the disks' popups and
+    language's name): the client writes its text in mixed case (hints, the disks' counts and
     reminder, the scanner's line, the labels, "from Bob": `client/hints.py`, `client/discs.py`,
     `client/aplabels.py`, `client/session.py`), and the helper writes its own in mixed case too
     (the notices, the title lines, Archipelago, Intel Chip, Return home with the disks?, OS

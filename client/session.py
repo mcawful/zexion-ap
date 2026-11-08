@@ -353,8 +353,6 @@ class Session:
         notes: dict[int, str] | None = None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        # One received item's popup, or the notice in its place, and any notice that follows
-        # it: each item is handed over once (``announced`` counts items, not popups).
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
         start = self.announced
         # With Guns First, a progressive weapon received while its weapon is owned arrives as

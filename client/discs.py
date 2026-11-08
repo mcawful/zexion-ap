@@ -61,8 +61,8 @@ def owned(hunt: DiscHunt, received: Sequence[int], checked: Iterable[int]) -> in
 
 
 def note(count: int, required: int | None = None) -> str:
-    """A disk's count, the notice after its popup: the count, and how many are needed once the
-    player has been told (the scanner's message; ``required`` None before)."""
+    """A disk's count notice: the count, and how many are needed once the player has been told
+    (the scanner's message; ``required`` None before)."""
     if required is None:
         return f"{NAME} {count}"
     return f"{NAME} {count} of {required}"
@@ -71,9 +71,8 @@ def note(count: int, required: int | None = None) -> str:
 def received_notes(
     hunt: DiscHunt, received: Sequence[int], checked: Iterable[int], told: bool = True
 ) -> dict[int, str]:
-    """The count shown straight after each received disk's popup (its "from" line), by the
-    disk's position in ``received``: the count with that disk, so a batch of them counts up;
-    with how many are needed once ``told``."""
+    """The count shown after each received disk's popup, by its position in ``received``: the
+    count with that disk, so a batch of them counts up; with how many are needed once ``told``."""
     count = hunt.start + len(hunt.locations & set(checked))
     out = {}
     for index, code in enumerate(received):
