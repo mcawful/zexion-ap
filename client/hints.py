@@ -2,8 +2,8 @@
 
 The slot data lists where this player's progression items are ("hints": [player, location id,
 item code]), in a random order. Each Area Map the player gets uses the next entry whose item
-they lack: the client creates the Archipelago hint and the helper shows it as a notice, in
-place of a received item's popup or after the game's own pickup popup. Each Area Map has a key
+they lack: the client creates the Archipelago hint and the helper shows it as a notice, after
+a received item's popup or the game's own pickup popup. Each Area Map has a key
 (``r<k>``: the k-th received; ``l<i>``: the one at location i) under which the server's data
 storage keeps its entry, so a reconnect neither hints again nor renumbers. A received Intel
 Chip counts as the Area Map the game holds (ids.DRAWN_AS). Pure functions; the client does the

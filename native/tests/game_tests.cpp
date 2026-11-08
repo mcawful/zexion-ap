@@ -1202,6 +1202,31 @@ void test_received_disk_popup() {
           "then its count, alone");
 }
 
+// A received Area Map taken while it is an Intel Chip pops up as INTEL CHIP, then its hint, even
+// once Intel Chips are off when it shows (a load before the client turns them on again); taken
+// while they are off, as its record names it.
+void test_received_intel_chip_popup() {
+    zap::Game game;
+    ready(game);
+    BYTE* map = g_records + 49 * 100;
+    map[0x08] = 0xC7;  // its icon
+    std::memcpy(map + 0x0A, "AREA MAP", sizeof("AREA MAP"));
+    int width = 0;
+    const std::string chip = zap::popup_text("\xC7" "INTEL CHIP", "FROM BOB", 24, &width);
+    game.set_intel(true);
+    apply(game, "apply\npopup 49 FROM BOB\nnotice 49 HINT: SLIDE MOD");
+    game.set_intel(false);
+    game.pump_popups();
+    check(g_text == chip && g_message_args[0] == width && game.queued_popups() == 1,
+          "taken as an Intel Chip: INTEL CHIP FROM BOB, its hint waiting");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::notice_text("HINT: SLIDE MOD", 24), "then its hint, alone");
+    apply(game, "apply\npopup 49 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::popup_text("\xC7" "AREA MAP", "FROM BOB", 24),
+          "taken with Intel Chips off: AREA MAP");
+}
+
 void test_stand_ins_named_by_their_own_cell() {
     zap::Game game;
     ready(game);
@@ -2196,6 +2221,7 @@ int main() {
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_disk_popup();
+    test_received_intel_chip_popup();
     test_received_shield();
     test_received_death();
     test_assist_watch();

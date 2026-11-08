@@ -190,9 +190,10 @@ or Assist Unlock, stops generation with an error that names it.
 
 With the Area Map Hints option (on by default), Area Maps become **Intel Chips**. Each Intel
 Chip you get, found or sent to you, hints where one of your upgrades, keys or OS Install Disks
-is that you don't have yet, in any world. A popup shows the hint, such as HINT: SLIDE MOD IS AT
-GUARDIA 22,7 (in English(HD), Hint: Slide Mod is at Guardia 22,7), and it goes into your hint
-list. When nothing is left to hint, it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
+is that you don't have yet, in any world. After its popup (with who sent it, if it was sent),
+a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(HD), Hint:
+Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
+it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
 With the option off, Area Maps work as in the normal game.
 

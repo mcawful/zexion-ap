@@ -709,6 +709,22 @@ void test_a_received_disk_popup() {
     reset_translation();
 }
 
+// A received Area Map taken while it is an Intel Chip: Intel Chip, not the translation's Area
+// Map, though Intel Chips are off when it shows.
+void test_a_received_intel_chip_popup() {
+    zap::Game game;
+    start(game);
+    g_records[49 * 100 + 0x08] = 0xC7;  // its icon
+    game.set_intel(true);
+    queue(game, "apply\npopup 49 from Bob");
+    game.set_intel(false);
+    frames(game, 1);
+    check(g_hd_texts.size() == 1 && g_hd_texts[0].text == L"\xE02B" L"Intel Chip\nfrom Bob",
+          "its icon and Intel Chip over the suffix");
+    game.put_back_game(&no_callback);
+    reset_translation();
+}
+
 // A popup measured as the font draws it, through the game: every character 6 wide, a space 3,
 // each icon 8.
 void test_a_popup_laid_out_by_the_font() {
@@ -1151,6 +1167,7 @@ int main() {
     test_the_tables();
     test_popups_take_turns_and_empty();
     test_a_received_disk_popup();
+    test_a_received_intel_chip_popup();
     test_a_notice_too_long_shows_its_pixel_text();
     test_the_pixel_text_when_the_tables_cannot_be_used();
     test_the_run_not_borrowed_when_an_entry_holds_text();

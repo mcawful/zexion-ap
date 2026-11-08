@@ -196,18 +196,16 @@ class Session:
         received: list[int],
         gap: float = game.SETTLE_SECONDS,
         senders: list[str] | None = None,
-        notes: dict[int, str] | None = None,
+        followups: dict[int, str] | None = None,
         helper: native.Helper | None = None,
         give: bool = True,
-        followups: dict[int, str] | None = None,
     ) -> Step:
-        """One poll. ``senders`` names who sent each of ``received`` (for popups); ``notes``
-        replaces the popup of some of them with a notice, its text alone (an Area Map's hint,
-        client/hints.py), and ``followups`` adds a notice straight after the popup of some (an
-        OS Install Disk's count, client/discs.py). Grants go through ``helper`` when one is
-        attached, else directly; a HelperError from it gives nothing and is kept in the step
-        (``helper_error``). Without ``give`` (a helper lost earlier in the poll, to be attached
-        again first) nothing is given, and the rest is read as usual."""
+        """One poll. ``senders`` names who sent each of ``received`` (for popups); ``followups``
+        adds a notice straight after the popup of some of them (an Intel Chip's hint,
+        client/hints.py; an OS Install Disk's count, client/discs.py). Grants go through
+        ``helper`` when one is attached, else directly; a HelperError from it gives nothing and
+        is kept in the step (``helper_error``). Without ``give`` (a helper lost earlier in the
+        poll, to be attached again first) nothing is given, and the rest is read as usual."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
@@ -261,7 +259,7 @@ class Session:
         if snap.state == game.IN_PLAY and not self.holding and give:
             try:
                 step.granted = self.give(
-                    g, snap, collected, received, gap, senders, notes, helper, followups
+                    g, snap, collected, received, gap, senders, followups, helper
                 )
             except native.HelperError as exc:
                 step.helper_error = exc
@@ -287,9 +285,8 @@ class Session:
         received: list[int],
         gap: float,
         senders: list[str] | None = None,
-        notes: dict[int, str] | None = None,
-        helper: native.Helper | None = None,
         followups: dict[int, str] | None = None,
+        helper: native.Helper | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
@@ -310,7 +307,7 @@ class Session:
                 return {}  # which items have had their popup is not known yet
             try:
                 return self.give_through_helper(
-                    helper, snap, result.inventory, received, senders, notes, followups
+                    helper, snap, result.inventory, received, senders, followups
                 )
             except native.ReplyLost:
                 # The batch may have been applied and its popups shown: none shown again.
@@ -350,7 +347,6 @@ class Session:
         owed: dict[int, int],
         received: list[int],
         senders: list[str] | None,
-        notes: dict[int, str] | None = None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
         popups: list[tuple[int, str] | tuple[int, str, bool]] = []
@@ -369,14 +365,10 @@ class Session:
                 # The weapon is owned from now on, whichever byte this one set.
                 weapons.add(weapon)
             sender = senders[index] if senders and index < len(senders) else ""
-            note = (notes or {}).get(index)
-            if note:
-                popups.append((item, note, True))  # a notice: the hint alone
-            else:
-                popups.append((item, f"from {sender}" if sender else ""))
+            popups.append((item, f"from {sender}" if sender else ""))
             followup = (followups or {}).get(index)
             if followup:
-                popups.append((item, followup, True))  # a notice after it: the disk's count
+                popups.append((item, followup, True))  # a notice after it: a hint, a count
         if not owed and not popups:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:

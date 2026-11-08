@@ -29,6 +29,9 @@ struct Popup {
     // A client's (from `apply`), with the pickup sound and held for its save; else one of the
     // helper's own notices (game_offline.cpp), silent.
     bool counted = false;
+    // An Area Map's popup taken while it is an Intel Chip (`intel on`): named so when shown, which
+    // may be after a load the client has not turned Intel Chips on again for yet.
+    bool intel = false;
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;

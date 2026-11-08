@@ -1,7 +1,7 @@
 """client/zexion_client.py: a load ended by the game closing, or seen to end while no connection
 steps, a reconnect meanwhile included, what a reconnect carries on with, the helper failing or
-let go, and a received disk's count after its popup. Archipelago is not installed here, so the
-parts of it the module imports are stand-ins."""
+let go, and a received disk's count and Intel Chip's hint after its popup. Archipelago is not
+installed here, so the parts of it the module imports are stand-ins."""
 
 from __future__ import annotations
 
@@ -318,6 +318,30 @@ def test_a_reconnect_attaches_the_helper_before_the_first_step(monkeypatch) -> N
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach", "step with the helper", "back"]
+
+
+def test_a_helper_attached_again_is_told_intel_chips_before_the_step(monkeypatch) -> None:
+    # A chip received meanwhile pops up as one: the helper names it from `intel on` at apply.
+    ctx = context(connection(), Showing(game.IN_PLAY))
+    ctx.helper_left, ctx.load.intel_want = True, True
+    order: list[str] = []
+
+    class Told(Helper):
+        def request(self, text: str, seconds: float = 2.0) -> str:
+            order.append(text)
+            return text  # "intel on" answered as taken
+
+    async def attach(c) -> None:
+        c.helper, c.told = Told(), state.HelperState()
+
+    def step(g, received, helper=None, **kwargs):
+        order.append("step")
+        raise game.GameNotRunning("Zexion is not running")  # the poll ends here
+
+    monkeypatch.setattr(zc, "attach_helper", attach)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert order.index("intel on") < order.index("step")
 
 
 def test_a_save_in_its_ending_keeps_the_helper() -> None:
@@ -640,12 +664,13 @@ def test_the_poll_says_how_to_play_once_no_save_of_this_seed_is_loaded(monkeypat
     assert conn.newgame_lines == ()
 
 
-def test_a_received_disk_has_its_count_after_its_popup(monkeypatch) -> None:
-    # The count follows the disk's own popup ("from Bob"), not in its place, as an Area Map's
-    # hint is (notes).
+def test_a_received_disk_has_its_count_and_a_chip_its_hint_after_its_popup(monkeypatch) -> None:
+    # Each follows the item's own popup ("from Bob"), not in its place.
     hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
     ctx = context(connection(**hunt), Showing(game.IN_PLAY))
-    monkeypatch.setattr(ctx, "received", lambda: ([17, 44, 44], ["Alice", "Bob", "Carol"]))
+    monkeypatch.setattr(ctx, "received", lambda: ([49, 44, 44], ["Alice", "Bob", "Carol"]))
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    monkeypatch.setattr(zc, "hint_notes", lambda c, codes: {0: "HINT: SLIDE MOD"})
     passed: dict = {}
 
     def step(g, received, **kwargs):
@@ -654,5 +679,8 @@ def test_a_received_disk_has_its_count_after_its_popup(monkeypatch) -> None:
 
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     asyncio.run(zc.poll(ctx))
-    assert passed["followups"] == {1: "OS Install Disk 1", 2: "OS Install Disk 2"}
-    assert passed["notes"] == {}
+    assert passed["followups"] == {
+        0: "HINT: SLIDE MOD",
+        1: "OS Install Disk 1",
+        2: "OS Install Disk 2",
+    }

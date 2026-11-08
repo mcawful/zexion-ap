@@ -322,7 +322,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   width the helper has set for the game's own pickup popup ("Other players' items"). A popup
   for item 44, a received OS Install Disk, is the disk glyph and OS INSTALL DISK (in a
   translation, the HD disk icon and the name in its case), not the record's DATA DISC with no
-  icon (not run in game yet).
+  icon; one for item 49 that `apply` took during `intel on` reads Intel Chip ("Intel Chips")
+  (both not run in game yet).
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
@@ -332,9 +333,10 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
   FROM ARCHIPELAGO.
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
-  or Intel Chip found in the world, after the game's own popup. A received OS Install Disk's
-  `popup` is followed in the same `apply` by its count as a `notice`, so the two show one after
-  the other, each with the disk's sound, and wait together (not run in game yet).
+  or Intel Chip found in the world, after the game's own popup. A received OS Install Disk's or
+  Intel Chip's `popup` is followed in the same `apply` by its count or hint as a `notice`, so
+  the two show one after the other, each with the item's sound, and wait together (not run in
+  game yet).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
@@ -580,6 +582,9 @@ Working in game: 2026-10-23 ("Live item objects").
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
+- **Received:** a client's `popup 49` taken during `intel on` reads INTEL CHIP (Intel Chip in a
+  translation) even if it shows after `intel off`, as after a load before the client sends
+  `intel on` again ("Popups"); its hint follows as a `notice`. Not run in game yet.
 - **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
   English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
   ("Translations"; working in game in English(HD) 2026-11-04, B1, `zexion_ap.dll` `a7469024…`,

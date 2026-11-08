@@ -312,6 +312,7 @@ std::string Game::apply(const Batch& batch) {
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        popup.intel = !popup.bare && popup.item == kAreaMapItem && intel_.on();
         popups_.push_back(std::move(popup));
     }
     return "applied";
@@ -374,7 +375,7 @@ void Game::pump_popups() {
             head = static_cast<char>(kDiskGlyph) + in_capitals(kDiskName);
         } else {
             if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
-            head += record_name(rec);
+            head += popup.intel ? in_capitals(kIntelName) : std::string(record_name(rec));
         }
         text = popup_text(head, in_capitals(popup.text), kGamePopupWidth, &per_line);
     }
@@ -460,7 +461,8 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     }
     const int stand_in = stand_in_index(popup.item);
     // A stand-in's own name, under the label the helper wrote.
-    std::wstring name = translated_name(popup.item, stand_in >= 0, now);
+    std::wstring name = popup.intel ? hd_case(at_, kIntelName)
+                                    : translated_name(popup.item, stand_in >= 0, now);
     if (name.empty()) {
         name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
                                      : std::string(record_name(rec)));

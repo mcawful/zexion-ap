@@ -449,47 +449,37 @@ def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) 
     assert session.announced == 2
 
 
-def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
-    session, g, helper, _ = with_helper
-    received, senders = [17, 49], ["Bob", "Alice"]
-    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
-    session.step(g, received, gap=0, senders=senders, notes=notes)
-    session.step(g, received, gap=0, senders=senders, notes=notes)
-    lines = helper.requests[-1].splitlines()
-    popups = [line for line in lines if line.startswith(("popup", "notice"))]
-    assert popups == ["popup 17 from Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
-
-
 def shown(helper: FakeHelper) -> list[str]:
     """The popup and notice lines of the last batch, in order."""
     lines = helper.requests[-1].splitlines()
     return [line for line in lines if line.startswith(("popup", "notice"))]
 
 
-def give_disks(session, g, received, senders, notes=None) -> None:
+def give_disks(session, g, received, senders, hints=None) -> None:
     """Two polls giving ``received``, each disk followed by its count as the client's poll
-    passes it (discs.received_notes)."""
+    passes it (discs.received_notes), and each Intel Chip in ``hints`` by its hint."""
     hunt = discs.DiscHunt(3, 5, 0, frozenset())
-    followups = discs.received_notes(hunt, received, [])
+    followups = discs.received_notes(hunt, received, []) | (hints or {})
     for _ in range(2):
-        session.step(g, received, gap=0, senders=senders, notes=notes, followups=followups)
+        session.step(g, received, gap=0, senders=senders, followups=followups)
 
 
-def test_each_received_disk_pops_up_from_its_sender_then_its_count(with_helper) -> None:
+def test_each_received_disk_or_chip_pops_up_from_its_sender_then_its_note(with_helper) -> None:
     session, g, helper, _ = with_helper
-    received, senders = [44, 49, 44], ["Bob", "Alice", "Carol"]
-    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}  # an Area Map's hint still replaces its popup
-    give_disks(session, g, received, senders, notes=notes)
+    received, senders = [44, 49, 17, 44], ["Bob", "Alice", "Dan", "Carol"]
+    give_disks(session, g, received, senders, hints={1: "HINT: SLIDE MOD AT GUARDIA 22,7"})
     assert len(helper.requests) == 1, "in one batch"
     assert shown(helper) == [
         "popup 44 from Bob",
         "notice 44 OS Install Disk 1 of 3",
+        "popup 49 from Alice",
         "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7",
+        "popup 17 from Dan",
         "popup 44 from Carol",
         "notice 44 OS Install Disk 2 of 3",
     ]
-    assert session.announced == 3, "three items handed over, not five popups"
-    give_disks(session, g, received, senders, notes=notes)
+    assert session.announced == 4, "four items handed over, not seven popups"
+    give_disks(session, g, received, senders, hints={1: "HINT: SLIDE MOD AT GUARDIA 22,7"})
     assert len(helper.requests) == 1, "nothing shown again"
 
 

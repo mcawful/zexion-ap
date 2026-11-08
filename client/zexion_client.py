@@ -496,6 +496,12 @@ async def poll(ctx: ZexionContext) -> None:
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return
         ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
+        if ctx.helper is not None:  # told Intel Chips before the step: a chip's popup reads so
+            await side_tick(
+                ctx,
+                "Intel Chips",
+                lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL),
+            )
     conn = ctx.conn
     if conn is None or not ctx.slot:
         return  # a disconnect or another connection while the above waited
@@ -506,10 +512,10 @@ async def poll(ctx: ZexionContext) -> None:
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     try:
-        notes: dict[int, str] = {}
+        followups: dict[int, str] = {}  # notices after a received item's popup
         try:
             await hints_tick(ctx, p)
-            notes = hint_notes(ctx, p.codes)
+            followups = hint_notes(ctx, p.codes)
         except Exception as exc:  # the hints must never stop items or checks
             if ctx.said("hints", str(exc)):
                 logger.warning(
@@ -518,9 +524,8 @@ async def poll(ctx: ZexionContext) -> None:
                 )
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
-        followups: dict[int, str] = {}
         if hunt is not None:  # a received disk's popup, then the count
-            followups = discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
+            followups |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         # A helper lost in a tick since the attach above (the ending again): the step gives
@@ -534,10 +539,9 @@ async def poll(ctx: ZexionContext) -> None:
             ctx.game_conn,
             p.codes,
             senders=p.senders,
-            notes=notes,
+            followups=followups,
             helper=ctx.helper,
             give=not waiting,
-            followups=followups,
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)

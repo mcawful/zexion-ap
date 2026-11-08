@@ -125,7 +125,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
-  2026-10-25 ("Intel Chips").
+  2026-10-25 ("Intel Chips"). Not run in game: a received chip's own popup before its hint
+  (since 2026-11-07; before, the hint took its place).
 - OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
   2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
   2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending
