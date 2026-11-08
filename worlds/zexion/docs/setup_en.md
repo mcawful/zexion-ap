@@ -47,6 +47,10 @@ Archipelago Mod and Start the AP client to play a seed).
   `zexion.apworld` from the same release as yours installed in their Archipelago.
   archipelago.gg can host the generated game, but can't generate it: Zexion isn't one of its
   games.
+- **Item plando:** a YAML with `plando_items` needs item plando turned on where the game is
+  generated (`plando_options` in `host.yaml` including `items`), or the plando is skipped with
+  a warning. What works and what generation refuses: the game page, `zexion-game-page.md`,
+  "Can I use plando?".
 
 ## Start playing
 

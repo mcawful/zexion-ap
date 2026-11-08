@@ -21,7 +21,7 @@ from Options import OptionError
 from worlds.AutoWorld import World
 from worlds.generic.Rules import add_item_rule
 
-from . import custom, data, logic, reach, rules, starting, web_world
+from . import custom, data, logic, plando, reach, rules, starting, web_world
 from .items import (
     AREA_MAP,
     ASSIST_UNLOCK,
@@ -151,6 +151,7 @@ class ZexionWorld(World):
     start_inventory: dict[int, int]
     pool_codes: list[int]  # the seed's item pool, one code per location, before create_items
     logic_settings: logic.Settings  # not World.settings, the host.yaml settings
+    made_items: Counter[int]  # this player's items before plando, by item code (plando.py)
 
     def generate_early(self) -> None:
         self.mode_name = self.options.mode.current_key
@@ -730,6 +731,36 @@ class ZexionWorld(World):
         self.multiworld.completion_condition[self.player] = lambda state: state.has(
             "Victory", self.player
         )
+
+    def generate_basic(self) -> None:
+        # Archipelago has just read the plando and places it after this step (Main.py): say why
+        # a location one names is not in this seed, and count the items as the world made them,
+        # for pre_fill to tell plando's from them (plando.py).
+        for warning in plando.left_out(self):
+            logging.warning(warning)
+        self.made_items = plando.made_items(self)
+
+    def plando_problems(self) -> list[str]:
+        """Why this player's items, after plando, are more than the game holds or a kind it
+        does not hold (plando.py)."""
+        return plando.problems(
+            plando.own_items(self),
+            self.made_items,
+            guns_first=self.logic_settings.guns_first,
+            disc_hunt=self.disc_hunt,
+            area_map_hints=bool(self.options.area_map_hints),
+        )
+
+    def pre_fill(self) -> None:
+        """Refuse a seed whose plando gave this player items the game does not hold, or more
+        than it holds (plando.py)."""
+        found = self.plando_problems()
+        if found:
+            raise OptionError(
+                f"Zexion ({self.player_name}): plando_items gives items the game does not hold "
+                f"(from_pool: false, or an item the pool holds no more of, makes new copies): "
+                f"{'; '.join(found)}"
+            )
 
     @classmethod
     def stage_pre_fill(cls, multiworld: MultiWorld) -> None:

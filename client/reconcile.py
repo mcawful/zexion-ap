@@ -15,9 +15,10 @@ An inventory above what the player should own is left alone.
 
 Only the supplies and Scrap Metal are counts (``COUNTED``; docs/re/save-format.md, "Inventory:
 one byte per item ID at 0x92F3"). Every other item is held once, as the game's own seeds hold it
-(docs/re/randocells.md, "The pool"), so its byte is never written above 1: a second copy, which
-only a plando or the server console's ``/send`` makes, is not written, as what the game does
-with a 2 there is not measured.
+(docs/re/randocells.md, "The pool"), so its byte is never written above 1: a second copy (the
+server console's ``/send`` or a client's ``!getitem``, an item link's replacement item, or a
+plando in a seed from before the world refused one: worlds/zexion/plando.py) is not written, as
+what the game does with a 2 there is not measured.
 
 With Guns First on (setting t10, every preset), a weapon and its upgrade are one progressive
 item, which the game turns into the upgrade on a second copy (docs/re/randocells.md, "The
