@@ -126,7 +126,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
   2026-11-03; given once across reconnects: 2026-11-04 ("Received Energy Shields"; its stop
-  after three misses not run in game).
+  after three misses, and the helper's check of the whole of event 3553 since 2026-11-08: not
+  run in game).
 - Received scrap's drops (its pickup's event, after its popup): not run in game ("Received
   scrap").
 - DeathLink, both ways: 2026-10-23 ("DeathLink").

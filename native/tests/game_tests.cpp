@@ -1466,6 +1466,7 @@ void test_received_scrap_drops_held() {
     scrap_records();
     g_flags[250] = 0;
     game.note_play(1000);
+    game.pump_drops(1000);  // the load's first frame in play: flag 250 clear
     apply(game, "apply\npopup 46 FROM ALICE");
     g_message_fails = true;  // all four message slots busy
     for (int i = 0; i < 30; ++i) game.pump_popups();
@@ -1489,24 +1490,47 @@ void test_received_scrap_drops_held() {
     check(g_spawn_calls == 2, "a save past its ending gets its drops");
     g_flags[250] = 0;
 
+    // A popup that shows only after the grab (queued behind others, or applied just before it):
+    // the load began before its ending, so its drop waits too.
+    g_save_loaded = 0xFF;
+    game.pump_drops(9100);
+    g_save_loaded = 3;  // a load before its ending
+    game.note_play(9200);
+    game.pump_drops(9200);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\npopup 47 FROM ALICE");
+    g_flags[250] = 1;  // Zexion grabbed
+    show_next(game);
+    check(game.queued_drops() == 1, "its popup shown in the ending");
+    game.pump_drops(11000);
+    check(g_spawn_calls == 2 && game.queued_drops() == 1,
+          "a drop queued after the ending began in its load waits too");
+    g_save_loaded = 0xFF;
+    game.pump_drops(12000);
+    g_save_loaded = 3;
+    game.note_play(12000);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 3 && g_spawn_event == g_events + 3549 * 0x28,
+          "and is spawned at the next load");
+    g_flags[250] = 0;
+
     put<int16_t>(g_records + 46 * 100, 0x40, -1);  // Scrap Metal's record names no event
     apply(game, "apply\npopup 46 FROM ALICE");
     show_next(game);
     game.pump_drops(10000);
-    check(g_spawn_calls == 2 && game.drop_status() == "queued 0; last refused event not as traced 46",
+    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused event not as traced 46",
           "-1 is only a restyled stand-in's");
     put<int16_t>(g_records + 47 * 100, 0x40, 3550);  // Scrap Energy's names Scrap Chunk's
     apply(game, "apply\npopup 47 FROM ALICE");
     show_next(game);
     game.pump_drops(10000);
-    check(g_spawn_calls == 2 && game.drop_status() == "queued 0; last refused event not as traced 47",
+    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused event not as traced 47",
           "nor another item's event");
     scrap_records();
     g_event_count = 3552;  // a table without 3552
     apply(game, "apply\npopup 48 FROM ALICE");
     show_next(game);
     game.pump_drops(10000);
-    check(g_spawn_calls == 2 && game.drop_status() == "queued 0; last refused no event 48",
+    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused no event 48",
           "Scrap Chunk refused without the fade it runs next");
     reset_events();
 }

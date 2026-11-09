@@ -403,7 +403,10 @@ tests only, not run in game.
 - **What:** a received Scrap Metal, Scrap Energy or Scrap Chunk (46 to 48) gets the drops its
   pickup spawns: once its popup has shown, the helper runs the item's pickup event (3548, 3549
   or 3550) as the pickup does, from the player's cell (`pump_drops`, `run_item_event`). Scrap
-  Chunk's runs a fade of layer 7 after it, as the game's does. Its inventory byte stays the
+  Chunk's runs a fade of layer 7 after it, as the game's does. The drops start near the top-left
+  corner of the player's cell (the corner plus (5, 8), as the pickup's start at its item's
+  cell's), not at the player: where that puts them in a room of several cells, and whether
+  they can be reached from anywhere in it, is not seen in game. Its inventory byte stays the
   client's grant, +1 Scrap Metal ("Grants"). The record must name the event (or −1, a
   stand-in's record while the helper restyles it: "Other players' items"), and the event, and
   the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
@@ -416,9 +419,10 @@ tests only, not run in game.
   from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
   the order of their popups. In another seed's save or a normal save it waits for its popup's
   save ("Popups"); off the map, for the player to be on it. Nor in the game's own ending, whose
-  cutscenes read as play: one whose load saw flag 250 set after it was clear waits for the next
-  load (`docs/re/memory.md`, "The ending: flag 250"), as the client holds received items then; a
-  save past its ending, with the flag set from the start, gets its drops.
+  cutscenes read as play: the helper reads flag 250 on each load's first frame in play, and
+  while the flag is set after reading clear then, every drop waits for the next load, whenever
+  its popup showed (`docs/re/memory.md`, "The ending: flag 250"), as the client holds received
+  items then; a save past its ending, with the flag set from the start, gets its drops.
 - **Once:** a drop rides on its popup. The client hands each received item's popup over once
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,

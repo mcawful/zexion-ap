@@ -246,8 +246,10 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
 - Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
-  around you, and Scrap sent to you drops what the game's own Scrap does, after its popup,
-  once you have stayed on one map square for a second.
+  around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
+  you have stayed on one map square for a second (not tried in game yet). Scrap whose popup
+  you saw before version 1.1.0 drops nothing, and nothing drops during the game's ending: what
+  arrives then drops the next time you load the save.
 
 ## What do Area Maps and Intel Chips do?
 

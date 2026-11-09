@@ -445,9 +445,7 @@ void Game::pump_popups() {
     }
     own_disk_ = disk_popup(popup);
     // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
-    if (has_drop(popup)) {
-        drops_.push_back({popup.item, popup.origin, static_cast<int8_t>(ending_flag() ? 1 : 0)});
-    }
+    if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
     popups_.erase(next);
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
@@ -565,26 +563,24 @@ std::string Game::kill(uint64_t now_ms) {
 }
 
 void Game::pump_drops(uint64_t now_ms) {
-    if (drops_.empty() || !configured_) return;
-    // The game's ending, whose cutscenes read as play: flag 250 set since the drop's load began
-    // keeps it for the next load, as the client holds items (docs/re/memory.md, "The ending:
-    // flag 250"). A save past its ending reads it set from the start, and gets its drops.
-    const bool no_save = *at_.save_loaded == kNoSaveLoaded;
+    if (!configured_) return;
+    // The game's ending, whose cutscenes read as play: flag 250 read on the load's first frame in
+    // play, every frame whether drops wait or not, so one set since keeps them all for the next
+    // load, as the client holds items (docs/re/memory.md, "The ending: flag 250"). A save past
+    // its ending reads it set from the start, and gets its drops.
     const bool ending = ending_flag();
-    for (Drop& d : drops_) {
-        if (no_save) {
-            d.ending = -1;
-        } else if (d.ending < 0 && in_play()) {
-            d.ending = static_cast<int8_t>(ending ? 1 : 0);
-        }
+    if (*at_.save_loaded == kNoSaveLoaded) {
+        load_ending_ = -1;
+    } else if (load_ending_ < 0 && in_play()) {
+        load_ending_ = static_cast<int8_t>(ending ? 1 : 0);
     }
+    if (drops_.empty() || (ending && load_ending_ == 0)) return;
     // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
     // through its ending (kept for this save's next load, as the popups are).
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
-    auto next = std::find_if(drops_.begin(), drops_.end(), [this, ending](const Drop& d) {
-        return origin_loaded(d.origin) && !(ending && d.ending == 0);
-    });
+    auto next = std::find_if(drops_.begin(), drops_.end(),
+                             [this](const Drop& d) { return origin_loaded(d.origin); });
     if (next == drops_.end()) return;
     const uint8_t item = next->item;
     std::string why = run_item_event(item);

@@ -385,11 +385,11 @@ private:
     struct Drop {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
-        // Flag 250 (the ending) in this load before the drop could run: 0 clear, 1 set, -1 not
-        // read yet (no save loaded since). One set since it was read waits for the next load.
-        int8_t ending = -1;
     };
     std::deque<Drop> drops_;
+    // Flag 250 (the ending) on this load's first frame in play: 0 clear, 1 set, -1 not read yet
+    // (no save loaded since). While it reads set and this says clear, drops wait (pump_drops).
+    int8_t load_ending_ = -1;
     std::string drop_status_ = "none";
     // Frame calls since the helper's last popup (more of them than game frames on a fast monitor).
     int frames_since_popup_ = 1 << 20;
