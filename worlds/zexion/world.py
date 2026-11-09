@@ -735,17 +735,17 @@ class ZexionWorld(World):
     def generate_basic(self) -> None:
         # Archipelago has just read the plando and places it after this step (Main.py): say why
         # a location one names is not in this seed, and count the items as the world made them,
-        # for pre_fill to tell plando's from them (plando.py).
+        # for pre_fill to tell plando's from them and from the item links' (plando.py).
         for warning in plando.left_out(self):
             logging.warning(warning)
         self.made_items = plando.made_items(self)
 
     def plando_problems(self) -> list[str]:
         """Why this player's items, after plando, are more than the game holds or a kind it
-        does not hold (plando.py)."""
+        does not hold, where the world and the item links did not make them (plando.py)."""
         return plando.problems(
             plando.own_items(self),
-            self.made_items,
+            self.made_items + plando.linked_items(self),
             guns_first=self.logic_settings.guns_first,
             disc_hunt=self.disc_hunt,
             area_map_hints=bool(self.options.area_map_hints),

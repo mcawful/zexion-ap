@@ -317,20 +317,14 @@ where its subject is:
   since 2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
   `TestExcludedLocationsNameThePlayerOver`).
 - **Item plando past what the game holds is refused** (`worlds/zexion/plando.py`, from
-  `ZexionWorld.pre_fill`, since 2026-11-08): Archipelago's plando makes items where a block has
-  `from_pool: false`, or names an item the pool holds no more of. The world counts the player's
-  items, in the pool, in any world's locations and in the start inventory, before plando
-  (`generate_basic`) and after it, and where plando made more of one than the world did, refuses
-  the seed, naming each, for the limits of the starting items where they apply to items found
-  too (`worlds/zexion/starting.py`): a second copy of an item held once (with Guns First a third
-  copy of a progressive weapon, or an upgrade as an item of its own), more than 40 Energy Tanks
-  or 999 missiles or Mega Bombs (10 per box), an OS Install Disk without the disks goal or more
-  than its options make, an Area Map with Area Map Hints on, or an Intel Chip with it off. What
-  the world makes alone is not refused there: `start_inventory`'s supplies on top of the pool can
-  pass 40 tanks or 999 missiles, as the start options allow. It warns, from `generate_basic`, where a
-  plando names one of its locations the seed does not have (left out, or Secret Shuffle's
-  without it), which Archipelago alone reports only as items it could not place. Tested only
-  (`worlds/zexion/test/test_plando.py`); a refused seed never reaches the game.
+  `ZexionWorld.pre_fill`, since 2026-11-08): where Archipelago's plando gives the player more of
+  an item than the world and its item links made (counted from `generate_basic`), past the
+  limits of the starting items where they apply to items found too (`worlds/zexion/starting.py`).
+  The limits, and what is not refused, are in `plando.py`'s docstring. It warns, from
+  `generate_basic`, where a plando names one of its locations the seed does not have (left out,
+  or Secret Shuffle's without it) and no other world of the plando has, which Archipelago alone
+  reports only as items it could not place. Tested only (`worlds/zexion/test/test_plando.py`); a
+  refused seed never reaches the game.
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   does, in every mode; with no ten left the seed is refused ("The OS Install Disks goal: the

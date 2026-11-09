@@ -105,6 +105,7 @@ class PlandoTestCase(unittest.TestCase):
 class TestPlandoPlaces(PlandoTestCase):
     def test_an_own_item_in_an_own_location(self) -> None:
         # The Gravity Harness at Kresezoa 25,25, by name: there, and written there as itself.
+        # Kresezoa 25,25 is in the start the world opens: the opener counts there.
         options = {"mode": "easy", "plando_items": [block({"Gravity Harness": 1}, POD[:1])]}
         multiworld = generate([options])
         world = multiworld.worlds[1]
@@ -195,10 +196,7 @@ class TestPlandoAndTheStart(PlandoTestCase):
     """The world opens the start after plando (ZexionWorld.open_the_start): a plando'd item
     there counts, and a start plando fills leaves it nothing to place in."""
 
-    def test_a_plando_opener_in_the_start(self) -> None:
-        options = {"mode": "easy", "plando_items": [block({"Gravity Harness": 1}, POD[:1])]}
-        multiworld = generate([options])
-        self.assert_beatable(multiworld)
+    # A plando'd item in the start: TestPlandoPlaces.test_an_own_item_in_an_own_location.
 
     def test_a_start_filled_by_plando_warns(self) -> None:
         # Scrap Metal in all three of Landing Pod's start locations.
@@ -311,6 +309,60 @@ class TestNoPlando(PlandoTestCase):
         self.assertEqual(world.plando_problems(), [])
 
 
+def linked(pool: list[str], replacement: str | None, link_replacement: bool) -> dict[str, Any]:
+    """Easy, in item link "L" with these settings."""
+    link = {
+        "name": "L",
+        "item_pool": pool,
+        "replacement_item": replacement,
+        "link_replacement": link_replacement,
+    }
+    return {"mode": "easy", "item_links": [link]}
+
+
+class TestItemLinks(PlandoTestCase):
+    """An item link's replacement items, made after generate_basic (plando.linked_items), are
+    the links', not plando's."""
+
+    def test_replacements_are_not_refused(self) -> None:
+        # Two players linking an item held once or supplies, the replacement a second copy of
+        # an item held once or more supplies: generated with no refusal, as 1.0.0 did.
+        cases = [
+            (["Gravity Harness"], "Wall Jump Boots"),
+            (["Missile Box", "Bomb Box"], "Energy Tank"),
+            (["Energy Tank"], "Navcore"),
+        ]
+        for pool, replacement in cases:
+            for link_replacement in (False, True):
+                with self.subTest(pool=pool, replacement=replacement, link=link_replacement):
+                    options = linked(pool, replacement, link_replacement)
+                    multiworld = generate([options, options])
+                    worlds = [multiworld.worlds[1], multiworld.worlds[2]]
+                    for world in worlds:
+                        self.assertEqual(world.plando_problems(), [])
+                    code = code_of[replacement]
+                    extra = sum(plando.own_items(w)[code] - w.made_items[code] for w in worlds)
+                    # The link's copies are the players' with link_replacement off.
+                    self.assertEqual(extra > 0, not link_replacement)
+        multiworld = generate([linked(*cases[0], False)] * 2)
+        self.assert_beatable(multiworld)
+
+    def test_plando_past_a_limit_is_still_refused(self) -> None:
+        # The link adds at most one Wall Jump Boots each; two more by plando pass that, and a
+        # second Navcore is plando's alone.
+        for extra, line in (
+            ({"Wall Jump Boots": 2}, "Wall Jump Boots: the game holds one"),
+            ({"Navcore": 1}, "2 Navcore: the game holds one"),
+        ):
+            with self.subTest(extra=extra):
+                names = ["Vallahar 6,14", "Machinus 27,24"][: sum(extra.values())]
+                more = block(extra, names, from_pool=False)
+                options = linked(["Gravity Harness"], "Wall Jump Boots", False)
+                message = self.refused([{**options, "plando_items": [more]}, options])
+                self.assertIn("Zexion (Tester1): plando_items gives items", message)
+                self.assertIn(line, message)
+
+
 class TestPlandoProblems(unittest.TestCase):
     """plando.problems on its own: the limits."""
 
@@ -395,3 +447,21 @@ class TestPlandoLeftOutLocations(unittest.TestCase):
         index = min(set(range(len(probe.location_cells))) - probe.kept_locations)
         (line,) = self.warnings({"mode": "ohko"}, location_name(index))
         self.assertIn("which this seed leaves out", line)
+
+    def test_a_location_another_world_of_the_plando_has(self) -> None:
+        # An OHKO and an Easy player; the Easy one plandos into any world a location OHKO leaves
+        # out and Easy has: Archipelago places it in the Easy world, with no warning.
+        probe = generate([{"mode": "ohko"}, {"mode": "easy"}])
+        ohko, easy = probe.worlds[1], probe.worlds[2]
+        cells = set(range(len(ohko.location_cells)))
+        name = location_name(min((cells - ohko.kept_locations) & easy.kept_locations))
+        harness = block({"Gravity Harness": 1}, [name], world=None)
+        multiworld = generate([{"mode": "ohko"}, {"mode": "easy", "plando_items": [harness]}])
+        self.assertEqual(plando.left_out(multiworld.worlds[1]), [])
+        location = multiworld.worlds[2].get_location(name)
+        self.assertEqual((location.item.name, location.item.player), ("Gravity Harness", 2))
+        # Aimed at the OHKO world alone, the warning stays.
+        harness = block({"Gravity Harness": 1}, [name], world="Tester1", force=False)
+        multiworld = generate([{"mode": "ohko"}, {"mode": "easy", "plando_items": [harness]}])
+        (line,) = plando.left_out(multiworld.worlds[1])
+        self.assertIn(f"Tester2's plando_items names {name}, which this seed leaves out", line)
