@@ -574,6 +574,10 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   objects there, in the game's pool of live item objects, as item N: N's palette, and the
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
+- **Scrap Energy and Scrap Chunk:** for another Zexion player's (`@47`, `@48`), N's record is
+  a stand-in's, restyled to the logo, so their look is taken as the game loads it (frames 134
+  and 135 or 142 and 143, palette 8: `kStandInOwnFrames`, `src/apitem.h`), as their names are,
+  not the logo in palette 8 (`docs/re/memory.md`, "Other players' items"). Not run in game.
 - **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
   helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
   R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
