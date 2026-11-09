@@ -5,7 +5,7 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** 1.0.0, played in game on build B1 only. Releases (the version: "Releases and
+**Status:** 1.1.0, played in game on build B1 only. Releases (the version: "Releases and
 versions") are published from `main` on GitHub's
 [Releases page](https://github.com/mcawful/zexion-ap/releases).
 
@@ -168,7 +168,10 @@ missing, stale or mismatched DLLs, a mismatched `world_version`, and samples tha
 untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
 its own, so it uses the helper in the game's folder. On GitHub,
 `.github/workflows/release.yml` builds the release and publishes it once the owner approves
-(`docs/DEVELOPING.md`, "Branches and releases").
+(`docs/DEVELOPING.md`, "Branches and releases"). The release's notes are GitHub's generated
+ones (the pull requests since the latest release) followed by the install guide in
+`.github/release-footer.md`, with `{{VERSION}}` filled in; `tests/test_release_footer.py` checks
+the files it names are the release's.
 
 - **The release version** is one number in three places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
@@ -233,8 +236,9 @@ its own, so it uses the helper in the game's folder. On GitHub,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
   must agree on (version, builds, `config` keys, the flags and layouts both read), and the
   world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py` and `test_release_check.py` test the
-  release builder, the data generator and the release gate.
+  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py` and
+  `test_release_footer.py` test the release builder, the data generator, the release gate and
+  the install guide under the release notes.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).
 
