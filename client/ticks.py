@@ -700,9 +700,12 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         return
     popups: list[tuple[int, str, bool]] = []
     if disks:
-        have = discs.owned(hunt, p.codes, p.found)
-        # The ones shown now are the latest found: they count up to the count as it is.
-        first = have - len(disks) + 1
+        # The ones shown now are the latest found: they count up from the disks the player has,
+        # the received ones counted up to those whose popup has gone to the helper (a received
+        # disk still to be handed over counts these in its own notice: discs.received_notes).
+        current = seed.session
+        handed = current.announced if current.announced_read else len(p.codes)
+        first = discs.owned(hunt, p.codes[:handed], p.found) - len(disks) + 1
         told_count = hunt.required if seed.discs_told else None
         popups += [
             (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))

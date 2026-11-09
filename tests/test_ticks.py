@@ -564,6 +564,31 @@ def prompts(ctx: Ctx) -> int:
     return ctx.helper.requests.count(discs.MISSION_REQUEST)
 
 
+def notices(ctx: Ctx) -> list[str]:
+    """The notice lines of every batch applied."""
+    lines = [line for r in ctx.helper.requests for line in r.split(chr(10))]
+    return [line for line in lines if line.startswith("notice")]
+
+
+@pytest.mark.parametrize("handed", [0, 1])
+def test_a_found_disks_count_leaves_out_a_received_disk_not_handed_over_yet(handed) -> None:
+    # A received disk waits (an item owed with it) while the player picks up the disk at
+    # location 12: the found one shows 1, and the received one, handed over after it, 2
+    # (discs.received_notes). Handed over first (this poll's step), the found one shows 2.
+    ctx = homing_ctx()
+    ctx.server = None  # the record of what was shown is kept for a later poll
+    current = ctx.seed_state.session
+    current.announced = handed
+    ctx.load.save_collected = {12}
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[12])
+    run(ticks.followups_tick(ctx, p, session.Step(seed_matches=True, state=game.IN_PLAY)))
+    assert notices(ctx) == [f"notice 44 OS Install Disk {1 + handed}"]
+    if not handed:  # the received one's count, handed over on a later poll
+        pending = ctx.load.save_collected - ctx.seed_state.popped_mine
+        later = discs.received_notes(ctx.conn.hunt, p.codes, p.found, False, pending)
+        assert later == {0: "OS Install Disk 2"}
+
+
 def test_a_save_past_its_ending_is_offered_return_home_after_a_save_at_the_pod() -> None:
     for ended in (False, True):
         ctx = homing_ctx()

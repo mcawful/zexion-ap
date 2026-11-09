@@ -128,13 +128,17 @@ async def announced_tick(
     per connection, the session (``current``, ``conn``'s seed's) takes the server's count of
     those handed over, once it has been read (a slot with none stored counts every item it
     holds, and stores that at once, so the key exists); and the count is stored again as items
-    are handed over (the larger one wins, for two clients of a slot)."""
+    are handed over (the larger one wins, for two clients of a slot). With Area Map hints, not
+    before the hints are read too (in the same reply: zexion_client's connected), so an Intel
+    Chip is never handed over without its hint."""
     if conn is not ctx.conn:
         return  # a poll of a connection that has ended: the next one reads and stores its own
     if conn.announced_key not in ctx.stored_data or not conn.items_listed:
         return
     raw = ctx.stored_data.get(conn.announced_key)
     if not current.announced_read:
+        if conn.hint_targets and conn.hints_key not in ctx.stored_data:
+            return
         # Counted as received() counts: Zexion items only.
         current.announced = state.announced_start(raw, len(p.codes), current.announced)
         current.announced_read = True
@@ -216,9 +220,11 @@ async def hints_tick(ctx: ZexionContext, p: Poll) -> None:
     owned = {(item.player, item.location) for item in ctx.items_received}
     owned |= {(ctx.slot, LOCATION_ID_BASE + i) for i in p.found}
     new = hints.assign(conn.hint_targets, used, keys, owned)
-    if new and not await create_hints(ctx, new.values()):
-        return  # tried again once connected
+    # Kept even when the send fails, so a received Area Map's popup still has its hint
+    # (hint_notes): then every hint is created again on a later poll.
     seed.hints_mine |= new
+    if new and not await create_hints(ctx, new.values()):
+        conn.hints_recreated = False
     # Stored again until the server has them (store_missing).
     stored = stored_hints(ctx)
     missing = {k: list(v) for k, v in seed.hints_mine.items() if k not in stored}

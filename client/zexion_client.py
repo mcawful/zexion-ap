@@ -46,7 +46,14 @@ from NetUtils import ClientStatus  # noqa: E402
 
 from . import aplabels, discs, game, ids, native, session, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
-from .storage import announced_tick, hint_notes, hints_tick, own_found, store_found  # noqa: E402
+from .storage import (  # noqa: E402
+    announced_tick,
+    hint_notes,
+    hints_tick,
+    own_found,
+    popped,
+    store_found,
+)
 from .ticks import (  # noqa: E402
     ASSISTS,
     INTEL,
@@ -181,18 +188,19 @@ class ZexionContext(CommonContext):
         # again, from the server (announced_tick).
         seed.session.announced_read = False
         self.seed_state, self.conn = seed, conn
-        # Kept by the server across clients: shields given, locations found, follow-ups shown
-        # and item popups handed over.
-        self.set_notify(conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key)
         # Wait for this connection's own read of the stored hints and its item list, and for
         # its own first look at the load (what the helper holds for the save stays).
         self.stored_data.pop(conn.hints_key, None)
+        self.stored_data_notification_keys.discard(conn.hints_key)  # so it is read again
+        # Kept by the server across clients: shields given, locations found, follow-ups shown,
+        # item popups handed over, and the Area Map hints. One Get, so one reply: the popup
+        # count is never read without the hints, whose notices go with the popups.
+        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+        self.set_notify(*keys, *([conn.hints_key] if conn.hint_targets else []))
         self.load.seed_loaded = False
         self.load.return_home = discs.ReturnHome()
         if self.told is not None:
             self.told.labels_retry_at = 0.0
-        if conn.hint_targets:
-            self.set_notify(conn.hints_key)
         Utils.async_start(self.update_death_link(conn.death_link_on), name="death link tag")
         if conn.death_link_on:
             detail("DeathLink is on for this seed.")
@@ -519,7 +527,9 @@ async def poll(ctx: ZexionContext) -> None:
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
         if hunt is not None:  # a received disk's popup, then the count
-            followups |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told)
+            # Found disks whose count followups_tick has still to show count there, not here.
+            pending = ctx.load.save_collected - (popped(ctx) or set())
+            followups |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told, pending)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         # A helper lost in a tick since the attach above (the ending again): the step gives
