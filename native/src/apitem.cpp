@@ -90,9 +90,10 @@ struct StandIn {
     const char (*logo)[17];
 };
 constexpr StandIn kStandIns[kStandInCount] = {
-    {kStandInItem, kStandInOwnFrames[0], 3549, kStandInNames[0], kStandInFrame, kApLogoRows},
-    {kStandInProgression, kStandInOwnFrames[1], 3550, kStandInNames[1], kStandInProgressionFrame,
-     kLogoArrow},
+    {kStandInItem, kStandInOwnFrames[0], kStandInOwnEvents[0], kStandInNames[0], kStandInFrame,
+     kApLogoRows},
+    {kStandInProgression, kStandInOwnFrames[1], kStandInOwnEvents[1], kStandInNames[1],
+     kStandInProgressionFrame, kLogoArrow},
 };
 
 bool is_own(const BYTE* r, const StandIn& s) {

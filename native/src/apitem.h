@@ -38,6 +38,10 @@ constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHU
 constexpr int16_t kStandInOwnFrames[kStandInCount] = {134, 142};
 constexpr int16_t kStandInOwnTicks = 6, kStandInOwnFrameCount = 2;
 constexpr uint8_t kStandInOwnPalette = 8;
+// Their own pickup events, 3549 and 3550, which spawn their drops (docs/re/memory.md, "Received
+// scrap"): restyled to -1 while the records are the helper's, and what a received one runs
+// (game_calls.cpp, run_item_event).
+constexpr int16_t kStandInOwnEvents[kStandInCount] = {3549, 3550};
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 
 // Font glyph `code`'s place in the sprite texture: 16 a row of 8 x 8, from (0, 976).

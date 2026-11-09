@@ -8,7 +8,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, native
+from client import game, ids, native
 from client import save_patch as sp
 from client import session as ss
 
@@ -446,6 +446,22 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
     assert session.announced == 2
     session.step(g, [17, 36], gap=0, senders=["Bob", "Alice"])
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
+
+
+def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
+    # The helper spawns a received scrap's drops after its popup (native/README.md, "Received
+    # scrap"), so each keeps its own item there, though all three count as Scrap Metal.
+    session, g, helper, _ = with_helper
+    scrap = [ids.SCRAP_METAL, ids.STAND_IN, ids.STAND_IN_PROGRESSION]
+    assert give(session, g, scrap, senders=["Bob"] * 3) == {ids.SCRAP_METAL: 3}
+    assert helper.requests[-1].splitlines()[1:] == [
+        "cas 46 0 3",
+        "popup 46 from Bob",
+        "popup 47 from Bob",
+        "popup 48 from Bob",
+    ]
+    session.step(g, scrap, gap=0, senders=["Bob"] * 3)
+    assert len(helper.requests) == 1 and session.announced == 3, "no popup, no drop, twice"
 
 
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:

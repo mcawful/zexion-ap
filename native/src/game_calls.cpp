@@ -49,11 +49,51 @@ using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
 using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
-// A received Energy Shield runs its pickup's area event (Game::run_item_event).
-constexpr uint8_t kEnergyShield = 50;
-constexpr uint8_t kSpawnEventType = 11;  // its arguments: the subtype, then the object
-constexpr int16_t kShieldObject = 2018;
-constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a death
+// A received Energy Shield, Scrap Metal, Scrap Energy or Scrap Chunk runs its pickup's area
+// event (Game::run_item_event), each as B1's AreaEvents file holds it, which the game reads into
+// the table as is (docs/re/memory.md, "Received Energy Shields" and "Received scrap"): type 11,
+// subtype 1, which spawns the object at +4 at the cell's corner plus (5, 8), no sound, then runs
+// the event at +0x20 (-1: none) itself.
+constexpr uint8_t kScrapMetal = 46, kScrapEnergy = 47, kScrapChunk = 48, kEnergyShield = 50;
+static_assert(kScrapEnergy == kStandInItem && kScrapChunk == kStandInProgression,
+              "kStandInOwnEvents is in the stand-ins' order");
+constexpr uint8_t kSpawnEventType = 11, kFadeEventType = 1;
+constexpr ptrdiff_t kEventNext = 0x20;
+// The record, but for each item's object (+4), next event (+0x20) and own number (+0x24).
+constexpr BYTE kSpawnRecord[event::kSize] = {
+    0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x02, 0x00, 0x05, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+    0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// Scrap Chunk's next event, 3552: type 1 (a fade) of layer 7 alone, toward -10 from 8, a step
+// every 3 frames; no sound, no next event.
+constexpr int16_t kChunkFade = 3552;
+constexpr BYTE kChunkFadeRecord[event::kSize] = {
+    0x01, 0x00, 0x07, 0x00, 0xF6, 0xFF, 0x08, 0x00, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00,
+    0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF, 0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF,
+    0x00, 0x00, 0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
+struct ItemEvent {
+    uint8_t item;
+    int16_t event, object, next;
+};
+constexpr ItemEvent kItemEvents[] = {
+    {kScrapMetal, 3548, 2010, -1},
+    {kScrapEnergy, kStandInOwnEvents[0], 2016, -1},
+    {kScrapChunk, kStandInOwnEvents[1], 2017, kChunkFade},
+    {kEnergyShield, 3553, 2018, -1},
+};
+const ItemEvent* item_event(uint8_t item) {
+    for (const ItemEvent& e : kItemEvents) {
+        if (e.item == item) return &e;
+    }
+    return nullptr;
+}
+// A received item whose drop the helper spawns after its popup: the scraps (the shield is the
+// client's to ask for, `shield`).
+bool has_drop(const Popup& popup) {
+    return popup.counted && !popup.bare &&
+           (popup.item == kScrapMetal || popup.item == kScrapEnergy || popup.item == kScrapChunk);
+}
+constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a drop, a death
 // The player's death: death_fn(player, 0), as the damage code calls it (docs/re/memory.md,
 // "DeathLink").
 using DeathFn = void (*)(void* player, char kind);
@@ -323,8 +363,10 @@ std::string Game::apply(const Batch& batch) {
     return "applied";
 }
 
-bool Game::showable(const Popup& popup) const {
-    return !popup.origin || (rando_save_loaded() && section_is(*popup.origin, at_.rando_blob));
+bool Game::showable(const Popup& popup) const { return origin_loaded(popup.origin); }
+
+bool Game::origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const {
+    return !origin || (rando_save_loaded() && section_is(*origin, at_.rando_blob));
 }
 
 bool Game::popup_busy() const { return popup_frames_left() > 1; }
@@ -404,6 +446,8 @@ void Game::pump_popups() {
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
     own_disk_ = disk_popup(popup);
+    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
+    if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
     popups_.erase(next);
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
@@ -520,29 +564,91 @@ std::string Game::kill(uint64_t now_ms) {
     return "died";
 }
 
+void Game::pump_drops(uint64_t now_ms) {
+    if (!configured_) return;
+    // The game's ending, whose cutscenes read as play: an ending this load was seen in play
+    // before keeps every drop for the next load, as the client holds received items (its goal
+    // read false, then true: client/session.py; docs/re/memory.md, "The ending: flag 250"). Read
+    // every frame, whether drops wait or not. A save past its ending reads as one throughout, and
+    // gets its drops until it plays the ending again (flag 211 set at the ship, or by the escape
+    // skip's YES, then cleared as the ending begins). 211 set counts in or out of play: the ship
+    // may show no frame in play before the ending.
+    const bool ending = ending_flag();
+    if (*at_.save_loaded == kNoSaveLoaded) {
+        load_before_ending_ = false;
+    } else if ((!ending && in_play()) || at_.flags[flag::kFinale] != 0) {
+        load_before_ending_ = true;
+    }
+    if (drops_.empty() || (ending && load_before_ending_)) return;
+    // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
+    // through its ending (kept for this save's next load, as the popups are).
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
+    auto next = std::find_if(drops_.begin(), drops_.end(),
+                             [this](const Drop& d) { return origin_loaded(d.origin); });
+    if (next == drops_.end()) return;
+    const uint8_t item = next->item;
+    std::string why = run_item_event(item);
+    if (why == "off the map") return;  // the raw cell can be -1 for a while: tried again
+    drops_.erase(next);
+    drop_status_ = (why.empty() ? "spawned " : "refused " + why + " ") + std::to_string(item);
+}
+
+bool Game::ending_flag() const {
+    return *at_.save_loaded != kNoSaveLoaded && at_.flags[flag::kEnding] != 0 &&
+           at_.flags[flag::kFinale] == 0;
+}
+
+std::string Game::drop_status() const {
+    return "queued " + std::to_string(drops_.size()) + "; last " + drop_status_;
+}
+
 std::string Game::run_item_event(uint8_t item) {
-    // The Energy Shield's pickup event, run as the pickup does, every field checked first
-    // (docs/re/memory.md, "Received Energy Shields").
+    // The item's pickup event, run as the pickup does, its record and every event it runs
+    // checked first (docs/re/memory.md, "Received Energy Shields" and "Received scrap").
+    const ItemEvent* traced = item_event(item);
+    if (traced == nullptr) return "no event traced";
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
-    int16_t event = at<int16_t>(rec, record::kEvent);
+    // The stand-ins' records read -1 while the helper restyles them (apitem.cpp, which restyles
+    // only a record holding the game's own event).
+    int16_t named = at<int16_t>(rec, record::kEvent);
+    if (named != traced->event && !(stand_in_index(item) >= 0 && named == -1)) {
+        return "event not as traced";
+    }
+    const int16_t event = traced->event;
     BYTE* table = pointer_at(at_.event_table);
     int16_t events = 0;
-    if (event < 0 || table == nullptr || !read(at_.event_count, 0, events) || event >= events) {
+    if (table == nullptr || !read(at_.event_count, 0, events) || event >= events ||
+        traced->next >= events) {
         return "no event";
     }
     BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
     BYTE copy[event::kSize];
     if (!safe_read(ev, copy, sizeof(copy))) return "no event";
-    if (copy[event::kType] != kSpawnEventType || copy[event::kTypeHigh] != 0 ||
-        word(copy, event::kArg0) != 1 || word(copy, event::kArg1) != kShieldObject ||
-        word(copy, event::kSelf) != event) {
-        return "event not as traced";
-    }
+    BYTE want[event::kSize];
+    std::memcpy(want, kSpawnRecord, sizeof(want));
+    std::memcpy(want + event::kArg1, &traced->object, sizeof(int16_t));
+    std::memcpy(want + kEventNext, &traced->next, sizeof(int16_t));
+    std::memcpy(want + event::kSelf, &event, sizeof(int16_t));
+    if (std::memcmp(copy, want, sizeof(copy)) != 0) return "event not as traced";
     BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
     if (handler == nullptr) return "no handler";
     if (!in_image_code(reinterpret_cast<HMODULE>(base_), handler)) {
         return "handler not in the game's code";
+    }
+    if (traced->next == kChunkFade) {
+        // The type-11 handler runs it from the table itself (0xF719 to 0xF73F).
+        BYTE* fade = table + static_cast<ptrdiff_t>(kChunkFade) * event::kSize;
+        if (!safe_read(fade, copy, sizeof(copy)) ||
+            std::memcmp(copy, kChunkFadeRecord, sizeof(copy)) != 0) {
+            return "event not as traced";
+        }
+        BYTE* fade_handler = pointer_at(at_.event_handlers, kFadeEventType * sizeof(void*));
+        if (fade_handler == nullptr ||
+            !in_image_code(reinterpret_cast<HMODULE>(base_), fade_handler)) {
+            return "handler not in the game's code";
+        }
     }
     BYTE* p = player();
     uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);

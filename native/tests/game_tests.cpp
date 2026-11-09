@@ -1167,13 +1167,32 @@ void test_zexion_items_show_as_themselves() {
     check(object_base(3) == moved, "a reused slot is left alone on restore");
 }
 
+// A received item's pickup event (3548 to 3550, 3553) as B1's AreaEvents holds it: type 11,
+// subtype 1, spawning `object` at the cell's corner plus (5, 8), no sound, then `next`.
+void spawn_event(int16_t event, int16_t object, int16_t next) {
+    const BYTE b1[0x28] = {0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF,
+                           0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x05, 0x00,
+                           0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+                           0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    BYTE* ev = g_events + event * 0x28;
+    std::memcpy(ev, b1, sizeof(b1));
+    put<int16_t>(ev, 4, object);
+    put<int16_t>(ev, 0x20, next);
+    put<int16_t>(ev, 0x24, event);
+}
+
+// Scrap Chunk's next event, 3552, as B1 holds it: a fade of layer 7.
+void chunk_fade_event() {
+    const BYTE b1[0x28] = {0x01, 0x00, 0x07, 0x00, 0xF6, 0xFF, 0x08, 0x00, 0x03, 0x00,
+                           0x07, 0x00, 0x00, 0x00, 0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF,
+                           0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+                           0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
+    std::memcpy(g_events + 3552 * 0x28, b1, sizeof(b1));
+}
+
 void shield_records(int16_t object) {
     reset_events();
-    BYTE* ev = g_events + 3553 * 0x28;
-    ev[0] = 11;
-    put<int16_t>(ev, 2, 1);
-    put<int16_t>(ev, 4, object);
-    put<int16_t>(ev, 0x24, 3553);
+    spawn_event(3553, object, -1);
     BYTE* shield = g_records + 50 * 100;
     std::memcpy(shield + 0x0A, "ENERGY SHIELD", sizeof("ENERGY SHIELD"));
     put<int16_t>(shield, 0x40, 3553);
@@ -1347,7 +1366,231 @@ void test_received_shield() {
     game.note_play(12000);
     shield_records(2017);  // not the event traced
     check(game.spawn_shield(13500) == "refused event not as traced", "an event not as traced");
+    shield_records(2018);
+    put<int16_t>(g_events + 3553 * 0x28, 0x20, 3552);  // a next event the trace did not see
+    check(game.spawn_shield(13500) == "refused event not as traced", "nor one that runs another");
+    shield_records(2018);
+    put<int16_t>(g_records + 50 * 100, 0x40, 3549);  // the record names another event
+    check(game.spawn_shield(13500) == "refused event not as traced", "nor another record's");
     check(g_spawn_calls == 1, "nothing else spawned");
+    reset_events();
+}
+
+void scrap_records() {
+    reset_events();
+    spawn_event(3548, 2010, -1);
+    spawn_event(3549, 2016, -1);
+    spawn_event(3550, 2017, 3552);
+    chunk_fade_event();
+    own_stand_ins(g_records);
+    BYTE* metal = g_records + 46 * 100;
+    std::memcpy(metal + 0x0A, "SCRAP METAL", sizeof("SCRAP METAL"));
+    put<int16_t>(metal, 0x40, 3548);
+    put<int16_t>(metal, 0x5A, -1);  // no sound
+    player_cell(7, 4);
+}
+
+// The next queued popup shown (the helper's gap between two, nothing of the game's up).
+void show_next(zap::Game& game) {
+    const int before = g_messages;
+    for (int i = 0; i < 100 && g_messages == before; ++i) game.pump_popups();
+}
+
+// A received scrap's drop: its pickup's event, run once after its popup shows, once the player
+// has been in one cell for a second, in the save its popup was for.
+void test_received_scrap_drops() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    check(game.drop_status() == "queued 0; last none", "nothing yet");
+    apply(game, "apply\npopup 46 FROM ALICE\npopup 47 FROM BOB");
+    game.note_play(5000);
+    game.pump_drops(9000);
+    check(game.queued_drops() == 0 && g_spawn_calls == 0, "nothing before its popup shows");
+    game.pump_popups();
+    check(g_messages == 1 && game.queued_drops() == 1 && g_spawn_calls == 0,
+          "queued as Scrap Metal's popup shows");
+    field<uint8_t>(0x107A) = 5;  // another cell (a room change): settles again
+    game.note_play(9100);
+    game.pump_drops(9500);
+    check(g_spawn_calls == 0, "not before the player has settled");
+    game.pump_drops(10100);
+    check(g_spawn_calls == 1 && g_spawn_row == 5 && g_spawn_column == 7 &&
+              g_spawn_event == g_events + 3548 * 0x28 && game.queued_drops() == 0 &&
+              game.drop_status() == "queued 0; last spawned 46",
+          "a second in one cell: Scrap Metal's event 3548, from the player's cell");
+    game.pump_drops(12000);
+    check(g_spawn_calls == 1, "once");
+    player_cell(7, 4);
+    game.note_play(12000);
+
+    // The stand-ins restyled as other players' items: their records name no event (-1).
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572", labels);
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(at<int16_t>(g_records + 47 * 100, 0x40) == -1 &&
+              at<int16_t>(g_records + 48 * 100, 0x40) == -1,
+          "the stand-ins' records restyled");
+    show_next(game);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 2 && g_spawn_event == g_events + 3549 * 0x28,
+          "a received Scrap Energy: event 3549, though its record is a stand-in's");
+    apply(game, "apply\npopup 48 FROM BOB");
+    show_next(game);
+    g_events[3552 * 0x28 + 8] = 4;  // its next event's step not as traced
+    game.pump_drops(13000);
+    check(g_spawn_calls == 2 && game.queued_drops() == 0 &&
+              game.drop_status() == "queued 0; last refused event not as traced 48",
+          "Scrap Chunk refused, and dropped, while the fade it runs next is not as traced");
+    chunk_fade_event();
+    apply(game, "apply\npopup 48 FROM BOB");
+    show_next(game);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 3 && g_spawn_event == g_events + 3550 * 0x28,
+          "a received Scrap Chunk: event 3550 (which runs 3552 itself)");
+    game.restore_ap_items();
+
+    apply(game, "apply\nnotice 46 HINT: X\npopup 49 FROM ALICE\npopup 50 FROM ALICE");
+    for (int i = 0; i < 3; ++i) show_next(game);
+    check(game.queued_popups() == 0 && game.queued_drops() == 0,
+          "no drop for a notice, an Area Map, or an Energy Shield (the client's `shield`)");
+
+    // Dead, or off the map: it waits, queued.
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    field<int16_t>(0xCEA) = 0;
+    game.note_play(14000);
+    game.pump_drops(16000);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    field<uint8_t>(0x107A) = 0xFF;  // the raw cell can be -1
+    game.note_play(16000);
+    game.pump_drops(17500);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "off the map: kept");
+    player_cell(7, 4);
+    game.note_play(17500);
+    game.pump_drops(18500);
+    check(g_spawn_calls == 4 && game.queued_drops() == 0, "then spawned, on the map");
+
+    // In another save than its popup's: it waits for its own.
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 47 FROM BOB");
+    show_next(game);
+    g_section[0x26C] = 0x22;  // another seed's save
+    game.pump_drops(20000);
+    check(g_spawn_calls == 4 && game.queued_drops() == 1, "another seed's save: it waits");
+    g_rando_marker = 0;
+    game.pump_drops(20000);
+    check(g_spawn_calls == 4 && game.queued_drops() == 1, "and in a normal save");
+    g_rando_marker = 1;
+    g_section[0x26C] = 0x11;
+    // The client gone meanwhile: its drops stay, as its popups do (their items are given).
+    game.client_gone(&chosen);
+    game.pump_drops(20000);
+    check(g_spawn_calls == 5 && game.queued_drops() == 0,
+          "spawned in its own save, the client gone");
+    g_rando_marker = 0;
+    reset_events();
+}
+
+// A drop held through the game's ending, which reads as play, and not doubled by a popup the game
+// could not take yet; one whose record names no event refused unless it is a stand-in's.
+void test_received_scrap_drops_held() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    g_flags[250] = 0;
+    game.note_play(1000);
+    game.pump_drops(1000);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\npopup 46 FROM ALICE");
+    g_message_fails = true;  // all four message slots busy
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(game.queued_popups() == 1 && game.queued_drops() == 0, "no drop for a popup not shown");
+    g_message_fails = false;
+    show_next(game);
+    check(game.queued_popups() == 0 && game.queued_drops() == 1, "one, once it shows");
+    g_flags[250] = 1;  // the ending began in this load
+    game.pump_drops(5000);
+    check(g_spawn_calls == 0 && game.queued_drops() == 1, "held through the ending");
+    g_save_loaded = 0xFF;  // MISSION COMPLETE, then the title
+    game.pump_drops(6000);
+    g_save_loaded = 3;  // the save loaded again, past its ending
+    game.note_play(7000);
+    game.pump_drops(8000);
+    check(g_spawn_calls == 1 && g_spawn_event == g_events + 3548 * 0x28,
+          "spawned at the next load, though flag 250 stays set");
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    game.pump_drops(9000);
+    check(g_spawn_calls == 2, "a save past its ending gets its drops");
+    g_flags[250] = 0;
+
+    // A popup that shows only after the grab (queued behind others, or applied just before it):
+    // the load began before its ending, so its drop waits too.
+    g_save_loaded = 0xFF;
+    game.pump_drops(9100);
+    g_save_loaded = 3;  // a load before its ending
+    game.note_play(9200);
+    game.pump_drops(9200);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\npopup 47 FROM ALICE");
+    g_flags[250] = 1;  // Zexion grabbed
+    show_next(game);
+    check(game.queued_drops() == 1, "its popup shown in the ending");
+    game.pump_drops(11000);
+    check(g_spawn_calls == 2 && game.queued_drops() == 1,
+          "a drop queued after the ending began in its load waits too");
+    g_save_loaded = 0xFF;
+    game.pump_drops(12000);
+    g_save_loaded = 3;
+    game.note_play(12000);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 3 && g_spawn_event == g_events + 3549 * 0x28,
+          "and is spawned at the next load");
+
+    // A save past its ending playing it again: the escape sets flag 211, the ending clears it.
+    game.note_play(13000);
+    game.pump_drops(13000);
+    check(game.queued_drops() == 0, "nothing waiting");
+    apply(game, "apply\npopup 48 FROM ALICE");
+    g_menu = 3;  // at the ship: a frame not in play
+    g_flags[211] = 1;
+    game.pump_drops(13100);
+    g_menu = 0;
+    show_next(game);
+    g_flags[211] = 0;  // the ending's first cutscene
+    game.pump_drops(15000);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "held through the ending played again");
+    g_save_loaded = 0xFF;
+    game.pump_drops(15100);
+    g_save_loaded = 3;
+    game.note_play(15200);
+    game.pump_drops(16500);
+    check(g_spawn_calls == 4 && g_spawn_event == g_events + 3550 * 0x28,
+          "and spawned at the next load");
+    g_flags[250] = 0;
+
+    put<int16_t>(g_records + 46 * 100, 0x40, -1);  // Scrap Metal's record names no event
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 46",
+          "-1 is only a restyled stand-in's");
+    put<int16_t>(g_records + 47 * 100, 0x40, 3550);  // Scrap Energy's names Scrap Chunk's
+    apply(game, "apply\npopup 47 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 47",
+          "nor another item's event");
+    scrap_records();
+    g_event_count = 3552;  // a table without 3552
+    apply(game, "apply\npopup 48 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused no event 48",
+          "Scrap Chunk refused without the fade it runs next");
     reset_events();
 }
 
@@ -1918,6 +2161,27 @@ void test_popups_wait_for_the_mission_fade() {
     game.put_back_game(&chosen);
 }
 
+// A drop waits through RETURN HOME WITH THE DISKS?'s fade, as the popups do.
+void test_drops_wait_for_the_mission_fade() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    scrap_records();
+    player_cell(13, 16);  // at the pod
+    game.note_play(1000);
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    check(game.queued_drops() == 1, "a drop queued");
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // the gap after the helper's popup
+    game.request_mission(kPodColumn, kPodRow);
+    message_showing(zap::kFadeMessageLeft);
+    game.watch_all(&chosen);
+    check(game.mission_status() == "opening after the fade", "the fade");
+    message_showing(1);
+    game.pump_drops(5000);
+    check(g_spawn_calls == 0 && game.queued_drops() == 1, "the drop waits through the fade");
+    reset_events();
+}
+
 // A save during the fade puts the pause opener back: the fade turned back and the prompt asked
 // again, except under a door's own fade.
 void test_a_save_during_the_mission_fade() {
@@ -2337,6 +2601,7 @@ int main() {
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();
+    test_drops_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
@@ -2364,6 +2629,8 @@ int main() {
     test_received_disk_popup();
     test_received_intel_chip_popup();
     test_received_shield();
+    test_received_scrap_drops();
+    test_received_scrap_drops_held();
     test_received_death();
     test_assist_watch();
     test_newgame_watch();
