@@ -890,6 +890,17 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
 
     def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
+        # The pool's Area Maps are drawn per seed, and some seeds draw none: one of this
+        # player's filler items gives way to an Intel Chip (filler too), so the fill places one.
+        pool = self.multiworld.itempool
+        swap = next(
+            i
+            for i, item in enumerate(pool)
+            if item.player == self.player
+            and item.classification == ItemClassification.filler
+            and item.name != "Intel Chip"
+        )
+        pool[swap] = self.world.create_item("Intel Chip")
         distribute_items_restrictive(self.multiworld)
         slot = self.world.fill_slot_data()
         own = own_locations(self, "Intel Chip")
