@@ -67,6 +67,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+        # The notes: GitHub's generated ones (the pull requests since the latest release, named
+        # here: left to itself, GitHub may compare against no tag and list every pull request),
+        # then the install guide, .github/release-footer.md, with {{VERSION}} filled in. Any
+        # failure, or empty generated notes, stops the job before anything is published.
         run: |
+          set -euo pipefail
+          previous="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)"
+          notes="$RUNNER_TEMP/release-notes.md"
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
+            -f target_commitish="$GITHUB_SHA" -f previous_tag_name="$previous" -q .body > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::GitHub generated no release notes for v$VERSION since $previous."
+            exit 1
+          fi
+          printf '\n\n' >> "$notes"
+          sed "s/{{VERSION}}/$VERSION/g" .github/release-footer.md >> "$notes"
           gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Zexion-AP $VERSION" --generate-notes
+            --target "$GITHUB_SHA" --title "Zexion-AP $VERSION" --notes-file "$notes"

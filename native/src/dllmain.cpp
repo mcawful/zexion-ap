@@ -37,7 +37,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "1.0.0";
+constexpr char kVersion[] = "1.1.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // Passes on the original's rax: the test target returns a value, SDL_GL_SwapWindow none.
