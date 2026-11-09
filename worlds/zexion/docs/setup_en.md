@@ -114,8 +114,10 @@ With the client closed, your other saves play as normal.
   three files with the new release's. Install the new `zexion.apworld`, and copy the new
   `zexion_ap.dll` and `version.dll` into Zexion's folder.
 - Then connect the client once with Zexion running: until a client of the new release has
-  connected, what the mod does for your seed's saves while the client is closed (Playing
-  without the client) may stay off.
+  connected, what the mod does while the client is closed may stay off: other players' items
+  and OS Install Disks shown as themselves, the Archipelago logo on the file select, the map
+  markers, the title screen's lines, and keeping Feats and Steam achievements out of your
+  seed's saves.
 
 ## When Steam updates Zexion
 

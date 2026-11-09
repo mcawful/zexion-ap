@@ -236,8 +236,9 @@ the files it names are the release's.
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
   must agree on (version, builds, `config` keys, the flags and layouts both read), and the
   world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py` and `test_release_check.py` test the
-  release builder, the data generator and the release gate.
+  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py` and
+  `test_release_footer.py` test the release builder, the data generator, the release gate and
+  the install guide under the release notes.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).
 

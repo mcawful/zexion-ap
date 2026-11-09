@@ -282,10 +282,10 @@ To release:
    GitHub Release of the files below. Its notes are GitHub's generated ones, the pull requests
    since the latest release (named to GitHub, which otherwise may compare against no tag and list
    every pull request), followed by the install-and-update guide in `.github/release-footer.md`
-   with `{{VERSION}}` filled in; if the notes can't be generated, nothing is published. A version already released from
-   this same commit is skipped (a re-run). The job fails instead if that version's release is
-   a draft (a publish that failed part-way: publish or delete it on GitHub, then re-run) or was
-   released from another commit.
+   with `{{VERSION}}` filled in; if the notes can't be generated, nothing is published. A
+   version already released from this same commit is skipped (a re-run). The job fails instead
+   if that version's release is a draft (a publish that failed part-way: publish or delete it
+   on GitHub, then re-run) or was released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
    release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
