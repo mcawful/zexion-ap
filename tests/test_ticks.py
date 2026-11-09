@@ -581,7 +581,12 @@ def test_a_found_disks_count_leaves_out_a_received_disk_not_handed_over_yet(hand
     current.announced = handed
     ctx.load.save_collected = {12}
     p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[12])
-    run(ticks.followups_tick(ctx, p, session.Step(seed_matches=True, state=game.IN_PLAY)))
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    current.announced_read = False  # a new connection, its popup count not read yet
+    run(ticks.followups_tick(ctx, p, shown))
+    assert notices(ctx) == [], "a found disk's count waits for the popup count"
+    current.announced_read = True
+    run(ticks.followups_tick(ctx, p, shown))
     assert notices(ctx) == [f"notice 44 OS Install Disk {1 + handed}"]
     if not handed:  # the received one's count, handed over on a later poll
         pending = ctx.load.save_collected - ctx.seed_state.popped_mine

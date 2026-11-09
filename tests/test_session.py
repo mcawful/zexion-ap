@@ -111,7 +111,7 @@ def look_away(session: ss.Session, g: FakeGame) -> None:
 def reconnect(session: ss.Session) -> ss.Session:
     """The session as the next connection to its seed finds it (zexion_client's connected):
     the same one, its popup count to read again."""
-    session.announced_read = False
+    session.connected()
     return session
 
 
@@ -142,6 +142,15 @@ def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
     other = ss.Session(p)
     other.listed = list(SECRET_CELLS)
     assert other.step(g, [], gap=0).left_seed
+
+
+def test_a_new_connection_gives_nothing_before_its_own_look_at_the_save(setup) -> None:
+    # Its poll then knows which found disks' counts are still to show (discs.received_notes).
+    session, g = setup
+    session.step(g, [17], gap=0)  # owed, seen by the last connection's poll
+    reconnect(session)
+    assert session.step(g, [17], gap=0).granted == {}
+    assert session.step(g, [17], gap=0).granted == {17: 1}
 
 
 def test_a_received_item_is_given_once(setup) -> None:

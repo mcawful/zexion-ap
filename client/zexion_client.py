@@ -185,16 +185,21 @@ class ZexionContext(CommonContext):
         # A reconnect to the same seed and slot (a drop, or a Disconnect and Connect) carries on
         # with its SeedState: the session (the ending's hold, the popups handed over), the
         # save dressed and the labels the helper holds for it. Only the popup count is read
-        # again, from the server (announced_tick).
-        seed.session.announced_read = False
+        # again, from the server (announced_tick), and nothing is given before this
+        # connection's first look at the save.
+        seed.session.connected()
         self.seed_state, self.conn = seed, conn
-        # Wait for this connection's own read of the stored hints and its item list, and for
-        # its own first look at the load (what the helper holds for the save stays).
-        self.stored_data.pop(conn.hints_key, None)
-        self.stored_data_notification_keys.discard(conn.hints_key)  # so it is read again
+        # Wait for this connection's own read of the popup count and the stored hints (a drop
+        # keeps the last connection's stored_data), and of its item list, and for its own first
+        # look at the load (what the helper holds for the save stays). Both asked for again in
+        # one Get, so one reply brings them: the popup count is never read without the hints,
+        # whose notices go with the popups.
+        reread = [conn.announced_key, conn.hints_key]
+        for key in reread:
+            self.stored_data.pop(key, None)
+            self.stored_data_notification_keys.discard(key)
         # Kept by the server across clients: shields given, locations found, follow-ups shown,
-        # item popups handed over, and the Area Map hints. One Get, so one reply: the popup
-        # count is never read without the hints, whose notices go with the popups.
+        # item popups handed over, and the Area Map hints.
         keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
         self.set_notify(*keys, *([conn.hints_key] if conn.hint_targets else []))
         self.load.seed_loaded = False
