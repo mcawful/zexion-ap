@@ -546,48 +546,9 @@ void test_the_seen_marker_refuses_other_bytes() {
 }
 
 void test_the_seen_marker_patched_and_put_back() {
-    auto* site = static_cast<BYTE*>(
-        VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ));
-    write_code(site, kSeenGame, sizeof(kSeenGame));
     BYTE ours[zap::kSeenMarkerSize] = {};
     zap::seen_marker_patch(kSeenGame, ours);
-    zap::SeenMarker m;
-    m.watch(nullptr, true);
-    check(!m.patched(), "no site: nothing");
-    m.watch(site, false);
-    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0, "off: the game's");
-    m.watch(site, true);
-    check(m.patched() && m.error().empty() && std::memcmp(site, ours, sizeof(ours)) == 0,
-          "on: patched");
-    DWORD protect = 0;
-    MEMORY_BASIC_INFORMATION info{};
-    VirtualQuery(site, &info, sizeof(info));
-    protect = info.Protect;
-    check(protect == PAGE_EXECUTE_READ, "its protection put back");
-    m.watch(site, true);
-    check(m.patched() && std::memcmp(site, ours, sizeof(ours)) == 0, "on again: as it was");
-    m.watch(site, false);
-    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0, "off: put back");
-    m.watch(site, true);
-    m.restore();
-    check(!m.patched() && std::memcmp(site, kSeenGame, sizeof(kSeenGame)) == 0,
-          "restored: the game's");
-    BYTE other[zap::kSeenMarkerSize];
-    std::memcpy(other, kSeenGame, sizeof(other));
-    other[0] = 0xE9;
-    write_code(site, other, sizeof(other));
-    m.watch(site, true);
-    check(!m.patched() && m.error() == "the on-screen marker reads otherwise" &&
-              std::memcmp(site, other, sizeof(other)) == 0,
-          "another's bytes: left alone");
-    write_code(site, kSeenGame, sizeof(kSeenGame));
-    m.watch(site, true);
-    check(m.patched() && m.error().empty(), "the game's again: patched");
-    write_code(site, other, sizeof(other));
-    m.restore();
-    check(!m.patched() && std::memcmp(site, other, sizeof(other)) == 0,
-          "rewritten by another: not put back over it");
-    VirtualFree(site, 0, MEM_RELEASE);
+    check_code_patch<zap::SeenMarker>("the seen marker", kSeenGame, ours);
 }
 
 }  // namespace

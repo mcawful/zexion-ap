@@ -2277,20 +2277,7 @@ void test_text_cut() {
     game[10] = 0x24;
     check(!zap::text_cut_patch(game, out), "other bytes are not patched");
 
-    {
-        zap::TextCut cut;
-        cut.watch(g_text_cut_code);
-        check(cut.patched() && cut.error().empty() &&
-                  std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0,
-              "patched at its site");
-        cut.watch(g_text_cut_code);
-        check(cut.patched(), "and kept so");
-        cut.restore();
-        check(!cut.patched() && std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0,
-              "put back as the game's");
-        cut.watch(nullptr);
-        check(!cut.patched(), "no site: nothing");
-    }
+    check_code_patch<zap::TextCut>("the text cut", kTextCutGame, ours);
     // Through the helper: patched while configured, put back with the game, and an unload refused
     // while it is still the helper's.
     {
