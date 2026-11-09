@@ -119,6 +119,8 @@ def linked_items(world: ZexionWorld) -> Counter[int]:
         players = group.get("players", ())
         if player not in players or group.get("link_replacement"):
             continue
+        if "replacement_items" not in group:
+            continue  # not an item link's group
         taken = Counter(loc.item.player for loc in multiworld.get_filled_locations(group_id))
         added = sum(taken.values()) - taken[player]  # all it took, less the group's own
         name = group["replacement_items"].get(player) or world.get_filler_item_name()
