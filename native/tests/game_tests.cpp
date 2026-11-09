@@ -893,6 +893,44 @@ void test_colored_stand_ins_dressed_later() {
     game.restore_ap_items();
 }
 
+// Another Zexion player's Scrap Chunk or Scrap Energy ("@48", "@47") is dressed as the game loads
+// it, not from its record, which the helper has restyled to a logo frame (the owner's in-game
+// check of 1.1.0: at Kresezoa 19,11 the arrow logo showed in palette 8, the room's colors).
+void test_zexion_scrap_shown_as_itself() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    g_frame_clock = 1006;  // 1006 / 6 = 167, odd: each scrap's second frame
+    put_object(3, 77, 47, 5, 2);     // in the Scrap Chunk's cell
+    put_object(4, 78, 47, 6, 2);     // in the Scrap Energy's cell
+    put_object(5, 79, 48, 6, 2);     // a progression stand-in (logo frame 95) there too
+    put_flipped(12, 501, 63, 5, 2);  // a general-pool one in the Scrap Chunk's cell
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 " + hex("@48\nfor bob") + "\nlabel 6 2 " +
+                          hex("@47\nfor bob"),
+                      labels);
+    game.set_labels(labels);
+    player_cell(5, 2);
+    game.watch_ap_items();
+    check(get<int16_t>(g_records + 48 * 100, 0x02) == 95, "the records are restyled");
+    check(object_base(3) == g_frames + (143 - 63) * 0x38 &&
+              object_palette(3) == g_palette_table[8] && object_palette_number(3) == 8,
+          "dressed as Scrap Chunk's own frame 143, in palette 8, not the arrow logo");
+    check(object_base(4) == g_frames + (135 - 63) * 0x38 && object_palette(4) == g_palette_table[8],
+          "and as Scrap Energy's own frame 135");
+    check(object_base(5) == g_frames + (135 - 95) * 0x38 && object_palette(5) == g_palette_table[8],
+          "from a progression stand-in's logo frame too");
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 143 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[8],
+          "a general-pool one too");
+    check(game.looks().colored() == 0, "none drawn in palette 26: they are Zexion items");
+
+    game.restore_ap_items();
+    check(object_base(3) == g_frames && general_ptr(12, 0x1B0) == g_frames + 63 * 0x38 &&
+              get<int16_t>(g_records + 48 * 100, 0x02) == 142,
+          "restore puts the objects and the records back");
+}
+
 // Stand-ins not dressed as a Zexion item draw in palette 26 at style 34 while restyled; palette 8
 // and their own style come back once not restyled, and on restore.
 void test_stand_ins_in_their_own_colors() {
@@ -2320,6 +2358,7 @@ int main() {
     test_the_marker_hidden();
     test_stand_ins_in_their_own_colors();
     test_colored_stand_ins_dressed_later();
+    test_zexion_scrap_shown_as_itself();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
     test_received_disk_popup();
