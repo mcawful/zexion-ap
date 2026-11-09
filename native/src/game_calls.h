@@ -247,7 +247,8 @@ public:
     std::string spawn_shield(uint64_t now_ms);
     // Game thread, every frame: spawns the drop of each received Scrap Metal, Scrap Energy or
     // Scrap Chunk whose popup has shown, as its pickup does, one at a time, once in play in one
-    // cell for a second in the save its popup was for (pump_popups queues them).
+    // cell for a second in the save its popup was for (pump_popups queues them), and not in an
+    // ending that began in the load (kept for the next).
     void pump_drops(uint64_t now_ms);
     // `drop_status` (for live checks): "queued N; last <outcome>", the outcome "none", "spawned
     // <item>" or "refused <why> <item>".
@@ -337,6 +338,8 @@ private:
     int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
+    // A save loaded with flag 250 set: the ending begun, in this load or before.
+    bool ending_flag() const;
     // Whether `origin` (a popup's or a drop's) is the save loaded now, or none.
     bool origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const;
     void refresh_hud();
@@ -382,6 +385,9 @@ private:
     struct Drop {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
+        // Flag 250 (the ending) in this load before the drop could run: 0 clear, 1 set, -1 not
+        // read yet (no save loaded since). One set since it was read waits for the next load.
+        int8_t ending = -1;
     };
     std::deque<Drop> drops_;
     std::string drop_status_ = "none";

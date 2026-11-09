@@ -415,12 +415,17 @@ tests only, not run in game.
 - **When:** as `shield`: once the player has been in play in one cell for a second, and not
   from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
   the order of their popups. In another seed's save or a normal save it waits for its popup's
-  save ("Popups"); off the map, for the player to be on it.
+  save ("Popups"); off the map, for the player to be on it. Nor in the game's own ending, whose
+  cutscenes read as play: one whose load saw flag 250 set after it was clear waits for the next
+  load (`docs/re/memory.md`, "The ending: flag 250"), as the client holds received items then; a
+  save past its ending, with the flag set from the start, gets its drops.
 - **Once:** a drop rides on its popup. The client hands each received item's popup over once
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,
   drops after its popup at the next load; one whose popup was handed over before 1.1.0, or
-  that was written directly with no helper, never drops; and the queue outlives the client
+  that was written directly with no helper, never drops; one whose popup the client hands over
+  again drops again (the client stopped after `apply` took the popups and before the server
+  stored their count: the popup then shows twice too); and the queue outlives the client
   ("A client going away") but not the helper: an unload, or the game closing, loses the drops
   not spawned yet, as it does the popups. Drops lost to a death or a reload before they are
   collected are not given again, as with the game's own pickup.
@@ -1466,7 +1471,7 @@ unload.
   the popup queue, the text window's cut repaired and put back (and a model of the game's
   update and window, its lines flashing without the repair), the
   new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
-  (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
+  (and a refused unload's watches apply again, a client gone drops), the received shield, scraps' drops and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
