@@ -55,6 +55,8 @@ using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event 
 // subtype 1, which spawns the object at +4 at the cell's corner plus (5, 8), no sound, then runs
 // the event at +0x20 (-1: none) itself.
 constexpr uint8_t kScrapMetal = 46, kScrapEnergy = 47, kScrapChunk = 48, kEnergyShield = 50;
+static_assert(kScrapEnergy == kStandInItem && kScrapChunk == kStandInProgression,
+              "kStandInOwnEvents is in the stand-ins' order");
 constexpr uint8_t kSpawnEventType = 11, kFadeEventType = 1;
 constexpr ptrdiff_t kEventNext = 0x20;
 // The record, but for each item's object (+4), next event (+0x20) and own number (+0x24).
@@ -75,8 +77,8 @@ struct ItemEvent {
 };
 constexpr ItemEvent kItemEvents[] = {
     {kScrapMetal, 3548, 2010, -1},
-    {kScrapEnergy, 3549, 2016, -1},
-    {kScrapChunk, 3550, 2017, kChunkFade},
+    {kScrapEnergy, kStandInOwnEvents[0], 2016, -1},
+    {kScrapChunk, kStandInOwnEvents[1], 2017, kChunkFade},
     {kEnergyShield, 3553, 2018, -1},
 };
 const ItemEvent* item_event(uint8_t item) {
