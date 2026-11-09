@@ -4,8 +4,9 @@
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
-named pipe. With no client it changes only the title screen and the look of AP saves, and keeps
-Feats and Steam achievements out of AP saves.
+named pipe. With no client it changes only the title screen, the look of AP saves and, in every
+save, how the game's text window cuts tall text ("Popups"), and keeps Feats and Steam achievements
+out of AP saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
@@ -139,13 +140,17 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 `client/native.py`). The whole configuration is refused unless:
 
 - every name is there, from a client's `config` or from the offline cache a client wrote ("AP
-  saves without the client"), which holds them all. A cache lacking one is refused
-  (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it. A release that
-  adds a key decides for that key alone: accept that, with everything the helper does without a
-  client off until the player's first client run after updating (the offline look of AP saves,
-  the file select's AP logo and disk counts, the map markers, the pause row from the seed file,
-  the major-item list, the title lines and the Feats guard), or let the helper configure without
-  that key, with a null check where it is read;
+  saves without the client"), which holds them all, but `text_cut_code` (below). A cache lacking
+  one is refused (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it.
+  A release that adds a key decides for that key alone: accept that, with everything the helper
+  does without a client off until the player's first client run after updating (the offline look
+  of AP saves, the file select's AP logo and disk counts, the map markers, the pause row from the
+  seed file, the major-item list, the title lines, the Feats guard, the ASSIST lock and Intel
+  Chips), or let the helper configure without that key, with a null check where it is read.
+  1.1.0's `text_cut_code` is the second kind (`optional` in `kConfigKeys`, `src/game_calls.cpp`):
+  without it the rest configures (`hello` `configured=1`, no `read_error`) and the text window's
+  cut stays the game's ("Popups", "Tall text") until a client's config, which holds it (stand-in
+  tests, `tests/offline_tests.cpp`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -340,15 +345,18 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 - **Tall text:** the game's window over a popup's text cuts a line's top wrong past the first
   line, so from five rows of glyphs on (a four-line notice with its blank row, or a five-line
   popup) a line flashes back whole while the box opens and closes; the game's own popups never
-  get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured, the
+  get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured (with or
+  without a client, in every save; not from a 1.0.0 cache, which lacks the key: "The pipe"), the
   helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut` in
   `src/text.h`, built by `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
   back with the rest of the game ("Unloading"). Every line then opens and closes with the box
-  as the game's short popups do. A translation draws its own text, never through this window.
+  as the game's short popups do. A translation draws its own text, never through this window;
+  the game's other message routine (`0x185540` on B1) draws its own through it too.
   Tests: `tests/game_tests.cpp`. Working in game 2026-11-08 (B1, `zexion_ap.dll` `b8ef0214…`):
   the pod reminder (four lines and its blank row) in the default English, every line opening
   and closing with the box, filmed; in English(HD), a two-line hint as before. Not run: a
-  five-line popup, a tall popup in a translation.
+  five-line popup, a tall popup in a translation, the other message routine's text (what it
+  shows is not recorded).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
@@ -848,9 +856,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
   (`other_save`). With no client yet, the cached addresses configure it if the cache is for its
-  build and holds every key ("The pipe"), and the game holds every checked function's bytes. So
-  the offline
-  look, the map markers and the title lines all run with no client once the cache checks out.
+  build and holds every required key ("The pipe"), and the game holds every checked function's
+  bytes. So the offline look, the map markers, the title lines and the text window's repair (with
+  `text_cut_code` in the cache) all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is

@@ -61,8 +61,9 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
-// Every key is required, from a client's config or the offline cache it wrote; what adding one
-// costs a cache written before it: native/README.md, "The pipe".
+// Every key is required, from a client's config or the offline cache it wrote, but text_cut_code:
+// a 1.0.0 cache lacks it, and without it only the cut stays the game's (null: TextCut never
+// patches). What adding a key costs a cache written before it: native/README.md, "The pipe".
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -72,15 +73,17 @@ struct ConfigKey {
     Held held;
     uint64_t room;    // bytes from the address that must lie in its section, if not 0
     uint64_t before;  // and bytes before it
+    bool optional;    // a config without it configures, the member left null
 };
-constexpr ConfigKey code(const char* name, Member member) {
-    return {name, member, Held::kCode, 0, 0};
+constexpr bool kOptional = true;
+constexpr ConfigKey code(const char* name, Member member, bool optional = false) {
+    return {name, member, Held::kCode, 0, 0, optional};
 }
 constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uint64_t before = 0) {
-    return {name, member, Held::kData, room, before};
+    return {name, member, Held::kData, room, before, false};
 }
 constexpr ConfigKey import_slot(const char* name, Member member) {
-    return {name, member, Held::kImportSlot, 0, 0};
+    return {name, member, Held::kImportSlot, 0, 0, false};
 }
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
@@ -124,7 +127,8 @@ constexpr ConfigKey kConfigKeys[] = {
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
-    code("seen_marker_code", &G::seen_marker_code), code("text_cut_code", &G::text_cut_code),
+    code("seen_marker_code", &G::seen_marker_code),
+    code("text_cut_code", &G::text_cut_code, kOptional),  // added in 1.1.0
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
@@ -195,6 +199,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     found.hooks = at_.hooks;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
+        if (it == rvas.end() && key.optional) continue;  // left null
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
         if (!why.empty()) return why;
