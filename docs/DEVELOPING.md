@@ -12,8 +12,9 @@ evidence in [`docs/re/`](re/README.md).
 1.1.0; the first release, 1.0.0, was published on 2026-11-05 (UTC). Every in-game run was on game
 build B1. A release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
 ([`docs/re/memory.md`](re/memory.md), "The client in a live game"), the 1.0.0 client from it on
-2026-10-29 (`native/README.md`, "AP saves without the client"), and the 1.0.0 release
-candidate's builds on 2026-11-03 and 04 ("Features, and when each was working in game", below).
+2026-10-29 (`native/README.md`, "AP saves without the client"), the 1.0.0 release candidate's
+builds on 2026-11-03 and 04, and the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
+(develop 88bebfb) ("Features, and when each was working in game", below).
 
 ## How it fits together
 
@@ -120,22 +121,26 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - `--keep-randomizer` (a new game by the seed's text gets the seed): 2026-10-27 ("Starting a new
   game").
 - Other players' items (logo, name at pickup): 2026-10-23; the logo's own colors and black
-  outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04 ("Other
-  players' items"; "Other Zexion players' items, as themselves").
+  outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
+  Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
+  players' items, as themselves"; its Scrap Energy not run in game).
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
-  2026-11-03; given once across reconnects: 2026-11-04 ("Received Energy Shields"; its stop
-  after three misses, and the helper's check of the whole of event 3553 since 2026-11-08: not
-  run in game).
-- Received scrap's drops (its pickup's event, after its popup): not run in game ("Received
-  scrap").
+  2026-11-03; given once across reconnects: 2026-11-04; the helper's check of the whole of
+  event 3553: 2026-11-09 ("Received Energy Shields"; its stop after three misses: not run in
+  game).
+- Received scrap's drops (its pickup's event, after its popup), one received while
+  disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
+  described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
-  2026-10-25; a received chip's own popup before its hint: 2026-11-08 ("Intel Chips"; "Popups").
-  Not run in game: a received chip's two popups held for the next load.
+  2026-10-25; a received chip's own popup before its hint: 2026-11-08 ("Intel Chips"; "Popups");
+  one received while the client was disconnected, its hint made once after the reconnect:
+  2026-11-08 (develop 5597753). Not run in game: a received chip's two popups held for the next
+  load.
 - OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
   2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
   2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending
@@ -144,7 +149,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   a client opened during the ending: 2026-10-26 (`docs/re/locations.md`, "The OS Install Disks
   goal"). A save at the pod then a pause at once, and popups waiting at YES shown at the next
   load: 2026-11-04. A received disk's own popup before its count, two at once, and both held
-  at YES for the next load: 2026-11-08 ("Popups"). Not run in game: RELOAD FROM CHECKPOINT and
+  at YES for the next load: 2026-11-08 ("Popups"); a received and a found disk's counts going
+  up in order, then the reminder: 2026-11-08 (develop 5597753; the counts' text not quoted).
+  Not run in game: RELOAD FROM CHECKPOINT and
   a teleport at the pod, and the map right after saving.
 - Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
   offline finds included: 2026-10-25.
