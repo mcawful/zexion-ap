@@ -1,6 +1,7 @@
 #include "text.h"
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 
 #include "apitem.h"  // kItemNameMax
@@ -135,6 +136,66 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
     if (field<int32_t>(message, kMessageHalfHeight) != 4 * lines + 7 || !(y == kPopupY - 1)) return;
     put<int32_t>(message, kMessageHalfHeight, 4 * lines + 4);
     put(message, kMessageY, y - 4);
+}
+
+namespace {
+
+// The game's top cut (B1, 0xA85E3; listing in docs/re/memory.md), esi the glyph's row, ebp the
+// window's top edge, r13w the cut glyph's draw (31):
+//   mov eax, ebp; mov [rcx+0x1A0], r13w; and eax, 0x80000007; jge +7; dec eax; or eax, -8;
+//   inc eax  (eax: the edge mod 8, signed)
+constexpr BYTE kTextCutGame[kTextCutSize] = {0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
+                                             0x00, 0x00, 0x25, 0x07, 0x00, 0x00, 0x80, 0x7D,
+                                             0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
+constexpr size_t kTextCutStore = 2, kTextCutStoreSize = 8;  // the mov [rcx+0x1A0], r13w
+// Ours: the row's 10 less its 8 taken off too, the edge then past 10 x row so never negative:
+//   mov eax, ebp; sub eax, esi; sub eax, esi; mov [rcx+0x1A0], r13w; and eax, 7; nop (7 bytes)
+constexpr BYTE kTextCutHead[] = {0x8B, 0xC5, 0x2B, 0xC6, 0x2B, 0xC6};
+constexpr BYTE kTextCutTail[] = {0x83, 0xE0, 0x07, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+static_assert(sizeof(kTextCutHead) + kTextCutStoreSize + sizeof(kTextCutTail) == kTextCutSize,
+              "as laid out");
+
+}  // namespace
+
+bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]) {
+    if (std::memcmp(game, kTextCutGame, sizeof(kTextCutGame)) != 0) return false;
+    std::memcpy(out, kTextCutHead, sizeof(kTextCutHead));
+    std::memcpy(out + sizeof(kTextCutHead), game + kTextCutStore, kTextCutStoreSize);
+    std::memcpy(out + sizeof(kTextCutHead) + kTextCutStoreSize, kTextCutTail,
+                sizeof(kTextCutTail));
+    return true;
+}
+
+void TextCut::watch(BYTE* site) {
+    if (site != site_) restore();
+    if (site == nullptr) return;
+    if (site_ != nullptr) {
+        if (code_reads(site_, written_, sizeof(written_))) return;
+        site_ = nullptr;  // rewritten by something else: no longer ours to put back
+    }
+    BYTE now[kTextCutSize];
+    BYTE patch[kTextCutSize];
+    if (!safe_read(site, now, sizeof(now))) {
+        error_ = "the text window's cut cannot be read";
+    } else if (!text_cut_patch(now, patch)) {
+        error_ = "the text window's cut reads otherwise";
+    } else if (!patch_code(site, patch, sizeof(patch))) {
+        error_ = "the text window's cut could not be written";
+    } else {
+        std::memcpy(original_, now, sizeof(now));
+        std::memcpy(written_, patch, sizeof(patch));
+        site_ = site;
+        error_.clear();
+    }
+}
+
+static_assert(kTextCutSize <= kMaxCodePatch, "put_back_code reads it whole");
+
+void TextCut::restore() {
+    // Still held while it reads as written (put back failed): the helper then refuses to unload.
+    if (site_ != nullptr && put_back_code(site_, written_, original_, sizeof(original_))) {
+        site_ = nullptr;
+    }
 }
 
 std::string in_capitals(std::string text) {

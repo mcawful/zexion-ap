@@ -100,6 +100,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 [`docs/re/memory.md`](re/memory.md) heading named (memory.md's Status and Evidence rows).
 
 - Received items with the game's popup, sound and HUD refresh: 2026-10-22 ("Grants", "Popups").
+- Tall popups opening and closing with no line flashing (the text window's cut repaired):
+  2026-11-08 ("Popups"); a five-line popup not run.
 - Each received item pops up once, across reconnects and client restarts (the count in data
   storage): 2026-10-26; popups the helper holds when the game closes or it unloads are lost
   ("The client in a live game"). Checks and items during a drop, each once, over three drops in

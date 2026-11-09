@@ -124,7 +124,7 @@ constexpr ConfigKey kConfigKeys[] = {
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
-    code("seen_marker_code", &G::seen_marker_code),
+    code("seen_marker_code", &G::seen_marker_code), code("text_cut_code", &G::text_cut_code),
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
@@ -628,6 +628,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_marks();
     watch_pickups();
     watch_translation();
+    text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
 }
 
 void Game::watch_pickups() {
@@ -1375,6 +1376,7 @@ void Game::put_back_game(WidgetCallback callback) {
     }
     put_back_files();
     leave_offline();
+    text_cut_.restore();
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
         const std::optional<Loaded> now = loaded_translation(at_);

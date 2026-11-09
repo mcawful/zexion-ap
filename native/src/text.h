@@ -1,6 +1,7 @@
 // The helper's popups as the game's message routine lays them out: a set number of characters a
 // line, cut where a line ends, with no line-break code (docs/re/memory.md, "Other players' items"
-// and "Game functions the helper calls"). Pure text, apart from fit_notice_box.
+// and "Game functions the helper calls"). Pure text, apart from fit_notice_box
+// and the window's cut (TextCut).
 #pragma once
 
 #include <windows.h>
@@ -91,5 +92,35 @@ std::string notice_text(const std::string& text, int per_line, int* width = null
 // Game thread, right after the game made a notice's message from `text`: fits the box to the
 // notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
 void fit_notice_box(BYTE* message, const std::string& text, int per_line);
+
+// The window over a message's text (0xA8210 on B1; docs/re/memory.md, "Game functions the
+// helper calls") cuts a glyph's top at the window's top edge mod 8, leaving out the row's own
+// offset: from three rows on a row past the first is cut wrong, and from five a line comes back
+// whole while the box opens and closes. The patch subtracts the row, so the window cuts every
+// row as it does the first.
+constexpr size_t kTextCutSize = 24;
+// The patch built from the game's bytes `game` at text_cut_code: false if they are not the cut
+// as traced on B1. It reads only registers the game's reads, leaves them as the game's does
+// (eax holds the cut either way), and calls nothing.
+bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]);
+
+// The cut patched while the helper is configured. Game thread only. It uses nothing of the
+// helper's, so one left behind cannot crash the game; an unload still puts it back first, and
+// refuses while it is not put back.
+class TextCut {
+public:
+    // Patched at `site` (null: nothing), put back first if `site` moved.
+    void watch(BYTE* site);
+    void restore();
+    bool patched() const { return site_ != nullptr; }
+    // Why it could not be patched the last time it tried, or "".
+    const std::string& error() const { return error_; }
+
+private:
+    BYTE* site_ = nullptr;
+    BYTE original_[kTextCutSize] = {};
+    BYTE written_[kTextCutSize] = {};
+    std::string error_;
+};
 
 }  // namespace zap

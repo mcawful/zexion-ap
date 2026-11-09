@@ -265,6 +265,7 @@ public:
         if (keys_branch_patched()) return "the pause screen's branch is still the helper's";
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
+        if (text_cut_.patched()) return "the text window's cut is still the helper's";
         if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
         // Entry 70 still pointing into the run: put back by the unload's frame, so only an unload
         // no frame came for is refused (the next helper would take it for the game's).
@@ -414,6 +415,7 @@ private:
     bool labels_seed_loaded() const;
     MapCursorNames map_names_;
     SeenMarker seen_marker_;  // the on-screen square's write, in the labels' seed's save
+    TextCut text_cut_;        // the text window's top cut, while configured
     bool discs_told_ = true;
     MissionPrompt mission_;
     int mission_save_ = -1;  // *save_loaded when last watched (0 or 0xFF; -1: not yet)

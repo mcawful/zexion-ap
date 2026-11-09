@@ -201,11 +201,11 @@ client in a live game").
 It also refuses (`error <why>; not unloading`) while the game may still call into the helper, or
 hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
 from OPTION MENU, the open map or the game's transition routine holding one of its wrappers, or
-the scanner's text, the pause screen's branch, an item record, the ending's patch or the map's
-on-screen marker write still the helper's; or, in a translation, a popup still showing the text
-the helper wrote into a borrowed entry (until that message ends: 3 seconds in play), or a
-translated name or the popups' moved entry 70 still the helper's when no frame came
-("Translations").
+the scanner's text, the pause screen's branch, an item record, the ending's patch, the map's
+on-screen marker write or the text window's cut still the helper's; or, in a translation, a
+popup still showing the text the helper wrote into a borrowed entry (until that message ends:
+3 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when
+no frame came ("Translations").
 
 It refuses (`error the ending RETURN HOME WITH THE DISKS? started is on its way; not
 unloading`), before putting anything back, from RETURN HOME WITH THE DISKS?'s YES until the
@@ -337,6 +337,18 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   Intel Chip's `popup` is followed in the same `apply` by its count or hint as a `notice`, so
   the two show one after the other, each with the item's sound, and wait together (a chip's
   two waiting: not run in game).
+- **Tall text:** the game's window over a popup's text cuts a line's top wrong past the first
+  line, so from five rows of glyphs on (a four-line notice with its blank row, or a five-line
+  popup) a line flashes back whole while the box opens and closes; the game's own popups never
+  get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured, the
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut`,
+  `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
+  back with the rest of the game ("Unloading"). Every line then opens and closes with the box
+  as the game's short popups do. A translation draws its own text, never through this window.
+  Tests: `tests/game_tests.cpp`. Working in game 2026-11-08 (B1, `zexion_ap.dll` `b8ef0214…`):
+  the pod reminder (four lines and its blank row) in the default English, every line opening
+  and closing with the box, filmed; in English(HD), a two-line hint as before. Not run: a
+  five-line popup, a tall popup in a translation.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
@@ -1406,7 +1418,8 @@ unload.
   frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
-  the popup queue, the
+  the popup queue, the text window's cut repaired and put back (and a model of the game's
+  update and window, its lines flashing without the repair), the
   new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
   (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
@@ -1502,7 +1515,7 @@ unload.
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
-| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws |
+| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`TextCut`) |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |

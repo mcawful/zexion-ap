@@ -117,7 +117,8 @@ void test_popups_take_turns_and_empty() {
               entry_text(g_small, 70) == L"Energy Tank\nfrom BOB" &&
               entry_text(g_small, 66) == first,
           "the second in entry 70, the first's kept");
-    check(game.unload_blocker() != nullptr, "an unload waits while one is read");
+    check(game.popup_areas().in_use() && game.unload_blocker() != nullptr,
+          "an unload waits while one is read");
 
     g_message_slot = 2;
     queue(game, "apply\npopup 36 FROM CAROL");
@@ -138,7 +139,8 @@ void test_popups_take_turns_and_empty() {
     frames(game, 1);
     check(entry_text(g_small, 66).empty() && game.popup_areas().in_use() == false,
           "every area empty once its message has gone");
-    check(game.unload_blocker() != nullptr, "the split: an unload no frame came for waits");
+    check(game.popup_areas().split() && game.unload_blocker() != nullptr,
+          "the split: an unload no frame came for waits");
 
     game.put_back_game(&no_callback);
     check(g_small->offsets[70] == seventy && !game.popup_areas().split(), "the split undone");

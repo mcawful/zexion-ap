@@ -2184,9 +2184,131 @@ void test_the_black_after_yes() {
     game.put_back_game(&chosen);
 }
 
+// The game's window over a message's text (0xA8210), as disassembled: glyph i in row i / w and
+// column i % w, tested at x 8c and y 10r against a window centered on 4w and on half the rows' 8
+// pixels each; a glyph inside is shown and cut at the top edge mod 8 (with no row offset;
+// `repaired`: less 2r, as TextCut's patch) and at the bottom edge less 2r, mod 8, its pixel rows
+// drawn `top` to `bottom`; a glyph outside is hidden, keeping its last cut. (The left and right
+// cuts, and the icon glyph's 10 x 9 cut mod 9, are left out.)
+struct GlyphCut {
+    bool shown = false;
+    int top = 0, bottom = 8;
+};
+
+void window_cut(std::vector<GlyphCut>& glyphs, int w, int wx, int wy, bool repaired) {
+    const int count = static_cast<int>(glyphs.size());
+    const int half_h = 8 * ((count - 1) / w + 1) / 2;
+    const int left = 4 * w - wx, right = 4 * w + wx, top = half_h - wy, bottom = half_h + wy;
+    for (int i = 0; i < count; ++i) {
+        const int r = i / w, x = 8 * (i % w), y = 10 * r;
+        GlyphCut& g = glyphs[i];
+        if (x + 8 <= left || x >= right || y + 8 <= top || y >= bottom) {
+            g.shown = false;
+            continue;
+        }
+        g = GlyphCut{true, 0, 8};
+        if (y + 8 > bottom) g.bottom = (bottom + 8 - 2 * r) % 8;
+        if (y < top) g.top = (repaired ? top - 2 * r : top) % 8;
+    }
+}
+
+// Whether, in a message of `rows` rows of `w` (its box as the game sizes it, or fitted as
+// fit_notice_box does), some row shows more of itself on a frame while the box closes than the
+// frame before, or less while it opens: a line flashing. The message's life as its update
+// (0x181E70) runs it, one call a frame, from the message routine's own window call (0x182C89,
+// the window empty): while frames left are under the half-height the window steps down, else
+// while the box is under the half-height the box and the window step up, else every glyph is
+// shown as last cut.
+bool flashes(int rows, int w, bool fitted, bool repaired) {
+    const int count = fitted ? (rows - 1) * w + 1 : rows * w;
+    const int half = fitted ? 4 * (rows - 1) + 4 : 4 * (rows - 1) + 7;
+    std::vector<GlyphCut> glyphs(static_cast<size_t>(count));
+    std::vector<int> last(static_cast<size_t>(rows), 0);
+    int wx = 0, wy = 0, box = 0;
+    bool flash = false;
+    window_cut(glyphs, w, wx, wy, repaired);
+    for (int frames = 179; frames >= 0; --frames) {
+        const bool closing = frames < half, opening = !closing && half > box;
+        if (closing) {
+            window_cut(glyphs, w, wx -= 100, wy -= 1, repaired);
+        } else if (opening) {
+            ++box;
+            window_cut(glyphs, w, wx += 100, wy += 1, repaired);
+        } else {
+            for (GlyphCut& g : glyphs) g.shown = true;
+        }
+        for (int r = 0; r < rows; ++r) {  // each row's first glyph
+            const GlyphCut& g = glyphs[static_cast<size_t>(r * w)];
+            const int now = g.shown ? (std::max)(0, g.bottom - g.top) : 0;
+            if ((closing && now > last[r]) || (opening && now < last[r])) flash = true;
+            last[r] = now;
+        }
+    }
+    return flash;
+}
+
+void test_text_cut() {
+    // The game's own cut: from five rows, a line grows back while the box closes, as filmed in
+    // game (2026-11-08) for the four-line reminder (five rows with its blank one, 23 wide). With
+    // four, the edge reaches 16 inside row 1 only on the last frame, the window shut across.
+    check(flashes(5, 23, true, false), "the game's cut: the four-line reminder flashes");
+    check(flashes(5, 24, false, false), "the game's cut: a five-line popup flashes");
+    check(!flashes(4, 24, false, false) && !flashes(4, 24, true, false),
+          "the game's cut: four rows do not");
+    check(!flashes(3, 24, false, false) && !flashes(2, 24, false, false),
+          "the game's cut: two or three lines do not");
+    // Repaired, no row of any height flashes.
+    bool any = false;
+    for (int rows = 1; rows <= 11; ++rows) {
+        for (int w : {12, 23, 24}) {
+            any = any || flashes(rows, w, false, true) || (rows >= 4 && flashes(rows, w, true, true));
+        }
+    }
+    check(!any, "the repaired cut: no line flashes, at any height");
+
+    // The patch: built from the game's bytes only, put back as it was.
+    BYTE game[zap::kTextCutSize], out[zap::kTextCutSize] = {};
+    std::memcpy(game, kTextCutGame, sizeof(game));
+    check(zap::text_cut_patch(game, out), "the patch is built from the game's cut");
+    const BYTE ours[] = {0x8B, 0xC5, 0x2B, 0xC6, 0x2B, 0xC6, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
+                         0x00, 0x00, 0x83, 0xE0, 0x07, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+    check(std::memcmp(out, ours, sizeof(ours)) == 0,
+          "mov eax, ebp; sub eax, esi twice; the game's store; and eax, 7; a 7-byte nop");
+    game[10] = 0x24;
+    check(!zap::text_cut_patch(game, out), "other bytes are not patched");
+
+    {
+        zap::TextCut cut;
+        cut.watch(g_text_cut_code);
+        check(cut.patched() && cut.error().empty() &&
+                  std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0,
+              "patched at its site");
+        cut.watch(g_text_cut_code);
+        check(cut.patched(), "and kept so");
+        cut.restore();
+        check(!cut.patched() && std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0,
+              "put back as the game's");
+        cut.watch(nullptr);
+        check(!cut.patched(), "no site: nothing");
+    }
+    // Through the helper: patched while configured, put back with the game, and an unload refused
+    // while it is still the helper's.
+    {
+        zap::Game game_;
+        ready(game_);
+        game_.watch_all(&chosen);
+        check(std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0, "the helper patches it");
+        check(game_.unload_blocker() != nullptr, "an unload waits for it");
+        game_.put_back_game(&chosen);
+        check(std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0 && game_.unload_blocker() == nullptr,
+              "put back with the game");
+    }
+}
+
 }  // namespace
 
 int main() {
+    test_text_cut();
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();

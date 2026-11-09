@@ -104,6 +104,7 @@ struct GameAddresses {
     BYTE* draw_layer = nullptr;    // holds the draw list new screen objects join
     BYTE* map_handler = nullptr;   // holds the map's per-frame handler (mapmarks.h)
     BYTE* seen_marker_code = nullptr;  // the write of an on-screen item's square (mapmarks.h)
+    BYTE* text_cut_code = nullptr;  // the text window's top cut, 24 bytes (text.h, TextCut)
     // Feats and achievements (feats.h).
     BYTE* ending_unlocks = nullptr;     // the ending's first Steam call (6 bytes)
     BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250
