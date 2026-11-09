@@ -184,12 +184,8 @@ __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 
 constexpr unsigned char kSeenMarkerGame[50] = ZAP_SEEN_MARKER_GAME;
 __declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = ZAP_SEEN_MARKER_GAME;
 // The text window's top cut (text.h, TextCut), as on B1.
-constexpr unsigned char kTextCutGame[24] = {0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
-                                            0x00, 0x00, 0x25, 0x07, 0x00, 0x00, 0x80, 0x7D,
-                                            0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
-__declspec(allocate(".zapcode")) inline unsigned char g_text_cut_code[24] = {
-    0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01, 0x00, 0x00, 0x25, 0x07,
-    0x00, 0x00, 0x80, 0x7D, 0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
+constexpr unsigned char kTextCutGame[24] = ZAP_TEXT_CUT_GAME;
+__declspec(allocate(".zapcode")) inline unsigned char g_text_cut_code[24] = ZAP_TEXT_CUT_GAME;
 inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
@@ -232,15 +228,6 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
     BYTE* message = g_slots + 0x1628 * g_message_slot;
     *reinterpret_cast<double*>(message + 0x48) = y - 1;
     *reinterpret_cast<int32_t*>(message + 0x1FC) = 4 * extra + 7;
-    // Its glyphs and line length, the window's steps, the window empty, the box not yet opened.
-    *reinterpret_cast<int32_t*>(message + 0x200) = len;
-    *reinterpret_cast<int32_t*>(message + 0x204) = per_line;
-    *reinterpret_cast<int32_t*>(message + 0x1F4) = 100;
-    *reinterpret_cast<int32_t*>(message + 0x1F8) = 1;
-    *reinterpret_cast<int32_t*>(message + 0x214) = 0;
-    *reinterpret_cast<int32_t*>(message + 0x218) = 0;
-    *reinterpret_cast<double*>(message + 0x150) = 0;
-    *reinterpret_cast<double*>(message + 0x160) = 0;
     if (g_slots_live) {
         *reinterpret_cast<int32_t*>(message + 0x1E0) = g_message_slot;
         *reinterpret_cast<int32_t*>(message + 0x1D8) = ++g_serial;

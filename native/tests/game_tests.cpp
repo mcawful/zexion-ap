@@ -2184,18 +2184,15 @@ void test_the_black_after_yes() {
     game.put_back_game(&chosen);
 }
 
-}  // namespace
-
 // The game's window over a message's text (0xA8210), as disassembled: glyph i in row i / w and
 // column i % w, tested at x 8c and y 10r against a window centered on 4w and on half the rows' 8
-// pixels each; a glyph inside is shown and cut at the window's edges, its left and right at those
-// edges mod 8, its top at the top edge mod 8 (with no row offset; `repaired`: less 2r, as
-// TextCut's patch), its bottom at the bottom edge less 2r, mod 8. A glyph outside is hidden,
-// keeping its last cut. The cut: the glyph's pixel columns and rows drawn, 0 to 8. (The icon
-// glyph, 10 x 9 and cut mod 9, is left out.)
+// pixels each; a glyph inside is shown and cut at the top edge mod 8 (with no row offset;
+// `repaired`: less 2r, as TextCut's patch) and at the bottom edge less 2r, mod 8, its pixel rows
+// drawn `top` to `bottom`; a glyph outside is hidden, keeping its last cut. (The left and right
+// cuts, and the icon glyph's 10 x 9 cut mod 9, are left out.)
 struct GlyphCut {
     bool shown = false;
-    int left = 0, top = 0, right = 8, bottom = 8;
+    int top = 0, bottom = 8;
 };
 
 void window_cut(std::vector<GlyphCut>& glyphs, int w, int wx, int wy, bool repaired) {
@@ -2209,63 +2206,44 @@ void window_cut(std::vector<GlyphCut>& glyphs, int w, int wx, int wy, bool repai
             g.shown = false;
             continue;
         }
-        g = GlyphCut{true, 0, 0, 8, 8};
-        if (x + 8 > right) g.right = right % 8;
-        if (x < left) g.left = left % 8;
+        g = GlyphCut{true, 0, 8};
         if (y + 8 > bottom) g.bottom = (bottom + 8 - 2 * r) % 8;
         if (y < top) g.top = (repaired ? top - 2 * r : top) % 8;
     }
 }
 
-// A message's life as its update (0x181E70) runs it, one call a frame, from the message routine's
-// state (its own window call, 0x182C89, with the window empty): while frames left are under the
-// half-height the box closes a pixel a side and the window steps down, else while the box is
-// under the half-height both step up, else every glyph is shown as last cut. `seen(phase,
-// glyphs)` after each frame: 'o' opening, 's' open, 'c' closing.
-template <typename Seen>
-void run_message(int count, int w, int half, bool repaired, Seen seen) {
-    int wx = 0, wy = 0, box = 0;
-    std::vector<GlyphCut> glyphs(static_cast<size_t>(count));
-    window_cut(glyphs, w, wx, wy, repaired);
-    for (int frames = 180; frames > 0;) {
-        --frames;
-        char phase = 's';
-        if (frames < half) {
-            --box;
-            window_cut(glyphs, w, wx -= 100, wy -= 1, repaired);
-            phase = 'c';
-        } else if (half > box) {
-            ++box;
-            window_cut(glyphs, w, wx += 100, wy += 1, repaired);
-            phase = 'o';
-        } else {
-            for (GlyphCut& g : glyphs) g.shown = true;
-        }
-        seen(phase, glyphs);
-    }
-}
-
-// The pixel rows shown of row r's first glyph.
-int row_shown(const std::vector<GlyphCut>& glyphs, int w, int r) {
-    const GlyphCut& g = glyphs[static_cast<size_t>(r * w)];
-    return g.shown ? (std::max)(0, g.bottom - g.top) : 0;
-}
-
 // Whether, in a message of `rows` rows of `w` (its box as the game sizes it, or fitted as
 // fit_notice_box does), some row shows more of itself on a frame while the box closes than the
-// frame before, or less while it opens: a line flashing.
+// frame before, or less while it opens: a line flashing. The message's life as its update
+// (0x181E70) runs it, one call a frame, from the message routine's own window call (0x182C89,
+// the window empty): while frames left are under the half-height the window steps down, else
+// while the box is under the half-height the box and the window step up, else every glyph is
+// shown as last cut.
 bool flashes(int rows, int w, bool fitted, bool repaired) {
     const int count = fitted ? (rows - 1) * w + 1 : rows * w;
     const int half = fitted ? 4 * (rows - 1) + 4 : 4 * (rows - 1) + 7;
+    std::vector<GlyphCut> glyphs(static_cast<size_t>(count));
     std::vector<int> last(static_cast<size_t>(rows), 0);
+    int wx = 0, wy = 0, box = 0;
     bool flash = false;
-    run_message(count, w, half, repaired, [&](char phase, const std::vector<GlyphCut>& glyphs) {
-        for (int r = 0; r < rows; ++r) {
-            const int now = row_shown(glyphs, w, r);
-            if ((phase == 'c' && now > last[r]) || (phase == 'o' && now < last[r])) flash = true;
+    window_cut(glyphs, w, wx, wy, repaired);
+    for (int frames = 179; frames >= 0; --frames) {
+        const bool closing = frames < half, opening = !closing && half > box;
+        if (closing) {
+            window_cut(glyphs, w, wx -= 100, wy -= 1, repaired);
+        } else if (opening) {
+            ++box;
+            window_cut(glyphs, w, wx += 100, wy += 1, repaired);
+        } else {
+            for (GlyphCut& g : glyphs) g.shown = true;
+        }
+        for (int r = 0; r < rows; ++r) {  // each row's first glyph
+            const GlyphCut& g = glyphs[static_cast<size_t>(r * w)];
+            const int now = g.shown ? (std::max)(0, g.bottom - g.top) : 0;
+            if ((closing && now > last[r]) || (opening && now < last[r])) flash = true;
             last[r] = now;
         }
-    });
+    }
     return flash;
 }
 
@@ -2308,7 +2286,7 @@ void test_text_cut() {
         cut.watch(g_text_cut_code);
         check(cut.patched(), "and kept so");
         cut.restore();
-        check(!cut.patched() && std::memcmp(g_text_cut_code, kTextCutGame, 24) == 0,
+        check(!cut.patched() && std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0,
               "put back as the game's");
         cut.watch(nullptr);
         check(!cut.patched(), "no site: nothing");
@@ -2322,10 +2300,12 @@ void test_text_cut() {
         check(std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0, "the helper patches it");
         check(game_.unload_blocker() != nullptr, "an unload waits for it");
         game_.put_back_game(&chosen);
-        check(std::memcmp(g_text_cut_code, kTextCutGame, 24) == 0 && game_.unload_blocker() == nullptr,
+        check(std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0 && game_.unload_blocker() == nullptr,
               "put back with the game");
     }
 }
+
+}  // namespace
 
 int main() {
     test_text_cut();
