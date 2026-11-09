@@ -8,17 +8,21 @@ locations, as any world's: the client and the game then treat a plando'd item as
   plando that names a location of this world the seed does not have, saying why: a location its
   settings do not reach from the start (a left-out location, which holds Scrap Metal: world.py's
   ``fit_pool``), or Secret Shuffle's location in a seed without it. Archipelago itself only says
-  it could not place the items (and stops, with ``force: true``).
+  it could not place the items (and stops, with ``force: true``). A plando for several worlds
+  (``world: null`` or a list) gets no warning for a location another of them has, where
+  Archipelago places it.
 - ``problems``, from pre_fill, once Archipelago has placed the plando: why the player's items
   (in the pool, in any world's locations and in the start inventory: ``own_items``) are more than
   the game holds or a kind it does not hold, one line each, where plando made them more than the
-  world did (``made_items``, from generate_basic); the world refuses the seed with them. Plando
-  can make items: ``from_pool: false`` makes new ones, and ``from_pool: true`` makes one where
-  the pool holds no more of it (Archipelago warns "Could not remove ... from pool"). What the
-  world makes alone is never refused here: its pool keeps the game's limits, and
-  start_inventory's supplies on top of the pool, which may pass them, are the options' (checked
-  in generate_early: worlds/zexion/starting.py). The limits are those of the starting items, for
-  the same reasons, where they apply to the items found as well:
+  world and the item links did (``made_items``, from generate_basic, and ``linked_items``); the
+  world refuses the seed with them. Plando can make items: ``from_pool: false`` makes new ones,
+  and ``from_pool: true`` makes one where the pool holds no more of it (Archipelago warns "Could
+  not remove ... from pool"). What the world makes alone is never refused here: its pool keeps
+  the game's limits, and start_inventory's supplies on top of the pool, which may pass them, are
+  the options' (checked in generate_early: worlds/zexion/starting.py). Nor is what an item link
+  adds: its replacement items, a second copy of an item held once among them (the client writes
+  none above 1). The limits are those of the starting items, for the same reasons, where they
+  apply to the items found as well:
 
   - an item the game holds once (all but the supplies, the filler and the OS Install Disks): one;
     with Guns First on (every preset), a progressive weapon two (the weapon and its upgrade) and
@@ -35,7 +39,8 @@ locations, as any world's: the client and the game then treat a plando'd item as
   - with Area Map Hints on, no Area Map (they are Intel Chips); with it off, no Intel Chip, which
     would hint nothing (the slot data's ``hints`` is empty).
 
-Pure but for ``own_items``, ``made_items`` and ``left_out``, which read the multiworld.
+Pure but for ``own_items``, ``made_items``, ``linked_items`` and ``left_out``, which read the
+multiworld.
 """
 
 from __future__ import annotations
@@ -96,6 +101,31 @@ def made_items(world: ZexionWorld) -> Counter[int]:
         counts[code] -= taken
         counts[SCRAP_METAL] += taken
     return counts
+
+
+def linked_items(world: ZexionWorld) -> Counter[int]:
+    """The most items Archipelago's item links can have added for this player (by item code),
+    which it does after generate_basic and before plando (``MultiWorld.link_items``, Main.py).
+    A link takes the same count of the linked items from each of its players into the group,
+    gives the group one of each, and fills the pool back up with each player's replacement_item
+    (filler when it has none) for every player in turn, shuffling the last turn: so each player
+    gets the shortfall over the players, rounded up at most. With link_replacement on, the
+    replacements are the group's, not this player's. Only the last turn is not known here, so
+    a plando can add at most one copy of a link's replacement item per link unrefused."""
+    multiworld, player = world.multiworld, world.player
+    out: Counter[int] = Counter()
+    for group_id, group in multiworld.groups.items():
+        # link_items keeps in "players" only those it took items from.
+        players = group.get("players", ())
+        if player not in players or group.get("link_replacement"):
+            continue
+        if "replacement_items" not in group:
+            continue  # not an item link's group
+        taken = Counter(loc.item.player for loc in multiworld.get_filled_locations(group_id))
+        added = sum(taken.values()) - taken[player]  # all it took, less the group's own
+        name = group["replacement_items"].get(player) or world.get_filler_item_name()
+        out[code_of[name]] += -(-added // len(players))
+    return out
 
 
 def problems(
@@ -167,8 +197,9 @@ def problems(
 
 
 def left_out(world: ZexionWorld) -> list[str]:
-    """A warning for each location of this world that a plando (any player's) names and the
-    seed does not have, saying why (the module's docstring)."""
+    """A warning for each location of this world that a plando (any player's) names, the seed
+    does not have and no other world of that plando's has, saying why (the module's
+    docstring)."""
     multiworld = world.multiworld
     who = f"Zexion ({world.player_name})"
     out = []
@@ -189,6 +220,8 @@ def left_out(world: ZexionWorld) -> list[str]:
                     )
                 else:
                     continue
+                if any(loc.name == name for loc in block.resolved_locations):
+                    continue  # another world of the block has it, and Archipelago places there
                 out.append(
                     f"{who}: {multiworld.get_player_name(player)}'s plando_items names {name}, "
                     f"{why}; Archipelago cannot place an item there"

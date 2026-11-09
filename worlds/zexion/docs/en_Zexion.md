@@ -216,7 +216,11 @@ none left of):
   (with your starting disks) makes: set the number there;
 - an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
 
-If a plando names a location your seed doesn't have, the generator logs a warning saying why:
+The copies an item link's `replacement_item` adds aren't plando and are never refused, though a
+second copy of an item the game holds once gives nothing.
+
+If a plando names a location your seed doesn't have (and, in a plando into several worlds, no
+other of them has), the generator logs a warning saying why:
 Secret Shuffle's location with Secret Shuffle off, or a location your settings don't reach from
 your start (OHKO leaves some out). Archipelago then doesn't place it there (with `force: true`,
 generation stops). Plando into the locations around your start counts when the generator opens
